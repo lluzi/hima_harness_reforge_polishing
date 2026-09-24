@@ -1,3 +1,4 @@
+import { runExitFence } from './host-exit.js';
 // HimaFabric v1: the runner that owns a Campaign's graph and a Run's state. It executes the four
 // node kinds and nothing more (D29): an act node runs one of the pack's tools on the Site as a Job
 // and waits for it, or reads one of the contract's outputs into HimaLedger; a judge node asks
@@ -2049,6 +2050,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (deps.stopSignal?.aborted) return no('the Host is stopping; no new business action was admitted');
     if (req.action === 'adopt') return adoptHistoricalRun(deps, req);
     if (control === undefined) return no('this historical Run has no conversational owner');
+    if (runExitFence(run) && !['read', 'knowledge', 'cancel', 'pause', 'complete'].includes(req.action)) return no('the App is closing; no new business work may start before recovery');
     // A human may urgently pause or stop a Campaign from a Side Talk, but that does not make the
     // Side Talk an execution owner.  Every node action, continuation, revision and handoff remains
     // fenced to the recorded owner and epoch below.
@@ -2293,6 +2295,39 @@ export function executionDriving(deps: FabricDeps, run: RunRecord, execution: No
   };
 }
 
+function unreleasedInteractiveIntents(deps:FabricDeps,runId:string,executionId:string) {
+  const records=deps.ledger.records({runId,type:'interactive'}).filter(record=>record.type==='interactive'&&record.executionId===executionId);
+  return records.filter(record=>record.type==='interactive'&&record.event==='open-intent'&&!records.some(outcome=>outcome.type==='interactive'&&outcome.requestId===record.requestId&&outcome.toolSessionId===record.toolSessionId&&outcome.seq>record.seq&&outcome.event==='open-released'));
+}
+
+/** Reuse the exact Fabric input/method/hold checks before resolving an interactive Pack operation. */
+export function interactiveDriving(deps:FabricDeps,run:RunRecord,execution:NodeExecution):Driving {
+  if(execution.inputThroughSeq===undefined||execution.inputDigest!==inputIdentity(deps,run,execution.inputThroughSeq))throw new RunStartError('Interactive input evidence changed; inspect the original execution.');
+  return executionDriving(deps,run,execution);
+}
+
+/** Attach only an already recorded interactive Job to its original execution and ordinary observer. */
+export async function reconcileInteractiveExecution(deps:FabricDeps,runId:string,executionId:string):Promise<void> {
+  await controlling(deps,runId,async()=>{
+    const run=existingRun(deps.ledger,runId);const execution=run.control?.executions[executionId];
+    if(!execution||execution.supersededBy||['ready','completed','failed'].includes(execution.phase))return;
+    const intent=unreleasedInteractiveIntents(deps,runId,executionId).at(-1);
+    if(!intent||intent.type!=='interactive'){
+      if(execution.phase==='uncertain'&&execution.jobSession===undefined&&execution.intent===undefined&&execution.reason==='Interactive open intent has no confirmed Job; do not resend it.')await updateExecution(deps,runId,executionId,{phase:'begun',reason:undefined});
+      return;
+    }
+    const job=deps.ledger.records({runId,type:'job'}).findLast(r=>r.type==='job'&&r.event==='launched'&&r.job.session===intent.toolSessionId);
+    if(!job||job.type!=='job') {await updateExecution(deps,runId,executionId,{phase:'uncertain',reason:'Interactive open intent has no confirmed Job; do not resend it.'});return;}
+    const ctx=executionDriving(deps,run,execution);const node=positionOf(ctx.pack,execution.nodeId)?.node;
+    if(!node||node.kind!=='act')throw new RunStartError('Interactive Job lost its original act node.');
+    if(execution.jobSession===undefined){
+      await recordNode(deps.ledger,runId,node,'running',execution.attempt,{jobSession:job.job.session});
+      await recordExecutionResult(ctx,execution,{kind:'pending',session:job.job.session});
+    }else if(execution.jobSession!==job.job.session)throw new RunStartError('Interactive and ordinary Jobs conflict for this execution.');
+    observeExecution(ctx,node,execution,job.job.session);
+  });
+}
+
 /** Called inside the existing Site claim lock. An uncertain earlier launch reserves that Site. */
 export async function reconcileExecutionIntents(deps: FabricDeps, siteName: string): Promise<void> {
   for (const run of deps.ledger.runs()) {
@@ -2486,6 +2521,7 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   if (req.action === 'recommend' && node.kind === 'explore') return executionAnswer(deps, run.id, 'accepted', { data: exploreRecommendation(ctx, node) });
   if (req.action === 'read' || req.action === 'write' || req.action === 'knowledge' || req.action === 'recommend') return actInWorkshop(ctx, req, execution, digest);
   if (req.action === 'work') {
+    if(unreleasedInteractiveIntents(deps,run.id,execution.id).length>0)return no('This execution owns an interactive admission; batch work cannot launch beside or replay it.');
     if (execution.phase !== 'begun') return no('this execution is already working or has a result; no second Job was admitted');
     if (node.kind === 'act' && node.parameters.workshop !== undefined) {
       const entry = freshWorkshopEntry(deps, run, execution);

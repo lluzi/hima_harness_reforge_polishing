@@ -20,6 +20,8 @@ import type { SemanticValue } from './semantics.js';
 
 /** One observation as HimaGuide shows it: what was read, from where, by which reader, when. */
 export interface ObservationView {
+  readonly generation?: number;
+  readonly loopId?: string;
   readonly recordId: string;
   readonly at: string;
   readonly path: string;
@@ -85,6 +87,8 @@ export function observationView(record: ObservationRecord): ObservationView {
     bytes: record.bytes,
     reader: record.reader,
     values: record.values,
+    ...(record.generation===undefined?{}:{generation:record.generation}),
+    ...(record.loopId===undefined?{}:{loopId:record.loopId}),
   };
   return record.branchId === undefined ? head : { ...head, branchId: record.branchId };
 }

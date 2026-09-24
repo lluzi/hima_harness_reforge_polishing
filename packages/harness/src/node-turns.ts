@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync } from 'node:fs';
 import { choose, measuredRead, type Chooser } from './choosers.js';
 import {
+  batchToolRefusal,
   flowDirName,
   forkJoinedAt,
   forkOutcome,
@@ -228,6 +229,8 @@ export async function toolNode(ctx: Driving, run: RunRecord, node: Extract<PackN
   const blocked = (reason: string, jobSession?: string): Promise<Step> => blockNode(ctx, node, attempt, reason, jobSession);
   const tool = ctx.pack.contract.tools.find((t) => t.id === node.parameters.tool);
   if (!tool) return blocked(`node ${node.id} runs tool "${node.parameters.tool}", which this pack's contract does not declare`);
+  const batchRefusal = batchToolRefusal(tool);
+  if (batchRefusal !== undefined) return blocked(batchRefusal);
 
   // What the node takes from the Run, resolved before anything is sent anywhere. An argument the Run
   // cannot bind is the pack's fault and is named as such: never a substituted empty string, and

@@ -19,20 +19,28 @@
 import { createUserMessage, type MessageId } from '@deepseek-ai/dsh-llm';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { Service, type Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 // Type-only: these take the `ctx.commands` and `ctx.tools` declaration merges the registrations below
 // stand on. What is registered is built in the two face modules, which face those seams themselves.
 import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-commands';
-import { hasEnded, Ledger, ledgerSpec, type RunRecord } from './ledger.js';
+import { hasEnded, Ledger, ledgerSpec, recordValidityOf, type RunRecord } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { convergeOf, newCampaignProposalId, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
 import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs } from './budget.js';
-import { drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
+import { controlling, identityOf, drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
-import { readExperience, readMaterial, readRunAssets, readArchivedMaterial, readWorkMemorySummary, writeWorkMemorySummary,
+import { operateRunDelegation, runDelegations, delegationRuntimePolicy, type RunDelegationRequest } from './delegation-runtime.js';
+import { registerDelegationGuard, readDelegationResult } from './delegation.js';
+import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
+import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
+import { interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
+import { claimSlot } from './job-cap.js';
+import { recordExitFence, releaseExitFence, readHostExitStatus, type HostExitRequest, type HostExitStatus } from './host-exit.js';
+import { nativeSessionMemoryEvidence } from './native-session-memory.js';
+import { readExperience, readMaterial, readReportMaterial, readRunAssets, readArchivedMaterial, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, listRunKnowledge,
   recordExperienceAdoption, type ExperienceAdoptionRequest, type WorkMemoryScope, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
 import { handleHimaCommand, himaCommandDescription, versionLine } from './commands.js';
 import { agentWorkspaceOf, himaTools, guideTools } from './tools.js';
@@ -44,7 +52,7 @@ import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, instal
 import { strategyValue, strategyFrom, allowsRunArgument, badRunArgument, allowsTimeBoxMs, timeBoxMsBounds } from './run-arguments.js';
 import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, siteSaveIdentity, siteDiscoveryRequestSchema, type Site, type SiteDiscoveryResult, type SiteSaveIdentity, type SshTarget } from './sites.js';
 import { SshChannel, type Channel } from './channel.js';
-import { nodeLogTail } from './jobs.js';
+import { jobKill, nodeLogTail } from './jobs.js';
 import { SiteUnreadableError } from './errors.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
@@ -52,8 +60,8 @@ import { registerHimaSkills } from './skills.js';
 import { openAuthoringSession, registerAuthoringGuard, terminalDenial } from './authoring.js';
 export { TERMINAL_TOOLS, terminalDenial } from './authoring.js';
 import { prepareCampaignSession, readChildSessionView, listSessionChildren } from './guide-sessions.js';
-import { authorizeProjectRun, readGuideContext, resolveReportAddress, sessionProject } from './guide-context.js';
-export { readGuideContext, resolveReportAddress, targetAddress } from './guide-context.js';
+import { authorizeProjectRun, readGuideContext, readNativeSessionContext, resolveReportAddress, sessionProject } from './guide-context.js';
+export { readGuideContext, readNativeSessionContext, resolveReportAddress, targetAddress } from './guide-context.js';
 export type { TargetAddress, GuideContextView } from './guide-context.js';
 import { authenticCampaignProposalId, sameCampaignProposalFacts } from './fabric.js';
 import { legacyAutomaticAllowed } from './runs.js';
@@ -74,6 +82,18 @@ export { channelFor, controlPathFor, remoteCommands, clearRemoteCommands, remote
 export type { Channel, ExecResult, ExecOptions, RemoteCommand, SiteDiscoveryFact } from './channel.js';
 export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discoveryIsStale, siteSaveIdentity, SiteDiscoveryConflictError } from './sites.js';
 export { WORK_MEMORY_SCHEMA, readWorkMemorySummary, writeWorkMemorySummary, recordExperienceAdoption } from './experience.js';
+export * from './delegation.js';
+export { runDelegations, delegationRuntimePolicy, operateRunDelegation } from './delegation-runtime.js';
+export * from './interactive-job.js';
+export * from './interactive-runtime.js';
+export * from './interactive-binding.js';
+export * from './library-insight-report.js';
+export * from './generation-feedback-report.js';
+export { readReportMaterial } from './experience.js';
+export { batchToolRefusal } from './packs.js';
+export { launchInteractiveJob } from './jobs.js';
+export { nativeSessionMemoryEvidence } from './native-session-memory.js';
+export type { NativeSessionMemoryEvidence, NativeSessionMemoryReader } from './experience.js';
 export type { WorkMemoryScope, WorkMemorySummary, WorkMemoryRead, ExperienceAdoptionRequest } from './experience.js';
 export type { ExperienceAdoptionRecord } from './ledger.js';
 export type { Site, SshTarget, Permit, SiteDiscovery, SiteDiscoveryRequest, SiteDiscoveryResult, SiteSaveIdentity } from './sites.js';
@@ -143,7 +163,7 @@ export { cancelRun, reconcileRuns } from './recovery.js';
 export { openMoment, momentOnCurrentNode, closeInterruptedMoments, openMomentsIn, nextMomentAttempt, HIMA_MOMENT_PRESET } from './moments.js';
 export type { Moment, MomentDeps, MomentRequest, MomentTurn, MomentOnNode } from './moments.js';
 export { MomentTurnError, NoCurrentNodeError, SiteUnreadableError } from './errors.js';
-export { writeExperience, readExperience, readMaterial, writeRunAssets, readRunAssets, readArchivedMaterial, listRunKnowledge, readRunKnowledge, HISTORY_SUMMARY_CAP, HISTORY_READ_CAP } from './experience.js';
+export { writeExperience, readExperience, readMaterial, retainRunMaterial, writeRunAssets, readRunAssets, readArchivedMaterial, listRunKnowledge, readRunKnowledge, HISTORY_SUMMARY_CAP, HISTORY_READ_CAP } from './experience.js';
 export type { WriteExperienceResult, ReadExperienceResult, WriteRunAssetsResult, ReadRunAssetsResult, ReadArchivedMaterialResult, RunKnowledgeCandidate, RunKnowledgeList, ReadRunKnowledgeResult } from './experience.js';
 export { RUN_ASSET_MANIFEST_SCHEMA } from './experience-report.js';
 export type { RunAssetManifest, ExperienceAsset } from './experience-report.js';
@@ -251,7 +271,7 @@ export type { NodeCardTabKey } from './node-card-layout.js';
 // What the ledger holds, for a caller reading records back through the namespace. `hasEnded` is the
 // one predicate over a Run's status every face shares: what counts as an ending is the ledger's to
 // say, not each caller's.
-export { hasEnded, runIdPattern, importLegacyLedger, revisionRecordsIn, recordValidityOf, currentRecordsIn, retainedRecordMaterial } from './ledger.js';
+export { hasEnded, ledgerSpec, runIdPattern, importLegacyLedger, revisionRecordsIn, recordValidityOf, currentRecordsIn, retainedRecordMaterial } from './ledger.js';
 export type { LegacyLedgerImportReceipt, RecordValidity, RetainedRecordMaterial } from './ledger.js';
 export type {
   LedgerRecord,
@@ -299,7 +319,7 @@ export type {
 export { jobPollFastForMs, jobPollFastMs, jobPollSlowMs } from './jobs.js';
 export { launchJob, reconcileLaunchIntent, jobStatus, nodeLogTail, nodeLogTailMaxLines } from './jobs.js';
 export type { LaunchIntent, JobDeps, LaunchRequest, LaunchResult, ReconciledLaunch, NodeLogTailResult } from './jobs.js';
-export { claimSlotAndLaunch } from './job-cap.js';
+export { claimSlot, claimSlotAndLaunch } from './job-cap.js';
 export { toolNode, observeNode, resumeNode, buildWorkshopScope, resolveWorkshop, launchWrittenWorkshop, exploreRecommendation } from './node-turns.js';
 export type { Driving, ResolvedWorkshop, ExploreRecommendation } from './node-turns.js';
 export { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop, captureWorkshopInputs } from './workshop.js';
@@ -335,6 +355,8 @@ export interface Config {
   packsDir: string;
   /** Hima-owned local root for user-selected current documents and rebuildable indexes. */
   knowledgeDir: string;
+  /** Administrator-owned exact adapter/environment qualification file; absent means unavailable. */
+  interactiveBindingsFile?: string;
 }
 
 /** Stable product knowledge for ordinary HimaGuide conversations.
@@ -447,7 +469,7 @@ function testDiscoveryChannelFor(): ((name: string, ssh: SshTarget) => Channel) 
 
 export default class Hima extends Service {
   static inject = ['storageDomain', 'commands', 'tools', 'skills', 'systemPrompt'];
-  static Config = z.object({ sitesDir: z.string().required(), packsDir: z.string().required(), knowledgeDir: z.string().required() });
+  static Config = z.object({ sitesDir: z.string().required(), packsDir: z.string().required(), knowledgeDir: z.string().required(), interactiveBindingsFile:z.string() });
 
   ledger!: Ledger;
   judge!: Judge;
@@ -460,10 +482,17 @@ export default class Hima extends Service {
    */
   reconciled!: Promise<ReconcileOutcome[]>;
   private notificationsActive = false;
+  private exitRequest: HostExitRequest | undefined;
+  private interactiveRuntime:InteractiveRuntimeDeps|undefined;
+  private interactiveTimers:InteractiveTimerController|undefined;
+  private readonly recoveredOwners = new Set<string>();
+  private readonly delegationTimers = new Map<string,ReturnType<typeof setTimeout>>();
+  ownerRecovery: Promise<void> = Promise.resolve();
   /** One ordinary execution-fact wake-up per owner/Run while it is still pending in dsh's inbox.
    *  The ledger remains the fact authority; replacing this hint loses no execution evidence and
    *  prevents a fast Run from producing more durable turns than its Agent can consume. */
   private readonly pendingProgressNotifications = new Map<string, MessageId>();
+  private readonly guideNoticeIdentities = new Map<string,string>();
   private readonly factStop = new AbortController();
   /** Browser-only Site drafts awaiting the same person's explicit Save. The reviewed result stays
    *  on the Host, so saving cannot silently rerun probes and persist facts the person never saw. */
@@ -491,6 +520,8 @@ export default class Hima extends Service {
         const agent = (context as { agent?: import('@deepseek-ai/dsh-agent').Agent }).agent;
         if (!agent) return himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir);
         const id = String(agent.id);
+        const childPolicy=delegationRuntimePolicy(this.deps(),id);
+        if(childPolicy)return JSON.stringify({role:childPolicy.effective.role,delegation:childPolicy,source:'Ledger delegation admission',note:'You are a bounded child, not the Campaign owner or Guide. Return candidate evidence; do not adopt results or change authority.'});
         const linked = this.ledger.runs().filter(run => run.control?.owner === id || run.control?.guideSessionId === id);
         return [himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir, linked),
           'This task inventory includes only this conversation\'s recorded assignments. Other selected targets must be inspected explicitly.',
@@ -506,6 +537,8 @@ export default class Hima extends Service {
     this.ctx.effect(() => async () => {
       this.notificationsActive = false;
       this.pendingProgressNotifications.clear();
+      for(const timer of this.delegationTimers.values())clearTimeout(timer);this.delegationTimers.clear();
+      this.interactiveTimers?.dispose();
       this.factStop.abort();
       await drainExecutionObservers(this.ledger);
       await this.reconciled?.catch(() => undefined);
@@ -517,14 +550,22 @@ export default class Hima extends Service {
       webCtx.effect(
         () => registerHimaRoutes(webCtx, {
           ledger: this.ledger,
+          prepareExit: request=>this.prepareExit(request),
+          exitStatus: ()=>this.exitStatus(),
+          cancelExit: id=>this.cancelExit(id),
+          authorizeDesktopExit: token=>this.authorizeDesktopExit(token),
           validateSession: (id) => this.ctx.get('agents')?.list().some((agent) => String(agent.id) === id) === true,
           sessionWorkspace: (id) => this.sessionWorkspace(id),
           authorizeRunAccess: (sessionId, runId) => authorizeProjectRun(this.guideDeps(), sessionId, runId),
           readGuideContext: request => readGuideContext(this.guideDeps(), request),
+          readSessionContext: request=>readNativeSessionContext(this.ctx,request,this.ledger),
           resolveReportAddress: (sessionId, ref) => resolveReportAddress(this.guideDeps(), sessionId, ref),
           listSessionChildren: request => listSessionChildren(this.ctx, request),
           workMemory: (sessionId, request) => this.workMemory(sessionId, request),
           correctExperience: (sessionId, request) => this.correctExperience(sessionId, request),
+          experienceCandidates: (sessionId,runId)=>this.experienceCandidates(sessionId,runId),
+          delegations: (sessionId,runId)=>this.delegations(sessionId,runId),
+          delegate: request=>this.delegate(request),
           readCampaignFile: (id) => this.readCampaignFileOf(id),
           writeCampaignFile: (id, file, expectedMtimeMs) => this.writeCampaignFileOf(id, file, expectedMtimeMs),
           sites: () => this.sites(),
@@ -540,6 +581,8 @@ export default class Hima extends Service {
             return request.reviewSha256 === undefined ? previewPackTransfer(operation)
               : applyPackTransfer({ ...operation, reviewSha256: request.reviewSha256 });
           },
+          interactive:(sessionId,request)=>this.interactive(sessionId,request),
+          interactiveSessions:(sessionId,runId)=>this.interactiveSessions(sessionId,runId),
           executionContext: (runId) => this.executionContext(runId),
           executionAction: (request) => this.executionAction(request),
           observe: (req) => this.observe(req),
@@ -617,6 +660,9 @@ export default class Hima extends Service {
     for (const tool of guideTools({
       inspect: (sessionId, requestId, target) => readGuideContext(this.guideDeps(), { sessionId, requestId, target }),
       memory: (sessionId, request) => this.workMemory(sessionId, request),
+      delegate: request=>this.delegate(request),
+      delegationInput:(sessionId,request)=>this.delegationInput(sessionId,request),
+      interactive:(sessionId,request)=>this.interactive(sessionId,request),
     })) this.ctx.effect(() => this.ctx.tools.register(tool));
     // And the pack authoring pipeline's five stages, from the bundle's own skills directory (#63).
     // A person invokes one by typing its name; the model never chooses one for itself, because a
@@ -629,17 +675,35 @@ export default class Hima extends Service {
     // body, and why dsh's own file sandbox is not this rule.
     this.ctx.effect(() => registerAuthoringGuard(this.ctx, this.config.packsDir), 'hima: the pack authoring guard');
     this.ctx.effect(() => this.ctx.tools.guard(execution => terminalDenial(execution, this.ledger)), 'hima: raw terminals stay outside Campaign execution');
+    this.ctx.effect(()=>registerDelegationGuard(this.ctx,id=>delegationRuntimePolicy(this.deps(),id)),'hima: delegated tool grants');
+    this.ctx.effect(()=>this.ctx.tools.guard(execution=>{
+      const agent=execution.agent;if(!agent)return;
+      const parent=agent.session.header.parentSession;
+      if(parent&&this.ledger.runs().some(r=>r.control?.owner===String(parent))&&!delegationRuntimePolicy(this.deps(),String(agent.id)))return 'A child of a Campaign owner needs a recorded Hima delegation contract.';
+      if(this.ledger.runs().some(r=>r.control?.owner===String(agent.id))&&['subagent','subagent_fork'].includes(execution.name))return 'Use hima_delegate so this Run owns the child budget and write grant.';
+    }),'hima: native child creation does not bypass Run delegation');
+    this.syncDelegationDeadlines();
     // Last, and deliberately not awaited: every Run the last process left in flight is picked up
     // again from the ledger and carried on. The host serves while that happens — a Run resumed here
     // may have an hour of synthesis still to wait for, and a workbench that would not answer until
     // then is one nobody could cancel from.
     this.reconciled = this.reconcile();
+    this.ctx.inject(['sessionController'], nativeCtx => {
+      nativeCtx.effect(() => {
+        this.ownerRecovery=this.reconciled.then(()=>this.recoverOwners());
+        void this.ownerRecovery.catch(error=>this.ctx.logger.warn(`Owner recovery remains unavailable: ${String(error)}`));
+        return ()=>{};
+      });
+    });
   }
 
   /** The reconciliation, wrapped so nothing it finds can keep a host from starting. */
   private async reconcile(): Promise<ReconcileOutcome[]> {
     let found: ReconcileOutcome[] = [];
     try {
+      const sessions=await reconcileInteractiveState(this.interactiveDeps());
+      for(const session of sessions)await reconcileInteractiveExecution(this.deps(),session.runId,session.executionId);
+      await this.interactiveTimers!.reconcile();
       found = await reconcileRuns(this.deps());
     } catch (err) {
       // Only a fault outside any single Run reaches here — the ledger itself, or a host disposed
@@ -651,6 +715,29 @@ export default class Hima extends Service {
     return found;
   }
 
+  /** Re-open the recorded native owner only after factual reconciliation; never replay a node. */
+  private async recoverOwners():Promise<void> {
+    const persistence=this.ctx.get('sessionPersistence') as {stat(id:string):Promise<{header:{cwd?:string;agentPreset?:string;parentSession?:string}}|undefined>}|undefined;
+    const controller=this.ctx.get('sessionController') as {create(req:{sessionId:string;cwd?:string;workspaceId?:string;agentPreset?:string}):Promise<{sessionId:string}>}|undefined;
+    const registry=this.ctx.get('workspaceRegistry') as {list():{id:string;path:string;sessionIds:readonly string[]}[]}|undefined;
+    if(!persistence||!controller)return;
+    for(const run of this.ledger.runs()) {
+      const control=run.control;if(!control||run.status!=='running'||control.stop)continue;
+      const key=`${run.id}:${control.epoch}`;if(this.recoveredOwners.has(key))continue;
+      const context=this.executionContext(run.id);
+      if(context.reason||context.holds?.some(h=>h.source!=='agent')||context.budget.phase==='exhausted')continue;
+      const old=await persistence.stat(control.owner);if(!old?.header.cwd||old.header.parentSession)continue;
+      const membership=registry?.list().find(w=>w.sessionIds.includes(control.owner));
+      if(membership&&membership.path!==old.header.cwd)continue;
+      await controller.create({sessionId:control.owner,...(membership?{workspaceId:membership.id}:{cwd:old.header.cwd}),...(old.header.agentPreset?{agentPreset:old.header.agentPreset}:{})});
+      if(this.factStop.signal.aborted||this.exitRequest)return;
+      const fresh=this.executionContext(run.id);
+      if(fresh.run.control?.epoch!==control.epoch||fresh.reason||fresh.holds?.some(h=>h.source!=='agent'))continue;
+      this.recoveredOwners.add(key);
+      this.deps().notify?.(control.owner,run.id,`recovery:${control.epoch}`);
+    }
+  }
+
   // The operations, as the service's own methods: what the routes are given, and what a caller
   // holding `ctx.hima` reaches. Each is the module operation with this host's dependencies handed
   // to it, and none of them decides anything of its own.
@@ -660,20 +747,28 @@ export default class Hima extends Service {
   }
 
   startRun(request: StartRunRequest): Promise<StartRunResult> {
+    if (this.exitRequest) return Promise.reject(new Error('the App is closing; no new Campaign may start'));
     return startRun(this.deps(), request);
   }
 
   private guideDeps() {
     return { ctx: this.ctx, ledger: this.ledger,
       executionContext: (runId: string) => this.executionContext(runId),
-      readExperience: (runId: string) => this.readExperience(runId) };
+      readExperience: (runId: string) => this.readExperience(runId), readReportMaterial:(runId:string,recordId:string)=>readReportMaterial(this.deps(),runId,recordId) };
   }
 
-  async workMemory(sessionId: string, request: { action: 'read' | 'save'; runId?: string; summary?: unknown }): Promise<object> {
+  async workMemory(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }): Promise<object> {
     const workspaceRef = await sessionProject(this.ctx, sessionId, true);
     if (request.runId) await authorizeProjectRun(this.guideDeps(), sessionId, request.runId);
+    const parentSessionId=this.ctx.get('agents')?.get(sessionId as never)?.session.header.parentSession;
     const scope: WorkMemoryScope = request.runId ? { kind: 'campaign', workspaceRef, runId: request.runId }
-      : { kind: 'session', workspaceRef, sessionId };
+      : parentSessionId?{kind:'child',workspaceRef,sessionId,parentSessionId:String(parentSessionId)}:{ kind: 'session', workspaceRef, sessionId };
+    if(request.action==='sources') {
+      if(request.runId)return {kind:'sources',scope,...workMemoryEvidence(this.ledger,request.runId),nativeSources:[]};
+      const native=await nativeSessionMemoryEvidence(this.ctx,{sessionId,workspaceRef,...(parentSessionId?{parentSessionId:String(parentSessionId)}:{})});
+      const {workspaceRef: _workspace,parentSessionId: _parent,currentThroughSeq: _current,...source}=native;
+      return {kind:'sources',scope,references:[],sources:[],nativeSources:[source]};
+    }
     const checkSources = async (summary: { sources: readonly { runId: string }[] }) => {
       for (const source of summary.sources) await authorizeProjectRun(this.guideDeps(), sessionId, source.runId);
     };
@@ -684,11 +779,11 @@ export default class Hima extends Service {
       const summary = request.summary as Record<string, unknown>;
       if (!Array.isArray(summary.sources) || summary.sources.some(source => !source || typeof source !== 'object' || typeof source.runId !== 'string')) throw new BadRequest('summary sources must name recorded project Runs');
       await checkSources(summary as { sources: { runId: string }[] });
-      await writeWorkMemorySummary(this.ledger, workspaceRef, { ...summary, scope, modelGenerated: true });
+      await writeWorkMemorySummary(this.ledger, workspaceRef, { ...summary, schema: 'hima-work-memory/1', generatedAt:new Date().toISOString(), scope, modelGenerated: true }, source => nativeSessionMemoryEvidence(this.ctx, source));
     }
-    const result = await readWorkMemorySummary(this.ledger, workspaceRef, scope);
-    if ('summary' in result) await checkSources(result.summary);
-    return result;
+    const result = await readWorkMemorySummary(this.ledger, workspaceRef, scope, source => nativeSessionMemoryEvidence(this.ctx, source));
+    if ('summary' in result) {await checkSources(result.summary);return {...result,scope:result.summary.scope,references:result.summary.references,sources:result.summary.sources,nativeSources:result.summary.nativeSources??[]};}
+    return {...result,scope};
   }
 
   async correctExperience(sessionId: string, request: Omit<ExperienceAdoptionRequest, 'workspaceRef' | 'changedBy'>) {
@@ -697,8 +792,148 @@ export default class Hima extends Service {
     return recordExperienceAdoption(this.deps(), { ...request, workspaceRef, changedBy: sessionId });
   }
 
+  private authorizeDesktopExit(token: string | undefined): boolean {
+    const expected = process.env.HIMA_DESKTOP_CONTROL_TOKEN;
+    if (!expected || !token || !/^[a-f0-9]{64}$/.test(expected) || !/^[a-f0-9]{64}$/.test(token)) return false;
+    return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(token, 'hex'));
+  }
+
+  async prepareExit(request: HostExitRequest): Promise<HostExitStatus> {
+    if(!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,120}$/.test(request.requestId)||!['drain','keep-jobs','stop-jobs'].includes(request.mode))throw new BadRequest('invalid App exit request');
+    this.exitRequest=request;
+    try {
+      for(const run of this.ledger.runs().filter(run=>run.control&&(run.status==='running'||run.status==='waiting'))) {
+        await controlling(this.deps(),run.id,()=>recordExitFence(this.ledger,run.id,request,identityOf(request)));
+      }
+      if(request.mode==='stop-jobs') {
+        for(const run of this.ledger.runs()) {
+          const open=new Map<string,import('./ledger.js').JobRecord>();
+          for(const record of this.ledger.records({runId:run.id,type:'job'}))if(record.type==='job')open.set(record.job.session,record);
+          for(const [session,record] of open)if(record.event==='launched')await jobKill(this.deps(),{run:run.id,session});
+        }
+        for(const agent of this.ctx.get('agents')?.list()??[])agent.cancel({kind:'hook',reason:'App exit requested stopping active work'});
+      }
+      return this.exitStatus();
+    } catch (error) {
+      try { await this.cancelExit(request.requestId); }
+      catch (releaseError) {
+        throw new Error(`App exit failed and its admission fence could not be released: ${String(releaseError)}. Inspect the retained Run receipts before continuing.`, { cause:error });
+      }
+      throw error;
+    }
+  }
+
+  async cancelExit(requestId:string):Promise<HostExitStatus> {
+    if(this.exitRequest?.requestId!==requestId)throw new BadRequest('App exit request is stale');
+    for(const run of this.ledger.runs())if(run.control)await controlling(this.deps(),run.id,()=>releaseExitFence(this.ledger,run.id));
+    this.exitRequest=undefined;return this.exitStatus();
+  }
+
+  exitStatus():HostExitStatus { return readHostExitStatus(this.ledger,this.ctx.get('agents'),this.exitRequest); }
+
+  async experienceCandidates(sessionId:string,runId:string):Promise<object> {
+    const workspaceRef=await authorizeProjectRun(this.guideDeps(),sessionId,runId);
+    const history=await listRunKnowledge(this.deps(),runId,undefined,[],workspaceRef);
+    const availableEvidence=workMemoryEvidence(this.ledger,runId).references.map(ref=>({recordId:ref.recordId,label:ref.recordId}));
+    return {candidates:history.candidates.map(item=>({candidate:{sourceRun:item.sourceRun,sourceManifestSha256:item.sourceManifestSha256,sourceMaterialPath:item.sourceMaterialPath,sourceMaterialSha256:item.sourceMaterialSha256},title:item.sourceRun,adoption:item.adoption,availableEvidence})),unavailable:history.unavailable};
+  }
+
+  private interactiveDeps():InteractiveRuntimeDeps {
+    if(this.interactiveRuntime)return this.interactiveRuntime;
+    const bridge=createInteractiveBindingBridge({packsDir:this.config.packsDir,sitesDir:this.config.sitesDir,interactiveBindingsFile:this.config.interactiveBindingsFile});
+    const runtime:InteractiveRuntimeDeps={fabric:this.deps(),
+      ...(testFixtureCanRunHere()&&process.env.HIMA_TEST_INTERACTIVE_BINDING_ID?{trustedTestQualification:{bindingId:process.env.HIMA_TEST_INTERACTIVE_BINDING_ID}}:{}),
+      resolveOperation:async(run,execution)=>{
+        const driving=interactiveDriving(this.deps(),run,execution);
+        return bridge.resolve({pack:driving.pack,run,execution,site:driving.site,workspace:driving.workspace});
+      },verifyAdminBinding:binding=>bridge.verifyAdminBinding(binding),encodeCommand:(binding,request)=>bridge.encodeCommand(binding,request),
+      claimJobSlot:async request=>{
+        if(!request.run.budget)return {kind:'stopped',reason:'Original Run budget is unavailable.'};
+        const result=await claimSlot(this.deps(),{site:{name:request.site,jobs:request.run.budget.jobCap,licences:request.run.budget.licences},holds:request.licences,launch:request.launch});
+        return result.kind==='claimed'?result:{kind:result.kind,reason:result.kind==='at-cap'?'The Site Job or licence cap is full.':result.error.message};
+      },
+      onDeadline:async deadline=>{
+        const run=this.ledger.run(deadline.runId);if(!run?.control)return;
+        const common={runId:run.id,executionId:deadline.executionId,nodeId:deadline.nodeId,toolSessionId:deadline.toolSessionId,actor:run.control.owner,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,requestId:`deadline-${identityOf(deadline).slice(0,40)}`};
+        const result=await operateInteractive(runtime,deadline.kind==='command'?{...common,action:'signal',signal:'interrupt'}:{...common,action:'close'});
+        this.ctx.logger.info(`Interactive ${deadline.kind} deadline: ${JSON.stringify(result)}`);
+        this.deps().notify?.(run.control.owner,run.id,deadline.executionId,'An interactive deadline was reached. Inspect the exact stop receipt and original Job; no checkpoint or successful design result is implied.');
+      },
+    };
+    this.interactiveRuntime=runtime;this.interactiveTimers=createInteractiveTimerController(runtime);return runtime;
+  }
+  async interactive(sessionId:string,raw:unknown):Promise<object> {
+    const request=parseInteractiveRequest(raw,sessionId);
+    await authorizeProjectRun(this.guideDeps(),sessionId,request.runId);
+    if(this.factStop.signal.aborted)return {status:'refused',reason:'The Host is stopping.'};
+    const result=await operateInteractive(this.interactiveDeps(),request);
+    await reconcileInteractiveExecution(this.deps(),request.runId,request.executionId);
+    await this.interactiveTimers!.reconcile();
+    return {...result,context:this.executionContext(request.runId)};
+  }
+  async interactiveSessions(sessionId:string,runId:string):Promise<object> {
+    await authorizeProjectRun(this.guideDeps(),sessionId,runId);
+    return {sessions:listInteractiveSessions(this.ledger,runId).map(({activeCommand,...entry})=>({...entry,...(activeCommand?{activeCommand:{commandId:activeCommand.commandId,state:activeCommand.state,commandDeadlineAt:activeCommand.commandDeadlineAt}}:{})})),asOf:new Date().toISOString()};
+  }
+
+  async delegationInput(sessionId:string,request:{runId:string;recordId:string}):Promise<object> {
+    const policy=delegationRuntimePolicy(this.deps(),sessionId);
+    const entry=runDelegations(this.deps(),request.runId).find(item=>item.childSessionId===sessionId);
+    if(!policy||!('toolsAllowed' in policy)||policy.toolsAllowed!==true||!entry||entry.effective.runRef?.runId!==request.runId||!entry.contract.inputRefs.includes(request.recordId))throw new BadRequest('This child has no current grant for that exact input reference.');
+    const record=this.ledger.record(request.recordId);
+    if(!record||record.runId!==request.runId||!recordValidityOf(this.ledger.records({runId:request.runId}),record.id).valid)throw new BadRequest('The delegated input is missing or invalidated.');
+    const base={runId:request.runId,recordId:record.id,recordType:record.type};
+    if(record.type==='code'||record.type==='knowledge') {
+      if(record.bytes>1024*1024)return {...base,kind:'unavailable',reason:'This material exceeds the bounded child input view; delegate a smaller verified source.'};
+      const material=await readMaterial(this.deps(),request.runId,record.id);
+      if(material.kind!=='read')return {...base,kind:'unavailable',reason:`Recorded material is ${material.kind}; original bytes were not delivered.`};
+      return {...base,kind:'material',sha256:record.sha256,bytes:record.bytes,text:material.text.slice(0,65536),truncated:material.text.length>65536};
+    }
+    if(record.type==='delegation'&&record.event==='result-observed') {
+      const source=runDelegations(this.deps(),request.runId).find(item=>item.delegationId===record.delegationId);
+      if(!source)return {...base,kind:'unavailable',reason:'The child result source is missing.'};
+      const result=await readDelegationResult(this.ctx,{effective:source.effective,requestDigest:source.requestDigest});
+      const observed=record.payload as {completedTurn?:{endSeq?:number}};
+      if(result.status!=='candidate'||result.completedTurn?.endSeq!==observed.completedTurn?.endSeq)return {...base,kind:'unavailable',reason:'The exact observed native result is no longer the current retained completed turn.'};
+      const text=result.output?.filter(block=>block.type==='text').map(block=>block.text).join('\n')??'';
+      return {...base,kind:'record-fact',payload:{candidateOnly:true,text:text.slice(0,65536),truncated:text.length>65536,completedTurn:result.completedTurn,artifacts:result.evidence.artifactRefs.map(({path:_path,...artifact})=>artifact),limitations:result.evidence.limitations},source:'verified-native-completed-turn'};
+    }
+    const payload=record.type==='observation'?{reader:record.reader,contentSha256:record.contentSha256,bytes:record.bytes,values:record.values}
+      :record.type==='verdict'?{outcome:record.outcome,ruleId:record.ruleId,ruleVersion:record.ruleVersion,cites:record.cites,valuesAsRead:record.valuesAsRead,reason:record.reason}
+      :record.type==='analysis'?{analysis:record.analysis}:undefined;
+    if(payload===undefined)return {...base,kind:'unavailable',reason:'This record type has no bounded delegated material projection.'};
+    const bytes=JSON.stringify(payload);if(bytes.length>65536)return {...base,kind:'unavailable',reason:'The typed input exceeds the bounded delegated view.'};
+    return {...base,kind:'record-fact',payload,identity:identityOf(payload),identityEncoding:'canonical-ledger-projection'};
+  }
+
+  async delegate(request:RunDelegationRequest,signal:AbortSignal=AbortSignal.timeout(30000)):Promise<object> {
+    await authorizeProjectRun(this.guideDeps(),request.actor,request.runId);
+    const result=await operateRunDelegation(this.ctx,this.deps(),request,signal);this.syncDelegationDeadlines();return {'unknowns':[],...result};
+  }
+  async delegations(sessionId:string,runId:string):Promise<object> {
+    await authorizeProjectRun(this.guideDeps(),sessionId,runId);
+    return {delegations:runDelegations(this.deps(),runId).map(row=>({...row,...row.contract,status:row.state,effective:row.effective,requested:{allowedTools:row.contract.allowedTools,writeScope:row.contract.writeScope,budgetShare:row.contract.budgetShare},nativeStatus:this.ctx.get('agents')?.get(row.childSessionId as never)?.status,unknowns:row.effective.unavailable,artifacts:this.delegationEvidence(runId,row.delegationId)?.artifactRefs.map(item=>item.path)??[],evidence:this.delegationEvidence(runId,row.delegationId)})),asOf:new Date().toISOString(),sourceRevision:this.ledger.run(runId)?.control?.revision};
+  }
+  private delegationEvidence(runId:string,delegationId:string):import('./delegation.js').DelegationCandidateResult['evidence']|undefined {
+    const last=this.ledger.records({runId,type:'delegation'}).findLast(record=>record.type==='delegation'&&record.delegationId===delegationId&&record.event==='result-observed');
+    if(!last||last.type!=='delegation')return undefined;
+    const evidence=(last.payload as {evidence?:import('./delegation.js').DelegationCandidateResult['evidence']}).evidence;
+    return evidence&&Array.isArray(evidence.artifactRefs)&&Array.isArray(evidence.diffRefs)&&Array.isArray(evidence.testRefs)&&Array.isArray(evidence.limitations)?evidence:undefined;
+  }
+  private syncDelegationDeadlines():void {
+    for(const run of this.ledger.runs())for(const row of runDelegations(this.deps(),run.id)) {
+      const key=row.childSessionId;if(this.delegationTimers.has(key)||!['intent','accepted'].includes(row.state))continue;
+      const timer=setTimeout(()=>{
+        this.delegationTimers.delete(key);
+        this.ctx.get('agents')?.get(key as never)?.cancel({kind:'hook',reason:'The recorded delegation deadline expired.'});
+        void controlling(this.deps(),run.id,async()=>{const latest=runDelegations(this.deps(),run.id).find(d=>d.childSessionId===key);if(!latest||!['intent','accepted'].includes(latest.state))return;await this.ledger.appendDelegation(run.id,{delegationId:row.delegationId,parentSessionId:row.parentSessionId,childSessionId:key,requestId:`deadline:${row.delegationId}`,requestDigest:identityOf({deadlineAt:row.reservation.deadlineAt}),event:'deadline',payload:{reason:'Original child time allocation expired; new work is fenced.',stopObserved:this.ctx.get('agents')?.get(key as never)?.status==='idle'}});}).catch(error=>this.ctx.logger.warn(String(error)));
+      },Math.max(1,Date.parse(row.reservation.deadlineAt)-Date.now()));timer.unref();this.delegationTimers.set(key,timer);
+    }
+  }
+
   /** A confirmed Guide proposal starts in an independent native session. Fabric still owns Run admission. */
   async startGuidedRun(request: StartRunRequest): Promise<StartRunResult> {
+    if(this.exitRequest)throw new BadRequest('the App is closing; no new task may start');
     if (legacyAutomaticAllowed()) return this.startRun(request);
     if (!request.ownerSessionId || !request.proposalId) {
       throw new BadRequest('confirm a current Campaign proposal from a live Guide conversation before starting');
@@ -720,7 +955,30 @@ export default class Hima extends Service {
 
   executionContext(runId: string): ExecutionContext { return executionContext(this.deps(), runId); }
 
-  executionAction(request: ExecutionActionRequest): Promise<ExecutionActionResult> { return executionAction(this.deps(), request); }
+  async executionAction(request: ExecutionActionRequest): Promise<ExecutionActionResult> {
+    const result=await executionAction(this.deps(),request);
+    if(result.kind==='accepted')this.notifyGuideBoundary(request.runId);
+    return result;
+  }
+
+  /** A source-linked important boundary reaches the original Guide; it grants no execution authority. */
+  private notifyGuideBoundary(runId:string):void {
+    if(!this.notificationsActive||(process.env.NODE_TEST_CONTEXT!==undefined&&process.env.HIMA_TEST_SILENT_AGENT==='1'))return;
+    const run=this.ledger.run(runId);const guideId=run?.control?.guideSessionId;
+    if(!run?.control||!guideId||guideId===run.control.owner)return;
+    const failed=Object.values(run.control.executions).filter(e=>!e.supersededBy&&['failed','uncertain'].includes(e.phase)).map(e=>({id:e.id,phase:e.phase}));
+    if(!hasEnded(run.status)&&run.status!=='waiting'&&failed.length===0)return;
+    const fingerprint=identityOf({runId,status:run.status,failed,stop:run.control.stop});
+    const key=`guide:${guideId}:${runId}`;
+    if(this.guideNoticeIdentities.get(key)===fingerprint)return;
+    const guide=this.ctx.get('agents')?.get(guideId as never);if(!guide)return;
+    const marker=`Hima Guide boundary ${fingerprint}`;
+    if(JSON.stringify(guide.session.deriveMessages()).includes(marker)){this.guideNoticeIdentities.set(key,fingerprint);return;}
+    const message=createUserMessage({source:{kind:'plugin',plugin:'hima'},content:[{type:'text',text:`${marker}. Task ${runId} is ${run.status}; ${failed.length} execution(s) need review. Read the current Run facts and explain its verified outcome, blockers and next options to the user. Execution owner remains ${run.control.owner}; this notice does not authorize continuation, a new Campaign, or extra budget.`}]});
+    const prior=this.pendingProgressNotifications.get(key);
+    if(!prior||!guide.inbox.replace(prior,message))guide.followup(message);
+    this.pendingProgressNotifications.set(key,message.id);this.guideNoticeIdentities.set(key,fingerprint);
+  }
 
   resumeRun(runId: string, who: string): Promise<ResumeResult> {
     return resumeRun(this.deps(), { runId, who });
@@ -962,9 +1220,10 @@ export default class Hima extends Service {
       // moment is composed out of this context, and every other operation reaches no host at all.
       host: this.ctx,
       stopSignal: this.factStop.signal,
-      beforeSlotClaim: (siteName) => reconcileExecutionIntents(this.deps(), siteName),
+      beforeSlotClaim:(siteName)=>reconcileExecutionIntents(this.deps(),siteName),
       log: (line) => this.ctx.logger.info(line),
       notify: (owner, runId, executionId, detail) => {
+        this.notifyGuideBoundary(runId);
         if (!this.notificationsActive || (process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_SILENT_AGENT === '1')) {
           return { status: 'inactive', message: 'The control fact is recorded; Campaign Agent notification is inactive on this Host.' };
         }

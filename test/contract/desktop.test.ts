@@ -148,3 +148,30 @@ test('pnpm run desktop --site local on a machine that has never run it: the shel
     await d.dispose();
   }
 });
+
+for (const mode of ['keep-jobs','stop-jobs'] as const) test(`explicit Desktop Quit ${mode} preserves the recorded Campaign and reports original Job disposition`,async t=>{
+  const {localHome,sessionsOf,killSessions}=await import('./support/fabric.ts');
+  const {bootInProcess,createRootAgent}=await import('./support/boot-inprocess.ts');
+  const {timingProbePackId}=await import('./support/pack.ts');
+  const {spawnSync}=await import('node:child_process');
+  const home=await localHome(t,{sleepSeconds:60});assert.ok(home);
+  const previous=process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;process.env.HIMA_TEST_LEGACY_AUTO_DRIVE='0';
+  const silent=process.env.HIMA_TEST_SILENT_AGENT;process.env.HIMA_TEST_SILENT_AGENT='1';
+  let setup=await bootInProcess(home.h);let sessions:string[]=[];
+  try {
+    const owner=await createRootAgent(setup.ctx,home.h.workspace);const actor=String(owner.id);
+    const started=await setup.ctx.hima.startRun({pack:timingProbePackId,site:'local',goal:{target_period_ns:2},ownerSessionId:actor});assert.equal(started.kind,'ran');if(started.kind!=='ran')return;
+    const runId=started.run.id;
+    const action=async(kind:'begin'|'work',executionId?:string)=>{const c=setup.ctx.hima.executionContext(runId).run.control!;return setup.ctx.hima.executionAction({runId,actor,action:kind,nodeId:started.run.currentNode,executionId,requestId:`quit-${kind}`,expectedEpoch:c.epoch,expectedRevision:c.revision});};
+    const begun=await action('begin');assert.equal(begun.kind,'accepted');assert.equal((await action('work',begun.receipt!.executionId)).kind,'accepted');
+    sessions=[...sessionsOf(setup,runId)];assert.equal(sessions.length,1);
+    await setup.dispose();
+    const d=await bootDriver(t,{existing:home.h,env:{HIMA_TEST_LEGACY_AUTO_DRIVE:'0',HIMA_TEST_SILENT_AGENT:'1'}});if(!d)return;
+    try {assert.ok((await d.quit(mode)).ok);assert.equal(await d.exit(),0,d.stderr());}finally{await d.dispose();}
+    const alive=spawnSync('tmux',['has-session','-t',`=${sessions[0]}`]).status===0;
+    assert.equal(alive,mode==='keep-jobs');
+    const persisted=JSON.parse(await readFile(path.join(home.h.home,'storages/hima_ledger.json'),'utf8'));
+    const row=persisted.tables.runs[runId];assert.notEqual(row.status,'cancelled');
+    assert.ok(Object.values(row.control.requests).some((r:any)=>r.receipt.action==='host-exit'&&r.receipt.data.mode===mode));
+  }finally{killSessions(sessions);await setup.dispose();await home.h.dispose();if(previous===undefined)delete process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;else process.env.HIMA_TEST_LEGACY_AUTO_DRIVE=previous;if(silent===undefined)delete process.env.HIMA_TEST_SILENT_AGENT;else process.env.HIMA_TEST_SILENT_AGENT=silent;}
+});

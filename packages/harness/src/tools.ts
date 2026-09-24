@@ -205,9 +205,27 @@ type ToolDefinition = ReturnType<typeof defineTool>;
 /** Guide reads and derived memory share the same authenticated Host projection as the UI. */
 export function guideTools(operations: {
   inspect(sessionId: string, requestId: string, target: unknown): Promise<object>;
-  memory(sessionId: string, request: { action: 'read' | 'save'; runId?: string; summary?: unknown }): Promise<object>;
+  memory(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }): Promise<object>;
+  delegate?(request: import('./delegation-runtime.js').RunDelegationRequest):Promise<object>;
+  interactive?(sessionId:string,request:unknown):Promise<object>;
+  delegationInput?(sessionId:string,request:{runId:string;recordId:string}):Promise<object>;
 }): ToolDefinition[] {
   return [defineTool({
+    name:'hima_delegation_input',description:'Read one exact input reference granted to this child by its recorded delegation. No file path or record enumeration; unavailable or invalidated evidence is refused. Material hashes refer to original verified bytes and any text truncation is explicit.',
+    parameters:{runId:{type:'string',required:true},recordId:{type:'string',required:true}},
+    output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
+    execute:async(args,execution)=>{if(!execution.agent||!operations.delegationInput)throw new Error('Delegated input reader is unavailable.');return toolJson(await operations.delegationInput(String(execution.agent.id),args));},
+  }),defineTool({
+    name:'hima_interactive',description:'Operate the exact qualified interactive Pack tool of an already admitted Run execution through its existing Site Job. Actions: open, input {toolSessionId,commandId,command:{name,args}}, observe, read, signal, close. Supply runId/executionId/nodeId/requestId/ownerEpoch/controlRevision; actor, argv, workspace and qualification are Host-owned. Poll timeout never cancels work. A command completion is not business validation. If qualification is absent, report unavailable; never use a raw terminal to bypass it.',
+    parameters:{request:{type:'object',required:true,additionalProperties:true}},
+    output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
+    execute:async(args,execution)=>{if(!execution.agent||!operations.interactive)throw new Error('Qualified interactive operations are unavailable.');return toolJson(await operations.interactive(String(execution.agent.id),args.request));},
+  }),defineTool({
+    name:'hima_delegate',description:'Delegate bounded research or coding to a real independent native child inside this existing Run. Read current Run epoch/revision first. Children return candidates; they never own the Run. Original time and follow-up allowances are enforced; total-token/cost caps are unavailable and rejected. Coding writes require an existing private subdirectory; shell/terminal/recursive tasks are not granted.',
+    parameters:{runId:{type:'string',required:true},action:{type:'string',required:true,enum:['create','followup','cancel','result']},requestId:{type:'string',required:true},expectedEpoch:{type:'number',required:true},expectedRevision:{type:'number',required:true},delegationId:{type:'string'},contract:{type:'object',additionalProperties:true},text:{type:'string'}},
+    output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
+    execute:async(args,execution)=>{if(!execution.agent||!operations.delegate)throw new Error('Run delegation is unavailable');return toolJson(await operations.delegate({...args,actor:String(execution.agent.id),origin:'agent'}));},
+  }),defineTool({
     name: 'hima_inspect',
     description: 'Inspect an exact Run, node execution/generation, retained report version, or native child in this project. Read-only, sourced current facts; selecting a target never grants ownership.',
     parameters: { requestId: { type: 'string', required: true }, target: { type: 'object', required: true, additionalProperties: true,
@@ -219,8 +237,8 @@ export function guideTools(operations: {
     },
   }), defineTool({
     name: 'hima_memory',
-    description: 'Read or save a source-linked working summary in this project. It never resumes work or changes measurements, authority, pauses, or budgets. Re-read current sources on recovery; stale or unavailable memory must not direct execution. Campaign evidence references are required for saved summaries in this version.',
-    parameters: { action: { type: 'string', required: true, enum: ['read', 'save'] }, runId: { type: 'string' }, summary: { type: 'object', additionalProperties: true } },
+    description: 'Read or save a source-linked working summary in this project. It never resumes work or changes measurements, authority, pauses, or budgets. Re-read current sources on recovery; stale or unavailable memory must not direct execution. Use sources first to obtain Host-minted Run or retained native-session references; then save semantic text with those references. Newer events make an older source-linked summary stale, not current authority.',
+    parameters: { action: { type: 'string', required: true, enum: ['read', 'sources', 'save'] }, runId: { type: 'string' }, summary: { type: 'object', additionalProperties: true } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     execute: async (args, execution) => {
       if (!execution.agent) throw new Error('a live conversation is required');
@@ -380,7 +398,7 @@ function resumeToolValue(result: ResumeResult): ResumeToolValue {
  * effect — a tool registration unwinds when the plugin unloads, the way dsh's own plugins do it —
  * and this module has nothing to say about that.
  */
-export function himaTools(deps: FabricDeps, author?: (request: { pack: string; create?: boolean }, agent?: Agent) => Promise<{ pack: string; folder: string; sessionId: string; created: boolean }>,
+export function himaTools(deps: FabricDeps, author?: (request: import('./authoring.js').AuthoringRequest, agent?: Agent) => Promise<{ pack: string; folder: string; sessionId: string; created: boolean }>,
   prepare?: (pack: string, site?: string, overrides?: PreparationOverrides) => PreparationView, knowledge?: { root: string },
   sites?: {
     readonly list: () => readonly SiteHeadView[];
@@ -400,10 +418,11 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
       parameters: {
         pack: { type: 'string', required: true, description: 'Pack folder id: lowercase letters, digits and dashes.' },
         create: { type: 'boolean', description: 'True explicitly allows creation of a new folder. Existing Pack files are retained.' },
+        handoff: {type:'object',additionalProperties:false,properties:{goal:{type:'string',required:true},sourcePaths:{type:'array',items:{type:'string'},required:true},inputGaps:{type:'array',items:{type:'string'}}},description:'Optional project-local SOP/script/report paths. Host hashes their bytes and queues a source-linked handoff without running a model or stage.'},
       },
       output: { schema: { type: 'object', additionalProperties: false, properties: {
         pack: { type: 'string', required: true }, folder: { type: 'string', required: true },
-        sessionId: { type: 'string', required: true }, created: { type: 'boolean', required: true },
+        sessionId: { type: 'string', required: true }, created: { type: 'boolean', required: true }, handoffMessageId:{type:'string'},
       } }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: (args, execution) => author(args, execution.agent),
     })] : [],

@@ -150,6 +150,74 @@ def read(report: Path, mode: str):
         verify_state(data["before"], workspace)
         after = verify_state(data["after"], workspace)
         delta = data["endpoint_delta"]
+        feedback = data.get("generation_feedback")
+        if (not isinstance(feedback, dict) or feedback.get("schema") != "hima-generation-feedback/1"
+                or feedback.get("generation") != data.get("iteration")
+                or feedback.get("subject") != "timing-endpoint"):
+            raise ValueError("iteration result has no typed generation feedback")
+        denominator = feedback.get("denominator") or {}
+        original = sorted(key for key, value in data["before"]["endpointSlackNs"].items() if value < 0)
+        if (denominator.get("kind") != "endpoint" or denominator.get("originalIds") != original
+                or denominator.get("originalCount") != len(original)):
+            raise ValueError("generation feedback changes the original endpoint denominator")
+        expected_missing = sorted(set(original) - set(data["after"]["endpointSlackNs"]))
+        if delta.get("missing") != expected_missing:
+            raise ValueError("endpoint delta missing identities differ from retained snapshots")
+        categories = feedback.get("endpointChanges") or {}
+        for name in ("fixed", "remaining", "entrant", "regressed", "missing"):
+            category = categories.get(name)
+            if (not isinstance(category, dict) or category.get("status") not in {"measured", "unknown"}
+                    or not isinstance(category.get("ids"), list)
+                    or (category["status"] == "unknown" and not isinstance(category.get("reason"), str))):
+                raise ValueError(f"generation feedback category {name} is malformed")
+        expected_categories = {
+            "fixed": "fixed", "remaining": "remaining", "entrant": "entrants",
+            "regressed": "regressed", "missing": "missing",
+        }
+        comparable = delta.get("comparability", "comparable") == "comparable"
+        for name, delta_name in expected_categories.items():
+            category = categories[name]
+            if comparable or name == "missing":
+                if category != {"status": "measured", "ids": list(delta[delta_name])}:
+                    raise ValueError(f"generation feedback category {name} differs from endpoint delta")
+            elif category["status"] != "unknown":
+                raise ValueError(f"non-comparable generation reports {name} as measured")
+        if not comparable:
+            next_step = feedback.get("next") or {}
+            items = next_step.get("items") or []
+            if (next_step.get("kind") != "action" or next_step.get("status") != "available"
+                    or not isinstance(items, list) or len(items) != 1 or not isinstance(items[0], dict)
+                    or items[0].get("change") != "remeasure-comparable-snapshot"
+                    or items[0].get("targetIds") != original):
+                raise ValueError("non-comparable generation must request a matched remeasurement")
+        coverage = feedback.get("coverage") or {}
+        expected_covered = sorted(set(original) & set(data["after"]["endpointSlackNs"]))
+        if (coverage.get("before") != {"status": "measured", "coveredIds": original, "missingIds": []}
+                or coverage.get("after") != {"status": "measured", "coveredIds": expected_covered,
+                                              "missingIds": expected_missing}):
+            raise ValueError("generation feedback coverage differs from retained endpoint identities")
+        sources = feedback.get("sources")
+        expected_source_ids = {f"before:g{int(data['before']['iteration']):03d}",
+                               f"after:g{int(data['after']['iteration']):03d}",
+                               f"plan:g{int(data['iteration']):03d}"}
+        if (not isinstance(sources, list) or {row.get("id") for row in sources if isinstance(row, dict)} != expected_source_ids):
+            raise ValueError("generation feedback source identities are incomplete")
+        by_id = {row["id"]: row for row in sources}
+        for source_id, expected_document in ((f"before:g{int(data['before']['iteration']):03d}", data["before"]),
+                                             (f"after:g{int(data['after']['iteration']):03d}", data["after"])):
+            held = by_id[source_id]
+            if set(held) != {"id", "path", "sha256"}:
+                raise ValueError("generation feedback source identity is malformed")
+            held_path = workspace_path(workspace, held["path"])
+            if load(held_path) != expected_document or hashlib.sha256(held_path.read_bytes()).hexdigest() != held["sha256"]:
+                raise ValueError("generation feedback state source differs from retained bytes")
+        plan_source = by_id[f"plan:g{int(data['iteration']):03d}"]
+        if set(plan_source) != {"id", "path", "sha256"}:
+            raise ValueError("generation feedback plan source identity is malformed")
+        plan_path = workspace_path(workspace, plan_source["path"])
+        if (hashlib.sha256(plan_path.read_bytes()).hexdigest() != plan_source["sha256"]
+                or load(plan_path).get("iteration") != data["iteration"]):
+            raise ValueError("generation feedback plan source differs from retained bytes")
         values = [
             number("xtop_setup_wns", after["setup_wns_ns"], "ns", mode="setup", scope="all"),
             number("xtop_setup_tns", after["setup_tns_ns"], "ns", mode="setup", scope="all"),
@@ -159,14 +227,15 @@ def read(report: Path, mode: str):
             number("xtop_hold_violations", after["hold_violations"]),
             number("xtop_closure_score", after["closure_score"], "score"),
             number("xtop_iteration_evidence_valid", 1 if data.get("evidence_valid") is True else 0),
+            number("xtop_endpoint_original_count", denominator["originalCount"]),
         ]
-        if delta.get("comparability", "comparable") == "comparable":
-            values[6:6] = [
-                number("xtop_endpoint_fixed_count", len(delta["fixed"])),
-                number("xtop_endpoint_remaining_count", len(delta["remaining"])),
-                number("xtop_endpoint_entrant_count", len(delta["entrants"])),
-                number("xtop_endpoint_regressed_count", len(delta["regressed"])),
-            ]
+        changes = (("fixed", "xtop_endpoint_fixed_count"),
+                   ("remaining", "xtop_endpoint_remaining_count"),
+                   ("entrant", "xtop_endpoint_entrant_count"),
+                   ("regressed", "xtop_endpoint_regressed_count"),
+                   ("missing", "xtop_endpoint_missing_count"))
+        values[6:6] = [number(kind, len(categories[name]["ids"]))
+                       for name, kind in changes if categories[name]["status"] == "measured"]
         return values
     raise ValueError("unknown reader mode: " + mode)
 

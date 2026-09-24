@@ -16,7 +16,7 @@ import type { JobRecord, LedgerRecord } from '@hima/harness';
 /** The test's own judgement of what a job-plumbing verb is, kept apart from the channel's list on
  *  purpose: the audit test holds what was actually sent against this, not against the implementation's
  *  own idea of itself. */
-const jobPlumbingVerbs = new Set(['tmux', 'test', 'tail', 'cat', 'realpath']);
+const jobPlumbingVerbs = new Set(['tmux', 'test', 'tail', 'cat', 'wc', 'realpath']);
 /** The test's own POSIX single-quoting, reimplemented independently of `channel.ts`'s `quote`. */
 const posixQuote = (word: string): string => `'${word.replaceAll("'", `'\\''`)}'`;
 
@@ -313,7 +313,7 @@ test('the job plumbing the channel admits is exactly the plumbing the job operat
   // The same rule step 1 set for the read-only probes: an allowlist wider than the channel's own use
   // is permission granted on a customer's Site ahead of any caller needing it. The list below is the
   // whole vocabulary the reference-site audit test observes being sent, and no more.
-  assert.deepEqual([...jobPlumbing].sort(), ['cat', 'tail', 'test', 'tmux'], "the channel's job list is exactly the verbs the job operations run");
+  assert.deepEqual([...jobPlumbing].sort(), ['cat', 'tail', 'test', 'tmux', 'wc'], "the channel's job list is exactly the verbs the job operations run");
   for (const verb of jobPlumbing) {
     assert.ok(jobPlumbingVerbs.has(verb), `the channel admits ${verb}, which this test does not judge to be job plumbing`);
   }

@@ -7,6 +7,10 @@ import type { CampaignFileView, HimaErrorBody, HimaErrorCode, LogTailView, Mater
 import type { SiteDiscoveryResult } from '../sites.js';
 import type { StartChoices } from '../workbench.js';
 import type { GuideContextView, TargetAddress } from '../guide-context.js';
+import type { WorkMemoryRead, WorkMemoryScope, WorkMemorySummary, RunKnowledgeCandidate, ExperienceAdoptionRequest } from '../experience.js';
+import type { RunDelegationView } from '../delegation-runtime.js';
+import type { DelegationCandidateResult, DelegationResult } from '../delegation.js';
+import type { ExperienceAdoptionRecord } from '../ledger.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
 import { HIMA_CAMPAIGN_FILE_PATH, HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_SITES_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runLogTailPath, runPath, siteDiscoverPath } from '../paths.js';
 
@@ -108,6 +112,46 @@ export const fetchSessionChildren = (body: { sessionId: string; parentSessionId:
 
 export const resolveReportAddress = (body: { sessionId: string; reportRef: string }, signal?: AbortSignal): Promise<HimaResult<Extract<TargetAddress, { kind: 'report' }>>> =>
   runRequest('/hima/api/context/report-address', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+type MemoryEvidence = Pick<WorkMemorySummary, 'references' | 'sources' | 'nativeSources'>;
+export type MemoryAnswer = WorkMemoryRead & { readonly scope: WorkMemoryScope } & Partial<MemoryEvidence>;
+export type MemorySourcesAnswer = { readonly kind: 'sources'; readonly scope: WorkMemoryScope } & MemoryEvidence;
+export type MemorySummaryInput = Pick<WorkMemorySummary, 'subject' | 'decisions' | 'openQuestions' | 'todo' | 'references' | 'sources' | 'nativeSources'>;
+
+export const readMemory = (body: { sessionId: string; runId?: string }, signal?: AbortSignal): Promise<HimaResult<MemoryAnswer>> =>
+  runRequest('/hima/api/memory', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, action: 'read' }) });
+export const fetchMemorySources = (body: { sessionId: string; runId?: string }, signal?: AbortSignal): Promise<HimaResult<MemorySourcesAnswer>> =>
+  runRequest('/hima/api/memory', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, action: 'sources' }) });
+export const saveMemory = (body: { sessionId: string; runId?: string; summary: MemorySummaryInput }, signal?: AbortSignal): Promise<HimaResult<MemoryAnswer>> =>
+  runRequest('/hima/api/memory', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, action: 'save' }) });
+
+export interface NativeSessionEvent { readonly seq: number; readonly kind: string; readonly text: string }
+export type NativeSessionContext =
+  | { readonly availability: 'available'; readonly kind: 'current-native-surface'; readonly capturedThroughSeq: number | null; readonly events: readonly NativeSessionEvent[]; readonly truncated: boolean; readonly missing: readonly string[] }
+  | { readonly availability: 'unavailable'; readonly reason: string };
+export type SessionContextAnswer = { readonly sessionId: string; readonly parentSessionId?: string; readonly events: readonly NativeSessionEvent[]; readonly nextSeq?: number; readonly truncated?: boolean; readonly context: NativeSessionContext; readonly asOf: string; readonly sources: readonly string[] };
+export const fetchSessionContext = (body: { sessionId: string; targetSessionId: string; parentSessionId?: string; fromSeq?: number }, signal?: AbortSignal): Promise<HimaResult<SessionContextAnswer>> =>
+  runRequest('/hima/api/context/session', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+export type DelegationEntry = RunDelegationView & {
+  readonly status: RunDelegationView['state'];
+  readonly requested: Pick<RunDelegationView['contract'], 'allowedTools' | 'writeScope' | 'budgetShare'>;
+  readonly nativeStatus?: string;
+  readonly unknowns: readonly string[];
+  readonly artifacts: readonly string[];
+  readonly evidence?:DelegationCandidateResult['evidence'];
+};
+export interface DelegationsAnswer { readonly delegations: readonly DelegationEntry[]; readonly asOf: string; readonly sourceRevision?: number }
+export const fetchDelegations = (sessionId: string, runId: string, signal?: AbortSignal): Promise<HimaResult<DelegationsAnswer>> => runRequest(`/hima/api/delegations?sessionId=${encodeURIComponent(sessionId)}&runId=${encodeURIComponent(runId)}`, { signal });
+export type DelegationActionRequest = { readonly sessionId: string; readonly runId: string; readonly action: 'followup' | 'cancel' | 'result'; readonly requestId: string; readonly expectedEpoch: number; readonly expectedRevision: number; readonly delegationId: string; readonly text?: string };
+export const controlDelegation = (body: DelegationActionRequest, signal?: AbortSignal): Promise<HimaResult<DelegationResult | DelegationCandidateResult>> => runRequest('/hima/api/delegations', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+type ExperienceCandidateIdentity = Pick<RunKnowledgeCandidate, 'sourceRun' | 'sourceManifestSha256' | 'sourceMaterialPath' | 'sourceMaterialSha256'>;
+export type ExperienceCandidate = { readonly candidate: ExperienceCandidateIdentity; readonly title: string; readonly adoption?: RunKnowledgeCandidate['adoption']; readonly availableEvidence: readonly { readonly recordId: string; readonly label: string }[] };
+export const fetchExperienceCandidates = (body: { sessionId: string; runId: string }, signal?: AbortSignal): Promise<HimaResult<{ candidates: readonly ExperienceCandidate[] }>> =>
+  runRequest('/hima/api/experience/candidates', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+export type ExperienceCorrectionRequest = Omit<ExperienceAdoptionRequest, 'workspaceRef' | 'changedBy'> & { readonly sessionId: string };
+export const correctExperience = (body: ExperienceCorrectionRequest, signal?: AbortSignal): Promise<HimaResult<ExperienceAdoptionRecord>> =>
+  runRequest('/hima/api/experience/adoption', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 /** The bounded tail of the running node's own Job log, for the one line the canvas draws under it. */
 export function fetchLogTail(runId: string, nodeId: string, lines = 1, signal?: AbortSignal, sessionId?: string): Promise<HimaResult<LogTailView>> {

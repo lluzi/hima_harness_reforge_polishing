@@ -64,9 +64,19 @@ const workMemoryScope = z.strictObject({
   runId: z.string().min(1).optional(),
   parentSessionId: z.string().min(1).optional(),
 }).superRefine((scope, ctx) => {
-  if ((scope.kind === 'session' || scope.kind === 'child') && scope.sessionId === undefined) ctx.addIssue({ code: 'custom', message: 'session and child summaries require sessionId' });
-  if (scope.kind === 'campaign' && scope.runId === undefined) ctx.addIssue({ code: 'custom', message: 'campaign summaries require runId' });
-  if (scope.kind === 'child' && scope.parentSessionId === undefined) ctx.addIssue({ code: 'custom', message: 'child summaries require parentSessionId' });
+  if (scope.kind === 'session' && (scope.sessionId === undefined || scope.runId !== undefined || scope.parentSessionId !== undefined)) ctx.addIssue({ code: 'custom', message: 'session summaries require only sessionId' });
+  if (scope.kind === 'campaign' && (scope.runId === undefined || scope.sessionId !== undefined || scope.parentSessionId !== undefined)) ctx.addIssue({ code: 'custom', message: 'campaign summaries require only runId' });
+  if (scope.kind === 'child' && (scope.sessionId === undefined || scope.parentSessionId === undefined || scope.runId !== undefined || scope.sessionId === scope.parentSessionId)) ctx.addIssue({ code: 'custom', message: 'child summaries require distinct sessionId and parentSessionId only' });
+});
+
+const memoryHash = z.string().regex(/^[a-f0-9]{64}$/);
+const workMemoryNativeSource = z.strictObject({
+  sessionId: z.string().min(1), headerIdentity: memoryHash, transcriptIdentity: memoryHash,
+  surfaceAvailability: z.enum(['available', 'unavailable']), surfaceIdentity: memoryHash.optional(),
+  capturedFromSeq: z.literal(0), capturedThroughSeq: z.number().int().min(-1), transcriptCoverage: z.literal('retained-prefix'),
+}).superRefine((source, ctx) => {
+  if (source.surfaceAvailability === 'available' && source.surfaceIdentity === undefined) ctx.addIssue({ code: 'custom', message: 'available native Session surface requires its content identity' });
+  if (source.surfaceAvailability === 'unavailable' && source.surfaceIdentity !== undefined) ctx.addIssue({ code: 'custom', message: 'unavailable native Session surface cannot claim a content identity' });
 });
 
 const workMemorySummarySchema = z.strictObject({
@@ -76,17 +86,56 @@ const workMemorySummarySchema = z.strictObject({
   decisions: z.array(z.string().min(1)),
   openQuestions: z.array(z.string().min(1)),
   todo: z.array(z.string().min(1)),
-  references: z.array(z.strictObject({ recordId: z.string().min(1), contentIdentity: z.string().regex(/^[a-f0-9]{64}$/), conditions: z.array(z.string().min(1)) })).min(1),
-  sources: z.array(z.strictObject({ runId: z.string().min(1), throughSeq: z.number().int().nonnegative(), observedControlRevision: z.number().int().nonnegative().optional() })).min(1),
+  references: z.array(z.strictObject({ recordId: z.string().min(1), contentIdentity: memoryHash, conditions: z.array(z.string().min(1)) })),
+  sources: z.array(z.strictObject({ runId: z.string().min(1), throughSeq: z.number().int().nonnegative(), observedControlRevision: z.number().int().nonnegative().optional() })),
+  nativeSources: z.array(workMemoryNativeSource).optional(),
   generatedAt: z.string().datetime(),
   modelGenerated: z.boolean(),
+}).superRefine((summary, ctx) => {
+  const runIds = new Set<string>();
+  for (const source of summary.sources) {
+    if (runIds.has(source.runId)) ctx.addIssue({ code: 'custom', message: `work memory repeats Run source ${source.runId}` });
+    runIds.add(source.runId);
+  }
+  const nativeIds = new Set<string>();
+  for (const source of summary.nativeSources ?? []) {
+    if (nativeIds.has(source.sessionId)) ctx.addIssue({ code: 'custom', message: `work memory repeats native Session source ${source.sessionId}` });
+    nativeIds.add(source.sessionId);
+  }
+  const referenceIds = new Set<string>();
+  for (const reference of summary.references) {
+    if (referenceIds.has(reference.recordId)) ctx.addIssue({ code: 'custom', message: `work memory repeats reference ${reference.recordId}` });
+    referenceIds.add(reference.recordId);
+  }
+  if (summary.sources.length + (summary.nativeSources?.length ?? 0) === 0) ctx.addIssue({ code: 'custom', message: 'work memory requires a Run or native Session source' });
+  if (summary.scope.kind === 'session' && summary.sources.length === 0 && !nativeIds.has(summary.scope.sessionId!)) ctx.addIssue({ code: 'custom', message: 'session-only summary requires its exact native Session source' });
+  if (summary.scope.kind === 'child' && !nativeIds.has(summary.scope.sessionId!)) ctx.addIssue({ code: 'custom', message: 'child summary requires its exact native child Session source' });
 });
 export type WorkMemoryScope = z.infer<typeof workMemoryScope>;
 export type WorkMemorySummary = z.infer<typeof workMemorySummarySchema>;
+/** A qualified observation of a native session.  It is supplied by the public DSH reader, never caller text. */
+export interface NativeSessionMemoryEvidence {
+  readonly sessionId: string;
+  readonly workspaceRef: string;
+  readonly parentSessionId?: string;
+  readonly headerIdentity: string;
+  readonly transcriptIdentity: string;
+  /** A current native surface projection, not a claim about provider prompt retention. */
+  readonly surfaceAvailability: 'available' | 'unavailable';
+  readonly surfaceIdentity?: string;
+  readonly capturedFromSeq: 0;
+  readonly capturedThroughSeq: number;
+  /** A contiguous prefix of the replay-validated log DSH currently retains. */
+  readonly transcriptCoverage: 'retained-prefix';
+  /** Current end of that retained log; it may be later than capturedThroughSeq. */
+  readonly currentThroughSeq: number;
+}
+export type NativeSessionMemoryReader = (request: { readonly sessionId: string; readonly workspaceRef: string; readonly parentSessionId?: string; readonly throughSeq?: number }) => Promise<NativeSessionMemoryEvidence>;
 export type WorkMemoryRead =
   | { readonly kind: 'none' }
   | { readonly kind: 'current'; readonly summary: WorkMemorySummary; readonly authority: readonly { readonly runId: string; readonly status?: string; readonly controlRevision?: number }[] }
   | { readonly kind: 'stale'; readonly summary: WorkMemorySummary; readonly reason: string; readonly authority: readonly { readonly runId: string; readonly status?: string; readonly controlRevision?: number }[] }
+  | { readonly kind: 'conflicted'; readonly summary: WorkMemorySummary; readonly reason: string; readonly authority: readonly { readonly runId: string; readonly status?: string; readonly controlRevision?: number }[] }
   | { readonly kind: 'unavailable'; readonly reason: string };
 
 const contentIdentityOf = (record: LedgerRecord): string | undefined =>
@@ -96,6 +145,15 @@ const contentIdentityOf = (record: LedgerRecord): string | undefined =>
         : record.type === 'experience' ? record.json.sha256
           : record.type === 'archive' ? record.manifestSha256
             : undefined;
+
+/** Host-minted references; models and UI never calculate or invent evidence hashes. */
+export function workMemoryEvidence(ledger:Ledger,runId:string) {
+  const run=ledger.run(runId);if(!run)throw new Error('memory source Run is absent');
+  const records=ledger.records({runId});
+  return {sources:[{runId,throughSeq:run.nextSeq-1,...(run.control?{observedControlRevision:run.control.revision}:{})}],
+    references:records.filter(record=>contentIdentityOf(record)!==undefined&&recordValidityOf(records,record.id).valid).slice(-32)
+      .map(record=>({recordId:record.id,contentIdentity:contentIdentityOf(record)!,conditions:['Exact current project Run and retained content identity.']}))};
+}
 
 async function workMemoryPath(workspace: string, scope: WorkMemoryScope, write: boolean): Promise<string> {
   const root = await realpath(workspace);
@@ -129,7 +187,7 @@ async function workMemoryPath(workspace: string, scope: WorkMemoryScope, write: 
   return at;
 }
 
-function summaryState(ledger: Ledger, summary: WorkMemorySummary): Exclude<WorkMemoryRead, { kind: 'none' | 'unavailable' }> {
+async function summaryState(ledger: Ledger, summary: WorkMemorySummary, native?: NativeSessionMemoryReader): Promise<Exclude<WorkMemoryRead, { kind: 'none' }>> {
   const declared = new Map(summary.sources.map((source) => [source.runId, source]));
   if (summary.scope.kind === 'campaign' && (summary.scope.runId === undefined || !declared.has(summary.scope.runId))) {
     return { kind: 'stale', summary, reason: 'campaign summary does not declare its scoped Run source', authority: [] };
@@ -154,15 +212,43 @@ function summaryState(ledger: Ledger, summary: WorkMemorySummary): Exclude<WorkM
     const latest = ledger.records({ runId: source.runId }).at(-1)?.seq ?? 0;
     if (latest !== source.throughSeq) return { kind: 'stale', summary, reason: `source Run ${source.runId} revision differs from the summary`, authority };
   }
+  for (const source of summary.nativeSources ?? []) {
+    if (native === undefined) return { kind: 'unavailable', reason: 'native Session memory cannot be qualified without the public SessionQuery carrier' };
+    let evidence: NativeSessionMemoryEvidence;
+    try {
+      evidence = await native({ sessionId: source.sessionId, workspaceRef: summary.scope.workspaceRef, throughSeq: source.capturedThroughSeq,
+        ...(summary.scope.kind === 'child' && source.sessionId === summary.scope.sessionId ? { parentSessionId: summary.scope.parentSessionId } : {}) });
+    } catch (error) {
+      return { kind: 'unavailable', reason: `native Session ${source.sessionId} is unavailable: ${(error as Error).message}` };
+    }
+    if (evidence.sessionId !== source.sessionId || evidence.workspaceRef !== summary.scope.workspaceRef) {
+      return { kind: 'conflicted', summary, reason: `native Session ${source.sessionId} identity conflicts with its summary scope`, authority };
+    }
+    if (summary.scope.kind === 'child' && source.sessionId === summary.scope.sessionId && evidence.parentSessionId !== summary.scope.parentSessionId) {
+      return { kind: 'conflicted', summary, reason: `native child Session ${source.sessionId} lineage conflicts with its summary scope`, authority };
+    }
+    if (evidence.capturedThroughSeq < source.capturedThroughSeq) {
+      return { kind: 'conflicted', summary, reason: `native Session ${source.sessionId} ends before the summary's claimed source revision`, authority };
+    }
+    if (evidence.headerIdentity !== source.headerIdentity || evidence.transcriptIdentity !== source.transcriptIdentity || evidence.capturedFromSeq !== source.capturedFromSeq || evidence.capturedThroughSeq !== source.capturedThroughSeq || evidence.transcriptCoverage !== source.transcriptCoverage) {
+      return { kind: 'stale', summary, reason: `native Session ${source.sessionId} changed after the summary was written`, authority };
+    }
+    if (evidence.currentThroughSeq > source.capturedThroughSeq) {
+      return { kind: 'stale', summary, reason: `native Session ${source.sessionId} has newer events after the verified summary source`, authority };
+    }
+  }
   return { kind: 'current', summary, authority };
 }
 
 /** Write a derived, scope-addressed workspace summary.  The caller authenticates that workspace;
  * this module only validates source-linked facts and refuses symlink/outside paths. */
-export async function writeWorkMemorySummary(ledger: Ledger, workspace: string, candidate: unknown): Promise<WorkMemorySummary> {
+export async function writeWorkMemorySummary(ledger: Ledger, workspace: string, candidate: unknown, native?: NativeSessionMemoryReader): Promise<WorkMemorySummary> {
   const summary = workMemorySummarySchema.parse(candidate);
-  const state = summaryState(ledger, summary);
-  if (state.kind !== 'current') throw new Error(`work memory cannot be written: ${state.reason}`);
+  const state = await summaryState(ledger, summary, native);
+  // A tool invocation appends native events between an evidence read and its save.
+  // The referenced prefix remains verified; the persisted summary reads as stale
+  // until a later source capture, rather than losing that honest historical handoff.
+  if (state.kind !== 'current' && !(state.kind === 'stale' && state.reason.includes('newer events after the verified summary source'))) throw new Error(`work memory cannot be written: ${state.reason}`);
   const at = await workMemoryPath(workspace, summary.scope, true);
   const bytes = Buffer.from(`${JSON.stringify(summary, null, 2)}\n`);
   if (bytes.byteLength > 256 * 1024) throw new Error('work memory summary exceeds its read/write limit');
@@ -183,7 +269,7 @@ export async function writeWorkMemorySummary(ledger: Ledger, workspace: string, 
 }
 
 /** Read a derived summary without granting it any control authority. */
-export async function readWorkMemorySummary(ledger: Ledger, workspace: string, scope?: WorkMemoryScope): Promise<WorkMemoryRead> {
+export async function readWorkMemorySummary(ledger: Ledger, workspace: string, scope?: WorkMemoryScope, native?: NativeSessionMemoryReader): Promise<WorkMemoryRead> {
   if (scope === undefined) return { kind: 'unavailable', reason: 'an exact authenticated work-memory scope is required' };
   let at: string;
   try { scope = workMemoryScope.parse(scope); at = await workMemoryPath(workspace, scope, false); }
@@ -207,7 +293,7 @@ export async function readWorkMemorySummary(ledger: Ledger, workspace: string, s
   const parsed = workMemorySummarySchema.safeParse(raw);
   if (!parsed.success) return { kind: 'unavailable', reason: 'work memory summary has an invalid schema' };
   if (!isDeepStrictEqual(parsed.data.scope, scope)) return { kind: 'unavailable', reason: 'work memory summary scope does not match the authenticated request' };
-  return summaryState(ledger, parsed.data);
+  return summaryState(ledger, parsed.data, native);
 }
 
 /** What became of writing one Run's report. */
@@ -1174,14 +1260,27 @@ async function archivePathSafe(packDir: string, runId: string, requireRun: boole
   }
 }
 
-async function readArchiveFile(directory: string, relative: string): Promise<Buffer> {
+async function readArchiveFile(directory: string, relative: string, maxBytes?: number): Promise<Buffer> {
   const at = await archiveFilePath(directory, relative, false);
   const state = await lstat(at);
   if (!state.isFile() || state.isSymbolicLink()) throw new Error(`archive material is not a plain file: ${at}`);
+  if (maxBytes !== undefined && state.size > maxBytes) throw new Error(`archive material exceeds ${maxBytes} byte view limit: ${at}`);
   const handle = await open(at, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const held = await handle.stat();
     if (!held.isFile() || held.dev !== state.dev || held.ino !== state.ino) throw new Error(`archive material changed while opening: ${at}`);
+    if (maxBytes !== undefined) {
+      if (held.size > maxBytes) throw new Error(`archive material exceeds ${maxBytes} byte view limit: ${at}`);
+      const bytes = Buffer.alloc(held.size);
+      let used = 0;
+      while (used < bytes.byteLength) {
+        const part = await handle.read(bytes, used, bytes.byteLength - used, used);
+        if (part.bytesRead === 0) throw new Error(`archive material ended during bounded read: ${at}`);
+        used += part.bytesRead;
+      }
+      if ((await handle.stat()).size !== bytes.byteLength) throw new Error(`archive material changed size during bounded read: ${at}`);
+      return bytes;
+    }
     return await handle.readFile();
   } finally { await handle.close(); }
 }
@@ -1246,6 +1345,21 @@ async function archiveFailure(deps: ExperienceDeps, runId: string, directory: st
   return { kind: 'failed', why };
 }
 
+/** Bounded, hash-verified bytes for existing report consumers; no new analysis or observation. */
+export async function readReportMaterial(deps:ExperienceDeps,runId:string,recordId:string):Promise<{kind:'read';text:string}|{kind:'unavailable';why:string}> {
+  const run=existingRun(deps.ledger,runId);const record=deps.ledger.record(recordId);
+  if(!record||record.runId!==runId||!['code','knowledge','observation'].includes(record.type))return {kind:'unavailable',why:'This record is not a supported retained report source.'};
+  if(!('bytes' in record)||record.bytes>2*1024*1024)return {kind:'unavailable',why:'The report exceeds the bounded view; original evidence is retained.'};
+  // This view only opens immutable retained evidence. A live Site pathname may
+  // have grown since its small recorded size; cat would buffer that change
+  // before any hash or byte-count check could reject it.
+  if(!record.retainedPath)return {kind:'unavailable',why:'No bounded retained byte version exists for this report.'};
+  const expected=record.type==='observation'?record.contentSha256:record.sha256;
+  const held=await readRetainedMaterial(deps,run,record.retainedPath,expected,record.bytes,2*1024*1024);
+  return held.kind==='read'?{kind:'read',text:held.bytes.toString('utf8')}
+    :{kind:'unavailable',why:held.kind==='changed'?'The retained report bytes changed.':held.why};
+}
+
 async function readObservedAsset(deps: ExperienceDeps, run: RunRecord, record: ObservationRecord): Promise<Buffer | string> {
   if (record.retainedPath !== undefined && run.packId !== undefined) {
     const held = await readRetainedMaterial(deps, run, record.retainedPath, record.contentSha256, record.bytes);
@@ -1289,7 +1403,7 @@ export async function retainRunMaterial(deps: Pick<ExperienceDeps, 'ledger' | 'p
   } finally { await rm(tempPath, { force: true }); }
 }
 
-async function readRetainedMaterial(deps: ExperienceDeps, run: RunRecord, retainedPath: string, sha256: string, size: number): Promise<
+async function readRetainedMaterial(deps: ExperienceDeps, run: RunRecord, retainedPath: string, sha256: string, size: number, maxBytes?: number): Promise<
   { kind: 'read'; bytes: Buffer } | { kind: 'changed'; found: string } | { kind: 'unreadable'; why: string }
 > {
   try {
@@ -1299,7 +1413,7 @@ async function readRetainedMaterial(deps: ExperienceDeps, run: RunRecord, retain
     const root = path.join(folder.dir, runAssetsDirectory), relative = `.evidence/${run.id}/${sha256}.dat`;
     const canonical = path.join(root, relative);
     if (path.resolve(retainedPath) !== canonical && verifiedPackRelocation({ packDir: folder.dir, originalPath: retainedPath, sha256, bytes: size }) !== canonical) throw new Error('retained material is outside its Run and content identity or has no verified migration');
-    const bytes = await readArchiveFile(root, relative), found = hashOf(bytes);
+    const bytes = await readArchiveFile(root, relative, maxBytes), found = hashOf(bytes);
     if (found !== sha256) return { kind: 'changed', found };
     if (bytes.byteLength !== size) throw new Error('retained material byte count differs from the record');
     return { kind: 'read', bytes };

@@ -59,17 +59,41 @@
 // `skill`, the delegation tools and the four `hima_*`, and the two that take a `file_path` and
 // change what is at it are `write` and `edit`. `skills.test.ts` holds that list against the booted
 // host, so a dsh release that adds a third fails the suite instead of quietly opening a door.
-import { lstatSync, mkdirSync, realpathSync, statSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { lstatSync, mkdirSync, realpathSync, statSync, readFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ToolExecution } from '@deepseek-ai/dsh-tools';
 import type { Ledger } from './ledger.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
+import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { z } from 'zod';
+
+export interface AuthoringRequest { pack:string; create?:boolean; handoff?:{goal:string;sourcePaths:string[];inputGaps?:string[]} }
+const authoringHandoff=z.strictObject({goal:z.string().trim().min(1).max(4000),sourcePaths:z.array(z.string()).max(16),inputGaps:z.array(z.string().max(1000)).max(20).optional()});
 
 /** Create/select a Pack using the native session creation boundary. Cwd is immutable in dsh. */
-export async function openAuthoringSession(ctx: Context, packsDir: string, request: { pack: string; create?: boolean }, caller?: Agent) {
+export async function openAuthoringSession(ctx: Context, packsDir: string, request: AuthoringRequest, caller?: Agent) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(request.pack)) throw new Error('pack must be a folder id of lowercase letters, digits and dashes');
+  let handoffText:string|undefined;
+  if(request.handoff){
+    const input=authoringHandoff.parse(request.handoff);
+    if(!caller?.session.header.cwd)throw new Error('Authoring handoff needs a real caller workspace.');
+    const workspace=realpathSync(caller.session.header.cwd);
+    const sources=input.sourcePaths.map(source=>{
+      const absolute=path.resolve(workspace,source);const real=realpathSync(absolute);
+      if(real!==workspace&&!real.startsWith(workspace+path.sep))throw new Error('Authoring handoff source is outside the caller project.');
+      const info=statSync(real);if(!info.isFile()||info.size>8*1024*1024)throw new Error('Authoring handoff source must be a bounded regular file.');
+      const bytes=readFileSync(real);return {path:real,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};
+    });
+    handoffText=JSON.stringify({kind:'hima-authoring-handoff/1',fromSession:String(caller.id),workspaceRef:workspace,packId:request.pack,goal:input.goal,sources,inputGaps:input.inputGaps??[],instructions:'These are source references and requested intent, not accepted facts or stage completion. Re-read and verify source hashes. The person chooses the next /hima-* stage. Do not auto-start a stage, Site Job or release.'});
+  }
+  const deliver=(sessionId:string)=>{
+    if(!handoffText)return undefined;
+    const recipient=ctx.get('agents')?.get(sessionId as never);if(!recipient)throw new Error('The authoring recipient is not live.');
+    const message=createUserMessage({source:{kind:'plugin',plugin:'hima'},content:[{type:'text',text:handoffText}]});
+    recipient.send(message,'next-step',false);return String(message.id);
+  };
   const selection = (ctx.get('agentDefaultModel') as { currentSelection(): { provider: string; model: string } } | undefined)?.currentSelection();
   const agents = ctx.get('agents');
   if (!selection || !agents) throw new Error('the native agent/default model service is unavailable');
@@ -87,7 +111,7 @@ export async function openAuthoringSession(ctx: Context, packsDir: string, reque
   if (!existing) mkdirSync(folder, { recursive: true });
   const realFolder = realpathSync(folder);
   if (standing.kind === 'authoring' && standing.cwd === realFolder && caller) {
-    return { pack: request.pack, folder: realFolder, sessionId: caller.session.id, created: false };
+    return { pack: request.pack, folder: realFolder, sessionId: caller.session.id, created: false, ...(handoffText ? {handoffMessageId:deliver(String(caller.session.id))}: {}) };
   }
   // The web product's controller composes its configured ordinary preset and installs model
   // selection. Reusing it is essential: agents.create alone has only global tools in that host.
@@ -97,7 +121,7 @@ export async function openAuthoringSession(ctx: Context, packsDir: string, reque
     if (!workspaces) throw new Error('the native workspace registry is unavailable');
     const workspace = await workspaces.create(realFolder, request.pack);
     const { sessionId } = await controller.create({ workspaceId: workspace.id });
-    return { pack: request.pack, folder: realFolder, sessionId, created: !existing };
+    return { pack: request.pack, folder: realFolder, sessionId, created: !existing, ...(handoffText ? {handoffMessageId:deliver(String(sessionId))}: {}) };
   }
   const { agent } = await agents.create({
     sessionId: `session-${randomUUID()}` as never,
@@ -105,7 +129,7 @@ export async function openAuthoringSession(ctx: Context, packsDir: string, reque
     agentOptions: { provider: selection.provider, model: selection.model },
   });
   await agent.whenIdle();
-  return { pack: request.pack, folder: realFolder, sessionId: agent.session.id, created: !existing };
+  return { pack: request.pack, folder: realFolder, sessionId: agent.session.id, created: !existing, ...(handoffText ? {handoffMessageId:deliver(String(agent.session.id))}: {}) };
 }
 
 /**

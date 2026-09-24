@@ -1094,7 +1094,13 @@ export const experienceAdoptionRecord = z.strictObject({
   changedBy: z.string().min(1),
   reason: z.string().min(1).max(4000),
 });
-export const ledgerRecord = z.discriminatedUnion('type', [...v27LedgerRecord.options, experienceAdoptionRecord]);
+const v28LedgerRecord = z.discriminatedUnion('type', [...v27LedgerRecord.options, experienceAdoptionRecord]);
+/** Native child/session operations retain their admissions and observed outcomes beside Job facts. */
+export const delegationRecord = z.strictObject({...base,type:z.literal('delegation'),delegationId:z.string().min(1),parentSessionId:z.string().min(1),childSessionId:z.string().optional(),requestId:z.string().min(1),requestDigest:sha256Hex,event:z.enum(['create-intent','created','refused','uncertain','followup-intent','followup-sent','cancel-intent','cancel-requested','cancelled','result-observed','deadline']),payload:z.json()});
+export const interactiveRecord = z.strictObject({...base,type:z.literal('interactive'),executionId:z.string().min(1),toolSessionId:z.string().min(1),requestId:z.string().min(1),event:z.string().min(1),payload:z.json()});
+export type DelegationRecord=z.infer<typeof delegationRecord>;
+export type InteractiveRecord=z.infer<typeof interactiveRecord>;
+export const ledgerRecord = z.discriminatedUnion('type', [...v28LedgerRecord.options, delegationRecord, interactiveRecord]);
 export type ExperienceAdoptionRecord = z.infer<typeof experienceAdoptionRecord>;
 export type ObservationRecord = z.infer<typeof observationRecord>;
 export type RefusalRecord = z.infer<typeof refusalRecord>;
@@ -1843,7 +1849,8 @@ export const ledgerSpec = defineDomain({
   // shape growing for the same reason, not a separate fact to look up twice.
   // 28: append-only, source-bound user experience corrections. Older Apps must not silently
   // ignore a disabled experience. Offline import preserves v19-v27 bytes in a separate home.
-  version: 28,
+  // 29: native delegation admissions, interactive receipts and durable App-exit fences.
+  version: 29,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -2154,6 +2161,13 @@ export class Ledger {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'knowledge', ...data }));
   }
 
+  async appendDelegation(runId:string,data:Omit<DelegationRecord,keyof typeof base|'type'>):Promise<DelegationRecord> {
+    return this.#append(runId,'executor',h=>({...h,type:'delegation',...data}));
+  }
+  async appendInteractive(runId:string,data:Omit<InteractiveRecord,keyof typeof base|'type'>):Promise<InteractiveRecord> {
+    return this.#append(runId,'executor',h=>({...h,type:'interactive',...data}));
+  }
+
   async appendExperienceAdoption(runId: string, data: Omit<ExperienceAdoptionRecord, keyof typeof base | 'type'>): Promise<ExperienceAdoptionRecord> {
     return this.#append(runId, 'person', (h) => ({ ...h, type: 'experience-adoption', ...data }));
   }
@@ -2346,13 +2360,16 @@ const v26v27LedgerDocument = z.strictObject({
   }
 });
 
+const v28LedgerDocument=z.strictObject({unit:z.strictObject({name:z.literal('hima_ledger'),version:z.literal(28)}),global:z.null(),tables:z.strictObject({runs:z.record(z.string(),runRecord),records:z.record(z.string(),v28LedgerRecord)})});
+
 type ImportDocument = { readonly tables: { readonly runs: Record<string, RunRecord>; readonly records: Record<string, LedgerRecord> } };
 
 /** Shared relational checks, applied to every source schema before any target is staged. */
-function validateImportDocument(document: ImportDocument): void {
+function validateImportDocument(document: ImportDocument, version=19): void {
   const { runs, records } = document.tables;
   for (const [key, run] of Object.entries(runs)) {
-    if (run.control?.guideSessionId !== undefined || run.projectSessionId !== undefined) throw new Error('Guide/project lineage requires source v28; it cannot be imported from an older version');
+    if (version < 28 && (run.control?.guideSessionId !== undefined || run.projectSessionId !== undefined)) throw new Error('Guide/project lineage requires source v28; it cannot be imported from an older version');
+    if(Object.values(run.control?.requests??{}).some(request=>request.receipt.action==='host-exit'))throw new Error('App-exit fences require source v29');
     if (key !== run.id || !new RegExp(`^${runIdPattern.source}$`).test(key)) throw new Error(`invalid imported Run identity: ${key}`);
     if (!Number.isSafeInteger(run.nextSeq)) throw new Error(`invalid imported nextSeq: ${key}`);
   }
@@ -2389,13 +2406,13 @@ function readLegacyLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> {
 }
 
 /** Validate a v19 or v20 offline snapshot without changing fields or pretending it is live. */
-function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> | z.infer<typeof priorPolishingDocument> | z.infer<typeof v25LedgerDocument> | z.infer<typeof v26v27LedgerDocument> {
+function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> | z.infer<typeof priorPolishingDocument> | z.infer<typeof v25LedgerDocument> | z.infer<typeof v26v27LedgerDocument> | z.infer<typeof v28LedgerDocument> {
   const input: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   const version = (input as { unit?: { version?: unknown } } | null)?.unit?.version;
-  const document = version === 26 || version === 27 ? v26v27LedgerDocument.parse(input) : version === 25 ? v25LedgerDocument.parse(input) : version === 21 || version === 22 || version === 23 || version === 24 ? priorPolishingDocument.parse(input)
+  const document = version === 28 ? v28LedgerDocument.parse(input) : version === 26 || version === 27 ? v26v27LedgerDocument.parse(input) : version === 25 ? v25LedgerDocument.parse(input) : version === 21 || version === 22 || version === 23 || version === 24 ? priorPolishingDocument.parse(input)
     : version === 20 ? v20LedgerDocument.parse(input) : readLegacyLedger(bytes);
   if (!isDeepStrictEqual(input, document)) throw new Error('ledger import contains unsupported fields or values; import would change stored facts');
-  validateImportDocument(document as unknown as ImportDocument);
+  validateImportDocument(document as unknown as ImportDocument, Number(version));
   return document;
 }
 
@@ -2426,7 +2443,7 @@ function sameImportSnapshot(a: BigIntStats, b: BigIntStats): boolean {
 
 export interface LegacyLedgerImportReceipt {
   readonly format: 'hima-ledger-import-v1';
-  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27; readonly sha256: string; readonly bytes: number; readonly backup: string };
+  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28; readonly sha256: string; readonly bytes: number; readonly backup: string };
   readonly target: { readonly version: number; readonly sha256: string; readonly file: string };
   readonly importedAt: string;
   readonly runs: number;
@@ -2448,7 +2465,7 @@ export interface LegacyLedgerImportReceipt {
  */
 export async function importLegacyLedger(request: { readonly sourceFile: string; readonly home: string }): Promise<LegacyLedgerImportReceipt> {
   // Import copies existing facts, without inventing adoption events or mutating the original home.
-  if (ledgerSpec.version !== 28) throw new Error('legacy import supports only the reviewed v19-v27-to-v28 transition');
+  if (ledgerSpec.version !== 29) throw new Error('legacy import supports only the reviewed v19-v28-to-v29 transition');
   const source = path.resolve(request.sourceFile);
   const home = path.resolve(request.home);
   const parent = path.dirname(home);

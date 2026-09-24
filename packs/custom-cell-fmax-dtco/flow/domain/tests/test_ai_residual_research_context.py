@@ -26,6 +26,8 @@ from ai_research_runner import (  # noqa: E402
     RESIDUAL_OUTPUT_SCHEMA,
     build_residual_research_context,
     _feedback_ab,
+    _generation_feedback,
+    _compact_commercial_response,
     execute_candidate_program,
     load_residual_research_context,
     load_candidate_pool_registry,
@@ -46,6 +48,44 @@ def test_feedback_ab_records_the_concrete_selection_delta_or_an_explicit_unchang
     assert unchanged["selection_changed"] is False
     assert unchanged["selection_effect"]["kind"] == "unchanged"
     assert unchanged["selection_effect"]["reason"] == "commercial feedback did not change candidate selection"
+
+
+def _assert_generation_feedback_retains_typed_demand_identity_and_unknown_delay_conditions():
+    request = _candidate_pool()["generation_requests"][0]
+    contract = request["generator_contract"]
+    key = "proposal:" + "1" * 64
+    request_payload = (json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+    context = {
+        "round_id": "round-0002", "context_sha256": "2" * 64,
+        "next_residual_question": "Which demand should be generated next?",
+        "evidence": {"candidate_pool": {"path": "pool.json", "sha256": "3" * 64}},
+        "candidate_pool": {"proposals": [{"proposal_key": key}]},
+        "commercial_frontier_response": None,
+    }
+    proposal = {
+        "transformation": {"proposal_key": key, "required_delay_ns": 0.12,
+                           "target_endpoints": ["U_CAPTURE/D"], "intervention": "new-function"},
+        "rationale": "serve the measured capture endpoint",
+        "generation_request": request,
+        "generation_request_sha256": hashlib.sha256(request_payload).hexdigest(),
+    }
+    feedback = _feedback_ab([], [key], "the retained demand is selected", {"return_code": 0})
+
+    report = _generation_feedback(context, [proposal], feedback)
+
+    self_demand = report["next"]["items"][0]["demand"]
+    assert report["denominator"] == {"kind": "cell-demand", "originalIds": [key], "originalCount": 1}
+    assert self_demand["inputPins"] == [row["name"] for row in contract["interface"]["inputs"]]
+    assert self_demand["outputs"] == [{"name": row["name"], "function": row["liberty_function"]}
+                                      for row in contract["interface"]["outputs"]]
+    assert self_demand["truthTable"]["outputTruthTablesHex"] == contract["equivalence_reference"]["output_truth_tables_hex"]
+    assert self_demand["timingArcs"] == contract["characterization_request"]["timing_arcs"]
+    assert self_demand["conditionalDelayTarget"]["requiredDelayNs"] == 0.12
+    assert self_demand["conditionalDelayTarget"]["slewNs"] is None
+    assert self_demand["conditionalDelayTarget"]["loadPf"] is None
+    assert self_demand["conditionalDelayTarget"]["corner"] is None
+    assert len(self_demand["conditionalDelayTarget"]["unknowns"]) == 3
+    assert report["endpointChanges"]["fixed"]["status"] == "unknown"
 from mine_timing_route import _route_requests, rank_critical_subgraph  # noqa: E402
 from verilog_netlist import Instance  # noqa: E402
 
@@ -288,7 +328,53 @@ def _proposal(context: dict) -> dict:
     }
 
 
+def _large_commercial_response() -> dict:
+    def row(index):
+        return {"endpoint": "remaining-%03d" % index, "reference_slack_ns": -0.04,
+                "generated_slack_ns": -0.05, "delta_slack_ns": -0.01,
+                "reference_q_ns": 0.54, "generated_q_ns": 0.55}
+    return {
+        "schema": "hima.lfr-v5-commercial-frontier-response/1", "status": "observed",
+        "response_sha256": "a" * 64, "endpoint_count": 600, "q_target_ns": 0.53,
+        "reference_active_count": 257, "generated_active_count": 257,
+        "improved_endpoint_count": 129, "worsened_endpoint_count": 257,
+        "violations_fixed": 129, "new_violations": 129,
+        "resolved_reference_endpoints": ["fixed-%03d" % i for i in range(129)],
+        "new_frontier_entrants": ["entrant-%03d" % i for i in range(129)],
+        "remaining_frontier": [row(i) for i in range(257)],
+        "largest_frontier_regressions": [row(i) for i in range(32)],
+        "largest_frontier_improvements": [], "claim_limits": {"per_action_causality": False},
+    }
+
+
 class ResidualResearchContextTests(unittest.TestCase):
+    def test_bounded_commercial_context_keeps_truncated_categories_unknown(self):
+        compact = _compact_commercial_response(_large_commercial_response())
+        self.assertEqual(compact["endpoint_coverage"], "unknown")
+        report = _generation_feedback({"round_id": "round-0002", "context_sha256": "a" * 64,
+                                       "candidate_pool": {"proposals": []}, "evidence": {},
+                                       "commercial_frontier_response": compact}, [],
+                                      _feedback_ab([], [], "retained comparison", {"return_code": 0}))
+        for name in ("fixed", "remaining", "entrant", "regressed", "missing"):
+            self.assertEqual(report["endpointChanges"][name]["status"], "unknown", name)
+        self.assertEqual(report["comparability"]["status"], "unknown")
+
+    def test_frontier_regressions_use_complete_remaining_rows_not_top_32_preview(self):
+        response = _large_commercial_response()
+        response["resolved_reference_endpoints"] = []
+        response["new_frontier_entrants"] = []
+        response["remaining_frontier"] = response["remaining_frontier"][:40]
+        response["reference_active_count"] = response["generated_active_count"] = 40
+        compact = _compact_commercial_response(response)
+        report = _generation_feedback({"round_id": "round-0002", "context_sha256": "a" * 64,
+                                       "candidate_pool": {"proposals": []}, "evidence": {},
+                                       "commercial_frontier_response": compact}, [],
+                                      _feedback_ab([], [], "retained comparison", {"return_code": 0}))
+        self.assertEqual(len(report["endpointChanges"]["regressed"]["ids"]), 40)
+
+    def test_generation_feedback_retains_typed_demand_identity_and_unknown_delay_conditions(self):
+        _assert_generation_feedback_retains_typed_demand_identity_and_unknown_delay_conditions()
+
     def test_residual_context_admits_the_pack_multi_output_resynthesis_route(self):
         self.assertIn("multi_output_resynthesis", BUILDABLE_ROUTES)
 
@@ -299,8 +385,8 @@ class ResidualResearchContextTests(unittest.TestCase):
             response = {
                 "schema": "hima.lfr-v5-commercial-frontier-response/1",
                 "status": "observed", "response_sha256": "a" * 64,
-                "q_target_ns": 0.53, "reference_active_count": 3,
-                "generated_active_count": 2,
+                "q_target_ns": 0.53, "reference_active_count": 2,
+                "generated_active_count": 1,
                 "resolved_reference_endpoints": ["E0"],
                 "new_frontier_entrants": [],
                 "remaining_frontier": [{"endpoint": "E1", "reference_slack_ns": -0.04,
@@ -325,7 +411,7 @@ class ResidualResearchContextTests(unittest.TestCase):
             request["commercial_response"] = _write_json(
                 root, "commercial-response.json", response)
             context = load_residual_research_context(request, evidence_root=root)
-            self.assertEqual(2, context["commercial_frontier_response"]["generated_active_count"])
+            self.assertEqual(1, context["commercial_frontier_response"]["generated_active_count"])
             self.assertEqual("E1", context["commercial_frontier_response"]["remaining_frontier"][0]["endpoint"])
             self.assertIn("commercial_response", context["evidence"])
             validated = validate_residual_research_proposal(_proposal(context), context)

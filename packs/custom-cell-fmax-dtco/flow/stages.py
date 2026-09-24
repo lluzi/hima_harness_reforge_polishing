@@ -702,6 +702,64 @@ def _baseline_family_slacks(timing_document):
     return dict(sorted(rows.items()))
 
 
+def current_commercial_response(ctx, manifest_path):
+    """Use prior commercial feedback only while its latest compare and inputs still match."""
+    root = ctx.flow / "library-richness"
+    marker_path = root / "commercial-response-current.json"
+    if not marker_path.is_file() or marker_path.is_symlink():
+        return None
+    marker = read_json(marker_path)
+    if marker.get("schema") != "lfr-current-commercial-response/1":
+        raise Rejected("current commercial response marker has the wrong schema")
+    if marker.get("status") == "unavailable":
+        return None
+    if marker.get("status") != "available":
+        raise Rejected("current commercial response marker has an invalid status")
+    if (marker.get("inputsSha256") != sha_file(ctx.flow / "inputs.json")
+            or marker.get("manifestSha256") != sha_file(manifest_path)):
+        return None
+    try:
+        comparison_record = prior(ctx, "compare")
+        comparison_path = artifact(comparison_record, ctx.workspace, "comparison")
+        historical_path = artifact(comparison_record, ctx.workspace, "v5_frontier_response")
+        source_refs = comparison_record.get("inputs")
+        if not isinstance(source_refs, list) or not source_refs:
+            return None
+        for source_ref in source_refs:
+            checked_ref(source_ref, ctx.workspace)
+    except Rejected:
+        return None
+    persistent = root / "commercial-response.json"
+    if not persistent.is_file() or persistent.is_symlink():
+        return None
+    comparison_bytes = comparison_path.read_bytes()
+    response_bytes = persistent.read_bytes()
+    if (marker.get("comparisonSha256") != sha_bytes(comparison_bytes)
+            or marker.get("responseSha256") != sha_bytes(response_bytes)
+            or marker.get("responseSha256") != sha_file(historical_path)
+            or marker.get("compareRunDir") != str(comparison_path.parent.relative_to(ctx.flow))):
+        return None
+    try:
+        comparison = json.loads(comparison_bytes, object_pairs_hook=unique)
+        response = json.loads(response_bytes, object_pairs_hook=unique)
+    except (UnicodeDecodeError, ValueError):
+        return None
+    if not isinstance(comparison, dict) or not isinstance(response, dict):
+        return None
+    payload = dict(response)
+    payload_sha = payload.pop("response_sha256", None)
+    if (payload_sha != canonical_json_sha(payload)
+            or marker.get("responsePayloadSha256") != payload_sha
+            or comparison.get("v5_frontier_response_sha256") != payload_sha
+            or comparison_record.get("facts", {}).get("v5_frontier_response_sha256") != payload_sha
+            or comparison.get("matched_conditions") is not True
+            or comparison_record.get("facts", {}).get("matched_conditions") is not True
+            or marker.get("analysisViews") != comparison.get("analysisViews")
+            or comparison_record.get("facts", {}).get("analysisViews") != comparison.get("analysisViews")):
+        return None
+    return response
+
+
 def stage_function_local(ctx):
     baseline_record = prior(ctx, "evaluation-baseline")
     baseline_eval = artifact(baseline_record, ctx.workspace, "library_richness_evaluation")
@@ -791,9 +849,8 @@ def stage_function_local(ctx):
         frontier = cold_frontier
         atomic_json(frontier_path, frontier)
     commercial_response_path = expected_root / "commercial-response.json"
-    commercial_response = None
-    if commercial_response_path.is_file():
-        commercial_response = read_json(commercial_response_path)
+    commercial_response = current_commercial_response(ctx, manifest_path)
+    if commercial_response is not None:
         if (commercial_response.get("schema")
                 != "hima.lfr-v5-commercial-frontier-response/1"
                 or commercial_response.get("status") != "observed"
@@ -804,6 +861,10 @@ def stage_function_local(ctx):
             "id": "commercial-frontier-" + str(len(history_paths) + 1),
             "prompt": commercial_response["next_residual_question"],
         }
+        atomic_json(frontier_path, frontier)
+    elif frontier.get("next_residual_question", {}).get("id", "").startswith("commercial-frontier-"):
+        frontier = dict(frontier)
+        frontier["next_residual_question"] = cold_frontier["next_residual_question"]
         atomic_json(frontier_path, frontier)
     evaluation_copy = expected_root / "evaluation.json"
     manifest_copy = expected_root / "manifest.json"
@@ -846,7 +907,8 @@ def stage_function_local(ctx):
     ctx.facts.update({"evaluationPhase": "function-local", "candidatePoolCount": len(exposed_ids),
                       "candidatePoolTotal": len(eligible_ids),
                       "candidatePoolTruncated": max(0, len(eligible_ids) - len(exposed_ids)),
-                      "commercialEdaExecuted": False, "researchContextReady": True})
+                      "commercialEdaExecuted": False, "researchContextReady": True,
+                      "priorCommercialFeedbackAvailable": commercial_response is not None})
 
 
 _LIBERTY_CELL_NAME = re.compile(r'^\s*cell\s*\(\s*"?(?P<name>[^)"]+)"?\s*\)')
@@ -3453,7 +3515,61 @@ def compare_v5_frontiers(reference_timing, generated_timing, reference_frontier,
     return response
 
 
+def publish_commercial_response(ctx, comparison, observations, frontier_response, unknown_reasons):
+    """Publish one current pointer after retaining this compare's immutable evidence."""
+    commercial_root = ctx.flow / "library-richness"
+    marker_path = commercial_root / "commercial-response-current.json"
+    manifest_sha = None
+    manifest_reason = None
+    named_manifest = ctx.inputs_doc.get("LFR_CUMULATIVE_LIBRARY_MANIFEST")
+    if named_manifest in (None, ""):
+        manifest_reason = "no validated cumulative Library manifest was bound to this comparison"
+    else:
+        declared = Path(str(named_manifest))
+        expected = ctx.flow / "library" / "cumulative-manifest.json"
+        if not declared.is_absolute() or declared.is_symlink() or declared.resolve() != expected.resolve():
+            manifest_reason = "the cumulative Library manifest binding is not the Pack-owned file"
+        elif not declared.is_file():
+            manifest_reason = "the bound cumulative Library manifest is unavailable"
+        else:
+            try:
+                validate_cumulative_manifest(read_json(declared))
+                manifest_sha = sha_file(declared)
+            except (Rejected, OSError, ValueError, TypeError) as error:
+                manifest_reason = "the bound cumulative Library manifest is invalid: %s" % error
+    if frontier_response is not None:
+        response_path = ctx.run_dir / "frontier-response.json"
+        atomic_json(response_path, frontier_response)
+        ctx.add_artifact(response_path, "v5_frontier_response",
+                         "derived-from-endpoint-complete-commercial-evidence")
+        if observations.get("matched_conditions") is True and manifest_sha is not None:
+            persistent = commercial_root / "commercial-response.json"
+            atomic_json(persistent, frontier_response)
+            atomic_json(marker_path, {
+                "schema": "lfr-current-commercial-response/1", "status": "available",
+                "compareRunDir": str(ctx.run_dir.relative_to(ctx.flow)),
+                "inputsSha256": sha_file(ctx.flow / "inputs.json"),
+                "manifestSha256": manifest_sha,
+                "comparisonSha256": sha_file(comparison), "responseSha256": sha_file(persistent),
+                "responsePayloadSha256": frontier_response["response_sha256"],
+                "analysisViews": observations["analysisViews"],
+            })
+    if frontier_response is None or observations.get("matched_conditions") is not True or manifest_sha is None:
+        atomic_json(marker_path, {
+            "schema": "lfr-current-commercial-response/1", "status": "unavailable",
+            "compareRunDir": str(ctx.run_dir.relative_to(ctx.flow)),
+            "comparisonSha256": sha_file(comparison),
+            "reason": [*unknown_reasons, *([manifest_reason] if manifest_reason else [])]
+                      or ["commercial comparison conditions did not match"],
+        })
+
+
 def stage_compare(ctx):
+    atomic_json(ctx.flow / "library-richness" / "commercial-response-current.json", {
+        "schema": "lfr-current-commercial-response/1", "status": "unavailable",
+        "compareRunDir": str(ctx.run_dir.relative_to(ctx.flow)),
+        "reason": ["a new comparison is in progress"],
+    })
     unknown_reasons = []
     observations = {}
     frontier_response = None
@@ -3669,14 +3785,7 @@ def stage_compare(ctx):
     comparison = ctx.run_dir / "comparison.json"
     atomic_json(comparison, observations)
     ctx.add_artifact(comparison, "comparison", "derived-from-held-postroute-evidence")
-    if frontier_response is not None:
-        response_path = ctx.run_dir / "frontier-response.json"
-        atomic_json(response_path, frontier_response)
-        persistent = ctx.flow / "library-richness" / "commercial-response.json"
-        persistent.parent.mkdir(parents=True, exist_ok=True)
-        persistent.write_bytes(response_path.read_bytes())
-        ctx.add_artifact(response_path, "v5_frontier_response",
-                         "derived-from-endpoint-complete-commercial-evidence")
+    publish_commercial_response(ctx, comparison, observations, frontier_response, unknown_reasons)
     ctx.facts.update(observations)
 
 

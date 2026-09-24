@@ -95,5 +95,39 @@ test('Guide task stays attached to the Guide registered native Workspace across 
     assert.equal(answer.result?.ok, true, JSON.stringify(answer));
     assert.equal(answer.result?.value?.workspace?.workspaceId, workspaceId);
     assert.deepEqual(new Set(answer.result?.value?.workspace?.sessionIds?.map(String)), new Set([guideId!, taskId!]));
+    const {waitUntil}=await import('./support/fabric.ts');
+    let recovered=await api(host,cookie,`/hima/api/runs?sessionId=${encodeURIComponent(taskId!)}`);
+    await waitUntil('Host startup reopens its recorded owner: '+host.stderr(),async()=>{recovered=await api(host,cookie,`/hima/api/runs?sessionId=${encodeURIComponent(taskId!)}`);return recovered.status===200;},5000);
+    assert.equal(recovered.status,200,'Host startup reopens the recorded owner without recreating a Run');
+    const recoveredBody=await recovered.json() as {runs:{id:string}[]};assert.equal(recoveredBody.runs.length,1);
+
   } finally { assert.equal(await host.stop(), 0, host.stderr()); await home.h.dispose(); }
+});
+
+test('a terminal Campaign boundary reaches its original Guide once without changing Run ownership',async t=>{
+  const {writeMomentScenario}=await import('./support/moments.ts');
+  const {writeReplayOverlay}=await import('../../packages/desktop/src/hima-home.ts');
+  const {repoRoot}=await import('./support/dsh-home.ts');
+  const {appendFile}=await import('node:fs/promises');const path=(await import('node:path')).default;
+  const {QUIET_TITLE_ROW}=await import('./support/pipeline.ts');const {waitUntil}=await import('./support/fabric.ts');
+  const h=await localHome(t,{sleepSeconds:0});assert.ok(h);
+  const replay=await writeMomentScenario(h.h,'notice',path.join(repoRoot,'test/fixtures/delegation'));
+  await writeReplayOverlay(h.h.home,{file:replay.file,overrideFile:replay.override,childFiles:replay.children});
+  await appendFile(path.join(h.h.profileDir,'cordis.patch.yml'),QUIET_TITLE_ROW);
+  process.env.HIMA_TEST_SILENT_AGENT='0';const host=await bootInProcess(h.h);
+  try {
+    const guide=await createRootAgent(host.ctx,h.h.workspace),owner=await createRootAgent(host.ctx,h.h.workspace);
+    const started=await host.ctx.hima.startRun({pack:timingProbePackId,site:'local',goal:{target_period_ns:2},ownerSessionId:String(owner.id),guideSessionId:String(guide.id)});assert.equal(started.kind,'ran');if(started.kind!=='ran')return;
+    const runId=started.run.id;const c=host.ctx.hima.executionContext(runId).run.control!;
+    const req={runId,actor:String(guide.id),origin:'human' as const,action:'cancel' as const,requestId:'human-guide-stop',expectedEpoch:c.epoch,expectedRevision:c.revision};
+    assert.equal((await host.ctx.hima.executionAction(req)).kind,'accepted');
+    await waitUntil('terminal facts reach original Guide',()=>JSON.stringify(guide.session.deriveMessages()).includes('Hima Guide boundary'));
+    await guide.whenIdle();await owner.whenIdle();
+    assert.equal(host.ctx.hima.ledger.run(runId)?.status,'cancelled');
+    assert.equal(host.ctx.hima.ledger.run(runId)?.control?.owner,String(owner.id));
+    const before=guide.session.deriveMessages().length;
+    await host.ctx.hima.executionAction(req);await guide.whenIdle();
+    assert.equal(guide.session.deriveMessages().length,before,'repeated control does not repeat the Guide notice');
+    assert.equal(host.ctx.hima.ledger.runs().length,1);
+  }finally{process.env.HIMA_TEST_SILENT_AGENT='1';await host.dispose();await h.h.dispose();}
 });

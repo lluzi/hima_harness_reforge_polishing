@@ -896,6 +896,70 @@ def validate_best(workspace: Path, best):
     return script, data
 
 
+def generation_feedback(workspace: Path, before, after, delta, plan, before_path: Path, after_path: Path):
+    """Project the retained comparison into the common read-only feedback schema."""
+    original = sorted(key for key, value in before["endpointSlackNs"].items() if value < 0)
+    after_ids = set(after["endpointSlackNs"])
+    observed = sorted(set(original) & after_ids)
+    missing = sorted(set(original) - after_ids)
+    before_ref = file_ref(before_path, workspace, "generation-before")
+    after_ref = file_ref(after_path, workspace, "generation-after")
+    plan_ref = file_ref(paths(workspace)["plan"], workspace, "generation-plan")
+    sources = [
+        {"id": "before:g%03d" % before["iteration"], "path": before_ref["path"], "sha256": before_ref["sha256"]},
+        {"id": "after:g%03d" % after["iteration"], "path": after_ref["path"], "sha256": after_ref["sha256"]},
+        {"id": "plan:g%03d" % plan["iteration"], "path": plan_ref["path"], "sha256": plan_ref["sha256"]},
+    ]
+    comparable = delta.get("comparability", "comparable") == "comparable"
+
+    def category(name):
+        if comparable or name == "missing":
+            delta_name = "entrants" if name == "entrant" else name
+            return {"status": "measured", "ids": list(delta[delta_name])}
+        return {"status": "unknown", "ids": [],
+                "reason": delta.get("reason", "measurement conditions are not comparable")}
+
+    unresolved = sorted(set(delta.get("remaining", [])) | set(delta.get("regressed", []))
+                        | set(delta.get("missing", [])))
+    if not comparable:
+        unresolved = original
+    if unresolved:
+        change = "plan-fix" if comparable else "remeasure-comparable-snapshot"
+        next_step = {
+            "kind": "action", "status": "available",
+            "items": [{
+                "id": "%s:g%03d" % (change, after["iteration"]), "targetIds": unresolved,
+                "change": change,
+                "expectedEffect": ("target measured remaining/regressed endpoint identities"
+                                   if comparable else "restore matching measurement conditions before a delta claim"),
+                "validation": {"status": "known", "method": "existing XTop, Innovus, StarRC and PrimeTime refresh"},
+                "stopCondition": {"status": "known", "text": "stop when setup and hold goals pass, or when no new bounded hypothesis remains"},
+                "sourceIds": [source["id"] for source in sources],
+            }],
+            "reason": ("unresolved endpoint identities remain" if comparable
+                       else delta.get("reason", "measurement conditions are not comparable")),
+        }
+    else:
+        next_step = {"kind": "stop", "status": "stop", "items": [],
+                     "reason": "no measured original endpoint remains unresolved"}
+    return {
+        "schema": "hima-generation-feedback/1", "generation": after["iteration"],
+        "subject": "timing-endpoint", "sources": sources,
+        "denominator": {"kind": "endpoint", "originalIds": original,
+                        "originalCount": len(original)},
+        "coverage": {
+            "before": {"status": "measured", "coveredIds": original, "missingIds": []},
+            "after": {"status": "measured", "coveredIds": observed, "missingIds": missing},
+        },
+        "comparability": ({"status": "comparable", "reasons": []} if comparable else
+                          {"status": "not-comparable", "reasons": [delta["reason"]]}),
+        "endpointChanges": {name: category(name) for name in
+                            ("fixed", "remaining", "entrant", "regressed", "missing")},
+        "next": next_step,
+        "unknowns": [] if comparable else [delta["reason"]],
+    }
+
+
 def compare(workspace: Path):
     try:
         runtime = load_runtime(workspace)
@@ -924,7 +988,8 @@ def compare(workspace: Path):
         if any(baseline_identity[key] != candidate_identity[key] for key in ("profile", "sourceManifest", "scenariosSha256")):
             delta = {"comparability": "not-comparable", "reason": "measurement conditions changed",
                      "originalFrontierCount": len(b_bad), "measuredOriginalCount": 0,
-                     "fixed": [], "remaining": [], "entrants": [], "regressed": [], "missing": sorted(b_bad)}
+                     "fixed": [], "remaining": [], "entrants": [], "regressed": [],
+                     "missing": sorted(b_bad - set(a))}
         qualification = physical_qualification(baseline_identity, candidate_identity)
         selected = after if qualification["status"] == "eligible" and rank(after) < rank(previous_snapshot) else previous_snapshot
         if qualification["status"] == "eligible" and (previous_best is None or selected is after):
@@ -938,16 +1003,22 @@ def compare(workspace: Path):
             atomic_json(paths(workspace)["best"], best)
         else:
             best = previous_best
+        plan = read_json(paths(workspace)["plan"])
+        feedback = generation_feedback(
+            workspace, before, after, delta, plan,
+            Path(runtime["previousSnapshot"]), Path(runtime["latestSnapshot"]),
+        )
         result = {
             "schema": ITERATION_SCHEMA, "iteration": after["iteration"], "before": before, "after": after,
             "endpoint_delta": delta, "candidateIdentity": candidate_identity, "bestQualification": qualification,
+            "generation_feedback": feedback,
             "evidence_valid": bool(qualification["status"] == "eligible" and best and best.get("ready")),
             **({"bestDatabaseIteration": best["iteration"]} if best else {}),
         }
         atomic_json(record_path(workspace, "compare"), result)
         experience = {
             "iteration": after["iteration"], "beforeMetrics": before["metrics"], "afterMetrics": after["metrics"],
-            "endpointDelta": delta, "plan": read_json(paths(workspace)["plan"]), "selectedAsBest": selected is after,
+            "endpointDelta": delta, "generationFeedback": feedback, "plan": plan, "selectedAsBest": selected is after,
         }
         paths(workspace)["history"].parent.mkdir(parents=True, exist_ok=True)
         with paths(workspace)["history"].open("a") as stream:

@@ -5,14 +5,16 @@ import { createHash } from 'node:crypto';
 import { chmod, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHimaHome } from './support/dsh-home.ts';
-import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
+import { bootInProcess, createRootAgent, sayAsUser } from './support/boot-inprocess.ts';
 import { localHome } from './support/fabric.ts';
 import { bootHimaHost } from './support/boot-host.ts';
 import { api, openSession } from './support/hima-api.ts';
 import { writeLocalSite } from './support/site.ts';
 import { installPack, packsDirOf, timingProbePackId } from './support/pack.ts';
-import { readMaterial, applyPackTransfer, exportPackMethod, installPackMethod, packDigestOf, packTransferReceiptFile, previewPackTransfer, readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR, readWorkMemorySummary, writeWorkMemorySummary, recordExperienceAdoption } from '@hima/harness';
+import { readMaterial, applyPackTransfer, exportPackMethod, installPackMethod, packDigestOf, packTransferReceiptFile, previewPackTransfer, readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR, readWorkMemorySummary, writeWorkMemorySummary, recordExperienceAdoption, nativeSessionMemoryEvidence, readNativeSessionContext } from '@hima/harness';
 import type { ExperienceJson, ExperienceAnswer, RunAssetManifest, RunView } from '@hima/harness';
+import { writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
+import { himaCommand } from './support/command.ts';
 
 const hash = (bytes: string) => createHash('sha256').update(bytes).digest('hex');
 async function fixture() {
@@ -53,6 +55,91 @@ test('a workspace summary is source-linked, stays scoped to its real workspace, 
     const stale = await readWorkMemorySummary(f.deps.ledger, f.h.workspace, summary.scope);
     assert.equal(stale.kind, 'stale');
   } finally { await f.close(); await f.h.dispose(); }
+});
+
+test('a replayed native session keeps a complete source identity across Host reopen and rejects forged future source revisions', async () => {
+  const h = await createHimaHome();
+  let first: Awaited<ReturnType<typeof bootInProcess>> | undefined;
+  let second: Awaited<ReturnType<typeof bootInProcess>> | undefined;
+  try {
+    const replay = path.join(h.home, 'native-memory-replay.jsonl');
+    const override = path.join(h.home, 'native-memory-replay.override.json');
+    await writeFile(replay, `${JSON.stringify({ version: 0, type: 'session', id: 'native-memory', createdAt: 0, cwd: '{{cwd}}' })}\n`);
+    await writeFile(override, `${JSON.stringify([{ kind: 'chunks', chunks: [
+      { type: 'block-start', index: 0, blockType: 'text' },
+      { type: 'block-end', index: 0, block: { type: 'text', text: 'Recorded response for source qualification.' } },
+      { type: 'finish', reason: { kind: 'stop' } },
+    ] }, { kind: 'chunks', chunks: [
+      { type: 'block-start', index: 0, blockType: 'text' },
+      { type: 'block-end', index: 0, block: { type: 'text', text: 'A later native turn advanced the session log.' } },
+      { type: 'finish', reason: { kind: 'stop' } },
+    ] }])}\n`);
+    await writeReplayOverlay(h.home, { file: replay, overrideFile: override });
+    first = await bootInProcess(h);
+    const agent = await createRootAgent(first.ctx, h.workspace);
+    await sayAsUser(agent, 'Keep this source-linked working decision.');
+    const evidence = await nativeSessionMemoryEvidence(first.ctx, { sessionId: String(agent.id), workspaceRef: h.workspace });
+    const minted = await first.ctx.hima.workMemory(String(agent.id), {action:'sources'}) as {nativeSources:unknown[];sources:unknown[]};
+    assert.equal(minted.nativeSources.length,1);assert.equal(minted.sources.length,0);
+    const context = await readNativeSessionContext(first.ctx,{sessionId:String(agent.id),targetSessionId:String(agent.id)});
+    assert.ok(context.events.length>0);assert.match(JSON.stringify(context),/source-linked working decision/);
+    assert.equal(evidence.transcriptCoverage, 'retained-prefix');
+    assert.ok(evidence.capturedThroughSeq >= 0);
+    await assert.rejects(() => nativeSessionMemoryEvidence(first!.ctx, { sessionId: String(agent.id), workspaceRef: path.join(h.home, 'other-workspace') }), /authenticated workspace/);
+    const summary = {
+      schema: 'hima-work-memory/1' as const,
+      scope: { kind: 'session' as const, workspaceRef: h.workspace, sessionId: String(agent.id) },
+      subject: 'Remember the checked decision.', decisions: ['Keep the native source identity.'], openQuestions: [], todo: ['Re-read native source before acting.'],
+      references: [], sources: [], nativeSources: [{ sessionId: evidence.sessionId, headerIdentity: evidence.headerIdentity,
+        transcriptIdentity: evidence.transcriptIdentity, surfaceAvailability: evidence.surfaceAvailability,
+        ...(evidence.surfaceIdentity === undefined ? {} : { surfaceIdentity: evidence.surfaceIdentity }),
+        capturedFromSeq: evidence.capturedFromSeq, capturedThroughSeq: evidence.capturedThroughSeq,
+        transcriptCoverage: evidence.transcriptCoverage }], generatedAt: '2026-09-23T00:00:00.000Z', modelGenerated: true,
+    };
+    const saved = await first.ctx.hima.workMemory(String(agent.id),{action:'save',summary}) as {kind:string};
+    assert.equal(saved.kind,'current');
+    const reader = (request: Parameters<typeof nativeSessionMemoryEvidence>[1]) => nativeSessionMemoryEvidence(first!.ctx, request);
+    const forged = { ...summary, nativeSources: [{ ...summary.nativeSources[0]!, capturedThroughSeq: evidence.capturedThroughSeq + 1 }] };
+    await assert.rejects(() => writeWorkMemorySummary(first!.ctx.hima.ledger, h.workspace, forged, reader), /does not retain requested event revision/);
+    await sayAsUser(agent, 'Save the already-qualified handoff without replacing its source.');
+    await writeWorkMemorySummary(first.ctx.hima.ledger, h.workspace, summary, reader);
+    const compact = await himaCommand(first, h.workspace, '/compact', undefined, agent);
+    assert.equal(compact.kind, 'error', compact.text);
+    assert.match(compact.text, /Compaction could not produce a useful summary/);
+    const preservedPrefix = await nativeSessionMemoryEvidence(first.ctx, { sessionId: String(agent.id), workspaceRef: h.workspace, throughSeq: evidence.capturedThroughSeq });
+    assert.equal(preservedPrefix.transcriptIdentity, evidence.transcriptIdentity, 'the public compact command cannot rewrite the recorded source prefix');
+    await first.dispose(); first = undefined;
+
+    second = await bootInProcess(h);
+    const reopened = await readWorkMemorySummary(second.ctx.hima.ledger, h.workspace, summary.scope,
+      (request) => nativeSessionMemoryEvidence(second!.ctx, request));
+    assert.equal(reopened.kind, 'stale', JSON.stringify(reopened));
+    if (reopened.kind === 'stale') assert.match(reopened.reason, /newer events/);
+  } finally { await second?.dispose(); await first?.dispose(); await h.dispose(); }
+});
+
+test('successful native compaction keeps retained memory evidence and reopens its real checkpoint', async () => {
+  const h=await createHimaHome();let host=await bootInProcess(h);await host.dispose();
+  const replay=path.join(h.home,'compact-positive.jsonl');const override=path.join(h.home,'compact-positive.override.json');
+  const entry=(text:string)=>({kind:'chunks',chunks:[{type:'block-start',index:0,blockType:'text'},{type:'block-end',index:0,block:{type:'text',text}},{type:'finish',reason:{kind:'stop'}}]});
+  await writeFile(replay,JSON.stringify({version:0,type:'session',id:'compact-positive',createdAt:0,cwd:'{{cwd}}'})+'\n');
+  await writeFile(override,JSON.stringify([entry('Retained the long research record.'),entry('Decision: preserve the measured baseline. Pending: inspect current facts before acting.') ]));
+  await writeReplayOverlay(h.home,{file:replay,overrideFile:override});host=await bootInProcess(h);
+  try {
+    const agent=await createRootAgent(host.ctx,h.workspace);
+    await sayAsUser(agent,'Keep this research evidence: '+('Measured baseline, independent verification required. '.repeat(500)));
+    const source=await nativeSessionMemoryEvidence(host.ctx,{sessionId:String(agent.id),workspaceRef:h.workspace});
+    const compact=await himaCommand(host,h.workspace,'/compact',undefined,agent);
+    assert.equal(compact.kind,'success',compact.text);assert.match(compact.text,/Compacted [1-9]/);
+    const preserved=await nativeSessionMemoryEvidence(host.ctx,{sessionId:String(agent.id),workspaceRef:h.workspace,throughSeq:source.capturedThroughSeq});
+    assert.equal(preserved.transcriptIdentity,source.transcriptIdentity);
+    const visible=await readNativeSessionContext(host.ctx,{sessionId:String(agent.id),targetSessionId:String(agent.id)});
+    assert.match(JSON.stringify(visible.context),/compacted-summary/);
+    const id=String(agent.id);await host.dispose();host=await bootInProcess(h);
+    const reopened=await nativeSessionMemoryEvidence(host.ctx,{sessionId:id,workspaceRef:h.workspace,throughSeq:source.capturedThroughSeq});
+    assert.equal(reopened.transcriptIdentity,source.transcriptIdentity);
+    assert.ok(reopened.currentThroughSeq>source.capturedThroughSeq);
+  } finally {await host.dispose();await h.dispose();}
 });
 
 test('experience adoption is append-only, request-idempotent, and requires new re-adoption evidence', async () => {
@@ -666,4 +753,25 @@ test('a Site report write failure still preserves local Run facts in the install
       assert.deepEqual(archive.manifest.materials.map((material) => material.path), ['experience.md', 'experience.json']);
     }
   } finally { await f.close(); await f.h.dispose(); }
+});
+
+test('Host candidate refresh retains disabled identity and permits evidence-backed re-adoption',async t=>{
+  const home=await localHome(t,{sleepSeconds:0});assert.ok(home);const host=await bootInProcess(home.h);
+  try{
+    const agent=await createRootAgent(host.ctx,home.h.workspace);const sessionId=String(agent.id);
+    const request={pack:timingProbePackId,site:'local',goal:{target_period_ns:2},ownerSessionId:sessionId};
+    const previous=await host.ctx.hima.startRun(request);assert.equal(previous.kind,'ran');if(previous.kind!=='ran')return;
+    await host.ctx.hima.cancelRun(previous.run.id);
+    const current=await host.ctx.hima.startRun(request);assert.equal(current.kind,'ran');if(current.kind!=='ran')return;
+    type Listed={candidates:{candidate:{sourceRun:string;sourceManifestSha256:string;sourceMaterialPath:'experience.json';sourceMaterialSha256:string};adoption?:{id:string;event:string}}[]};
+    const list=await host.ctx.hima.experienceCandidates(sessionId,current.run.id) as Listed;
+    const source=list.candidates.find(item=>item.candidate.sourceRun===previous.run.id);assert.ok(source,JSON.stringify(list));
+    const evidence=async(text:string)=>{const file=path.join(home.h.workspace,'new-adoption-evidence.txt');await writeFile(file,text);const observed=await host.ctx.hima.observe({site:'local',run:current.run.id,path:file,reader:'raw'});assert.equal(observed.kind,'observed');if(observed.kind!=='observed')throw new Error('no verified observation');return observed.record.id;};
+    const disabled=await host.ctx.hima.correctExperience(sessionId,{runId:current.run.id,requestId:'ui-disable-real',event:'disabled',reason:'New measurement contradicts the old candidate.',candidate:source.candidate,evidenceRefs:[await evidence('first actual measurement')]});
+    const after=await host.ctx.hima.experienceCandidates(sessionId,current.run.id) as Listed;
+    assert.equal(after.candidates.find(item=>item.candidate.sourceRun===previous.run.id)?.adoption?.id,disabled.id);
+    const readopted=await host.ctx.hima.correctExperience(sessionId,{runId:current.run.id,requestId:'ui-readopt-real',event:'re-adopted',reason:'Independent new observation resolves the contradiction.',candidate:source.candidate,supersedes:disabled.id,evidenceRefs:[await evidence('second actual measurement')]});
+    const latest=await host.ctx.hima.experienceCandidates(sessionId,current.run.id) as Listed;
+    assert.equal(latest.candidates.find(item=>item.candidate.sourceRun===previous.run.id)?.adoption?.id,readopted.id);
+  }finally{await host.dispose();await home.h.dispose();}
 });

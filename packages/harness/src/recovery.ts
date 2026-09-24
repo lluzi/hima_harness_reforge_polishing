@@ -1,3 +1,4 @@
+import { releaseExitFence } from './host-exit.js';
 // Finding a Run again, and stopping one: what a host does with the Runs the last one left in flight,
 // and what a person's cancel does to a Run that is still going. One reason to change: how a Run that
 // nothing is driving is picked up, or put down.
@@ -248,6 +249,7 @@ async function reconcileControlledRun(deps: FabricDeps, snapshot: RunRecord): Pr
   const launched = deps.ledger.records({ runId: run.id, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched' && record.nodeId !== undefined).length;
   const held = existingRun(deps.ledger, run.id).meters?.jobsLaunched ?? 0;
   if (launched > held) await advance(deps.ledger, run.id, { jobs: launched - held });
+  if (uncertainExecutions.length === 0 && revisions.problems.length === 0 && !Object.values(existingRun(deps.ledger,run.id).control!.requests).some(r=>r.state==='uncertain')) await releaseExitFence(deps.ledger,run.id);
   return { runId: run.id, found: uncertainExecutions.length > 0 || revisions.problems.length > 0 ? 'uncertain' : found, detail: details.join('; ') || 'Agent-owned context retained; waiting for an explicit business action from its owner' };
 }
 

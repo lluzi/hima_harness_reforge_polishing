@@ -10,13 +10,16 @@
 // jobs and sites and not with the fabric: this module imports the Job operations, the Site and the
 // ledger, and nothing of the driver — a Run's graph is nothing to do with how much of its Site is
 // free, and both faces that launch reach this the same way.
-import { jobSessionThere, jobStatus, launchJob, waitForNextPoll, type JobDeps, type LaunchResult, type LaunchRequest } from './jobs.js';
+import { jobSessionThere, jobStatus, launchJob, reconcileInteractiveLaunchReservations, waitForNextPoll, type JobDeps, type LaunchResult, type LaunchRequest } from './jobs.js';
 import { recordNode, type JobRecord, type LaunchedReading, type LaunchedWorkshop, type Ledger, type NodeKind, type RunRecord, givesUpLaunch } from './ledger.js';
 import { driving, existingRun } from './runs.js';
 import { advance, timeBoxSpent } from './budget.js';
 import type { Site } from './sites.js';
 import { counted } from './words.js';
-import { SiteUnreadableError } from './errors.js';
+import { LaunchNotDispatchedError, SiteUnreadableError } from './errors.js';
+
+/** The Site was counted, but the original Run deadline elapsed before any Job dispatch. */
+class BudgetBeforeSiteDispatch extends Error {}
 
 /**
  * Every launch in flight on one Site of one home, as a promise chain: the check-and-launch of one
@@ -290,8 +293,8 @@ function fullFor(site: SiteSlots, holds: Readonly<Record<string, number>>, holdi
  *  holding them with the slot that had no room, or the count that could not be taken at all because
  *  the Site would not answer (#18) — which is neither a free slot nor a full Site, and so is neither
  *  of the other two. */
-export type SlotClaim =
-  | { readonly kind: 'claimed'; readonly launched: LaunchResult }
+export type SlotClaim<T = LaunchResult> =
+  | { readonly kind: 'claimed'; readonly launched: T }
   | { readonly kind: 'at-cap'; readonly holding: JobRecord[]; readonly full: FullSlot }
   | { readonly kind: 'unreadable'; readonly error: SiteUnreadableError };
 
@@ -328,11 +331,12 @@ export type SlotClaim =
  * @param req - the Site as it names itself with its slots, what the launch would hold of each
  *              licence, and the launch to make if there is room for all of it.
  */
-export function claimSlot(
+export function claimSlot<T = LaunchResult>(
   deps: JobDeps,
-  req: { readonly site: SiteSlots; readonly holds: Readonly<Record<string, number>>; readonly launch: () => Promise<LaunchResult> },
-): Promise<SlotClaim> {
-  return claimingSlotOn(deps.ledger, req.site.name, async (): Promise<SlotClaim> => {
+  req: { readonly site: SiteSlots; readonly holds: Readonly<Record<string, number>>; readonly launch: () => Promise<T> },
+): Promise<SlotClaim<T>> {
+  return claimingSlotOn(deps.ledger, req.site.name, async (): Promise<SlotClaim<T>> => {
+    await reconcileInteractiveLaunchReservations(deps, req.site.name);
     await deps.beforeSlotClaim?.(req.site.name);
     let holding: JobRecord[];
     try {
@@ -466,10 +470,23 @@ export async function claimSlotAndLaunch(
           attempt,
           beforeLaunch: async (intent) => {
             req.stopSignal?.throwIfAborted();
+            // Site and orphan-reservation probes can take longer than a short
+            // Run's whole budget. Check at the last pre-dispatch boundary,
+            // inside the Site claim, before the Job has any process effect.
+            if (timeBoxSpent(existingRun(deps.ledger, run.id), req.waitedMs)) {
+              throw new BudgetBeforeSiteDispatch();
+            }
             await req.beforeLaunch?.(intent);
           },
         }),
+    }).catch(async (error: unknown) => {
+      if (!(error instanceof LaunchNotDispatchedError) || !(error.cause instanceof BudgetBeforeSiteDispatch)) throw error;
+      await recordNode(deps.ledger, run.id, node, 'cancelled', attempt, {
+        ...inBranch, reason: `the Run time box elapsed while counting site ${site.name}; no Job was dispatched`,
+      });
+      return undefined;
     });
+    if (claimed === undefined) return { kind: 'budget-exhausted' };
     if (req.nonblocking && claimed.kind !== 'claimed') {
       return { kind: 'at-cap', reason: claimed.kind === 'unreadable'
         ? `site ${site.name} cannot be counted: ${claimed.error.message}; nothing was launched`

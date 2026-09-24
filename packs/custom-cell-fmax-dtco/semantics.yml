@@ -154,6 +154,21 @@ values:
   v5_frontier_remaining_count:
     unit: count
     description: Generated endpoints still at or beyond the frozen q target and therefore explicit input to the next research generation.
+  generation_endpoint_fixed_count:
+    unit: count
+    description: Original endpoints with a verified fixed classification in this generation; unknown coverage remains unknown.
+  generation_endpoint_remaining_count:
+    unit: count
+    description: Original endpoints still measured as violating in this generation; a capped endpoint list is not a complete count.
+  generation_endpoint_entrant_count:
+    unit: count
+    description: Measured new entrants to the endpoint set; missing or truncated commercial evidence remains unknown.
+  generation_endpoint_regressed_count:
+    unit: count
+    description: Endpoints measured as regressed under matched conditions; a top-path preview is not the full set.
+  generation_endpoint_missing_count:
+    unit: count
+    description: Original endpoint identities absent from a complete comparable after report; absence is not automatically a timing fix.
   congestion_overflow:
     unit: count
     description: Congestion overflow when a verified report format is available; otherwise explicitly unknown.

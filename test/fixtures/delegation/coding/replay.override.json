@@ -1,0 +1,26 @@
+[
+  {
+    "kind": "chunks",
+    "chunks": [
+      { "type": "block-start", "index": 0, "blockType": "tool-call" },
+      { "type": "block-end", "index": 0, "block": { "type": "tool-call", "id": "call-delegation-write", "name": "write", "arguments": "{\"file_path\":\"{{readyFile}}\",\"content\":\"export const answer = 42;\\n\"}" } },
+      { "type": "finish", "reason": { "kind": "tool-calls" } }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      { "type": "block-start", "index": 0, "blockType": "text" },
+      { "type": "block-end", "index": 0, "block": { "type": "text", "text": "Created the requested file in the guarded private workspace. The parent still owns verification and adoption." } },
+      { "type": "finish", "reason": { "kind": "stop" } }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      { "type": "block-start", "index": 0, "blockType": "text" },
+      { "type": "block-end", "index": 0, "block": { "type": "text", "text": "Follow-up received in the same native child session." } },
+      { "type": "finish", "reason": { "kind": "stop" } }
+    ]
+  }
+]

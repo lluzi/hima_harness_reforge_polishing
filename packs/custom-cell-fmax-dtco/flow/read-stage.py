@@ -1553,12 +1553,12 @@ def read_residual_ai_research(report, out, document):
     if str(flow) not in sys.path:
         sys.path.insert(0, str(flow))
     from ai_research_runner import (  # type: ignore
-        load_candidate_pool_registry, load_residual_research_context,
+        _bound_json_reference, _generation_feedback, load_candidate_pool_registry, load_residual_research_context,
         validate_residual_research_proposal,
     )
     required = {"schema", "status", "round_id", "context_sha256", "evidence",
                 "next_residual_question", "budgets", "research_lenses", "candidate_program",
-                "candidate_proposals", "candidate_execution", "feedback_ab", "stop_reason",
+                "candidate_proposals", "candidate_execution", "feedback_ab", "generation_feedback", "stop_reason",
                 "claims", "output_sha256"}
     if set(document) != required or document.get("status") != "proposed":
         raise ValueError("residual AI research document has unexpected fields or status")
@@ -1591,6 +1591,25 @@ def read_residual_ai_research(report, out, document):
     }
     if effect != expected_effect or feedback.get("selection_changed") != (changed if feedback.get("performed") is True else None):
         raise ValueError("residual AI research feedback selection effect is inconsistent")
+    generation_feedback = document.get("generation_feedback")
+    if (not isinstance(generation_feedback, dict)
+            or generation_feedback.get("schema") != "hima-generation-feedback/1"
+            or generation_feedback.get("generation") != context["round_id"]
+            or generation_feedback.get("subject") != "cell-demand"):
+        raise ValueError("residual AI research has no typed generation feedback")
+    denominator = generation_feedback.get("denominator") or {}
+    expected_ids = sorted(row["proposal_key"] for row in context.get("candidate_pool", {}).get("proposals", []))
+    if (denominator.get("kind") != "cell-demand"
+            or denominator.get("originalIds") != expected_ids
+            or denominator.get("originalCount") != len(expected_ids)):
+        raise ValueError("generation feedback changes the original demand denominator")
+    categories = generation_feedback.get("endpointChanges") or {}
+    for name in ("fixed", "remaining", "entrant", "regressed", "missing"):
+        category = categories.get(name)
+        if (not isinstance(category, dict) or category.get("status") not in {"measured", "unknown"}
+                or not isinstance(category.get("ids"), list)
+                or (category["status"] == "unknown" and not isinstance(category.get("reason"), str))):
+            raise ValueError("generation feedback category %s is malformed" % name)
     normalized = validate_residual_research_proposal({
         "research_lenses": document["research_lenses"],
         "candidate_program": document["candidate_program"],
@@ -1628,6 +1647,43 @@ def read_residual_ai_research(report, out, document):
     output_payload = (json.dumps(detached, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
     if execution.get("output_sha256") != hashlib.sha256(output_payload).hexdigest():
         raise ValueError("residual candidate output identity is inconsistent")
+    if generation_feedback != _generation_feedback(context, proposals, feedback):
+        raise ValueError("generation feedback differs from verified residual evidence")
+    if "commercial_response" in request:
+        raw_response, _ = _bound_json_reference(root, request["commercial_response"], "commercial_response")
+        limits = {"fixed": ("resolved_reference_endpoints", 128),
+                  "entrant": ("new_frontier_entrants", 128),
+                  "remaining": ("remaining_frontier", 256)}
+        truncated = {name: len(raw_response[field]) > limit
+                     for name, (field, limit) in limits.items()}
+        if (raw_response["generated_active_count"] != len(raw_response["remaining_frontier"])
+                or raw_response["reference_active_count"] - len(raw_response["resolved_reference_endpoints"])
+                != raw_response["generated_active_count"] - len(raw_response["new_frontier_entrants"])):
+            raise ValueError("commercial frontier counts disagree with full source identities")
+        expected_identities = {
+            "fixed": raw_response["resolved_reference_endpoints"],
+            "entrant": raw_response["new_frontier_entrants"],
+            "remaining": [row["endpoint"] for row in raw_response["remaining_frontier"]],
+            "regressed": [row["endpoint"] for row in raw_response["remaining_frontier"]
+                          if row["delta_slack_ns"] < -1e-12],
+        }
+        for name in ("fixed", "remaining", "entrant", "regressed"):
+            source_name = "remaining" if name == "regressed" else name
+            if truncated[source_name] and categories[name]["status"] != "unknown":
+                raise ValueError("truncated commercial endpoint identities became a measured category")
+            if not truncated[source_name] and categories[name] != {
+                    "status": "measured", "ids": sorted(set(expected_identities[name]))}:
+                raise ValueError("generation endpoint category differs from full commercial source identities")
+        complete = (isinstance(raw_response.get("endpoint_count"), int)
+                    and not isinstance(raw_response["endpoint_count"], bool)
+                    and raw_response["endpoint_count"] >= raw_response["reference_active_count"]
+                    + len(raw_response["new_frontier_entrants"])
+                    and raw_response["endpoint_count"] > 0 and not any(truncated.values()))
+        if not complete and (categories["missing"]["status"] != "unknown"
+                             or generation_feedback["comparability"]["status"] == "comparable"):
+            raise ValueError("incomplete commercial endpoint identities became complete or zero")
+        if complete and categories["missing"] != {"status": "measured", "ids": []}:
+            raise ValueError("complete matched commercial identities have inconsistent missing count")
     retained = context.get("cumulative_library", {}).get("function_count")
     if isinstance(retained, bool) or not isinstance(retained, int) or retained < 0:
         raise ValueError("residual context has no cumulative Library function count")
@@ -1637,6 +1693,14 @@ def read_residual_ai_research(report, out, document):
               number("onsite_inspiration_selected_count", onsite),
               number("retained_candidate_count", retained),
               unknown("theoretical_gain_upper_pct", "residual research does not estimate commercial gain", "percent")]
+    for category, kind in (("fixed", "generation_endpoint_fixed_count"),
+                           ("remaining", "generation_endpoint_remaining_count"),
+                           ("entrant", "generation_endpoint_entrant_count"),
+                           ("regressed", "generation_endpoint_regressed_count"),
+                           ("missing", "generation_endpoint_missing_count")):
+        row = categories[category]
+        values.append(number(kind, len(row["ids"])) if row["status"] == "measured"
+                      else unknown(kind, row["reason"]))
     out.write_text(json.dumps({"values": values}, sort_keys=True) + "\n")
 
 

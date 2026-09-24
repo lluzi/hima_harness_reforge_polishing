@@ -43,7 +43,7 @@ export const HIMA_STYLE = `
 }
 /* HIMA CLIENT TOKENS END */
 .hima-root *{box-sizing:border-box}
-.hima-root button,.hima-root input,.hima-root select{font:inherit}
+.hima-root button,.hima-root input,.hima-root select,.hima-root textarea{font:inherit}
 .hima-root :focus-visible{outline:2px solid var(--hima-accent);outline-offset:2px}
 /* C6: the node's own <g> carries tabIndex, so the UA's default focus-visible ring boxed the
    whole group — node shape, id label and caption all together — rather than the node's own shape.
@@ -100,6 +100,46 @@ export const HIMA_STYLE = `
 .hima-insight-preparation{flex:1;min-height:0;overflow:auto;padding:var(--hima-sp-6);display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-3)}
 .hima-insight-preparation h2{margin:0;font-size:var(--hima-fs-title);font-weight:650}
 .hima-insight-preparation p{margin:0;max-width:520px;font-size:var(--hima-fs-label);color:var(--hima-ink-2);line-height:var(--hima-lh-body)}
+.hima-workbench-body{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column}
+.hima-workbench-body>.hima-campaign{height:clamp(420px,70vh,680px);min-height:420px;flex:none}
+.hima-memory-panel,.hima-team-panel{margin:var(--hima-sp-3);padding:var(--hima-sp-4);border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-paper);display:grid;gap:var(--hima-sp-3)}
+.hima-memory-panel>header,.hima-team-panel>header,.hima-team-card>header,.hima-child-transcript article>header,.hima-child-context article>header{display:flex;justify-content:space-between;align-items:center;gap:var(--hima-sp-2)}
+.hima-memory-panel h3,.hima-memory-panel h4,.hima-memory-panel p,.hima-team-panel h3,.hima-team-panel p{margin:0}
+.hima-memory-panel ul{margin:0;padding-left:20px}.hima-memory-warning{color:var(--hima-warn)}
+.hima-memory-editor,.hima-memory-candidates,.hima-team-card{display:grid;gap:var(--hima-sp-2);border-top:1px solid var(--hima-line);padding-top:var(--hima-sp-3)}
+.hima-memory-editor label,.hima-memory-candidates label,.hima-team-card label{display:grid;gap:var(--hima-sp-1);font-size:var(--hima-fs-label)}
+.hima-memory-editor input,.hima-memory-editor textarea,.hima-memory-candidates textarea,.hima-team-card textarea{width:100%;min-width:0;min-height:36px;padding:var(--hima-sp-2);resize:vertical;color:var(--hima-ink);background:var(--hima-paper);border:1px solid var(--hima-line);border-radius:var(--hima-r-s)}
+.hima-memory-editor textarea,.hima-memory-candidates textarea,.hima-team-card textarea{min-height:64px}
+.hima-memory-actions,.hima-team-actions{display:flex;gap:var(--hima-sp-2);flex-wrap:wrap}
+.hima-memory-candidates article,.hima-team-card{padding:var(--hima-sp-3);border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-soft)}
+.hima-memory-candidates fieldset{margin:0;padding:var(--hima-sp-2);border:1px solid var(--hima-line);display:grid;gap:var(--hima-sp-1)}
+.hima-identity{font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow);overflow-wrap:anywhere;color:var(--hima-ink-2)}
+.hima-insight-report,.hima-child-panel{flex:1;min-height:0;overflow:auto;padding:var(--hima-sp-6);display:flex;flex-direction:column;gap:var(--hima-sp-3)}
+.hima-insight-report h2,.hima-child-panel h2,.hima-child-panel h3{margin:0}.hima-insight-report>p,.hima-child-panel>p{margin:0}
+.hima-report-identity{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:var(--hima-sp-1) var(--hima-sp-3);margin:0;font-size:var(--hima-fs-label)}
+.hima-report-identity dt{color:var(--hima-ink-2)}.hima-report-identity dd{margin:0;font-family:var(--hima-font-mono);overflow-wrap:anywhere}
+.hima-child-transcript,.hima-child-context{display:grid;gap:var(--hima-sp-2);padding-top:var(--hima-sp-3);border-top:1px solid var(--hima-line)}
+.hima-child-transcript article,.hima-child-context article{padding:var(--hima-sp-2);border-radius:var(--hima-r-s);background:var(--hima-soft)}
+.hima-child-transcript article span,.hima-child-context article span{color:var(--hima-ink-2);font-size:var(--hima-fs-label)}
+.hima-child-transcript pre,.hima-child-context pre{margin:var(--hima-sp-2) 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow)}
+.hima-team-card details{font-size:var(--hima-fs-label)}
+.hima-delegation-result{display:grid;gap:var(--hima-sp-2);padding:var(--hima-sp-2);border-left:2px solid var(--hima-accent);background:var(--hima-paper)}
+.hima-delegation-result h4,.hima-delegation-result pre{margin:0}.hima-delegation-result pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow)}
+.hima-generation-research{display:grid;gap:var(--hima-sp-2);padding-top:var(--hima-sp-3);border-top:1px solid var(--hima-line)}
+.hima-generation-research>details>summary{font-weight:600}.hima-generation-research article{display:grid;gap:var(--hima-sp-1);margin-top:var(--hima-sp-2);padding:var(--hima-sp-3);border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-soft)}
+.hima-generation-research article>header{display:flex;justify-content:space-between;gap:var(--hima-sp-2)}.hima-generation-research article>header span{font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2)}
+.hima-library-panel,.hima-feedback-panel{flex:1;min-height:0;overflow:auto;padding:var(--hima-sp-5);display:grid;align-content:start;gap:var(--hima-sp-3)}
+.hima-library-panel>header,.hima-feedback-panel>header,.hima-insight-report>header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--hima-sp-3)}
+.hima-library-panel h2,.hima-feedback-panel h2,.hima-feedback-panel h3,.hima-feedback-panel h4{margin:0}.hima-library-panel>p,.hima-feedback-panel>p{margin:0}
+.hima-library-panel select,.hima-feedback-panel select,.hima-report-selector input,.hima-insight-preparation select{min-width:0;padding:var(--hima-sp-2);border:1px solid var(--hima-line);border-radius:var(--hima-r-s);color:var(--hima-ink);background:var(--hima-paper)}
+.hima-library-panel label,.hima-feedback-panel label,.hima-report-selector label,.hima-insight-preparation>label{display:grid;gap:var(--hima-sp-1);font-size:var(--hima-fs-label)}
+.hima-feedback-panel>section{display:grid;gap:var(--hima-sp-2);padding-top:var(--hima-sp-3);border-top:1px solid var(--hima-line)}
+.hima-feedback-coverage{grid-template-columns:repeat(2,minmax(0,1fr))}.hima-feedback-coverage>h3{grid-column:1/-1}.hima-feedback-coverage>article{padding:var(--hima-sp-3);background:var(--hima-soft);border-radius:var(--hima-r-s)}
+.hima-feedback-counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:var(--hima-sp-2)}.hima-feedback-counts article{padding:var(--hima-sp-2);border:1px solid var(--hima-line);border-radius:var(--hima-r-s)}.hima-feedback-counts p{margin:var(--hima-sp-1) 0 0}
+.hima-feedback-action{display:grid;gap:var(--hima-sp-2);padding:var(--hima-sp-3);border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-soft)}.hima-feedback-action>header{display:flex;justify-content:space-between;gap:var(--hima-sp-2)}.hima-feedback-action p{margin:0}
+.hima-identity-list{max-height:180px;overflow:auto;margin:0;padding-left:20px;font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow)}
+.hima-report-selector{display:grid;grid-template-columns:minmax(0,1fr) max-content;align-items:end;gap:var(--hima-sp-2);width:min(720px,100%)}
+@media(max-width:720px){.hima-feedback-coverage{grid-template-columns:1fr}.hima-feedback-coverage>h3{grid-column:auto}.hima-report-selector{grid-template-columns:1fr}}
 
 /* The Campaign tab (#41 task 5): masthead, view switch, and the HimaFabric canvas that makes the
    Live view. Every colour and every font-size is a token, SVG text included — an SVG user unit at

@@ -31,7 +31,7 @@ READER = FLOW / "read-stage.py"
 WRITER_FIELDS = [
     "schema", "status", "round_id", "context_sha256", "evidence",
     "next_residual_question", "budgets", "research_lenses", "candidate_program",
-    "candidate_proposals", "candidate_execution", "feedback_ab", "stop_reason",
+    "candidate_proposals", "candidate_execution", "feedback_ab", "generation_feedback", "stop_reason",
     "claims", "output_sha256",
 ]
 
@@ -68,6 +68,7 @@ def _document(*, feedback_ab: bool) -> dict:
                                  "reason": "commercial feedback did not change candidate selection"},
             "interpretation": "no commercial feedback was supplied",
         }
+    document["generation_feedback"] = {}
     return document
 
 

@@ -66,7 +66,7 @@ export interface DriverOptions {
   /** The navigation fence's own words for a target it refuses. */
   readonly refusal: (target: string) => string;
   /** Explicitly quit the app; ordinary window close only hides its retained window. */
-  readonly quit: () => void;
+  readonly quit: (mode?:'drain'|'keep-jobs'|'stop-jobs') => void;
   /** What the shell says about what it did, for the one fact an answer has no room for: a click the
    *  window took more than one send to receive. It belongs in the driver's stderr beside the shell's
    *  other lines, because that is where a flake is read back from afterwards. */
@@ -102,10 +102,10 @@ export function startDriver(opts: DriverOptions): void {
   const lines = readline.createInterface({ input: opts.input, crlfDelay: Infinity });
   let turn: Promise<void> = Promise.resolve();
   let ending = false;
-  const end = (): void => {
+  const end = (mode?:'drain'|'keep-jobs'|'stop-jobs'): void => {
     if (ending) return;
     ending = true;
-    opts.quit();
+    opts.quit(mode);
   };
   // An answer that cannot be written is the caller gone, which is a closed stdin by another name: the
   // shell ends the way that ends it, host and all. Left to itself an EPIPE on stdout is an uncaught
@@ -124,7 +124,7 @@ export function startDriver(opts: DriverOptions): void {
       // The answer is on the wire before anything ends: stdout to a pipe is asynchronous here, and an
       // `app.quit` that raced the write would leave the caller with no answer to its quit.
       await answer(JSON.stringify({ id: request.id, ...result }));
-      if (request.body.op === 'quit') end();
+      if (request.body.op === 'quit' && result.ok) end(request.body.mode as 'drain'|'keep-jobs'|'stop-jobs'|undefined);
     });
   });
   // A closed stdin is the caller gone; the shell ends the way `quit` ends it, host and all.
@@ -165,7 +165,7 @@ async function perform(opts: DriverOptions, body: Record<string, unknown>): Prom
       case 'screenshot': return await screenshotOp(opts, string(body, 'path'));
       case 'window-close': opts.win.close(); return { ok: true, visible: opts.win.isVisible() };
       case 'window-reopen': opts.win.showInactive(); return { ok: true, visible: opts.win.isVisible() };
-      case 'quit': return { ok: true };
+      case 'quit': if(body.mode!==undefined&&!['drain','keep-jobs','stop-jobs'].includes(String(body.mode)))return refuse('invalid exit mode');return { ok: true };
       default: return refuse(`unknown op ${JSON.stringify(body.op)}; this driver answers ${OPS.join(', ')}`);
     }
   } catch (err) {

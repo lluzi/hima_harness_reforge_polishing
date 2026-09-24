@@ -145,7 +145,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { exportPackMethod, installPackMethod, pipelineFiles } from '@hima/harness';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, lstatSync } from 'node:fs';
 import path from 'node:path';
 
 /** The one local Site's name: what a site file, a `--site` flag and a route body call it. */
@@ -1519,6 +1519,8 @@ export interface SeedLocalSiteRequest {
   readonly home: string;
   /** The checkout the pack and the fixture manifest come from. */
   readonly checkout: string;
+  /** Packaged App startup preserves methods already owned by this home. */
+  readonly preserveExistingMethods?: boolean;
 }
 
 export interface SeededLocalSite {
@@ -1574,14 +1576,23 @@ export async function seedLocalSite(req: SeedLocalSiteRequest): Promise<SeededLo
   const packsDir = path.join(home, 'hima/packs');
   const packDir = path.join(packsDir, TIMING_PROBE_PACK_ID);
   await mkdir(packsDir, { recursive: true });
-  installPackMethod({ from: shippedPack, to: packDir });
-  did.push(`local site: installed the shipped pack ${TIMING_PROBE_PACK_ID} into ${packDir}`);
+  if (req.preserveExistingMethods && lstatSync(packDir, { throwIfNoEntry: false })) {
+    did.push(`local site: preserved the existing pack ${TIMING_PROBE_PACK_ID} in ${packDir}`);
+  } else {
+    installPackMethod({ from: shippedPack, to: packDir });
+    did.push(`local site: installed the shipped pack ${TIMING_PROBE_PACK_ID} into ${packDir}`);
+  }
 
   // Keep the named variant for existing fixtures and saved selections. The shipped v2 Pack
   // already uses this corrected method; both identities carry their chooser inside the Pack.
-  const converging = await writeConvergingVariant({ from: shippedPack, to: path.join(packsDir, CONVERGING_PACK_ID) });
-  did.push(`local site: installed the converging variant ${converging.id} into ${converging.dir}, which carries ${OVER_CONSTRAINING_CHOOSER_ID} in its own choosers/`);
-  did.push(`local site: pick ${converging.id} on the start form to watch a campaign converge; the shipped ${TIMING_PROBE_PACK_ID} also uses the corrected method`);
+  const convergingDir=path.join(packsDir, CONVERGING_PACK_ID);
+  if (req.preserveExistingMethods && lstatSync(convergingDir, { throwIfNoEntry: false })) {
+    did.push(`local site: preserved the existing converging pack ${CONVERGING_PACK_ID} in ${convergingDir}`);
+  } else {
+    await writeConvergingVariant({ from: shippedPack, to: convergingDir });
+    did.push(`local site: installed the converging variant ${CONVERGING_PACK_ID} into ${convergingDir}, which carries ${OVER_CONSTRAINING_CHOOSER_ID} in its own choosers/`);
+  }
+  did.push(`local site: pick ${CONVERGING_PACK_ID} on the start form to watch a campaign converge; the shipped ${TIMING_PROBE_PACK_ID} also uses the corrected method`);
 
   const localDir = path.join(home, LOCAL_DIR);
   const flow = await writeStandinFlow({ root: path.join(localDir, 'standin-flow') });
@@ -1606,5 +1617,5 @@ export async function seedLocalSite(req: SeedLocalSiteRequest): Promise<SeededLo
   });
   did.push(`local site: wrote ${site.sitePath} binding flowRoot to the stand-in, and its permit ${site.permitPath}`);
 
-  return { site, flow, packDir, convergingPackDir: converging.dir, workspaceRoot, did };
+  return { site, flow, packDir, convergingPackDir: convergingDir, workspaceRoot, did };
 }

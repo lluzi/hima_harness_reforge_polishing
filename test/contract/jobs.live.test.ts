@@ -24,7 +24,7 @@ const designZoo = '/data/eda/project/design_zoo';
 /** The test's own judgement of what a job-plumbing verb is, kept apart from the channel's list on
  *  purpose: the audit test holds what was actually sent against this, not against the implementation's
  *  own idea of itself. */
-const jobPlumbingVerbs = new Set(['tmux', 'test', 'tail', 'cat', 'realpath']);
+const jobPlumbingVerbs = new Set(['tmux', 'test', 'tail', 'cat', 'wc', 'realpath']);
 /** The test's own POSIX single-quoting, reimplemented independently of `channel.ts`'s `quote`. */
 const posixQuote = (word: string): string => `'${word.replaceAll("'", `'\\''`)}'`;
 

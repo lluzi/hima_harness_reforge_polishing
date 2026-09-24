@@ -21,6 +21,7 @@ import { Masthead } from './Masthead.js';
 import { shortTime } from './time.js';
 import { isOwner as isOwnerOf } from './owned-run.js';
 import { useViewerSession } from './viewer-session.js';
+import { groupGenerationAnalyses } from './generation-analysis.js';
 
 export interface CampaignTabProps {
   readonly sessionId: string;
@@ -165,6 +166,28 @@ function ReportView({ view, runId }: { view: RunView; runId: string }): ReactEle
   );
 }
 
+function GenerationResearch({ view }: { readonly view: RunView }): ReactElement {
+  const groups = groupGenerationAnalyses(view.analyses ?? []);
+  return <section className='hima-generation-research' data-hima-region='generation-research'>
+    <h3>Generation research feedback</h3>
+    {groups.length === 0 ? <p>No source-linked research interpretation is recorded for these generations.</p> : groups.map((group, groupIndex) => {
+      const heading = group.generation === undefined ? 'Unclassified research interpretation' : `${group.loopId === undefined ? '' : `Loop ${group.loopId} · `}Generation ${String(group.generation)}`;
+      return <details key={group.generation === undefined ? 'unclassified' : `${group.loopId ?? 'outer'}:${String(group.generation)}`} data-hima-state-generation={group.generation === undefined ? 'unclassified' : String(group.generation)} open={groupIndex === groups.length - 1}>
+        <summary>{heading} · {group.analyses.length} analysis record{group.analyses.length === 1 ? '' : 's'}</summary>
+        {group.generation === undefined ? <p className='hima-memory-warning'>The Ledger record has no generation identity. It is not assigned to Generation 1.</p> : null}
+        {group.analyses.map(analysis => <article key={analysis.recordId}>
+          <header><strong>{analysis.question}</strong><span>{analysis.recordId}</span></header>
+          {analysis.comparisons.map((comparison, index) => <p key={`comparison:${String(index)}`}>Comparison condition: {comparison}</p>)}
+          {analysis.hypotheses.map((hypothesis, index) => <p key={`hypothesis:${String(index)}`}>Hypothesis, unverified: {hypothesis}</p>)}
+          {analysis.claims.map((claim, index) => <div key={`claim:${String(index)}`}><p>Interpretation: {claim.text}</p><p className='hima-small'>Evidence references: {claim.cites.join(', ')}</p></div>)}
+          {analysis.nextExperiments.map((experiment, index) => <p key={`next:${String(index)}`}>Next discriminating experiment: {experiment}</p>)}
+          {analysis.limitations.map((limitation, index) => <p className='hima-small' key={`limit:${String(index)}`}>Limitation: {limitation}</p>)}
+        </article>)}
+      </details>;
+    })}
+  </section>;
+}
+
 export function CampaignTab({ sessionId, runId, view, context, acting, stale, readAt, name, openOwner, openFiles }: CampaignTabProps): ReactElement {
   const [section, setSection] = useState<Section>('live');
   const [selectedNodeId, setSelectedNodeId] = useState<string>();
@@ -257,7 +280,7 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
         ) : view === undefined
           ? <div className="hima-empty"><p>Reading Run records…</p></div>
           : section === 'generations'
-            ? <div className="hima-detail"><h3>Generations</h3>{view.generations.length ? <GenerationsTable view={view} /> : <p>No Generation has opened yet.</p>}</div>
+            ? <div className="hima-detail"><h3>Generations</h3>{view.generations.length ? <GenerationsTable view={view} /> : <p>No Generation has opened yet.</p>}<GenerationResearch view={view}/></div>
             : section === 'evidence' ? <EvidenceView view={view} /> : <ReportView view={view} runId={runId} />}
       </div>
       {!stale ? null : (

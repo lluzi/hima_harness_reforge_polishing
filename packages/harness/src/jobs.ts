@@ -13,8 +13,9 @@ import { loadSite } from './sites.js';
 import { decideLaunch } from './shell.js';
 import { existingRun, runFor } from './runs.js';
 import { currentRecordsIn } from './ledger.js';
-import type { JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, NodeRecord, RefusalRecord, RunRecord } from './ledger.js';
+import type { InteractiveRecord as LedgerInteractiveRecord, JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, NodeRecord, RefusalRecord, RunRecord } from './ledger.js';
 import { RunReferenceError, SiteUnreadableError, LaunchNotDispatchedError } from './errors.js';
+import { openInteractiveJob, parseInteractiveRecord, type InteractiveAuthority, type InteractiveOpenResult, type InteractiveRecord as ProtocolRecord } from './interactive-job.js';
 
 /** What a Job's name defaults to when the caller does not give one. */
 const defaultJobName = 'job';
@@ -201,6 +202,58 @@ async function sessionProbe(on: Channel, session: string): Promise<SessionProbe>
   if (r.code === 1 && saysNoSession(said)) return { answer: 'absent' };
   if (r.code === 1 && saysNoSocket(said)) return { answer: 'no-socket', said };
   throw new SiteUnreadableError(on.siteName, cannotTell(on, `whether tmux session ${session} is there`, 'tmux', r));
+}
+
+export interface InteractiveLaunchReservationResult {
+  readonly runId: string; readonly toolSessionId: string; readonly state: 'job-recorded' | 'released';
+}
+
+const interactivePayloads = (ledger: Ledger, runId: string): { ledger: LedgerInteractiveRecord; payload: ProtocolRecord }[] =>
+  ledger.records({ runId, type: 'interactive' }).filter((item): item is LedgerInteractiveRecord => item.type === 'interactive')
+    .map((item) => ({ ledger: item, payload: parseInteractiveRecord(item.payload) }));
+const interactiveOutcomeBase = (record: ProtocolRecord) => ({ runId: record.runId, executionId: record.executionId,
+  nodeId: record.nodeId, toolSessionId: record.toolSessionId, requestId: record.requestId,
+  actor: record.actor, ownerEpoch: record.ownerEpoch, controlRevision: record.controlRevision,
+  callerDigest: record.callerDigest, operationDigest: record.operationDigest, at: record.at });
+
+/**
+ * Fail-closed probe for a crash after `tmux new-session` but before the ordinary Job record.
+ * Called inside the existing Site claim chain; it does not claim a slot or enter another Site lock.
+ */
+export async function reconcileInteractiveLaunchReservations(deps: JobDeps, siteName: string): Promise<readonly InteractiveLaunchReservationResult[]> {
+  const site = loadSite(deps.sitesDir, siteName); const on = channelFor(site);
+  const results: InteractiveLaunchReservationResult[] = [];
+  for (const run of deps.ledger.runs().filter((candidate) => candidate.siteId === siteName)) {
+    const records = interactivePayloads(deps.ledger, run.id);
+    for (const candidate of records.filter((item) => item.payload.event === 'open-intent')) {
+      const intent = candidate.payload;
+      if (intent.event !== 'open-intent') continue;
+      const later = records.filter((item) => item.ledger.seq > candidate.ledger.seq && item.payload.toolSessionId === intent.toolSessionId);
+      if (later.some((item) => item.payload.event === 'open-released')) continue;
+      const job = deps.ledger.records({ runId: run.id, type: 'job' })
+        .find((record): record is JobRecord => record.type === 'job' && record.event === 'launched' && record.job.session === intent.toolSessionId);
+      if (job) { results.push({ runId: run.id, toolSessionId: intent.toolSessionId, state: 'job-recorded' }); continue; }
+      let probe: SessionProbe;
+      try { probe = await sessionProbe(on, intent.toolSessionId); }
+      catch (error) {
+        throw new Error(`interactive launch reservation ${intent.toolSessionId} of Run ${run.id} has no Job record and the Site probe is ambiguous: ${error instanceof Error ? error.message : String(error)}. Do not resend or invent PID/wire; an administrator must inspect and stop/adopt this exact session before recovery.`);
+      }
+      if (probe.answer !== 'absent') {
+        const diagnostic = probe.answer === 'there' ? 'the exact tmux session is live' : probe.said;
+        throw new Error(`interactive launch reservation ${intent.toolSessionId} of Run ${run.id} has no Job record and cannot release a Site slot: ${diagnostic}. Do not resend or invent PID/wire; an administrator must inspect and stop/adopt this exact session before recovery.`);
+      }
+      const jobAfter = deps.ledger.records({ runId: run.id, type: 'job' })
+        .some((record) => record.type === 'job' && record.event === 'launched' && record.job.session === intent.toolSessionId);
+      if (jobAfter) { results.push({ runId: run.id, toolSessionId: intent.toolSessionId, state: 'job-recorded' }); continue; }
+      const outcome = parseInteractiveRecord({ ...interactiveOutcomeBase(intent), event: 'open-released',
+        jobSession: intent.toolSessionId, reason: 'The exact retained tmux session was verified absent before the next Site slot claim.',
+        at: new Date().toISOString() });
+      await deps.ledger.appendInteractive(run.id, { executionId: intent.executionId, toolSessionId: intent.toolSessionId,
+        requestId: intent.requestId, event: outcome.event, payload: outcome as never });
+      results.push({ runId: run.id, toolSessionId: intent.toolSessionId, state: 'released' });
+    }
+  }
+  return results;
 }
 
 /**
@@ -465,6 +518,51 @@ export async function launchJob(deps: JobDeps, req: LaunchRequest): Promise<Laun
     }),
   });
   return { kind: 'launched', run, record: await deps.ledger.appendJob(run.id, { event: 'launched', job, ...metadata }) };
+}
+
+export interface InteractiveLaunchRequest {
+  readonly site: string;
+  readonly run: string;
+  readonly executionId: string;
+  readonly nodeId: string;
+  readonly requestId: string;
+  readonly callerDigest: string;
+  readonly actor: string;
+  readonly ownerEpoch: number;
+  readonly controlRevision: number;
+  readonly workspace: string;
+  readonly argv: readonly string[];
+  readonly name?: string;
+  readonly sessionDeadlineAt: string;
+  readonly startupWaitMs: number;
+}
+
+export interface InteractiveJobLaunchResult {
+  readonly run: RunRecord;
+  readonly result: InteractiveOpenResult;
+}
+
+/**
+ * Open an interactive process through the same Site Permit and Channel as a batch Job.
+ * The authority callback appends the ordinary Job launch record returned by the lower layer;
+ * this function neither invents a second process identity nor bypasses Fabric ownership.
+ */
+export async function launchInteractiveJob(deps: JobDeps, req: InteractiveLaunchRequest, authority: InteractiveAuthority): Promise<InteractiveJobLaunchResult> {
+  const run = existingRun(deps.ledger, req.run);
+  const site = loadSite(deps.sitesDir, req.site);
+  if (site.name !== run.siteId) return { run, result: { status: 'refused', reason: `run ${run.id} belongs to site ${run.siteId}, not ${site.name}` } };
+  const channel = channelFor(site);
+  const decision = await decideLaunch(site, req.workspace, req.argv, channel);
+  if (!decision.ok) {
+    await deps.ledger.appendRefusal(run.id, { path: decision.refused, reason: decision.reason });
+    return { run, result: { status: 'refused', reason: decision.reason } };
+  }
+  return { run, result: await openInteractiveJob(channel, {
+    siteName: site.name, runId: run.id, executionId: req.executionId, nodeId: req.nodeId,
+    requestId: req.requestId, callerDigest: req.callerDigest, actor: req.actor, ownerEpoch: req.ownerEpoch, controlRevision: req.controlRevision,
+    workspace: decision.workspace, argv: req.argv,
+    name: req.name ?? defaultJobName, sessionDeadlineAt: req.sessionDeadlineAt, startupWaitMs: req.startupWaitMs,
+  }, authority) };
 }
 
 export type ReconciledLaunch =

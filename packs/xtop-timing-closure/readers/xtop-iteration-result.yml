@@ -14,5 +14,7 @@ emits:
   - xtop_endpoint_remaining_count
   - xtop_endpoint_entrant_count
   - xtop_endpoint_regressed_count
+  - xtop_endpoint_missing_count
+  - xtop_endpoint_original_count
   - xtop_closure_score
   - xtop_iteration_evidence_valid

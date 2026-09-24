@@ -99,7 +99,7 @@ export interface DriverClient {
    *  here so a test filling a period reads as one. */
   fill(control: string, value: string | number): Promise<DriverAnswer<FillAnswer>>;
   screenshot(target: string): Promise<DriverAnswer<ScreenshotAnswer>>;
-  quit(): Promise<DriverAnswer<Record<never, never>>>;
+  quit(mode?:'drain'|'keep-jobs'|'stop-jobs'): Promise<DriverAnswer<Record<never, never>>>;
   /** One request of any shape, for a test of the protocol's own refusals. */
   request(body: Readonly<Record<string, unknown>>): Promise<AnswerLine>;
   /** One raw line, not necessarily JSON; answered with `id: null` by the driver. */
@@ -304,7 +304,7 @@ export async function bootDriver(t: TestContext, options: BootDriverOptions): Pr
       try {
         if (child.exitCode === null && child.signalCode === null) {
           await Promise.race([
-            client.quit().then(() => client.exit()),
+            client.quit('keep-jobs').then(() => client.exit()),
             new Promise<void>((resolve) => setTimeout(resolve, quitGraceMs).unref()),
           ]);
           await stopShell(child, client.exit());
@@ -427,7 +427,7 @@ function attach(child: ChildProcess): DriverClient {
     click: (control) => op<ClickAnswer>({ op: 'click', control }),
     fill: (control, value) => op<FillAnswer>({ op: 'fill', control, value: String(value) }),
     screenshot: (target) => op<ScreenshotAnswer>({ op: 'screenshot', path: target }),
-    quit: () => op<Record<never, never>>({ op: 'quit' }),
+    quit: (mode) => op<Record<never, never>>({ op: 'quit', ...(mode?{mode}:{}) }),
     request,
     raw: (line) => new Promise((resolve) => { unmatched.push(resolve); send(line); }),
     stderr: () => err,

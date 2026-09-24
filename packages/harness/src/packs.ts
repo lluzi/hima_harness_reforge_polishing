@@ -222,7 +222,38 @@ export const packTool = z.strictObject({
    */
   licences: z.record(licenceName, z.number().int().positive()).default({}),
   argv: z.array(z.string().min(1)).min(1),
+  /** Optional typed line-oriented interactive adapter. Omission preserves the batch tool. */
+  interactive: z.strictObject({
+    mode: z.enum(['interactive-only', 'hybrid']),
+    adapter: z.literal('hima-tcl-line-v1'),
+    commands: z.strictObject({
+      read: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.-]*$/)).default([]),
+      mutate: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.-]*$/)).default([]),
+      save: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.-]*$/)).default([]),
+    }).superRefine((commands, ctx) => {
+      const seen = new Map<string, string>();
+      for (const [effect, names] of Object.entries(commands)) for (const [at, name] of names.entries()) {
+        const earlier = seen.get(name);
+        if (earlier !== undefined) ctx.addIssue({ code: 'custom', path: [effect, at],
+          message: `interactive command "${name}" is classified as both ${earlier} and ${effect}` });
+        else seen.set(name, effect);
+      }
+      commands.read.forEach((name, at) => {
+        const primitive = name.split('::').filter(Boolean).at(-1) ?? name;
+        if (['eval', 'exec', 'source', 'uplevel'].includes(primitive)) ctx.addIssue({ code: 'custom', path: ['read', at],
+          message: `interactive read command "${name}" can execute arbitrary Tcl and cannot be classified read-only` });
+      });
+      if (seen.size === 0) ctx.addIssue({ code: 'custom', message: 'an interactive tool must classify at least one command as read, mutate or save' });
+    }),
+  }).optional(),
 });
+
+/** An explicit interactive-only declaration is a hard refusal at every batch launch path. */
+export function batchToolRefusal(tool: PackTool): string | undefined {
+  return tool.interactive?.mode === 'interactive-only'
+    ? `tool "${tool.id}" is interactive-only; open its qualified interactive Job instead of launching the batch path`
+    : undefined;
+}
 
 /**
  * One segment of a path a pack names inside the Campaign workspace: a plain name, never `.`, never

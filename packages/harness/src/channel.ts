@@ -63,7 +63,7 @@ export const readOnlyProbes: ReadonlySet<string> = new Set(['cat', 'realpath', '
 
 /** The job plumbing: what the job operations themselves run on a Site to put a command in a detached
  *  tmux session and find out what became of it — `tmux` for the session, `test` and `cat` for the
- *  exit file the launch writes, and `tail` for its log. Distinct from the Permit's wrapper list on
+ *  exit file the launch writes, `tail` for bounded log bytes, and `wc` for its durable byte cursor. Distinct from the Permit's wrapper list on
  *  purpose: these are Hima's own verbs, audited at the wire like everything else, while the wrappers
  *  are what the *user's* command may be. `cat` is on both lists because both use it.
  *
@@ -72,7 +72,7 @@ export const readOnlyProbes: ReadonlySet<string> = new Set(['cat', 'realpath', '
  *  admitted with unbounded arguments would be permission to make and unmake paths anywhere the login
  *  can reach — the Permit's write roots govern where a *Job* runs, not what this list may touch.
  *  Creating a workspace is `workspacePlumbing` below, behind a write-root decision of its own. */
-export const jobPlumbing: ReadonlySet<string> = new Set(['tmux', 'test', 'cat', 'tail']);
+export const jobPlumbing: ReadonlySet<string> = new Set(['tmux', 'test', 'cat', 'tail', 'wc']);
 
 /**
  * The workspace plumbing: what preparing a Campaign workspace runs on a Site. `mkdir` for the

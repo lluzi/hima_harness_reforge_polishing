@@ -43,8 +43,13 @@ test('a person reviews a rediscovered ssh Site on the Configuration page and onl
   // ordinary discovered file and then blanks it back out, the cheapest way to reach `needs-discovery`
   // without hand-rolling the whole Site/Permit YAML shape here.
   const saved = saveDiscoveredSite(sitesDir, discovered);
+  const discoveryCache = path.join(sitesDir, 'lab-a.discovery.json');
   const withoutDiscovery = (await readFile(saved.file, 'utf8')).replace(/^discovery:[\s\S]*?(?=^capacity:)/m, '');
   await writeFile(saved.file, withoutDiscovery);
+  // Current Sites persist observations in the versioned discovery cache rather than inline policy.
+  // Removing this fixture cache makes the saved policy genuinely need rediscovery without changing
+  // any Permit, binding, capacity or licence field.
+  await rm(discoveryCache, { force: true });
 
   // The real rediscovery the driver triggers answers through the same stand-in table the L2 route
   // tests use — no real SSH is ever spawned (the suite's own sentinel fails the run if one is
@@ -64,9 +69,11 @@ test('a person reviews a rediscovered ssh Site on the Configuration page and onl
     await d.open('/');
     await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
     await browser.markText('button', 'Continue', 'notice-continue'); assert.ok((await d.click('notice-continue')).ok);
-    await browser.wait(`document.body.innerText.includes('Configure later')`);
-    await browser.markText('button', 'Configure later', 'site-rediscover-models-later');
-    assert.ok((await d.click('site-rediscover-models-later')).ok);
+    await browser.wait(`document.body.innerText.includes('Configure later') || document.body.innerText.includes('Choose a workspace to begin')`);
+    if (await browser.evaluate(`document.body.innerText.includes('Configure later')`)) {
+      await browser.markText('button', 'Configure later', 'site-rediscover-models-later');
+      assert.ok((await d.click('site-rediscover-models-later')).ok);
+    }
     const host = await d.host(); assert.ok(host.ok); const cookie = await d.cookie();
     const workspace = await api(host, cookie, '/api/workspace/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
       type: 'client-request', rpcId: 'site-rediscover-workspace', method: 'workspace/create', payload: { args: { request: { path: home.h.workspace } } },
@@ -87,15 +94,27 @@ test('a person reviews a rediscovered ssh Site on the Configuration page and onl
     assert.ok((await d.click('config-site-rediscover')).ok);
     assert.ok((await d.wait('config-site-rediscovery', 'not saved yet')).ok);
     assert.doesNotMatch(await readFile(saved.file, 'utf8'), /discovery:/, 'a reviewed-but-unsaved rediscovery writes nothing to the Site file');
+    await assert.rejects(readFile(discoveryCache), { code: 'ENOENT' }, 'a preview writes no discovery cache');
 
-    // Only the person's own Save writes it.
+    // If an administrator changes the Site after preview, the stale review cannot overwrite it.
+    // The conflict stays beside the reviewed draft and offers the exact recovery: rediscover and
+    // review the newly current bytes, rather than a generic Campaign-page refresh.
+    await writeFile(saved.file, `${withoutDiscovery}\n# administrator changed this Site after preview\n`);
+    assert.ok((await d.click('config-site-rediscover-save')).ok);
+    assert.ok((await d.wait('config-site-rediscovery', 'changed after this preview', 10_000)).ok);
+    assert.doesNotMatch(await readFile(saved.file, 'utf8'), /discovery:/, 'a stale reviewed draft cannot overwrite the changed Site');
+    await assert.rejects(readFile(discoveryCache), { code: 'ENOENT' }, 'a stale reviewed draft publishes no observation cache');
+    assert.ok((await d.click('config-site-rediscover-retry')).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="config-site-rediscovery"]') && !document.querySelector('[data-hima-region="config-site-rediscovery"]')?.innerText.includes('changed after this preview')`);
+
+    // Only the person's own Save of the new review writes it.
     assert.ok((await d.click('config-site-rediscover-save')).ok);
     await (async () => {
       const deadline = Date.now() + 15_000;
       for (;;) {
-        const text = await readFile(saved.file, 'utf8');
-        if (/discovery:/.test(text)) return;
-        if (Date.now() >= deadline) throw new Error('the reviewed rediscovery was never saved to the Site file');
+        const text = await readFile(discoveryCache, 'utf8').catch(() => '');
+        if (text.includes('hima-site-discovery-cache/1')) return;
+        if (Date.now() >= deadline) throw new Error('the reviewed rediscovery was never published to the discovery cache');
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
     })();

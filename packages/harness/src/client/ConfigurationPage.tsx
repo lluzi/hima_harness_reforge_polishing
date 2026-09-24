@@ -255,6 +255,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
   // model). This holds a freshly rediscovered, *unsaved* draft for this page's own review, mirroring
   // the Pack install review-then-confirm pattern (`PackOwnerPanel`) rather than saving automatically.
   const [siteRediscovery, setSiteRediscovery] = useState<{ readonly name: string; readonly result: SiteDiscoveryResult; readonly reviewId: string } | undefined>();
+  const [siteRediscoveryError, setSiteRediscoveryError] = useState<string>();
   const [knowledgePath, setKnowledgePath] = useState('');
   // Which fields have an unsaved debounce pending, and how many saves are on the wire right now —
   // together, whether it is safe to say this page is ready: a Host answer that called the file ready
@@ -457,7 +458,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
    *  file, no retyping — and hold the fresh, unsaved draft for review. Nothing is written yet. */
   const rediscoverSite = async () => {
     if (siteName === '') return;
-    setDiscovering(true); setError(undefined);
+    setDiscovering(true); setError(undefined); setSiteRediscoveryError(undefined);
     const result = await discoverSite({ sessionId, name: siteName, pack: draft.pack?.id, save: false });
     setDiscovering(false);
     if (!result.ok) { setError(result.error.message); return; }
@@ -474,8 +475,13 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     setDiscovering(true); setError(undefined);
     const result = await discoverSite({ sessionId, name: siteRediscovery.name, reviewId: siteRediscovery.reviewId, save: true });
     setDiscovering(false);
-    if (!result.ok) { setError(result.error.message); return; }
-    setSiteRediscovery(undefined);
+    if (!result.ok) {
+      setSiteRediscoveryError(result.error.code === 'hima/site-changed'
+        ? `The Site or Permit changed after this preview. ${result.error.message}`
+        : result.error.message);
+      return;
+    }
+    setSiteRediscovery(undefined); setSiteRediscoveryError(undefined);
     void tick.current();
   };
 
@@ -566,8 +572,9 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
         <p className="hima-small">Wrappers: {siteRediscovery.result.permit.allowedWrappers.join(', ') || 'none'}</p>
         {siteRediscovery.result.unknowns.map((sentence, index) => <p key={index} className="hima-small">{sentence}</p>)}
         {siteRediscovery.result.conflicts.map((sentence, index) => <p key={index} className="hima-small">{sentence}</p>)}
+        {siteRediscoveryError ? <div className="hima-config-readiness-row" role="alert"><StateRoundel state="bad" glyph="warning" /><span>{siteRediscoveryError}</span><button type="button" className="hima-button" data-hima-control="config-site-rediscover-retry" disabled={discovering} onClick={() => { void rediscoverSite(); }}>Rediscover and review again</button></div> : null}
         <button className="hima-button hima-primary" data-hima-control="config-site-rediscover-save" disabled={discovering} onClick={() => { void saveSiteRediscovery(); }}>{discovering ? 'Saving…' : 'Save reviewed Site'}</button>
-        <button className="hima-button" data-hima-control="config-site-rediscover-discard" disabled={discovering} onClick={() => setSiteRediscovery(undefined)}>Discard</button>
+        <button className="hima-button" data-hima-control="config-site-rediscover-discard" disabled={discovering} onClick={() => { setSiteRediscovery(undefined); setSiteRediscoveryError(undefined); }}>Discard</button>
       </div> : null}
       {/* C17: `align-items:flex-start` (`workbench-style.ts`) — a `flex-direction:column` container
           otherwise stretches each labelled field to the row's own full width, which reads oddly for

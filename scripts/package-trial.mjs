@@ -12,6 +12,10 @@ const trialVersion = JSON.parse(readFileSync(path.join(root, 'packages/desktop/p
 const macVersion = trialVersion.split('-')[0];
 const trialPackId = 'custom-cell-fmax-dtco';
 const trialPackRelative = path.join('packs', trialPackId);
+const timingPackId = 'xtop-timing-closure';
+const timingPackRelative = path.join('packs', timingPackId);
+const demoPackId = 'opene902-timing-probe';
+const demoPackRelative = path.join('packs', demoPackId);
 const args = process.argv.slice(2);
 const value = (flag) => { const at = args.indexOf(flag); return at < 0 ? undefined : args[at + 1]; };
 const fail = (message) => { throw new Error(`package-trial: ${message}`); };
@@ -22,6 +26,12 @@ const run = (command, commandArgs, options = {}) => {
 };
 const relative = (base, file) => path.relative(base, file).split(path.sep).join('/');
 const hash = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
+const sourceState = () => {
+  const sha = run('git', ['rev-parse', 'HEAD']).trim();
+  const dirty = run('git', ['status', '--porcelain', '--untracked-files=no']).trim() !== '';
+  const diffSha256 = createHash('sha256').update(run('git', ['diff', '--binary', 'HEAD'])).digest('hex');
+  return { sha, dirty, diffSha256 };
+};
 
 /**
  * The trial is only useful when it carries the portable DTCO method it claims to
@@ -55,6 +65,40 @@ function assertTrialPackAssets(packsRoot) {
   return { pack, documents };
 }
 
+function assertTimingPackAssets(packsRoot) {
+  const pack = path.join(packsRoot, timingPackId);
+  for (const file of ['contract.yml', 'graph.yml', 'knowledge/manifest.yml',
+    'flow/closure.py', 'flow/templates/apply-eco.tcl', 'tools/read-output.py']) {
+    const at = path.join(pack, file);
+    if (!existsSync(at) || !lstatSync(at).isFile()) fail(`timing Pack ${timingPackId} is missing ${file}`);
+  }
+  const contract = readFileSync(path.join(pack, 'contract.yml'), 'utf8');
+  const graph = readFileSync(path.join(pack, 'graph.yml'), 'utf8');
+  if (!new RegExp(`^id: ${timingPackId}$`, 'm').test(contract)
+      || !new RegExp(`^id: ${timingPackId}$`, 'm').test(graph)) fail('timing Pack contract/graph identity differs');
+  const version = /^version:\s*["']?([^"'\s]+)["']?/m.exec(contract)?.[1];
+  const graphVersion = /^version:\s*["']?([^"'\s]+)["']?/m.exec(graph)?.[1];
+  if (!version || version !== graphVersion) {
+    fail('timing Pack contract/graph versions differ');
+  }
+}
+
+function assertDemoPackAssets(packsRoot) {
+  const pack = path.join(packsRoot, demoPackId);
+  for (const file of ['contract.yml', 'graph.yml', 'tools/synth.sh']) {
+    if (!existsSync(path.join(pack, file)) || !lstatSync(path.join(pack, file)).isFile()) {
+      fail(`local demo Pack ${demoPackId} is missing ${file}`);
+    }
+  }
+  const contract = readFileSync(path.join(pack, 'contract.yml'), 'utf8');
+  const graph = readFileSync(path.join(pack, 'graph.yml'), 'utf8');
+  if (!new RegExp(`^id: ${demoPackId}$`, 'm').test(contract)
+      || !new RegExp(`^id: ${demoPackId}$`, 'm').test(graph)) fail('local demo Pack contract/graph identity differs');
+  const version = /^version:\s*["']?([^"'\s]+)["']?/m.exec(contract)?.[1];
+  const graphVersion = /^version:\s*["']?([^"'\s]+)["']?/m.exec(graph)?.[1];
+  if (!version || version !== graphVersion) fail('local demo Pack contract/graph versions differ');
+}
+
 function assertSourceTreeIsSafe(base, current = base) {
   for (const name of readdirSync(current)) {
     const at = path.join(current, name);
@@ -82,17 +126,24 @@ function collect(base, current = base, files = {}) {
   return files;
 }
 
-function verify(app) {
+function verify(app, allowPending = false) {
   const manifestAt = path.join(path.dirname(app), 'trial-manifest.json');
   if (!existsSync(manifestAt)) fail(`manifest missing: ${manifestAt}`);
   const manifest = JSON.parse(readFileSync(manifestAt, 'utf8'));
+  if (!allowPending && manifest.status === 'building') fail('candidate validation has not finished');
   const resource = path.join(app, 'Contents/Resources/app');
   const actual = collect(app);
   if (JSON.stringify(actual) !== JSON.stringify(manifest.files)) fail('manifest hashes or release file list do not match');
-  for (const required of ['Contents/MacOS/HimaHarness', 'Contents/Resources/app/lib/main.js', 'Contents/Resources/app/node/bin/node', 'Contents/Resources/app/profiles/hima/package.json', `Contents/Resources/app/${trialPackRelative}/contract.yml`, `Contents/Resources/app/${trialPackRelative}/graph.yml`, `Contents/Resources/app/${trialPackRelative}/knowledge/manifest.yml`]) {
+  if (manifest.artifactDigest !== undefined
+      && manifest.artifactDigest !== createHash('sha256').update(JSON.stringify(actual)).digest('hex')) {
+    fail('artifact digest does not match the signed App file inventory');
+  }
+  for (const required of ['Contents/MacOS/HimaHarness', 'Contents/Resources/app/lib/main.js', 'Contents/Resources/app/node/bin/node', 'Contents/Resources/app/profiles/hima/package.json', `Contents/Resources/app/${trialPackRelative}/contract.yml`, `Contents/Resources/app/${trialPackRelative}/graph.yml`, `Contents/Resources/app/${trialPackRelative}/knowledge/manifest.yml`, `Contents/Resources/app/${timingPackRelative}/contract.yml`, `Contents/Resources/app/${timingPackRelative}/graph.yml`, `Contents/Resources/app/${demoPackRelative}/contract.yml`, `Contents/Resources/app/${demoPackRelative}/graph.yml`]) {
     if (!existsSync(path.join(app, required))) fail(`required release file missing: ${required}`);
   }
   assertTrialPackAssets(path.join(resource, 'packs'));
+  assertTimingPackAssets(path.join(resource, 'packs'));
+  assertDemoPackAssets(path.join(resource, 'packs'));
   const architecture = run('file', [path.join(app, 'Contents/MacOS/HimaHarness')]);
   if (!architecture.includes('arm64')) fail(`launcher is not arm64: ${architecture.trim()}`);
   const nodeVersion = run(path.join(resource, 'node/bin/node'), ['--version']).trim();
@@ -100,6 +151,12 @@ function verify(app) {
   const dylibs = run('otool', ['-L', path.join(resource, 'node/bin/node')]);
   if (/\/(opt\/homebrew|usr\/local)\//.test(dylibs)) fail(`bundled Node links a local dylib:\n${dylibs}`);
   run('codesign', ['--verify', '--deep', '--strict', app]);
+  const qualificationModule = pathToFileURL(path.join(resource, 'node_modules/@hima/harness/lib/interactive-binding.js')).href;
+  const testFlag = run(path.join(resource, 'node/bin/node'), ['--input-type=module', '--eval',
+    `import { testFixtureCanRunHere } from ${JSON.stringify(qualificationModule)}; process.stdout.write(String(testFixtureCanRunHere()));`], {
+    env: { ...process.env, NODE_TEST_CONTEXT: 'child-v8', HIMA_TEST_INTERACTIVE_BINDING_ID: 'forged-fixture' },
+  }).trim();
+  if (testFlag !== 'false') fail('a packaged Host accepted an environment-forged interactive test qualification');
   const runtimeData = mkdtempSync(path.join(path.dirname(app), '.runtime-info-'));
   try {
     const runtime = JSON.parse(run(path.join(app, 'Contents/MacOS/HimaHarness'), ['--runtime-info'], {
@@ -180,13 +237,15 @@ function smokeRelocatedHost(app) {
     const homeModule = pathToFileURL(path.join(resource, 'lib/hima-home.js')).href;
     const hostModule = pathToFileURL(path.join(resource, 'lib/host-launch.js')).href;
     const smoke = `
-      import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+      import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
       import { himaHomeSources, prepareHimaHome } from ${JSON.stringify(homeModule)};
       import { launchHimaHost, stopChild } from ${JSON.stringify(hostModule)};
       const home = ${JSON.stringify(home)};
       const workspace = home + '/workspace';
       const bundledPack = ${JSON.stringify(path.join(resource, trialPackRelative))};
       const installedPack = home + '/hima/packs/${trialPackId}';
+      const bundledTimingPack = ${JSON.stringify(path.join(resource, timingPackRelative))};
+      const installedTimingPack = home + '/hima/packs/${timingPackId}';
       mkdirSync(workspace, { recursive: true });
       // Match ordinary Electron startup, including repairing the profile link on each boot.
       await prepareHimaHome({ home, sources: himaHomeSources(${JSON.stringify(resource)}) });
@@ -194,8 +253,10 @@ function smokeRelocatedHost(app) {
       // is inside the candidate's Resources directory. It proves the candidate
       // neither needs a developer checkout nor adopts a pre-existing user home.
       if (!existsSync(bundledPack)) throw new Error('candidate does not carry its DTCO Pack');
-      cpSync(bundledPack, installedPack, { recursive: true, dereference: false });
+      if (!existsSync(bundledTimingPack)) throw new Error('candidate does not carry its timing Pack');
       const knowledgeRuntime = await import(${JSON.stringify(pathToFileURL(path.join(resource, 'node_modules/@hima/harness/lib/index.js')).href)});
+      knowledgeRuntime.installPackMethod({ from: bundledPack, to: installedPack });
+      knowledgeRuntime.installPackMethod({ from: bundledTimingPack, to: installedTimingPack });
       const pdf = home + '/runtime-knowledge.pdf';
       writeFileSync(pdf, Buffer.from(${JSON.stringify(pdfFixture)}, 'base64'));
       const indexed = await knowledgeRuntime.importCurrentKnowledge({ root: home + '/hima/current-knowledge', scope: 'relocated-smoke', file: pdf });
@@ -231,6 +292,7 @@ function smokeRelocatedHost(app) {
         if (!start.ok) throw new Error('packaged Host did not read the bundled DTCO Pack');
         const choices = await start.json();
         if (!Array.isArray(choices.packs) || !choices.packs.includes('${trialPackId}')) throw new Error('cold candidate inventory omitted its installed DTCO Pack');
+        if (!choices.packs.includes('${timingPackId}')) throw new Error('cold candidate inventory omitted its installed timing Pack');
         if (choices.proposal?.pack?.id !== '${trialPackId}' || choices.proposal?.knowledge?.ready !== true || choices.proposal?.referenceGraph?.nodes?.length < 1) {
           throw new Error('cold candidate did not expose Pack preparation and knowledge readiness');
         }
@@ -251,35 +313,36 @@ async function smokeVersionIsolatedTrialHome(app) {
   const workspace = path.join(userData, 'workspace');
   const stale = `${JSON.stringify({ unit: { name: 'hima_ledger', version: 26 }, global: null,
     tables: { runs: {}, records: {} } }, null, 2)}\n`;
+  const bootVersionedWindow = (site) => new Promise((resolve, reject) => {
+    const child = spawn(path.join(app, 'Contents/MacOS/HimaHarness'), ['--driver', ...(site ? ['--site', site] : [])], {
+      cwd: workspace, stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, HIMA_USER_DATA: userData, HIMA_WORKSPACE: workspace, DSH_HOME: '', DSH_AGENTS_HOME: '',
+        HIMA_DRIVER_DISPLAY: 'Catsights', DSH_TELEMETRY_DISABLED: '1' },
+    });
+    let stdout = '', stderr = '', answered = false;
+    const timeout = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('version-isolated trial home smoke timed out')); }, 60_000);
+    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+    child.stdout.on('data', chunk => {
+      stdout += chunk;
+      if (!answered && stdout.includes('"id":"host","ok":true')) {
+        answered = true;
+        child.stdin.write(`${JSON.stringify({ id: 'quit', op: 'quit' })}\n`);
+      }
+    });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.on('error', error => { clearTimeout(timeout); reject(error); });
+    child.on('close', code => {
+      clearTimeout(timeout);
+      if (code !== 0 || !answered) reject(new Error(`version-isolated trial home did not boot\n${stderr || stdout}`));
+      else resolve({ stdout, stderr });
+    });
+    child.stdin.write(`${JSON.stringify({ id: 'host', op: 'host' })}\n`);
+  });
   try {
     mkdirSync(path.dirname(staleLedger), { recursive: true });
     mkdirSync(workspace, { recursive: true });
     writeFileSync(staleLedger, stale);
-    const observed = await new Promise((resolve, reject) => {
-      const child = spawn(path.join(app, 'Contents/MacOS/HimaHarness'), ['--driver'], {
-        cwd: workspace, stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, HIMA_USER_DATA: userData, HIMA_WORKSPACE: workspace, DSH_HOME: '', DSH_AGENTS_HOME: '',
-          HIMA_DRIVER_DISPLAY: 'Catsights', DSH_TELEMETRY_DISABLED: '1' },
-      });
-      let stdout = '', stderr = '', answered = false;
-      const timeout = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('version-isolated trial home smoke timed out')); }, 60_000);
-      child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
-      child.stdout.on('data', (chunk) => {
-        stdout += chunk;
-        if (!answered && stdout.includes('"id":"host","ok":true')) {
-          answered = true;
-          child.stdin.write(`${JSON.stringify({ id: 'quit', op: 'quit' })}\n`);
-        }
-      });
-      child.stderr.on('data', (chunk) => { stderr += chunk; });
-      child.on('error', (error) => { clearTimeout(timeout); reject(error); });
-      child.on('close', (code) => {
-        clearTimeout(timeout);
-        if (code !== 0 || !answered) reject(new Error(`version-isolated trial home did not boot\n${stderr || stdout}`));
-        else resolve({ stdout, stderr });
-      });
-      child.stdin.write(`${JSON.stringify({ id: 'host', op: 'host' })}\n`);
-    });
+    const observed = await bootVersionedWindow();
     if (/stored version 26|expected 27/.test(`${observed.stdout}\n${observed.stderr}`)) {
       fail('the new trial adopted the prior trial ledger');
     }
@@ -289,6 +352,40 @@ async function smokeVersionIsolatedTrialHome(app) {
       fail(`versioned trial home was not prepared at ${versioned}`);
     }
     if (readFileSync(staleLedger, 'utf8') !== stale) fail('the prior trial ledger was changed during isolated startup');
+    const refusedOldHome = await new Promise((resolve, reject) => {
+      const child = spawn(path.join(app, 'Contents/MacOS/HimaHarness'), ['--driver'], {
+        cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, HIMA_USER_DATA: userData, HIMA_WORKSPACE: workspace,
+          DSH_HOME: staleHome, DSH_AGENTS_HOME: path.join(staleHome, 'agents'),
+          HIMA_DRIVER_DISPLAY: 'Catsights', DSH_TELEMETRY_DISABLED: '1' },
+      });
+      let stdout = '', stderr = '';
+      const timeout = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('old-home refusal smoke timed out')); }, 30_000);
+      child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+      child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.on('data', chunk => { stderr += chunk; });
+      child.on('error', error => { clearTimeout(timeout); reject(error); });
+      child.on('close', code => { clearTimeout(timeout); resolve({ code, stdout, stderr }); });
+    });
+    if (refusedOldHome.code === 0 || !refusedOldHome.stderr.includes('needs Ledger schema')) {
+      fail(`an explicit old Hima Home was not refused before mutation: ${refusedOldHome.stderr || refusedOldHome.stdout}`);
+    }
+    if (readFileSync(staleLedger, 'utf8') !== stale
+        || JSON.stringify(readdirSync(staleHome).sort()) !== JSON.stringify(['storages'])) {
+      fail('the explicit old Hima Home changed despite refusal');
+    }
+    const seeded = await bootVersionedWindow('local');
+    const demo = path.join(versioned, 'hima/packs', demoPackId, 'contract.yml');
+    const siteFile = path.join(versioned, 'hima/sites/local.yml');
+    if (!seeded.stderr.includes(`local site: installed the shipped pack ${demoPackId}`)
+        || !existsSync(demo) || !existsSync(siteFile)) fail('packaged --site local did not install the verified demo Pack and Site');
+    const existingSite = readFileSync(siteFile);
+    const existingDemo = readFileSync(demo);
+    const reopened = await bootVersionedWindow('local');
+    if (!reopened.stderr.includes('local site: preserved the existing Site')
+        || !readFileSync(siteFile).equals(existingSite) || !readFileSync(demo).equals(existingDemo)) {
+      fail('packaged --site local reopened by changing its existing Site or Pack method');
+    }
     process.stdout.write(`package-trial: version-isolated home smoke passed (${path.basename(versioned)})\n`);
   } finally { rmSync(userData, { recursive: true, force: true }); }
 }
@@ -299,7 +396,9 @@ if (args.includes('--help') || args.includes('-h')) {
   const packs = value('--check-pack-assets');
   if (!packs) fail('--check-pack-assets needs a packs directory');
   assertTrialPackAssets(path.resolve(packs));
-  process.stdout.write(`package-trial: checked ${trialPackId} assets\n`);
+  assertTimingPackAssets(path.resolve(packs));
+  assertDemoPackAssets(path.resolve(packs));
+  process.stdout.write(`package-trial: checked ${trialPackId}, ${timingPackId} and ${demoPackId} assets\n`);
 } else if (args[0] === '--verify') {
   const app = value('--verify');
   if (!app) fail('--verify needs an app path');
@@ -308,7 +407,8 @@ if (args.includes('--help') || args.includes('-h')) {
   const output = path.resolve(value('--output') ?? path.join(root, '.hima-tmp/pilot-release'));
   if (process.platform !== 'darwin' || process.arch !== 'arm64') fail('this builder must run on macOS arm64');
   if (!existsSync(node24)) fail(`Node 24 is unavailable at ${node24}`);
-  if (existsSync(path.join(output, 'HimaHarness.app')) || existsSync(path.join(output, 'trial-manifest.json'))) fail(`refusing to overwrite an existing trial artifact in ${output}`);
+  if (['HimaHarness.app', 'trial-manifest.json', 'launch-hima-trial.command', 'COMPUTER-USE-START.md']
+      .some(name => existsSync(path.join(output, name)))) fail(`refusing to overwrite an existing trial artifact in ${output}`);
   for (const built of ['packages/desktop/lib/main.js', 'packages/harness/lib/index.js', 'packages/harness/lib/client.js']) {
     if (!existsSync(path.join(root, built))) fail(`release inputs are not built: ${built} (run pnpm run build once before packaging)`);
   }
@@ -319,6 +419,14 @@ if (args.includes('--help') || args.includes('-h')) {
     'packs', 'profiles']).split('\n').filter(Boolean).filter(file => !(file.startsWith('packs/')
       && file.split('/').some(part => part.startsWith('.') || part === 'run-assets')));
   if (ignoredInputs.length) fail(`ignored resource inputs are not approved release assets: ${ignoredInputs.join(', ')}`);
+  const source = sourceState();
+  if (source.dirty) fail('commit tracked product changes before building a release candidate');
+  // Rebuild the three shipped entry points from this source in this invocation.
+  // Existing lib/ bytes are not evidence that they came from the source SHA.
+  run(node24, [path.join(root, 'node_modules/typescript/bin/tsc'), '-p', 'packages/harness/tsconfig.json']);
+  run(node24, ['scripts/build-client.mjs'], { cwd: path.join(root, 'packages/harness') });
+  run(node24, [path.join(root, 'node_modules/typescript/bin/tsc'), '-p', 'packages/desktop/tsconfig.json']);
+  if (JSON.stringify(sourceState()) !== JSON.stringify(source)) fail('source changed while the App was being built');
   mkdirSync(output, { recursive: true });
   const stage = mkdtempSync(path.join(output, '.stage-'));
   try {
@@ -336,25 +444,38 @@ if (args.includes('--help') || args.includes('-h')) {
       return !parts.some((part) => part === 'electron' || part.startsWith('electron@'))
         && !parts.join('/').includes('node_modules/.pnpm/node_modules/@hima/desktop');
     } });
+    for (const [built, bundled] of [
+      ['packages/desktop/lib/main.js', 'lib/main.js'],
+      ['packages/harness/lib/index.js', 'node_modules/@hima/harness/lib/index.js'],
+      ['packages/harness/lib/client.js', 'node_modules/@hima/harness/lib/client.js'],
+    ]) {
+      if (hash(path.join(root, built)) !== hash(path.join(resource, bundled))) {
+        fail(`deployed ${bundled} differs from the just-built ${built}`);
+      }
+    }
     assertSourceTreeIsSafe(path.join(root, 'profiles'));
     assertSourceTreeIsSafe(path.join(root, trialPackRelative));
+    assertSourceTreeIsSafe(path.join(root, timingPackRelative));
+    assertSourceTreeIsSafe(path.join(root, demoPackRelative));
     assertTrialPackAssets(path.join(root, 'packs'));
+    assertTimingPackAssets(path.join(root, 'packs'));
+    assertDemoPackAssets(path.join(root, 'packs'));
     cpSync(path.join(root, 'profiles'), path.join(resource, 'profiles'), { recursive: true });
     mkdirSync(path.join(resource, 'packs'), { recursive: true });
     cpSync(path.join(root, trialPackRelative), path.join(resource, trialPackRelative), { recursive: true, filter: (source) => {
       const name = path.basename(source);
       return !name.startsWith('.') && name !== 'run-assets' && name !== '.evidence';
     } });
+    cpSync(path.join(root, timingPackRelative), path.join(resource, timingPackRelative), { recursive: true, filter: (source) => {
+      const name = path.basename(source);
+      return !name.startsWith('.') && name !== 'run-assets' && name !== '.evidence';
+    } });
+    cpSync(path.join(root, demoPackRelative), path.join(resource, demoPackRelative), { recursive: true });
     mkdirSync(path.join(resource, 'packages'), { recursive: true });
     symlinkSync('../node_modules/@hima/harness', path.join(resource, 'packages/harness'));
     mkdirSync(path.join(resource, 'node/bin'), { recursive: true });
     cpSync(node24, path.join(resource, 'node/bin/node'));
-    const sourceSha = run('git', ['rev-parse', 'HEAD']).trim();
-    // Release identity concerns tracked source plus untracked product inputs (checked above).
-    // Unrelated user-owned scratch directories such as `tmp/` must not make a byte-identical
-    // committed product look dirty in its receipt.
-    const dirty = run('git', ['status', '--porcelain', '--untracked-files=no']).trim() !== '';
-    const diffSha256 = createHash('sha256').update(run('git', ['diff', '--binary', 'HEAD'])).digest('hex');
+    if (JSON.stringify(sourceState()) !== JSON.stringify(source)) fail('source changed while release files were staged');
     const info = path.join(app, 'Contents/Info.plist');
     const plist = readFileSync(info, 'utf8')
       .replace(/<key>CFBundleExecutable<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleExecutable</key><string>HimaHarness</string>')
@@ -369,13 +490,36 @@ if (args.includes('--help') || args.includes('-h')) {
     // manifest is external so signing and manifest creation do not invalidate each other.
     run('codesign', ['--force', '--deep', '--sign', '-', '--timestamp=none',
       '--preserve-metadata=entitlements,flags', app]);
-    const manifest = { format: 2, version: trialVersion, signing: 'ad-hoc, not notarized',
-      source: { sha: sourceSha, dirty, diffSha256 }, files: collect(app) };
+    const files = collect(app);
+    const runtimeLedger = await import(pathToFileURL(path.join(resource, 'node_modules/@hima/harness/lib/ledger.js')).href);
+    const manifest = { format: 2, version: trialVersion, appVersion: trialVersion,
+      artifactDigest: createHash('sha256').update(JSON.stringify(files)).digest('hex'),
+      platform: 'macos-arm64', signing: 'ad-hoc, not notarized',
+      runtimeInputs: { node: '24', ledgerSchema: runtimeLedger.ledgerSpec.version,
+        bundledPacks: [trialPackId, timingPackId, demoPackId] },
+      compatibility: { home: 'version-isolated; no automatic migration', oldLedger: 'explicit offline import only' },
+      impactedChecks: ['local contracts', 'isolated Desktop workbench', 'packaged Host and Pack-read smoke'],
+      rollbackRef: 'v0.3.0-trial.16', status: 'building',
+      source, files };
     writeFileSync(path.join(output, 'trial-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-    verify(app);
+    verify(app, true);
     await smokeVersionIsolatedTrialHome(app);
     smokeRelocatedHost(app);
     writeComputerUseLauncher(output);
+    if (JSON.stringify(sourceState()) !== JSON.stringify(source)) fail('source changed before candidate publication');
+    // Only the completed kit may carry this label. Publishing the same file
+    // inventory by rename keeps a failed smoke from looking like acceptance.
+    const accepted = path.join(stage, 'accepted-manifest.json');
+    writeFileSync(accepted, `${JSON.stringify({ ...manifest, status: 'structurally-verified trial candidate' }, null, 2)}\n`);
+    renameSync(accepted, path.join(output, 'trial-manifest.json'));
+    verify(app);
+  } catch (error) {
+    // These names were absent at admission, so only this attempt can own them.
+    // A failed smoke must never leave a signed App beside a verified label.
+    for (const name of ['HimaHarness.app', 'trial-manifest.json', 'launch-hima-trial.command', 'COMPUTER-USE-START.md']) {
+      rmSync(path.join(output, name), { recursive: true, force: true });
+    }
+    throw error;
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }

@@ -2,7 +2,7 @@ import { HimaViewerSession } from './viewer-session.js';
 // The existing Hima Run projection, presented inside the native dsh document dock.
 // Local state is selection, drafts and the last HTTP response; the Agent requests work and Fabric validates its facts.
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
-import { fetchGuideContext, fetchExecutionContext, fetchRun, resolveReportAddress, type HimaResult } from './api.js';
+import { fetchGuideContext, fetchExecutionContext, fetchRun, type HimaResult } from './api.js';
 import { CampaignTab } from './CampaignTab.js';
 import { ConfigurationPage, draftToGuide } from './ConfigurationPage.js';
 import { Diagnostics } from './Diagnostics.js';
@@ -14,6 +14,11 @@ import { Glyph } from './glyphs.js';
 import { shortTime } from './time.js';
 import { HIMA_STYLE } from './workbench-style.js';
 import { runIdForWorkbenchAddress, workbenchAddressKey, workbenchAddressOf, type WorkbenchAddress } from './workbench-address.js';
+import { ChildSessionPanel } from './ChildSessionPanel.js';
+import { InsightView, type AvailableInsightReport } from './InsightView.js';
+import { TeamPanel } from './TeamPanel.js';
+import { WorkMemoryPanel } from './WorkMemoryPanel.js';
+import { EMPTY_MEMORY_DRAFT, memoryScopeKey, type MemoryDraft } from './workbench-state.js';
 
 /** The public tab-info hook is supplied by the installed dsh sidebar slot; `tab.id` is the tab
  *  record's own stable identity, read here only to scope the `'diagnostics'` event (`owned-run.ts`)
@@ -68,11 +73,13 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   const [address, setAddress] = useState<WorkbenchAddress>(requestedAddress);
   const lastCampaignAddress = useRef<WorkbenchAddress>(requestedAddress.kind === 'campaign' ? requestedAddress : { kind: 'campaign' });
   const lastInsightAddress = useRef<WorkbenchAddress>(requestedAddress.kind === 'insight' ? requestedAddress : { kind: 'insight' });
+  const lastInsightReports = useRef<readonly AvailableInsightReport[]>([]);
   const selected = runIdForWorkbenchAddress(address);
   const [managingPack, setManagingPack] = useState(false);
   const [managingPackLocation, setManagingPackLocation] = useState<string>();
   const [confirming, setConfirming] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [memoryDrafts, setMemoryDrafts] = useState<Readonly<Record<string, MemoryDraft>>>({});
   // Bug 3 fix: the top-level "Refresh Run data" button used to only bump `snapshot`/`list`, both of
   // which this page never reads while no Run is selected (`selected === undefined`, exactly the
   // state `ConfigurationPage` renders in) — so on the Configuration page that click was a no-op, and
@@ -86,11 +93,23 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   const readContext = useCallback((signal: AbortSignal) => fetchExecutionContext(selected!, signal, activeSessionId), [selected, activeSessionId]);
   const execution = usePollingRead(runReadKey, readContext, selected !== undefined && tab.visible);
   const view = snapshot.value;
+  const retainedReportRef = view?.experience?.recordId;
+  const visibleInsightReports: readonly AvailableInsightReport[] = view === undefined ? [] : [
+    ...(view.experience === undefined ? [] : [{ reportRef: view.experience.recordId, label: `Campaign Experience · ${view.run.id}`, detail: `Saved report written ${view.experience.writtenAt}.` }]),
+    ...view.observations.map(observation => ({ reportRef: observation.recordId,
+      label: `${observation.path.split(/[\\/]/).at(-1) ?? observation.recordId} · ${observation.reader.id}${observation.generation === undefined ? '' : ` · g${String(observation.generation)}`}`,
+      detail: `Observation candidate · ${observation.reader.reportKind} · ${observation.contentSha256}. The Host still validates whether its retained bytes are a supported Insight report.`,
+    })),
+  ];
   const acting = useRunActions(selected, () => { snapshot.refresh(); list.refresh(); }, activeSessionId, view);
   const isOwner = isOwnerOf(view?.run.control, activeSessionId);
   const [childCheck, setChildCheck] = useState<{ key: string; ready: boolean; error?: string; nativeAddress?: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' } }>({ key: '', ready: false });
   const [childRefresh, setChildRefresh] = useState(0);
   const childKey = address.kind === 'child' ? JSON.stringify([activeSessionId, workbenchAddressKey(address)]) : '';
+  useEffect(() => {
+    if (address.kind === 'campaign' && view !== undefined) lastInsightReports.current = visibleInsightReports;
+  }, [address.kind, view?.run.id, view?.experience?.recordId, view?.observations]);
+
   useEffect(() => {
     if (address.kind !== 'child' || !tab.visible) return;
     const controller = new AbortController();
@@ -114,6 +133,10 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
 
   const chooseCampaign = (next: WorkbenchAddress) => {
     lastCampaignAddress.current = next;
+    setAddress(next);
+  };
+  const chooseInsight = (next: Extract<WorkbenchAddress, { readonly kind: 'insight' }>) => {
+    lastInsightAddress.current = next;
     setAddress(next);
   };
 
@@ -170,6 +193,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
       </select>}
       {address.kind !== 'campaign' ? null : <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); setConfigRefresh((n) => n + 1); }}><Glyph name='retry' /></button>}
       {address.kind === 'campaign' && selected !== undefined ? <button className='hima-button' data-hima-control='studio-configure' disabled={confirming} onClick={() => chooseCampaign({ kind: 'campaign' })}>Start another Campaign</button> : null}
+      {address.kind === 'campaign' && retainedReportRef ? <button className='hima-button' data-hima-control='studio-open-retained-insight' onClick={() => chooseInsight({ kind: 'insight', reportRef: retainedReportRef })}>Open retained insight</button> : null}
       <div className='hima-studio-header-actions'>
         {/* C19: bordered `.hima-button`s, not the borderless `.hima-icon-button` this row's earlier
             compacting pass reached for — both read as text-only actions inside a row that already
@@ -191,27 +215,21 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
       : address.kind === 'invalid'
         ? <InvalidAddress message={address.message} />
         : address.kind === 'insight'
-        ? <InsightPreparation scope={address.scope} reportRef={address.reportRef} />
+        ? <InsightView sessionId={activeSessionId} scope={address.scope} reportRef={address.reportRef} availableReports={lastInsightReports.current} onReference={askGuide ?? draftToGuide} onSelectReportRef={reportRef => chooseInsight({ kind: 'insight', ...(reportRef === undefined ? {} : { reportRef }) })} />
         : address.kind === 'child'
-          ? <ChildUnavailable parentSessionId={address.parentSessionId} childSessionId={address.childSessionId} openChild={openChild} nativeAddress={childCheck.key === childKey ? childCheck.nativeAddress : undefined} checked={childCheck.key === childKey && childCheck.ready} error={childCheck.key === childKey ? childCheck.error : undefined} retry={() => setChildRefresh(value => value + 1)} />
+          ? <ChildSessionPanel viewerSessionId={activeSessionId} parentSessionId={address.parentSessionId} childSessionId={address.childSessionId} openChild={openChild} nativeAddress={childCheck.key === childKey ? childCheck.nativeAddress : undefined} checked={childCheck.key === childKey && childCheck.ready} identityError={childCheck.key === childKey ? childCheck.error : undefined} retryIdentity={() => setChildRefresh(value => value + 1)} />
         : selected === undefined
-        ? <ConfigurationPage key={activeSessionId} sessionId={activeSessionId}
+        ? <div className='hima-workbench-body'><ConfigurationPage key={activeSessionId} sessionId={activeSessionId}
             askGuide={askGuide} pickFolder={pickFolder}
             openPackOwner={(location) => { setManagingPackLocation(location); setManagingPack(true); }}
             onBusy={setConfirming} refreshSignal={configRefresh}
             onStarted={(started) => { chooseCampaign({ kind: 'campaign', runId: started.run.id }); list.refresh(); }} />
-        : <CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} />}
+            <WorkMemoryPanel key={memoryScopeKey(activeSessionId)} sessionId={activeSessionId} draft={memoryDrafts[memoryScopeKey(activeSessionId)] ?? EMPTY_MEMORY_DRAFT} onDraft={draft => setMemoryDrafts(current => ({ ...current, [memoryScopeKey(activeSessionId)]: draft }))}/></div>
+        : <div className='hima-workbench-body'><CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} />
+            <TeamPanel key={memoryScopeKey(activeSessionId, selected)} sessionId={activeSessionId} runId={selected} view={view} onChanged={() => { snapshot.refresh(); execution.refresh(); list.refresh(); }} onInspect={entry => setAddress({ kind: 'child', parentSessionId: entry.parentSessionId, childSessionId: entry.childSessionId })}/>
+            <WorkMemoryPanel key={memoryScopeKey(activeSessionId, selected)} sessionId={activeSessionId} runId={selected} draft={memoryDrafts[memoryScopeKey(activeSessionId, selected)] ?? EMPTY_MEMORY_DRAFT} onDraft={draft => setMemoryDrafts(current => ({ ...current, [memoryScopeKey(activeSessionId, selected)]: draft }))}/></div>}
     {!diagnosticsOpen ? null : <Diagnostics view={view} isOwner={isOwner} acting={acting} readAt={snapshot.at} openOwner={openOwner} onClose={() => setDiagnosticsOpen(false)} />}
   </div></HimaViewerSession>;
-}
-
-function InsightPreparation({ scope, reportRef }: { scope?: string; reportRef?: string }): ReactElement {
-  return <section className='hima-insight-preparation' data-hima-region='insight-preparation' data-hima-state-report={reportRef ?? ''}>
-    <span className='hima-studio-eyebrow'>DATA INSIGHT</span>
-    <h2>{reportRef === undefined ? 'Choose data to inspect' : 'Report data is not available in this Host yet'}</h2>
-    <p>{reportRef === undefined ? 'Choose a Library report or data scope. Browsing this preparation page does not create a Campaign, start a Job, or call a model.' : `The selected report reference ${reportRef} still needs the Host’s typed, hash-bound report payload.`}</p>
-    {scope === undefined ? null : <p className='hima-small'>Requested scope: {scope}</p>}
-  </section>;
 }
 
 function InvalidAddress({ message }: { message: string }): ReactElement {
@@ -219,15 +237,5 @@ function InvalidAddress({ message }: { message: string }): ReactElement {
     <span className='hima-studio-eyebrow'>WORKBENCH ADDRESS</span>
     <h2>hima/invalid-view-address</h2>
     <p>{message}</p>
-  </section>;
-}
-
-function ChildUnavailable({ parentSessionId, childSessionId, openChild, nativeAddress, checked, error, retry }: { parentSessionId: string; childSessionId: string; openChild(address: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }): void; nativeAddress?: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }; checked: boolean; error?: string; retry(): void }): ReactElement {
-  return <section className='hima-insight-preparation' data-hima-region='child-unavailable'>
-    <span className='hima-studio-eyebrow'>AGENT TASK</span>
-    <h2>Child details need an authorized Host view</h2>
-    <p>{checked ? 'This shell keeps the original child identity and does not copy a transcript. Native transcript availability is owned by the session UI.' : error ?? 'Checking the child identity with the Host…'}</p>
-    {checked && nativeAddress ? <button type='button' className='hima-button' onClick={() => openChild(nativeAddress)}>Open child session</button> : checked ? <p className='hima-small'>Native catalog has no usable descriptor for this child.</p> : error ? <button type='button' className='hima-button' data-hima-control='child-retry' onClick={retry}>Retry</button> : null}
-    <p className='hima-small'>Parent: {parentSessionId}</p>
   </section>;
 }

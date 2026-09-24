@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { readGuideContext } from '@hima/harness';
+import { readGuideContext, readNativeSessionContext } from '@hima/harness';
 import { localHome } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { timingProbePackId } from './support/pack.ts';
@@ -17,6 +17,9 @@ test('Guide context resolves exact project targets without changing ownership or
   try {
     const owner = await createRootAgent(host.ctx, home.h.workspace);
     const viewer = await createRootAgent(host.ctx, home.h.workspace);
+    await assert.rejects(readNativeSessionContext(host.ctx,{sessionId:String(viewer.id),targetSessionId:String(owner.id)},host.ctx.hima.ledger),{code:'hima/not-authorized'},'same workspace does not grant unrelated root transcript access');
+    const ownHistory=await readNativeSessionContext(host.ctx,{sessionId:String(owner.id),targetSessionId:String(owner.id)},host.ctx.hima.ledger);
+    assert.equal(ownHistory.sessionId,String(owner.id));
     const otherPath = path.join(home.h.workspace, 'other-project');
     await mkdir(otherPath);
     const other = await createRootAgent(host.ctx, otherPath);
@@ -97,8 +100,24 @@ test('public Run routes enforce the selected project before returning data or ap
     const ownerView = await (await api(host, cookie, scoped(`/hima/api/runs/${runId}`, viewer))).json() as any;
     assert.equal(ownerView.run.control.owner, view.run.control.owner);
     assert.equal(ownerView.run.control.revision, 0);
+    const controlBody = {sessionId:viewer,expectedEpoch:1,expectedRevision:0,requestId:'human-guide-pause',action:'pause'};
+    assert.equal((await post(`/runs/${runId}/control`,controlBody)).status,200,'Guide forwards an explicit human pause to its independent owner');
+    const held = await (await api(host,cookie,scoped(`/hima/api/runs/${runId}`,viewer))).json() as any;
+    assert.deepEqual(held.run.control.paused,['*']);
+    assert.equal((await post(`/runs/${runId}/control`,{...controlBody,action:'continue',requestId:'stale-guide-continue'})).status,409);
+    assert.equal((await post(`/runs/${runId}/control`,{...controlBody,action:'continue',requestId:'current-guide-continue',expectedRevision:held.run.control.revision})).status,200);
+    const continued = await (await api(host,cookie,scoped(`/hima/api/runs/${runId}`,viewer))).json() as any;
+    assert.deepEqual(continued.run.control.paused,[]);assert.equal(continued.run.control.owner,view.run.control.owner);
+    assert.equal(continued.run.control.requests['current-guide-continue'].origin,'human');
+
     assert.equal((await api(host, cookie, '/hima/api/audit')).status, 403);
     assert.equal((await post('/audit/drain', {})).status, 403, 'a project viewer cannot drain global diagnostic evidence');
+    for (const headers of [{}, {'x-hima-desktop-control':'0'.repeat(64)}]) {
+      const exit = await api(host,cookie,'/hima/api/lifecycle/exit',{method:'POST',
+        headers:{'content-type':'application/json',...headers},
+        body:JSON.stringify({requestId:'untrusted-app-exit',mode:'stop-jobs'})});
+      assert.equal(exit.status,403,'a browser session cookie cannot stop every project Job');
+    }
   } finally { assert.equal(await host.stop(), 0, host.stderr()); await home.h.dispose(); }
 });
 

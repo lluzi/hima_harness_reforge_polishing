@@ -14,3 +14,8 @@ emits:
   - onsite_inspiration_selected_count
   - retained_candidate_count
   - theoretical_gain_upper_pct
+  - generation_endpoint_fixed_count
+  - generation_endpoint_remaining_count
+  - generation_endpoint_entrant_count
+  - generation_endpoint_regressed_count
+  - generation_endpoint_missing_count

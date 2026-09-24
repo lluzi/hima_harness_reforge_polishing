@@ -1,0 +1,11 @@
+{
+  "schema": "hima-library-insight-report/1",
+  "evidenceClass": "synthetic",
+  "analysis": "library-performance",
+  "conditions": {"family": "fixture-family", "corners": ["slow", "fast"], "views": ["max"], "load": {"min": 1, "max": 5, "unit": "fF"}, "slew": {"min": 10, "max": 30, "unit": "ps"}, "unknowns": ["No native API or design evidence was supplied."]},
+  "findings": [
+    {"id": "zero-delta", "title": "Explicit zero change", "librarySeverity": "critical", "designRelevance": "none", "corner": "slow", "view": "max", "values": [{"name": "delay_delta", "value": 0, "unit": "ps"}], "provenance": [{"sourceRef": "fixture:source", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "status": "available"}], "unknowns": ["Not observed in a design does not mean the Library passes."], "rankingReason": "Producer ranks Library severity first; design relevance stays separate."},
+    {"id": "missing-value", "title": "Missing measurement", "librarySeverity": "warning", "designRelevance": "unknown", "corner": "fast", "view": "max", "values": [{"name": "delay_delta", "value": null, "missingReason": "This fixture intentionally has no measurement."}], "provenance": [{"status": "unknown", "reason": "No measured source is available."}], "unknowns": ["Do not replace the missing value by zero."], "rankingReason": "Remaining unknown requires independent evidence."}
+  ],
+  "summary": {"best": [], "unresolved": ["zero-delta", "missing-value"], "nextActions": [{"text": "Qualify the native API before drawing a real conclusion.", "findingIds": ["zero-delta", "missing-value"]}]}
+}

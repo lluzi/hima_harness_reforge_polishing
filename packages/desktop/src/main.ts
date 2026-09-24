@@ -14,9 +14,10 @@
 // and from A the shape of the whole thing — one window, a local starting document, navigate when the
 // host is ready, no IPC for the remote page. The launch, readiness and stop patterns are in
 // `host-launch.ts`, which the contract suite boots hosts with too.
-import { app, BrowserWindow, Menu, nativeTheme, screen, shell, type Session } from 'electron';
+import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, shell, type Session } from 'electron';
 import type { ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +28,8 @@ import { startDriver, type DriverSession } from './driver.js';
 
 /** The product's name: the window title, the menu's application name, and what the dock says. */
 const APP_NAME = 'HimaHarness';
+/** App-process authority for a global Host exit. Never sent into a web page. */
+const desktopExitToken = randomBytes(32).toString('hex');
 
 function applicationVersion(): string {
   const manifest = JSON.parse(readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as { version?: unknown };
@@ -551,6 +554,7 @@ async function start(): Promise<void> {
   // \"hima\" does not exist" — the four steps that fix it existed only inside the contract suite's
   // support code. Now they are one module, this runs them, and it says what it did on the way past.
   const env = hostEnvironment();
+  env.HIMA_DESKTOP_CONTROL_TOKEN = desktopExitToken;
   // A trial never adopts an existing ~/.dsh ledger. A reviewer can still opt
   // into a prepared home explicitly, which is how pilot validation is run.
   if (app.isPackaged && (env.DSH_HOME === undefined || env.DSH_HOME.trim() === '')) {
@@ -558,14 +562,51 @@ async function start(): Promise<void> {
     env.DSH_AGENTS_HOME = path.join(env.DSH_HOME, 'agents');
   }
   try {
+    const bundledRuntime = app.isPackaged ? await import('@hima/harness') : undefined;
+    if (bundledRuntime) {
+      const selected = resolveDshHome(env);
+      const ledgerFile = path.join(selected, 'storages/hima_ledger.json');
+      const existing = lstatSync(ledgerFile, { throwIfNoEntry: false });
+      if (existing && (!existing.isFile() || existing.isSymbolicLink())) {
+        throw new Error('The selected Hima Home has no plain Ledger file. It was not modified.');
+      }
+      if (existing) {
+        let stored: { unit?: { name?: unknown; version?: unknown } };
+        try { stored = JSON.parse(readFileSync(ledgerFile, 'utf8')) as typeof stored; }
+        catch { throw new Error('The selected Hima Home has an unreadable Ledger. It was not modified.'); }
+        if (stored.unit?.name !== 'hima_ledger' || stored.unit.version !== bundledRuntime.ledgerSpec.version) {
+          throw new Error(`The selected Hima Home needs Ledger schema ${bundledRuntime.ledgerSpec.version}; it was not modified. Use this App's own versioned home, or review an explicit offline import into a new home.`);
+        }
+      }
+    }
     const prepared = await prepareHimaHome({ home: resolveDshHome(env) });
     for (const line of [`DSH_HOME is ${prepared.home}`, ...prepared.did]) say(line);
+    // A versioned trial home starts empty. Seed only absent bundled methods; an
+    // existing Pack, its historical snapshots and its customer assets belong to
+    // the user and are never replaced just because the App version changed.
+    if (app.isPackaged) {
+      const installPackMethod = bundledRuntime!.installPackMethod;
+      for (const id of ['custom-cell-fmax-dtco', 'xtop-timing-closure']) {
+        const source = path.join(checkoutRoot(), 'packs', id);
+        const destination = path.join(prepared.home, 'hima/packs', id);
+        if (!existsSync(destination)) {
+          installPackMethod({ from: source, to: destination });
+          say(`bundled Pack ${id} installed into this versioned home`);
+        }
+      }
+    }
     // `--site local`: the same home gets the local site, the stand-in flow and the shipped pack, so
     // the window that opens can run a generation in seconds. Seeded before the host boots, because
     // the host reads its sites and packs from the home it boots from.
     if (site === LOCAL_SITE_NAME) {
-      const seeded = await seedLocalSite({ home: prepared.home, checkout: checkoutRoot() });
-      for (const line of seeded.did) say(line);
+      const existingSite=path.join(prepared.home,'hima/sites/local.yml');
+      if (app.isPackaged && lstatSync(existingSite, { throwIfNoEntry: false })) {
+        say(`local site: preserved the existing Site, Permit, Pack methods and flow in ${prepared.home}`);
+      } else {
+        const seeded = await seedLocalSite({ home: prepared.home, checkout: checkoutRoot(),
+          preserveExistingMethods: app.isPackaged });
+        for (const line of seeded.did) say(line);
+      }
     }
     // The model stand-in, last, so it sits on top of everything the home was just given — and
     // removed when this boot was given none, so a second boot of one home never runs against the
@@ -620,7 +661,7 @@ async function start(): Promise<void> {
         const verdict = fenceVerdict(target, running.origin);
         return verdict.permitted ? `${target} is one of this app's own pages, and the driver opens paths under the host's origin ${running.origin} only` : verdict.reason;
       },
-      quit: () => { app.quit(); },
+      quit: mode => { requestedExitMode=mode ?? 'drain'; app.quit(); },
       // The driver's own lines go where the shell's do: stderr, which in driver mode is the one
       // place a test reads back what happened inside the window.
       note: say,
@@ -688,7 +729,7 @@ function watchHostExit(win: BrowserWindow, running: LaunchedHost): void {
     void showFailure(
       win,
       'The hima profile stopped',
-      `The host this window started ended with ${ended}. Nothing is running, and the page this window was showing is no longer live. This is the end of what dsh said:`,
+      `The host this window started ended with ${ended}. This Host is no longer running. Existing Site jobs may still be alive; their stop has not been confirmed. This is the end of what dsh said:`,
       lastLines(running.stderr(), 40) || '(the host printed nothing on stderr)',
     );
   });
@@ -702,16 +743,57 @@ app.on('activate', () => {
 // Quitting waits for the host: a SIGTERM sent as the process is exiting is a SIGTERM that may not
 // arrive, and this host holds a session lock and an append-only writer.
 let quitting = false;
-app.on('before-quit', (event) => {
-  if (quitting || (host === undefined && hostChild === undefined)) return;
-  quitting = true;
+let exitPending = false;
+let requestedExitMode: 'drain'|'keep-jobs'|'stop-jobs' = 'drain';
+let cancelExitRequested=false;
+
+async function exitRequest(win:BrowserWindow, body?:{requestId:string;mode:string}):Promise<{ready:boolean;runs:{runId:string;state:string;jobs:string[]}[];agents:string[]}> {
+  if(!host)return {ready:true,runs:[],agents:[]};
+  let cookies=await win.webContents.session.cookies.get({url:host.origin});
+  let cookie=cookies.filter(c=>c.name.startsWith(HOST_COOKIE_PREFIX)).map(c=>`${c.name}=${c.value}`).join('; ');
+  if(!cookie){const opened=await fetch(host.url,{redirect:'manual',signal:AbortSignal.timeout(5000)});cookie=opened.headers.get('set-cookie')?.split(';')[0]??'';}
+  const response=await fetch(new URL('/hima/api/lifecycle/exit',host.origin),{method:body?'POST':'GET',headers:{cookie,'content-type':'application/json','x-hima-desktop-control':desktopExitToken},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(20_000)});
+  const answer=await response.json() as {ready:boolean;runs:{runId:string;state:string;jobs:string[]}[];agents:string[];error?:{message:string}};
+  if(!response.ok)throw new Error(answer.error?.message??`Exit status HTTP ${response.status}`);
+  return answer;
+}
+
+async function finishAppExit():Promise<void> {
+  const win=BrowserWindow.getAllWindows()[0];if(!win||!host){quitting=true;await stopHost();app.quit();return;}
+  let requestId=`desktop-${randomUUID()}`;
+  try {
+    let appliedMode=requestedExitMode;
+    let state=await exitRequest(win,{requestId,mode:appliedMode});
+    if(!state.ready&&!driver){
+      const choice=await dialog.showMessageBox(win,{type:'question',title:'Finish current work',message:'The App is preparing to exit.',detail:'New Campaign work is fenced. Wait for current work to reach a recoverable boundary, or choose what happens to existing jobs. Keeping jobs does not keep the Agent running.',buttons:['Wait and quit','Quit now and keep jobs','Stop jobs and quit','Stay in App'],defaultId:0,cancelId:3});
+      if(choice.response===3){await exitRequest(win,{requestId,mode:'cancel-exit'});exitPending=false;return;}
+      if(choice.response===1||choice.response===2){requestedExitMode=choice.response===1?'keep-jobs':'stop-jobs';appliedMode=requestedExitMode;requestId=`desktop-${randomUUID()}`;state=await exitRequest(win,{requestId,mode:appliedMode});}
+    }
+    while(!state.ready){
+      win.setTitle(`${APP_NAME} — waiting for a recoverable boundary`);
+      await new Promise(resolve=>setTimeout(resolve,300));
+      state=await exitRequest(win);
+      if(cancelExitRequested){await exitRequest(win,{requestId,mode:'cancel-exit'});cancelExitRequested=false;exitPending=false;requestedExitMode='drain';win.setTitle(APP_NAME);return;}
+      if(requestedExitMode!==appliedMode){appliedMode=requestedExitMode;requestId=`desktop-${randomUUID()}`;state=await exitRequest(win,{requestId,mode:appliedMode});}
+    }
+    quitting=true;await stopHost();app.quit();
+  } catch(error) {
+    exitPending=false;requestedExitMode='drain';
+    if(driver){process.stderr.write(`hima-desktop: exit could not verify job state: ${String(error)}\n`);quitting=true;await stopHost();app.exit(EXIT_FAILED);return;}
+    await dialog.showMessageBox(win,{type:'error',message:'Exit could not verify the current work.',detail:`${String(error)}\nThe Host remains open. Some Jobs may already have stopped; inspect their actual receipts before trying Quit again.`});
+  }
+}
+app.on('before-quit',event=>{
+  if(quitting)return;
   event.preventDefault();
-  void stopHost().finally(() => { app.quit(); });
+  if(exitPending){
+    if(!driver){const win=BrowserWindow.getAllWindows()[0];if(win)void dialog.showMessageBox(win,{type:'question',message:'Work is still reaching its exit boundary.',buttons:['Keep waiting','Quit and keep jobs','Stop jobs and quit','Stay in App'],defaultId:0,cancelId:0}).then(({response})=>{if(response===1)requestedExitMode='keep-jobs';if(response===2)requestedExitMode='stop-jobs';if(response===3)cancelExitRequested=true;});}
+    return;
+  }
+  exitPending=true;void finishAppExit();
 });
-// Ctrl+C on `pnpm run desktop` must stop the host too, not only this process: the default handling
-// of these signals ends Electron without `before-quit`, which would leave a dsh child — and whatever
-// it holds on a Site — running with nothing left to stop it.
-for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { app.quit(); });
+// OS interruption explicitly stops this local Host; existing jobs are preserved and reported.
+for(const signal of ['SIGINT','SIGTERM'] as const)process.on(signal,()=>{requestedExitMode='keep-jobs';app.quit();});
 
 // A second instance would start a second host against the same dsh home, which holds a session lock:
 // the window that is already open is the answer, not another one. A driver's window is a test's own,

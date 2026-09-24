@@ -1,6 +1,6 @@
 # 下一阶段可实施规格与并行工作图
 
-> 本文保留规格阶段的范围与基线。首批代码实施、验证结果和未完成项见 [实施记录](../../assessment/2026-09-23/next-stage/implementation-phase1.md) 与 [覆盖矩阵](../../assessment/2026-09-23/next-stage/phase1-coverage.md)。
+> 本文保留规格阶段的范围与基线。首批代码及当时边界见 [Phase 1 实施记录](../../assessment/2026-09-23/next-stage/implementation-phase1.md) 与 [覆盖矩阵](../../assessment/2026-09-23/next-stage/phase1-coverage.md)；后续代码、当前本地资格与仍未解除的真实工具门见 [#52 后续实施记录](../../assessment/2026-09-23/next-stage/implementation-remaining.md)。以下“本轮只交付规格”是原规格编写时的历史描述。
 
 日期：2026-09-23；核查基线：`1a79cb1514364aa049e775d7b18bbb063a223092`。用户通过 `/to-spec` 要求将已确认的 Q1～Q19 转成具体规格，并明确保持现有架构、代码归属与并行开发。本轮只交付规格与 Issue，不修改运行代码或恢复 trial30/Claude/EDA 测试。
 

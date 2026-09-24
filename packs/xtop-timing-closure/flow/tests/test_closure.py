@@ -168,14 +168,26 @@ class ClosureContractTest(unittest.TestCase):
         })
         self.save_runtime(); closure.summarize(self.workspace)
         state = closure.read_json(self.workspace / "flow" / "state" / "current.json")
+        after_state = copy.deepcopy(state)
+        after_state["iteration"] = 1
         result = {
-            "schema": closure.ITERATION_SCHEMA, "iteration": 1, "before": state, "after": state,
+            "schema": closure.ITERATION_SCHEMA, "iteration": 1, "before": state, "after": after_state,
             "endpoint_delta": {"comparability": "not-comparable", "reason": "measurement conditions changed",
                 "originalFrontierCount": 1, "measuredOriginalCount": 0,
-                "fixed": [], "remaining": [], "entrants": [], "regressed": [], "missing": ["slow|setup|core_clock|A/D"]},
+                "fixed": [], "remaining": [], "entrants": [], "regressed": [], "missing": []},
             "bestQualification": {"status": "ineligible", "reason": "measurement conditions changed"},
             "evidence_valid": False,
         }
+        plan = {"schema": closure.PLAN_SCHEMA, "iteration": 1, "diagnosis": "test",
+                "hypotheses": ["test"], "endpointGroups": ["core_clock"], "actions": [],
+                "avoid": [], "reasoning": "test"}
+        plan_path = self.workspace / "flow" / "research" / "fix-plan.json"
+        plan_path.write_text(json.dumps(plan))
+        current = self.workspace / "flow" / "state" / "current.json"
+        after_path = self.workspace / "flow" / "iterations" / "g001" / "closure-state.json"
+        closure.atomic_json(after_path, after_state)
+        result["generation_feedback"] = closure.generation_feedback(
+            self.workspace, state, after_state, result["endpoint_delta"], plan, current, after_path)
         report = self.workspace / "flow" / "records" / "compare.json"
         closure.atomic_json(report, result)
 
@@ -184,6 +196,16 @@ class ClosureContractTest(unittest.TestCase):
         self.assertTrue({"xtop_setup_wns", "xtop_hold_wns", "xtop_closure_score", "xtop_iteration_evidence_valid"} <= kinds)
         self.assertFalse({"xtop_endpoint_fixed_count", "xtop_endpoint_remaining_count",
                           "xtop_endpoint_entrant_count", "xtop_endpoint_regressed_count"} & kinds)
+        self.assertIn("xtop_endpoint_missing_count", kinds)
+        self.assertIn("xtop_endpoint_original_count", kinds)
+        self.assertEqual(result["generation_feedback"]["coverage"]["after"]["missingIds"], [])
+        self.assertEqual(result["generation_feedback"]["endpointChanges"]["missing"]["ids"], [])
+        self.assertEqual(result["generation_feedback"]["next"]["items"][0]["change"], "remeasure-comparable-snapshot")
+        self.assertEqual(next(row["value"] for row in values if row["type"] == "xtop_endpoint_missing_count"), 0)
+        result["endpoint_delta"]["missing"] = ["slow|setup|core_clock|A/D"]
+        closure.atomic_json(report, result)
+        with self.assertRaisesRegex(ValueError, "missing identities differ from retained snapshots"):
+            reader.read(report, "iteration")
 
     def test_candidate_spef_is_bound_to_its_own_bytes_not_required_to_equal_baseline(self):
         physical = {"coverage": "complete", "drc": {"count": 0}, "connectivity": {"count": 0}}
@@ -236,13 +258,26 @@ class ClosureContractTest(unittest.TestCase):
         self.assertEqual(result["endpoint_delta"]["missing"], ["fast|setup|core_clock|A/D", "slow|setup|core_clock|A/D"])
         self.assertEqual(result["endpoint_delta"]["entrants"], ["fast|setup|core_clock|C/D", "slow|setup|core_clock|C/D"])
         self.assertEqual(result["endpoint_delta"]["regressed"], ["fast|hold|core_clock|H/D", "slow|hold|core_clock|H/D"])
+        feedback = result["generation_feedback"]
+        self.assertEqual(feedback["schema"], "hima-generation-feedback/1")
+        self.assertEqual(feedback["denominator"]["originalCount"], 6)
+        self.assertEqual(feedback["endpointChanges"]["fixed"]["ids"], [])
+        self.assertEqual(feedback["endpointChanges"]["missing"]["ids"], result["endpoint_delta"]["missing"])
+        self.assertEqual(feedback["coverage"]["after"]["missingIds"], result["endpoint_delta"]["missing"])
+        self.assertEqual(feedback["next"]["items"][0]["change"], "plan-fix")
         self.assertTrue(result["evidence_valid"])
         self.assertEqual(result["bestQualification"]["status"], "eligible")
         best = json.loads((self.workspace / "flow" / "output" / "best-database.json").read_text())
         self.assertEqual(best["iteration"], 1)
         self.assertTrue((Path(best["restoreData"]) / "db.bin").is_file())
         self.assertEqual(len((self.workspace / "flow" / "evidence" / "experience.jsonl").read_text().splitlines()), 1)
-        self.assertEqual(reader.read(self.workspace / "flow" / "records" / "compare.json", "iteration")[-1]["value"], 1)
+        read_values = {row["type"]: row["value"] for row in
+                       reader.read(self.workspace / "flow" / "records" / "compare.json", "iteration")}
+        self.assertEqual(read_values["xtop_iteration_evidence_valid"], 1)
+        result["generation_feedback"]["sources"][0]["sha256"] = "0" * 64
+        closure.atomic_json(self.workspace / "flow" / "records" / "compare.json", result)
+        with self.assertRaisesRegex(ValueError, "source differs from retained bytes"):
+            reader.read(self.workspace / "flow" / "records" / "compare.json", "iteration")
 
     def test_qualified_candidate_replaces_a_verified_prior_best(self):
         self.write_database(0)
@@ -316,8 +351,9 @@ class ClosureContractTest(unittest.TestCase):
         self.assertEqual(result["bestQualification"]["status"], "unknown")
         self.assertFalse(result["evidence_valid"])
         self.assertFalse((self.workspace / "flow" / "output" / "best-database.json").exists())
-        self.assertEqual(reader.read(self.workspace / "flow" / "records" / "compare.json", "iteration")[-1],
-                         {"type": "xtop_iteration_evidence_valid", "unit": "count", "value": 0})
+        read_values = {row["type"]: row["value"] for row in
+                       reader.read(self.workspace / "flow" / "records" / "compare.json", "iteration")}
+        self.assertEqual(read_values["xtop_iteration_evidence_valid"], 0)
 
     def test_copy_failure_keeps_the_verified_prior_best(self):
         self.write_database(0)

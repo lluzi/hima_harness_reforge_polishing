@@ -461,6 +461,8 @@ export type ResearchWriteView = Pick<ResearchWriteRecord,
   | 'requestedBytes' | 'allowed' | 'limitWriteAttempts' | 'limitBytes' | 'usedWriteAttempts' | 'usedBytes' | 'reason'>;
 
 export type AnalysisView = import('./ledger.js').ResearchAnalysis & {
+  readonly generation?: number;
+  readonly loopId?: string;
   readonly recordId: string;
   readonly at: string;
   readonly sessionId: string;
@@ -671,9 +673,19 @@ export interface PackTransferBody {
 }
 
 export interface RemoteOperations {
+  readonly interactive?:(sessionId:string,request:unknown)=>Promise<object>;
+  readonly interactiveSessions?:(sessionId:string,runId:string)=>Promise<object>;
+  delegations?(sessionId:string,runId:string):Promise<object>;
+  delegate?(request:import('./delegation-runtime.js').RunDelegationRequest):Promise<object>;
+  prepareExit?(request: import('./host-exit.js').HostExitRequest): Promise<import('./host-exit.js').HostExitStatus>;
+  cancelExit?(requestId:string):Promise<import('./host-exit.js').HostExitStatus>;
+  exitStatus?(): import('./host-exit.js').HostExitStatus;
+  authorizeDesktopExit?(token: string | undefined): boolean;
   authorizeRunAccess?(sessionId: string, runId: string): Promise<unknown>;
-  workMemory?(sessionId: string, request: { action: 'read' | 'save'; runId?: string; summary?: unknown }): Promise<object>;
+  workMemory?(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }): Promise<object>;
+  experienceCandidates?(sessionId:string,runId:string):Promise<object>;
   correctExperience?(sessionId: string, request: Omit<ExperienceAdoptionRequest, 'workspaceRef' | 'changedBy'>): Promise<object>;
+  readSessionContext?(request:{sessionId:string;targetSessionId:string;parentSessionId?:string;fromSeq?:number}):Promise<object>;
   readGuideContext?(request: { sessionId: string; requestId: string; target: unknown }): Promise<GuideContextView>;
   resolveReportAddress?(sessionId: string, reportRef: string): Promise<Extract<TargetAddress, { kind: 'report' }>>;
   listSessionChildren?(request: { viewerSessionId: string; parentSessionId: string }): Promise<{ readonly children: readonly { readonly childSessionId: string; readonly nativeOpen: boolean }[]; readonly hasMore: boolean }>;
@@ -955,7 +967,7 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
     decision: decision ? decisionView(decision) : null,
     code: records.filter((r): r is CodeRecord => r.type === 'code').map(codeView),
     knowledge: records.filter((r): r is KnowledgeRecord => r.type === 'knowledge').map(knowledgeView),
-    analyses: records.flatMap(record => record.type === 'analysis' ? [{ ...record.analysis, recordId: record.id, at: record.at, sessionId: record.sessionId, nodeId: record.nodeId }] : []),
+    analyses: records.flatMap(record => record.type === 'analysis' ? [{ ...record.analysis, recordId: record.id, at: record.at, sessionId: record.sessionId, nodeId: record.nodeId, ...(record.generation===undefined?{}:{generation:record.generation}), ...(record.loopId===undefined?{}:{loopId:record.loopId}) }] : []),
     ...(() => { const record = records.findLast(record => record.type === 'archive'); return record?.type === 'archive' ? { archive: { recordId: record.id, delivery: record.delivery, directory: record.directory, ...(record.reason ? { reason: record.reason } : {}) } } : {}; })(),
     // Where the Run's current node stands as a workshop, when it is one (#62). An absent key, never
     // an undefined one: a Run standing at an ordinary act node says so by omission. Composed from
@@ -1641,6 +1653,39 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     if (denied) return denied;
   }
 
+  if (rest === '/lifecycle/exit') {
+    const token = req.headers['x-hima-desktop-control'];
+    if (!ops.authorizeDesktopExit?.(typeof token === 'string' ? token : undefined)) {
+      return failure(403, 'hima/not-authorized', 'Global App exit belongs to the native Desktop process.');
+    }
+    if (!ops.prepareExit || !ops.exitStatus) return failure(503,'hima/internal','This Host has no App exit boundary.');
+    if (method === 'GET') return ok(ops.exitStatus());
+    if (method !== 'POST') return failure(405,'hima/bad-request','App exit requires POST.');
+    const body = z.strictObject({requestId:z.string().min(1).max(120),mode:z.enum(['drain','keep-jobs','stop-jobs','cancel-exit'])}).parse(await readJsonBody(req));
+    if(body.mode==='cancel-exit')return ops.cancelExit?ok(await ops.cancelExit(body.requestId)):failure(503,'hima/internal','Exit cancellation is unavailable');
+    return ok(await ops.prepareExit({...body,mode:body.mode}));
+  }
+
+  if(rest==='/interactive') {
+    if(method==='GET') {
+      const sessionId=url.searchParams.get('sessionId')??'',runId=url.searchParams.get('runId')??'';
+      if(!ops.validateSession?.(sessionId)||!ops.interactiveSessions)return failure(403,'hima/not-authorized','Choose a live project conversation.');
+      return ok(await ops.interactiveSessions(sessionId,runId));
+    }
+    if(method!=='POST'||!ops.interactive)return failure(405,'hima/bad-request','Interactive operations require GET or POST.');
+    const body=z.strictObject({sessionId:z.string(),request:z.unknown()}).parse(await readJsonBody(req));
+    if(!ops.validateSession?.(body.sessionId))return failure(403,'hima/not-authorized','Choose a live project conversation.');
+    return ok(await ops.interactive(body.sessionId,body.request));
+  }
+
+  if(rest==='/delegations') {
+    if(method==='GET') {const sessionId=url.searchParams.get('sessionId')??'',runId=url.searchParams.get('runId')??'';if(!ops.validateSession?.(sessionId)||!ops.delegations)return failure(403,'hima/not-authorized','Choose a live project conversation.');return ok(await ops.delegations(sessionId,runId));}
+    if(method!=='POST'||!ops.delegate)return failure(405,'hima/bad-request','Delegation requires GET or POST.');
+    const input=z.strictObject({sessionId:z.string(),runId:z.string(),action:z.enum(['create','followup','cancel','result']),requestId:z.string(),expectedEpoch:z.number().int().nonnegative(),expectedRevision:z.number().int().nonnegative(),delegationId:z.string().optional(),contract:z.unknown().optional(),text:z.string().max(8000).optional()}).parse(await readJsonBody(req));
+    if(!ops.validateSession?.(input.sessionId))return failure(403,'hima/not-authorized','Choose a live project conversation.');
+    return ok(await ops.delegate({...input,actor:input.sessionId,origin:'human'}));
+  }
+
   if (rest === '/observe') {
     if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers POST`);
     return observeOperation(ops, req);
@@ -1682,12 +1727,13 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     return ok(startChoices(ops, url.searchParams.get('pack'), url.searchParams.get('site')));
   }
 
-  if (rest === '/context' || rest === '/context/report-address' || rest === '/context/children') {
+  if (rest === '/context' || rest === '/context/report-address' || rest === '/context/children' || rest === '/context/session') {
     if (method !== 'POST') return failure(405, 'hima/bad-request', 'Context reads require POST with a live viewer and exact target.');
     const body = await readJsonBody(req);
     const sessionId = requiredString(body, 'sessionId');
     if (!ops.validateSession?.(sessionId)) return failure(403, 'hima/not-authorized', 'Select a live conversation to inspect its project.');
     try {
+      if(rest==='/context/session'&&ops.readSessionContext){const input=z.strictObject({sessionId:z.string(),targetSessionId:z.string(),parentSessionId:z.string().optional(),fromSeq:z.number().int().nonnegative().optional()}).parse(body);return ok(await ops.readSessionContext(input));}
       if (rest === '/context/report-address' && ops.resolveReportAddress) return ok(await ops.resolveReportAddress(sessionId, requiredString(body, 'reportRef')));
       if (rest === '/context/children' && ops.listSessionChildren) return ok(await ops.listSessionChildren({ viewerSessionId: sessionId, parentSessionId: requiredString(body, 'parentSessionId') }));
       if (rest === '/context' && ops.readGuideContext) return ok(await ops.readGuideContext({ sessionId, requestId: requiredString(body, 'requestId'), target: body.target }));
@@ -1699,16 +1745,17 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     }
   }
 
-  if (rest === '/memory' || rest === '/experience/adoption') {
+  if (rest === '/memory' || rest === '/experience/adoption' || rest === '/experience/candidates') {
     if (method !== 'POST') return failure(405, 'hima/bad-request', 'This operation requires POST and a live conversation.');
     const body = await readJsonBody(req);
     const sessionId = requiredString(body, 'sessionId');
     if (!ops.validateSession?.(sessionId)) return failure(403, 'hima/not-authorized', 'Select a live conversation in this project.');
     try {
       if (rest === '/memory' && ops.workMemory) {
-        const request = z.strictObject({ sessionId: z.string(), action: z.enum(['read', 'save']), runId: z.string().optional(), summary: z.unknown().optional() }).parse(body);
+        const request = z.strictObject({ sessionId: z.string(), action: z.enum(['read', 'sources', 'save']), runId: z.string().optional(), summary: z.unknown().optional() }).parse(body);
         return ok(await ops.workMemory(sessionId, request));
       }
+      if(rest==='/experience/candidates' && ops.experienceCandidates)return ok(await ops.experienceCandidates(sessionId,requiredString(body,'runId')));
       if (rest === '/experience/adoption' && ops.correctExperience) {
         const hash = z.string().regex(/^[a-f0-9]{64}$/);
         const request = z.strictObject({ sessionId: z.string(), runId: z.string().min(1), requestId: z.string().min(1),

@@ -163,13 +163,17 @@ test('from ordinary chat, authoring creates a native Pack workspace session and 
       name, arguments: args, agent, callId: `call-${name}-${Date.now()}` as never,
       signal: AbortSignal.timeout(10_000),
     });
-    const opened = await call('hima_author', { pack: 'native-author', create: true });
+    await writeFile(path.join(h.workspace,'sop.md'),'A bounded timing SOP with no invented success.');
+    const opened = await call('hima_author', { pack: 'native-author', create: true, handoff:{goal:'Build a timing Pack',sourcePaths:['sop.md'],inputGaps:['Exact tool version remains unknown']} });
     assert.equal(opened.isError, false, JSON.stringify(opened));
     const value = (opened as unknown as { value: { pack: string; folder: string; sessionId: string; created: boolean } }).value;
     assert.equal(value.pack, 'native-author');
     assert.equal(value.created, true);
     const author = host.ctx.agents.get(value.sessionId as never);
     assert.ok(author, 'the returned identity is a native, visible session');
+    assert.equal(author.status,'idle','source handoff does not invoke an author model');
+    assert.match(JSON.stringify(author.inbox.nextStep),/hima-authoring-handoff\/1/);
+    assert.match(JSON.stringify(author.inbox.nextStep),/Exact tool version remains unknown/);
     assert.equal(author.session.header.cwd, await realpath(path.join(packsDirOf(h), 'native-author')));
     assert.equal(author.session.header.origin, undefined, 'a normal root session, not a hidden moment');
     assert.equal(ordinary.session.header.cwd, h.workspace);

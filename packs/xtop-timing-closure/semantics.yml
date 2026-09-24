@@ -43,6 +43,12 @@ values:
   xtop_endpoint_regressed_count:
     unit: count
     description: Shared endpoints whose slack moved in the wrong direction beyond tolerance.
+  xtop_endpoint_missing_count:
+    unit: count
+    description: Original endpoint identities absent from the refreshed report. A changed scenario is not itself a missing endpoint or a timing fix.
+  xtop_endpoint_original_count:
+    unit: count
+    description: Count of the frozen original violating endpoint identities used as this iteration's denominator.
   xtop_closure_score:
     unit: score
     description: Monotone comparison scalar derived from violation counts and negative slack mass.
@@ -55,4 +61,3 @@ values:
   xtop_best_database_ready:
     unit: count
     description: One when the selected Innovus restore script and .enc.dat tree pass identity checks.
-

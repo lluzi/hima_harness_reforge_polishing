@@ -553,7 +553,8 @@ def _compact_commercial_response(document):
     def endpoint_names(name, limit):
         rows = document.get(name)
         if (not isinstance(rows, list) or len(rows) > 4096
-                or any(not isinstance(value, str) or not value for value in rows)):
+                or any(not isinstance(value, str) or not value for value in rows)
+                or len(set(rows)) != len(rows)):
             raise ValueError("commercial response %s is not a typed endpoint array" % name)
         return rows[:limit]
 
@@ -564,13 +565,17 @@ def _compact_commercial_response(document):
         if not isinstance(rows, list) or len(rows) > 4096:
             raise ValueError("commercial response %s is not an array" % name)
         result = []
-        for index, row in enumerate(rows[:limit]):
+        for index, row in enumerate(rows):
             if not isinstance(row, dict) or set(row) != fields or not isinstance(
                     row["endpoint"], str) or not row["endpoint"]:
                 raise ValueError("commercial response %s[%d] is malformed" % (name, index))
-            result.append({"endpoint": row["endpoint"], **{
+            normalized = {"endpoint": row["endpoint"], **{
                 field: _finite_metric(row[field], "commercial_response.%s.%s" % (name, field))
-                for field in sorted(fields - {"endpoint"})}})
+                for field in sorted(fields - {"endpoint"})}}
+            if index < limit:
+                result.append(normalized)
+        if len({row["endpoint"] for row in rows}) != len(rows):
+            raise ValueError("commercial response %s repeats an endpoint identity" % name)
         return result
 
     response_sha = document.get("response_sha256")
@@ -579,15 +584,37 @@ def _compact_commercial_response(document):
     claim_limits = document.get("claim_limits")
     if not isinstance(claim_limits, dict):
         raise ValueError("commercial response claim_limits is not an object")
+    resolved = endpoint_names("resolved_reference_endpoints", 128)
+    entrants = endpoint_names("new_frontier_entrants", 128)
+    remaining = endpoint_rows("remaining_frontier", 256)
+    regressions = endpoint_rows("largest_frontier_regressions", 32)
+    improvements = endpoint_rows("largest_frontier_improvements", 32)
+    if (document["generated_active_count"] != len(document["remaining_frontier"])
+            or document["reference_active_count"] - len(document["resolved_reference_endpoints"])
+            != document["generated_active_count"] - len(document["new_frontier_entrants"])):
+        raise ValueError("commercial response frontier counts disagree with full endpoint identities")
+    endpoint_count = document.get("endpoint_count")
+    complete_source = (isinstance(endpoint_count, int) and not isinstance(endpoint_count, bool)
+                       and endpoint_count >= document["reference_active_count"] + len(document["new_frontier_entrants"])
+                       and endpoint_count > 0)
+    truncated = {
+        "fixed": len(document["resolved_reference_endpoints"]) > 128,
+        "entrant": len(document["new_frontier_entrants"]) > 128,
+        "remaining": len(document["remaining_frontier"]) > 256,
+    }
     return {
         "schema": "hima.lfr-commercial-feedback/1",
         "response_sha256": response_sha,
+        "endpoint_coverage": ("complete-matched-identities"
+                              if complete_source and not any(truncated.values())
+                              else "unknown"),
+        "truncated": truncated,
         **{name: document[name] for name in numeric},
-        "resolved_reference_endpoints": endpoint_names("resolved_reference_endpoints", 128),
-        "new_frontier_entrants": endpoint_names("new_frontier_entrants", 128),
-        "remaining_frontier": endpoint_rows("remaining_frontier", 256),
-        "largest_frontier_regressions": endpoint_rows("largest_frontier_regressions", 32),
-        "largest_frontier_improvements": endpoint_rows("largest_frontier_improvements", 32),
+        "resolved_reference_endpoints": resolved,
+        "new_frontier_entrants": entrants,
+        "remaining_frontier": remaining,
+        "largest_frontier_regressions": regressions,
+        "largest_frontier_improvements": improvements,
         "claim_limits": claim_limits,
     }
 
@@ -1306,6 +1333,141 @@ def _feedback_ab(before, after, interpretation, without_execution=None):
     }
 
 
+def _generation_feedback(context, proposals, feedback):
+    """Project one verified residual turn into the common read-only feedback report."""
+    pool = context.get("candidate_pool") or {}
+    denominator = sorted(row["proposal_key"] for row in pool.get("proposals", []))
+    denominator_set = set(denominator)
+
+    def selection_snapshot(values, label):
+        if not isinstance(values, list) or any(value not in denominator_set for value in values):
+            return {"status": "unknown", "coveredIds": [], "missingIds": denominator,
+                    "reason": "%s selection lacks a deterministic demand identity" % label}
+        covered = sorted(set(values))
+        return {"status": "measured", "coveredIds": covered,
+                "missingIds": sorted(denominator_set - set(covered))}
+
+    before = selection_snapshot(feedback.get("without_feedback_proposal_keys"), "before-feedback")
+    after = selection_snapshot(feedback.get("with_feedback_proposal_keys"), "after-feedback")
+    if feedback.get("performed") is not True:
+        before = {"status": "unknown", "coveredIds": [], "missingIds": denominator,
+                  "reason": "no commercial response was available for a before-feedback selection"}
+
+    commercial = context.get("commercial_frontier_response")
+    unknowns = []
+
+    def measured(values):
+        return {"status": "measured", "ids": sorted(set(values))}
+
+    if commercial is None:
+        reason = "no endpoint-complete commercial response was available"
+        changes = {name: {"status": "unknown", "ids": [], "reason": reason}
+                   for name in ("fixed", "remaining", "entrant", "regressed", "missing")}
+        comparability = {"status": "unknown", "reasons": [reason]}
+        unknowns.append(reason)
+    else:
+        truncated = commercial["truncated"]
+        def endpoint_category(name, values):
+            if truncated[name]:
+                reason = "commercial %s endpoint identities were truncated in the bounded research context" % name
+                unknowns.append(reason)
+                return {"status": "unknown", "ids": [], "reason": reason}
+            return measured(values)
+        remaining_rows = commercial["remaining_frontier"]
+        remaining = [row["endpoint"] for row in remaining_rows]
+        regressed = [row["endpoint"] for row in remaining_rows
+                     if row["delta_slack_ns"] < -1e-12]
+        changes = {
+            "fixed": endpoint_category("fixed", commercial["resolved_reference_endpoints"]),
+            "remaining": endpoint_category("remaining", remaining),
+            "entrant": endpoint_category("entrant", commercial["new_frontier_entrants"]),
+            "regressed": endpoint_category("remaining", regressed),
+        }
+        if commercial.get("endpoint_coverage") == "complete-matched-identities":
+            changes["missing"] = measured([])
+            comparability = {"status": "comparable", "reasons": []}
+        else:
+            reason = "commercial response does not prove complete matched endpoint identities"
+            changes["missing"] = {"status": "unknown", "ids": [], "reason": reason}
+            comparability = {"status": "unknown", "reasons": [reason]}
+            unknowns.append(reason)
+
+    sources = [{"id": "residual-context:" + context["round_id"],
+                "sha256": context["context_sha256"]}]
+    for name, reference in context.get("evidence", {}).items():
+        rows = reference if isinstance(reference, list) else [reference]
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict) or not SHA256.fullmatch(str(row.get("sha256") or "")):
+                continue
+            source = {"id": "%s:%d" % (name, index) if isinstance(reference, list) else name,
+                      "sha256": row["sha256"]}
+            if isinstance(row.get("path"), str) and row["path"]:
+                source["path"] = row["path"]
+            sources.append(source)
+
+    demand_items = []
+    for proposal in proposals:
+        transformation = proposal.get("transformation") or {}
+        key = transformation.get("proposal_key")
+        request = proposal.get("generation_request")
+        request_sha = proposal.get("generation_request_sha256")
+        if key not in denominator_set or not isinstance(request, dict) or not SHA256.fullmatch(str(request_sha or "")):
+            continue
+        contract = request.get("generator_contract") or {}
+        interface = contract.get("interface") or {}
+        equivalence = contract.get("equivalence_reference") or {}
+        characterization = contract.get("characterization_request") or {}
+        timing_arcs = characterization.get("timing_arcs") or []
+        delay_unknowns = [condition + " is not declared by this generation request"
+                          for condition in ("input slew", "output load", "corner")]
+        source_id = "generation-request:" + key
+        sources.append({"id": source_id, "sha256": request_sha})
+        demand_items.append({
+            "id": key,
+            "targetIds": list(transformation.get("target_endpoints") or []),
+            "change": str(transformation.get("intervention") or "new-cell-demand"),
+            "expectedEffect": proposal.get("rationale") or "candidate proposal",
+            "validation": {"status": "known", "method": "generate, characterize, then rerun the matched commercial comparison"},
+            "stopCondition": {"status": "known", "text": context["next_residual_question"]},
+            "sourceIds": [source_id, "residual-context:" + context["round_id"]],
+            "demand": {
+                "inputPins": [row.get("name") for row in interface.get("inputs", [])],
+                "outputs": [{"name": row.get("name"), "function": row.get("liberty_function")}
+                            for row in interface.get("outputs", [])],
+                "truthTable": {"inputOrder": equivalence.get("input_order"),
+                               "outputOrder": equivalence.get("output_order"),
+                               "outputTruthTablesHex": equivalence.get("output_truth_tables_hex")},
+                "timingArcs": timing_arcs,
+                "conditionalDelayTarget": {
+                    "requiredDelayNs": transformation.get("required_delay_ns"),
+                    "targetEndpoints": list(transformation.get("target_endpoints") or []),
+                    "slewNs": None, "loadPf": None, "corner": None,
+                    "unknowns": delay_unknowns,
+                },
+                "implementation": contract.get("implementation_request") or {},
+            },
+        })
+    if demand_items:
+        next_step = {"kind": "cell-demand", "status": "available", "items": demand_items,
+                     "reason": feedback["selection_effect"]["reason"]}
+    elif proposals:
+        reason = "selected proposals have no hash-bound generation-request demand identity"
+        next_step = {"kind": "cell-demand", "status": "unknown", "items": [], "reason": reason}
+        unknowns.append(reason)
+    else:
+        next_step = {"kind": "stop", "status": "stop", "items": [],
+                     "reason": context.get("next_residual_question") or "no proposal selected"}
+    return {
+        "schema": "hima-generation-feedback/1", "generation": context["round_id"],
+        "subject": "cell-demand", "sources": sources,
+        "denominator": {"kind": "cell-demand", "originalIds": denominator,
+                        "originalCount": len(denominator)},
+        "coverage": {"before": before, "after": after},
+        "comparability": comparability, "endpointChanges": changes,
+        "next": next_step, "unknowns": sorted(set(unknowns)),
+    }
+
+
 def run_residual_research(research, workspace, output):
     """Run one standalone FW-07 AI turn and its isolated proposal program."""
     context = optional_residual_research_context(workspace)
@@ -1343,6 +1505,7 @@ def run_residual_research(research, workspace, output):
         "candidate_proposals": candidate_proposals,
         "candidate_execution": candidate_execution,
         "feedback_ab": feedback_ab,
+        "generation_feedback": _generation_feedback(context, candidate_proposals, feedback_ab),
         "stop_reason": proposal["stop_reason"],
         "claims": {
             "commercial_qor_prediction": False,
