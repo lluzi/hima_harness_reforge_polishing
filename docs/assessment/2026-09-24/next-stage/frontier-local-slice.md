@@ -15,3 +15,7 @@
 ## S08 / #51：报告切换的桌面反例
 
 在现有 `InsightView` 上新增真实 Desktop 反例：报告 A 的 context 请求被浏览器拦截暂停，用户打开报告 B 并看到 B 后才尝试释放 A。当前 `AbortController` 已正确丢弃 A；该反例直接通过，因此没有为未复现的竞态重写 UI 状态。相邻工作区 Desktop 6/6、该 Insight 桌面用例 1/1、Hash 绑定的本地 Insight 合同 2/2。它们证明现有 UI 的接收者、来源和本地过滤路径，不证明 #49 尚未取得的真实 Library API 分析。
+
+## S06 / #58：两个并列委派的总预算
+
+真实本地 Host 以同一 Run 创建一个有私有写入范围的 Coding child 和一个仅持有精确 Run 输入引用的 Reviewer child；二者得到不同原生会话和不同工具集合，分别留下文件和会话结果。两份 25 秒时间份额进入原 Ledger；第三份 15 秒申请超过父 Run 的 60 秒总预算，被拒绝。`delegation-run.host.test.ts` 2/2。此处验证的是并列授权、资源合计与结果隔离；replay 的短回合不证明两位真实模型同时进行高质量研究。Operator 仍由 #50 的实际环境边界决定。

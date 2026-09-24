@@ -4,7 +4,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { localHome,waitUntil } from './support/fabric.ts';
 import { bootInProcess,createRootAgent,resumeTestAgent } from './support/boot-inprocess.ts';
-import { writeMomentScenario } from './support/moments.ts';
+import { appendReplaySession,writeMomentScenario } from './support/moments.ts';
 import { repoRoot } from './support/dsh-home.ts';
 import { writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import { QUIET_TITLE_ROW } from './support/pipeline.ts';
@@ -13,6 +13,51 @@ import { delegationRuntimePolicy,delegationToolDenial,readNativeSessionContext,r
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE='0';
 process.env.HIMA_TEST_SILENT_AGENT='1';
+test('two independent native children share one Run budget and retain separate results',async t=>{
+ const home=await localHome(t,{sleepSeconds:0});assert.ok(home);
+ let replay=await writeMomentScenario(home.h,'coding',path.join(repoRoot,'test/fixtures/delegation'));
+ replay=await appendReplaySession(replay,'parallel-reviewer',[{kind:'chunks',chunks:[
+  {type:'block-start',index:0,blockType:'text'},
+  {type:'block-end',index:0,block:{type:'text',text:'Independent reviewer completed its own task.'}},
+  {type:'finish',reason:{kind:'stop'}},
+ ]}]);
+ await writeReplayOverlay(home.h.home,{file:replay.file,overrideFile:replay.override,childFiles:replay.children});
+ await appendFile(path.join(home.h.profileDir,'cordis.patch.yml'),QUIET_TITLE_ROW);
+ const host=await bootInProcess(home.h);let runId:string|undefined;
+ try{
+  const owner=await createRootAgent(host.ctx,home.h.home);const actor=String(owner.id);
+  const started=await host.ctx.hima.startRun({pack:timingProbePackId,site:'local',goal:{target_period_ns:2},ownerSessionId:actor,timeBoxMs:60000});
+  assert.equal(started.kind,'ran');if(started.kind!=='ran')return;runId=started.run.id;
+  const privateRoot=path.dirname(replay.readyFile);await mkdir(privateRoot,{recursive:true});
+  const inputRecord=host.ctx.hima.ledger.records({runId})[0];assert.ok(inputRecord);
+  const coder=await host.ctx.hima.delegate({runId,actor,action:'create',requestId:'parallel-coder',expectedEpoch:1,expectedRevision:0,
+   contract:{delegationId:'coder',role:'coding',task:'Write only the assigned private file.',inputRefs:[],allowedTools:['read','write','edit'],writeScope:{root:privateRoot},budgetShare:{maxElapsedMs:25000,maxFollowups:0},dependencyIds:[],recipient:{kind:'run-owner',sessionId:actor}}}) as any;
+  assert.equal(coder.status,'created',JSON.stringify(coder));
+  let control=host.ctx.hima.executionContext(runId).run.control!;
+  const reviewer=await host.ctx.hima.delegate({runId,actor,action:'create',requestId:'parallel-reviewer',expectedEpoch:control.epoch,expectedRevision:control.revision,
+   contract:{delegationId:'reviewer',role:'reviewer',task:'Inspect the retained Run input independently and report.',inputRefs:[inputRecord.id],allowedTools:['hima_delegation_input'],budgetShare:{maxElapsedMs:25000,maxFollowups:0},dependencyIds:[],recipient:{kind:'run-owner',sessionId:actor}}}) as any;
+  assert.equal(reviewer.status,'created',JSON.stringify(reviewer));
+  assert.deepEqual(reviewer.effectiveContract.tools,['hima_delegation_input']);
+  const firstId=coder.receipt.childSessionId,secondId=reviewer.receipt.childSessionId;
+  assert.notEqual(firstId,secondId);
+  assert.equal(runDelegations((host.ctx.hima as any).deps(),runId).length,2);
+  control=host.ctx.hima.executionContext(runId).run.control!;
+  const excess=await host.ctx.hima.delegate({runId,actor,action:'create',requestId:'parallel-excess',expectedEpoch:control.epoch,expectedRevision:control.revision,
+   contract:{delegationId:'excess',role:'reviewer',task:'This share exceeds the parent time box.',inputRefs:[inputRecord.id],allowedTools:['hima_delegation_input'],budgetShare:{maxElapsedMs:15000,maxFollowups:0},dependencyIds:[],recipient:{kind:'run-owner',sessionId:actor}}}) as any;
+  assert.equal(excess.status,'refused');assert.match(excess.reason,/Child shares exceed/);
+  await waitUntil('both native child results are retained',async()=>{
+   try{
+    const written=await readFile(replay.readyFile,'utf8');
+    const log=await host.ctx.get('sessionQuery')!.readSession(secondId as never);
+    return written==='export const answer = 42;\n' && JSON.stringify(log.events).includes('Independent reviewer completed its own task');
+   }catch{return false;}
+  },5000,25);
+  assert.equal(await readFile(replay.readyFile,'utf8'),'export const answer = 42;\n');
+  const reviewerLog=await host.ctx.get('sessionQuery')!.readSession(secondId as never);
+  assert.match(JSON.stringify(reviewerLog.events),/Independent reviewer completed its own task/);
+  assert.equal(host.ctx.hima.ledger.records({runId,type:'delegation'}).filter(row=>row.type==='delegation'&&row.event==='create-intent').length,2);
+ }finally{if(runId)await host.ctx.hima.cancelRun(runId);await host.dispose();await home.h.dispose();}
+});
 test('real Run delegation recovers a cold completed result, gates dependencies, and keeps lifecycle/tool authority truthful',async t=>{
  const home=await localHome(t,{sleepSeconds:0});assert.ok(home);
  const replay=await writeMomentScenario(home.h,'coding',path.join(repoRoot,'test/fixtures/delegation'));
