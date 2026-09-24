@@ -1,0 +1,87 @@
+{
+  "format": "hima-next-stage-local-verification/1",
+  "recordedAtUtc": "2026-09-24",
+  "issue": 52,
+  "source": {
+    "repository": "lluzi/hima_harness_reforge_polishing",
+    "branch": "main",
+    "commit": "d39fc4ce757d4a25a26bde803aa85bea69b090ba",
+    "remoteCommitVerified": true
+  },
+  "checks": {
+    "typecheck": ["packages/harness", "packages/desktop", "test"],
+    "static": ["check-seams", "check-boundary", "git diff --check", "package-trial --check-pack-assets"],
+    "localContract": {
+      "passed": 629,
+      "failed": 0,
+      "skipped": 0,
+      "logSha256": "11e8f71f6bdf1796291698c51d5ceed60b82685719fd4e9768047cfb05c6334d",
+      "productModelCalls": 0,
+      "sshAttempts": 0,
+      "electronWindows": 0
+    },
+    "desktopAffected": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "logSha256": "57c628ee74d49497f18335f5a346931657b70e535a90cf0abca6768043cf85d3"
+    },
+    "packagedSmoke": [
+      "signed bundle and external file manifest",
+      "version-isolated Home and old Ledger refusal before mutation",
+      "reopened local Site and existing Pack retention",
+      "relocated packaged Host and both Pack installations",
+      "ZIP integrity and external verification after extraction"
+    ]
+  },
+  "app": {
+    "version": "0.3.0-trial.18",
+    "ledgerSchema": 29,
+    "manifestStatus": "structurally-verified trial candidate",
+    "manifestSha256": "c53aa6f1d8a1e71a4922637df8e11fc2e23622c77663402ce1e5873cf5e43068",
+    "artifactDigest": "812db8b7cee23cf8e8ee4fc12b8d4be8c0c4171eb8c46dfc9d3d10ecf0260399",
+    "zipSha256": "f2f85706731dfe59d359eb2be8771573ffea7eb42ad9a1847517b10876f11569",
+    "zipBytes": 275725846,
+    "signing": "ad-hoc; not notarized",
+    "rollbackRef": "v0.3.0-trial.16"
+  },
+  "bundledMethods": [
+    {
+      "id": "custom-cell-fmax-dtco",
+      "version": "5.2.12",
+      "gitTree": "945f3a80aba9a705131768056a1e2f95141c93de",
+      "status": "development method; no independent seal"
+    },
+    {
+      "id": "xtop-timing-closure",
+      "version": "1.0.7",
+      "gitTree": "3bfc8f6fa8d63fc24d7bf8098d96b1996557978c",
+      "status": "development method; no independent seal"
+    },
+    {
+      "id": "opene902-timing-probe",
+      "status": "local stand-in sample"
+    }
+  ],
+  "release": {
+    "url": "https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/v0.3.0-trial.18",
+    "tagCommit": "d39fc4ce757d4a25a26bde803aa85bea69b090ba",
+    "draft": false,
+    "prerelease": true,
+    "assetDigestsVerified": true
+  },
+  "qualification": {
+    "realModelResearch": "not run; prior trial remains paused",
+    "commercialEda": "not run; prior trial remains paused",
+    "xtopPhysicalReportCoverage": "unqualified on actual full reports",
+    "productionInteractiveEda": "unqualified; production mutation refuses to start",
+    "nativeLibertyApi": "blocked by previously observed lib.name exit 139",
+    "customerValuePilot": "not run",
+    "timingClosureOrPpaGain": "not claimed"
+  },
+  "developmentAllocation": {
+    "requestedReviewModel": "gpt-6-sol/high",
+    "productModelUsage": "zero in this verification tranche",
+    "developmentTokenUsage": "not measured"
+  }
+}

@@ -30,7 +30,7 @@
 | S11 Library | 离线 typed fixture、双轴 finding/filter、缺值与 provenance 展示。 | `lib.name` exit 139；无真实 API facts。 |
 | S12 交付 | App 和 Pack 分别记身份；候选 App 带两份 development 方法和本地样例。 | 本地结构、安装、Host、Desktop；J3 需独立真实试验。 |
 
-上述“本地”只表示被列出的接口按保留或合成资料执行过。具体通过数在本次最终验收后写入同目录机器可读回执；任何一行都不等于客户设计的 PPA、时序收敛或 Library 签核。
+上述“本地”只表示被列出的接口按保留或合成资料执行过。具体通过数与发行字节身份已写入同目录的 [机器可读回执](verification-remaining.json)；任何一行都不等于客户设计的 PPA、时序收敛或 Library 签核。
 
 | 规格 | 外部资格或仍需交付的证据 |
 | --- | --- |
@@ -44,7 +44,7 @@
 
 ## 验证与同步
 
-最低层级采用真实本地 Host、replay、tmux/tclsh 和隔离 Desktop。真实模型、SSH/商业 EDA 与客户 pilot 分开，不用于阻塞普通软件发布。最终通过数、审查发现、源码身份和 App 字节身份由同目录验收记录补齐。
+最低层级采用真实本地 Host、replay、tmux/tclsh 和隔离 Desktop。真实模型、SSH/商业 EDA 与客户 pilot 分开，不用于阻塞普通软件发布。本轮完整 local 629/629、关键 Desktop 6/6，通过 ZIP 完整性与解压后 App 的外部验证。源码提交 `d39fc4c` 已推送；[App trial.18 预发布](https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/v0.3.0-trial.18) 的附件摘要与本地一致。最终通过数、源码和 App 字节身份见同目录验收记录。
 
 App 候选为 `0.3.0-trial.18`，Ledger schema 29。候选内带两个 development Pack 的方法文件，以及只供本地 stand-in 示例用的 timing-probe；首次启动只安装缺失的方法，不覆盖已有 Pack、历史快照或客户资产。已有 Home 在任何准备/安装动作前先检查 Ledger；损坏、非普通文件或版本不匹配都拒绝，不改动旧资产。`trial-manifest.json` 分别记录 App 文件身份、三个 Pack 的包含情况和回滚引用；结构与实际打包 Host 启动检查完成前，它一直处于 building，不能被外部验证器当作合格候选。打包先从干净源码重建所有发行入口并比对身份，不把 development Pack 称为独立 seal。旧 home 不原地迁移；支持显式离线导入 v19–v28 到空目标，保留原输入字节。不要用旧 App 打开新 home；回滚使用旧 App 与原先保留的旧 home。导入 Ledger 本身不等于迁移或重新授权原生会话。
 
