@@ -68,15 +68,17 @@ The live-only qualification entrypoint was added in `611279c` and corrected in `
 
 The first retained historical request considered for A/B was rejected before a model call because its evaluation/frontier bytes no longer matched the request hashes. The selected request from `custom-cell-fmax-dtco-20260921-005920-f064` passed all current Pack loaders: request SHA-256 `8f63a18e...a1ec`, frozen input identity `51b8569c...8e22`, 77-proposal pool `01fd993e...3e02`, and complete-matched commercial response evidence `565a45c7...908b` / response `c11d7fd6...af19`.
 
-The source-clean final run used commit `12260ea01915c7f4fb2c6b473ce1933ebebf74d7`. Two independent real `deepseek-official/deepseek-flash` sessions each completed one request step with no replay and no tool schema. The no-feedback arm selected 12 proposal keys; the with-feedback arm selected 6. The deterministic Pack comparison recorded three added and nine removed keys, `selection_changed=true`, and the reason `commercial feedback changed candidate selection`. Both proposals passed the existing context loader, strict proposal validator and isolated candidate-program runner. The model interpretation itself retained the single-pair/no-statistics/no-causality limits.
+An independent Sol/High review rejected the first successful run as final evidence because two independently sampled sessions cannot support the causal phrase “feedback changed the selection,” and because the provider value in the output was expected configuration rather than a fact returned by the composed session. The correction exposed the actual provider on Model-moment results, required `deepseek-official` at runtime, made candidate-set comparison order-insensitive, and changed the result to a non-causal sample difference. The method candidate is now `custom-cell-fmax-dtco@5.2.16`; seed and temperature are not exposed/fixed, no repeated A/A baseline exists, and causal attribution is explicitly false.
+
+The source-clean corrected run used commit `85372434b77fc0274a4463edda83f51fad0f6742`. Two independent real `deepseek-official/deepseek-flash` sessions each completed one request step with no replay and no tool schema. Both arms selected 6 proposal keys. The deterministic set comparison recorded three added and three removed keys, `selection_changed=true`, and the reason `with-feedback and without-feedback selections differ in this A/B sample; sampling is uncontrolled and causality is not established`. Both proposals passed the existing context loader, strict proposal validator and isolated candidate-program runner. The model interpretation itself retained the single-pair/no-statistics/no-causality limits.
 
 Final ignored evidence:
 
-- `feedback-ab.json` SHA-256 `1a0ef9319fcd7f6729c405e1168449b1d88cc773dcfeda23fb44c7ac0b2797fe`;
-- `feedback-ab.md` SHA-256 `61687cdbb8e909965fcdfa699ce57ebe38e5be7f36c07ca2738f874ce80b7aa9`;
-- LiveCheck `evidence.json` SHA-256 `c57ba34eb6fae3d605efc580c8721817efd29229204057519311f49c9cd60b8b`.
+- `feedback-ab.json` SHA-256 `72f79d2e4ca5c2499f8bb1d426e98ab65df186887010b2ae83e33b97770f6bf1`;
+- `feedback-ab.md` SHA-256 `1b0ebf61e6c5613ae82a55fe3c4be1ee578d62dcba32c56aa643f2dbeaf51302`;
+- LiveCheck `evidence.json` SHA-256 `f010febf79f79e1ba0b666d85eb4b82d1aefae0585884d152b48db01824026b6`.
 
-This qualifies one real feedback-sensitive selection path. It ran no commercial EDA and proves no PPA benefit. Earlier failed runs remain retained: tool exposure, reasoning/text mixing, a scalar `evidence_sha256`, and an over-strict request-step assertion were each allowed to fail closed and were not rewritten into the final evidence.
+This qualifies one real pair of feedback/no-feedback selections and proves that the selected sets differed in this sample. It does not estimate whether the difference exceeded model sampling noise, ran no commercial EDA and proves no PPA benefit. Earlier failed runs remain retained: tool exposure, reasoning/text mixing, a scalar `evidence_sha256`, and an over-strict request-step assertion were each allowed to fail closed and were not rewritten into the final evidence.
 
 ## J3 status
 

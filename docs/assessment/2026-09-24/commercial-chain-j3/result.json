@@ -4,7 +4,7 @@
   "source": {
     "repository": "lluzi/hima_harness_reforge_polishing",
     "branch": "main",
-    "commit": "12260ea01915c7f4fb2c6b473ce1933ebebf74d7",
+    "commit": "85372434b77fc0274a4463edda83f51fad0f6742",
     "remoteCommitVerified": true
   },
   "status": "blocked",
@@ -63,6 +63,7 @@
   },
   "issue59": {
     "status": "qualified-pending-independent-review",
+    "pack": { "id": "custom-cell-fmax-dtco", "version": "5.2.16", "status": "development" },
     "input": {
       "requestSha256": "8f63a18e3a5aee1067a9cec16877dc69de02eba02aa5fdcff1f42b7e98dda1ec",
       "frozenIdentity": "51b8569c27a93ce831ed0f79c834316ac7a05025bdbfae87ef9e33c74f2e8e22",
@@ -77,24 +78,27 @@
       "realTurns": 2,
       "requestSteps": 2,
       "replayUsed": false,
+      "providerObservedAtRuntime": true,
+      "sampling": { "seed": "not-exposed", "temperature": "not-fixed", "repeatedAaBaseline": false, "causalAttribution": false },
       "tools": []
     },
     "selection": {
-      "withoutFeedbackCount": 12,
+      "withoutFeedbackCount": 6,
       "withFeedbackCount": 6,
       "addedCount": 3,
-      "removedCount": 9,
+      "removedCount": 3,
       "changed": true,
-      "reason": "commercial feedback changed candidate selection"
+      "reason": "with-feedback and without-feedback selections differ in this A/B sample; sampling is uncontrolled and causality is not established"
     },
     "evidence": {
-      "feedbackJsonSha256": "1a0ef9319fcd7f6729c405e1168449b1d88cc773dcfeda23fb44c7ac0b2797fe",
-      "feedbackMarkdownSha256": "61687cdbb8e909965fcdfa699ce57ebe38e5be7f36c07ca2738f874ce80b7aa9",
-      "liveCheckSha256": "c57ba34eb6fae3d605efc580c8721817efd29229204057519311f49c9cd60b8b"
+      "feedbackJsonSha256": "72f79d2e4ca5c2499f8bb1d426e98ab65df186887010b2ae83e33b97770f6bf1",
+      "feedbackMarkdownSha256": "1b0ebf61e6c5613ae82a55fe3c4be1ee578d62dcba32c56aa643f2dbeaf51302",
+      "liveCheckSha256": "f010febf79f79e1ba0b666d85eb4b82d1aefae0585884d152b48db01824026b6"
     },
     "claimLimits": [
       "no commercial EDA was run by the A/B check",
       "selection change is not PPA evidence",
+      "selection difference is not a causal feedback effect without controlled sampling or an A/A noise baseline",
       "single matched pair has no statistical or per-action causal authority"
     ]
   },
