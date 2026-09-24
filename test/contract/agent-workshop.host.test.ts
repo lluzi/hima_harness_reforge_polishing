@@ -40,6 +40,10 @@ test('an Agent-owned Workshop code failure stays in the coding loop without huma
     const beforeBegin = await act('recommend', { nodeId: 'analyze' });
     assert.equal(beforeBegin.kind, 'refused');
     assert.match(beforeBegin.reason ?? '', /not begun.*begin/i);
+    const unknownIdentity = await act('recommend', { nodeId: 'analyze', executionId: 'unknown-execution' });
+    assert.equal(unknownIdentity.kind, 'refused');
+    assert.match(unknownIdentity.reason ?? '', /identity is unknown/);
+    assert.doesNotMatch(unknownIdentity.reason ?? '', /not begun/);
     const begun = await act('begin', { nodeId: 'analyze' });
     assert.equal(begun.kind, 'accepted', begun.reason);
     assert.deepEqual(begun.data, { nextAction: 'recommend', reason: 'read the admitted Workshop contract and inputs before writing or running code' });

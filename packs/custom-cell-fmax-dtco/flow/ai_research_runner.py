@@ -887,8 +887,9 @@ def _validate_candidate_ast(tree):
     functions = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
     if len(functions) != 1:
         if len(functions) > 1:
-            raise ValueError("candidate_program cannot define nested helper functions at line %d" %
-                             functions[1].lineno)
+            kind = ("cannot define nested helper functions" if functions[1] not in tree.body
+                    else "must define only one top-level function")
+            raise ValueError("candidate_program %s at line %d" % (kind, functions[1].lineno))
         raise ValueError("candidate_program must define one propose_candidates function")
     function = functions[0]
     literal_lengths = {}

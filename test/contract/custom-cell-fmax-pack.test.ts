@@ -805,7 +805,7 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
   assert.notEqual(libOnly.status, 0, 'a Liberty text file cannot double as Design Compiler’s compiled DB');
   assert.match(libOnly.stderr, /FOUNDRY_DB_FILE.*compiled.*\.db/);
-  assert.rejects(() => readFile(path.join(libOnlyWorkspace, 'flow/inputs.json')),
+  await assert.rejects(() => readFile(path.join(libOnlyWorkspace, 'flow/inputs.json')),
     'a rejected binding must not publish misleading DC inputs');
   const legacyWorkspace = path.join(h.workspace, 'legacy-single-library-bind');
   await mkdir(path.join(legacyWorkspace, 'flow'), { recursive: true });

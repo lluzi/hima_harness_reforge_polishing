@@ -2499,10 +2499,11 @@ function freshWorkshopEntry(deps: FabricDeps, run: RunRecord, execution: NodeExe
 async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionActionRequest, digest: string): Promise<ExecutionActionResult> {
   const no = (reason: string) => executionAnswer(deps, run.id, 'refused', { reason });
   const control = run.control!;
-  const execution = req.executionId === undefined ? undefined : control.executions[req.executionId];
-  if (execution === undefined) return no(req.action === 'recommend'
+  if (req.executionId === undefined) return no(req.action === 'recommend'
     ? 'this execution has not begun; call begin for this node first, then recommend using its execution identity'
     : 'name the execution identity returned by begin');
+  const execution = control.executions[req.executionId];
+  if (execution === undefined) return no('the named execution identity is unknown for this Run; inspect the current node before retrying');
   if (req.nodeId !== undefined && req.nodeId !== execution.nodeId) return no('node and execution identities disagree');
   if (req.action === 'read' && req.output === '@job-log') {
     if (execution.jobSession === undefined) return no('this execution has launched no Job whose log can be read');

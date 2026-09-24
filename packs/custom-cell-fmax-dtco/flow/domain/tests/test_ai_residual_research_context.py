@@ -832,6 +832,8 @@ class ResidualResearchContextTests(unittest.TestCase):
             ("def propose_candidates(residual, budget):\n"
              "    def helper():\n        return []\n"
              "    return helper()\n", r"nested helper functions.*line 2"),
+            ("def propose_candidates(residual, budget):\n    return []\n"
+             "def extra():\n    return []\n", r"only one top-level function.*line 3"),
         )
         for source, diagnosis in cases:
             with self.subTest(diagnosis=diagnosis):
