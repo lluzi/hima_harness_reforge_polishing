@@ -272,7 +272,7 @@ async function runArm(check: LiveCheck, moment: Moment, context: Record<string, 
     const proposal = parseProposal(answer);
     outcome = 'completed';
     return {
-      sessionId: moment.sessionId, provider: EXPECTED_PROVIDER, model: moment.model,
+      sessionId: moment.sessionId, provider: moment.provider, model: moment.model,
       requestSteps, tools: moment.tools, responseSha256: sha256(answer), proposal,
     };
   } finally {
@@ -293,6 +293,7 @@ function markdown(prepared: PreparedInput, validated: ValidatedResult, sessions:
     `- Commercial response identity: \`${prepared.commercialResponse.responseSha256}\``,
     `- Pack runner: \`${prepared.runnerSha256}\``,
     `- Native sessions: ${sessions.map((row) => `\`${row.sessionId}\` / \`${row.responseSha256}\``).join(', ')}`,
+    '- Sampling: seed and temperature were not fixed; this one A/B sample is non-causal and has no A/A noise baseline.',
     '',
     '## Selection result',
     '',
@@ -358,8 +359,10 @@ await runLive(NAME, 2, async (check: LiveCheck) => {
   const withoutMoment = await openArm(1, prepared.arms.withoutFeedback);
   const withMoment = await openArm(2, prepared.arms.withFeedback);
   check.require('both native sessions use the real configured DeepSeek-V4.1-Flash route with no tool schema',
-    [withoutMoment, withMoment].every((moment) => moment.model === EXPECTED_MODEL && moment.tools.length === 0),
-    [withoutMoment, withMoment].map((moment) => ({ sessionId: moment.sessionId, model: moment.model, tools: moment.tools })));
+    [withoutMoment, withMoment].every((moment) => moment.provider === EXPECTED_PROVIDER
+      && moment.model === EXPECTED_MODEL && moment.tools.length === 0),
+    [withoutMoment, withMoment].map((moment) => ({ sessionId: moment.sessionId,
+      provider: moment.provider, model: moment.model, tools: moment.tools })));
 
   const without = await runArm(check, withoutMoment, prepared.arms.withoutFeedback);
   const withFeedback = await runArm(check, withMoment, prepared.arms.withFeedback);
@@ -409,9 +412,10 @@ await runLive(NAME, 2, async (check: LiveCheck) => {
       commercialResponse: prepared.commercialResponse,
     },
     model: {
-      provider: EXPECTED_PROVIDER,
+      provider: sessions[0]!.provider,
       wireId: EXPECTED_MODEL,
       replayUsed: false,
+      sampling: { seed: 'not-exposed', temperature: 'not-fixed', repeatedAaBaseline: false, causalAttribution: false },
       arms: sessions.map(({ sessionId, requestSteps, responseSha256 }) => ({ sessionId, requestSteps, responseSha256 })),
     },
     validation: validated,
@@ -430,6 +434,6 @@ await runLive(NAME, 2, async (check: LiveCheck) => {
     claims: result.claims,
   };
   check.observed.outcome = validated.feedbackAb.selectionChanged
-    ? 'QUALIFIED — commercial feedback changed the frozen-pool selection; no PPA claim'
+    ? 'QUALIFIED — with-feedback and without-feedback selections differ in this sample; causal effect is not established; no PPA claim'
     : 'QUALIFIED — selection unchanged with an explicit reason; no PPA claim';
 });

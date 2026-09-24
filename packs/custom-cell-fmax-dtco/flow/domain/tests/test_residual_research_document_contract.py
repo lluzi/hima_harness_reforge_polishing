@@ -65,7 +65,7 @@ def _document(*, feedback_ab: bool) -> dict:
             "performed": False, "selection_changed": None,
             "without_feedback_proposal_keys": [], "with_feedback_proposal_keys": [],
             "selection_effect": {"kind": "unchanged", "added_proposal_keys": [], "removed_proposal_keys": [],
-                                 "reason": "commercial feedback did not change candidate selection"},
+                                 "reason": "with-feedback and without-feedback selections contain the same candidates in this A/B sample; sampling is uncontrolled"},
             "interpretation": "no commercial feedback was supplied",
         }
     document["generation_feedback"] = {}

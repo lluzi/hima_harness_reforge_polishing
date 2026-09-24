@@ -24,6 +24,7 @@ import { HIMA_MOMENT_PRESET, SHELL_TOOL, openMoment as openMomentDirectly, type 
 
 /** The model the profile selects, which the stand-in's catalog answers for (D9). */
 const MODEL = 'deepseek-flash';
+const PROVIDER = 'deepseek-official';
 
 
 /** What the committed one-turn transcript makes the model say. */
@@ -124,6 +125,7 @@ test('through the Host with the replay stand-in: a moment opens on a stand-in no
 
     assert.equal(moment.text, ANSWER,
       `the route returns only user-visible text, never the model's reasoning block: ${JSON.stringify(moment)}`);
+    assert.equal(moment.provider, PROVIDER, 'the answer carries the actual provider route selected on the session');
     assert.equal(moment.model, MODEL, 'the model is the profile default, read off the session');
     assert.ok(moment.sessionId.startsWith('session-'), `the answer names dsh's own session: ${moment.sessionId}`);
     // The whole of criterion two, on dsh's own answer about that session's scope.

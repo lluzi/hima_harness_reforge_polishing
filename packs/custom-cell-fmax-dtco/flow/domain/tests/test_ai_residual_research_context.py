@@ -42,12 +42,17 @@ def test_feedback_ab_records_the_concrete_selection_delta_or_an_explicit_unchang
     assert changed["selection_changed"] is True
     assert changed["selection_effect"] == {
         "kind": "changed", "added_proposal_keys": ["proposal:b"], "removed_proposal_keys": ["proposal:a"],
-        "reason": "commercial feedback changed candidate selection",
+        "reason": "with-feedback and without-feedback selections differ in this A/B sample; sampling is uncontrolled and causality is not established",
     }
     unchanged = _feedback_ab(["proposal:a"], ["proposal:a"], "feedback kept the choice", {"return_code": 0})
     assert unchanged["selection_changed"] is False
     assert unchanged["selection_effect"]["kind"] == "unchanged"
-    assert unchanged["selection_effect"]["reason"] == "commercial feedback did not change candidate selection"
+    assert unchanged["selection_effect"]["reason"] == "with-feedback and without-feedback selections contain the same candidates in this A/B sample; sampling is uncontrolled"
+    reordered = _feedback_ab(["proposal:a", "proposal:b"], ["proposal:b", "proposal:a"],
+                             "sampling reordered the same set", {"return_code": 0})
+    assert reordered["selection_changed"] is False
+    assert reordered["selection_effect"]["added_proposal_keys"] == []
+    assert reordered["selection_effect"]["removed_proposal_keys"] == []
 
 
 def _assert_generation_feedback_retains_typed_demand_identity_and_unknown_delay_conditions():

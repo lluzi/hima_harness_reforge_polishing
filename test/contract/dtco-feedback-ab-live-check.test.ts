@@ -80,6 +80,12 @@ test('DTCO feedback A/B live check delegates truth checks to the existing Pack r
     'the prompt disambiguates the Pack field whose singular name still carries a source list');
   assert.match(source, /check\.steps >= 2 && check\.steps <= 4/,
     'two business turns retain bounded native request-step cost instead of assuming one transport step per turn');
+  assert.match(source, /moment\.provider === EXPECTED_PROVIDER/,
+    'provider identity is read from the composed moment rather than written as an expected constant');
+  assert.match(source, /provider: sessions\[0\]!\.provider/,
+    'durable evidence records the runtime provider fact');
+  assert.match(source, /repeatedAaBaseline: false, causalAttribution: false/,
+    'the one A/B sample cannot claim a controlled causal effect');
   assert.doesNotMatch(source, /qualificationSessions|host\.ctx\.tools\.guard/,
     'a runtime guard cannot substitute for removing tools from the model schema');
   assert.doesNotMatch(source, /writeReplayOverlay|dsh-llm-replay.*import/);

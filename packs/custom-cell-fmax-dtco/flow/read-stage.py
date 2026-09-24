@@ -1582,12 +1582,13 @@ def read_residual_ai_research(report, out, document):
     after = feedback.get("with_feedback_proposal_keys")
     if not isinstance(before, list) or not isinstance(after, list) or any(not isinstance(key, str) for key in before + after):
         raise ValueError("residual AI research feedback selection identities are malformed")
-    changed = before != after
+    changed = set(before) != set(after)
     expected_effect = {
         "kind": "changed" if changed else "unchanged",
         "added_proposal_keys": sorted(set(after) - set(before)),
         "removed_proposal_keys": sorted(set(before) - set(after)),
-        "reason": ("commercial feedback changed candidate selection" if changed else "commercial feedback did not change candidate selection"),
+        "reason": ("with-feedback and without-feedback selections differ in this A/B sample; sampling is uncontrolled and causality is not established" if changed
+                   else "with-feedback and without-feedback selections contain the same candidates in this A/B sample; sampling is uncontrolled"),
     }
     if effect != expected_effect or feedback.get("selection_changed") != (changed if feedback.get("performed") is True else None):
         raise ValueError("residual AI research feedback selection effect is inconsistent")

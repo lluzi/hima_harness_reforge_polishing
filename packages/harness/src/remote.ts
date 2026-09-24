@@ -517,6 +517,7 @@ export interface MaterialAnswer { readonly record: CodeView | KnowledgeView; rea
  */
 export interface MomentAnswer {
   readonly sessionId: string;
+  readonly provider: string;
   readonly model: string;
   readonly tools: readonly string[];
   readonly text: string;
@@ -1598,7 +1599,8 @@ async function momentOperation(ops: RemoteOperations, runId: string, req: Incomi
     if (err instanceof MomentTurnError) return failure(502, 'hima/moment-failed', err.message);
     throw err;
   }
-  return ok({ sessionId: moment.sessionId, model: moment.model, tools: moment.tools, text: moment.text } satisfies MomentAnswer);
+  return ok({ sessionId: moment.sessionId, provider: moment.provider, model: moment.model,
+    tools: moment.tools, text: moment.text } satisfies MomentAnswer);
 }
 
 /**

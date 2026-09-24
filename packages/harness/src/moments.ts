@@ -184,6 +184,8 @@ export interface MomentTurn {
 export interface Moment {
   /** dsh's own session id, which is also the agent's: what finds this session's log on this machine. */
   readonly sessionId: string;
+  /** Provider route actually selected on the composed agent. */
+  readonly provider: string;
   /** The model the session carries, read off the session dsh composed. */
   readonly model: string;
   /** Every tool the session can reach, as dsh reports them for its scope. */
@@ -264,6 +266,7 @@ export async function openMoment(deps: MomentDeps, request: MomentRequest): Prom
   serviceOn(ctx, 'approval')?.setPolicy(agent, 'never');
   // What dsh says this session can reach, not what we meant to give it.
   const tools = ctx.tools.schemas(agent).map((schema) => schema.name);
+  const provider = agent.options.provider ?? selection.provider;
   const model = agent.options.model ?? selection.model;
   const head = { preset: request.preset, sessionId: String(agent.id), model, nodeId: request.nodeId, attempt: request.attempt };
   // An absent key, never an undefined one, and only on the `opened` record: what a moment was opened
@@ -289,6 +292,7 @@ export async function openMoment(deps: MomentDeps, request: MomentRequest): Prom
   let closing: Promise<void> | undefined;
   return {
     sessionId: head.sessionId,
+    provider,
     model,
     tools,
     async ask(text: string): Promise<MomentTurn> {
@@ -482,6 +486,7 @@ export const nextMomentAttempt = (ledger: Ledger, runId: string, nodeId: string)
 /** What opening a moment on a Run's current node answered. */
 export interface MomentOnNode extends MomentTurn {
   readonly sessionId: string;
+  readonly provider: string;
   readonly model: string;
   readonly tools: readonly string[];
   readonly nodeId: string;
@@ -582,5 +587,6 @@ export async function momentOnCurrentNode(deps: MomentDeps, runId: string, instr
     throw err instanceof MomentTurnError ? new MomentTurnError(said, { cause: err }) : new Error(said, { cause: err });
   }
   await moment.close('completed');
-  return { ...turn, sessionId: moment.sessionId, model: moment.model, tools: moment.tools, nodeId, attempt };
+  return { ...turn, sessionId: moment.sessionId, provider: moment.provider, model: moment.model,
+    tools: moment.tools, nodeId, attempt };
 }

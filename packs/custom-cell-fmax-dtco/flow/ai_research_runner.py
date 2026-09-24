@@ -1317,7 +1317,7 @@ def validate_residual_research_proposal(proposal, context):
 
 
 def _feedback_ab(before, after, interpretation, without_execution=None):
-    changed = before != after
+    changed = set(before) != set(after)
     added = sorted(set(after) - set(before))
     removed = sorted(set(before) - set(after))
     return {
@@ -1330,8 +1330,8 @@ def _feedback_ab(before, after, interpretation, without_execution=None):
             "kind": "changed" if changed else "unchanged",
             "added_proposal_keys": added,
             "removed_proposal_keys": removed,
-            "reason": ("commercial feedback changed candidate selection" if changed
-                       else "commercial feedback did not change candidate selection"),
+            "reason": ("with-feedback and without-feedback selections differ in this A/B sample; sampling is uncontrolled and causality is not established" if changed
+                       else "with-feedback and without-feedback selections contain the same candidates in this A/B sample; sampling is uncontrolled"),
         },
         "interpretation": interpretation,
     }
