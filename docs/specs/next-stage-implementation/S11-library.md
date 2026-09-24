@@ -1,5 +1,15 @@
 # S11：Library facts、typed report 与受控分析方法
 
+> **2026-09-24 现行状态：** 原先 `lib.name()` exit 139 环境阻塞已经由 QuaLib 2026
+> 的厂商示例、SAED14 和 TSMC28 有界原生检查解除。新的
+> [E1 development Pack](../../../packs/library-intelligence/INTENT.md)保留哈希绑定的
+> native worker、Reader 与本地 Host 反例，但**默认图从 blocked 开始且没有 native tool**。
+> 审查证明仅靠 manifest 自带的 Permit 快照会在 Host 授权前读取客户文件，因此 E1 产品资格仍等待
+> Host 对所加载 Site Permit 的同一性、嵌套路径和 QuaLib/XTop 许可证互斥做启动前检查。
+> [新 worker 的手动 L4 证据](../../assessment/2026-09-24/next-stage/library-e1-manual-l4.md)
+> 是 `nativeStatus=passed`、产品 `status=blocked`；E2–E4 未完成。下文旧环境/旧实施顺序叙述
+> 保留为制定规格时的历史快照，以本段及保留证据为现行判断。
+
 状态：实施规格；覆盖 backlog 的 `NXT-E1`、`NXT-E2`、`NXT-E3`、`NXT-E4`。本文件不实现、不运行测试/EDA、不安装或诊断 Liberty API。`LIB-INT-01` 仍是唯一真实接入门。
 
 ## Problem Statement
