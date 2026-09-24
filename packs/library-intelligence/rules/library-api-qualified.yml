@@ -1,0 +1,7 @@
+id: library-api-qualified
+version: "1"
+title: Three representative API probes have complete qualification evidence
+parameter: { name: qualification_required, unit: count }
+requires: [{ type: library_qualification_ok }]
+subject: { type: library_qualification_ok }
+predicate: { op: eq, threshold: { parameter: qualification_required }, unit: count }

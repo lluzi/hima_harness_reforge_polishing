@@ -1,0 +1,20 @@
+id: library-intelligence
+version: "0.1.0"
+entry: blocked
+nodes:
+  - id: read-qualification
+    kind: act
+    parameters: { observes: qualification }
+  - id: qualification-gate
+    kind: judge
+    parameters:
+      rules: [library-api-qualified]
+      bind: { qualification_required: { from: goal, name: qualification_required } }
+  - id: blocked
+    kind: wait
+    parameters: { blocker: hard-blocker }
+edges:
+  - { from: read-qualification, to: qualification-gate }
+  - { from: qualification-gate, to: blocked, outcome: FAIL }
+  - { from: qualification-gate, to: blocked, outcome: UNDETERMINED }
+loops: {}

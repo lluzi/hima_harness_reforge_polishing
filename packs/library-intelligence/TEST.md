@@ -1,0 +1,3 @@
+# Validation boundary
+
+L0: load/check the Pack and run static checks. L1/L2: use isolated plain-file fixtures and a stub `tmlib` to falsify hash, Permit, copy, and child-crash handling; confirm an untouched real Host Run stays blocked even with a forged manifest; materialize a blocked receipt through the real local Host Reader only with an explicit test graph variant. A stub proves orchestration only. L4 is a separate bounded manual native probe for vendor fixture, SAED14, and TSMC28 under selected=new/no-XTop conditions. It does not complete Pack E1; the Host-attested Permit and license launch gate remain required.

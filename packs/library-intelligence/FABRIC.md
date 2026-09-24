@@ -1,0 +1,5 @@
+# Qualification execution
+
+The default graph enters `blocked`, a hard wait. It declares no native tool and has no edge from the wait to a Reader or Judge. The Reader and Judge declarations are dormant contract material for isolated validation; a normal Host Run cannot reach them. The Reader uses `/usr/bin/python3`. The manual worker is Pack-local source and is not copied into a default Campaign workspace. The Pack never changes an original source, vendor installation, license service, or published method. A blocked receipt or absent receipt cannot open later Library facts work.
+
+Before a future native tool is exposed, Host/Site integration must stage and attest the exact loaded Permit, authorize source/API/Python read roots and the private write root, pin the `edarun` executable, and enforce selected=new QuaLib 2026 on port 59099 with no concurrent XTop old/59001 client. Current Job capacity cannot enforce that exclusion; E1 product completion remains blocked. The Pack indicator describes manual local qualification evidence only. Do not treat it as E2 facts or product release approval.

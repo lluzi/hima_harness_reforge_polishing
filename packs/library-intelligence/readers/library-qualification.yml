@@ -1,0 +1,6 @@
+id: library-qualification
+version: "1"
+file: tools/read-qualification.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-library-qualification/1
+emits: [library_qualification_ok]

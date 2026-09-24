@@ -51,6 +51,7 @@
     "test/contract/knowledge-documents.test.ts",
     "test/contract/knowledge-reuse.host.test.ts",
     "test/contract/ledger-import.test.ts",
+    "test/contract/library-intelligence-pack.test.ts",
     "test/contract/library-insight.test.ts",
     "test/contract/lfr-cumulative-library.test.ts",
     "test/contract/lfr-proxy-mapping.test.ts",
