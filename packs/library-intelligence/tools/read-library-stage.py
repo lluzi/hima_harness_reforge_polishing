@@ -98,7 +98,7 @@ def facts_path(directory, position):
 
 def validate_facts(value, report_path):
     exact(value, ("schema", "position", "source", "producer", "library", "cells", "coverage",
-                  "unknowns", "qualificationRef", "recordSha256"), "facts")
+                  "unknowns", "analysisRef", "qualificationRef", "recordSha256"), "facts")
     identity = embedded_identity(value, "recordSha256")
     if value["position"] not in ("baseline", "candidate"):
         fail("facts position differs")
@@ -165,16 +165,34 @@ def validate_facts(value, report_path):
             if not isinstance(arc["tables"], list) or not arc["tables"]:
                 fail("arc table coverage is absent")
             for table in arc["tables"]:
-                exact(table, ("id", "model", "unit", "valueCount", "sample", "provenance", "unknowns"), "table")
+                exact(table, ("id", "model", "unit", "unitScaleToSI", "axes", "shape", "values", "provenance", "unknowns"), "table")
                 text(table["id"], "table id")
-                if table["model"] != "unknown" or table["unit"] != "unknown":
-                    fail("unmeasured table model/unit must remain unknown")
-                if not isinstance(table["valueCount"], int) or table["valueCount"] < 1:
-                    fail("table value count differs")
-                finite(table["sample"], "table sample")
+                if table["model"] != "nldm":
+                    fail("table model differs")
+                text(table["unit"], "table unit")
+                if finite(table["unitScaleToSI"], "table unit scale") <= 0:
+                    fail("table unit scale must be positive")
+                if not isinstance(table["axes"], list) or not table["axes"] or not isinstance(table["shape"], list) or len(table["axes"]) != len(table["shape"]):
+                    fail("table axes/shape differ")
+                expected_values = 1
+                for axis, size in zip(table["axes"], table["shape"]):
+                    exact(axis, ("variable", "unit", "scaleToSI", "indexes"), "table axis")
+                    text(axis["variable"], "table axis variable")
+                    text(axis["unit"], "table axis unit")
+                    if axis["scaleToSI"] is not None and finite(axis["scaleToSI"], "table axis unit scale") <= 0:
+                        fail("table axis unit scale must be positive")
+                    if not isinstance(size, int) or size < 1 or not isinstance(axis["indexes"], list) or len(axis["indexes"]) != size:
+                        fail("table axis index/shape differs")
+                    for index in axis["indexes"]:
+                        finite(index, "table axis index")
+                    expected_values *= size
+                if not isinstance(table["values"], list) or len(table["values"]) != expected_values:
+                    fail("table shape/value count differs")
+                for table_value in table["values"]:
+                    finite(table_value, "table value")
                 provenance(table["provenance"], "table", "available")
-                if not isinstance(table["unknowns"], list) or not table["unknowns"]:
-                    fail("table unknown coverage is absent")
+                if not isinstance(table["unknowns"], list):
+                    fail("table unknown coverage differs")
                 for item in table["unknowns"]:
                     unknown(item, "table unknown")
     coverage = exact(value["coverage"], ("declaredCells", "observedCells", "complete", "scope"), "facts coverage")
@@ -187,6 +205,17 @@ def validate_facts(value, report_path):
         fail("facts must retain unavailable fields")
     for item in value["unknowns"]:
         unknown(item, "facts unknown")
+    analysis_ref = exact(value["analysisRef"], ("path", "sha256"), "analysis reference")
+    if not os.path.isabs(analysis_ref["path"]) or file_sha(analysis_ref["path"]) != hash_value(analysis_ref["sha256"], "analysis manifest SHA-256"):
+        fail("analysis manifest identity differs")
+    analysis = read(analysis_ref["path"])
+    exact(analysis, ("schema", "comparisonKind", "baseline", "candidate"), "analysis manifest")
+    if analysis["schema"] != "hima-library-analysis-input/1" or analysis["comparisonKind"] != "same-qualified-source-control":
+        fail("analysis manifest contract differs")
+    selected = exact(analysis[value["position"]], ("qualificationRole", "expectedSourceSha256", "family", "corner", "view"), "analysis source")
+    if selected != {"qualificationRole": source["role"], "expectedSourceSha256": source["sha256"],
+                    "family": source["family"], "corner": source["corner"], "view": source["view"]}:
+        fail("facts differ from the selected analysis source")
     reference = exact(value["qualificationRef"], ("receiptSha256", "resultRole", "childSha256"), "qualification reference")
     qualification_path = os.path.normpath(os.path.join(os.path.dirname(report_path), "../qualification/receipt.json"))
     qualification = read(qualification_path)

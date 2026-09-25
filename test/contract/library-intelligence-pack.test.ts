@@ -137,7 +137,7 @@ test('E1 receipt drives the Pack-local E2 to E4 graph artifacts with an explicit
     const result = path.join(library, 'rule-result.json');
     const proposal = path.join(library, 'proposal.json');
     for (const args of [
-      ['facts', receipt, 'tsmc28', 'baseline', baseline], ['facts', receipt, 'tsmc28', 'candidate', candidate],
+      ['facts', receipt, f.analysisManifest, 'baseline', baseline], ['facts', receipt, f.analysisManifest, 'candidate', candidate],
       ['delta', baseline, candidate, delta], ['report', delta, report], ['result', report, result], ['proposal', report, result, stageWorker, proposal],
     ]) {
       const run = spawnSync('python3', [stageWorker, ...args], { encoding: 'utf8' });
@@ -149,7 +149,11 @@ test('E1 receipt drives the Pack-local E2 to E4 graph artifacts with an explicit
     assert.equal(facts.schema, 'hima-library-facts/1');
     assert.equal(facts.source.role, 'tsmc28');
     assert.equal(facts.coverage.scope, 'representative-query-only');
-    assert.ok(facts.unknowns.length > 0, 'E1 samples must preserve absent PVT/table fields as unknown');
+    assert.equal(facts.analysisRef.path, f.analysisManifest);
+    assert.ok(facts.unknowns.length > 0, 'representative E2 facts must preserve absent PVT/corpus fields as unknown');
+    assert.deepEqual(facts.cells[0].arcs[0].tables[0].shape, [7, 7]);
+    assert.equal(facts.cells[0].arcs[0].tables[0].axes.length, 2);
+    assert.equal(facts.cells[0].arcs[0].tables[0].values.length, 49);
     assert.equal(comparison.comparisonKind, 'same-qualified-source-zero-delta');
     assert.equal(comparison.cellDeltas[0].area.delta, 0);
     assert.equal(method.writeAuthorization, 'none');
@@ -178,6 +182,15 @@ test('E1 receipt drives the Pack-local E2 to E4 graph artifacts with an explicit
     const refusedFacts = spawnSync('python3', [stageReader, forgedFactsPath, path.join(f.root, 'refused-facts.json')], { encoding: 'utf8' });
     assert.notEqual(refusedFacts.status, 0);
     assert.match(refusedFacts.stderr, /PVT|unavailable fields/i, 'a self-consistent hash cannot turn unknown PVT into numeric zero');
+
+    const forgedTable = JSON.parse(await readFile(baseline, 'utf8'));
+    forgedTable.cells[0].arcs[0].tables[0].axes = [];
+    refreshIdentity(forgedTable, 'recordSha256');
+    const forgedTablePath = path.join(library, 'forged-table.json');
+    await writeFile(forgedTablePath, JSON.stringify(forgedTable));
+    const refusedTable = spawnSync('python3', [stageReader, forgedTablePath, path.join(f.root, 'refused-table.json')], { encoding: 'utf8' });
+    assert.notEqual(refusedTable.status, 0);
+    assert.match(refusedTable.stderr, /axes\/shape differ/i);
 
     const forgedDelta = JSON.parse(await readFile(delta, 'utf8'));
     forgedDelta.conditions.corner = 'forged-corner';
@@ -222,11 +235,18 @@ import os, signal, shutil
 class Array(list):
     def size(self): return len(self)
 class Values(Array): pass
+class Template:
+    def isNull(self): return False
+    def getVariableStr(self, dim): return ["input_net_transition", "total_output_net_capacitance"][dim]
 class Table:
     def isCcsModel(self): return False
     def isVectorModel(self): return False
     def getValues(self): return Values([0.125] * 49)
     def getTypeStr(self): return "cell_rise"
+    def getDimension(self): return 2
+    def getDimSize(self, _): return 7
+    def getIndexData(self, dim): return Values(([0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64] if dim == 0 else [0.001, 0.002, 0.004, 0.008, 0.016, 0.032, 0.064]))
+    def getTemplate(self): return Template()
 class Arc:
     def getDataGroups(self): return Array([Table()])
     def getRelatedPinName(self): return "A"
@@ -266,6 +286,7 @@ interface Fixture {
   root: string;
   workspace: string;
   manifest: string;
+  analysisManifest: string;
   permit: string;
   python: string;
   sources: string[];
@@ -297,6 +318,11 @@ async function fixture(additionalRoot?: string): Promise<Fixture> {
     await writeFile(target, 'SYNTHETIC LIBERTY ' + role + '\n');
     return target;
   }));
+  const analysisManifest = path.join(root, 'analysis.json');
+  const selected = { qualificationRole: 'tsmc28', expectedSourceSha256: sha(await readFile(sources[2]!)),
+    family: 'synthetic-tsmc28', corner: 'tt0p9v25c', view: 'NLDM' };
+  await writeFile(analysisManifest, JSON.stringify({ schema: 'hima-library-analysis-input/1',
+    comparisonKind: 'same-qualified-source-control', baseline: selected, candidate: selected }));
   const permit = path.join(site, 'local.permit.yml');
   const permitText = [
     'allowedReadRoots:', `  - ${root}`, `  - ${path.dirname(await realpath(python))}`, '  - /usr/local/bin', '  - /bin',
@@ -332,11 +358,12 @@ async function fixture(additionalRoot?: string): Promise<Fixture> {
     'permit: ./local.permit.yml', 'bindings:',
     `  qualificationManifest: ${manifest}`,
     `  qualificationPython: ${python}`,
+    `  analysisManifest: ${analysisManifest}`,
     `  workspaceRoot: ${workspace}`,
     'capacity: { cores: 2, memoryGiB: 2, parallelJobs: 1, licences: {} }', '',
   ].join('\n'));
   return {
-    root, workspace, manifest, permit, python, sources,
+    root, workspace, manifest, analysisManifest, permit, python, sources,
     run() {
       const value = JSON.parse(readFileSync(manifest, 'utf8'));
       writeFileSync(path.join(workspace, 'hima-library-host-attestation.json'), JSON.stringify({
@@ -478,7 +505,7 @@ test('real Host vetoes a Site-bound Python that differs from the manifest before
   try {
     await installPack(h, 'library-intelligence');
     const installedSite = await writeLocalSite(h, {
-      bindings: { qualificationManifest: f.manifest, qualificationPython: f.sources[0]!, workspaceRoot: h.workspace },
+      bindings: { qualificationManifest: f.manifest, qualificationPython: f.sources[0]!, analysisManifest: f.analysisManifest, workspaceRoot: h.workspace },
       allowedReadRoots: [h.workspace, f.root, path.dirname(await realpath(f.python)), path.join(h.home, 'hima/sites'), '/usr/local/bin'], allowedWriteRoots: [h.workspace],
       allowedWrappers: ['/usr/local/bin/edarun', '/usr/bin/python3'],
       licences: { 'QuaLib-2026-new-59099': 1 },
@@ -756,7 +783,7 @@ test('real local Host refuses a self-consistent positive receipt with no matchin
     const graph = await readFile(graphPath, 'utf8');
     await writeFile(graphPath, graph.replace('entry: qualify-api', 'entry: read-qualification'));
     await writeLocalSite(h, {
-      bindings: { qualificationManifest: f.manifest, qualificationPython: f.python, workspaceRoot: h.workspace },
+      bindings: { qualificationManifest: f.manifest, qualificationPython: f.python, analysisManifest: f.analysisManifest, workspaceRoot: h.workspace },
       allowedReadRoots: [h.workspace, f.root],
       allowedWriteRoots: [h.workspace],
       allowedWrappers: ['/usr/local/bin/edarun', '/usr/bin/python3'],

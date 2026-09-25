@@ -1,5 +1,5 @@
 id: library-intelligence
-version: "0.3.0"
+version: "0.3.1"
 title: Library Intelligence qualification, facts, insight and bounded proposal
 status: development
 minimumHarnessVersion: 0.1.0
@@ -8,6 +8,8 @@ inputs:
     description: Site-owned exact runtime, Permit and three-source qualification manifest.
   - name: qualificationPython
     description: Site-owned qualified Python executable, also pinned in the qualification manifest.
+  - name: analysisManifest
+    description: Site-owned baseline/candidate roles, source hashes and comparable family/corner/view conditions.
   - name: workspaceRoot
     description: Site-permitted Campaign private workspace root.
 outputs:
@@ -54,13 +56,13 @@ tools:
   - id: index-baseline
     file: tools/library-stages.py
     description: Derive bounded baseline facts from the passed E1 receipt without re-reading native objects.
-    inputs: [WORKSPACE]
-    argv: [/usr/bin/python3, '${WORKSPACE}/flow/tools/library-stages.py', facts, '${WORKSPACE}/flow/qualification/receipt.json', tsmc28, baseline, '${WORKSPACE}/flow/library/baseline-facts.json']
+    inputs: [WORKSPACE, ANALYSIS_MANIFEST]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/tools/library-stages.py', facts, '${WORKSPACE}/flow/qualification/receipt.json', '${ANALYSIS_MANIFEST}', baseline, '${WORKSPACE}/flow/library/baseline-facts.json']
   - id: index-candidate
     file: tools/library-stages.py
     description: Derive candidate facts from the same qualified source for an explicit zero-delta control.
-    inputs: [WORKSPACE]
-    argv: [/usr/bin/python3, '${WORKSPACE}/flow/tools/library-stages.py', facts, '${WORKSPACE}/flow/qualification/receipt.json', tsmc28, candidate, '${WORKSPACE}/flow/library/candidate-facts.json']
+    inputs: [WORKSPACE, ANALYSIS_MANIFEST]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/tools/library-stages.py', facts, '${WORKSPACE}/flow/qualification/receipt.json', '${ANALYSIS_MANIFEST}', candidate, '${WORKSPACE}/flow/library/candidate-facts.json']
   - id: semantic-delta
     file: tools/library-stages.py
     description: Compare only hash-bound facts under exactly matching available conditions.

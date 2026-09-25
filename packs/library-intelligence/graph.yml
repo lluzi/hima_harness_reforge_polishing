@@ -1,5 +1,5 @@
 id: library-intelligence
-version: "0.3.0"
+version: "0.3.1"
 entry: qualify-api
 nodes:
   - id: qualify-api
@@ -19,13 +19,17 @@ nodes:
       bind: { qualification_required: { from: goal, name: qualification_required } }
   - id: index-baseline
     kind: act
-    parameters: { tool: index-baseline, arguments: {} }
+    parameters:
+      tool: index-baseline
+      arguments: { ANALYSIS_MANIFEST: { from: input, name: analysisManifest } }
   - id: read-baseline-facts
     kind: act
     parameters: { observes: baselineFacts }
   - id: index-candidate
     kind: act
-    parameters: { tool: index-candidate, arguments: {} }
+    parameters:
+      tool: index-candidate
+      arguments: { ANALYSIS_MANIFEST: { from: input, name: analysisManifest } }
   - id: read-candidate-facts
     kind: act
     parameters: { observes: candidateFacts }

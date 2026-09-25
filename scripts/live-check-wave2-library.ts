@@ -83,6 +83,13 @@ const manifest = {
     { role: 'tsmc28', path: '/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib', sha256: 'a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5' },
   ],
 };
+const analysisManifest = {
+  schema: 'hima-library-analysis-input/1', comparisonKind: 'same-qualified-source-control',
+  baseline: { qualificationRole: 'tsmc28', expectedSourceSha256: manifest.sources[2]!.sha256,
+    family: 'tcbn28hpcplusbwp40p140', corner: 'tt0p9v25c', view: 'NLDM' },
+  candidate: { qualificationRole: 'tsmc28', expectedSourceSha256: manifest.sources[2]!.sha256,
+    family: 'tcbn28hpcplusbwp40p140', corner: 'tt0p9v25c', view: 'NLDM' },
+};
 
 const home = await createHimaHome();
 let host: Awaited<ReturnType<typeof bootInProcess>> | undefined;
@@ -95,6 +102,9 @@ try {
   const manifestBytes = `${JSON.stringify(manifest, null, 2)}\n`;
   const remoteManifest = `${remoteRoot}/qualification-manifest.json`;
   upload(remoteManifest, manifestBytes);
+  const analysisManifestBytes = `${JSON.stringify(analysisManifest, null, 2)}\n`;
+  const remoteAnalysisManifest = `${remoteRoot}/analysis-manifest.json`;
+  upload(remoteAnalysisManifest, analysisManifestBytes);
   const before = processState();
   assert.match(before, /selected=new old=inactive new=active/);
   assert.doesNotMatch(before, /icexplorer-xtop_exe|qualib_exe/);
@@ -110,7 +120,8 @@ try {
   } });
   assert.deepEqual(discovery.unknowns, []); assert.deepEqual(discovery.conflicts, []);
   saveDiscoveredSite(sitesDir, { ...discovery, permit, site: { ...discovery.site, workspaceRoot: remoteRoot,
-    bindings: { qualificationManifest: remoteManifest, qualificationPython: manifest.runtime.python, workspaceRoot: remoteRoot },
+    bindings: { qualificationManifest: remoteManifest, qualificationPython: manifest.runtime.python,
+      analysisManifest: remoteAnalysisManifest, workspaceRoot: remoteRoot },
     capacity: { ...discovery.site.capacity, parallelJobs: 1, licences: { 'QuaLib-2026-new-59099': 1 } },
   } });
   const site = loadSite(sitesDir, 'wave2-library');
@@ -299,7 +310,8 @@ try {
   const evidence = { schema: 'hima.wave2-library/1', recordedAt: new Date().toISOString(), sourceSha,
     pack: { id: 'library-intelligence', version: loadPack(path.join(repoRoot, 'packs'), 'library-intelligence').contract.version,
       sourceDigest: packDigestOf(path.join(repoRoot, 'packs/library-intelligence')), installedDigest: installedReceipt.digest },
-    site: { name: site.name, permitSha256: site.permitSha256, remoteRoot, manifestPath: remoteManifest, manifestSha256: sha(manifestBytes) },
+    site: { name: site.name, permitSha256: site.permitSha256, remoteRoot, manifestPath: remoteManifest, manifestSha256: sha(manifestBytes),
+      analysisManifestPath: remoteAnalysisManifest, analysisManifestSha256: sha(analysisManifestBytes) },
     run: host.ctx.hima.ledger.run(runId), workspace: started.workspace,
     records: finalRecords, reportTarget, reportView, artifacts, sourceHashesBefore: sourceHashesBefore.split('\n'), sourceHashesAfter: sourceHashesAfter.split('\n'),
     environmentBefore: before, environmentAfter: after,

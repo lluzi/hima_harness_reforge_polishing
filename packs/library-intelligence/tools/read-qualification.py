@@ -100,13 +100,34 @@ def query_complete(value):
     sample = value["sample"]
     if not isinstance(sample, dict) or set(sample) != {
         "cell", "area", "pin", "direction", "relatedPin",
-        "timingType", "tableType", "tableSize", "firstValue"}:
+        "timingType", "tableType", "tableSize", "firstValue", "table"}:
         return False
     if any(not isinstance(sample[key], str) or not sample[key]
            for key in ("cell", "pin", "direction", "relatedPin",
                        "timingType", "tableType")):
         return False
+    table = sample["table"]
+    if not isinstance(table, dict) or set(table) != {"model", "unit", "unitScaleToSI", "axes", "shape", "values"}:
+        return False
+    if table["model"] != "nldm" or not isinstance(table["unit"], str) or not table["unit"] or not finite_positive(table["unitScaleToSI"]):
+        return False
+    if not isinstance(table["axes"], list) or not table["axes"] or not isinstance(table["shape"], list) or len(table["axes"]) != len(table["shape"]):
+        return False
+    expected = 1
+    for axis, size in zip(table["axes"], table["shape"]):
+        if (not isinstance(axis, dict) or set(axis) != {"variable", "unit", "scaleToSI", "indexes"}
+                or not isinstance(axis["variable"], str) or not axis["variable"]
+                or not isinstance(axis["unit"], str) or not axis["unit"]
+                or axis["scaleToSI"] is not None and not finite_positive(axis["scaleToSI"])
+                or not isinstance(size, int) or size <= 0
+                or not isinstance(axis["indexes"], list) or len(axis["indexes"]) != size
+                or any(not isinstance(index, (int, float)) or isinstance(index, bool) or not math.isfinite(index) for index in axis["indexes"])):
+            return False
+        expected *= size
+    if not isinstance(table["values"], list) or len(table["values"]) != expected or any(not isinstance(item, (int, float)) or isinstance(item, bool) or not math.isfinite(item) for item in table["values"]):
+        return False
     return (finite_positive(sample["tableSize"])
+            and sample["tableSize"] == len(table["values"])
             and isinstance(sample["area"], (int, float))
             and not isinstance(sample["area"], bool) and math.isfinite(sample["area"])
             and isinstance(sample["firstValue"], (int, float))

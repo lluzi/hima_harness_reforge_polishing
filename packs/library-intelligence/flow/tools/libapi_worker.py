@@ -136,9 +136,41 @@ def snapshot(lib):
                     values = table.getValues()
                     if values.size() == 0:
                         continue
-                    first = float(values[0])
-                    if not math.isfinite(first):
+                    all_values = [float(value) for value in values]
+                    if any(not math.isfinite(value) for value in all_values):
                         raise ValueError("nonfinite native timing value")
+                    dimension = int(table.getDimension())
+                    if dimension <= 0 or dimension > 4:
+                        raise ValueError("invalid native table dimension")
+                    template = table.getTemplate()
+                    axes = []
+                    shape = []
+                    for dim in range(dimension):
+                        indexes = [float(value) for value in table.getIndexData(dim)]
+                        if not indexes or any(not math.isfinite(value) for value in indexes):
+                            raise ValueError("missing or nonfinite native table index")
+                        size = int(table.getDimSize(dim))
+                        if size != len(indexes):
+                            raise ValueError("native table shape/index mismatch")
+                        variable = "unknown" if template.isNull() else template.getVariableStr(dim)
+                        if not isinstance(variable, str) or not variable:
+                            raise ValueError("native table variable identity is absent")
+                        if "capacitance" in variable:
+                            axis_unit, scale = "library-capacitance-unit", units["cap_F"]
+                        elif "transition" in variable or "time" in variable:
+                            axis_unit, scale = "library-time-unit", units["time_s"]
+                        elif "voltage" in variable:
+                            axis_unit, scale = "library-voltage-unit", units["voltage_V"]
+                        else:
+                            axis_unit, scale = "unknown-library-unit", None
+                        axes.append({"variable": variable, "unit": axis_unit,
+                                     "scaleToSI": scale, "indexes": indexes})
+                        shape.append(size)
+                    expected_values = 1
+                    for size in shape:
+                        expected_values *= size
+                    if expected_values != len(all_values):
+                        raise ValueError("native table shape/value mismatch")
                     area = float(cell.getArea())
                     if not math.isfinite(area):
                         raise ValueError("nonfinite native Cell area")
@@ -147,7 +179,10 @@ def snapshot(lib):
                               "relatedPin": arc.getRelatedPinName(),
                               "timingType": arc.getTimingTypeStr(),
                               "tableType": table.getTypeStr(),
-                              "tableSize": values.size(), "firstValue": first}
+                              "tableSize": values.size(), "firstValue": all_values[0],
+                              "table": {"model": "nldm", "unit": "library-time-unit",
+                                        "unitScaleToSI": units["time_s"], "axes": axes,
+                                        "shape": shape, "values": all_values}}
                     if any(not isinstance(sample[key], str) or not sample[key]
                            for key in ("cell", "pin", "direction", "relatedPin",
                                        "timingType", "tableType")):
@@ -167,6 +202,8 @@ def same(before, after):
                 "tableSize"):
         if a[key] != b[key]:
             return False
+    if a.get("table") != b.get("table"):
+        return False
     return all(math.isclose(a[key], b[key], rel_tol=1e-5, abs_tol=1e-12)
                for key in ("area", "firstValue"))
 

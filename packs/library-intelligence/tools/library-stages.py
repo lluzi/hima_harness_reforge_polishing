@@ -42,8 +42,17 @@ def qualified(receipt, role):
     return item
 
 
-def facts(receipt, role, position):
+def facts(receipt, analysis_path, position):
+    analysis = read(analysis_path)
+    if not isinstance(analysis, dict) or set(analysis) != {"schema", "comparisonKind", "baseline", "candidate"} or analysis["schema"] != "hima-library-analysis-input/1" or analysis["comparisonKind"] != "same-qualified-source-control": fail("analysis manifest differs")
+    if position not in ("baseline", "candidate"): fail("facts position differs")
+    selected = analysis[position]
+    if not isinstance(selected, dict) or set(selected) != {"qualificationRole", "expectedSourceSha256", "family", "corner", "view"}: fail("analysis source declaration differs")
+    for key in ("qualificationRole", "expectedSourceSha256", "family", "corner", "view"):
+        if not isinstance(selected[key], str) or not selected[key]: fail("analysis source " + key + " is absent")
+    role = selected["qualificationRole"]
     item = qualified(receipt, role)
+    if item["sourceSha256"] != selected["expectedSourceSha256"]: fail("analysis source hash differs from qualification")
     query = item["queryEvidence"]
     sample = query.get("sample")
     if not isinstance(sample, dict): fail("qualification query sample is absent")
@@ -53,11 +62,15 @@ def facts(receipt, role, position):
         if not isinstance(units.get(key), (int, float)) or units[key] <= 0: fail("qualification unit is invalid")
     for key in ("cell", "area", "pin", "direction", "relatedPin", "timingType", "tableType", "tableSize", "firstValue"):
         if key not in sample: fail("qualification sample lacks " + key)
-    unknown = {"reason": "E1 qualification captures a representative query only; full PVT, function, drive, VT, when, table axes and table values require an admitted E2 corpus worker.", "provenance": prov("explicit", "Liberty", "unknown")}
-    table = {"id": sample["tableType"], "model": "unknown", "unit": "unknown", "valueCount": sample["tableSize"], "sample": sample["firstValue"], "provenance": prov(), "unknowns": [unknown]}
+    unknown = {"reason": "The admitted E2 worker covers one representative Cell/table only; full PVT, function, drive, VT, when and the remaining Library corpus are unknown.", "provenance": prov("explicit", "Liberty", "unknown")}
+    native_table = sample.get("table")
+    if not isinstance(native_table, dict) or set(native_table) != {"model", "unit", "unitScaleToSI", "axes", "shape", "values"}: fail("qualification query lacks a complete typed table")
+    table = {"id": sample["tableType"], "model": native_table["model"], "unit": native_table["unit"],
+             "unitScaleToSI": native_table["unitScaleToSI"], "axes": native_table["axes"],
+             "shape": native_table["shape"], "values": native_table["values"], "provenance": prov(), "unknowns": []}
     arc = {"id": "%s:%s>%s:%s" % (sample["cell"], sample["relatedPin"], sample["pin"], sample["timingType"]), "relatedPin": sample["relatedPin"], "outputPin": sample["pin"], "type": sample["timingType"], "sense": "unknown", "when": None, "sourceLocator": {"qualificationChildSha256": item["childSha256"]}, "tables": [table], "provenance": prov(), "unknowns": [unknown]}
     cell = {"id": sample["cell"], "name": sample["cell"], "function": {"unknown": unknown}, "drive": {"unknown": unknown}, "vt": {"unknown": unknown}, "family": {"unknown": unknown}, "area": {"value": sample["area"], "unit": "library-area-unit", "provenance": prov()}, "pins": [{"name": sample["pin"], "direction": sample["direction"], "provenance": prov()}], "arcs": [arc], "provenance": prov()}
-    record = {"schema": "hima-library-facts/1", "position": position, "source": {"path": item["source"], "sha256": item["sourceSha256"], "bytes": os.path.getsize(item["source"]), "role": role, "family": "unknown", "corner": "unknown", "view": "unknown"}, "producer": receipt["producer"], "library": {"name": query["library"], "units": {"time_s": units["time_s"], "cap_F": units["cap_F"], "voltage_V": units["voltage_V"]}, "pvt": {"unknown": unknown}}, "cells": [cell], "coverage": {"declaredCells": query["cellCount"], "observedCells": 1, "complete": query["cellCount"] == 1, "scope": "representative-query-only"}, "unknowns": [unknown], "qualificationRef": {"receiptSha256": sha(receipt), "resultRole": role, "childSha256": item["childSha256"]}}
+    record = {"schema": "hima-library-facts/1", "position": position, "source": {"path": item["source"], "sha256": item["sourceSha256"], "bytes": os.path.getsize(item["source"]), "role": role, "family": selected["family"], "corner": selected["corner"], "view": selected["view"]}, "producer": receipt["producer"], "library": {"name": query["library"], "units": {"time_s": units["time_s"], "cap_F": units["cap_F"], "voltage_V": units["voltage_V"]}, "pvt": {"unknown": unknown}}, "cells": [cell], "coverage": {"declaredCells": query["cellCount"], "observedCells": 1, "complete": query["cellCount"] == 1, "scope": "representative-query-only"}, "unknowns": [unknown], "analysisRef": {"path": analysis_path, "sha256": file_sha(analysis_path)}, "qualificationRef": {"receiptSha256": sha(receipt), "resultRole": role, "childSha256": item["childSha256"]}}
     record["recordSha256"] = sha(record)
     return record
 
