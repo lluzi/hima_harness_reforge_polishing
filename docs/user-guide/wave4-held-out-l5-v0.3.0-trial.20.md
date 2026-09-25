@@ -33,6 +33,11 @@ Pack version, digest and TEST Run. The acceptance runner may be newer than the A
 
 The first cheap gate is static preflight. Run it before any SSH, Host, model or EDA action:
 
+The previously reopened trial.18 App is a separate historical Home. Before preflight, close only
+that App through its visible normal Quit path and verify its App/Host processes ended. Preserve its
+Home, Runs and evidence; do not delete anything. This prevents two HimaHarness Hosts from being
+active during the Wave 4 trial.
+
 ```sh
 cd /Users/lluzi/code/hima_harness_reforge_polishing
 PATH=/Users/lluzi/.local/node24/bin:$PATH \
