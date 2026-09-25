@@ -793,10 +793,21 @@ def apply_eco(workspace: Path):
     eco = runtime.get("pendingEco")
     if not isinstance(iteration, int) or not isinstance(eco, dict):
         raise Rejected("there is no pending XTop ECO")
+    expected_root = (paths(workspace)["flow"] / "iterations" / f"g{iteration:03d}" / "XTOP" / "eco_output").resolve()
+    try:
+        eco_root = Path(eco["root"]).resolve()
+        logical = Path(eco["netlist"]).resolve()
+        physical = Path(eco["physical"]).resolve()
+    except (KeyError, TypeError) as exc:
+        raise Rejected("pending XTop ECO does not name the admitted pair") from exc
+    if eco_root != expected_root or logical.parent != eco_root or physical.parent != eco_root:
+        raise Rejected("pending XTop ECO pair is outside the fixed iteration output")
+    validate_sourceable_eco(logical, "logical")
+    validate_sourceable_eco(physical, "physical")
     root = paths(workspace)["flow"] / "iterations" / f"g{iteration:03d}" / "INNOVUS"
     apply_eco_env = {
         "WORK_ROOT": paths(workspace)["site"], "CURRENT_DB": runtime["currentDatabase"], "DESIGN": profile["design"],
-        "ECO_DIR": eco["root"], "OUTPUT_ROOT": root,
+        "NETLIST_ECO": logical, "PHYSICAL_ECO": physical, "OUTPUT_ROOT": root,
     }
     tcl = copy_template(workspace, "apply-eco.tcl", root / "apply-eco.tcl", env=apply_eco_env)
     log = root / "innovus-eco.log"

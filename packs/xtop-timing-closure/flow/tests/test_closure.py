@@ -69,7 +69,7 @@ class ClosureContractTest(unittest.TestCase):
         self.runtime = {
             "schema": "xtop-timing-closure-runtime/1",
             "iteration": 0,
-            "profile": {"scenarios": self.scenarios},
+            "profile": {"design": "top", "scenarios": self.scenarios},
             "currentDatabase": "",
             "currentDatabaseScript": "",
             "currentAnalysis": None,
@@ -1088,6 +1088,69 @@ class ClosureContractTest(unittest.TestCase):
         self.assertEqual(runtime["pendingEco"]["netlist"], str(logical))
         self.assertEqual(runtime["pendingEco"]["physical"], str(physical))
 
+    def test_apply_eco_uses_the_exact_admitted_operator_pair_without_filename_globs(self):
+        templates = self.workspace / "flow" / "templates"
+        templates.mkdir(parents=True, exist_ok=True)
+        source_template = SOURCE.parent / "templates" / "apply-eco.tcl"
+        (templates / "apply-eco.tcl").write_bytes(source_template.read_bytes())
+        eco = self.workspace / "flow" / "iterations" / "g001" / "XTOP" / "eco_output"
+        eco.mkdir(parents=True)
+        logical = eco / "xtop_operator_g001_eco_netlist_swerv_wrapper.txt"
+        physical = eco / "xtop_operator_g001_eco_physical_swerv_wrapper.txt"
+        logical.write_text("ecoAddRepeater -cell BUFFD2 -net n1\n")
+        physical.write_text("placeInstance eco_buffer_1 10 20 R0 -placed\n")
+        current = self.workspace / "flow" / "site" / "DBS" / "input.enc.dat"
+        current.mkdir(parents=True)
+        (current / "db.bin").write_text("baseline")
+        self.runtime.update({
+            "profile": {"design": "top", "scenarios": self.scenarios},
+            "currentDatabase": str(current),
+            "pendingIteration": 1,
+            "pendingEco": {"root": str(eco), "netlist": str(logical), "physical": str(physical)},
+        })
+        self.save_runtime()
+        captured = {}
+
+        def fake_run_eda(profile, command, cwd, log, env=None, shell_env=None):
+            captured.update(env or {})
+            output = Path(captured["OUTPUT_ROOT"])
+            data = output / "DBS" / "closed.enc.dat"
+            data.mkdir(parents=True)
+            (data / "db.bin").write_text("candidate")
+            (output / "DBS" / "closed.enc").write_text("restore candidate\n")
+            export = output / "EXPORT"
+            export.mkdir()
+            (export / "design.def").write_text("DEF\n")
+            (export / "design.v").write_text("module top; endmodule\n")
+            reports = output / "RPT"
+            reports.mkdir()
+            (reports / "verify_drc.rpt").write_text(
+                "# Command: verify_drc -limit 1000000\n  Total Violations : 0 Viols.\n")
+            (reports / "verify_connectivity.rpt").write_text(
+                "# Command: verifyConnectivity -noAntenna -error 1000000\n"
+                "Begin Summary\n    0 total info(s) created.\nEnd Summary\n")
+            (reports / "physical-check.json").write_text(json.dumps({
+                "schema": "xtop-timing-closure-physical-check/2", "coverage": "complete",
+                "drcLimit": 1000000, "connectivityLimit": 1000000,
+                "drcReport": "verify_drc.rpt", "connectivityReport": "verify_connectivity.rpt",
+            }))
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text("completed\n")
+
+        original = closure.run_eda
+        closure.run_eda = fake_run_eda
+        try:
+            closure.apply_eco(self.workspace)
+        finally:
+            closure.run_eda = original
+
+        self.assertEqual(captured["NETLIST_ECO"], logical.resolve())
+        self.assertEqual(captured["PHYSICAL_ECO"], physical.resolve())
+        template = (SOURCE.parent / "templates" / "apply-eco.tcl").read_text()
+        self.assertIn("source $env(NETLIST_ECO)", template)
+        self.assertIn("source $env(PHYSICAL_ECO)", template)
+        self.assertNotIn("glob -nocomplain", template)
+
     def test_keep_route_uses_two_sourceable_tcl_scripts_and_rejects_atomic_or_route_deletion(self):
         pack = Path(__file__).resolve().parents[2]
         xtop_template = (pack / "flow" / "templates" / "xtop.tcl").read_text()
@@ -1095,7 +1158,7 @@ class ClosureContractTest(unittest.TestCase):
         self.assertIn("-keep_route", xtop_template)
         self.assertNotIn("-write_atomic_cmd", xtop_template)
         self.assertNotIn("loadECO", apply_template)
-        self.assertEqual(apply_template.count("source [lindex $"), 2)
+        self.assertEqual(apply_template.count("source $env("), 2)
 
         logical = self.workspace / "logical.tcl"
         physical = self.workspace / "physical.tcl"
