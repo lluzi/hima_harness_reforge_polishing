@@ -1,0 +1,62 @@
+{
+  "schema": "hima.wave3-dtco-lfr-test-verification/1",
+  "status": "PASS",
+  "runId": "run-a148dd0c-2d2d-42b0-8c32-5179d40ad254",
+  "purpose": "test",
+  "evidenceSha256": "fe836150995d6fd1cf079b025485872a49589dfd62ecb670de48a0c4c478d5a3",
+  "pack": {
+    "id": "custom-cell-fmax-dtco",
+    "version": "5.2.16",
+    "methodDigest": "7b4a59be2a412d0052601b3384e5a2be35d2664c0ea7094206699f6e020fcbff",
+    "runnerSha256": "5d9407503073dd8c10e3e1a8be48307b00474c88db832322aa7f730f8b3f0847",
+    "testSha256": "fce4835553bed1bf116d0fbf5de3698e2541f6737d4b0e40c3b27a2cf42a8185",
+    "versionSha256": "7e5383024573b423c13ea82a38fc51acbac99890f01301d5ff7dab7698ce3032"
+  },
+  "ending": {
+    "status": "ended-budget-exhausted",
+    "endedBy": "generation-limit",
+    "generation": 1,
+    "jobsLaunched": 27,
+    "attempts": 27
+  },
+  "model": {
+    "provider": "deepseek-official",
+    "wireId": "deepseek-flash",
+    "codeRecordId": "run-a148dd0c-2d2d-42b0-8c32-5179d40ad254#000119",
+    "codeSha256": "bbfb58812c637e1b71bc079fc5ecb180758e8c35e16ebc571d3a24767e74cfc7",
+    "codeBytes": 9227
+  },
+  "negativeBranch": {
+    "requiredDelayNs": 0.000001,
+    "cellDemandCount": 1,
+    "metCount": 0,
+    "unmetCount": 1,
+    "coveragePct": 0,
+    "calibrationVerdictId": "run-a148dd0c-2d2d-42b0-8c32-5179d40ad254#000170",
+    "calibrationVerdict": "FAIL",
+    "feedbackVerdictId": "run-a148dd0c-2d2d-42b0-8c32-5179d40ad254#000171",
+    "feedbackVerdict": "PASS"
+  },
+  "limits": {
+    "commercialEdaExecuted": false,
+    "ppaClaimed": false,
+    "businessResult": "not measured by this Pack test"
+  },
+  "runtimeArchive": {
+    "path": ".hima-tmp/wave3-dtco-lfr-source-runtime",
+    "methodHistory": {
+      "files": 161,
+      "bytes": 2200173,
+      "sortedSha256ListDigest": "69d4c1d5fe54d2eccf372ef6ef6458c416a6245c92422399d83e8e925691ddd5"
+    },
+    "runAssets": {
+      "files": 67,
+      "bytes": 27093434,
+      "sortedSha256ListDigest": "efac88abcc9ded500aa9a00083a5d4f5349f7043d379923317f3e5e7e8a4655b"
+    }
+  },
+  "issueDisposition": {
+    "38": "PASS",
+    "40": "TERMINAL_NEGATIVE"
+  }
+}

@@ -1,6 +1,6 @@
 # Library Function Richness Framework development track
 
-Status: in development
+Status: terminal assessment complete; integrated Pack released
 
 This directory tracks the Package-specific development of the Library Function Richness
 Optimization Framework for `packs/custom-cell-fmax-dtco`.
@@ -52,14 +52,18 @@ of fitting a portable benefit forecast.
 | LFR-FW-07 | complete | Real held-out mapping rounds, cross-round frontier, DeepSeek residual code and bounded execution |
 | LFR-FW-08 | complete | Independent assessment approved Phase 2; no commercial EDA search loop |
 | LFR-PACK-01 through LFR-PACK-06 | complete | Intent/Spec, contract, graph, stage dispatch, Readers/Judges and residual Workshop wrap the assessed Framework |
-| LFR-PACK-07 | in progress | Local contracts and real Yosys/ABC integration pass; Harness-owned test Campaign and Ledger evidence remain |
+| LFR-PACK-07 | complete | Current 5.2.16 real Site test Campaign retains Host/Fabric/Ledger, real-model CodeRecord, typed negative calibration and a declared generation-limit ending |
 | Fresh AES 50-Cell standalone E0 | complete, negative | Fresh F0-F3 admitted one Library; matched E0 observed -2.792% Fmax, so it is relationship evidence rather than a release candidate |
 | AES 10-cell multi-output logical ECO | complete, logical only | Ten P-canonical Cell types replace 23 instances with ten explicit masters; whole `aes_cipher_top` equivalence and rollback pass |
 | AES 20-cell multi-output commercial P&R | complete, model-conditioned positive | Innovus retains 6/20 masters; Fmax +0.180%, logic area -7.274%, wirelength -6.507%, modeled power -4.294% |
 | AES 40-cell hierarchy 2/3-output P&R | complete, negative | 40/120 instances retained; 22 triple-output instances survive, but Fmax -0.179%, area +9.181%, wirelength +2.669%, modeled power +7.071% vs baseline |
 | Post-route DIG v4 | observation calibration implemented | Free proxies are observation-only; source-cover 5%/10% Mock Liberty, single/multi CCEI and two matched AES E0 runs completed. Best Fmax +1.085% with area/power cost; full PPA and 5% target remain open |
 | First-principles frontier v5 | implemented; first AES E0 complete, 5% target negative | PG/DCAP/85%/full-placement baseline and 530-endpoint DIG are real; WNS 0%, TNS +0.756 ns, area/wire/power improved; next work is the residual 127-endpoint frontier and PG DRC tuning |
-| LFR-PACK-08 | blocked by PACK-07 and business exit | A Harness-owned positive matched E0 benefit observation and Harness-generated release seal remain |
+| LFR-PACK-08 | complete, TERMINAL_NEGATIVE | Native TEST/release seal is complete; the bounded residual-frontier assessment retains 0.000% and -2.93% matched results and makes no positive benefit claim |
+
+Wave 3 closure semantics supersede the older requirement that this Issue wait indefinitely for a
+positive 5% result. The current method-readiness gate is PASS, while the bounded LFR study is
+TERMINAL_NEGATIVE. The separately owned held-out value attempt remains Issue #39.
 
 No item is complete merely because code exists. Each item closes only with the evidence named in
 the development document.
