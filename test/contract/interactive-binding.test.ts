@@ -6,9 +6,9 @@ import path from 'node:path';
 import { test } from 'node:test';
 import {
   BUILTIN_TCL_ADAPTER_DIGEST, batchToolRefusal, createInteractiveBindingBridge,
-  interactiveCommandsDigest, loadPack, loadSite, packDigestExcludes, toolArgv,
+  installPackMethod, interactiveCommandsDigest, loadPack, loadSite, packDigestExcludes, toolArgv,
 } from '@hima/harness';
-import { createHimaHome } from './support/dsh-home.ts';
+import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { installPack, timingProbePackId, writePackVariant } from './support/pack.ts';
 import { writeLocalSite } from './support/site.ts';
 
@@ -20,6 +20,52 @@ const interactiveBlock = `    interactive:
         mutate: [set_value]
         save: [save_state]
     argv:`;
+
+test('interactive resolution uses only inputs declared by the retained Pack', async (t) => {
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const installed = await installPack(home);
+  const packId = 'xtop-timing-closure';
+  installPackMethod({ from: path.join(repoRoot, 'packs', packId), to: path.join(installed.packsDir, packId) });
+  const pack = loadPack(installed.packsDir, packId);
+  const packDigest = pack.folder.digest(packDigestExcludes);
+  const tool = pack.contract.tools.find((candidate) => candidate.id === 'run-xtop-fix')!;
+  const bindings = {
+    inputInnovusDatabase: '/site/input.enc.dat',
+    siteProfile: '/site/profile.json',
+    sourceManifest: '/site/source.sha256',
+    workspaceRoot: home.workspace,
+  };
+  const wrapper = tool.interactive!.argv![0]!;
+  const siteInfo = await writeLocalSite(home, {
+    allowedReadRoots: [home.workspace, '/site', '/data/eda/project/hima_harness/operator-admin'],
+    allowedWriteRoots: [home.workspace], allowedWrappers: ['/usr/bin/python3', wrapper],
+    bindings, licences: { Innovus: 1, StarRC: 1, PrimeTime: 1, XTop: 1 },
+  });
+  const site = loadSite(siteInfo.sitesDir, siteInfo.name);
+  const adminDir = path.join(home.home, 'admin'); await mkdir(adminDir);
+  const environmentFile = path.join(adminDir, 'environment.json');
+  const environmentBytes = '{"qualification":"resolver-only"}\n';
+  await writeFile(environmentFile, environmentBytes);
+  const hash = (bytes: string | Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+  const configFile = path.join(adminDir, 'interactive-bindings.json');
+  const row = { id: 'xtop-resolver', site: 'local', packDigest, toolId: tool.id, adapter: 'hima-tcl-line-v1',
+    adapterHash: BUILTIN_TCL_ADAPTER_DIGEST, commandsDigest: interactiveCommandsDigest(tool),
+    environment: { id: 'resolver-only', file: environmentFile, sha256: hash(environmentBytes) }, mutation: 'qualified' };
+  await writeFile(configFile, `${JSON.stringify({ schema: 'hima-interactive-bindings/1', bindings: [row] }, null, 2)}\n`);
+  const bridge = createInteractiveBindingBridge({ packsDir: installed.packsDir, sitesDir: siteInfo.sitesDir,
+    interactiveBindingsFile: configFile });
+  const run = { id: 'run-xtop', campaignId: 'campaign-xtop', siteId: 'local', packId, packDigest,
+    createdAt: new Date().toISOString(), nextSeq: 1, status: 'running', strategy: { strategyRevision: 0 }, generation: 1 };
+  const execution = { id: 'execution-xtop', nodeId: 'run-xtop-fix', kind: 'act', generation: 1, attempt: 1,
+    methodDigest: packDigest, inputDigest: 'd'.repeat(64), phase: 'ready' };
+
+  const resolved = await bridge.resolve({ pack, run: run as never, execution: execution as never, site,
+    workspace: home.workspace });
+
+  assert.ok(resolved);
+  assert.deepEqual(resolved.argv, [wrapper, home.workspace, `${home.workspace}/flow/closure.py`,
+    `${home.workspace}/flow/templates/xtop-operator.tcl`]);
+});
 
 test('production binding resolves retained Pack/Site facts, pins admin evidence, and encodes only classified literal Tcl', async (t) => {
   const home = await createHimaHome(); t.after(() => home.dispose());

@@ -252,10 +252,13 @@ export function createInteractiveBindingBridge(config: InteractiveBindingBridgeC
       const bindings = boundInputs(request.pack, request.site);
       const taken = nodeArguments(node, request.run, bindings);
       if (!taken.ok) throw new Error(taken.reason);
-      const flowRoot = bindings.flowRoot; const design = bindings.design;
-      if (!flowRoot || !design) throw new Error(`site ${request.site.name} does not bind flowRoot/design for interactive tool ${tool.id}`);
+      // FLOW_ROOT/DESIGN are legacy aliases used by Packs that actually declare those inputs.
+      // An interactive Pack whose retained argv needs only WORKSPACE must not be forced to invent
+      // unrelated Site bindings: `boundInputs` is deliberately limited to the contract inputs.
       const argv = interactiveToolArgv(tool, { ...taken.values, WORKSPACE: request.workspace,
-        FLOW_ROOT: flowRoot, DESIGN: design, CAMPAIGN: request.run.campaignId });
+        ...(bindings.flowRoot === undefined ? {} : { FLOW_ROOT: bindings.flowRoot }),
+        ...(bindings.design === undefined ? {} : { DESIGN: bindings.design }),
+        CAMPAIGN: request.run.campaignId });
       const binding: InteractiveBinding = {
         id: row.id, packId: request.pack.id, packDigest: request.run.packDigest, nodeId: node.id, toolId: tool.id,
         source, adapter: { id: BUILTIN_TCL_ADAPTER_ID, version: '1', digest: BUILTIN_TCL_ADAPTER_DIGEST,
