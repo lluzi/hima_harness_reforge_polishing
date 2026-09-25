@@ -107,7 +107,7 @@ try {
   const sitesDir = path.join(home.home, 'hima/sites');
   const discovery = await discoverSshSite({ name: 'wave2-library', ssh: { destination, jumps: [], controlPersistSeconds: 60 }, hints: {
     workspaceRoot: remoteRoot, allowedReadRoots: permit.allowedReadRoots, allowedWriteRoots: permit.allowedWriteRoots,
-    allowedWrappers: permit.allowedWrappers, toolCommands: ['edarun', '/usr/bin/python3'],
+    allowedWrappers: permit.allowedWrappers, toolCommands: ['edarun', 'python3'],
   } });
   assert.deepEqual(discovery.unknowns, []); assert.deepEqual(discovery.conflicts, []);
   saveDiscoveredSite(sitesDir, { ...discovery, permit, site: { ...discovery.site, workspaceRoot: remoteRoot,
