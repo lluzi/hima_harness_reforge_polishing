@@ -1,6 +1,6 @@
 # SWERV28 commercial-chain and J3 value-study charter
 
-Status: authorized, gated execution in progress. Date: 2026-09-24.
+Status: completed with an inconclusive value verdict. Authorized 2026-09-24; final evidence recorded 2026-09-25 UTC.
 
 ## Authorization and scope
 
@@ -12,7 +12,7 @@ This study covers one design and one Site:
 - design: `swerv_wrapper`, starting from the Site-bound `xtop_round2_eco_route.enc.dat` checkpoint;
 - Site: `linglong-swerv28`;
 - goal: setup WNS >= 0 ns and hold WNS >= 0 ns under all four declared scenarios;
-- current method candidate: `xtop-timing-closure@1.0.9` from source commit `81142134d08a2e0abb0c5f40b311cded262721ab`;
+- final method: sealed `xtop-timing-closure@1.0.14`, method digest `19207d78dc3b1e9f4fd80f6bd4c21df209f1dfffc5f83fa7afd3ac5c96fd2a92`;
 - comparison unit: one complete baseline and one complete candidate generation through Innovus export and physical checks, StarRC, PrimeTime, XTop, Innovus ECO, fresh StarRC/PrimeTime, comparison and best-database admission;
 - excluded claims: clean signoff, tapeout readiness, universal Fmax/PPA gain, replacement of an engineering team, and extrapolation to another design, person or Site.
 
@@ -57,6 +57,10 @@ Both arms record:
 - handoff completeness: whether an independent reviewer can reproduce the decision from retained references without relying on the conversation.
 
 The result vocabulary is `positive`, `negative`, `inconclusive`, `blocked` or `unknown`. Hima is positive only for this case if it reaches an equally qualified or better engineering result with less human intervention or a materially better evidence/continuation outcome under the declared budget. A useful negative result is not rewritten as success. Missing comparable data produces `inconclusive` or `unknown`, not zero.
+
+## Final disposition
+
+Both arms reached the same qualified relative-best result: score `243.58 -> 217.96`, hold violations `221 -> 196`, setup unchanged, complete DRC/connectivity counts unchanged, and timing still open. The Hima arm retained one real DeepSeek owner, an owner-authored plan, typed Operator receipts, 25 Jobs, a Pack archive and a generation-limit ending. Exact human minutes for the control arm and infrastructure recovery were not measured consistently enough to establish a valid labor-saving comparison. The J3 verdict is therefore `inconclusive`, not positive; the technical product gates and the study itself are complete.
 
 ## Data handling and review
 

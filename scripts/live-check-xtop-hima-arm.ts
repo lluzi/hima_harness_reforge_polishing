@@ -253,9 +253,11 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
   check.require('the real owner completed the entire one-generation commercial reference chain',
     requiredNodes.every((node) => completedNodes.has(node)),
     { missing: requiredNodes.filter((node) => !completedNodes.has(node)), completed: [...completedNodes] });
-  check.require('the one-generation arm stopped honestly at the Pack blocker because timing is not closed',
-    finalRun.status === 'waiting' && finalRun.currentNode === 'blocked' && finalRun.generation === 1,
-    { status: finalRun.status, node: finalRun.currentNode, generation: finalRun.generation });
+  check.require('the one-generation arm stopped honestly at its generation limit because timing is not closed',
+    finalRun.status === 'ended-budget-exhausted' && finalRun.currentNode === 'next-iteration'
+      && finalRun.generation === 1 && finalRun.meters?.endedBy === 'generation-limit',
+    { status: finalRun.status, node: finalRun.currentNode, generation: finalRun.generation,
+      endedBy: finalRun.meters?.endedBy });
 
   const observation = current.findLast((record): record is ObservationRecord => record.type === 'observation'
     && record.reader.id === 'xtop-iteration-result');

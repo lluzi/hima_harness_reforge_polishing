@@ -1,126 +1,71 @@
 {
-  "schema": "hima.commercial-chain-j3-progress/1",
-  "recordedAt": "2026-09-24",
+  "schema": "hima.commercial-chain-j3-result/1",
+  "recordedAt": "2026-09-25",
+  "status": "completed",
+  "verdict": "inconclusive",
   "source": {
     "repository": "lluzi/hima_harness_reforge_polishing",
     "branch": "main",
-    "commit": "900aa4c86a99999052a1a36c78b87102e6189273",
-    "remoteCommitVerified": true
+    "remoteCommitVerifiedBeforeFinalRecord": "d2cf10ddbb7381a7a2295ee371eee4f376706156"
   },
-  "status": "blocked",
-  "blocker": {
-    "gate": "XTop licence-mode switch",
-    "reason": "The Site owner guard requires an interactive sudo authentication that the non-interactive SSH session cannot provide.",
-    "precheck": "selected=new old=inactive new=active; no qualib_exe or icexplorer-xtop_exe client",
-    "postcheck": "selected=new old=inactive new=active; no client; no service changed",
-    "continuation": "Run sudo /usr/local/bin/empyrean-license old on linglong, then recheck status/client and continue the retained XTop node."
+  "pack": {
+    "id": "xtop-timing-closure",
+    "version": "1.0.14",
+    "status": "released",
+    "methodDigest": "19207d78dc3b1e9f4fd80f6bd4c21df209f1dfffc5f83fa7afd3ac5c96fd2a92",
+    "testRun": "run-ddabd488-f05c-44d6-9c9b-45abccaff226",
+    "testRecordSha256": "9cae4bb4fe73e7394e0fd54b9a6f101067facb81c88ec5963f50dd9ead965c54",
+    "versionSealSha256": "bc97df88de2f93e26aa5fe0a8896f5193bf99a7cca9bd7d07165ab45e069a910"
   },
-  "localChecks": {
-    "build": "passed",
-    "issue55HostJudgePack": { "passed": 25, "failed": 0, "skipped": 0 },
-    "xtopClosurePython": { "passed": 31, "failed": 0 },
-    "modelMomentAndFeedbackEntry": { "passed": 11, "failed": 0, "skipped": 0 }
-  },
-  "issue55": {
-    "status": "baseline-complete-candidate-blocked-before-xtop",
+  "controlArm": {
     "workspace": "/data/eda/project/hima_harness/xtop-timing-closure-runs/qualification-v109-20260924-1535",
-    "pack": { "id": "xtop-timing-closure", "version": "1.0.9", "status": "development" },
-    "adapterSha256": "64b06c97a08383635b63d63fdbf14377ef2425114ebb2059f99a22e23e3a331b",
-    "inputDatabaseTreeSha256": "a29e4d036db10c87e2427a42d69cfbe573a44ebbe80d983b74e2f9a530a79f11",
-    "sourceFilesChecked": 27,
-    "baseline": {
-      "scenarioCount": 4,
-      "metrics": {
-        "setupWnsNs": -0.04,
-        "setupTnsNs": -0.12,
-        "setupViolations": 12,
-        "holdWnsNs": -0.16,
-        "holdTnsNs": -8.86,
-        "holdViolations": 221,
-        "unconstrainedEndpoints": 3,
-        "closureScore": 243.58,
-        "namedEndpointCount": 153
-      },
-      "physical": {
-        "coverage": "complete",
-        "drcCount": 72799,
-        "drcReportSha256": "4a62f25b8e63e1cd652a77f13a6cb1f8d3fa363ebf67d2b0c18864bcad35d717",
-        "connectivityCount": 3465,
-        "connectivityReportSha256": "a53fb7266d4bbf355a6cda79505052f9574e0aca4748ec5dd52c4b2464f2477a",
-        "claim": "relative-baseline coverage only; not clean signoff"
-      },
-      "spef": {
-        "cworstTSha256": "f4a3270f8cb7e628fd49a58687f52de22cf6377574896a7381e0cf1bcd73d49e",
-        "cbestSha256": "40a01364c0af5d78dbb92f8f849b71a5763eac0427d0ace89fc162b511f9ef74"
-      }
-    },
-    "controlPlan": {
-      "sha256": "d864beb5c544978d0322bc3e6749f3d17c11de387b01ad144f673b6a68dd024f",
-      "action": "one high-effort hold-buffer action",
-      "setupMarginNs": 0.02
-    },
-    "candidate": "not run; no best database adopted"
+    "evidenceValid": true,
+    "before": { "setupWnsNs": -0.04, "setupTnsNs": -0.12, "setupViolations": 12, "holdWnsNs": -0.16, "holdTnsNs": -8.86, "holdViolations": 221, "closureScore": 243.58 },
+    "after": { "setupWnsNs": -0.04, "setupTnsNs": -0.12, "setupViolations": 12, "holdWnsNs": -0.15, "holdTnsNs": -8.34, "holdViolations": 196, "closureScore": 217.96 },
+    "physical": { "coverage": "complete", "drcBefore": 72799, "drcAfter": 72799, "connectivityBefore": 3465, "connectivityAfter": 3465, "normalizedAdded": 0, "normalizedRemoved": 0 }
   },
-  "issue59": {
-    "status": "qualified-reviewed-ready-to-close",
-    "pack": { "id": "custom-cell-fmax-dtco", "version": "5.2.16", "status": "development" },
-    "input": {
-      "requestSha256": "8f63a18e3a5aee1067a9cec16877dc69de02eba02aa5fdcff1f42b7e98dda1ec",
-      "frozenIdentity": "51b8569c27a93ce831ed0f79c834316ac7a05025bdbfae87ef9e33c74f2e8e22",
-      "candidatePoolSha256": "01fd993e0db72728a930f47e41c55f24795e2af7d9e5d6d39377764d5e993e02",
-      "candidateCount": 77,
-      "commercialEvidenceSha256": "565a45c75eb5fb20450be9a506864aca76a8a475461a247dc4c17b5aec6a908b",
-      "commercialResponseSha256": "c11d7fd6004fedb42c4e4aa2a394a0631bb6523fac00fee862234686cb07af19"
-    },
-    "model": {
-      "provider": "deepseek-official",
-      "wireId": "deepseek-flash",
-      "realTurns": 2,
-      "requestSteps": 2,
-      "replayUsed": false,
-      "providerObservedAtRuntime": true,
-      "sampling": { "seed": "not-exposed", "temperature": "not-fixed", "repeatedAaBaseline": false, "causalAttribution": false },
-      "tools": [],
-      "nativeSessionsCreated": 2,
-      "modelSessions": 2,
-      "sessionRows": 2
-    },
-    "selection": {
-      "withoutFeedbackCount": 6,
-      "withFeedbackCount": 6,
-      "addedCount": 5,
-      "removedCount": 5,
-      "changed": true,
-      "reason": "with-feedback and without-feedback selections differ in this A/B sample; sampling is uncontrolled and causality is not established"
-    },
-    "evidence": {
-      "feedbackJsonSha256": "e7a8a6c9301a8c892304904f14f9c417d2d0c7a24a688cc663aa8d9120f0904f",
-      "feedbackMarkdownSha256": "605fe4e75f867aaaf996403d07bfaa46b73f07188c1fc5fb448d7223a1434dd6",
-      "liveCheckSha256": "f76a9a26202ecb46b7fdb8cb12599b3d0b64f968bc7676fa4af2421309d1f470"
-    },
-    "claimLimits": [
-      "no commercial EDA was run by the A/B check",
-      "selection change is not PPA evidence",
-      "selection difference is not a causal feedback effect without controlled sampling or an A/A noise baseline",
-      "single matched pair has no statistical or per-action causal authority"
-    ]
+  "feedbackAb": {
+    "status": "qualified-noncausal-sample",
+    "model": "deepseek-official/deepseek-flash",
+    "realTurns": 2,
+    "selection": { "withoutCount": 6, "withCount": 6, "added": 5, "removed": 5, "causalAttribution": false }
   },
-  "issue50": {
-    "status": "mount-boundary-qualified-production-mutation-unavailable",
-    "imageDigest": "sha256:8467102dbae851e4136e998661ae3a01ad9b65d49711c82f2b0883ab8d1bbb8c",
-    "network": "none",
-    "rootFilesystem": "read-only",
-    "dataMount": "read-only",
-    "privateWriteRoot": "/data/eda/project/hima_harness/operator-qualification-20260924/private",
-    "negativeCases": ["direct-write", "source-nested-write", "exec-nested-write"],
-    "negativeFilesAbsent": true,
-    "resultLogSha256": "d964aaf2cacb0f5479dbeb072708df5a6112869e5076950d5d5af897b664406a",
-    "remaining": ["XTop bootstrap", "licence/network", "versioned adapter", "transcript/recovery", "work-copy mutation", "fresh independent verification"]
+  "operator": {
+    "status": "production-qualified",
+    "wrapperSha256": "148daac7d704706e6f04d5134edea1151266c7b0ed779f5366d8d32a2993609b",
+    "bindingSha256": "d3679c06143a17b642c6cba2da1a357a60cdd081b53b189e3f240e613309bd6d",
+    "environmentSha256": "b400fb27e97295c31ddf3795c6ee1e679f7a87c15fd9a639399d59fe8ef73ac5",
+    "transcriptSha256": "994481339ae38b16556fae475d673436e70dc99ca5c946ddb6e5ce826710e07e",
+    "logicalEcoSha256": "d12612a4443e0818a52be75139ddd7f90d9b14d973054343c98bcc8a0711646a",
+    "physicalEcoSha256": "d3708c54ed656916b6907d296da7d199ad396719dea6adbb75b573d18aa683b3",
+    "confinement": "enforced",
+    "cancellationQualified": true
+  },
+  "himaArm": {
+    "runId": "run-ddabd488-f05c-44d6-9c9b-45abccaff226",
+    "workspace": "/data/eda/project/hima_harness/xtop-timing-closure-runs/xtop-timing-closure-20260925-054133-cd2f",
+    "status": "ended-budget-exhausted",
+    "endedBy": "generation-limit",
+    "generation": 1,
+    "evidenceValid": true,
+    "metrics": { "setupWnsNs": -0.04, "setupTnsNs": -0.12, "setupViolations": 12, "holdWnsNs": -0.15, "holdTnsNs": -8.34, "holdViolations": 196, "closureScore": 217.96 },
+    "endpointDelta": { "original": 153, "remaining": 147, "fixed": 0, "entrant": 0, "regressed": 0, "missing": 6 },
+    "verdicts": { "evidenceValid": "PASS", "setupClean": "FAIL", "holdClean": "FAIL" },
+    "jobsLaunched": 25,
+    "licenceMs": { "Innovus": 496649, "StarRC": 1222907, "PrimeTime": 212997, "XTop": 216053 },
+    "model": { "provider": "deepseek-official", "wireId": "deepseek-flash", "modelSessions": 1, "requestSteps": 200, "apiRequests": "unmeasured", "tokens": "unmeasured" },
+    "liveEvidenceSha256": "f4fc782b4de65d22dcf2999673a1d72f6217e79032fc8a221177256df233a1a7",
+    "postVerificationSha256": "96a0da24e0e11bfc859abd9caa9e7ef09988ece6e6b805a79f32744dd36d4a25"
   },
   "j3": {
-    "status": "blocked",
-    "charter": "docs/assessment/2026-09-24/commercial-chain-j3/charter.md",
-    "completed": ["authorized charter", "control-arm baseline", "real feedback A/B", "three confinement negative cases"],
-    "remaining": ["issue55 candidate chain", "issue50 production Operator", "complete Hima arm", "Pack seal", "independent final review"]
+    "verdict": "inconclusive",
+    "reason": "The arms reached the same qualified engineering adoption and Hima retained materially richer continuation evidence, but exact human minutes were not measured consistently enough to establish labor savings or ROI.",
+    "claimLimits": [
+      "timing is not clean",
+      "DRC and connectivity are not clean",
+      "six endpoint identities are missing rather than fixed",
+      "no signoff, tapeout-readiness, universal PPA, labor-replacement, causal-feedback or notarization claim",
+      "the conclusion applies only to this SWERV28 checkpoint, Site, model, method and one-generation budget"
+    ]
   }
 }

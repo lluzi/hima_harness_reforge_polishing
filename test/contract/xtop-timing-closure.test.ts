@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { BUILTIN_TCL_ADAPTER_DIGEST, choose, encodeRetainedInteractiveCommand, interactiveCommandsDigest, loadPack, checkPack, packDigestExcludes, packStage, loadSite, installPackMethod, resolveChooser, type InteractiveBinding, type ObservationRecord, type VerdictRecord } from '@hima/harness';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
@@ -29,7 +29,7 @@ test('the XTop closure Pack loads, fits its declared execution surface and passe
   });
   const packDir = path.join(repoRoot, 'packs', packId);
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
-  assert.equal(packStage(packDir).stage, 'compiled');
+  assert.equal(packStage(packDir).stage, 'released');
   assert.equal(pack.graph.nodes.length, 28);
   assert.equal(pack.graph.edges.length, 28);
   const check = checkPack(pack, loadSite(local.sitesDir, local.name));
@@ -121,6 +121,7 @@ test('a real Host reads XTop physical evidence through its Pack observation node
   const variant = path.join(h.home, 'xtop-observe-variant', packId);
   await mkdir(path.dirname(variant), { recursive: true });
   await cp(path.join(repoRoot, 'packs', packId), variant, { recursive: true });
+  await rm(path.join(variant, 'VERSION.yml'));
   const originalGraph=await readFile(path.join(variant,'graph.yml'),'utf8');
   await writeFile(path.join(variant, 'graph.yml'),originalGraph
     .replace(/^entry: prepare$/m,'entry: host-read-physical')
