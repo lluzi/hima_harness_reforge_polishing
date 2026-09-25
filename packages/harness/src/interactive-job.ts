@@ -122,7 +122,10 @@ const now = (): string => new Date().toISOString();
 const bufferName = (commandId: string): string => `hima-${createHash('sha256').update(commandId).digest('hex').slice(0, 24)}`;
 const quote = (word: string): string => `'${word.replaceAll("'", "'\\''")}'`;
 const exactJobSession = (session: string): string => `=${session}`;
-const jobPane = (session: string): string => `${session}:0.0`;
+// A Site may set tmux base-index/pane-base-index to non-zero values. Commands that target a pane
+// can name the exact session alone; tmux then resolves that session's active pane without assuming
+// the administrator's window numbering policy.
+const jobPane = (session: string): string => `${exactJobSession(session)}:`;
 const jobLogPath = (job: Pick<InteractiveJobIdentity, 'workspace' | 'session'>): string => path.posix.join(job.workspace, `${job.session}.log`);
 const jobExitPath = (job: Pick<InteractiveJobIdentity, 'workspace' | 'session'>): string => path.posix.join(job.workspace, `${job.session}.exit`);
 const safeJobName = (name: string): string => name.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 32) || 'job';
@@ -223,10 +226,25 @@ export async function openInteractiveJob(on: InteractiveChannel, request: OpenIn
       event: 'opened', jobSession: allocated.session, qualification: admitted.qualification, readiness }));
     return { status: 'opened', session, readiness };
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
+    let reason = error instanceof Error ? error.message : String(error);
+    let sessionStillAlive = false;
+    if (job !== undefined) {
+      try {
+        const wasRunning = await interactiveSessionThere(on, job.session, true);
+        if (wasRunning) {
+          const stopped = await on.exec(['tmux', 'kill-session', '-t', exactJobSession(job.session)]);
+          if (stopped.code !== 0) reason += `; cleanup kill exited ${String(stopped.code)}${stopped.stderr.trim() ? `: ${stopped.stderr.trim()}` : ''}`;
+        }
+        sessionStillAlive = await interactiveSessionThere(on, job.session, true);
+        await authority.recordJobStop(job, { wasRunning, observedGone: !sessionStillAlive });
+      } catch (cleanupError) {
+        sessionStillAlive = true;
+        reason += `; cleanup outcome is uncertain: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
+      }
+    }
     await authority.record(parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest),
       event: 'open-uncertain', jobSession: allocated.session, qualification: admitted.qualification, reason }));
-    return { status: 'uncertain', ...(job === undefined ? {} : { session: { job, toolSessionId: allocated.session,
+    return { status: 'uncertain', ...(job === undefined || !sessionStillAlive ? {} : { session: { job, toolSessionId: allocated.session,
       transcriptPath, exitPath, qualification: admitted.qualification, sessionDeadlineAt: request.sessionDeadlineAt } }), reason };
   }
 }

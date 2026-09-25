@@ -106,6 +106,12 @@ test('one durable tmux Job preserves REPL state, single-writer receipts, transcr
   t.after(() => rm(testRoot, { recursive: true, force: true }));
   const on = new LocalTestChannel(); const authority = new Authority();
   const fixture = path.join(root, 'test/fixtures/interactive-job/repl.mjs');
+  const tmuxFixture = `hima-base-index-${process.pid}`;
+  const keeper = spawnSync('tmux', ['new-session', '-d', '-s', tmuxFixture, 'sleep', '60'], { encoding: 'utf8' });
+  assert.equal(keeper.status, 0, keeper.stderr);
+  const nonzeroBase = spawnSync('tmux', ['set-option', '-g', 'base-index', '1'], { encoding: 'utf8' });
+  assert.equal(nonzeroBase.status, 0, nonzeroBase.stderr);
+  t.after(() => { spawnSync('tmux', ['kill-session', '-t', `=${tmuxFixture}`], { timeout: 15_000 }); });
   let session: InteractiveSession | undefined;
   try {
     const opened = await openInteractiveJob(on, {
