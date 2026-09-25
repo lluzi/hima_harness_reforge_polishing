@@ -32,24 +32,36 @@ def number(kind, value, unit="count", **extra):
     return {"type": kind, "unit": unit, "value": value, **extra}
 
 
-def workspace_path(workspace: Path, raw: str):
+def workspace_path(workspace: Path, raw: str, allow_external=False):
     value = Path(raw)
     path = value.resolve() if value.is_absolute() else (workspace / value).resolve()
-    if not path.is_relative_to(workspace.resolve()):
+    if not allow_external and not path.is_relative_to(workspace.resolve()):
         raise ValueError("evidence path escapes workspace")
     return path
 
 
-def verify_ref(ref, workspace: Path):
+def verify_ref(ref, workspace: Path, allow_external=False):
     if not isinstance(ref, dict) or set(ref) != {"role", "path", "sha256", "bytes"}:
         raise ValueError("malformed file identity")
-    path = workspace_path(workspace, ref["path"])
+    path = workspace_path(workspace, ref["path"], allow_external=allow_external)
     if path.is_symlink() or not path.is_file():
         raise ValueError("held evidence is missing or linked")
     raw = path.read_bytes()
     if len(raw) != ref["bytes"] or hashlib.sha256(raw).hexdigest() != ref["sha256"]:
         raise ValueError("held evidence identity changed")
     return path
+
+
+def verify_prepared_site_inputs(measurement, workspace: Path):
+    runtime = load(workspace / "flow" / "state" / "runtime.json")
+    if runtime.get("schema") != "xtop-timing-closure-runtime/1":
+        raise ValueError("runtime state has the wrong schema")
+    profile = measurement.get("profile")
+    source_manifest = measurement.get("sourceManifest")
+    if profile != runtime.get("profileIdentity") or source_manifest != runtime.get("sourceManifest"):
+        raise ValueError("closure state profile or source manifest differs from the prepared Run identity")
+    return (verify_ref(profile, workspace, allow_external=True),
+            verify_ref(source_manifest, workspace, allow_external=True))
 
 
 def verified_physical_count(path: Path, kind: str):
@@ -121,8 +133,7 @@ def verify_state(data, workspace: Path):
     measurement = data.get("measurement")
     if not isinstance(measurement, dict) or not isinstance(measurement.get("scenariosSha256"), str) or not isinstance(measurement.get("spef"), dict):
         raise ValueError("closure state has no measurement coverage identity")
-    verify_ref(measurement.get("profile"), workspace)
-    verify_ref(measurement.get("sourceManifest"), workspace)
+    verify_prepared_site_inputs(measurement, workspace)
     if not measurement["spef"]:
         raise ValueError("closure state has no extraction identity")
     for ref in measurement["spef"].values():

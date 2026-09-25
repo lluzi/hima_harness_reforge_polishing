@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import copy
 from pathlib import Path
@@ -140,6 +141,37 @@ class ClosureContractTest(unittest.TestCase):
             self.assertEqual(manifest["drcLimit"], 1000000)
             self.assertEqual(manifest["connectivityLimit"], 1000000)
             self.assertIn("verifyConnectivity -noAntenna -error 1000000", template)
+
+    def test_reader_admits_only_the_exact_external_site_inputs_retained_by_prepare(self):
+        campaign = self.workspace / "campaign"
+        state = campaign / "flow" / "state"
+        state.mkdir(parents=True)
+        external = self.workspace / "site-owned"
+        external.mkdir()
+        profile = external / "profile.json"
+        manifest = external / "source.sha256"
+        profile.write_text("{}\n")
+        manifest.write_text("source identity\n")
+
+        def ref(path, role):
+            raw = path.read_bytes()
+            return {"role": role, "path": str(path), "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+
+        profile_ref = ref(profile, "site-profile")
+        manifest_ref = ref(manifest, "source-manifest")
+        (state / "runtime.json").write_text(json.dumps({
+            "schema": "xtop-timing-closure-runtime/1",
+            "profileIdentity": profile_ref,
+            "sourceManifest": manifest_ref,
+        }))
+        measurement = {"profile": profile_ref, "sourceManifest": manifest_ref}
+
+        self.assertEqual(reader.verify_prepared_site_inputs(measurement, campaign),
+                         (profile.resolve(), manifest.resolve()))
+        changed = copy.deepcopy(measurement)
+        changed["profile"] = {**profile_ref, "sha256": "0" * 64}
+        with self.assertRaisesRegex(ValueError, "differs from the prepared Run identity"):
+            reader.verify_prepared_site_inputs(changed, campaign)
 
     def test_unknown_physical_report_grammar_is_retained_without_inventing_counts(self):
         physical = self.workspace / "flow" / "iterations" / "g000" / "PHYSICAL"

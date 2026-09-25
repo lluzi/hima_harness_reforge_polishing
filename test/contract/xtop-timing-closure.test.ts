@@ -39,7 +39,7 @@ test('the XTop closure Pack loads, fits its declared execution surface and passe
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /xtop-timing-closure@1\.0\.13.*fit/s);
+    assert.match(throughHost.text, /xtop-timing-closure@1\.0\.14.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {
@@ -141,17 +141,20 @@ test('a real Host reads XTop physical evidence through its Pack observation node
     const connectivity=path.join(physicalRoot,'verify_connectivity.rpt');await writeFile(connectivity,'#  Command: verifyConnectivity -noAntenna -error 1000000 -report /site/conn.rpt\nBegin Summary\n    0 Problem(s) (IMPVFC-200): Special Wires.\n    0 total info(s) created.\nEnd Summary\n');
     const manifest=path.join(physicalRoot,'physical-check.json');await writeFile(manifest,JSON.stringify({schema:'xtop-timing-closure-physical-check/2',coverage:'complete',drcLimit:1000000,connectivityLimit:1000000,drcReport:'verify_drc.rpt',connectivityReport:'verify_connectivity.rpt'}));
     const measurement=path.join(workspace,'flow/iterations/g000/measurement.txt');await writeFile(measurement,'retained measurement\n');
-    const retainedProfile=path.join(workspace,'flow/site-profile.json');await writeFile(retainedProfile,'{}\n');
-    const retainedManifest=path.join(workspace,'flow/source-manifest.sha256');await writeFile(retainedManifest,'fixture source\n');
-    const fileRef=async(file:string,role:string)=>{const raw=await readFile(file);return {role,path:path.relative(workspace,file),sha256:createHash('sha256').update(raw).digest('hex'),bytes:raw.length};};
+    const fileRef=async(file:string,role:string)=>{const raw=await readFile(file);const relative=path.relative(workspace,file);return {role,
+      path:relative.startsWith(`..${path.sep}`)?file:relative,sha256:createHash('sha256').update(raw).digest('hex'),bytes:raw.length};};
+    const retainedProfile=await fileRef(siteProfile,'site-profile');
+    const retainedManifest=await fileRef(sourceManifest,'source-manifest');
     const state={schema:'xtop-timing-closure-state/1',iteration:0,
       reportFiles:[await fileRef(measurement,'sta-report')],
       physical:{schema:'xtop-timing-closure-physical-check/2',coverage:'complete',drcLimit:1000000,connectivityLimit:1000000,
         drc:{count:0,report:await fileRef(drc,'physical-drc')},connectivity:{count:0,report:await fileRef(connectivity,'physical-connectivity')},
         manifest:await fileRef(manifest,'physical-check-manifest')},
-      measurement:{scenariosSha256:'a'.repeat(64),profile:await fileRef(retainedProfile,'site-profile'),sourceManifest:await fileRef(retainedManifest,'source-manifest'),spef:{worst:await fileRef(measurement,'spef')}},
+      measurement:{scenariosSha256:'a'.repeat(64),profile:retainedProfile,sourceManifest:retainedManifest,spef:{worst:await fileRef(measurement,'spef')}},
       metrics:{setup_wns_ns:0,setup_tns_ns:0,setup_violations:0,hold_wns_ns:0,hold_tns_ns:0,hold_violations:0,unconstrained_endpoints:0,closure_score:0},endpointSlackNs:{}};
     const current=path.join(workspace,'flow/state/current.json');await mkdir(path.dirname(current),{recursive:true});await writeFile(current,JSON.stringify(state));
+    await writeFile(path.join(workspace,'flow/state/runtime.json'),JSON.stringify({schema:'xtop-timing-closure-runtime/1',
+      profileIdentity:retainedProfile,sourceManifest:retainedManifest}));
     let serial=0;
     const act=(action:'begin'|'work'|'complete',executionId?:string)=>{const control=host.ctx.hima.ledger.run(runId!)!.control!;return host.ctx.hima.executionAction({runId:runId!,actor,action,requestId:`xtop-reader-${++serial}`,expectedEpoch:control.epoch,expectedRevision:control.revision,...(action==='begin'?{nodeId:'host-read-physical'}:{executionId})});};
     const begun=await act('begin');assert.equal(begun.kind,'accepted',begun.reason);const executionId=begun.receipt?.executionId;assert.ok(executionId);
