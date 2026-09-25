@@ -1,0 +1,13 @@
+{
+  "schema": "hima.wave1-operator-rollback/1",
+  "recordedAt": "2026-09-25T12:46:51Z",
+  "site": "linglong-swerv28",
+  "license": {
+    "selected": "new",
+    "old": "inactive",
+    "new": "active"
+  },
+  "activeXTopOrQuaLibClients": 0,
+  "activeNamedOperatorContainers": 0,
+  "status": "restored"
+}

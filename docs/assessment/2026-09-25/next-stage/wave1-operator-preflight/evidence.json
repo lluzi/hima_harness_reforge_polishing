@@ -1,0 +1,139 @@
+{
+  "check": "live-check-xtop-hima-arm",
+  "startedAt": "2026-09-25T12:23:35.352Z",
+  "checkpointAt": "2026-09-25T12:23:36.146Z",
+  "limits": {
+    "timeoutMs": 10800000,
+    "maxTurns": 40,
+    "maxSteps": 600
+  },
+  "passed": true,
+  "status": "passed",
+  "failure": null,
+  "costs": {
+    "hosts": 0,
+    "electron": 0,
+    "nativeSessionsCreated": 0,
+    "nativeSessionsResumed": 0,
+    "modelSessions": 0,
+    "modelRequestSteps": 0,
+    "apiRequests": "unmeasured; request steps exclude adapter retries",
+    "tokens": "unmeasured",
+    "userMessages": 0
+  },
+  "observed": {
+    "sourceSha": "016f0967653479da88eb9967fdce0d68583e266b",
+    "privateRoot": "/private/tmp/hima-l4-N6ueb1",
+    "node": "v24.20.0",
+    "dirtyFiles": "?? tmp/",
+    "model": "native configured DeepSeek adapter; no replay",
+    "outcome": "PASS — no-commercial preflight only; no Host, model or Campaign was started",
+    "secretScan": {
+      "files": 287,
+      "holding": [],
+      "unreadable": []
+    }
+  },
+  "userMessages": [],
+  "toolSequence": [],
+  "agents": [],
+  "runs": [],
+  "checks": [
+    {
+      "claim": "the J3 arm uses the currently qualified development Pack",
+      "passed": true,
+      "saw": {
+        "version": "1.0.14",
+        "status": "development",
+        "digest": "19207d78dc3b1e9f4fd80f6bd4c21df209f1dfffc5f83fa7afd3ac5c96fd2a92"
+      }
+    },
+    {
+      "claim": "the live Site is in old mode with no conflicting Empyrean client before the Hima arm",
+      "passed": true,
+      "saw": "mode=old\nclients="
+    },
+    {
+      "claim": "a fresh Home installed the exact current XTop Pack",
+      "passed": true,
+      "saw": {
+        "changed": true,
+        "installedDigest": "19207d78dc3b1e9f4fd80f6bd4c21df209f1dfffc5f83fa7afd3ac5c96fd2a92",
+        "sourceDigest": "19207d78dc3b1e9f4fd80f6bd4c21df209f1dfffc5f83fa7afd3ac5c96fd2a92"
+      }
+    },
+    {
+      "claim": "bounded Site discovery completed without unknowns or conflicts",
+      "passed": true,
+      "saw": {
+        "unknowns": [],
+        "conflicts": []
+      }
+    },
+    {
+      "claim": "the saved Site retains the reviewed XTop bindings, capacity and redlines",
+      "passed": true,
+      "saw": {
+        "name": "linglong-swerv28",
+        "bindings": [
+          "inputInnovusDatabase",
+          "siteProfile",
+          "sourceManifest",
+          "workspaceRoot"
+        ],
+        "capacity": {
+          "cores": 16,
+          "memoryGiB": 64,
+          "parallelJobs": 1,
+          "licences": {
+            "Innovus": 1,
+            "StarRC": 1,
+            "PrimeTime": 1,
+            "XTop": 1
+          }
+        },
+        "forbidden": [
+          "services",
+          "licence-servers",
+          "network-settings",
+          "dns",
+          "proxy",
+          "tailscale",
+          "deletions",
+          "moves-of-run-directories",
+          "repository-downloads"
+        ]
+      }
+    },
+    {
+      "claim": "open-time production binding verification is enforced before the Hima arm",
+      "passed": true,
+      "saw": {
+        "argv": [
+          "/data/eda/project/hima_harness/operator-admin/xtop-v1/xtop-operator-v1.sh",
+          "/data/eda/project/hima_harness/xtop-timing-closure-runs/binding-preflight-not-created",
+          "/data/eda/project/hima_harness/xtop-timing-closure-runs/binding-preflight-not-created/flow/closure.py",
+          "/data/eda/project/hima_harness/xtop-timing-closure-runs/binding-preflight-not-created/flow/templates/xtop-operator.tcl"
+        ],
+        "verified": {
+          "bindingFileRealpath": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/commercial-chain-j3/operator-v1014r2-admin/interactive-bindings.json",
+          "bindingFileSha256": "d3679c06143a17b642c6cba2da1a357a60cdd081b53b189e3f240e613309bd6d",
+          "environmentDigest": "b400fb27e97295c31ddf3795c6ee1e679f7a87c15fd9a639399d59fe8ef73ac5",
+          "confinement": "enforced",
+          "writableRoot": "/data/eda/project/hima_harness/xtop-timing-closure-runs"
+        },
+        "bindingSha256": "d3679c06143a17b642c6cba2da1a357a60cdd081b53b189e3f240e613309bd6d"
+      }
+    },
+    {
+      "claim": "retained private home and evidence were scanned",
+      "passed": true,
+      "saw": {
+        "files": 287,
+        "holding": [],
+        "unreadable": []
+      }
+    }
+  ],
+  "finishedAt": "2026-09-25T12:23:36.147Z"
+}

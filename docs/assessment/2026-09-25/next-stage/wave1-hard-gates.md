@@ -2,8 +2,8 @@
 
 Date: 2026-09-25. Authority: [issue-closure-plan.md](issue-closure-plan.md).
 
-This receipt separates completed product gates from the one remaining administrator action. It does
-not turn local tests, a started child, or a valid negative result into PASS.
+Wave 1 reached its declared completion boundary on 2026-09-25. This receipt does not turn local
+tests, a started child, or a valid negative result into PASS.
 
 ## Lane A — #44 continuous DTCO commercial exit: PASS
 
@@ -86,26 +86,37 @@ The same bounded local Run records six real model sessions and 23 model request 
 API request count, tokens and spend remain unmeasured because the pinned provider surface does not
 expose them. This task used no EDA or commercial licence.
 
-### #58 production Operator delegation: awaiting administrator switch
+### #58 production Operator delegation: PASS
 
 The product now admits `role=operator` only when Host revalidates one exact production-qualified
 interactive Run/node/execution/binding. The child receives only `hima_interactive`; raw shell,
 terminal, generic file writes, recursive delegation and owner authority remain unavailable. Every
 interactive call re-reads current epoch/revision, holds, single-writer state and the binding digest.
 
-Local Host contracts pass, and the retained #50 production XTop binding remains the environmental
-qualification authority. The final combined L4 is prepared through
-`scripts/live-check-xtop-hima-arm.ts --delegate-operator-only`. It cannot start while linglong is in
-the mutually exclusive `selected=new` QuaLib mode. An administrator must run
-`sudo /usr/local/bin/empyrean-license old`; after the bounded XTop check the Site must be restored to
-`new` and checked for zero clients. Until that pass is retained, Issue #58 stays open and Wave 1 is
-not terminal as a whole.
+The [production Operator evidence](wave1-operator-delegation/evidence.json) records Run
+`run-4c67be31-5f01-46b5-b826-3a4a229a0cbf`, Pack digest
+`19207d78dc3b1e9f4fd80f6bd4c21df209f1dfffc5f83fa7afd3ac5c96fd2a92`, and real child
+`hima-child-44eed1557dcc3d1d3cc89a6276e01d56`. The Host grant is production (`testOnly=false`) and binds
+exactly `run-xtop-fix` execution `execution-13c8d2de-be8f-42c0-9a1e-73f3fc41fe94` to binding digest
+`4e162cfa79b447b6f25a207b863046a5f1461b3f1fdc07f21121ec4fbb7a390d`.
+
+The real DeepSeek Operator child used only `hima_interactive` and completed typed identity, setup and
+hold summaries, one high-effort hold fix, candidate save and normal close. The Run owner adopted
+exact result record `#000098` through adoption record `#000099`; `read-xtop` accepted observation
+`#000104`. The bounded Run then cancelled at `apply-eco`: this acceptance intentionally did not
+repeat the downstream commercial chain already closed by J3. The post-run rollback is retained in
+[rollback.json](wave1-operator-delegation/rollback.json): `selected=new`, old inactive, new active,
+zero XTop/QuaLib clients and zero retained Operator containers.
+
+Issue #58 and Wave 1 are therefore terminal **PASS**. This is a capability/authority result, not a
+new PPA, timing-cleanliness, physical-cleanliness or business-value result.
 
 ## Local verification and rollback
 
 Focused build/typecheck and 47 Pack/delegation/interactive contracts passed with zero SSH in the test
-runner. Additional Guide/session/interactive focused coverage passed 13/13. The live lanes are the
-separate L4/real-model evidence above.
+runner. Additional Guide/session/interactive focused coverage passed 13/13, and the native Workbench
+child/transcript/stale-response Desktop path passed 1/1. The live lanes are the separate L4/real-model
+evidence above.
 
 Rollback is by reverting the Wave 1 implementation commits. That removes Operator delegation,
 explicit child-result adoption, the two Pack staging/Reader corrections and live-check scripts. It
