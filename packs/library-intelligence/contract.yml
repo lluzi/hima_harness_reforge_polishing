@@ -1,6 +1,6 @@
 id: library-intelligence
-version: "0.2.0"
-title: Library Intelligence native API qualification
+version: "0.3.0"
+title: Library Intelligence qualification, facts, insight and bounded proposal
 status: development
 minimumHarnessVersion: 0.1.0
 inputs:
@@ -15,6 +15,30 @@ outputs:
     path: flow/qualification/receipt.json
     reader: library-qualification
     description: Typed per-input read/query/copy/re-read evidence; no Library facts.
+  - name: baselineFacts
+    path: flow/library/baseline-facts.json
+    reader: library-facts
+    description: Hash-bound representative E2 facts from the qualified source.
+  - name: candidateFacts
+    path: flow/library/candidate-facts.json
+    reader: library-facts
+    description: Hash-bound candidate E2 facts; Wave 2 starts with the same qualified source.
+  - name: libraryDelta
+    path: flow/library/delta.json
+    reader: library-delta
+    description: Comparable-condition delta; same-source Wave 2 evidence is explicitly zero.
+  - name: libraryInsight
+    path: flow/library/insight-report.json
+    reader: library-insight
+    description: Versioned, read-only Library Insight report.
+  - name: libraryProposal
+    path: flow/library/proposal.json
+    reader: library-proposal
+    description: Versioned E4 method proposal with no write authorization.
+  - name: libraryRuleResult
+    path: flow/library/rule-result.json
+    reader: library-rule-result
+    description: Typed private-workspace E4 analysis result; it recommends no mutation for the same-source control.
 tools:
   - id: qualify-api
     file: tools/libapi_worker.py
@@ -27,6 +51,36 @@ tools:
       - ${WORKSPACE}/flow/tools/libapi_worker.py
       - ${QUALIFICATION_MANIFEST}
       - ${WORKSPACE}
+  - id: index-baseline
+    file: tools/library-stages.py
+    description: Derive bounded baseline facts from the passed E1 receipt without re-reading native objects.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/tools/library-stages.py', facts, '${WORKSPACE}/flow/qualification/receipt.json', tsmc28, baseline, '${WORKSPACE}/flow/library/baseline-facts.json']
+  - id: index-candidate
+    file: tools/library-stages.py
+    description: Derive candidate facts from the same qualified source for an explicit zero-delta control.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/tools/library-stages.py', facts, '${WORKSPACE}/flow/qualification/receipt.json', tsmc28, candidate, '${WORKSPACE}/flow/library/candidate-facts.json']
+  - id: semantic-delta
+    file: tools/library-stages.py
+    description: Compare only hash-bound facts under exactly matching available conditions.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/tools/library-stages.py', delta, '${WORKSPACE}/flow/library/baseline-facts.json', '${WORKSPACE}/flow/library/candidate-facts.json', '${WORKSPACE}/flow/library/delta.json']
+  - id: library-insight
+    file: tools/library-stages.py
+    description: Produce a versioned read-only insight report from the typed delta.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/tools/library-stages.py', report, '${WORKSPACE}/flow/library/delta.json', '${WORKSPACE}/flow/library/insight-report.json']
+  - id: propose-library-rule
+    file: tools/library-stages.py
+    description: Produce a bounded E4 proposal; it cannot execute a customer algorithm or write Library inputs.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/tools/library-stages.py', proposal, '${WORKSPACE}/flow/library/insight-report.json', '${WORKSPACE}/flow/library/rule-result.json', '${WORKSPACE}/flow/tools/library-stages.py', '${WORKSPACE}/flow/library/proposal.json']
+  - id: evaluate-library-rule
+    file: tools/library-stages.py
+    description: Produce a typed no-mutation E4 result from the versioned report within the private workspace.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/tools/library-stages.py', result, '${WORKSPACE}/flow/library/insight-report.json', '${WORKSPACE}/flow/library/rule-result.json']
 environment:
   wrappers: [/usr/local/bin/edarun, /usr/bin/python3]
 workspace:

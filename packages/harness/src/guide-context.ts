@@ -95,7 +95,12 @@ export async function readGuideContext(deps: GuideContextDeps, request: { sessio
     const address = await resolveReportAddress(deps, request.sessionId, target.reportRef);
     if (address.sha256 !== target.sha256 || address.version !== target.version) throw new GuideContextError('hima/context-stale', 'The report address no longer matches the recorded version.');
     const record = deps.ledger.record(target.reportRef)!;
-    if(record.type==='code'||record.type==='knowledge'||record.type==='observation'){const facts=await readTypedReport(deps,record);return {...head,sourceRevision:record.seq,facts,sources:[record.id],missing:'evidenceClass' in facts?['Synthetic fixture only. Native Library qualification has not passed.']:[]};}
+    if(record.type==='code'||record.type==='knowledge'||record.type==='observation'){
+      const facts=await readTypedReport(deps,record);
+      return {...head,sourceRevision:record.seq,facts,sources:[record.id],
+        missing:'evidenceClass' in facts&&facts.evidenceClass==='synthetic'
+          ?['Synthetic fixture only. Native Library qualification has not passed.']:[]};
+    }
     const report = await deps.readExperience(record.runId);
     if (report.kind !== 'read' || report.record.id !== record.id) {
       return { ...head, facts: null, sources: [record.id], missing: [report.kind === 'read' ? 'The retained report identity changed.' : `Report bytes are ${report.kind}.`] };

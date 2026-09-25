@@ -1,5 +1,5 @@
 id: library-intelligence
-version: "0.2.0"
+version: "0.3.0"
 entry: qualify-api
 nodes:
   - id: qualify-api
@@ -17,12 +17,60 @@ nodes:
     parameters:
       rules: [library-api-qualified]
       bind: { qualification_required: { from: goal, name: qualification_required } }
+  - id: index-baseline
+    kind: act
+    parameters: { tool: index-baseline, arguments: {} }
+  - id: read-baseline-facts
+    kind: act
+    parameters: { observes: baselineFacts }
+  - id: index-candidate
+    kind: act
+    parameters: { tool: index-candidate, arguments: {} }
+  - id: read-candidate-facts
+    kind: act
+    parameters: { observes: candidateFacts }
+  - id: semantic-delta
+    kind: act
+    parameters: { tool: semantic-delta, arguments: {} }
+  - id: read-library-delta
+    kind: act
+    parameters: { observes: libraryDelta }
+  - id: library-insight
+    kind: act
+    parameters: { tool: library-insight, arguments: {} }
+  - id: read-library-insight
+    kind: act
+    parameters: { observes: libraryInsight }
+  - id: propose-library-rule
+    kind: act
+    parameters: { tool: propose-library-rule, arguments: {} }
+  - id: evaluate-library-rule
+    kind: act
+    parameters: { tool: evaluate-library-rule, arguments: {} }
+  - id: read-library-rule-result
+    kind: act
+    parameters: { observes: libraryRuleResult }
+  - id: read-library-proposal
+    kind: act
+    parameters: { observes: libraryProposal }
   - id: blocked
     kind: wait
     parameters: { blocker: hard-blocker }
 edges:
   - { from: qualify-api, to: read-qualification }
   - { from: read-qualification, to: qualification-gate }
+  - { from: qualification-gate, to: index-baseline, outcome: PASS }
+  - { from: index-baseline, to: read-baseline-facts }
+  - { from: read-baseline-facts, to: index-candidate }
+  - { from: index-candidate, to: read-candidate-facts }
+  - { from: read-candidate-facts, to: semantic-delta }
+  - { from: semantic-delta, to: read-library-delta }
+  - { from: read-library-delta, to: library-insight }
+  - { from: library-insight, to: read-library-insight }
+  - { from: read-library-insight, to: evaluate-library-rule }
+  - { from: evaluate-library-rule, to: read-library-rule-result }
+  - { from: read-library-rule-result, to: propose-library-rule }
+  - { from: propose-library-rule, to: read-library-proposal }
   - { from: qualification-gate, to: blocked, outcome: FAIL }
   - { from: qualification-gate, to: blocked, outcome: UNDETERMINED }
 loops: {}

@@ -2,3 +2,18 @@ values:
   library_qualification_ok:
     unit: count
     description: One only when Host prelaunch attestation and all three representative native API probes have complete passed receipts and unchanged sources.
+  library_facts_complete:
+    unit: count
+    description: One only when a hash-bound E2 facts record is derived from a passed qualification result.
+  library_delta_complete:
+    unit: count
+    description: One only when a hash-bound comparable-condition Library delta is available.
+  library_insight_report_available:
+    unit: count
+    description: One only when a versioned read-only Library Insight report is available.
+  library_proposal_available:
+    unit: count
+    description: One only when a hash-bound E4 proposal has no write authorization and requires independent validation.
+  library_rule_result_available:
+    unit: count
+    description: One only when a typed, hash-bound E4 analysis result remains in the private workspace.

@@ -1,0 +1,6 @@
+id: library-delta
+version: "1"
+file: tools/read-library-stage.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-library-delta/1
+emits: [library_delta_complete]

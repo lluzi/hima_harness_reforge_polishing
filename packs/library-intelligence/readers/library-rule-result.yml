@@ -1,0 +1,6 @@
+id: library-rule-result
+version: "1"
+file: tools/read-library-stage.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-library-rule-result/1
+emits: [library_rule_result_available]

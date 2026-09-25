@@ -25,8 +25,197 @@ const { attestLibraryQualificationPrelaunch } = await import(
 const packDir = path.join(repoRoot, 'packs/library-intelligence');
 const worker = path.join(packDir, 'tools/libapi_worker.py');
 const reader = path.join(packDir, 'tools/read-qualification.py');
+const analysisWorker = path.join(packDir, 'tools/library-analysis.py');
+const stageWorker = path.join(packDir, 'tools/library-stages.py');
+const stageReader = path.join(packDir, 'tools/read-library-stage.py');
 const sha = (bytes: string | Buffer): string => createHash('sha256').update(bytes).digest('hex');
+const refreshIdentity = (value: Record<string, any>, field: 'recordSha256' | 'proposalSha256') => {
+  const content = structuredClone(value); delete content[field];
+  const calculated = spawnSync('python3', ['-c', 'import hashlib,json,sys; value=json.load(sys.stdin); print(hashlib.sha256(json.dumps(value,sort_keys=True,separators=(",", ":")).encode()).hexdigest())'],
+    { input: JSON.stringify(content), encoding: 'utf8' });
+  assert.equal(calculated.status, 0, calculated.stderr);
+  value[field] = calculated.stdout.trim(); return value;
+};
 const wrapperBytes = Buffer.from('#!/bin/sh\nexec "$@"\n');
+let analysisInvocation = 0;
+
+function runLibraryAnalysis(mode: 'facts' | 'delta' | 'proposal', input: unknown, workspace?: string) {
+  const root = workspace ?? path.join(os.tmpdir(), `hima-library-analysis-${process.pid}`);
+  const invocation = analysisInvocation++;
+  const inputPath = path.join(root, `${mode}-${invocation}-input.json`);
+  const outputPath = path.join(root, `${mode}-${invocation}-output.json`);
+  writeFileSync(inputPath, JSON.stringify(input));
+  const run = spawnSync('python3', [analysisWorker, mode, inputPath, outputPath], { encoding: 'utf8' });
+  return { ...run, outputPath };
+}
+
+test('E2 facts preserve typed Library/PVT/cell/pin/arc/table provenance and reject incomparable or unknown-as-zero deltas', async () => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'hima-library-e2-')));
+  try {
+    const source = path.join(root, 'baseline.lib');
+    await writeFile(source, 'synthetic baseline\n');
+    const request = {
+      schema: 'hima-library-facts-request/1',
+      source: { path: source, sha256: sha(await readFile(source)), bytes: 19, role: 'baseline', family: 'core', corner: 'ss_0p72v_125c', view: 'nldm' },
+      producer: { apiBuild: 'synthetic', python: '/usr/bin/python3', adapterSha256: 'a'.repeat(64) },
+      library: { name: 'core_ss', units: { time: 'ns', capacitance: 'pf', voltage: 'V', area: 'um2' }, pvt: { process: 'ss', voltage: 0.72, temperature: 125, voltageUnit: 'V', temperatureUnit: 'C' } },
+      cells: [{ id: 'AN2_X1', name: 'AN2_X1', area: { value: 1.2, unit: 'um2' }, pins: [{ name: 'A', direction: 'input' }, { name: 'Z', direction: 'output' }], arcs: [{ id: 'AN2_X1:A>Z:combinational', relatedPin: 'A', outputPin: 'Z', type: 'combinational', sense: 'positive_unate', when: null, sourceLocator: { line: 12 }, tables: [{ id: 'cell_rise', model: 'nldm', axes: [{ variable: 'input_net_transition', unit: 'ns', indexes: [0.01, 0.1] }], shape: [2], values: [0.02, 0.04], unit: 'ns' }] }] }],
+      coverage: { declaredCells: 1, observedCells: 1, complete: true }, unknowns: [],
+    };
+    const facts = runLibraryAnalysis('facts', request, root);
+    assert.equal(facts.status, 0, facts.stderr);
+    const record = JSON.parse(await readFile(facts.outputPath, 'utf8'));
+    assert.equal(record.schema, 'hima-library-facts/1');
+    assert.equal(record.cells[0].arcs[0].tables[0].axes[0].unit, 'ns');
+    assert.equal(record.cells[0].provenance.derivationLevel, 'explicit');
+    assert.equal(record.cells[0].arcs[0].tables[0].provenance.sourceDomain, 'Liberty');
+    assert.equal(record.coverage.complete, true);
+
+    const candidate = structuredClone(record);
+    candidate.source.role = 'candidate';
+    candidate.source.sha256 = 'b'.repeat(64);
+    candidate.cells[0].area.value = 1.1;
+    delete candidate.recordSha256;
+    const delta = runLibraryAnalysis('delta', { schema: 'hima-library-delta-request/1', baseline: record, candidate }, root);
+    assert.equal(delta.status, 0, delta.stderr);
+    const comparison = JSON.parse(await readFile(delta.outputPath, 'utf8'));
+    assert.equal(comparison.schema, 'hima-library-delta/1');
+    assert.equal(comparison.conditions.corner, 'ss_0p72v_125c');
+    assert.ok(Math.abs(comparison.cellDeltas[0].area.delta + 0.1) < 1e-12);
+
+    candidate.source.corner = 'ff_0p88v_0c';
+    const incomparable = runLibraryAnalysis('delta', { schema: 'hima-library-delta-request/1', baseline: record, candidate }, root);
+    assert.notEqual(incomparable.status, 0);
+    assert.match(incomparable.stderr, /comparable family, corner, and view/i);
+
+    candidate.source.corner = record.source.corner;
+    candidate.cells[0].area = { unknown: { reason: 'source omits area' } };
+    const unknown = runLibraryAnalysis('delta', { schema: 'hima-library-delta-request/1', baseline: record, candidate }, root);
+    assert.equal(unknown.status, 0, unknown.stderr);
+    assert.equal(JSON.parse(await readFile(unknown.outputPath, 'utf8')).cellDeltas[0].area, null);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('E4 proposal is versioned, hash-bound, budgeted and private-workspace only', async () => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'hima-library-e4-')));
+  try {
+    const rule = path.join(root, 'customer-rule.py');
+    await writeFile(rule, '# frozen customer rule\n');
+    const request = {
+      schema: 'hima-library-rule-proposal-request/1',
+      rule: { id: 'slew-envelope', version: '1.0.0', path: rule, sha256: sha(await readFile(rule)), inputSchema: 'hima-library-facts/1', outputSchema: 'hima-library-rule-result/1' },
+      inputs: [{ ref: 'facts:baseline', schema: 'hima-library-facts/1', sha256: 'c'.repeat(64) }],
+      policy: { applicability: { family: 'core', corner: 'ss_0p72v_125c', view: 'nldm' }, budget: { maxInputs: 2, maxOutputBytes: 4096 }, permit: { workspaceRoot: root, writeRoot: root } },
+      result: { ref: 'analysis:slew-envelope', schema: 'hima-library-rule-result/1', sha256: 'd'.repeat(64), bytes: 128, unknowns: ['design evidence unavailable'] },
+      independentValidation: { required: true, recommendation: 'Re-run against an independently loaded facts record before any Library or release decision.' },
+    };
+    const proposal = runLibraryAnalysis('proposal', request, root);
+    assert.equal(proposal.status, 0, proposal.stderr);
+    const value = JSON.parse(await readFile(proposal.outputPath, 'utf8'));
+    assert.equal(value.schema, 'hima-library-analysis-proposal/1');
+    assert.equal(value.rule.version, '1.0.0');
+    assert.equal(value.writeBoundary, 'private-workspace-only');
+    assert.equal(value.independentValidation.required, true);
+    assert.deepEqual(value.mutations, []);
+
+    const outside = runLibraryAnalysis('proposal', { ...request, policy: { ...request.policy, permit: { ...request.policy.permit, writeRoot: path.dirname(root) } } }, root);
+    assert.notEqual(outside.status, 0);
+    assert.match(outside.stderr, /write root must equal private workspace root/i);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('E1 receipt drives the Pack-local E2 to E4 graph artifacts with an explicit same-source zero delta', async () => {
+  const f = await fixture();
+  try {
+    assert.equal(f.run().status, 0);
+    const receipt = path.join(f.workspace, 'flow/qualification/receipt.json');
+    const library = path.join(f.workspace, 'flow/library');
+    const baseline = path.join(library, 'baseline-facts.json');
+    const candidate = path.join(library, 'candidate-facts.json');
+    const delta = path.join(library, 'delta.json');
+    const report = path.join(library, 'insight-report.json');
+    const result = path.join(library, 'rule-result.json');
+    const proposal = path.join(library, 'proposal.json');
+    for (const args of [
+      ['facts', receipt, 'tsmc28', 'baseline', baseline], ['facts', receipt, 'tsmc28', 'candidate', candidate],
+      ['delta', baseline, candidate, delta], ['report', delta, report], ['result', report, result], ['proposal', report, result, stageWorker, proposal],
+    ]) {
+      const run = spawnSync('python3', [stageWorker, ...args], { encoding: 'utf8' });
+      assert.equal(run.status, 0, run.stderr);
+    }
+    const facts = JSON.parse(await readFile(baseline, 'utf8'));
+    const comparison = JSON.parse(await readFile(delta, 'utf8'));
+    const method = JSON.parse(await readFile(proposal, 'utf8'));
+    assert.equal(facts.schema, 'hima-library-facts/1');
+    assert.equal(facts.source.role, 'tsmc28');
+    assert.equal(facts.coverage.scope, 'representative-query-only');
+    assert.ok(facts.unknowns.length > 0, 'E1 samples must preserve absent PVT/table fields as unknown');
+    assert.equal(comparison.comparisonKind, 'same-qualified-source-zero-delta');
+    assert.equal(comparison.cellDeltas[0].area.delta, 0);
+    assert.equal(method.writeAuthorization, 'none');
+    assert.equal(method.independentValidation.required, true);
+    assert.equal(method.rule.algorithmSha256, sha(await readFile(stageWorker)), 'proposal names the executed rule-result producer bytes');
+    for (const [artifact, expectedType] of [[baseline, 'library_facts_complete'], [delta, 'library_delta_complete'], [report, 'library_insight_report_available'], [result, 'library_rule_result_available'], [proposal, 'library_proposal_available']] as const) {
+      const output = path.join(f.root, `${expectedType}.json`);
+      const run = spawnSync('python3', [stageReader, artifact, output], { encoding: 'utf8' });
+      assert.equal(run.status, 0, run.stderr);
+      assert.equal(JSON.parse(await readFile(output, 'utf8')).values[0].type, expectedType);
+    }
+    const tampered = JSON.parse(await readFile(proposal, 'utf8'));
+    tampered.writeAuthorization = 'golden-library-write';
+    const tamperedProposal = path.join(library, 'tampered-proposal.json');
+    await writeFile(tamperedProposal, JSON.stringify(tampered));
+    const refused = spawnSync('python3', [stageReader, tamperedProposal, path.join(f.root, 'refused.json')], { encoding: 'utf8' });
+    assert.notEqual(refused.status, 0);
+    assert.match(refused.stderr, /identity differs|write boundary/i);
+
+    const forgedFacts = JSON.parse(await readFile(baseline, 'utf8'));
+    forgedFacts.library.pvt = { process: 'tt', voltage: 0, temperature: 0 };
+    forgedFacts.unknowns = [];
+    refreshIdentity(forgedFacts, 'recordSha256');
+    const forgedFactsPath = path.join(library, 'forged-facts.json');
+    await writeFile(forgedFactsPath, JSON.stringify(forgedFacts));
+    const refusedFacts = spawnSync('python3', [stageReader, forgedFactsPath, path.join(f.root, 'refused-facts.json')], { encoding: 'utf8' });
+    assert.notEqual(refusedFacts.status, 0);
+    assert.match(refusedFacts.stderr, /PVT|unavailable fields/i, 'a self-consistent hash cannot turn unknown PVT into numeric zero');
+
+    const forgedDelta = JSON.parse(await readFile(delta, 'utf8'));
+    forgedDelta.conditions.corner = 'forged-corner';
+    refreshIdentity(forgedDelta, 'recordSha256');
+    const forgedDeltaPath = path.join(library, 'forged-delta.json');
+    await writeFile(forgedDeltaPath, JSON.stringify(forgedDelta));
+    const refusedDelta = spawnSync('python3', [stageReader, forgedDeltaPath, path.join(f.root, 'refused-delta.json')], { encoding: 'utf8' });
+    assert.notEqual(refusedDelta.status, 0);
+    assert.match(refusedDelta.stderr, /conditions are not comparable/i);
+
+    const forgedReport = JSON.parse(await readFile(report, 'utf8'));
+    forgedReport.findings[0].provenance[0].sha256 = '0'.repeat(64);
+    const forgedReportPath = path.join(library, 'forged-report.json');
+    await writeFile(forgedReportPath, JSON.stringify(forgedReport));
+    const refusedReport = spawnSync('python3', [stageReader, forgedReportPath, path.join(f.root, 'refused-report.json')], { encoding: 'utf8' });
+    assert.notEqual(refusedReport.status, 0);
+    assert.match(refusedReport.stderr, /exact delta/i);
+
+    const forgedResult = JSON.parse(await readFile(result, 'utf8'));
+    forgedResult.inputRefs[0].sha256 = '0'.repeat(64);
+    refreshIdentity(forgedResult, 'recordSha256');
+    const forgedResultPath = path.join(library, 'forged-result.json');
+    await writeFile(forgedResultPath, JSON.stringify(forgedResult));
+    const refusedResult = spawnSync('python3', [stageReader, forgedResultPath, path.join(f.root, 'refused-result.json')], { encoding: 'utf8' });
+    assert.notEqual(refusedResult.status, 0);
+    assert.match(refusedResult.stderr, /input reference differs/i);
+
+    const forgedAlgorithm = JSON.parse(await readFile(proposal, 'utf8'));
+    forgedAlgorithm.rule.algorithmPath = analysisWorker;
+    forgedAlgorithm.rule.algorithmSha256 = sha(await readFile(analysisWorker));
+    refreshIdentity(forgedAlgorithm, 'proposalSha256');
+    const forgedAlgorithmPath = path.join(library, 'forged-algorithm.json');
+    await writeFile(forgedAlgorithmPath, JSON.stringify(forgedAlgorithm));
+    const refusedAlgorithm = spawnSync('python3', [stageReader, forgedAlgorithmPath, path.join(f.root, 'refused-algorithm.json')], { encoding: 'utf8' });
+    assert.notEqual(refusedAlgorithm.status, 0);
+    assert.match(refusedAlgorithm.stderr, /algorithm identity differs/i, 'a proposal cannot attribute a result to unexecuted candidate bytes');
+  } finally { await f.dispose(); }
+});
 
 const stub = `
 import os, signal, shutil
@@ -325,11 +514,14 @@ test('real Host vetoes a Site-bound Python that differs from the manifest before
   } finally { await f.dispose(); await h.dispose(); }
 });
 
-test('eligible E1 Pack exposes only the attested native tool and actual checkPack refuses a missing wrapper or licence claim', async () => {
+test('eligible Pack exposes the attested E1 tool followed by the bounded E2-E4 tools and checkPack refuses a missing wrapper', async () => {
   const f = await fixture();
   try {
     const pack = loadPack(path.join(repoRoot, 'packs'), 'library-intelligence');
-    assert.deepEqual(pack.contract.tools.map((tool) => tool.id), ['qualify-api']);
+    assert.deepEqual(pack.contract.tools.map((tool) => tool.id), [
+      'qualify-api', 'index-baseline', 'index-candidate', 'semantic-delta', 'library-insight', 'propose-library-rule',
+      'evaluate-library-rule',
+    ]);
     assert.equal(pack.graph.entry, 'qualify-api');
     assert.deepEqual(pack.contract.tools[0]!.licences, { 'QuaLib-2026-new-59099': 1 });
     const loaded = loadSite(path.join(f.root, 'sites'), 'local');

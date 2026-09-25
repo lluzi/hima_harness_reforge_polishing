@@ -23,7 +23,8 @@ test('synthetic Insight validates unknowns, two independent severity axes, summa
   assert.equal(JSON.stringify(report),before);
   const missing=structuredClone(report);delete missing.findings[1]!.values[0]!.missingReason;
   assert.equal(libraryInsightDocument.safeParse(missing).success,false);
-  assert.equal(libraryInsightDocument.safeParse({...report,evidenceClass:'native-qualified'}).success,false);
+  assert.equal(libraryInsightDocument.safeParse({...report,evidenceClass:'native-qualified'}).success,true);
+  assert.equal(libraryInsightDocument.safeParse({...report,evidenceClass:'unqualified'}).success,false);
   assert.equal(libraryInsightDocument.safeParse({...report,summary:{...report.summary,best:['invented']}}).success,false);
   assert.equal(libraryInsightDocument.safeParse({...report,findings:[...report.findings,report.findings[0]]}).success,false);
 });
@@ -44,6 +45,18 @@ test('real Host resolves only recorded/hash-verified Insight bytes and refuses w
     const view=await readGuideContext(deps,{sessionId:String(viewer.id),requestId:'read-fixture',target});
     assert.ok(view.facts&&'schema' in view.facts);assert.equal(view.facts.schema,'hima-library-insight-report/1');
     assert.deepEqual(view.sources,[record.id]);assert.match(view.missing.join(' '),/Synthetic/);
+
+    const nativeText=JSON.stringify({...JSON.parse(text),evidenceClass:'native-qualified'})+'\n';
+    const nativeFile=path.join(home.h.workspace,'native-qualified-insight.json');await writeFile(nativeFile,nativeText);
+    const nativeDigest=createHash('sha256').update(nativeText).digest('hex');
+    const nativeRetained=await retainRunMaterial({ledger:host.ctx.hima.ledger,packsDir:path.join(home.h.home,'hima/packs')},started.run.id,Buffer.from(nativeText),nativeDigest);
+    assert.ok(nativeRetained);
+    const nativeRecord=await host.ctx.hima.ledger.appendCode(started.run.id,{nodeId:started.run.currentNode!,attempt:1,sessionId:String(viewer.id),workshop:'fixture',path:nativeFile,retainedPath:nativeRetained,sha256:nativeDigest,bytes:Buffer.byteLength(nativeText),language:'json'});
+    const nativeTarget=await resolveReportAddress(deps,String(viewer.id),nativeRecord.id);
+    const nativeView=await readGuideContext(deps,{sessionId:String(viewer.id),requestId:'read-native-qualified',target:nativeTarget});
+    assert.ok(nativeView.facts&&'evidenceClass' in nativeView.facts);assert.equal(nativeView.facts.evidenceClass,'native-qualified');
+    assert.deepEqual(nativeView.missing,[],'a native-qualified report is not mislabeled as a synthetic fixture');
+
     await writeFile(file,text+'changed');
     assert.equal((await resolveReportAddress(deps,String(viewer.id),record.id)).sha256,digest,'the retained source stays readable after its live pathname changes');
     await writeFile(retainedPath,Buffer.alloc(2*1024*1024+1,65));

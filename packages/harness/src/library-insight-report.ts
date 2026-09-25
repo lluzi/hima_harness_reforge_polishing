@@ -1,5 +1,5 @@
-// A read-only fixture report contract for the existing Insight surface. Native
-// Library production stays gated; this schema cannot label data as qualified.
+// A read-only report contract for the existing Insight surface. Synthetic
+// fixtures and native-qualified producer output stay explicitly distinct.
 import { z } from 'zod';
 
 const text = z.string().min(1).max(2000);
@@ -19,7 +19,7 @@ const numeric = z.strictObject({ name: text, value: z.number().finite().nullable
 
 export const libraryInsightDocument = z.strictObject({
   schema: z.literal('hima-library-insight-report/1'),
-  evidenceClass: z.literal('synthetic'),
+  evidenceClass: z.enum(['synthetic', 'native-qualified']),
   analysis: z.enum(['library-health', 'library-performance', 'design-impact']),
   conditions: z.strictObject({ family: text, corners: z.array(text).min(1).max(32), views: z.array(text).min(1).max(32),
     load: range.optional(), slew: range.optional(), unknowns: z.array(text).max(32) }),
