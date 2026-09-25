@@ -1,0 +1,10 @@
+{
+  "schema": "hima.wave2-library-failure/1",
+  "sourceSha": "e995977664814989f3b14b56ac376064a0b7b335",
+  "remoteRoot": "/data/eda/project/hima_harness/wave2-library-20260925141105",
+  "runId": "run-c236ef65-342f-4ab8-ad72-bce20cc66f45",
+  "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141105/library-intelligence-20260925-141107-1631",
+  "at": "2026-09-25T14:11:20.346Z",
+  "error": "TimeoutError: The operation was aborted due to timeout",
+  "stack": "TimeoutError: The operation was aborted due to timeout"
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "hima.wave2-library-failure/1",
+  "sourceSha": "618efc442df2ce47cd9699fecca72acdc676f26b",
+  "remoteRoot": "/data/eda/project/hima_harness/wave2-library-20260925133919",
+  "runId": "run-1de29068-97bb-418b-953c-3f6b72492ceb",
+  "workspace": "/data/eda/project/hima_harness/wave2-library-20260925133919/library-intelligence-20260925-133921-562d",
+  "at": "2026-09-25T13:39:24.692Z",
+  "error": "Error: native session memory source does not belong to the authenticated workspace",
+  "stack": "Error: native session memory source does not belong to the authenticated workspace\n    at nativeSessionMemoryEvidence (file:///Users/lluzi/code/hima_harness_reforge_polishing/packages/harness/lib/native-session-memory.js:51:15)\n    at async Proxy.workMemory (file:///Users/lluzi/code/hima_harness_reforge_polishing/packages/harness/lib/index.js:649:28)\n    at async file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-wave2-library.ts:137:26"
+}

@@ -61,7 +61,7 @@
       ],
       "issue": 57,
       "title": "长期工作记忆与经验采用",
-      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "readiness": "PASS on 2026-09-25 Wave 2: durable authority recovery, correction retention, child handoff and workspace isolation",
       "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/57"
     },
     {
@@ -136,8 +136,8 @@
         "NXT-E4"
       ],
       "issue": 49,
-      "title": "Library洞察（E1 PASS；E2-E4待验）",
-      "readiness": "actual library-intelligence@0.2.0 Pack-to-Host E1 PASS on 2026-09-25; Wave 2 E2-E4 remain",
+      "title": "Library洞察（E1-E4 PASS；代表性/同源控制边界）",
+      "readiness": "PASS on 2026-09-25 Wave 2: E1-E4 real vertical slice with representative/same-source/design-unknown limits",
       "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/49"
     },
     {

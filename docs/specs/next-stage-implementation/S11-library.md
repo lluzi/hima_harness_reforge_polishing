@@ -1,15 +1,24 @@
 # S11：Library facts、typed report 与受控分析方法
 
 > **2026-09-25 现行状态：** 原先 `lib.name()` exit 139 环境阻塞已经解除；
-> `library-intelligence@0.2.0` 的默认图从 `qualify-api` 开始，包含可运行 native tool。
+> `library-intelligence@0.3.2` 的默认图从 `qualify-api` 开始，包含可运行 native tool 与
+> E2–E4 的 typed facts/report/result/proposal 路径。
 > Host 的现有 `beforeLaunch`/Reader admission 现在核对实际加载的 Site Permit、嵌套读取路径、
 > 私有 workspace、Python/API/`edarun` 字节身份、QuaLib 资源声明，以及同一 Run 的持久 Job
 > launch/exit-0 历史。2026-09-25 的实际 Pack-to-Host Run
 > `run-c700d636-f7c1-4f87-ba95-914fa228f43d` 已在 `selected=new`、无 XTop 客户端条件下完成
 > vendor/SAED14/TSMC28 read/query/copy/re-read，Reader 与 Judge 均 PASS；证据见
-> [Wave 1 receipt](../../assessment/2026-09-25/next-stage/wave1-hard-gates.md)。E1 已关闭，当前门转为
-> Wave 2 的 E2–E4 分别验收。下文出现的 crash、blocked graph 和未实现
+> [Wave 1 receipt](../../assessment/2026-09-25/next-stage/wave1-hard-gates.md)。E1 已关闭；
+> Wave 2 又在 `run-a1a58ed5-3776-450e-a5a3-cde6f7abe157` 中复核 E1 并完成 E2–E4。
+> 下文出现的 crash、blocked graph 和未实现
 > worker 仅是带日期的原始问题/反例，不能作为当前执行状态。
+
+> **2026-09-25 Wave 2 状态：E2–E4 PASS。** `library-intelligence@0.3.2` 在同一真实
+> Pack/Host Run 中从 E1 receipt 形成 bounded representative facts、exact same-source zero
+> control、native-qualified Insight report、typed no-mutation result 与 versioned proposal；
+> Workbench 已渲染 exact retained report。覆盖与未知保持显式，未产生 full-corpus、revision、
+> design-impact、Library release 或价值结论。证据见
+> [Wave 2 receipt](../../assessment/2026-09-25/next-stage/wave2-vertical-slice.md)。
 
 状态：实施规格；覆盖 backlog 的 `NXT-E1`、`NXT-E2`、`NXT-E3`、`NXT-E4`。本文件不实现、不运行测试/EDA、不安装或诊断 Liberty API。`LIB-INT-01` 仍是唯一真实接入门。
 

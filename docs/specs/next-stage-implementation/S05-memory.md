@@ -1,5 +1,7 @@
 # S05 — 可核查的工作记忆与经验采用（NXT-M1 / M2 / H3）
 
+> **2026-09-25 现行状态：Wave 2 PASS。** Work Memory 已绑定 native retained-prefix/current-surface identity、完整 Run-row authority identity、record cursor 与当前 Run/Job/hold/report projection；缺少项目 identity 的历史不能自动采用。Experience disable/re-adopt 和 bounded child handoff 均为 append-only/durable，且已通过 compact、Host restart、follow-up 后旧 handoff、human hold、Job completion、correction retention 与 cross-workspace refusal。证据见 [Wave 2 receipt](../../assessment/2026-09-25/next-stage/wave2-vertical-slice.md)。下文“拟议/未运行”是原始实施规格，不再表示当前产品状态。
+
 状态：实施规格；基线 `1a79cb1514364aa049e775d7b18bbb063a223092`。M1 是资格核查先行切片；M2/H3 的字段均为拟议增量，不能因本文件出现而被称作已持久化。约束来自 ADR-0001/0002/0004/0008/0014/0015、访谈 Q4/Q5/Q10/Q14/Q18 与 backlog。
 
 ## Problem Statement

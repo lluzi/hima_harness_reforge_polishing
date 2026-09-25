@@ -102,7 +102,9 @@ test('native Workbench saves exact memory, corrects experience, controls and rea
     assert.equal(savedBody.sessionId, sessionId); assert.equal(savedBody.runId, runId);
     assert.deepEqual(savedBody.summary, { subject: 'Clock closure handoff', decisions: ['Keep the measured corner'], openQuestions: ['Which endpoint remains?'], todo: ['Measure the next candidate'], references, sources, nativeSources: [] });
     const summary = { schema: 'hima-work-memory/1', scope, subject: 'Clock closure handoff', decisions: ['Keep the measured corner'], openQuestions: ['Which endpoint remains?'], todo: ['Measure the next candidate'], references, sources, nativeSources: [], generatedAt: '2026-09-23T12:00:00.000Z', modelGenerated: true };
-    await fulfill(browser, saveRequest, { kind: 'current', scope, summary, authority: [{ runId, status: actualView.run.status, controlRevision: control.revision }], references, sources, nativeSources: [] });
+    await fulfill(browser, saveRequest, { kind: 'current', scope, summary, authority: [{ runId, status: actualView.run.status,
+      currentNode: actualView.run.currentNode, generation: actualView.run.generation ?? 0, controlRevision: control.revision,
+      holds: control.paused, jobs: [], reportRefs: [] }], references, sources, nativeSources: [] });
     await browser.wait(`document.querySelector('[data-hima-region="work-memory"]')?.innerText.includes('Clock closure handoff')`);
     await browser.send('Fetch.disable');
 
@@ -216,29 +218,31 @@ test('native Workbench saves exact memory, corrects experience, controls and rea
     await browser.wait(`document.querySelector('[data-hima-region="insight-report"]')?.innerText.includes('Verified report body from exact saved bytes.')`);
     const insightText = await browser.evaluate<string>(`document.querySelector('[data-hima-region="insight-report"]').innerText`);
     assert.match(insightText, /does not claim native Liberty analysis/); assert.doesNotMatch(insightText, /\{"kind"/);
-    // The distinct typed fixture view uses the same surface and immutable source addressing.
+    // The exact retained Wave 2 report uses the same surface and immutable source addressing.
     await enable(browser, [`*/hima/api/runs/${runId}?*`, '*/hima/api/context/report-address', '*/hima/api/context']);
     assert.ok((await d.click('studio-mode-campaign')).ok);
     const libraryRunRead=await next(browser,paused=>paused.request.url.includes(`/runs/${runId}?`));
-    const libraryRef=`${runId}#000043`;
+    const {readFile}=await import('node:fs/promises');const path=(await import('node:path')).default;const {repoRoot}=await import('./support/dsh-home.ts');
+    const wave2Root=path.join(repoRoot,'docs/assessment/2026-09-25/next-stage/wave2-library-attempt9');
+    const wave2Evidence=JSON.parse(await readFile(path.join(wave2Root,'evidence.json'),'utf8'));
+    const fixture=JSON.parse(await readFile(path.join(wave2Root,'insight-report.json'),'utf8'));
+    const libraryRef=wave2Evidence.reportTarget.reportRef as string;
     await fulfill(browser,libraryRunRead,{...actualView,experience:{recordId:libraryRef,writtenAt:'2026-09-23T12:00:07.000Z',markdown:{path:'/fixture/library.md',sha256:hash('3'),bytes:80},json:{path:'/fixture/library.json',sha256:hash('4'),bytes:160}}});
     await browser.wait(`!!document.querySelector('[data-hima-control="studio-open-retained-insight"]')`);
     assert.ok((await d.click('studio-open-retained-insight')).ok);
     const libraryAddress=await next(browser,paused=>paused.request.url.endsWith('/context/report-address'));
     assert.equal(requestBody(libraryAddress).reportRef,libraryRef);
-    const bound={kind:'report',reportRef:libraryRef,version:'43',sha256:hash('4')};await fulfill(browser,libraryAddress,bound);
+    const bound=wave2Evidence.reportTarget;await fulfill(browser,libraryAddress,bound);
     const libraryContext=await next(browser,paused=>paused.request.url.endsWith('/context'));
-    const {readFile}=await import('node:fs/promises');const path=(await import('node:path')).default;const {repoRoot}=await import('./support/dsh-home.ts');
-    const fixture=JSON.parse(await readFile(path.join(repoRoot,'test/fixtures/library-insight/report.json'),'utf8'));
-    await fulfill(browser,libraryContext,{requestId:requestBody(libraryContext).requestId,target:bound,scope:{workspaceRef:home.h.workspace,sessionId},asOf:'2026-09-23T12:00:07.000Z',facts:{...fixture,reportRef:libraryRef,version:'43',source:{recordId:libraryRef,sha256:hash('4'),createdAt:'2026-09-23T12:00:07.000Z'}},sources:[libraryRef],missing:['Synthetic fixture only.']});
+    await fulfill(browser,libraryContext,{requestId:requestBody(libraryContext).requestId,target:bound,scope:{workspaceRef:home.h.workspace,sessionId},asOf:'2026-09-25T13:47:28.000Z',facts:{...fixture,reportRef:libraryRef,version:bound.version,source:{recordId:libraryRef,sha256:bound.sha256,createdAt:'2026-09-25T13:47:28.000Z'}},sources:[libraryRef],missing:[]});
     await browser.send('Fetch.disable');
-    await browser.wait(`document.querySelector('[data-hima-region="library-insight"]')?.innerText.includes('2 of 2 loaded findings')`);
-    assert.ok((await d.fill('insight-corner','slow')).ok);
-    await browser.wait(`document.querySelector('[data-hima-region="library-insight"]')?.innerText.includes('1 of 2 loaded findings')`);
+    await browser.wait(`document.querySelector('[data-hima-region="library-insight"]')?.innerText.includes('1 of 1 loaded findings')`);
+    assert.ok((await d.fill('insight-corner','tt0p9v25c')).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="library-insight"]')?.innerText.includes('1 of 1 loaded findings')`);
     const filtered=await browser.evaluate<string>(`document.querySelector('[data-hima-region="library-insight"]').innerText`);
-    assert.match(filtered,/Library: critical.*Design relevance: none/);assert.doesNotMatch(filtered,/Missing measurement/);
-    assert.ok((await d.click('insight-finding-zero-delta')).ok);
-    await browser.wait(`document.querySelector('[contenteditable="true"]')?.innerText.includes('Inspect synthetic finding zero-delta')`);
+    assert.match(filtered,/Evidence class: native-qualified/);assert.match(filtered,/Library: info.*Design relevance: unknown/);assert.match(filtered,/Design evidence was not supplied/);
+    assert.ok((await d.click('insight-finding-same-source-zero-delta')).ok);
+    await browser.wait(`document.querySelector('[contenteditable="true"]')?.innerText.includes('Inspect native-qualified finding same-source-zero-delta')`);
 
     // A different exact record goes through the same Host address and byte identity check. A
     // missing producer category remains visibly unknown while the report reference appends to
@@ -290,7 +294,7 @@ test('native Workbench saves exact memory, corrects experience, controls and rea
     assert.ok((await d.click('feedback-add-report-reference')).ok);
     await browser.wait(`document.querySelector('[contenteditable="true"]')?.innerText.includes('Inspect generation feedback report ${feedbackRef}')`);
     const draftText=await browser.evaluate<string>(`document.querySelector('[contenteditable="true"]').innerText`);
-    assert.match(draftText,/Inspect synthetic finding zero-delta/);
+    assert.match(draftText,/Inspect native-qualified finding same-source-zero-delta/);
     assert.match(draftText,/Inspect generation feedback report/);
 
     // A delayed response for report A must never replace report B after the

@@ -1,0 +1,10 @@
+{
+  "schema": "hima.wave2-library-failure/1",
+  "sourceSha": "aa80ad1bb61026a8cb41601176c0d616a5a18e4f",
+  "remoteRoot": "/data/eda/project/hima_harness/wave2-library-20260925134549",
+  "runId": "run-3342d1e3-f1f2-4e29-91ed-ff581ffae03d",
+  "workspace": "/data/eda/project/hima_harness/wave2-library-20260925134549/library-intelligence-20260925-134551-f35d",
+  "at": "2026-09-25T13:46:25.488Z",
+  "error": "Error: This conversation has no available project workspace.",
+  "stack": "Error: This conversation has no available project workspace.\n    at sessionProject (file:///Users/lluzi/code/hima_harness_reforge_polishing/packages/harness/lib/guide-context.js:29:15)\n    at Proxy.workMemory (file:///Users/lluzi/code/hima_harness_reforge_polishing/packages/harness/lib/index.js:640:36)\n    at Object.apply (file:///Users/lluzi/code/hima_harness_reforge_polishing/node_modules/.pnpm/@deepseek-ai+cordis@4.0.2_@deepseek-ai+cordis-plugin-include@1.0.7_@deepseek-ai+cordis-plugin-loader@1.0.3/node_modules/@deepseek-ai/cordis/lib/index.js:120:36)\n    at file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-wave2-library.ts:241:44"
+}

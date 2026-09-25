@@ -1,0 +1,4055 @@
+{
+  "schema": "hima.wave2-library/1",
+  "recordedAt": "2026-09-25T14:12:32.362Z",
+  "sourceSha": "e995977664814989f3b14b56ac376064a0b7b335",
+  "pack": {
+    "id": "library-intelligence",
+    "version": "0.3.2",
+    "sourceDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+    "installedDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246"
+  },
+  "site": {
+    "name": "wave2-library",
+    "permitSha256": "3529ff536bf8b6bd50b9168a0a97c137d56c595ecc4fab2c84ea56c504553f2c",
+    "remoteRoot": "/data/eda/project/hima_harness/wave2-library-20260925141148",
+    "manifestPath": "/data/eda/project/hima_harness/wave2-library-20260925141148/qualification-manifest.json",
+    "manifestSha256": "fec8b35048b61b751e5b5fe0efb4bd16f10dd407f49fa873963b413a5e5e5bb1",
+    "analysisManifestPath": "/data/eda/project/hima_harness/wave2-library-20260925141148/analysis-manifest.json",
+    "analysisManifestSha256": "3bf0be33c25c99e7b2996c2334a95c80aca399c119adddad8f4c06e406408c9a"
+  },
+  "run": {
+    "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+    "campaignId": "library-intelligence-20260925-141149-a1f3",
+    "siteId": "wave2-library",
+    "createdAt": "2026-09-25T14:11:50.006Z",
+    "nextSeq": 82,
+    "control": {
+      "mode": "agent",
+      "owner": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+      "epoch": 1,
+      "revision": 49,
+      "paused": [],
+      "executions": {
+        "execution-3ec62c4b-f965-4fc1-bf4e-af8ea815709a": {
+          "id": "execution-3ec62c4b-f965-4fc1-bf4e-af8ea815709a",
+          "nodeId": "qualify-api",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "eabebcbedf09a68eaf77c4fe87ce63046540872ca164bbff61e0271e77af1fe6",
+          "phase": "completed",
+          "inputThroughSeq": 1,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-qualify-api-62500b",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "qualify-api",
+              "startedAt": "2026-09-25T14:11:59.231Z",
+              "wire": "'/usr/local/bin/edarun' '/data/eda/venvs/qualib-libapi-2026-py37/bin/python3.7' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/libapi_worker.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/qualification-manifest.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-qualify-api-62500b.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-qualify-api-62500b.exit'"
+            },
+            "nodeId": "qualify-api",
+            "licences": {
+              "QuaLib-2026-new-59099": 1
+            },
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-qualify-api-62500b",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-dfc71b17-cbf1-4836-bc71-4fd4d56c0e84": {
+          "id": "execution-dfc71b17-cbf1-4836-bc71-4fd4d56c0e84",
+          "nodeId": "read-qualification",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "eabebcbedf09a68eaf77c4fe87ce63046540872ca164bbff61e0271e77af1fe6",
+          "phase": "completed",
+          "inputThroughSeq": 5,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-reader-library-qualification-a7d27d",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "reader-library-qualification",
+              "startedAt": "2026-09-25T14:12:06.886Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-qualification/read-qualification.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-qualification/read-qualification-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-qualification-a7d27d.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-qualification-a7d27d.exit'"
+            },
+            "nodeId": "read-qualification",
+            "reading": {
+              "reader": {
+                "id": "library-qualification",
+                "version": "1",
+                "reportKind": "hima-library-qualification/1",
+                "emits": [
+                  "library_qualification_ok"
+                ],
+                "file": "tools/read-qualification.py",
+                "sha256": "656a3eaca338a955d4e770d703db86baa0325aa05efd407914061f9849ec6886"
+              },
+              "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-qualification/read-qualification-g1-a1.json",
+              "report": {
+                "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json",
+                "contentSha256": "afd06534e30965151d03baae507b413e143e2fcc98afe515efacd4b66f079372",
+                "bytes": 9815
+              }
+            },
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-reader-library-qualification-a7d27d",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-b43ed118-782d-4273-a01d-aa8a9aca7ed1": {
+          "id": "execution-b43ed118-782d-4273-a01d-aa8a9aca7ed1",
+          "nodeId": "qualification-gate",
+          "kind": "judge",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "657fa6bf7dd4a502a675fe4cc2c7ca59315418842e8dca1948749c530a5657c2",
+          "phase": "completed",
+          "inputThroughSeq": 11,
+          "result": {
+            "kind": "settled",
+            "outcome": "PASS"
+          }
+        },
+        "execution-f872ce29-9270-470d-babf-ed8cd16f2f8d": {
+          "id": "execution-f872ce29-9270-470d-babf-ed8cd16f2f8d",
+          "nodeId": "index-baseline",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "11ec76e6cebaccb9cf65079aff74500df6923dcdead1ed60760cb1e51ab7a62d",
+          "phase": "completed",
+          "inputThroughSeq": 13,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-index-baseline-1ef4c2",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "index-baseline",
+              "startedAt": "2026-09-25T14:12:08.244Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'facts' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/analysis-manifest.json' 'baseline' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-index-baseline-1ef4c2.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-index-baseline-1ef4c2.exit'"
+            },
+            "nodeId": "index-baseline",
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-index-baseline-1ef4c2",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-2d8b321e-acb6-45a1-a038-3b98546312d9": {
+          "id": "execution-2d8b321e-acb6-45a1-a038-3b98546312d9",
+          "nodeId": "read-baseline-facts",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "11ec76e6cebaccb9cf65079aff74500df6923dcdead1ed60760cb1e51ab7a62d",
+          "phase": "completed",
+          "inputThroughSeq": 17,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-reader-library-facts-1a7583",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "reader-library-facts",
+              "startedAt": "2026-09-25T14:12:09.026Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-baseline-facts-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-facts-1a7583.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-facts-1a7583.exit'"
+            },
+            "nodeId": "read-baseline-facts",
+            "reading": {
+              "reader": {
+                "id": "library-facts",
+                "version": "1",
+                "reportKind": "hima-library-facts/1",
+                "emits": [
+                  "library_facts_complete"
+                ],
+                "file": "tools/read-library-stage.py",
+                "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+              },
+              "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-baseline-facts-g1-a1.json",
+              "report": {
+                "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json",
+                "contentSha256": "379b48780748afbf7160945fe88dee92f8843b058f39761bc7b1f90ac771442a",
+                "bytes": 6210
+              }
+            },
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-reader-library-facts-1a7583",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-839e10e5-1a0b-4a89-8667-b0e3d63c3bfb": {
+          "id": "execution-839e10e5-1a0b-4a89-8667-b0e3d63c3bfb",
+          "nodeId": "index-candidate",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "18c7c165384b7fff9e5d35b7eb0048512066f0f46749f03501748c2abf4f5c66",
+          "phase": "completed",
+          "inputThroughSeq": 23,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-index-candidate-84647b",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "index-candidate",
+              "startedAt": "2026-09-25T14:12:09.527Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'facts' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/analysis-manifest.json' 'candidate' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-index-candidate-84647b.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-index-candidate-84647b.exit'"
+            },
+            "nodeId": "index-candidate",
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-index-candidate-84647b",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-b1e58135-38e5-450f-8f73-20691c50e0c8": {
+          "id": "execution-b1e58135-38e5-450f-8f73-20691c50e0c8",
+          "nodeId": "read-candidate-facts",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "18c7c165384b7fff9e5d35b7eb0048512066f0f46749f03501748c2abf4f5c66",
+          "phase": "completed",
+          "inputThroughSeq": 27,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-reader-library-facts-df9e72",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "reader-library-facts",
+              "startedAt": "2026-09-25T14:12:10.267Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-candidate-facts-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-facts-df9e72.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-facts-df9e72.exit'"
+            },
+            "nodeId": "read-candidate-facts",
+            "reading": {
+              "reader": {
+                "id": "library-facts",
+                "version": "1",
+                "reportKind": "hima-library-facts/1",
+                "emits": [
+                  "library_facts_complete"
+                ],
+                "file": "tools/read-library-stage.py",
+                "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+              },
+              "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-candidate-facts-g1-a1.json",
+              "report": {
+                "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json",
+                "contentSha256": "360db5443a14a4fbf103b0eec01d9433381ddbcd7d161ea34f099463a9bb2cbc",
+                "bytes": 6211
+              }
+            },
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-reader-library-facts-df9e72",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-b4ffdf21-a795-4934-bf50-d93018c21980": {
+          "id": "execution-b4ffdf21-a795-4934-bf50-d93018c21980",
+          "nodeId": "semantic-delta",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "2dc794049c47a5999989a073c7fcde76f675a7b01bdac4789a1b95d3d45bd33c",
+          "phase": "completed",
+          "inputThroughSeq": 33,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-semantic-delta-2120cb",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "semantic-delta",
+              "startedAt": "2026-09-25T14:12:10.749Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'delta' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-semantic-delta-2120cb.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-semantic-delta-2120cb.exit'"
+            },
+            "nodeId": "semantic-delta",
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-semantic-delta-2120cb",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-bbd8e84b-5c71-4b98-902e-a5738f249ebc": {
+          "id": "execution-bbd8e84b-5c71-4b98-902e-a5738f249ebc",
+          "nodeId": "read-library-delta",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "2dc794049c47a5999989a073c7fcde76f675a7b01bdac4789a1b95d3d45bd33c",
+          "phase": "completed",
+          "inputThroughSeq": 37,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-reader-library-delta-70b1b0",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "reader-library-delta",
+              "startedAt": "2026-09-25T14:12:11.589Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-delta/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-delta/read-library-delta-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-delta-70b1b0.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-delta-70b1b0.exit'"
+            },
+            "nodeId": "read-library-delta",
+            "reading": {
+              "reader": {
+                "id": "library-delta",
+                "version": "1",
+                "reportKind": "hima-library-delta/1",
+                "emits": [
+                  "library_delta_complete"
+                ],
+                "file": "tools/read-library-stage.py",
+                "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+              },
+              "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-delta/read-library-delta-g1-a1.json",
+              "report": {
+                "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json",
+                "contentSha256": "6c44e34327f1e324864ec5841358271d74239057540c102cd9dda7d3b8206a03",
+                "bytes": 1368
+              }
+            },
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-reader-library-delta-70b1b0",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-b82fae37-be4d-48dc-b8fd-54f5845f52f3": {
+          "id": "execution-b82fae37-be4d-48dc-b8fd-54f5845f52f3",
+          "nodeId": "library-insight",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "1523913f229c6a3a517081e7090921f625c1efc25ccb2b5c4b17ff57e3818727",
+          "phase": "completed",
+          "inputThroughSeq": 43,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-library-insight-0d00d6",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "library-insight",
+              "startedAt": "2026-09-25T14:12:12.724Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'report' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-library-insight-0d00d6.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-library-insight-0d00d6.exit'"
+            },
+            "nodeId": "library-insight",
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-library-insight-0d00d6",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-0b7f468a-7d0e-4ea2-9c2d-dd56331ff925": {
+          "id": "execution-0b7f468a-7d0e-4ea2-9c2d-dd56331ff925",
+          "nodeId": "read-library-insight",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "1523913f229c6a3a517081e7090921f625c1efc25ccb2b5c4b17ff57e3818727",
+          "phase": "completed",
+          "inputThroughSeq": 47,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-reader-library-insight-ff532c",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "reader-library-insight",
+              "startedAt": "2026-09-25T14:12:13.534Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-insight/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-insight/read-library-insight-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-insight-ff532c.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-insight-ff532c.exit'"
+            },
+            "nodeId": "read-library-insight",
+            "reading": {
+              "reader": {
+                "id": "library-insight",
+                "version": "1",
+                "reportKind": "hima-library-insight-report/1",
+                "emits": [
+                  "library_insight_report_available"
+                ],
+                "file": "tools/read-library-stage.py",
+                "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+              },
+              "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-insight/read-library-insight-g1-a1.json",
+              "report": {
+                "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json",
+                "contentSha256": "d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2",
+                "bytes": 1325
+              }
+            },
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-reader-library-insight-ff532c",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-bdb4d6e4-ba5b-492b-a778-7148c0ccd2e8": {
+          "id": "execution-bdb4d6e4-ba5b-492b-a778-7148c0ccd2e8",
+          "nodeId": "evaluate-library-rule",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "1e8e59dd7d53f131ac92e5658a2f275c5f644d654baeb847a18f9461114e51e1",
+          "phase": "completed",
+          "inputThroughSeq": 56,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-evaluate-library-rule-6a693b",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "evaluate-library-rule",
+              "startedAt": "2026-09-25T14:12:26.223Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'result' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-evaluate-library-rule-6a693b.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-evaluate-library-rule-6a693b.exit'"
+            },
+            "nodeId": "evaluate-library-rule",
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-evaluate-library-rule-6a693b",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-642dc73e-62c5-45b9-bf13-6c2d0e252dc6": {
+          "id": "execution-642dc73e-62c5-45b9-bf13-6c2d0e252dc6",
+          "nodeId": "read-library-rule-result",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "1e8e59dd7d53f131ac92e5658a2f275c5f644d654baeb847a18f9461114e51e1",
+          "phase": "completed",
+          "inputThroughSeq": 60,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-reader-library-rule-result-28d975",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "reader-library-rule-result",
+              "startedAt": "2026-09-25T14:12:27.047Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-rule-result/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-rule-result/read-library-rule-result-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-rule-result-28d975.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-rule-result-28d975.exit'"
+            },
+            "nodeId": "read-library-rule-result",
+            "reading": {
+              "reader": {
+                "id": "library-rule-result",
+                "version": "1",
+                "reportKind": "hima-library-rule-result/1",
+                "emits": [
+                  "library_rule_result_available"
+                ],
+                "file": "tools/read-library-stage.py",
+                "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+              },
+              "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-rule-result/read-library-rule-result-g1-a1.json",
+              "report": {
+                "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json",
+                "contentSha256": "a60df5411fc5b34284aacb3e76952364890403c0cb6c23e26d3b7d7614daed51",
+                "bytes": 861
+              }
+            },
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-reader-library-rule-result-28d975",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-06cce73c-031b-45a1-9a54-d4d77b769d36": {
+          "id": "execution-06cce73c-031b-45a1-9a54-d4d77b769d36",
+          "nodeId": "propose-library-rule",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "af36f9cb6d657556ff5b68e8423380ba904fba067d240842e46422fcc293d75f",
+          "phase": "completed",
+          "inputThroughSeq": 66,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-propose-library-rule-08081e",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "propose-library-rule",
+              "startedAt": "2026-09-25T14:12:28.175Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'proposal' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/proposal.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-propose-library-rule-08081e.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-propose-library-rule-08081e.exit'"
+            },
+            "nodeId": "propose-library-rule",
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-propose-library-rule-08081e",
+          "result": {
+            "kind": "settled"
+          }
+        },
+        "execution-f2503e50-ec3a-4976-8708-bfef806e789b": {
+          "id": "execution-f2503e50-ec3a-4976-8708-bfef806e789b",
+          "nodeId": "read-library-proposal",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+          "inputDigest": "af36f9cb6d657556ff5b68e8423380ba904fba067d240842e46422fcc293d75f",
+          "phase": "completed",
+          "inputThroughSeq": 70,
+          "intent": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "siteId": "wave2-library",
+            "job": {
+              "session": "hima-a1a58ed5-reader-library-proposal-416434",
+              "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+              "name": "reader-library-proposal",
+              "startedAt": "2026-09-25T14:12:29.004Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-proposal/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/proposal.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-proposal/read-library-proposal-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-proposal-416434.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-proposal-416434.exit'"
+            },
+            "nodeId": "read-library-proposal",
+            "reading": {
+              "reader": {
+                "id": "library-proposal",
+                "version": "1",
+                "reportKind": "hima-library-analysis-proposal/1",
+                "emits": [
+                  "library_proposal_available"
+                ],
+                "file": "tools/read-library-stage.py",
+                "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+              },
+              "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-proposal/read-library-proposal-g1-a1.json",
+              "report": {
+                "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/proposal.json",
+                "contentSha256": "ac80cbf4a196c50340aff17a835f4fbdbe04c03fc41c7c7738138eb5d34955e3",
+                "bytes": 1557
+              }
+            },
+            "attempt": 1
+          },
+          "jobSession": "hima-a1a58ed5-reader-library-proposal-416434",
+          "result": {
+            "kind": "settled"
+          }
+        }
+      },
+      "requests": {
+        "wave2-library-1": {
+          "digest": "782fe0dbfbb8ec578ea05d5548ec09a347da2f2f41190da65052d46835001547",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 0,
+          "at": "2026-09-25T14:11:59.140Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-1",
+            "action": "begin",
+            "executionId": "execution-3ec62c4b-f965-4fc1-bf4e-af8ea815709a"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-2": {
+          "digest": "24f2705cbd56444abb124a31bcae22600d165eedb184e31a5d2c1c770f5af1fe",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 1,
+          "at": "2026-09-25T14:11:59.169Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-2",
+            "action": "work",
+            "executionId": "execution-3ec62c4b-f965-4fc1-bf4e-af8ea815709a"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-3": {
+          "digest": "7759c1463b592878f2fa7c9a12848aeb199ba93755dea88562807fee4d8d829f",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 2,
+          "at": "2026-09-25T14:12:06.440Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-3",
+            "action": "complete",
+            "executionId": "execution-3ec62c4b-f965-4fc1-bf4e-af8ea815709a"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-4": {
+          "digest": "36f40358e3989698c1cdebf100556a723fa92742955753e7e5b914878167e2d6",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 3,
+          "at": "2026-09-25T14:12:06.510Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-4",
+            "action": "begin",
+            "executionId": "execution-dfc71b17-cbf1-4836-bc71-4fd4d56c0e84"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-5": {
+          "digest": "204e5fa38743f9707e5c5a98f8362b01329e6aa1948504dbe0d9f16427646849",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 4,
+          "at": "2026-09-25T14:12:06.535Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-5",
+            "action": "work",
+            "executionId": "execution-dfc71b17-cbf1-4836-bc71-4fd4d56c0e84"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-6": {
+          "digest": "97a1e7b820753522e6f0986008a1f23bbc5a0447a5df9c08ab3ce97046a4bf03",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 5,
+          "at": "2026-09-25T14:12:07.895Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-6",
+            "action": "complete",
+            "executionId": "execution-dfc71b17-cbf1-4836-bc71-4fd4d56c0e84"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-7": {
+          "digest": "96552d415b3f820e3ea7671b81f240b2e4126c221df4986fd445fa2c4ec02701",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 6,
+          "at": "2026-09-25T14:12:07.947Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-7",
+            "action": "begin",
+            "executionId": "execution-b43ed118-782d-4273-a01d-aa8a9aca7ed1"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-8": {
+          "digest": "8b4195df164543ee12d350e0a8b48a154b92d6c2fe3a5de74c11b1d02cbdf97a",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 7,
+          "at": "2026-09-25T14:12:07.970Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-8",
+            "action": "work",
+            "executionId": "execution-b43ed118-782d-4273-a01d-aa8a9aca7ed1"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-9": {
+          "digest": "eee9f76dda28fb9445331fa72afd56700acbb636c336db68e433e68ee1808dc9",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 8,
+          "at": "2026-09-25T14:12:08.053Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-9",
+            "action": "complete",
+            "executionId": "execution-b43ed118-782d-4273-a01d-aa8a9aca7ed1"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-10": {
+          "digest": "8465a222dc99b09a9040ece235022cff6b00feb21e76a53d67108670bd39e299",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 9,
+          "at": "2026-09-25T14:12:08.097Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-10",
+            "action": "pause",
+            "data": {
+              "scope": "*",
+              "newHold": true
+            }
+          },
+          "origin": "human"
+        },
+        "wave2-library-12": {
+          "digest": "91b5ffd5cb20357255596fde3b4ba86ee98067ee44f5230883c91a27d18bfbfb",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 10,
+          "at": "2026-09-25T14:12:08.130Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-12",
+            "action": "continue",
+            "data": {
+              "scope": "*",
+              "clearedScopes": [
+                "*"
+              ]
+            }
+          },
+          "origin": "human"
+        },
+        "wave2-library-13": {
+          "digest": "a322e6b9ab34eca671d51c7919e80e02a5546128571ec2db029b3fa4e87ef7ae",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 11,
+          "at": "2026-09-25T14:12:08.166Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-13",
+            "action": "begin",
+            "executionId": "execution-f872ce29-9270-470d-babf-ed8cd16f2f8d"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-14": {
+          "digest": "4c6b7adf9bb4af3d8a665cc092b2a49dfac250ef3f330c0e6bbd853cb31eedb7",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 12,
+          "at": "2026-09-25T14:12:08.187Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-14",
+            "action": "work",
+            "executionId": "execution-f872ce29-9270-470d-babf-ed8cd16f2f8d"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-15": {
+          "digest": "3cbfd0cb337f658c1ef53b808abdaea9e8bf98093746b217818b3b2c1e65ac8d",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 13,
+          "at": "2026-09-25T14:12:08.606Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-15",
+            "action": "complete",
+            "executionId": "execution-f872ce29-9270-470d-babf-ed8cd16f2f8d"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-16": {
+          "digest": "148d8000035c6f45b36667cb591f998c80fc2e600d9a12cc7e931c94cec81292",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 14,
+          "at": "2026-09-25T14:12:08.663Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-16",
+            "action": "begin",
+            "executionId": "execution-2d8b321e-acb6-45a1-a038-3b98546312d9"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-17": {
+          "digest": "67b14564c56866af5b3181dfb46c91dcedcd61f702495e5f46ae3cbaee5e29de",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 15,
+          "at": "2026-09-25T14:12:08.689Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-17",
+            "action": "work",
+            "executionId": "execution-2d8b321e-acb6-45a1-a038-3b98546312d9"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-18": {
+          "digest": "adaea5df6c912797056bde064c114a768fa80d7c68d07d8248545c89e63f40fb",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 16,
+          "at": "2026-09-25T14:12:09.389Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-18",
+            "action": "complete",
+            "executionId": "execution-2d8b321e-acb6-45a1-a038-3b98546312d9"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-19": {
+          "digest": "181a20bb860630dddd08d36a38e50fa058e2a39f11bdd59a300e71bfeef02082",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 17,
+          "at": "2026-09-25T14:12:09.446Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-19",
+            "action": "begin",
+            "executionId": "execution-839e10e5-1a0b-4a89-8667-b0e3d63c3bfb"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-20": {
+          "digest": "faa1fe984bd55b2afe414d5e523c7e5167f78643671c588cdcb62ccdce20c213",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 18,
+          "at": "2026-09-25T14:12:09.470Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-20",
+            "action": "work",
+            "executionId": "execution-839e10e5-1a0b-4a89-8667-b0e3d63c3bfb"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-21": {
+          "digest": "1c864f79e0df0a27a767758bf5b65fa68666ae2d6f0e6c730738334d97938b12",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 19,
+          "at": "2026-09-25T14:12:09.887Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-21",
+            "action": "complete",
+            "executionId": "execution-839e10e5-1a0b-4a89-8667-b0e3d63c3bfb"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-22": {
+          "digest": "79a8c7d04619fe7043882f23b2e70631bb3bbe2f94c391b7fbdab8e46a97cf6f",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 20,
+          "at": "2026-09-25T14:12:09.944Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-22",
+            "action": "begin",
+            "executionId": "execution-b1e58135-38e5-450f-8f73-20691c50e0c8"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-23": {
+          "digest": "2e549ccfe7af103624bfc481a5d73bf7c8456a4db3dfc7ee931510a283a5f241",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 21,
+          "at": "2026-09-25T14:12:09.971Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-23",
+            "action": "work",
+            "executionId": "execution-b1e58135-38e5-450f-8f73-20691c50e0c8"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-24": {
+          "digest": "9540ad76e4b215c4e181098f96553d36d3aacf76dc83e5702670d5c244f5b9f5",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 22,
+          "at": "2026-09-25T14:12:10.618Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-24",
+            "action": "complete",
+            "executionId": "execution-b1e58135-38e5-450f-8f73-20691c50e0c8"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-25": {
+          "digest": "0b56e5e8a8df1b4663bfb97334798842bfbed6c4addd61723e968e7da21f84af",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 23,
+          "at": "2026-09-25T14:12:10.672Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-25",
+            "action": "begin",
+            "executionId": "execution-b4ffdf21-a795-4934-bf50-d93018c21980"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-26": {
+          "digest": "fe4584a771cbd5687893c423776c93215dd3c352f00b4403821608cca0eb2a70",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 24,
+          "at": "2026-09-25T14:12:10.695Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-26",
+            "action": "work",
+            "executionId": "execution-b4ffdf21-a795-4934-bf50-d93018c21980"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-27": {
+          "digest": "0705226ab64bb4e8234057f01f6078ff7fc27183806b393794a89586e88cf01b",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 25,
+          "at": "2026-09-25T14:12:11.126Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-27",
+            "action": "complete",
+            "executionId": "execution-b4ffdf21-a795-4934-bf50-d93018c21980"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-28": {
+          "digest": "2a5bfe1a7591694408adc22ac2515c4e03cdde4028493fd1aedc1cd3bae6c4df",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 26,
+          "at": "2026-09-25T14:12:11.190Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-28",
+            "action": "begin",
+            "executionId": "execution-bbd8e84b-5c71-4b98-902e-a5738f249ebc"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-29": {
+          "digest": "5df92ec298ffdb0ea5d5b48004b4774e1b874d2c652641486b62e583bba4621c",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 27,
+          "at": "2026-09-25T14:12:11.215Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-29",
+            "action": "work",
+            "executionId": "execution-bbd8e84b-5c71-4b98-902e-a5738f249ebc"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-30": {
+          "digest": "9dc01c62f23d0ad0b82d003511773446ae512db0d71b4ba523e9344c32ae0101",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 28,
+          "at": "2026-09-25T14:12:12.581Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-30",
+            "action": "complete",
+            "executionId": "execution-bbd8e84b-5c71-4b98-902e-a5738f249ebc"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-31": {
+          "digest": "e27eafbec24e822bc904073a6b7d104e4cb5513c1659120c5d62ac3dbdce974a",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 29,
+          "at": "2026-09-25T14:12:12.641Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-31",
+            "action": "begin",
+            "executionId": "execution-b82fae37-be4d-48dc-b8fd-54f5845f52f3"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-32": {
+          "digest": "af8cb6ce533bf87470426d7524f8a8e8971268021e6f0e8d0399de8c99e75679",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 30,
+          "at": "2026-09-25T14:12:12.666Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-32",
+            "action": "work",
+            "executionId": "execution-b82fae37-be4d-48dc-b8fd-54f5845f52f3"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-33": {
+          "digest": "059f3d5ea8b71b46948a7f933966bbf3dca8daffa5b45cf5cfe9c3b7e722f6d0",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 31,
+          "at": "2026-09-25T14:12:13.094Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-33",
+            "action": "complete",
+            "executionId": "execution-b82fae37-be4d-48dc-b8fd-54f5845f52f3"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-34": {
+          "digest": "d1874daa5923a9904fc77130ddebf2888b8b6ebdacccf389fd883f9a159e4a75",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 32,
+          "at": "2026-09-25T14:12:13.154Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-34",
+            "action": "begin",
+            "executionId": "execution-0b7f468a-7d0e-4ea2-9c2d-dd56331ff925"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-35": {
+          "digest": "1d3de2c646137adfd3c63ff0771bf27d10cb05bdc64686dfabcf2f02e3c65de9",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 33,
+          "at": "2026-09-25T14:12:13.179Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-35",
+            "action": "work",
+            "executionId": "execution-0b7f468a-7d0e-4ea2-9c2d-dd56331ff925"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-36": {
+          "digest": "b3a63def93a77162c515cf362afb43b73e012e4f260d33d960080de0f38950ab",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 34,
+          "at": "2026-09-25T14:12:14.522Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-36",
+            "action": "complete",
+            "executionId": "execution-0b7f468a-7d0e-4ea2-9c2d-dd56331ff925"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-37": {
+          "digest": "18657a5f8356262085a754a8a6b3ea314538c663529c62c55edb52aee37b4875",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 37,
+          "at": "2026-09-25T14:12:26.124Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-37",
+            "action": "begin",
+            "executionId": "execution-bdb4d6e4-ba5b-492b-a778-7148c0ccd2e8"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-38": {
+          "digest": "751ccbb5b0054a48b9ac8f76fee28fa69bca84916d42499fc38361b16b1ca837",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 38,
+          "at": "2026-09-25T14:12:26.154Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-38",
+            "action": "work",
+            "executionId": "execution-bdb4d6e4-ba5b-492b-a778-7148c0ccd2e8"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-39": {
+          "digest": "9310636e3386025d85fed33d3088c3dd3f487a47aed34e99942f3c20e53c3dc5",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 39,
+          "at": "2026-09-25T14:12:26.604Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-39",
+            "action": "complete",
+            "executionId": "execution-bdb4d6e4-ba5b-492b-a778-7148c0ccd2e8"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-40": {
+          "digest": "18e8ab14fbefb5e59970479526fef87bb2e4aaa4d8b688a93b6096386a805108",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 40,
+          "at": "2026-09-25T14:12:26.664Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-40",
+            "action": "begin",
+            "executionId": "execution-642dc73e-62c5-45b9-bf13-6c2d0e252dc6"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-41": {
+          "digest": "16dcf7d723cb00e8827ff15fc7fcda98649ffd726915dac31d2e0cfe0e80275a",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 41,
+          "at": "2026-09-25T14:12:26.687Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-41",
+            "action": "work",
+            "executionId": "execution-642dc73e-62c5-45b9-bf13-6c2d0e252dc6"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-42": {
+          "digest": "2f6d68d14cff6d20666751db15eaa9fcbe0f450e46e635513533ab251fd0f679",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 42,
+          "at": "2026-09-25T14:12:28.030Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-42",
+            "action": "complete",
+            "executionId": "execution-642dc73e-62c5-45b9-bf13-6c2d0e252dc6"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-43": {
+          "digest": "f1614c86b41996c9f6e42cbe8566b355cae2ab00f3e026e759b5cc404157b666",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 43,
+          "at": "2026-09-25T14:12:28.081Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-43",
+            "action": "begin",
+            "executionId": "execution-06cce73c-031b-45a1-9a54-d4d77b769d36"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-44": {
+          "digest": "6f05510ea8a4b1d95279c1dd2b969c81d0fd88a45bd8a120d7ae08d666808496",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 44,
+          "at": "2026-09-25T14:12:28.107Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-44",
+            "action": "work",
+            "executionId": "execution-06cce73c-031b-45a1-9a54-d4d77b769d36"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-45": {
+          "digest": "b75de4fe8ffde0c406808dc892332f34f34745a32d850e79c3312bb49140c881",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 45,
+          "at": "2026-09-25T14:12:28.562Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-45",
+            "action": "complete",
+            "executionId": "execution-06cce73c-031b-45a1-9a54-d4d77b769d36"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-46": {
+          "digest": "669ade7473b1ec3d37e26be69fee3f7c756b31783a787118b15d085a7b8704d5",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 46,
+          "at": "2026-09-25T14:12:28.621Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-46",
+            "action": "begin",
+            "executionId": "execution-f2503e50-ec3a-4976-8708-bfef806e789b"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-47": {
+          "digest": "caeae73f287d2c62bcb1ab37e5765f5c8c8365c534ebf498909270a0f1f7b45e",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 47,
+          "at": "2026-09-25T14:12:28.649Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-47",
+            "action": "work",
+            "executionId": "execution-f2503e50-ec3a-4976-8708-bfef806e789b"
+          },
+          "origin": "agent"
+        },
+        "wave2-library-48": {
+          "digest": "27eb86e023021735263c2b44bb2a1cdb41c38becea5d582c6e6e496913725d10",
+          "actor": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "epoch": 1,
+          "revision": 48,
+          "at": "2026-09-25T14:12:30.005Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave2-library-48",
+            "action": "complete",
+            "executionId": "execution-f2503e50-ec3a-4976-8708-bfef806e789b"
+          },
+          "origin": "agent"
+        }
+      },
+      "siteDigest": "422720a7ffefce181687cc764c99024bc9add30c71a6f8e36b6e5de3d93b52db"
+    },
+    "status": "ended-goal-not-met",
+    "packId": "library-intelligence",
+    "purpose": "test",
+    "packDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+    "goal": {
+      "qualification_required": 1
+    },
+    "budget": {
+      "timeBoxMs": 1200000,
+      "closingReserveMs": 0,
+      "attemptLimit": 1000,
+      "researchWriteAttempts": 256,
+      "researchWriteBytes": 4194304,
+      "retryAllowance": 1,
+      "jobCap": 1,
+      "licences": {
+        "QuaLib-2026-new-59099": 1
+      },
+      "generationLimit": 1
+    },
+    "currentNode": "read-library-proposal",
+    "strategy": {
+      "qualificationRevision": 0
+    },
+    "firstStrategy": {
+      "qualificationRevision": 0
+    },
+    "generation": 1,
+    "meters": {
+      "elapsedMs": 40017,
+      "jobsLaunched": 14,
+      "attempts": 14,
+      "licenceMs": {
+        "QuaLib-2026-new-59099": 5563
+      },
+      "generationMs": [
+        39450
+      ]
+    }
+  },
+  "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+  "records": [
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000001",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 1,
+      "at": "2026-09-25T14:11:50.555Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "workspace",
+      "event": "prepared",
+      "campaignId": "library-intelligence-20260925-141149-a1f3",
+      "packId": "library-intelligence",
+      "packVersion": "0.3.2",
+      "packDigest": "3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+      "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+      "flowRoot": "pack:library-intelligence@3ad1bfa503f48d9d2717350b39a7ed7d877bd003b3983bb6f1609b8b366b9246",
+      "containerName": "hima-library-intelligence-20260925-141149-a1f3",
+      "copied": [
+        "tools"
+      ],
+      "preparedAt": "2026-09-25T14:11:50.023Z",
+      "bindings": {
+        "qualificationManifest": "/data/eda/project/hima_harness/wave2-library-20260925141148/qualification-manifest.json",
+        "qualificationPython": "/data/eda/venvs/qualib-libapi-2026-py37/bin/python3.7",
+        "analysisManifest": "/data/eda/project/hima_harness/wave2-library-20260925141148/analysis-manifest.json",
+        "workspaceRoot": "/data/eda/project/hima_harness/wave2-library-20260925141148"
+      }
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000002",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 2,
+      "at": "2026-09-25T14:12:00.601Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-qualify-api-62500b",
+        "pid": 1206847,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "qualify-api",
+        "startedAt": "2026-09-25T14:11:59.231Z",
+        "wire": "'/usr/local/bin/edarun' '/data/eda/venvs/qualib-libapi-2026-py37/bin/python3.7' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/libapi_worker.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/qualification-manifest.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-qualify-api-62500b.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-qualify-api-62500b.exit'"
+      },
+      "nodeId": "qualify-api",
+      "licences": {
+        "QuaLib-2026-new-59099": 1
+      },
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000003",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 3,
+      "at": "2026-09-25T14:12:00.617Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "qualify-api",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-qualify-api-62500b"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000004",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 4,
+      "at": "2026-09-25T14:12:06.164Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-qualify-api-62500b",
+        "pid": 1206847,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "qualify-api",
+        "startedAt": "2026-09-25T14:11:59.231Z",
+        "wire": "'/usr/local/bin/edarun' '/data/eda/venvs/qualib-libapi-2026-py37/bin/python3.7' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/libapi_worker.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/qualification-manifest.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-qualify-api-62500b.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-qualify-api-62500b.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "qualify-api"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000005",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 5,
+      "at": "2026-09-25T14:12:06.182Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "qualify-api",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-qualify-api-62500b"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000006",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 6,
+      "at": "2026-09-25T14:12:06.551Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-qualification",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000007",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 7,
+      "at": "2026-09-25T14:12:06.924Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-qualification-a7d27d",
+        "pid": 1207431,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-qualification",
+        "startedAt": "2026-09-25T14:12:06.886Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-qualification/read-qualification.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-qualification/read-qualification-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-qualification-a7d27d.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-qualification-a7d27d.exit'"
+      },
+      "nodeId": "read-qualification",
+      "reading": {
+        "reader": {
+          "id": "library-qualification",
+          "version": "1",
+          "reportKind": "hima-library-qualification/1",
+          "emits": [
+            "library_qualification_ok"
+          ],
+          "file": "tools/read-qualification.py",
+          "sha256": "656a3eaca338a955d4e770d703db86baa0325aa05efd407914061f9849ec6886"
+        },
+        "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-qualification/read-qualification-g1-a1.json",
+        "report": {
+          "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json",
+          "contentSha256": "afd06534e30965151d03baae507b413e143e2fcc98afe515efacd4b66f079372",
+          "bytes": 9815
+        }
+      },
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000008",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 8,
+      "at": "2026-09-25T14:12:06.941Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-qualification",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-qualification-a7d27d"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000009",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 9,
+      "at": "2026-09-25T14:12:07.551Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-qualification-a7d27d",
+        "pid": 1207431,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-qualification",
+        "startedAt": "2026-09-25T14:12:06.886Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-qualification/read-qualification.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-qualification/read-qualification-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-qualification-a7d27d.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-qualification-a7d27d.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "read-qualification"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000010",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 10,
+      "at": "2026-09-25T14:12:07.687Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "observation",
+      "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json",
+      "contentSha256": "afd06534e30965151d03baae507b413e143e2fcc98afe515efacd4b66f079372",
+      "retainedPath": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/hima/packs/library-intelligence/run-assets/.evidence/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157/afd06534e30965151d03baae507b413e143e2fcc98afe515efacd4b66f079372.dat",
+      "bytes": 9815,
+      "reader": {
+        "id": "library-qualification",
+        "version": "1",
+        "reportKind": "hima-library-qualification/1",
+        "emits": [
+          "library_qualification_ok"
+        ],
+        "file": "tools/read-qualification.py",
+        "sha256": "656a3eaca338a955d4e770d703db86baa0325aa05efd407914061f9849ec6886"
+      },
+      "values": [
+        {
+          "type": "library_qualification_ok",
+          "value": 1,
+          "unit": "count"
+        }
+      ]
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000011",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 11,
+      "at": "2026-09-25T14:12:07.703Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-qualification",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-qualification-a7d27d"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000012",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 12,
+      "at": "2026-09-25T14:12:07.990Z",
+      "writer": "judge",
+      "generation": 1,
+      "type": "verdict",
+      "outcome": "PASS",
+      "ruleId": "library-api-qualified",
+      "ruleVersion": "1",
+      "cites": [
+        "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000010"
+      ],
+      "valuesAsRead": [
+        {
+          "type": "library_qualification_ok",
+          "value": 1,
+          "unit": "count"
+        }
+      ],
+      "boundParameters": {
+        "qualification_required": 1
+      }
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000013",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 13,
+      "at": "2026-09-25T14:12:08.006Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "qualification-gate",
+      "kind": "judge",
+      "state": "done",
+      "attempt": 1,
+      "outcome": "PASS"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000014",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 14,
+      "at": "2026-09-25T14:12:08.283Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-index-baseline-1ef4c2",
+        "pid": 1207454,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "index-baseline",
+        "startedAt": "2026-09-25T14:12:08.244Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'facts' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/analysis-manifest.json' 'baseline' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-index-baseline-1ef4c2.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-index-baseline-1ef4c2.exit'"
+      },
+      "nodeId": "index-baseline",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000015",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 15,
+      "at": "2026-09-25T14:12:08.300Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "index-baseline",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-index-baseline-1ef4c2"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000016",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 16,
+      "at": "2026-09-25T14:12:08.400Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-index-baseline-1ef4c2",
+        "pid": 1207454,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "index-baseline",
+        "startedAt": "2026-09-25T14:12:08.244Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'facts' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/analysis-manifest.json' 'baseline' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-index-baseline-1ef4c2.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-index-baseline-1ef4c2.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "index-baseline"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000017",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 17,
+      "at": "2026-09-25T14:12:08.415Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "index-baseline",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-index-baseline-1ef4c2"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000018",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 18,
+      "at": "2026-09-25T14:12:08.705Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-baseline-facts",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000019",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 19,
+      "at": "2026-09-25T14:12:09.063Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-facts-1a7583",
+        "pid": 1207508,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-facts",
+        "startedAt": "2026-09-25T14:12:09.026Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-baseline-facts-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-facts-1a7583.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-facts-1a7583.exit'"
+      },
+      "nodeId": "read-baseline-facts",
+      "reading": {
+        "reader": {
+          "id": "library-facts",
+          "version": "1",
+          "reportKind": "hima-library-facts/1",
+          "emits": [
+            "library_facts_complete"
+          ],
+          "file": "tools/read-library-stage.py",
+          "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+        },
+        "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-baseline-facts-g1-a1.json",
+        "report": {
+          "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json",
+          "contentSha256": "379b48780748afbf7160945fe88dee92f8843b058f39761bc7b1f90ac771442a",
+          "bytes": 6210
+        }
+      },
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000020",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 20,
+      "at": "2026-09-25T14:12:09.080Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-baseline-facts",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-facts-1a7583"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000021",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 21,
+      "at": "2026-09-25T14:12:09.152Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-facts-1a7583",
+        "pid": 1207508,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-facts",
+        "startedAt": "2026-09-25T14:12:09.026Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-baseline-facts-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-facts-1a7583.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-facts-1a7583.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "read-baseline-facts"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000022",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 22,
+      "at": "2026-09-25T14:12:09.271Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "observation",
+      "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json",
+      "contentSha256": "379b48780748afbf7160945fe88dee92f8843b058f39761bc7b1f90ac771442a",
+      "retainedPath": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/hima/packs/library-intelligence/run-assets/.evidence/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157/379b48780748afbf7160945fe88dee92f8843b058f39761bc7b1f90ac771442a.dat",
+      "bytes": 6210,
+      "reader": {
+        "id": "library-facts",
+        "version": "1",
+        "reportKind": "hima-library-facts/1",
+        "emits": [
+          "library_facts_complete"
+        ],
+        "file": "tools/read-library-stage.py",
+        "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+      },
+      "values": [
+        {
+          "type": "library_facts_complete",
+          "value": 1,
+          "unit": "count"
+        }
+      ]
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000023",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 23,
+      "at": "2026-09-25T14:12:09.287Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-baseline-facts",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-facts-1a7583"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000024",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 24,
+      "at": "2026-09-25T14:12:09.565Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-index-candidate-84647b",
+        "pid": 1207529,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "index-candidate",
+        "startedAt": "2026-09-25T14:12:09.527Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'facts' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/analysis-manifest.json' 'candidate' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-index-candidate-84647b.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-index-candidate-84647b.exit'"
+      },
+      "nodeId": "index-candidate",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000025",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 25,
+      "at": "2026-09-25T14:12:09.582Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "index-candidate",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-index-candidate-84647b"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000026",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 26,
+      "at": "2026-09-25T14:12:09.682Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-index-candidate-84647b",
+        "pid": 1207529,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "index-candidate",
+        "startedAt": "2026-09-25T14:12:09.527Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'facts' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/analysis-manifest.json' 'candidate' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-index-candidate-84647b.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-index-candidate-84647b.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "index-candidate"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000027",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 27,
+      "at": "2026-09-25T14:12:09.700Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "index-candidate",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-index-candidate-84647b"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000028",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 28,
+      "at": "2026-09-25T14:12:09.989Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-candidate-facts",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000029",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 29,
+      "at": "2026-09-25T14:12:10.306Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-facts-df9e72",
+        "pid": 1207559,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-facts",
+        "startedAt": "2026-09-25T14:12:10.267Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-candidate-facts-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-facts-df9e72.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-facts-df9e72.exit'"
+      },
+      "nodeId": "read-candidate-facts",
+      "reading": {
+        "reader": {
+          "id": "library-facts",
+          "version": "1",
+          "reportKind": "hima-library-facts/1",
+          "emits": [
+            "library_facts_complete"
+          ],
+          "file": "tools/read-library-stage.py",
+          "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+        },
+        "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-candidate-facts-g1-a1.json",
+        "report": {
+          "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json",
+          "contentSha256": "360db5443a14a4fbf103b0eec01d9433381ddbcd7d161ea34f099463a9bb2cbc",
+          "bytes": 6211
+        }
+      },
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000030",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 30,
+      "at": "2026-09-25T14:12:10.322Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-candidate-facts",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-facts-df9e72"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000031",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 31,
+      "at": "2026-09-25T14:12:10.384Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-facts-df9e72",
+        "pid": 1207559,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-facts",
+        "startedAt": "2026-09-25T14:12:10.267Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-facts/read-candidate-facts-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-facts-df9e72.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-facts-df9e72.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "read-candidate-facts"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000032",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 32,
+      "at": "2026-09-25T14:12:10.501Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "observation",
+      "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json",
+      "contentSha256": "360db5443a14a4fbf103b0eec01d9433381ddbcd7d161ea34f099463a9bb2cbc",
+      "retainedPath": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/hima/packs/library-intelligence/run-assets/.evidence/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157/360db5443a14a4fbf103b0eec01d9433381ddbcd7d161ea34f099463a9bb2cbc.dat",
+      "bytes": 6211,
+      "reader": {
+        "id": "library-facts",
+        "version": "1",
+        "reportKind": "hima-library-facts/1",
+        "emits": [
+          "library_facts_complete"
+        ],
+        "file": "tools/read-library-stage.py",
+        "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+      },
+      "values": [
+        {
+          "type": "library_facts_complete",
+          "value": 1,
+          "unit": "count"
+        }
+      ]
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000033",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 33,
+      "at": "2026-09-25T14:12:10.517Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-candidate-facts",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-facts-df9e72"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000034",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 34,
+      "at": "2026-09-25T14:12:10.788Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-semantic-delta-2120cb",
+        "pid": 1207603,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "semantic-delta",
+        "startedAt": "2026-09-25T14:12:10.749Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'delta' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-semantic-delta-2120cb.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-semantic-delta-2120cb.exit'"
+      },
+      "nodeId": "semantic-delta",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000035",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 35,
+      "at": "2026-09-25T14:12:10.808Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "semantic-delta",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-semantic-delta-2120cb"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000036",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 36,
+      "at": "2026-09-25T14:12:10.877Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-semantic-delta-2120cb",
+        "pid": 1207603,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "semantic-delta",
+        "startedAt": "2026-09-25T14:12:10.749Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'delta' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-semantic-delta-2120cb.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-semantic-delta-2120cb.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "semantic-delta"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000037",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 37,
+      "at": "2026-09-25T14:12:10.900Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "semantic-delta",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-semantic-delta-2120cb"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000038",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 38,
+      "at": "2026-09-25T14:12:11.240Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-library-delta",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000039",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 39,
+      "at": "2026-09-25T14:12:11.629Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-delta-70b1b0",
+        "pid": 1207671,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-delta",
+        "startedAt": "2026-09-25T14:12:11.589Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-delta/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-delta/read-library-delta-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-delta-70b1b0.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-delta-70b1b0.exit'"
+      },
+      "nodeId": "read-library-delta",
+      "reading": {
+        "reader": {
+          "id": "library-delta",
+          "version": "1",
+          "reportKind": "hima-library-delta/1",
+          "emits": [
+            "library_delta_complete"
+          ],
+          "file": "tools/read-library-stage.py",
+          "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+        },
+        "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-delta/read-library-delta-g1-a1.json",
+        "report": {
+          "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json",
+          "contentSha256": "6c44e34327f1e324864ec5841358271d74239057540c102cd9dda7d3b8206a03",
+          "bytes": 1368
+        }
+      },
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000040",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 40,
+      "at": "2026-09-25T14:12:11.648Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-library-delta",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-delta-70b1b0"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000041",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 41,
+      "at": "2026-09-25T14:12:12.274Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-delta-70b1b0",
+        "pid": 1207671,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-delta",
+        "startedAt": "2026-09-25T14:12:11.589Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-delta/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-delta/read-library-delta-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-delta-70b1b0.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-delta-70b1b0.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "read-library-delta"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000042",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 42,
+      "at": "2026-09-25T14:12:12.424Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "observation",
+      "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json",
+      "contentSha256": "6c44e34327f1e324864ec5841358271d74239057540c102cd9dda7d3b8206a03",
+      "retainedPath": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/hima/packs/library-intelligence/run-assets/.evidence/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157/6c44e34327f1e324864ec5841358271d74239057540c102cd9dda7d3b8206a03.dat",
+      "bytes": 1368,
+      "reader": {
+        "id": "library-delta",
+        "version": "1",
+        "reportKind": "hima-library-delta/1",
+        "emits": [
+          "library_delta_complete"
+        ],
+        "file": "tools/read-library-stage.py",
+        "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+      },
+      "values": [
+        {
+          "type": "library_delta_complete",
+          "value": 1,
+          "unit": "count"
+        }
+      ]
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000043",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 43,
+      "at": "2026-09-25T14:12:12.442Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-library-delta",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-delta-70b1b0"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000044",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 44,
+      "at": "2026-09-25T14:12:12.762Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-library-insight-0d00d6",
+        "pid": 1207694,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "library-insight",
+        "startedAt": "2026-09-25T14:12:12.724Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'report' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-library-insight-0d00d6.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-library-insight-0d00d6.exit'"
+      },
+      "nodeId": "library-insight",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000045",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 45,
+      "at": "2026-09-25T14:12:12.778Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "library-insight",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-library-insight-0d00d6"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000046",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 46,
+      "at": "2026-09-25T14:12:12.847Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-library-insight-0d00d6",
+        "pid": 1207694,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "library-insight",
+        "startedAt": "2026-09-25T14:12:12.724Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'report' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-library-insight-0d00d6.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-library-insight-0d00d6.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "library-insight"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000047",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 47,
+      "at": "2026-09-25T14:12:12.863Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "library-insight",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-library-insight-0d00d6"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000048",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 48,
+      "at": "2026-09-25T14:12:13.196Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-library-insight",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000049",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 49,
+      "at": "2026-09-25T14:12:13.574Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-insight-ff532c",
+        "pid": 1207726,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-insight",
+        "startedAt": "2026-09-25T14:12:13.534Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-insight/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-insight/read-library-insight-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-insight-ff532c.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-insight-ff532c.exit'"
+      },
+      "nodeId": "read-library-insight",
+      "reading": {
+        "reader": {
+          "id": "library-insight",
+          "version": "1",
+          "reportKind": "hima-library-insight-report/1",
+          "emits": [
+            "library_insight_report_available"
+          ],
+          "file": "tools/read-library-stage.py",
+          "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+        },
+        "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-insight/read-library-insight-g1-a1.json",
+        "report": {
+          "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json",
+          "contentSha256": "d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2",
+          "bytes": 1325
+        }
+      },
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000050",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 50,
+      "at": "2026-09-25T14:12:13.591Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-library-insight",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-insight-ff532c"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000051",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 51,
+      "at": "2026-09-25T14:12:14.206Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-insight-ff532c",
+        "pid": 1207726,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-insight",
+        "startedAt": "2026-09-25T14:12:13.534Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-insight/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-insight/read-library-insight-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-insight-ff532c.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-insight-ff532c.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "read-library-insight"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 52,
+      "at": "2026-09-25T14:12:14.349Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "observation",
+      "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json",
+      "contentSha256": "d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2",
+      "retainedPath": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/hima/packs/library-intelligence/run-assets/.evidence/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157/d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2.dat",
+      "bytes": 1325,
+      "reader": {
+        "id": "library-insight",
+        "version": "1",
+        "reportKind": "hima-library-insight-report/1",
+        "emits": [
+          "library_insight_report_available"
+        ],
+        "file": "tools/read-library-stage.py",
+        "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+      },
+      "values": [
+        {
+          "type": "library_insight_report_available",
+          "value": 1,
+          "unit": "count"
+        }
+      ]
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000053",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 53,
+      "at": "2026-09-25T14:12:14.365Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-library-insight",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-insight-ff532c"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000054",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 54,
+      "at": "2026-09-25T14:12:14.578Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "delegation",
+      "delegationId": "library-memory-handoff",
+      "parentSessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+      "childSessionId": "hima-child-d8d6e82e4422d0fd1e72e42feaf0a411",
+      "requestId": "wave2-memory-child",
+      "requestDigest": "5cead203e9f3958237ac592f2148a55475a91dc37c85173190e914b391d1b492",
+      "event": "create-intent",
+      "payload": {
+        "contract": {
+          "delegationId": "library-memory-handoff",
+          "role": "researcher",
+          "task": "Read exact report record run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052. Return a concise candidate handoff that preserves the same-source zero-delta limit and unknown design impact.",
+          "inputRefs": [
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052"
+          ],
+          "allowedTools": [
+            "hima_delegation_input"
+          ],
+          "budgetShare": {
+            "maxElapsedMs": 45000,
+            "maxFollowups": 1,
+            "maxTokensPerTurn": 1800
+          },
+          "dependencyIds": [],
+          "recipient": {
+            "kind": "run-owner",
+            "sessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca"
+          },
+          "parentSessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "runRef": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "expectedEpoch": 1,
+            "expectedRevision": 35
+          },
+          "status": "requested"
+        },
+        "effective": {
+          "delegationId": "library-memory-handoff",
+          "parentSessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "childSessionId": "hima-child-d8d6e82e4422d0fd1e72e42feaf0a411",
+          "role": "researcher",
+          "workspace": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+          "model": {
+            "provider": "deepseek-official",
+            "model": "deepseek-flash",
+            "maxTokensPerTurn": 1800
+          },
+          "tools": [
+            "hima_delegation_input"
+          ],
+          "inputRefs": [
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052"
+          ],
+          "budgetShare": {
+            "maxElapsedMs": 45000,
+            "maxFollowups": 1,
+            "maxTokensPerTurn": 1800
+          },
+          "runRef": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "expectedEpoch": 1,
+            "expectedRevision": 35
+          },
+          "recipient": {
+            "kind": "run-owner",
+            "sessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca"
+          },
+          "unavailable": []
+        },
+        "reservation": {
+          "reservationId": "delegation:run-a1a58ed5-3776-450e-a5a3-cde6f7abe157:library-memory-handoff",
+          "deadlineAt": "2026-09-25T14:12:59.570Z",
+          "admittedEpoch": 1,
+          "admittedRevision": 35
+        }
+      }
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000055",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 55,
+      "at": "2026-09-25T14:12:14.635Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "delegation",
+      "delegationId": "library-memory-handoff",
+      "parentSessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+      "childSessionId": "hima-child-d8d6e82e4422d0fd1e72e42feaf0a411",
+      "requestId": "wave2-memory-child",
+      "requestDigest": "5cead203e9f3958237ac592f2148a55475a91dc37c85173190e914b391d1b492",
+      "event": "created",
+      "payload": {
+        "contract": {
+          "delegationId": "library-memory-handoff",
+          "role": "researcher",
+          "task": "Read exact report record run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052. Return a concise candidate handoff that preserves the same-source zero-delta limit and unknown design impact.",
+          "inputRefs": [
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052"
+          ],
+          "allowedTools": [
+            "hima_delegation_input"
+          ],
+          "budgetShare": {
+            "maxElapsedMs": 45000,
+            "maxFollowups": 1,
+            "maxTokensPerTurn": 1800
+          },
+          "dependencyIds": [],
+          "recipient": {
+            "kind": "run-owner",
+            "sessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca"
+          },
+          "parentSessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "runRef": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "expectedEpoch": 1,
+            "expectedRevision": 35
+          },
+          "status": "requested"
+        },
+        "requestDigest": "5cead203e9f3958237ac592f2148a55475a91dc37c85173190e914b391d1b492",
+        "reservation": {
+          "reservationId": "delegation:run-a1a58ed5-3776-450e-a5a3-cde6f7abe157:library-memory-handoff",
+          "deadlineAt": "2026-09-25T14:12:59.570Z",
+          "admittedEpoch": 1,
+          "admittedRevision": 35
+        },
+        "effective": {
+          "delegationId": "library-memory-handoff",
+          "parentSessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "childSessionId": "hima-child-d8d6e82e4422d0fd1e72e42feaf0a411",
+          "role": "researcher",
+          "workspace": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+          "model": {
+            "provider": "deepseek-official",
+            "model": "deepseek-flash",
+            "maxTokensPerTurn": 1800
+          },
+          "tools": [
+            "hima_delegation_input"
+          ],
+          "inputRefs": [
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052"
+          ],
+          "budgetShare": {
+            "maxElapsedMs": 45000,
+            "maxFollowups": 1,
+            "maxTokensPerTurn": 1800
+          },
+          "runRef": {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "expectedEpoch": 1,
+            "expectedRevision": 35
+          },
+          "recipient": {
+            "kind": "run-owner",
+            "sessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca"
+          },
+          "unavailable": []
+        },
+        "childSessionId": "hima-child-d8d6e82e4422d0fd1e72e42feaf0a411",
+        "initialMessageId": "9f7cf6b0-be6e-465d-a34e-c3f5fff94d12",
+        "outcome": "accepted"
+      }
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000056",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 56,
+      "at": "2026-09-25T14:12:26.046Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "delegation",
+      "delegationId": "library-memory-handoff",
+      "parentSessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+      "childSessionId": "hima-child-d8d6e82e4422d0fd1e72e42feaf0a411",
+      "requestId": "wave2-observe-child-1",
+      "requestDigest": "395f948b81c8fb7705adc63cd0cda3ee670cf93a4c7af7d7ee5d4e518c122c40",
+      "event": "result-observed",
+      "payload": {
+        "candidate": true,
+        "source": "native-live-session",
+        "handoff": {
+          "outputIdentity": "a7a4b680d42c265a94ddd9490dc1ace7d5430aa80e204db78c956bb3eb086aff",
+          "contract": {
+            "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000054",
+            "requestDigest": "5cead203e9f3958237ac592f2148a55475a91dc37c85173190e914b391d1b492"
+          },
+          "output": {
+            "text": "## Candidate handoff — researcher (bounded), run `run-a1a58ed5-3776-450e-a5a3-cde6f7abe157`\n\n**Read status: input read succeeded, but it does not contain the report body.**\n\nReader call 1 (`recordId: \"000052\"`) was refused — the contracted identity must be passed as the full composite string. Call 2 with `recordId: \"run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052\"` succeeded and returned one `recordType: observation`, `kind: record-fact`.\n\n**What the record actually attests (verbatim payload facts):**\n- `type: library_insight_report_available`, `value: 1`, `unit: count`\n- reader: `library-insight` v1, reportKind `hima-library-insight-report/1`, file `tools/read-library-stage.py`, sha256 `6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b`\n- `contentSha256: d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2`, `bytes: 1325` (content not inlined; this record carries only size/hash attestation)\n- record `identity: a26fd558903a6134a9f75d9796a8cead9e6286bc3637784bcff190dd7893ad4a`, encoding `canonical-ledger-projection`\n\n**Consequence for the requested handoff (important limit):**\nThe record attests *that a report exists*, not its text. The two items the handoff must preserve — the **same-source zero-delta limit** and the **unknown design impact** — are **not stated in this record**. I cannot restate them as sourced content, and I will not reconstruct them by inference. Any handoff asserting them from record `#000052` would be unsupported.\n\n**Proposed candidate handoff text (for run-owner to adopt or reject):**\n> Library-insight report availability is attested for run `run-a1a58ed5-…` (count 1; content sha256 `d54963f2…`, 1325 bytes; reader `library-insight` v1). The report body was **not** in the admitted record, so no measurement, delta, or design-impact statement from that report has been read here. The prior **same-source zero-delta limit** and **unknown design impact** remain **unverified at this level** and must be retrieved from the report body itself before being carried forward.\n\n**Verification needs (for the run-owner, not performed by me):**\n1. Obtain the report body record (the 1325-byte artifact with contentSha256 `d54963f2…`), or re-delegate with that artifact's exact composite identity admitted.\n2. Only then confirm the zero-delta is same-source, and record the design impact as still unknown (or as scoped by the report).\n3. Note the identity-form requirement above for any future child in this delegation.\n\n**Limits observed:** tools available to this child were `hima_delegation_input` only; no file/exec reader, so I could not fetch the report artifact. Write capability unavailable — no files changed; nothing above is a Campaign action, verdict, or tool result beyond the two reader calls described.",
+            "content": [
+              {
+                "type": "reasoning"
+              },
+              {
+                "type": "text",
+                "text": "## Candidate handoff — researcher (bounded), run `run-a1a58ed5-3776-450e-a5a3-cde6f7abe157`\n\n**Read status: input read succeeded, but it does not contain the report body.**\n\nReader call 1 (`recordId: \"000052\"`) was refused — the contracted identity must be passed as the full composite string. Call 2 with `recordId: \"run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052\"` succeeded and returned one `recordType: observation`, `kind: record-fact`.\n\n**What the record actually attests (verbatim payload facts):**\n- `type: library_insight_report_available`, `value: 1`, `unit: count`\n- reader: `library-insight` v1, reportKind `hima-library-insight-report/1`, file `tools/read-library-stage.py`, sha256 `6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b`\n- `contentSha256: d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2`, `bytes: 1325` (content not inlined; this record carries only size/hash attestation)\n- record `identity: a26fd558903a6134a9f75d9796a8cead9e6286bc3637784bcff190dd7893ad4a`, encoding `canonical-ledger-projection`\n\n**Consequence for the requested handoff (important limit):**\nThe record attests *that a report exists*, not its text. The two items the handoff must preserve — the **same-source zero-delta limit** and the **unknown design impact** — are **not stated in this record**. I cannot restate them as sourced content, and I will not reconstruct them by inference. Any handoff asserting them from record `#000052` would be unsupported.\n\n**Proposed candidate handoff text (for run-owner to adopt or reject):**\n> Library-insight report availability is attested for run `run-a1a58ed5-…` (count 1; content sha256 `d54963f2…`, 1325 bytes; reader `library-insight` v1). The report body was **not** in the admitted record, so no measurement, delta, or design-impact statement from that report has been read here. The prior **same-source zero-delta limit** and **unknown design impact** remain **unverified at this level** and must be retrieved from the report body itself before being carried forward.\n\n**Verification needs (for the run-owner, not performed by me):**\n1. Obtain the report body record (the 1325-byte artifact with contentSha256 `d54963f2…`), or re-delegate with that artifact's exact composite identity admitted.\n2. Only then confirm the zero-delta is same-source, and record the design impact as still unknown (or as scoped by the report).\n3. Note the identity-form requirement above for any future child in this delegation.\n\n**Limits observed:** tools available to this child were `hima_delegation_input` only; no file/exec reader, so I could not fetch the report artifact. Write capability unavailable — no files changed; nothing above is a Campaign action, verdict, or tool result beyond the two reader calls described."
+              }
+            ],
+            "truncated": false
+          },
+          "completedTurn": {
+            "turn": 1,
+            "endSeq": 26
+          },
+          "unknowns": [],
+          "evidence": {
+            "artifactRefs": [],
+            "diffRefs": [],
+            "testRefs": [],
+            "limitations": [
+              "This read-only delegation declared no writable output scope, so it has no verified file, diff, or test references."
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000057",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 57,
+      "at": "2026-09-25T14:12:26.265Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-evaluate-library-rule-6a693b",
+        "pid": 1207956,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "evaluate-library-rule",
+        "startedAt": "2026-09-25T14:12:26.223Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'result' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-evaluate-library-rule-6a693b.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-evaluate-library-rule-6a693b.exit'"
+      },
+      "nodeId": "evaluate-library-rule",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000058",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 58,
+      "at": "2026-09-25T14:12:26.282Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "evaluate-library-rule",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-evaluate-library-rule-6a693b"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000059",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 59,
+      "at": "2026-09-25T14:12:26.355Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-evaluate-library-rule-6a693b",
+        "pid": 1207956,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "evaluate-library-rule",
+        "startedAt": "2026-09-25T14:12:26.223Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'result' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-evaluate-library-rule-6a693b.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-evaluate-library-rule-6a693b.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "evaluate-library-rule"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000060",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 60,
+      "at": "2026-09-25T14:12:26.373Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "evaluate-library-rule",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-evaluate-library-rule-6a693b"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000061",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 61,
+      "at": "2026-09-25T14:12:26.704Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-library-rule-result",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000062",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 62,
+      "at": "2026-09-25T14:12:27.089Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-rule-result-28d975",
+        "pid": 1207988,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-rule-result",
+        "startedAt": "2026-09-25T14:12:27.047Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-rule-result/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-rule-result/read-library-rule-result-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-rule-result-28d975.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-rule-result-28d975.exit'"
+      },
+      "nodeId": "read-library-rule-result",
+      "reading": {
+        "reader": {
+          "id": "library-rule-result",
+          "version": "1",
+          "reportKind": "hima-library-rule-result/1",
+          "emits": [
+            "library_rule_result_available"
+          ],
+          "file": "tools/read-library-stage.py",
+          "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+        },
+        "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-rule-result/read-library-rule-result-g1-a1.json",
+        "report": {
+          "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json",
+          "contentSha256": "a60df5411fc5b34284aacb3e76952364890403c0cb6c23e26d3b7d7614daed51",
+          "bytes": 861
+        }
+      },
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000063",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 63,
+      "at": "2026-09-25T14:12:27.107Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-library-rule-result",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-rule-result-28d975"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000064",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 64,
+      "at": "2026-09-25T14:12:27.731Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-rule-result-28d975",
+        "pid": 1207988,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-rule-result",
+        "startedAt": "2026-09-25T14:12:27.047Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-rule-result/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-rule-result/read-library-rule-result-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-rule-result-28d975.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-rule-result-28d975.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "read-library-rule-result"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000065",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 65,
+      "at": "2026-09-25T14:12:27.871Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "observation",
+      "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json",
+      "contentSha256": "a60df5411fc5b34284aacb3e76952364890403c0cb6c23e26d3b7d7614daed51",
+      "retainedPath": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/hima/packs/library-intelligence/run-assets/.evidence/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157/a60df5411fc5b34284aacb3e76952364890403c0cb6c23e26d3b7d7614daed51.dat",
+      "bytes": 861,
+      "reader": {
+        "id": "library-rule-result",
+        "version": "1",
+        "reportKind": "hima-library-rule-result/1",
+        "emits": [
+          "library_rule_result_available"
+        ],
+        "file": "tools/read-library-stage.py",
+        "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+      },
+      "values": [
+        {
+          "type": "library_rule_result_available",
+          "value": 1,
+          "unit": "count"
+        }
+      ]
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000066",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 66,
+      "at": "2026-09-25T14:12:27.899Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-library-rule-result",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-rule-result-28d975"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000067",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 67,
+      "at": "2026-09-25T14:12:28.224Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-propose-library-rule-08081e",
+        "pid": 1208011,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "propose-library-rule",
+        "startedAt": "2026-09-25T14:12:28.175Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'proposal' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/proposal.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-propose-library-rule-08081e.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-propose-library-rule-08081e.exit'"
+      },
+      "nodeId": "propose-library-rule",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000068",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 68,
+      "at": "2026-09-25T14:12:28.242Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "propose-library-rule",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-propose-library-rule-08081e"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000069",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 69,
+      "at": "2026-09-25T14:12:28.313Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-propose-library-rule-08081e",
+        "pid": 1208011,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "propose-library-rule",
+        "startedAt": "2026-09-25T14:12:28.175Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' 'proposal' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/tools/library-stages.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/proposal.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-propose-library-rule-08081e.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-propose-library-rule-08081e.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "propose-library-rule"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000070",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 70,
+      "at": "2026-09-25T14:12:28.330Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "propose-library-rule",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-propose-library-rule-08081e"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000071",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 71,
+      "at": "2026-09-25T14:12:28.667Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-library-proposal",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000072",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 72,
+      "at": "2026-09-25T14:12:29.043Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-proposal-416434",
+        "pid": 1208043,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-proposal",
+        "startedAt": "2026-09-25T14:12:29.004Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-proposal/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/proposal.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-proposal/read-library-proposal-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-proposal-416434.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-proposal-416434.exit'"
+      },
+      "nodeId": "read-library-proposal",
+      "reading": {
+        "reader": {
+          "id": "library-proposal",
+          "version": "1",
+          "reportKind": "hima-library-analysis-proposal/1",
+          "emits": [
+            "library_proposal_available"
+          ],
+          "file": "tools/read-library-stage.py",
+          "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+        },
+        "out": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-proposal/read-library-proposal-g1-a1.json",
+        "report": {
+          "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/proposal.json",
+          "contentSha256": "ac80cbf4a196c50340aff17a835f4fbdbe04c03fc41c7c7738138eb5d34955e3",
+          "bytes": 1557
+        }
+      },
+      "attempt": 1
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000073",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 73,
+      "at": "2026-09-25T14:12:29.061Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-library-proposal",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-proposal-416434"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000074",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 74,
+      "at": "2026-09-25T14:12:29.676Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-a1a58ed5-reader-library-proposal-416434",
+        "pid": 1208043,
+        "workspace": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3",
+        "name": "reader-library-proposal",
+        "startedAt": "2026-09-25T14:12:29.004Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-proposal/read-library-stage.py' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/proposal.json' '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-readers/library-proposal/read-library-proposal-g1-a1.json' > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-proposal-416434.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-a1a58ed5-reader-library-proposal-416434.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "read-library-proposal"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000075",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 75,
+      "at": "2026-09-25T14:12:29.808Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "observation",
+      "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/proposal.json",
+      "contentSha256": "ac80cbf4a196c50340aff17a835f4fbdbe04c03fc41c7c7738138eb5d34955e3",
+      "retainedPath": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/hima/packs/library-intelligence/run-assets/.evidence/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157/ac80cbf4a196c50340aff17a835f4fbdbe04c03fc41c7c7738138eb5d34955e3.dat",
+      "bytes": 1557,
+      "reader": {
+        "id": "library-proposal",
+        "version": "1",
+        "reportKind": "hima-library-analysis-proposal/1",
+        "emits": [
+          "library_proposal_available"
+        ],
+        "file": "tools/read-library-stage.py",
+        "sha256": "6237d35210c901009f264d67f0261c8db65cf8301fe207c877c20bffc63ac32b"
+      },
+      "values": [
+        {
+          "type": "library_proposal_available",
+          "value": 1,
+          "unit": "count"
+        }
+      ]
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000076",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 76,
+      "at": "2026-09-25T14:12:29.826Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "read-library-proposal",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-a1a58ed5-reader-library-proposal-416434"
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000077",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 77,
+      "at": "2026-09-25T14:12:30.309Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "experience",
+      "writtenAt": "2026-09-25T14:12:30.033Z",
+      "markdown": {
+        "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-experience/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157.md",
+        "sha256": "913932f42b01d82d71d633a42ff1a1ff107c92e400dcff299ca60fa1271b81a8",
+        "bytes": 4908
+      },
+      "json": {
+        "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-experience/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157.json",
+        "sha256": "693357980b99c02848a23b6b50a7c07e0f59bed5dc619ddde0c7dbdbed8eec1b",
+        "bytes": 22632
+      }
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000078",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 78,
+      "at": "2026-09-25T14:12:30.448Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "archive",
+      "delivery": "pending",
+      "directory": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/hima/packs/library-intelligence/run-assets/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "manifestSha256": "93490dce0ca3ff4aee7ae942583d966665719b3c404c1a7dfe188e29c1890e49",
+      "materials": [
+        {
+          "path": "experience.md",
+          "source": "site:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-experience/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157.md",
+          "type": "experience",
+          "sha256": "913932f42b01d82d71d633a42ff1a1ff107c92e400dcff299ca60fa1271b81a8",
+          "bytes": 4908,
+          "required": true
+        },
+        {
+          "path": "experience.json",
+          "source": "site:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-experience/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157.json",
+          "type": "experience",
+          "sha256": "693357980b99c02848a23b6b50a7c07e0f59bed5dc619ddde0c7dbdbed8eec1b",
+          "bytes": 22632,
+          "required": true
+        },
+        {
+          "path": "materials/observation-10.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000010",
+          "type": "observation",
+          "sha256": "afd06534e30965151d03baae507b413e143e2fcc98afe515efacd4b66f079372",
+          "bytes": 9815,
+          "required": true
+        },
+        {
+          "path": "materials/observation-22.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000022",
+          "type": "observation",
+          "sha256": "379b48780748afbf7160945fe88dee92f8843b058f39761bc7b1f90ac771442a",
+          "bytes": 6210,
+          "required": true
+        },
+        {
+          "path": "materials/observation-32.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000032",
+          "type": "observation",
+          "sha256": "360db5443a14a4fbf103b0eec01d9433381ddbcd7d161ea34f099463a9bb2cbc",
+          "bytes": 6211,
+          "required": true
+        },
+        {
+          "path": "materials/observation-42.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000042",
+          "type": "observation",
+          "sha256": "6c44e34327f1e324864ec5841358271d74239057540c102cd9dda7d3b8206a03",
+          "bytes": 1368,
+          "required": true
+        },
+        {
+          "path": "materials/observation-52.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052",
+          "type": "observation",
+          "sha256": "d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2",
+          "bytes": 1325,
+          "required": true
+        },
+        {
+          "path": "materials/observation-65.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000065",
+          "type": "observation",
+          "sha256": "a60df5411fc5b34284aacb3e76952364890403c0cb6c23e26d3b7d7614daed51",
+          "bytes": 861,
+          "required": true
+        },
+        {
+          "path": "materials/observation-75.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/proposal.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000075",
+          "type": "observation",
+          "sha256": "ac80cbf4a196c50340aff17a835f4fbdbe04c03fc41c7c7738138eb5d34955e3",
+          "bytes": 1557,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000079",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 79,
+      "at": "2026-09-25T14:12:30.470Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "archive",
+      "delivery": "complete",
+      "directory": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/hima/packs/library-intelligence/run-assets/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "manifestSha256": "93490dce0ca3ff4aee7ae942583d966665719b3c404c1a7dfe188e29c1890e49",
+      "materials": [
+        {
+          "path": "experience.md",
+          "source": "site:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-experience/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157.md",
+          "type": "experience",
+          "sha256": "913932f42b01d82d71d633a42ff1a1ff107c92e400dcff299ca60fa1271b81a8",
+          "bytes": 4908,
+          "required": true
+        },
+        {
+          "path": "experience.json",
+          "source": "site:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/hima-experience/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157.json",
+          "type": "experience",
+          "sha256": "693357980b99c02848a23b6b50a7c07e0f59bed5dc619ddde0c7dbdbed8eec1b",
+          "bytes": 22632,
+          "required": true
+        },
+        {
+          "path": "materials/observation-10.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/qualification/receipt.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000010",
+          "type": "observation",
+          "sha256": "afd06534e30965151d03baae507b413e143e2fcc98afe515efacd4b66f079372",
+          "bytes": 9815,
+          "required": true
+        },
+        {
+          "path": "materials/observation-22.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/baseline-facts.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000022",
+          "type": "observation",
+          "sha256": "379b48780748afbf7160945fe88dee92f8843b058f39761bc7b1f90ac771442a",
+          "bytes": 6210,
+          "required": true
+        },
+        {
+          "path": "materials/observation-32.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/candidate-facts.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000032",
+          "type": "observation",
+          "sha256": "360db5443a14a4fbf103b0eec01d9433381ddbcd7d161ea34f099463a9bb2cbc",
+          "bytes": 6211,
+          "required": true
+        },
+        {
+          "path": "materials/observation-42.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/delta.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000042",
+          "type": "observation",
+          "sha256": "6c44e34327f1e324864ec5841358271d74239057540c102cd9dda7d3b8206a03",
+          "bytes": 1368,
+          "required": true
+        },
+        {
+          "path": "materials/observation-52.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/insight-report.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052",
+          "type": "observation",
+          "sha256": "d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2",
+          "bytes": 1325,
+          "required": true
+        },
+        {
+          "path": "materials/observation-65.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/rule-result.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000065",
+          "type": "observation",
+          "sha256": "a60df5411fc5b34284aacb3e76952364890403c0cb6c23e26d3b7d7614daed51",
+          "bytes": 861,
+          "required": true
+        },
+        {
+          "path": "materials/observation-75.dat",
+          "source": "observation:/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/flow/library/proposal.json",
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000075",
+          "type": "observation",
+          "sha256": "ac80cbf4a196c50340aff17a835f4fbdbe04c03fc41c7c7738138eb5d34955e3",
+          "bytes": 1557,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000080",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 80,
+      "at": "2026-09-25T14:12:31.144Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "observation",
+      "path": "/data/eda/project/hima_harness/wave2-library-20260925141148/library-intelligence-20260925-141149-a1f3/wave2-experience-correction.txt",
+      "contentSha256": "92b2442ddf626127abc580ec5efde7eea577907cbb0ab15240c3c817afde744d",
+      "retainedPath": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/hima/packs/library-intelligence/run-assets/.evidence/run-a1a58ed5-3776-450e-a5a3-cde6f7abe157/92b2442ddf626127abc580ec5efde7eea577907cbb0ab15240c3c817afde744d.dat",
+      "bytes": 70,
+      "reader": {
+        "id": "raw",
+        "version": "1",
+        "reportKind": "raw",
+        "emits": []
+      },
+      "values": []
+    },
+    {
+      "id": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000081",
+      "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+      "siteId": "wave2-library",
+      "seq": 81,
+      "at": "2026-09-25T14:12:31.176Z",
+      "writer": "person",
+      "generation": 1,
+      "type": "experience-adoption",
+      "requestId": "wave2-disable-overgeneralization",
+      "candidate": {
+        "sourceRun": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+        "sourceManifestSha256": "93490dce0ca3ff4aee7ae942583d966665719b3c404c1a7dfe188e29c1890e49",
+        "sourceMaterialPath": "experience.json",
+        "sourceMaterialSha256": "693357980b99c02848a23b6b50a7c07e0f59bed5dc619ddde0c7dbdbed8eec1b"
+      },
+      "workspaceRef": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+      "conditions": [
+        "Project workspace: /private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+        "Exact source archive: run-a1a58ed5-3776-450e-a5a3-cde6f7abe157 / 93490dce0ca3ff4aee7ae942583d966665719b3c404c1a7dfe188e29c1890e49",
+        "Exact material: experience.json / 693357980b99c02848a23b6b50a7c07e0f59bed5dc619ddde0c7dbdbed8eec1b"
+      ],
+      "event": "disabled",
+      "evidenceRefs": [
+        "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000080"
+      ],
+      "changedBy": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+      "reason": "The same-source control cannot be reused as evidence of a candidate Library revision."
+    }
+  ],
+  "reportTarget": {
+    "kind": "report",
+    "reportRef": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052",
+    "version": "52",
+    "sha256": "d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2"
+  },
+  "reportView": {
+    "requestId": "wave2-native-report",
+    "target": {
+      "kind": "report",
+      "reportRef": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052",
+      "version": "52",
+      "sha256": "d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2"
+    },
+    "scope": {
+      "workspaceRef": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+      "sessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca"
+    },
+    "asOf": "2026-09-25T14:12:14.554Z",
+    "sourceRevision": 52,
+    "facts": {
+      "schema": "hima-library-insight-report/1",
+      "evidenceClass": "native-qualified",
+      "analysis": "library-health",
+      "conditions": {
+        "family": "tcbn28hpcplusbwp40p140",
+        "corners": [
+          "tt0p9v25c"
+        ],
+        "views": [
+          "NLDM"
+        ],
+        "unknowns": [
+          "The admitted E2 worker covers one representative Cell/table only; full PVT, function, drive, VT, when and the remaining Library corpus are unknown.",
+          "The admitted E2 worker covers one representative Cell/table only; full PVT, function, drive, VT, when and the remaining Library corpus are unknown."
+        ]
+      },
+      "findings": [
+        {
+          "id": "same-source-zero-delta",
+          "title": "Same qualified source baseline/candidate control",
+          "librarySeverity": "info",
+          "designRelevance": "unknown",
+          "corner": "tt0p9v25c",
+          "view": "NLDM",
+          "values": [
+            {
+              "name": "area delta",
+              "value": 0,
+              "unit": "library-area-unit"
+            }
+          ],
+          "provenance": [
+            {
+              "sourceRef": "library-delta",
+              "sha256": "27c6cd9f035b3c3264cc4bfa6cab0ef160d2f0d3e8b8561480a0303bf7d7bf3d",
+              "status": "available"
+            }
+          ],
+          "unknowns": [
+            "Design evidence was not supplied; design impact is unknown."
+          ],
+          "rankingReason": "A zero delta from one source is a control, not an equivalence or release conclusion."
+        }
+      ],
+      "summary": {
+        "best": [],
+        "unresolved": [
+          "same-source-zero-delta"
+        ],
+        "nextActions": [
+          {
+            "text": "Extract an independently qualified candidate under matching PVT/corner/view before a Library decision.",
+            "findingIds": [
+              "same-source-zero-delta"
+            ]
+          }
+        ]
+      },
+      "reportRef": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052",
+      "version": "52",
+      "source": {
+        "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052",
+        "sha256": "d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2",
+        "createdAt": "2026-09-25T14:12:14.349Z"
+      }
+    },
+    "sources": [
+      "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052"
+    ],
+    "missing": []
+  },
+  "artifacts": {
+    "baseline-facts.json": {
+      "sha256": "379b48780748afbf7160945fe88dee92f8843b058f39761bc7b1f90ac771442a",
+      "bytes": 6210
+    },
+    "candidate-facts.json": {
+      "sha256": "360db5443a14a4fbf103b0eec01d9433381ddbcd7d161ea34f099463a9bb2cbc",
+      "bytes": 6211
+    },
+    "delta.json": {
+      "sha256": "6c44e34327f1e324864ec5841358271d74239057540c102cd9dda7d3b8206a03",
+      "bytes": 1368
+    },
+    "insight-report.json": {
+      "sha256": "d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2",
+      "bytes": 1325
+    },
+    "rule-result.json": {
+      "sha256": "a60df5411fc5b34284aacb3e76952364890403c0cb6c23e26d3b7d7614daed51",
+      "bytes": 861
+    },
+    "proposal.json": {
+      "sha256": "ac80cbf4a196c50340aff17a835f4fbdbe04c03fc41c7c7738138eb5d34955e3",
+      "bytes": 1557
+    }
+  },
+  "sourceHashesBefore": [
+    "0f72cff56a3ccb7e1bfeff4234c44bb85c42524d31eed18df7a59c40b4f47877  /data/eda/project/hima_harness/library-intelligence-prototypes/codex-q2026-20260924-01/vendor-fixture/testParser.lib",
+    "49962e1b61d08eae063633ba32ab76fc002c405d40e391e181e92ff445442571  /data/eda/pdk/saed14/stdcell_rvt/db_nldm/saed14rvt_tt0p8v25c.lib",
+    "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5  /data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib"
+  ],
+  "sourceHashesAfter": [
+    "0f72cff56a3ccb7e1bfeff4234c44bb85c42524d31eed18df7a59c40b4f47877  /data/eda/project/hima_harness/library-intelligence-prototypes/codex-q2026-20260924-01/vendor-fixture/testParser.lib",
+    "49962e1b61d08eae063633ba32ab76fc002c405d40e391e181e92ff445442571  /data/eda/pdk/saed14/stdcell_rvt/db_nldm/saed14rvt_tt0p8v25c.lib",
+    "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5  /data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib"
+  ],
+  "environmentBefore": "selected=new old=inactive new=active",
+  "environmentAfter": "selected=new old=inactive new=active",
+  "memory": {
+    "initialMemory": {
+      "kind": "current",
+      "summary": {
+        "schema": "hima-work-memory/1",
+        "scope": {
+          "kind": "campaign",
+          "workspaceRef": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+          "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157"
+        },
+        "subject": "Wave 2 before the qualification Job",
+        "decisions": [
+          "Do not repeat a completed Job from this summary."
+        ],
+        "openQuestions": [],
+        "todo": [
+          "Re-read current Job facts."
+        ],
+        "references": [],
+        "sources": [
+          {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "throughSeq": 1,
+            "observedControlRevision": 0,
+            "runAuthorityIdentity": "2d31b22545fed2ca7eaecb7ffa1219aebe81f5df09968855b03d7157e6f801e8"
+          }
+        ],
+        "nativeSources": [],
+        "generatedAt": "2026-09-25T14:11:59.090Z",
+        "modelGenerated": false
+      },
+      "authority": [
+        {
+          "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+          "status": "running",
+          "currentNode": "qualify-api",
+          "generation": 1,
+          "controlRevision": 0,
+          "holds": [],
+          "budget": {
+            "timeBoxMs": 1200000,
+            "closingReserveMs": 0,
+            "attemptLimit": 1000,
+            "researchWriteAttempts": 256,
+            "researchWriteBytes": 4194304,
+            "retryAllowance": 1,
+            "jobCap": 1,
+            "licences": {
+              "QuaLib-2026-new-59099": 1
+            },
+            "generationLimit": 1
+          },
+          "meters": {
+            "elapsedMs": 0,
+            "jobsLaunched": 0,
+            "attempts": 0
+          },
+          "jobs": [],
+          "reportRefs": []
+        }
+      ],
+      "scope": {
+        "kind": "campaign",
+        "workspaceRef": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+        "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157"
+      },
+      "references": [],
+      "sources": [
+        {
+          "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+          "throughSeq": 1,
+          "observedControlRevision": 0,
+          "runAuthorityIdentity": "2d31b22545fed2ca7eaecb7ffa1219aebe81f5df09968855b03d7157e6f801e8"
+        }
+      ],
+      "nativeSources": []
+    },
+    "jobStale": {
+      "kind": "stale",
+      "summary": {
+        "schema": "hima-work-memory/1",
+        "scope": {
+          "kind": "campaign",
+          "workspaceRef": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+          "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157"
+        },
+        "subject": "Wave 2 before the qualification Job",
+        "decisions": [
+          "Do not repeat a completed Job from this summary."
+        ],
+        "openQuestions": [],
+        "todo": [
+          "Re-read current Job facts."
+        ],
+        "references": [],
+        "sources": [
+          {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "throughSeq": 1,
+            "observedControlRevision": 0,
+            "runAuthorityIdentity": "2d31b22545fed2ca7eaecb7ffa1219aebe81f5df09968855b03d7157e6f801e8"
+          }
+        ],
+        "nativeSources": [],
+        "generatedAt": "2026-09-25T14:11:59.090Z",
+        "modelGenerated": false
+      },
+      "reason": "source Run run-a1a58ed5-3776-450e-a5a3-cde6f7abe157 control changed",
+      "authority": [
+        {
+          "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+          "status": "running",
+          "currentNode": "read-qualification",
+          "generation": 1,
+          "controlRevision": 3,
+          "holds": [],
+          "budget": {
+            "timeBoxMs": 1200000,
+            "closingReserveMs": 0,
+            "attemptLimit": 1000,
+            "researchWriteAttempts": 256,
+            "researchWriteBytes": 4194304,
+            "retryAllowance": 1,
+            "jobCap": 1,
+            "licences": {
+              "QuaLib-2026-new-59099": 1
+            },
+            "generationLimit": 1
+          },
+          "meters": {
+            "elapsedMs": 16451,
+            "jobsLaunched": 1,
+            "attempts": 1,
+            "licenceMs": {
+              "QuaLib-2026-new-59099": 5563
+            },
+            "generationMs": [
+              15902
+            ]
+          },
+          "jobs": [
+            {
+              "session": "hima-a1a58ed5-qualify-api-62500b",
+              "event": "finished",
+              "nodeId": "qualify-api",
+              "exitCode": 0
+            }
+          ],
+          "reportRefs": []
+        }
+      ],
+      "scope": {
+        "kind": "campaign",
+        "workspaceRef": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+        "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157"
+      },
+      "references": [],
+      "sources": [
+        {
+          "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+          "throughSeq": 1,
+          "observedControlRevision": 0,
+          "runAuthorityIdentity": "2d31b22545fed2ca7eaecb7ffa1219aebe81f5df09968855b03d7157e6f801e8"
+        }
+      ],
+      "nativeSources": []
+    },
+    "holdStale": {
+      "kind": "stale",
+      "summary": {
+        "schema": "hima-work-memory/1",
+        "scope": {
+          "kind": "campaign",
+          "workspaceRef": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+          "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157"
+        },
+        "subject": "Wave 2 after E1",
+        "decisions": [
+          "E1 passed; E2 still requires current authorization."
+        ],
+        "openQuestions": [],
+        "todo": [
+          "Re-read human holds."
+        ],
+        "references": [
+          {
+            "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000010",
+            "contentIdentity": "afd06534e30965151d03baae507b413e143e2fcc98afe515efacd4b66f079372",
+            "conditions": [
+              "Exact current project Run and retained content identity."
+            ]
+          }
+        ],
+        "sources": [
+          {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "throughSeq": 13,
+            "observedControlRevision": 9,
+            "runAuthorityIdentity": "35a72d9631820433bb37eca9c03b693b1d3161844fa87006f2544d93674f70f9"
+          }
+        ],
+        "nativeSources": [],
+        "generatedAt": "2026-09-25T14:12:08.083Z",
+        "modelGenerated": false
+      },
+      "reason": "source Run run-a1a58ed5-3776-450e-a5a3-cde6f7abe157 control changed",
+      "authority": [
+        {
+          "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+          "status": "running",
+          "currentNode": "index-baseline",
+          "generation": 1,
+          "controlRevision": 10,
+          "holds": [
+            "*"
+          ],
+          "budget": {
+            "timeBoxMs": 1200000,
+            "closingReserveMs": 0,
+            "attemptLimit": 1000,
+            "researchWriteAttempts": 256,
+            "researchWriteBytes": 4194304,
+            "retryAllowance": 1,
+            "jobCap": 1,
+            "licences": {
+              "QuaLib-2026-new-59099": 1
+            },
+            "generationLimit": 1
+          },
+          "meters": {
+            "elapsedMs": 18091,
+            "jobsLaunched": 2,
+            "attempts": 2,
+            "licenceMs": {
+              "QuaLib-2026-new-59099": 5563
+            },
+            "generationMs": [
+              17542
+            ]
+          },
+          "jobs": [
+            {
+              "session": "hima-a1a58ed5-qualify-api-62500b",
+              "event": "finished",
+              "nodeId": "qualify-api",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-reader-library-qualification-a7d27d",
+              "event": "finished",
+              "nodeId": "read-qualification",
+              "exitCode": 0
+            }
+          ],
+          "reportRefs": [
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000010"
+          ]
+        }
+      ],
+      "scope": {
+        "kind": "campaign",
+        "workspaceRef": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+        "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157"
+      },
+      "references": [
+        {
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000010",
+          "contentIdentity": "afd06534e30965151d03baae507b413e143e2fcc98afe515efacd4b66f079372",
+          "conditions": [
+            "Exact current project Run and retained content identity."
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+          "throughSeq": 13,
+          "observedControlRevision": 9,
+          "runAuthorityIdentity": "35a72d9631820433bb37eca9c03b693b1d3161844fa87006f2544d93674f70f9"
+        }
+      ],
+      "nativeSources": []
+    },
+    "staleSession": {
+      "kind": "stale",
+      "summary": {
+        "schema": "hima-work-memory/1",
+        "scope": {
+          "kind": "session",
+          "workspaceRef": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+          "sessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca"
+        },
+        "subject": "Wave 2 Library task native checkpoint",
+        "decisions": [
+          "Note: for Run run-a1a58ed5-3776-450e-a5a3-cde6f7abe157, the saved summary is a reading aid only — before any action, re-read the current Run, its Job, the report version, any human hold, and the remaining budget from live Run context. No tools were called and the Run is unchanged."
+        ],
+        "openQuestions": [],
+        "todo": [
+          "Re-read current authority before action."
+        ],
+        "references": [],
+        "sources": [],
+        "nativeSources": [
+          {
+            "sessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+            "headerIdentity": "09266c6d936735528c4abb55b5aa93437a06cb4a8e045c429abcdc8c14c51c96",
+            "transcriptIdentity": "c9f73a20385ace23b52a48dac2d6e98c1c0cf1922ef805e189dc41944ffe728c",
+            "surfaceAvailability": "available",
+            "surfaceIdentity": "ebb05be452fbc67c3f418213897076b3982b4bf411526f8135e653b46310e6cb",
+            "capturedFromSeq": 0,
+            "capturedThroughSeq": 15,
+            "transcriptCoverage": "retained-prefix"
+          }
+        ],
+        "generatedAt": "2026-09-25T14:11:53.194Z",
+        "modelGenerated": false
+      },
+      "reason": "native Session session-0aeb424c-92f9-4003-bd76-ad49d42917ca has newer events after the verified summary source",
+      "authority": [],
+      "scope": {
+        "kind": "session",
+        "workspaceRef": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+        "sessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca"
+      },
+      "references": [],
+      "sources": [],
+      "nativeSources": [
+        {
+          "sessionId": "session-0aeb424c-92f9-4003-bd76-ad49d42917ca",
+          "headerIdentity": "09266c6d936735528c4abb55b5aa93437a06cb4a8e045c429abcdc8c14c51c96",
+          "transcriptIdentity": "c9f73a20385ace23b52a48dac2d6e98c1c0cf1922ef805e189dc41944ffe728c",
+          "surfaceAvailability": "available",
+          "surfaceIdentity": "ebb05be452fbc67c3f418213897076b3982b4bf411526f8135e653b46310e6cb",
+          "capturedFromSeq": 0,
+          "capturedThroughSeq": 15,
+          "transcriptCoverage": "retained-prefix"
+        }
+      ]
+    },
+    "campaignAfterRestart": {
+      "kind": "stale",
+      "summary": {
+        "schema": "hima-work-memory/1",
+        "scope": {
+          "kind": "campaign",
+          "workspaceRef": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+          "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157"
+        },
+        "subject": "Wave 2 report produced",
+        "decisions": [
+          "Native-qualified report is read-only and bounded to the same-source control."
+        ],
+        "openQuestions": [
+          "Need an independent candidate Library."
+        ],
+        "todo": [
+          "Re-read final result and proposal."
+        ],
+        "references": [
+          {
+            "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000010",
+            "contentIdentity": "afd06534e30965151d03baae507b413e143e2fcc98afe515efacd4b66f079372",
+            "conditions": [
+              "Exact current project Run and retained content identity."
+            ]
+          },
+          {
+            "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000022",
+            "contentIdentity": "379b48780748afbf7160945fe88dee92f8843b058f39761bc7b1f90ac771442a",
+            "conditions": [
+              "Exact current project Run and retained content identity."
+            ]
+          },
+          {
+            "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000032",
+            "contentIdentity": "360db5443a14a4fbf103b0eec01d9433381ddbcd7d161ea34f099463a9bb2cbc",
+            "conditions": [
+              "Exact current project Run and retained content identity."
+            ]
+          },
+          {
+            "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000042",
+            "contentIdentity": "6c44e34327f1e324864ec5841358271d74239057540c102cd9dda7d3b8206a03",
+            "conditions": [
+              "Exact current project Run and retained content identity."
+            ]
+          },
+          {
+            "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052",
+            "contentIdentity": "d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2",
+            "conditions": [
+              "Exact current project Run and retained content identity."
+            ]
+          }
+        ],
+        "sources": [
+          {
+            "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+            "throughSeq": 56,
+            "observedControlRevision": 37,
+            "runAuthorityIdentity": "6bcab1cf4c4acc6f82542ad173d67b3e6f5800cee734d0bacab92a83536ba4e6"
+          }
+        ],
+        "nativeSources": [],
+        "generatedAt": "2026-09-25T14:12:26.077Z",
+        "modelGenerated": false
+      },
+      "reason": "source Run run-a1a58ed5-3776-450e-a5a3-cde6f7abe157 control changed",
+      "authority": [
+        {
+          "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+          "status": "ended-goal-not-met",
+          "currentNode": "read-library-proposal",
+          "generation": 1,
+          "controlRevision": 49,
+          "holds": [],
+          "budget": {
+            "timeBoxMs": 1200000,
+            "closingReserveMs": 0,
+            "attemptLimit": 1000,
+            "researchWriteAttempts": 256,
+            "researchWriteBytes": 4194304,
+            "retryAllowance": 1,
+            "jobCap": 1,
+            "licences": {
+              "QuaLib-2026-new-59099": 1
+            },
+            "generationLimit": 1
+          },
+          "meters": {
+            "elapsedMs": 40017,
+            "jobsLaunched": 14,
+            "attempts": 14,
+            "licenceMs": {
+              "QuaLib-2026-new-59099": 5563
+            },
+            "generationMs": [
+              39450
+            ]
+          },
+          "jobs": [
+            {
+              "session": "hima-a1a58ed5-qualify-api-62500b",
+              "event": "finished",
+              "nodeId": "qualify-api",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-reader-library-qualification-a7d27d",
+              "event": "finished",
+              "nodeId": "read-qualification",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-index-baseline-1ef4c2",
+              "event": "finished",
+              "nodeId": "index-baseline",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-reader-library-facts-1a7583",
+              "event": "finished",
+              "nodeId": "read-baseline-facts",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-index-candidate-84647b",
+              "event": "finished",
+              "nodeId": "index-candidate",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-reader-library-facts-df9e72",
+              "event": "finished",
+              "nodeId": "read-candidate-facts",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-semantic-delta-2120cb",
+              "event": "finished",
+              "nodeId": "semantic-delta",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-reader-library-delta-70b1b0",
+              "event": "finished",
+              "nodeId": "read-library-delta",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-library-insight-0d00d6",
+              "event": "finished",
+              "nodeId": "library-insight",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-reader-library-insight-ff532c",
+              "event": "finished",
+              "nodeId": "read-library-insight",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-evaluate-library-rule-6a693b",
+              "event": "finished",
+              "nodeId": "evaluate-library-rule",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-reader-library-rule-result-28d975",
+              "event": "finished",
+              "nodeId": "read-library-rule-result",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-propose-library-rule-08081e",
+              "event": "finished",
+              "nodeId": "propose-library-rule",
+              "exitCode": 0
+            },
+            {
+              "session": "hima-a1a58ed5-reader-library-proposal-416434",
+              "event": "finished",
+              "nodeId": "read-library-proposal",
+              "exitCode": 0
+            }
+          ],
+          "reportRefs": [
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000010",
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000022",
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000032",
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000042",
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052",
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000065",
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000075",
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000077",
+            "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000080"
+          ]
+        }
+      ],
+      "scope": {
+        "kind": "campaign",
+        "workspaceRef": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-knfha9/workspace",
+        "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157"
+      },
+      "references": [
+        {
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000010",
+          "contentIdentity": "afd06534e30965151d03baae507b413e143e2fcc98afe515efacd4b66f079372",
+          "conditions": [
+            "Exact current project Run and retained content identity."
+          ]
+        },
+        {
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000022",
+          "contentIdentity": "379b48780748afbf7160945fe88dee92f8843b058f39761bc7b1f90ac771442a",
+          "conditions": [
+            "Exact current project Run and retained content identity."
+          ]
+        },
+        {
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000032",
+          "contentIdentity": "360db5443a14a4fbf103b0eec01d9433381ddbcd7d161ea34f099463a9bb2cbc",
+          "conditions": [
+            "Exact current project Run and retained content identity."
+          ]
+        },
+        {
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000042",
+          "contentIdentity": "6c44e34327f1e324864ec5841358271d74239057540c102cd9dda7d3b8206a03",
+          "conditions": [
+            "Exact current project Run and retained content identity."
+          ]
+        },
+        {
+          "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000052",
+          "contentIdentity": "d54963f2028ac4f20a1facbec66acae9b1d974e296d456179f18d269d62480c2",
+          "conditions": [
+            "Exact current project Run and retained content identity."
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "runId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157",
+          "throughSeq": 56,
+          "observedControlRevision": 37,
+          "runAuthorityIdentity": "6bcab1cf4c4acc6f82542ad173d67b3e6f5800cee734d0bacab92a83536ba4e6"
+        }
+      ],
+      "nativeSources": []
+    },
+    "compact": {
+      "kind": "success",
+      "prefixIdentity": "c9f73a20385ace23b52a48dac2d6e98c1c0cf1922ef805e189dc41944ffe728c",
+      "contextAvailability": "available"
+    },
+    "child": {
+      "sessionId": "hima-child-d8d6e82e4422d0fd1e72e42feaf0a411",
+      "resultRecordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000056",
+      "outputIdentity": "a7a4b680d42c265a94ddd9490dc1ace7d5430aa80e204db78c956bb3eb086aff",
+      "persistedEvents": 27
+    },
+    "correction": {
+      "recordId": "run-a1a58ed5-3776-450e-a5a3-cde6f7abe157#000081",
+      "event": "disabled"
+    },
+    "crossWorkspace": "refused"
+  },
+  "model": {
+    "provider": "deepseek-official",
+    "model": "deepseek-flash",
+    "requestSteps": 10,
+    "ownerTurns": [
+      {
+        "bytes": 283,
+        "sha256": "2177ee8999b3f4b3f1755371f860de785c4cdc7717170a7e5942f45bf24340a9"
+      }
+    ],
+    "apiRequests": "unmeasured",
+    "tokens": "unmeasured"
+  },
+  "claims": {
+    "e1": "PASS",
+    "e2": "PASS representative facts and exact same-source zero control",
+    "e3": "PASS versioned native-qualified retained report and Host view",
+    "e4": "PASS typed no-mutation result and versioned proposal",
+    "memory": "PASS bounded recovery matrix",
+    "limits": [
+      "one representative Cell/table sample, not full corpus",
+      "same source baseline/candidate, not a revision comparison",
+      "no design evidence or design-impact conclusion",
+      "no Library mutation or release approval",
+      "no L5 value claim"
+    ]
+  }
+}

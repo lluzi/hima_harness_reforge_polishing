@@ -1,0 +1,8 @@
+{
+  "schema": "hima.wave2-library-failure/1",
+  "sourceSha": "2a3c75cdc3ddd269dcc611c1eb9e709add3b47d1",
+  "remoteRoot": "/data/eda/project/hima_harness/wave2-library-20260925133843",
+  "at": "2026-09-25T13:38:44.192Z",
+  "error": "[\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"regex\",\n    \"pattern\": \"/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/\",\n    \"path\": [\n      \"hints\",\n      \"toolCommands\",\n      1\n    ],\n    \"message\": \"Invalid string: must match pattern /^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/\"\n  }\n]",
+  "stack": "ZodError: [\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"regex\",\n    \"pattern\": \"/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/\",\n    \"path\": [\n      \"hints\",\n      \"toolCommands\",\n      1\n    ],\n    \"message\": \"Invalid string: must match pattern /^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/\"\n  }\n]\n    at discoverSshSite (file:///Users/lluzi/code/hima_harness_reforge_polishing/packages/harness/lib/sites.js:347:48)\n    at file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-wave2-library.ts:108:27"
+}

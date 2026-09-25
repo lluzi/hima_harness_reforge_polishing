@@ -1,0 +1,10 @@
+{
+  "schema": "hima.wave2-library-failure/1",
+  "sourceSha": "5bb393a93e2f34f49d020c051b05fdbabfdcc27e",
+  "remoteRoot": "/data/eda/project/hima_harness/wave2-library-20260925134200",
+  "runId": "run-ecada197-dc8a-40f0-ac17-5635c7da0cfc",
+  "workspace": "/data/eda/project/hima_harness/wave2-library-20260925134200/library-intelligence-20260925-134201-9093",
+  "at": "2026-09-25T13:42:10.720Z",
+  "error": "AssertionError [ERR_ASSERTION]: this node has spent its retry allowance; a human must clear its blocker\n+ actual - expected\n\n+ 'refused'\n- 'accepted'\n",
+  "stack": "AssertionError [ERR_ASSERTION]: this node has spent its retry allowance; a human must clear its blocker\n+ actual - expected\n\n+ 'refused'\n- 'accepted'\n\n    at complete (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-wave2-library.ts:169:58)\n    at async file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-wave2-library.ts:178:3"
+}
