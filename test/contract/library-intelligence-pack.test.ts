@@ -192,6 +192,16 @@ test('E1 receipt drives the Pack-local E2 to E4 graph artifacts with an explicit
     assert.notEqual(refusedTable.status, 0);
     assert.match(refusedTable.stderr, /axes\/shape differ/i);
 
+    const forgedNativeValue = JSON.parse(await readFile(baseline, 'utf8'));
+    forgedNativeValue.cells[0].arcs[0].tables[0].values[0] += 0.000001;
+    refreshIdentity(forgedNativeValue, 'recordSha256');
+    const forgedNativeValuePath = path.join(library, 'forged-native-value.json');
+    await writeFile(forgedNativeValuePath, JSON.stringify(forgedNativeValue));
+    const refusedNativeValue = spawnSync('python3', [stageReader, forgedNativeValuePath, path.join(f.root, 'refused-native-value.json')], { encoding: 'utf8' });
+    assert.notEqual(refusedNativeValue.status, 0);
+    assert.match(refusedNativeValue.stderr, /qualified native query/i,
+      'a self-consistent facts hash cannot replace one finite native table value');
+
     const forgedDelta = JSON.parse(await readFile(delta, 'utf8'));
     forgedDelta.conditions.corner = 'forged-corner';
     refreshIdentity(forgedDelta, 'recordSha256');

@@ -224,6 +224,29 @@ def validate_facts(value, report_path):
     matches = [item for item in qualification.get("results", []) if item.get("role") == reference["resultRole"]]
     if len(matches) != 1 or matches[0].get("childSha256") != hash_value(reference["childSha256"], "qualification child SHA-256"):
         fail("facts qualification child identity differs")
+    query = matches[0].get("queryEvidence")
+    if not isinstance(query, dict) or query.get("library") != library["name"] or query.get("units") != units or query.get("cellCount") != coverage["declaredCells"]:
+        fail("facts differ from the qualified Library query")
+    sample = query.get("sample")
+    if not isinstance(sample, dict) or len(value["cells"]) != 1:
+        fail("facts differ from the qualified representative Cell")
+    cell = value["cells"][0]
+    if (cell["id"] != sample.get("cell") or cell["name"] != sample.get("cell")
+            or cell["area"]["value"] != sample.get("area") or len(cell["pins"]) != 1
+            or cell["pins"][0]["name"] != sample.get("pin") or cell["pins"][0]["direction"] != sample.get("direction")
+            or len(cell["arcs"]) != 1):
+        fail("facts differ from the qualified representative Cell/pin")
+    arc = cell["arcs"][0]
+    if (arc["relatedPin"] != sample.get("relatedPin") or arc["outputPin"] != sample.get("pin")
+            or arc["type"] != sample.get("timingType") or len(arc["tables"]) != 1
+            or arc["sourceLocator"]["qualificationChildSha256"] != matches[0]["childSha256"]):
+        fail("facts differ from the qualified representative arc")
+    table = arc["tables"][0]
+    expected_table = sample.get("table")
+    if (not isinstance(expected_table, dict) or table["id"] != sample.get("tableType")
+            or len(table["values"]) != sample.get("tableSize") or table["values"][0] != sample.get("firstValue")
+            or {key: table[key] for key in ("model", "unit", "unitScaleToSI", "axes", "shape", "values")} != expected_table):
+        fail("facts table differs from the qualified native query")
     return identity
 
 
