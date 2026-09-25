@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent, resumeTestAgent, sayAsUser } from './support/boot-inprocess.ts';
@@ -127,6 +127,9 @@ test('a replayed native session keeps a complete source identity across Host reo
     const agent = await createRootAgent(first.ctx, h.workspace);
     await sayAsUser(agent, 'Keep this source-linked working decision.');
     const evidence = await nativeSessionMemoryEvidence(first.ctx, { sessionId: String(agent.id), workspaceRef: h.workspace });
+    const canonicalEvidence = await nativeSessionMemoryEvidence(first.ctx, { sessionId: String(agent.id), workspaceRef: await realpath(h.workspace) });
+    assert.equal(canonicalEvidence.workspaceRef, await realpath(h.workspace), 'a canonical project path and the native header alias name one workspace');
+    assert.equal(canonicalEvidence.transcriptIdentity, evidence.transcriptIdentity);
     const minted = await first.ctx.hima.workMemory(String(agent.id), {action:'sources'}) as {nativeSources:unknown[];sources:unknown[]};
     assert.equal(minted.nativeSources.length,1);assert.equal(minted.sources.length,0);
     const context = await readNativeSessionContext(first.ctx,{sessionId:String(agent.id),targetSessionId:String(agent.id)});
@@ -136,7 +139,7 @@ test('a replayed native session keeps a complete source identity across Host reo
     await assert.rejects(() => nativeSessionMemoryEvidence(first!.ctx, { sessionId: String(agent.id), workspaceRef: path.join(h.home, 'other-workspace') }), /authenticated workspace/);
     const summary = {
       schema: 'hima-work-memory/1' as const,
-      scope: { kind: 'session' as const, workspaceRef: h.workspace, sessionId: String(agent.id) },
+      scope: { kind: 'session' as const, workspaceRef: await realpath(h.workspace), sessionId: String(agent.id) },
       subject: 'Remember the checked decision.', decisions: ['Keep the native source identity.'], openQuestions: [], todo: ['Re-read native source before acting.'],
       references: [], sources: [], nativeSources: [{ sessionId: evidence.sessionId, headerIdentity: evidence.headerIdentity,
         transcriptIdentity: evidence.transcriptIdentity, surfaceAvailability: evidence.surfaceAvailability,

@@ -5,6 +5,7 @@
 // write handle and never appends a DSH event: SessionQuery replays the native log
 // and SessionPersistence supplies the durable identity that the summary names.
 import { createHash } from 'node:crypto';
+import { realpath } from 'node:fs/promises';
 import type { Context } from '@deepseek-ai/cordis';
 import type { NativeSessionMemoryEvidence } from './experience.js';
 
@@ -59,7 +60,11 @@ export async function nativeSessionMemoryEvidence(ctx: Context, request: {
   if ((surface && headerIdentity(header) !== headerIdentity(surface.session)) || headerIdentity(header) !== headerIdentity(persisted.header)) {
     throw new Error('native session memory source headers conflict');
   }
-  if (header.cwd !== request.workspaceRef) throw new Error('native session memory source does not belong to the authenticated workspace');
+  if (header.cwd === undefined) throw new Error('native session memory source has no workspace identity');
+  let sessionWorkspace: string; let requestedWorkspace: string;
+  try { [sessionWorkspace, requestedWorkspace] = await Promise.all([realpath(header.cwd), realpath(request.workspaceRef)]); }
+  catch { throw new Error('native session memory source does not belong to the authenticated workspace'); }
+  if (sessionWorkspace !== requestedWorkspace) throw new Error('native session memory source does not belong to the authenticated workspace');
   if ((header.parentSession === undefined ? undefined : String(header.parentSession)) !== request.parentSessionId) {
     throw new Error('native session memory source lineage does not match the requested scope');
   }
@@ -77,7 +82,7 @@ export async function nativeSessionMemoryEvidence(ctx: Context, request: {
   if (transcript.length === 0) throw new Error('native session memory source has no replayed transcript text through the requested revision');
   return {
     sessionId: request.sessionId,
-    workspaceRef: header.cwd,
+    workspaceRef: sessionWorkspace,
     ...(request.parentSessionId === undefined ? {} : { parentSessionId: request.parentSessionId }),
     headerIdentity: headerIdentity(header),
     transcriptIdentity: identity(retainedPrefix),
