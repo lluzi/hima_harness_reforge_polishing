@@ -388,6 +388,26 @@ class ClosureContractTest(unittest.TestCase):
         with self.assertRaisesRegex(closure.Rejected, "database bytes changed"):
             closure.validate_snapshot_identity(self.workspace, original)
 
+    def test_prepared_g000_database_staging_is_valid_but_cannot_be_relabelled_as_a_candidate(self):
+        root = self.workspace / "flow" / "site" / "DBS"
+        data = root / "input.enc.dat"
+        data.mkdir(parents=True)
+        (data / "db.bin").write_bytes(b"prepared-baseline")
+        script = root / "input.enc"
+        script.write_text("restore prepared baseline\n")
+        self.runtime["currentDatabase"] = str(data)
+        self.runtime["currentDatabaseScript"] = str(script)
+        self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2),
+                               "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)]})
+        self.save_runtime(); closure.summarize(self.workspace)
+        original = closure.read_json(self.workspace / "flow" / "iterations" / "g000" / "closure-state.json")
+        closure.validate_snapshot_identity(self.workspace, original)
+
+        relabelled = copy.deepcopy(original)
+        relabelled["iteration"] = 1
+        with self.assertRaisesRegex(closure.Rejected, "same generation"):
+            closure.validate_snapshot_identity(self.workspace, relabelled)
+
     def test_complete_same_method_physical_checks_allow_a_best_database(self):
         self.write_database(0)
         self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2), "setup": [("A/D", -0.10), ("B/D", -0.05)], "hold": [("H/D", -0.08)]})

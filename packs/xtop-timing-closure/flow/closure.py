@@ -833,11 +833,29 @@ def validate_snapshot_identity(workspace: Path, snapshot):
             raise Rejected(f"candidate {role} is not from the same generation as its database")
         return path
 
+    # `prepare` owns the immutable input copy and intentionally stages it once under
+    # flow/site/DBS. The first measured state is g000, but its database predates the generation
+    # directory; every derived candidate from g001 onward is written under its own gNNN/DBS.
+    # Admit that one exact prepared root only for iteration zero. Reports, SPEF and physical
+    # evidence remain generation-local below, and relabelling the same prepared DB as g001+ fails.
+    prepared_site = paths(workspace)["site"]
+    prepared_database_root = prepared_site / "DBS"
+    if iteration == 0 and (prepared_site.is_symlink() or prepared_database_root.is_symlink()):
+        raise Rejected("prepared baseline database root is linked")
+    database_roots = [generation_root]
+    if iteration == 0:
+        database_roots.append(prepared_database_root.resolve())
+
+    def same_database_generation(path: Path, role: str):
+        if not any(path.is_relative_to(root) for root in database_roots):
+            raise Rejected(f"candidate {role} is not from the same generation as its database")
+        return path
+
     database = snapshot.get("database")
     if not isinstance(database, dict) or set(database) != {"script", "data", "scriptIdentity", "tree"}:
         raise Rejected("candidate database identity is incomplete")
-    script = same_generation(Path(database["script"]).resolve(), "database restore script")
-    data = same_generation(Path(database["data"]).resolve(), "database tree")
+    script = same_database_generation(Path(database["script"]).resolve(), "database restore script")
+    data = same_database_generation(Path(database["data"]).resolve(), "database tree")
     if script.is_symlink() or not script.is_file() or data.is_symlink() or not data.is_dir():
         raise Rejected("candidate database is absent or linked")
     if resolved_ref(workspace, database["scriptIdentity"]) != script.resolve() or tree_identity(data) != database["tree"]:
