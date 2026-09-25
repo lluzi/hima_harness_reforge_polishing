@@ -49,6 +49,7 @@ import { runView as analysisRunView } from './remote.js';
 import { jobStatus, jobTail, reconcileLaunchIntent, type LaunchIntent } from './jobs.js';
 import { channelFor } from './channel.js';
 import { attestLibraryQualificationPrelaunch } from './adapters/library-qualification.js';
+import { humanEffortMeasurement } from './value-measurement.js';
 import { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop, captureWorkshopInputs, readBack } from './workshop.js';
 import type {
   BlockerRecord,
@@ -1303,7 +1304,7 @@ async function blockAtEntry(deps: FabricDeps, run: RunRecord, pack: Pack, reason
 export interface ExecutionActionRequest {
   readonly runId: string; readonly actor: string;
   readonly expectedEpoch: number; readonly expectedRevision: number; readonly requestId: string;
-  readonly action: 'begin' | 'work' | 'complete' | 'pause' | 'continue' | 'cancel' | 'handoff' | 'adopt' | 'revise' | 'grow' | 'read' | 'write' | 'knowledge' | 'recommend' | 'analyze';
+  readonly action: 'begin' | 'work' | 'complete' | 'pause' | 'continue' | 'cancel' | 'handoff' | 'adopt' | 'revise' | 'grow' | 'read' | 'write' | 'knowledge' | 'recommend' | 'analyze' | 'measure-value';
   readonly analysis?: unknown;
   readonly nodeId?: string; readonly executionId?: string; readonly targetOwner?: string;
   readonly path?: string; readonly content?: string; readonly output?: string; readonly file?: string;
@@ -1318,6 +1319,8 @@ export interface ExecutionActionRequest {
   /** Settle the currently active optional branch without claiming its required result. */
   readonly growthDisposition?: 'failed' | 'cancelled' | 'abandoned';
   readonly proposalId?: string;
+  /** Explicit human stopwatch evidence for a value study; accepted only through the human route. */
+  readonly measurement?: unknown;
 }
 export interface GrowthView {
   readonly proposalId: string; readonly event: GrowthRecord['event']; readonly recordId: string;
@@ -2056,7 +2059,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     // Side Talk an execution owner.  Every node action, continuation, revision and handoff remains
     // fenced to the recorded owner and epoch below.
     const humanEmergencyControl = req.origin === 'human' && (req.action === 'pause' || req.action === 'cancel'
-      || (req.action === 'continue' && control.guideSessionId === req.actor));
+      || ((req.action === 'continue' || req.action === 'measure-value') && control.guideSessionId === req.actor));
     if ((control.owner !== req.actor && !humanEmergencyControl) || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
     if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/.test(req.requestId)) return no('request identity must be a bounded plain identifier');
     const digest = identityOf(req);
@@ -2071,6 +2074,18 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       ? { ...answer('duplicate', { receipt: before.receipt, data: before.receipt.data }), notification: repeatedNotification }
       : no('this request identity was already used with different contents');
     if (req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
+    if (req.action === 'measure-value') {
+      if (req.origin !== 'human') return no('value-study human effort can be recorded only by an authenticated human control request');
+      const parsed = humanEffortMeasurement.safeParse(req.measurement);
+      if (!parsed.success) return no(`value-study measurement needs category, startedAt, endedAt and evidenceRef: ${parsed.error.message}`);
+      if (Date.parse(parsed.data.startedAt) < Date.parse(run.createdAt)) return no('value-study human effort cannot start before this Run');
+      if (Date.parse(parsed.data.endedAt) > Date.now()) return no('value-study human effort cannot end in the future');
+      const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, data: parsed.data };
+      await deps.ledger.advanceRun(run.id, { control: { ...control, revision: control.revision + 1,
+        requests: { ...control.requests, [req.requestId]: { digest, actor: req.actor, epoch: control.epoch,
+          revision: control.revision, origin: 'human', at: new Date().toISOString(), state: 'done', receipt } } } });
+      return answer('accepted', { receipt, data: receipt.data });
+    }
     if (req.action === 'revise') return revisionAction(deps, run, req, digest);
     if (req.action === 'grow') return growthAction(deps, run, req, digest);
     const reading = req.action === 'read' || req.action === 'knowledge' || req.action === 'recommend';

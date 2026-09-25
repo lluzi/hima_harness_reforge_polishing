@@ -53,6 +53,7 @@ test('controlled tools derive ownership, deduplicate admission, and refuse legac
     const execute = schemas.find((schema) => schema.name === 'hima_execute');
     assert.ok(execute);
     assert.ok(!JSON.stringify(execute.parameters).includes('"actor"'), 'the model cannot fill in actor');
+    assert.ok(!JSON.stringify(execute.parameters).includes('measure-value'), 'the Agent cannot write human-effort evidence');
     const proposal = value(await call('hima_prepare', { pack: timingProbePackId, site: 'local' }));
     const started = value(await call('hima_run', { proposalId: proposal.id, pack: timingProbePackId, site: 'local', goal: proposal.goal, strategy: proposal.strategy }));
     const run = started.runId;
@@ -70,6 +71,11 @@ test('controlled tools derive ownership, deduplicate admission, and refuse legac
     const repeated = value(await call('hima_execute', request));
     assert.equal(repeated.kind, 'duplicate');
     assert.equal(repeated.receipt.executionId, begun.receipt.executionId);
+    const agentMeasurement = await host.ctx.hima.executionAction({ runId: run, actor: String(owner.id), origin: 'agent',
+      action: 'measure-value', expectedEpoch: 1, expectedRevision: 1, requestId: 'agent-human-time',
+      measurement: { category: 'business-decision', startedAt: new Date().toISOString(), endedAt: new Date().toISOString(), evidenceRef: 'forged' } });
+    assert.equal(agentMeasurement.kind, 'refused');
+    assert.match(agentMeasurement.reason ?? '', /authenticated human/);
     const context = value(await call('hima_context', { run }, other));
     assert.equal(context.run.control.owner, String(owner.id), 'reading in another conversation does not rebind the Run');
     assert.equal(context.run.control.revision, 1);
@@ -148,6 +154,21 @@ test('native preparation validates a live selected session and exposes durable c
     assert.equal(repeatedPause.status, 200, JSON.stringify(repeatedBody));
     assert.equal(repeatedBody.notification.status, 'not-repeated');
     assert.match(repeatedBody.notification.message, /original delivery outcome is not durable/i);
+    const malformedMeasurement = await post(`/runs/${view.run.id}/control`, { action: 'measure-value', sessionId: owner,
+      expectedEpoch: 1, expectedRevision: 1, requestId: 'human-value-malformed', measurement: { category: 'business-decision' } });
+    assert.equal(malformedMeasurement.status, 409, await malformedMeasurement.text());
+    const startedAt = view.run.createdAt;
+    const endedAt = new Date().toISOString();
+    const measuredMs = Date.parse(endedAt) - Date.parse(startedAt);
+    const measured = await post(`/runs/${view.run.id}/control`, { action: 'measure-value', sessionId: owner,
+      expectedEpoch: 1, expectedRevision: 1, requestId: 'human-value-business',
+      measurement: { category: 'business-decision', startedAt, endedAt, evidenceRef: 'stopwatch:host-test' } });
+    const measuredBody = await measured.json() as { run: { valueMeasurement: { human: { businessDecisionTime: unknown } } } };
+    assert.equal(measured.status, 200, JSON.stringify(measuredBody));
+    assert.deepEqual(measuredBody.run.valueMeasurement.human.businessDecisionTime, {
+      status: 'measured', value: measuredMs, unit: 'ms', sources: ['run.control.requests.human-value-business', 'stopwatch:host-test'],
+      claimLimit: 'Explicit human stopwatch segments only; Campaign wall and wait time are excluded.',
+    });
     assert.equal((await post(`/runs/${view.run.id}/cancel`, {})).status, 403, 'unscoped mutation is denied before Run details are inspected');
     assert.equal((await post(`/runs/${view.run.id}/control`, { action: 'work', sessionId: owner, expectedEpoch: 1, expectedRevision: 0, requestId: 'human-work' })).status, 400);
     assert.equal(contextBody.run.control.revision, 0);

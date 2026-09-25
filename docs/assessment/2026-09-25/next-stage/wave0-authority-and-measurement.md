@@ -38,6 +38,11 @@ SAED14 and TSMC28 inputs under `selected=new` with no XTop client. E2–E4 remai
 includes its result as `valueMeasurement`; the receipt has schema `hima-value-measurement/1` and is
 bound to `runId`, `throughSeq` and the current control revision.
 
+An authenticated human can post `measure-value` through the existing Run control endpoint with one
+of the three categories, ISO start/end instants and an external stopwatch evidence reference. The
+same idempotent control receipt carries the observation; it does not change Run status, meters or
+execution ownership. Agent tools do not expose this action and cannot author human-effort evidence.
+
 The receipt reads only existing authorities:
 
 | Measurement | Authority | Result rule |
@@ -46,7 +51,7 @@ The receipt reads only existing authorities:
 | Commercial-tool seat time | `Run.meters.licenceMs`, derived by the existing Budget fold from Job records | Report seat-ms; an open licensed Job makes the result partial. |
 | Model participation | Ledger Model-moment `session` open/close records | Count sessions and list incomplete identities. |
 | Model requests/tokens | Provider usage, if the pinned surface exposes it | Current surface does not expose it, so both are `unmeasured`, never zero or inferred from sessions. |
-| Human business-decision, environment-recovery and evidence-review time | Explicit study stopwatch receipt | Existing control timestamps do not bracket active labour, so all three are `unmeasured` until the matched study records them explicitly. |
+| Human business-decision, environment-recovery and evidence-review time | Authenticated `measure-value` control receipt plus explicit stopwatch evidence ref | Sum only explicit start/end segments in each category; absent categories are `unmeasured`. |
 | Campaign human wait | `Run.meters.waitedMs` | Report separately with a claim limit: wait time is not active human labour. |
 | Human control count | `Run.control.requests` with `origin=human` | Count exact retained request identities; do not convert count to minutes. |
 

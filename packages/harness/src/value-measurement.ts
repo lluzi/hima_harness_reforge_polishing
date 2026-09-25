@@ -2,8 +2,21 @@
 // and Model-moment records; it does not start a timer, contact a provider or create another telemetry
 // store. Missing provider or human-effort facts remain unmeasured rather than becoming zero.
 import { givesUpLaunch, hasEnded, type JobRecord, type LedgerRecord, type RunRecord, type SessionRecord } from './ledger.js';
+import { z } from 'zod';
 
 export const VALUE_MEASUREMENT_SCHEMA = 'hima-value-measurement/1' as const;
+
+export const humanEffortMeasurement = z.strictObject({
+  category: z.enum(['business-decision', 'environment-recovery', 'evidence-review']),
+  startedAt: z.string().datetime(),
+  endedAt: z.string().datetime(),
+  evidenceRef: z.string().min(1).max(512),
+}).superRefine((value, ctx) => {
+  if (Date.parse(value.endedAt) < Date.parse(value.startedAt)) {
+    ctx.addIssue({ code: 'custom', path: ['endedAt'], message: 'human effort cannot end before it starts' });
+  }
+});
+export type HumanEffortMeasurement = z.infer<typeof humanEffortMeasurement>;
 
 export interface MeasuredCount {
   readonly status: 'measured';
@@ -40,9 +53,9 @@ export interface ValueMeasurementReceipt {
   readonly controlRevision?: number;
   readonly final: boolean;
   readonly human: {
-    readonly businessDecisionTime: UnmeasuredValue;
-    readonly environmentRecoveryTime: UnmeasuredValue;
-    readonly evidenceReviewTime: UnmeasuredValue;
+    readonly businessDecisionTime: MeasuredDuration | UnmeasuredValue;
+    readonly environmentRecoveryTime: MeasuredDuration | UnmeasuredValue;
+    readonly evidenceReviewTime: MeasuredDuration | UnmeasuredValue;
     /** Campaign wait is context only. It is not active human labour. */
     readonly observedWaitTime: MeasuredDuration | UnmeasuredValue;
     readonly controlRequests: MeasuredCount;
@@ -76,6 +89,25 @@ const modelUsageUnmeasured = (what: string): UnmeasuredValue => ({
 });
 
 const count = (value: number, sources: readonly string[]): MeasuredCount => ({ status: 'measured', value, unit: 'count', sources });
+
+function humanDuration(
+  category: HumanEffortMeasurement['category'],
+  requests: readonly [string, NonNullable<RunRecord['control']>['requests'][string]][],
+): MeasuredDuration | UnmeasuredValue {
+  const measured = requests.flatMap(([requestId, request]) => {
+    if (request.receipt.action !== 'measure-value') return [];
+    const parsed = humanEffortMeasurement.safeParse(request.receipt.data);
+    return parsed.success && parsed.data.category === category ? [{ requestId, value: parsed.data }] : [];
+  });
+  if (measured.length === 0) return unmeasuredHuman(category);
+  return {
+    status: 'measured',
+    value: measured.reduce((total, item) => total + Math.max(0, Date.parse(item.value.endedAt) - Date.parse(item.value.startedAt)), 0),
+    unit: 'ms',
+    sources: measured.flatMap((item) => [`run.control.requests.${item.requestId}`, item.value.evidenceRef]),
+    claimLimit: 'Explicit human stopwatch segments only; Campaign wall and wait time are excluded.',
+  };
+}
 
 /**
  * Project one reproducible value-study receipt from a Run snapshot and its existing Ledger records.
@@ -116,9 +148,9 @@ export function valueMeasurementReceipt(run: RunRecord, records: readonly Ledger
     ...(run.control === undefined ? {} : { controlRevision: run.control.revision }),
     final,
     human: {
-      businessDecisionTime: unmeasuredHuman('business-decision'),
-      environmentRecoveryTime: unmeasuredHuman('environment-recovery'),
-      evidenceReviewTime: unmeasuredHuman('evidence-review'),
+      businessDecisionTime: humanDuration('business-decision', humanRequests),
+      environmentRecoveryTime: humanDuration('environment-recovery', humanRequests),
+      evidenceReviewTime: humanDuration('evidence-review', humanRequests),
       observedWaitTime: run.meters === undefined
         ? { status: 'unmeasured', reason: 'This Run has no meters; Campaign wait time was not projected.' }
         : { status: 'measured', value: run.meters.waitedMs ?? 0, unit: 'ms', sources: ['run.meters.waitedMs'],

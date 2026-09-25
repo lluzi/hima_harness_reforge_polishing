@@ -14,6 +14,8 @@ function run(changes: Partial<RunRecord> = {}): RunRecord {
     status: 'ended-goal-not-met', meters: { elapsedMs: 1_000, waitedMs: 250, jobsLaunched: 1, attempts: 1, licenceMs: { PrimeTime: 2_000 } },
     control: { mode: 'agent', owner: 'owner', epoch: 1, revision: 1, paused: [], executions: {}, siteDigest: 'a'.repeat(64), requests: {
       review: { digest: 'b'.repeat(64), actor: 'guide', epoch: 1, revision: 0, at, state: 'done', origin: 'human', receipt: { requestId: 'review', action: 'continue' } },
+      business: { digest: 'c'.repeat(64), actor: 'guide', epoch: 1, revision: 0, at, state: 'done', origin: 'human', receipt: { requestId: 'business', action: 'measure-value',
+        data: { category: 'business-decision', startedAt: at, endedAt: later, evidenceRef: 'stopwatch:business-one' } } },
     } },
     ...changes,
   };
@@ -32,9 +34,10 @@ test('value receipt projects durable Job, seat and Model-moment facts without in
   assert.equal(receipt.jobs.launched.value, 1);
   assert.equal(receipt.jobs.finished.value, 1);
   assert.deepEqual(receipt.commercialToolSeatTime.values, { PrimeTime: 2_000 });
-  assert.equal(receipt.human.controlRequests.value, 1);
+  assert.equal(receipt.human.controlRequests.value, 2);
   assert.equal(receipt.human.observedWaitTime.status, 'measured');
-  assert.equal(receipt.human.businessDecisionTime.status, 'unmeasured');
+  assert.deepEqual(receipt.human.businessDecisionTime, { status: 'measured', value: 1_000, unit: 'ms',
+    sources: ['run.control.requests.business', 'stopwatch:business-one'], claimLimit: 'Explicit human stopwatch segments only; Campaign wall and wait time are excluded.' });
   assert.equal(receipt.human.environmentRecoveryTime.status, 'unmeasured');
   assert.equal(receipt.human.evidenceReviewTime.status, 'unmeasured');
   assert.equal(receipt.model.sessionsOpened.value, 1);

@@ -12,8 +12,9 @@
 // exactly as guarded as `/api` is.
 //
 // Reads expose Ledger facts and retained evidence. Both Run start routes prepare a Run for a
-// validated native session. The control endpoint accepts human pause/continue/cancel with current
-// epoch/revision; node work remains on the owning Agent's controlled tool. Legacy mutation routes
+// validated native session. The control endpoint accepts human pause/continue/cancel and explicit
+// value-study stopwatch receipts with current epoch/revision; node work remains on the owning
+// Agent's controlled tool. Legacy mutation routes
 // refuse Agent-owned Runs. Browser authentication grants the human emergency cancellation access,
 // never ownership merely by selecting or reading a Run.
 import type { ExecutionContext, ExecutionActionRequest, ExecutionActionResult } from './fabric.js';
@@ -1437,13 +1438,14 @@ async function controlOperation(ops: RemoteOperations, runId: string, req: Incom
     catch { return failure(403, 'hima/not-authorized', 'This task is not available in the selected project.'); }
   }
   const action = requiredString(body, 'action');
-  if (action !== 'pause' && action !== 'continue' && action !== 'cancel') throw new BadRequest('native control permits pause, continue or cancel only; the conversational Agent owns node work');
+  if (action !== 'pause' && action !== 'continue' && action !== 'cancel' && action !== 'measure-value') throw new BadRequest('native control permits pause, continue, cancel or a value-study measurement only; the conversational Agent owns node work');
   for (const field of ['expectedEpoch', 'expectedRevision'] as const) {
     if (typeof body[field] !== 'number' || !Number.isSafeInteger(body[field]) || body[field] < 0) throw new BadRequest(`${field} must be a nonnegative integer from the Run context`);
   }
   const result = await ops.executionAction({ runId, actor: sessionId, origin: 'human', action,
     expectedEpoch: body.expectedEpoch as number, expectedRevision: body.expectedRevision as number,
     requestId: requiredString(body, 'requestId'), ...(body.nodeId === undefined ? {} : { nodeId: requiredString(body, 'nodeId') }),
+    ...(action !== 'measure-value' ? {} : { measurement: body.measurement }),
   });
   if (result.kind === 'refused' || result.kind === 'unsupported') return failure(409, 'hima/run-not-in-state', result.reason ?? result.kind);
   return ok({ run: runAnswer(ops, result.context.run), notification: result.notification ?? {
