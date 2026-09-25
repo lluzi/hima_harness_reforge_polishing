@@ -169,16 +169,21 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
       && prepared.budget?.generations?.value === 1 && prepared.unknowns?.length === 0,
     { ready: prepared.ready, pack: prepared.pack, site: prepared.site, budget: prepared.budget,
       unknowns: prepared.unknowns, campaignFile: prepared.campaignFile });
-  const started = jsonOf(await host.ctx.tools.execute({ callId: 'j3-hima-confirm' as never,
-    name: 'hima_run', arguments: { proposalId: prepared.id, pack: PACK_ID, site: SITE_NAME,
-      goal: prepared.goal, strategy: prepared.strategy }, agent: guide, signal: AbortSignal.timeout(30_000) }));
+  // The normal Guide confirmation wakes its new owner immediately with a generic message. This
+  // evidence runner must make the qualified interactive constraint the owner's first instruction,
+  // otherwise a hybrid tool may legitimately choose its batch fallback before the J3 protocol is
+  // visible. Admission still uses the same prepared proposal and Fabric; only auto-notification is
+  // omitted so the first owner turn is deterministic and user-visible below.
+  const owner = check.track(await createRootAgent(host.ctx, home.workspace));
+  const started = await host.ctx.hima.startRun({ proposalId: prepared.id, pack: PACK_ID, site: SITE_NAME,
+    goal: prepared.goal, strategy: prepared.strategy, ownerSessionId: String(owner.id),
+    guideSessionId: String(guide.id), timeBoxMs: TIME_BOX_MINUTES * 60_000,
+    retryAllowance: 1, generationLimit: 1 });
   assert.equal(started.kind, 'ran', JSON.stringify(started));
-  const runId = String(started.runId);
-  const ownerId = String(started.context.run.control.owner);
-  const owner = host.ctx.get('agents')?.get(ownerId as never);
-  assert.ok(owner, 'the confirmed Campaign owner session must be live');
-  check.track(owner);
-  check.require('Guide confirmation created one distinct persistent Campaign owner',
+  if (started.kind !== 'ran') throw new Error('the prepared J3 Campaign was not admitted');
+  const runId = started.run.id;
+  const ownerId = String(owner.id);
+  check.require('the reviewed proposal created one distinct persistent Campaign owner',
     ownerId !== String(guide.id) && host.ctx.hima.ledger.run(runId)?.control?.guideSessionId === String(guide.id),
     { guide: String(guide.id), owner: ownerId, runId });
   check.observed.realEdaRequested = true;
@@ -194,7 +199,6 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
     }
   });
 
-  await check.wait(owner.whenIdle());
   const executionPrompt = [
     `Continue only the already confirmed Run ${runId}. You are its sole Campaign owner; never create another Run or another Agent.`,
     'Use hima_context and hima_execute for every graph action. Begin, work and complete only current authorized nodes; asynchronous commercial Jobs must settle from native facts before completion. Preserve every failure and do not use shell, raw terminal, replay or another method.',
