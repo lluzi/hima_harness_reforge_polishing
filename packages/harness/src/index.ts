@@ -95,7 +95,7 @@ export { launchInteractiveJob } from './jobs.js';
 export { nativeSessionMemoryEvidence } from './native-session-memory.js';
 export type { NativeSessionMemoryEvidence, NativeSessionMemoryReader } from './experience.js';
 export type { WorkMemoryScope, WorkMemorySummary, WorkMemoryRead, WorkMemoryAuthority, ExperienceAdoptionRequest } from './experience.js';
-export type { ExperienceAdoptionRecord } from './ledger.js';
+export type { ExperienceAdoptionRecord, DelegationRecord } from './ledger.js';
 export type { Site, SshTarget, Permit, SiteDiscovery, SiteDiscoveryRequest, SiteDiscoveryResult, SiteSaveIdentity } from './sites.js';
 
 // A HimaPack is data, and reading it is part of the bundle's surface: an operator inspects a pack
