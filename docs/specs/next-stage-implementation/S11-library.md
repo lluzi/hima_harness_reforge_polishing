@@ -1,14 +1,13 @@
 # S11：Library facts、typed report 与受控分析方法
 
-> **2026-09-24 现行状态：** 原先 `lib.name()` exit 139 环境阻塞已经由 QuaLib 2026
-> 的厂商示例、SAED14 和 TSMC28 有界原生检查解除。新的
-> [E1 development Pack](../../../packs/library-intelligence/INTENT.md)保留哈希绑定的
-> native worker、Reader 与本地 Host 反例，但**默认图从 blocked 开始且没有 native tool**。
-> 审查证明仅靠 manifest 自带的 Permit 快照会在 Host 授权前读取客户文件，因此 E1 产品资格仍等待
-> Host 对所加载 Site Permit 的同一性、嵌套路径和 QuaLib/XTop 许可证互斥做启动前检查。
-> [新 worker 的手动 L4 证据](../../assessment/2026-09-24/next-stage/library-e1-manual-l4.md)
-> 是 `nativeStatus=passed`、产品 `status=blocked`；E2–E4 未完成。下文旧环境/旧实施顺序叙述
-> 保留为制定规格时的历史快照，以本段及保留证据为现行判断。
+> **2026-09-25 现行状态：** 原先 `lib.name()` exit 139 环境阻塞已经解除；
+> `library-intelligence@0.2.0` 的默认图从 `qualify-api` 开始，包含可运行 native tool。
+> Host 的现有 `beforeLaunch`/Reader admission 现在核对实际加载的 Site Permit、嵌套读取路径、
+> 私有 workspace、Python/API/`edarun` 字节身份、QuaLib 资源声明，以及同一 Run 的持久 Job
+> launch/exit-0 历史。手动 L4 仍只是前置历史证据，不替代产品验收。E1 的当前唯一缺口是
+> 在 `selected=new`、无 XTop 客户端条件下完成一次实际 Pack-to-Host vendor/SAED14/TSMC28
+> read/query/copy/re-read；E2–E4 随后分别验收。下文出现的 crash、blocked graph 和未实现
+> worker 仅是带日期的原始问题/反例，不能作为当前执行状态。
 
 状态：实施规格；覆盖 backlog 的 `NXT-E1`、`NXT-E2`、`NXT-E3`、`NXT-E4`。本文件不实现、不运行测试/EDA、不安装或诊断 Liberty API。`LIB-INT-01` 仍是唯一真实接入门。
 
@@ -16,7 +15,7 @@
 
 工程师需要比较同一 Library family 的 baseline/candidate，区分 Library 自身变化和当前 design 的实际影响，并能够回到 hash-bound evidence。现有 Harness 已有 Pack、Site Permit、Channel/Job、Reader、Ledger、Archive 与 Workbench，但尚无 Library intelligence Pack、原生 API qualified facts、typed Library report 或客户规则 adapter。
 
-最早的必要条件没有满足：Empyrean Liberty API qualification fixture 在声明环境中于 `lib.name` 退出 139。这个 native crash 不是“没有 UI”的问题，不能被 mock、fallback parser、tab 或文字包装成 Library 读取成功。用户明确本轮不 debug；只有厂商可用包/精确运行说明，或用户另行授权有界 ABI/runtime 诊断，才能解除 E1。
+最早的资格运行曾在 `lib.name` 退出 139；这是形成 fail-closed E1 合同的历史原因，不是当前阻塞。QuaLib 2026 的三输入有界原生检查已经通过，Pack/Host admission 已实现。当前仍不能用 mock、fallback parser、独立 worker 或文字包装代替一次实际 Pack-to-Host E1 Run。
 
 ## Solution
 
@@ -95,8 +94,8 @@ E3 producer 输出与 S08 约定的 `hima-library-insight-report/1` `LibraryInsi
 
 ### E1: qualification remains a gate
 
-- 当前只保存/维护 blocked qualification specification 和 fixture contract；不创建声称 API 可用的 worker、Pack UI 或 batch corpus job。
-- 解除门后，第一提交仅实现 isolated qualification，不与 E2/E3/E4 或 UI 混合。每 input 都 read/query/copy/re-read；copy 只在 Campaign workspace，source SHA-256 前后相同。
+- `library-intelligence@0.2.0` 已实现 isolated qualification；E1 仍与 E2/E3/E4/UI 分离。每个 input 都必须 read/query/copy/re-read，copy 只在 Campaign workspace，source SHA-256 前后相同。
+- 实际 Pack-to-Host L4 必须使用 Host 加载的 Site/Permit、持久 Job 历史和 Pack Reader；独立 worker 不能替代。
 - 厂商包/环境变更必须记录 API build、Python、adapter hash、wrapper identity 和命令头。不能改 `edarun`、系统 Python、QuaLib/API install 或 license service 来使测试“通过”。
 
 ### E2: Pack-local facts
@@ -120,8 +119,8 @@ E3 producer 输出与 S08 约定的 `hima-library-insight-report/1` `LibraryInsi
 
 | 切片 | 交付与文件所有权 | 依赖 | 并行关系 | 最低验证 |
 | --- | --- | --- | --- | --- |
-| S11-E1A | qualification fixture contract、blocked evidence record、Site profile/Permit review；`packs/library-intelligence/` 尚不创建可用 parser | 离线合同无前置；真实执行仍等厂商包/说明或新授权诊断 | 可与 E3 fixture schema、E4 typed-I/O design 并行 | L0 schema + L2 Permit refusal fixture；真实 L4 被阻塞 |
-| S11-E1B | 解除门后 isolated `libapi_worker.py` qualification 和 `sites/linglong-library/` example | E1A 与真实 vendor runtime | E2/E3 real data 必须等此通过 | L2 local contract + 一次只读 L4 |
+| S11-E1A | qualification fixture、Pack worker、Host Permit/Job admission 与 Reader 反例 | 已完成并保留；不等于真实 E1 Run | 可与 E3 fixture schema、E4 typed-I/O design 并行 | L0/L2 focused contract 已通过 |
+| S11-E1B | actual `library-intelligence@0.2.0` Pack-to-Host vendor/SAED14/TSMC28 qualification | E1A；`selected=new` 且无 XTop client | E2/E3 real data 必须等此通过 | 一次只读 L4；当前未运行 |
 | S11-E2A | Pack manifest/facts/delta/readers fixtures、reader/hash/accounting logic | E1B 对真数据；可先 synthetic fixtures | 与 S08/D1/D2、E3 report schema 并行 | L1 facts/delta failures + L2 `checkPack` |
 | S11-E3A | frozen report payload + Pack-local producer/fixture; S08 consumes but does not own producer | E2 schema; real report waits E1/E2 | 可与 S08 renderer 并行 | L1 projection/filter invariant + L2 read identity |
 | S11-E4A | versioned rule/algorithm/proposal contract + fixtures | E2 payload schema; G2 failure templates | 可与 E3A、S08 并行 | L1 typed I/O + L2 Permit/budget refusal |
@@ -141,7 +140,7 @@ E3 producer 输出与 S08 约定的 `hima-library-insight-report/1` `LibraryInsi
 | L3 | D1/S08 Workbench 中一条 report selection/filter/provenance/key narrow view | 由 S08 负责 `window.test.ts`/`campaign-refresh.desktop.test.ts` 等精确 desktop 子集 |
 | L4 | E1 vendor fixture + SAED14 + TSMC28 read/query/copy/re-read；原件 hash invariant | 仅 E1B 后在 `linglong` 只读运行；不可由 L0-L3 替代 |
 
-真实模型、完整 corpus、STA/ECO、商业 EDA 和 L5 pilot 不是 E2/E3 fixture PASS 的推论。E1 仍 blocked 时，L4 标为未运行/blocked，绝不写 PASS。
+真实模型、完整 corpus、STA/ECO、商业 EDA 和 L5 pilot 不是 E2/E3 fixture PASS 的推论。实际 Pack-to-Host E1 未通过时，L4 标为未运行，绝不写 PASS。
 
 ## Acceptance examples
 
@@ -156,9 +155,9 @@ E3 producer 输出与 S08 约定的 `hima-library-insight-report/1` `LibraryInsi
 
 ## Qualification blockers
 
-1. **当前硬阻塞：** native Liberty API `lib.name` qualification exit 139。解除路径只有厂商提供 AlmaLinux 8 + Python 3.7 可通过 `testParser.py` 的包/精确环境，或用户重新授权有界 `_tmlib.so` ABI/runtime 诊断。
-2. 在 E1 未通过前，E2 真 facts、E3 真报告、E4 真算法输入和任何批量 corpus/真实 UI 验收全部 blocked；可进行无副作用的合同、fixture、导航和 renderer 研究，必须标为 synthetic/unavailable。
-3. `linglong-library` 的 read roots、wrapper、license 与 Campaign write root 必须由 Site owner 的 Permit 明确批准；不得复用或放宽现有 `linglong`。
+1. **当前 E1 门：** 运行实际 `library-intelligence@0.2.0` Pack-to-Host qualification；`lib.name` exit 139 已是历史反例，不是当前 blocker。
+2. 在该 E1 未通过前，E2 真 facts、E3 真报告、E4 真算法输入和任何批量 corpus/真实 UI 验收全部未准入；可进行无副作用的合同、fixture、导航和 renderer 研究，必须标为 synthetic/unavailable。
+3. Library Site 的 read roots、wrapper、license 与 Campaign write root 必须由 Site owner 的实际加载 Permit 明确批准；不得使用 manifest 快照替代 Host authority，也不得放宽现有 Site。
 4. 设计影响还需 hash-bound top/netlist/timing/constraints evidence；缺失只阻塞该维度，不能阻塞/伪造 Library-only 结论。
 
 ## Rollback

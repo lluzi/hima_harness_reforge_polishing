@@ -17,6 +17,7 @@
 // refuse Agent-owned Runs. Browser authentication grants the human emergency cancellation access,
 // never ownership merely by selecting or reading a Run.
 import type { ExecutionContext, ExecutionActionRequest, ExecutionActionResult } from './fabric.js';
+import { valueMeasurementReceipt, type ValueMeasurementReceipt } from './value-measurement.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { legacyAutomaticAllowed } from './runs.js';
 import type { Context } from '@deepseek-ai/cordis';
@@ -380,6 +381,8 @@ export interface RunView {
   readonly analyses?: readonly AnalysisView[];
   readonly archive?: { readonly recordId: string; readonly delivery: 'pending' | 'complete' | 'failed'; readonly directory: string; readonly reason?: string };
   readonly run: RunHeadView;
+  /** A fail-closed study projection over existing records. It starts no timer or telemetry service. */
+  readonly valueMeasurement?: ValueMeasurementReceipt;
   /** Workspace declarations, not an observed runtime/tool-version inventory. `bindings` is the
    *  Site's own resolved value for each of the pack's declared inputs (#41 task 6, the node card's
    *  own Facts tab), carried on the workspace record since the preparation that resolved them;
@@ -936,6 +939,7 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
   const workshop = standingWorkshop(run, records);
   return {
     run: runHeadView(run, prepared?.packVersion, words),
+    valueMeasurement: valueMeasurementReceipt(run, records),
     ...(prepared === undefined ? {} : { workspace: { ...(prepared.design === undefined ? {} : { design: prepared.design }), flowRoot: prepared.flowRoot, containerName: prepared.containerName, ...(prepared.bindings === undefined ? {} : { bindings: prepared.bindings }) } }),
     observations,
     refusals: records.filter((r): r is RefusalRecord => r.type === 'refusal').map(refusalView),

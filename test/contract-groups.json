@@ -91,6 +91,7 @@
     "test/contract/test-entry.test.ts",
     "test/contract/trial-home.test.ts",
     "test/contract/trial-package.test.ts",
+    "test/contract/value-measurement.test.ts",
     "test/contract/view-run.test.ts",
     "test/contract/view.test.ts",
     "test/contract/workbench-address.test.ts",

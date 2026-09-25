@@ -149,7 +149,7 @@ Report payload 排序由生产者固定；D2 的本地 filter 只能筛已加载
 ## Qualification blockers
 
 - 原生 child Session/SessionQuery 是否提供 lineage、增量 transcript、实际 context snapshot、artifact/tool trace 仍需在实现前做只读接口核查。没有该能力时 C2 只能暴露现有可读字段和 unavailable，不能补写。
-- E3 的 `LibraryInsightReportView` 只允许接入已冻结、hash-bound 报告。真实 Library report 仍受 S11 E1 的 `lib.name` exit 139 qualification 门约束；没有通过不展示“真实分析成功”。
+- E3 的 `LibraryInsightReportView` 只允许接入已冻结、hash-bound 报告。`lib.name` exit 139 已是历史反例；真实 Library report 现在受 S11 的实际 Pack-to-Host E1 Run 约束，没有通过仍不展示“真实分析成功”。
 - Start 的精确 DSH slot 与当前 profile 实际挂载在实施切片开始时再核实；不存在的 slot/`profile.ts` 不是创建新框架的理由。
 
 ## Rollback

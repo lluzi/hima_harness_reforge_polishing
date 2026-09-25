@@ -136,8 +136,8 @@
         "NXT-E4"
       ],
       "issue": 49,
-      "title": "Library洞察（原生API仍阻塞）",
-      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "title": "Library洞察（Pack-to-Host E1待验）",
+      "readiness": "library-intelligence@0.2.0 runnable; actual Pack-to-Host E1 then E2-E4 remain",
       "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/49"
     },
     {

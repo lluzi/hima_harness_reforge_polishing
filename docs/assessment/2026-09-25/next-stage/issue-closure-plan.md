@@ -3,6 +3,9 @@
 Date: 2026-09-25. Planning source: `58ac5d1e99d44f7f5b5081db8aad05fec4ea1df0`
 on `main`, with the same SHA on `origin/main` when this plan was written.
 
+Wave 0 implementation status is recorded in [wave0-authority-and-measurement.md](wave0-authority-and-measurement.md).
+The plan below remains the dependency and terminal-disposition authority for later waves.
+
 ## Objective and terminal vocabulary
 
 This plan closes every currently open Issue without converting an unproven product claim into a

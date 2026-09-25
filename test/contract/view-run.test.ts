@@ -137,6 +137,9 @@ test('the run view carries the whole path of a run started over HTTP: nodes, job
     // graph took four turns and none of them was tried twice, which the node rows below say.
     assert.equal(view.run.meters?.attempts, 4, 'one turn at each of the four nodes it reached');
     assert.equal(view.run.meters?.endedBy, 'generation-limit', 'and the meter that ended it is the generation it was allowed');
+    assert.equal(view.valueMeasurement?.jobs.launched.value, 1, 'the value receipt reads the durable Job count');
+    assert.equal(view.valueMeasurement?.human.businessDecisionTime.status, 'unmeasured', 'missing human labour is not projected as zero');
+    assert.equal(view.valueMeasurement?.model.requests.status, 'unmeasured', 'a session history does not invent provider request usage');
 
     // The path: one entry per node, in the order the Run reached them, each with the state it is in.
     assert.deepEqual(

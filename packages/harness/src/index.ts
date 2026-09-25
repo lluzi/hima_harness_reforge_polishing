@@ -167,6 +167,8 @@ export { writeExperience, readExperience, readMaterial, retainRunMaterial, write
 export type { WriteExperienceResult, ReadExperienceResult, WriteRunAssetsResult, ReadRunAssetsResult, ReadArchivedMaterialResult, RunKnowledgeCandidate, RunKnowledgeList, ReadRunKnowledgeResult } from './experience.js';
 export { RUN_ASSET_MANIFEST_SCHEMA } from './experience-report.js';
 export type { RunAssetManifest, ExperienceAsset } from './experience-report.js';
+export { valueMeasurementReceipt, VALUE_MEASUREMENT_SCHEMA } from './value-measurement.js';
+export type { ValueMeasurementReceipt, MeasuredCount, MeasuredDuration, SeatTimeMeasurement, UnmeasuredValue } from './value-measurement.js';
 // `attemptOfSession` is exported for the one thing that cannot be shown through a face: which
 // attempt a Job belongs to when the host that launched it died before the node record naming its
 // session was written. The contract suite asserts that reading at the ledger object (#62).

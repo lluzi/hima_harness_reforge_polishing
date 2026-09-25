@@ -48,7 +48,7 @@
 | [S08 工作区](S08-workbench.md) / [#51](https://github.com/lluzi/hima_harness_reforge_polishing/issues/51) | D1、D2、C2 | 现有dock上的冻结视图和导航 | client/HimaWorkbench、NodeCard、原生Session UI |
 | [S09 交互EDA](S09-interactive-eda.md) / [#50](https://github.com/lluzi/hima_harness_reforge_polishing/issues/50) | F1、F2、F3 | 精确terminal consumer与guard资格 | profile、Job/Channel、Pack XTop adapter |
 | [S10 Pack作者](S10-pack-authoring.md) / [#60](https://github.com/lluzi/hima_harness_reforge_polishing/issues/60) | G1、G2、G3 | 五阶段模板/反例/恢复合同 | authoring/packs/release/现有skills |
-| [S11 Library](S11-library.md) / [#49](https://github.com/lluzi/hima_harness_reforge_polishing/issues/49) | E1、E2、E3、E4 | 离线报告/失败fixture；E1阻塞记录 | 原生API局部adapter、原Reader/Insight renderer |
+| [S11 Library](S11-library.md) / [#49](https://github.com/lluzi/hima_harness_reforge_polishing/issues/49) | E1、E2、E3、E4 | `0.2.0` Host admission/Reader 已有；实际 Pack-to-Host E1 未运行 | 原生API局部adapter、原Reader/Insight renderer |
 | [S12 验证与交付](S12-delivery.md) / [#61](https://github.com/lluzi/hima_harness_reforge_polishing/issues/61) | J1、J2、J3 | 回归矩阵、包身份/验收receipt | 现有test入口、package-trial、发布文档 |
 
 原NXT前缀省略展示；总数29，无重复主归属。历史合并编号继续由 [backlog](../../polishing-backlog.md) 维护，不新建另一套任务语义。Issue编号及状态见 [issue-map.json](issue-map.json)。
@@ -121,4 +121,4 @@ The current implementation is tracked in the [Phase 1 coverage matrix](../../ass
 - 常规独立文档复核发现的测试错组、目标地址不一致及依赖歧义已修正；issue-map补齐。此复核不代表尚未实现的控制/权限已经通过安全验收。
 - 按当前 `test/contract-groups.json` 静态校验所有具体测试命令，核对现有代码路径/关键符号、共享写入归属、模板章节、本地链接和差异空白。
 - 一次仅列举测试清单的命令因默认Node 22而被版本门拒绝，未运行测试；后续依据JSON静态核对。实际实施使用README规定的Node 24。
-- 无产品源码、依赖或部署配置变化；无产品模型/EDA调用。原生Library资格阻塞与trial暂停保持。
+- 本段是 2026-09-23 规格核对历史。当前 Library 状态以 S11 顶部 2026-09-25 更新为准；原生 crash 已解除，实际 Pack-to-Host E1 仍未运行。

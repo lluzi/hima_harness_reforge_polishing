@@ -1,5 +1,10 @@
 # #52 hard-frontier implementation tranche
 
+> **2026-09-25 current disposition:** This file remains the dated implementation record for the
+> tranche. Since it was written, #55, #59, #50 and #61 reached terminal closure. Library
+> `0.2.0` remains runnable and its next gate is the actual Pack-to-Host E1 Run described below;
+> the old manual blocked status is not current product state. The continuous DTCO gate remains #44.
+
 Date: 2026-09-24. Source baseline: `dde8025a10348e5d7bb18a25eaa3ec0b5635ed27`.
 
 This tranche advances three previously open qualification boundaries without restarting a
@@ -81,7 +86,8 @@ remain relative-baseline evidence, not clean signoff.
 
 - No commercial EDA or model was launched and no Empyrean licence selection changed in this tranche.
 - Interactive XTop mutation remains unavailable; the production confinement gate in #50 is unchanged.
-- E2-E4 Library facts and analysis, a positive matched PPA result, and customer-value J3 remain open.
+- E2-E4 Library facts and analysis and the bounded held-out value attempt remain open. The J3 study
+  itself is closed `inconclusive`; it did not establish a positive customer-value or ROI claim.
 - The final pre-review local regression passed 648/648, with 0 failures, 0 skips, 0 Electron launches and
   0 SSH subprocess attempts. It covered 95 local contract files in 1,107.743 seconds. Desktop and
   live-Site groups were not run. The subsequent review-only module placement and explicit-DB fixes
