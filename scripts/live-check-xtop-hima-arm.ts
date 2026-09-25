@@ -13,7 +13,9 @@ import {
   discoverSshSite,
   installPackMethod,
   loadPack,
+  overridesOf,
   packDigestExcludes,
+  readCampaignFile,
   saveDiscoveredSite,
   writeCampaignFile,
   type JobRecord,
@@ -175,9 +177,12 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
   // visible. Admission still uses the same prepared proposal and Fabric; only auto-notification is
   // omitted so the first owner turn is deterministic and user-visible below.
   const owner = check.track(await createRootAgent(host.ctx, home.workspace));
+  const campaign = readCampaignFile(home.workspace);
+  assert.ok(campaign, 'the reviewed Campaign file must still be present at confirmation');
+  const overrides = overridesOf(campaign.file);
   const started = await host.ctx.hima.startRun({ proposalId: prepared.id, pack: PACK_ID, site: SITE_NAME,
     goal: prepared.goal, strategy: prepared.strategy, ownerSessionId: String(owner.id),
-    guideSessionId: String(guide.id), timeBoxMs: TIME_BOX_MINUTES * 60_000,
+    guideSessionId: String(guide.id), overrides, timeBoxMs: TIME_BOX_MINUTES * 60_000,
     retryAllowance: 1, generationLimit: 1 });
   assert.equal(started.kind, 'ran', JSON.stringify(started));
   if (started.kind !== 'ran') throw new Error('the prepared J3 Campaign was not admitted');
