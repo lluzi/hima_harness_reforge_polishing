@@ -27,7 +27,7 @@ import {
   type NodeRecord,
   type RunRecord,
 } from '@hima/harness';
-import { himaProfileDir, prepareHimaHome, homePatchFile } from '../packages/desktop/src/hima-home.ts';
+import { himaHomeSources, himaProfileDir, prepareHimaHome, homePatchFile } from '../packages/desktop/src/hima-home.ts';
 import {
   bootInProcess,
   createRootAgent,
@@ -196,8 +196,8 @@ const jsonOf = (result: { content?: readonly { type: string; text?: string }[] }
 const rawArgs = process.argv.slice(2);
 const usage = [
   'usage:',
-  '  node scripts/live-check-dtco-pilot.ts --preflight-only --site-profile <private-site.json>',
-  '  node scripts/live-check-dtco-pilot.ts --out <fresh-directory> --site-profile <private-site.json>',
+  '  node scripts/live-check-dtco-pilot.ts --preflight-only --app <HimaHarness.app> --site-profile <private-site.json>',
+  '  node scripts/live-check-dtco-pilot.ts --out <fresh-directory> --app <HimaHarness.app> --site-profile <private-site.json>',
   `    [--timeout-ms ${HARNESS_TIME_BOX_MS} --max-turns ${MAX_USER_TURNS} --max-steps ${MAX_PRODUCT_REQUEST_STEPS}]`,
   '',
   'The live form requires DEEPSEEK_API_KEY in the inherited environment.',
@@ -213,8 +213,14 @@ if (profileFlags.length !== 1) throw new Error(usage);
 const profileIndex = profileFlags[0]!;
 const profileArgument = rawArgs[profileIndex + 1];
 if (!profileArgument || profileArgument.startsWith('--')) throw new Error(usage);
+const appFlags = rawArgs.flatMap((arg, index) => arg === '--app' ? [index] : []);
+if (appFlags.length !== 1) throw new Error(usage);
+const appIndex = appFlags[0]!;
+const appArgument = rawArgs[appIndex + 1];
+if (!appArgument || appArgument.startsWith('--')) throw new Error(usage);
 const preflightOnly = rawArgs.includes('--preflight-only');
-const forwardedArgs = rawArgs.filter((_arg, index) => index !== profileIndex && index !== profileIndex + 1);
+const forwardedArgs = rawArgs.filter((_arg, index) => index !== profileIndex && index !== profileIndex + 1
+  && index !== appIndex && index !== appIndex + 1);
 if (preflightOnly) {
   if (forwardedArgs.length !== 1 || forwardedArgs[0] !== '--preflight-only') throw new Error(usage);
 } else if (forwardedArgs.includes('--preflight-only')) {
@@ -266,13 +272,30 @@ for (const licence of ['Design-Compiler', 'Library-Compiler', 'Innovus']) {
   assert.equal(profile.site.capacity.licences[licence], 1, `the L5 Site must reserve one ${licence} seat`);
 }
 
-const packSource = path.join(repoRoot, 'packs', PACK_ID);
-const sourcePack = loadPack(path.join(repoRoot, 'packs'), PACK_ID);
+const app = realpathSync(path.resolve(appArgument));
+assert.ok(lstatSync(app).isDirectory() && app.endsWith('.app'), 'Wave 4 App candidate must be one real .app directory');
+const appRoot = realpathSync(path.join(app, 'Contents/Resources/app'));
+const appManifestPath = realpathSync(path.join(path.dirname(app), 'trial-manifest.json'));
+const appManifest = JSON.parse(readFileSync(appManifestPath, 'utf8')) as Record<string, any>;
+assert.equal(appManifest.status, 'structurally-verified trial candidate', 'Wave 4 App candidate is not structurally verified');
+assert.equal(appManifest.source?.dirty, false, 'Wave 4 App candidate was built from dirty source');
+assert.match(appManifest.source?.sha ?? '', /^[0-9a-f]{40}$/, 'Wave 4 App candidate source SHA is invalid');
+const changedProductInputs = execFileSync('git', ['diff', '--name-only', `${appManifest.source.sha}..HEAD`, '--',
+  'packages', 'profiles', 'packs', 'package.json', 'pnpm-lock.yaml'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+assert.equal(changedProductInputs, '', 'Wave 4 App product inputs changed after this candidate was built');
+const packSource = path.join(appRoot, 'packs', PACK_ID);
+const sourcePack = loadPack(path.join(appRoot, 'packs'), PACK_ID);
 const sourceDigest = packDigestOf(packSource);
 assert.equal(sourcePack.contract.version, '5.2.16', 'Wave 4 requires the Wave 3 sealed portable Pack');
 assert.equal(sourcePack.contract.status, 'development', 'PLS-35 must preserve the Pack author-declared status');
+assert.deepEqual(appManifest.runtimeInputs?.trialPack,
+  { id: PACK_ID, version: sourcePack.contract.version, methodDigest: sourceDigest,
+    testRun: 'run-a148dd0c-2d2d-42b0-8c32-5179d40ad254' },
+  'Wave 4 App manifest differs from its bundled sealed Pack');
 
 const declared = {
+  app: { path: app, version: appManifest.version, artifactDigest: appManifest.artifactDigest,
+    manifestSha256: sha256(readFileSync(appManifestPath)), sourceSha: appManifest.source.sha },
   pack: {
     id: PACK_ID,
     version: sourcePack.contract.version,
@@ -410,7 +433,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     else process.env.TMPDIR = previousTmpdir;
   }
   check.home = home;
-  await prepareHimaHome({ home: home.home, bundleMode: 'installed' });
+  await prepareHimaHome({ home: home.home, bundleMode: 'installed', sources: himaHomeSources(appRoot) });
   const installedPack = path.join(packsDirOf(home), PACK_ID);
   const installation = installPackMethod({ from: packSource, to: installedPack });
   check.require('the clean Home explicitly installed the exact portable Pack',
