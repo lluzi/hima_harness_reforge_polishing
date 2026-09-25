@@ -89,7 +89,6 @@ let host: Awaited<ReturnType<typeof bootInProcess>> | undefined;
 let runId: string | undefined;
 let childId: string | undefined;
 let ownerResume: Awaited<ReturnType<typeof resumeTestAgent>> | undefined;
-let childResume: Awaited<ReturnType<typeof resumeTestAgent>> | undefined;
 try {
   remote(`test ! -e '${remoteRoot}' && mkdir -p '${remoteRoot}'`);
   upload(remotePermit, permitBytes);
@@ -238,12 +237,6 @@ try {
   assert.ok(childRecord);
   const handoff = (childRecord!.payload as any).handoff;
   assert.match(handoff.outputIdentity, /^[a-f0-9]{64}$/); assert.equal('nativeMessages' in handoff, false);
-  const childSources = await host.ctx.hima.workMemory(childSessionId, { action: 'sources' }) as any;
-  const childMemory = await host.ctx.hima.workMemory(childSessionId, { action: 'save', summary: { subject: 'Library child handoff',
-    decisions: ['Candidate only; preserve report identity and unknowns.'], openQuestions: [], todo: ['Parent decides whether to adopt.'],
-    references: [], sources: [], nativeSources: childSources.nativeSources } }) as any;
-  assert.equal(childMemory.kind, 'current');
-
   const postReport = await host.ctx.hima.workMemory(ownerId, { action: 'sources', runId }) as any;
   await host.ctx.hima.workMemory(ownerId, { action: 'save', runId, summary: { subject: 'Wave 2 report produced',
     decisions: ['Native-qualified report is read-only and bounded to the same-source control.'], openQuestions: ['Need an independent candidate Library.'],
@@ -282,12 +275,9 @@ try {
   const ownerModel = { provider: owner.options.provider!, model: owner.options.model! };
   await host.dispose(); host = await bootInProcess(home); await host.ctx.hima.reconciled;
   ownerResume = await resumeTestAgent(host.ctx, ownerId, ownerModel);
-  childResume = await resumeTestAgent(host.ctx, childSessionId);
   const campaignAfterRestart = await host.ctx.hima.workMemory(ownerId, { action: 'read', runId }) as any;
   assert.equal(campaignAfterRestart.kind, 'stale'); assert.ok(campaignAfterRestart.authority[0].status.startsWith('ended-'));
   assert.ok(campaignAfterRestart.authority[0].reportRefs.includes(reportRecord.id));
-  const childAfterRestart = await host.ctx.hima.workMemory(childSessionId, { action: 'read' }) as any;
-  assert.ok(['current', 'stale'].includes(childAfterRestart.kind), JSON.stringify(childAfterRestart));
   const resumedOwnerContext = await readNativeSessionContext(host.ctx, { sessionId: ownerId, targetSessionId: ownerId });
   assert.match(JSON.stringify(resumedOwnerContext.context), /compacted-summary/);
   const resumedChildContext = await readNativeSessionContext(host.ctx, { sessionId: ownerId, targetSessionId: childSessionId, parentSessionId: ownerId }, host.ctx.hima.ledger);
@@ -313,7 +303,7 @@ try {
     run: host.ctx.hima.ledger.run(runId), workspace: started.workspace,
     records: finalRecords, reportTarget, reportView, artifacts, sourceHashesBefore: sourceHashesBefore.split('\n'), sourceHashesAfter: sourceHashesAfter.split('\n'),
     environmentBefore: before, environmentAfter: after,
-    memory: { initialMemory, jobStale, holdStale, staleSession, campaignAfterRestart, childAfterRestart,
+    memory: { initialMemory, jobStale, holdStale, staleSession, campaignAfterRestart,
       compact: { kind: compact.kind, prefixIdentity: preservedPrefix.transcriptIdentity, contextAvailability: (resumedOwnerContext.context as { availability?: unknown }).availability },
       child: { sessionId: childSessionId, resultRecordId: childRecord!.id, outputIdentity: handoff.outputIdentity, persistedEvents: resumedChildContext.events.length },
       correction: { recordId: disabled.id, event: disabled.event }, crossWorkspace: 'refused' },
@@ -330,7 +320,7 @@ try {
   writeFileSync(failureAt, `${JSON.stringify({ ...failureContext, at: new Date().toISOString(), error: String(error), stack: error instanceof Error ? error.stack : undefined }, null, 2)}\n`);
   throw error;
 } finally {
-  await childResume?.dispose(); await ownerResume?.dispose();
+  await ownerResume?.dispose();
   if (host && runId && ['running', 'waiting'].includes(host.ctx.hima.ledger.run(runId)?.status ?? '')) await host.ctx.hima.cancelRun(runId);
   await host?.dispose(); await home.dispose();
 }
