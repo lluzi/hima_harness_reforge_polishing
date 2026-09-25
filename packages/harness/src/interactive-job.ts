@@ -180,7 +180,11 @@ export async function openInteractiveJob(on: InteractiveChannel, request: OpenIn
   const allocated = await allocateInteractiveJobSession(on, request.runId, request.name);
   const transcriptPath = jobLogPath({ workspace: request.workspace, session: allocated.session });
   const exitPath = jobExitPath({ workspace: request.workspace, session: allocated.session });
-  const startup = `${request.argv.map(quote).join(' ')}; hima_status=$?; printf '%s\\n' "$hima_status" > ${quote(exitPath)}; exit "$hima_status"`;
+  const toolStartup = `${request.argv.map(quote).join(' ')}; hima_status=$?; printf '%s\\n' "$hima_status" > ${quote(exitPath)}; exit "$hima_status"`;
+  // Replace tmux's interactive shell with a non-interactive process-group leader. Otherwise shell
+  // job control moves the wrapper into a child foreground group and killing the tmux pane can leave
+  // a licensed vendor process orphaned outside the recorded Job session.
+  const startup = `exec /bin/sh -c ${quote(toolStartup)}`;
   const operationDigest = digest({ ...request, session: allocated.session, transcriptPath, exitPath, startup });
   const openIntent = parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest), event: 'open-intent',
     jobSession: allocated.session, transcriptPath, exitPath, sessionDeadlineAt: request.sessionDeadlineAt }) as OpenIntentRecord;

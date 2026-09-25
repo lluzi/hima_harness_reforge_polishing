@@ -102,6 +102,7 @@ test('production binding resolves retained Pack/Site facts, pins admin evidence,
     methodDigest: packDigest, inputDigest: 'd'.repeat(64), phase: 'ready' };
   const resolved = await bridge.resolve({ pack, run: run as never, execution: execution as never, site, workspace: home.workspace });
   assert.ok(resolved); assert.deepEqual(resolved.argv.slice(0, 4), ['make', '-C', `${home.workspace}/flow`, 'DESIGN=opene902']);
+  assert.equal(resolved.binding.limits.startupWaitMs, 60_000);
   assert.deepEqual(resolved.licences, { 'Design-Compiler': 1 });
   assert.equal(resolved.binding.mutation, 'qualified');
   const verified = await bridge.verifyAdminBinding(resolved.binding);
