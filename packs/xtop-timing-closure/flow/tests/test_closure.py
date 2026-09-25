@@ -408,6 +408,28 @@ class ClosureContractTest(unittest.TestCase):
         with self.assertRaisesRegex(closure.Rejected, "same generation"):
             closure.validate_snapshot_identity(self.workspace, relabelled)
 
+    def test_external_site_inputs_are_admitted_only_when_bound_by_prepare_identity(self):
+        with tempfile.TemporaryDirectory() as outside:
+            profile = Path(outside) / "site-profile.json"
+            source = Path(outside) / "source-manifest.sha256"
+            profile.write_text(json.dumps(self.runtime["profile"], sort_keys=True))
+            source.write_text("external source identity\n")
+            self.runtime["profileIdentity"] = closure.file_ref(profile, self.workspace, "site-profile")
+            self.runtime["sourceManifest"] = closure.file_ref(source, self.workspace, "source-manifest")
+            self.write_database(0)
+            self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2),
+                                   "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)]})
+            self.save_runtime(); closure.summarize(self.workspace)
+            original = closure.read_json(self.workspace / "flow" / "iterations" / "g000" / "closure-state.json")
+            closure.validate_snapshot_identity(self.workspace, original)
+
+            replacement = Path(outside) / "other-profile.json"
+            replacement.write_text(profile.read_text())
+            changed = copy.deepcopy(original)
+            changed["measurement"]["profile"] = closure.file_ref(replacement, self.workspace, "site-profile")
+            with self.assertRaisesRegex(closure.Rejected, "prepared Run identity"):
+                closure.validate_snapshot_identity(self.workspace, changed)
+
     def test_complete_same_method_physical_checks_allow_a_best_database(self):
         self.write_database(0)
         self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2), "setup": [("A/D", -0.10), ("B/D", -0.05)], "hold": [("H/D", -0.08)]})

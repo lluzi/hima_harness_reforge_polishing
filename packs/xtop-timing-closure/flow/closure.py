@@ -803,12 +803,13 @@ def copy_database_alias(workspace: Path, snapshot):
     return script, data, identity
 
 
-def resolved_ref(workspace: Path, ref):
+def resolved_ref(workspace: Path, ref, allow_external=False):
     if not isinstance(ref, dict) or set(ref) != {"role", "path", "sha256", "bytes"}:
         raise Rejected("measurement file identity is malformed")
     raw = Path(ref["path"])
     path = raw.resolve() if raw.is_absolute() else (workspace / raw).resolve()
-    if not path.is_relative_to(workspace.resolve()) or path.is_symlink() or not path.is_file():
+    if ((not allow_external and not path.is_relative_to(workspace.resolve()))
+            or path.is_symlink() or not path.is_file()):
         raise Rejected("measurement file identity is absent or escapes the workspace")
     bytes_ = path.read_bytes()
     if len(bytes_) != ref["bytes"] or hashlib.sha256(bytes_).hexdigest() != ref["sha256"]:
@@ -867,8 +868,15 @@ def validate_snapshot_identity(workspace: Path, snapshot):
     measurement = snapshot.get("measurement")
     if not isinstance(measurement, dict) or set(measurement) != {"profile", "sourceManifest", "scenariosSha256", "spef"}:
         raise Rejected("candidate constraints/scenario/extraction identity is incomplete")
-    profile_path = resolved_ref(workspace, measurement["profile"])
-    resolved_ref(workspace, measurement["sourceManifest"])
+    runtime = load_runtime(workspace)
+    if (measurement["profile"] != runtime.get("profileIdentity")
+            or measurement["sourceManifest"] != runtime.get("sourceManifest")):
+        raise Rejected("candidate profile or source manifest differs from the prepared Run identity")
+    # These two Site inputs may live outside the Campaign workspace, exactly as `prepare`
+    # recorded them. They are the only external refs admitted here, and only when the complete
+    # identity equals the immutable runtime row; all generated evidence stays workspace-local.
+    profile_path = resolved_ref(workspace, measurement["profile"], allow_external=True)
+    resolved_ref(workspace, measurement["sourceManifest"], allow_external=True)
     if not isinstance(measurement["scenariosSha256"], str) or not isinstance(measurement["spef"], dict) or not measurement["spef"]:
         raise Rejected("candidate constraints/scenario/extraction identity is malformed")
     for ref in measurement["spef"].values():
