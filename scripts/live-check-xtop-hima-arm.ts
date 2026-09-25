@@ -220,7 +220,10 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
     if (!run) throw new Error('the Hima arm Run disappeared');
     if (terminal(run) || (run.status === 'waiting' && run.currentNode === 'blocked')) break;
     const failed = context.executions.filter((execution) => !execution.supersededBy
-      && ['failed', 'uncertain'].includes(execution.phase));
+      && ['failed', 'uncertain'].includes(execution.phase)
+      && !context.executions.some((later) => later.nodeId === execution.nodeId
+        && later.generation === execution.generation && later.attempt > execution.attempt
+        && later.phase === 'completed'));
     if (failed.length > 0) throw new Error(`the Hima arm retained a failed/uncertain execution: ${JSON.stringify(failed)}`);
     const working = context.executions.find((execution) => execution.phase === 'working');
     if (working) {
