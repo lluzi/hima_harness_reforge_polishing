@@ -124,7 +124,7 @@ try {
   assert.equal(owner.options.model, 'deepseek-flash');
   const started = await host.ctx.hima.startRun({ pack: 'library-intelligence', site: site.name, test: true,
     goal: { qualification_required: 1 }, strategy: { qualificationRevision: 0 }, ownerSessionId: ownerId,
-    timeBoxMs: 20 * 60_000, generationLimit: 1, retryAllowance: 0 });
+    timeBoxMs: 20 * 60_000, generationLimit: 1, retryAllowance: 1 });
   assert.equal(started.kind, 'ran', JSON.stringify(started));
   if (started.kind !== 'ran') throw new Error('Wave 2 Run did not start');
   runId = started.run.id;
