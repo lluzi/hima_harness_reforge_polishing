@@ -1070,6 +1070,24 @@ class ClosureContractTest(unittest.TestCase):
         self.assertNotIn('operator-qualification-20260924', text)
         self.assertTrue((startup.parent / "libraries.tcl").is_file())
 
+    def test_interactive_finalize_accepts_the_actual_xtop_keep_route_filenames(self):
+        self.save_runtime()
+        eco = self.workspace / "flow" / "iterations" / "g001" / "XTOP" / "eco_output"
+        eco.mkdir(parents=True)
+        logical = eco / "xtop_operator_g001_eco_netlist_swerv_wrapper.txt"
+        physical = eco / "xtop_operator_g001_eco_physical_swerv_wrapper.txt"
+        logical.write_text("ecoAddRepeater -cell BUFFD2 -net n1\n")
+        physical.write_text("placeInstance eco_buffer_1 10 20 R0 -placed\n")
+
+        result = closure.finalize_xtop_interactive(self.workspace)
+
+        runtime = closure.load_runtime(self.workspace)
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["facts"]["mode"], "typed-interactive")
+        self.assertEqual(runtime["pendingIteration"], 1)
+        self.assertEqual(runtime["pendingEco"]["netlist"], str(logical))
+        self.assertEqual(runtime["pendingEco"]["physical"], str(physical))
+
     def test_keep_route_uses_two_sourceable_tcl_scripts_and_rejects_atomic_or_route_deletion(self):
         pack = Path(__file__).resolve().parents[2]
         xtop_template = (pack / "flow" / "templates" / "xtop.tcl").read_text()

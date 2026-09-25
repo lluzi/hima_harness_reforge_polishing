@@ -771,8 +771,8 @@ def finalize_xtop_interactive(workspace: Path):
     iteration = int(runtime["iteration"]) + 1
     root = paths(workspace)["flow"] / "iterations" / f"g{iteration:03d}" / "XTOP"
     eco = root / "eco_output"
-    logical = list(eco.glob("xtop_operator_g*_eco_innovus_netlist_*.txt"))
-    physical = list(eco.glob("xtop_operator_g*_eco_innovus_physical_*.txt"))
+    logical = list(eco.glob("xtop_operator_g*_eco_netlist_*.txt"))
+    physical = list(eco.glob("xtop_operator_g*_eco_physical_*.txt"))
     if len(logical) != 1 or len(physical) != 1:
         raise Rejected("typed XTop Operator produced no unique netlist and physical ECO pair")
     logical_tcl = validate_sourceable_eco(logical[0], "logical")

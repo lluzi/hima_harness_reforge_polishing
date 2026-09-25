@@ -1,5 +1,5 @@
 id: xtop-timing-closure
-version: "1.0.11"
+version: "1.0.12"
 title: XTop iterative timing closure
 status: development
 minimumHarnessVersion: 0.1.0

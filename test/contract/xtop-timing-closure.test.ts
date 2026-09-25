@@ -39,7 +39,7 @@ test('the XTop closure Pack loads, fits its declared execution surface and passe
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /xtop-timing-closure@1\.0\.11.*fit/s);
+    assert.match(throughHost.text, /xtop-timing-closure@1\.0\.12.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {

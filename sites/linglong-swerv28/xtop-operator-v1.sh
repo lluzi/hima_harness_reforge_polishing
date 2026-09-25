@@ -11,7 +11,7 @@ adapter="$2"
 startup_template="$3"
 allowed_root=/data/eda/project/hima_harness/xtop-timing-closure-runs
 image='localhost/edarunner@sha256:8467102dbae851e4136e998661ae3a01ad9b65d49711c82f2b0883ab8d1bbb8c'
-adapter_sha256='e0fbd46ee6dd90ff2b59756daa5ea3d29d2c6e9e74c1d47fdb176a8a54256dcf'
+adapter_sha256='81621995cc3a75f73a72970e4641993d5b8dd98d94ffc974513582044137ac9a'
 startup_template_sha256='46bf85afca2adfdc5b310348a6abf293b70ad88598bd1976f47dac888c804b82'
 
 workspace="$(realpath -e -- "$workspace")"
