@@ -1,0 +1,11 @@
+{
+  "schema": "hima-wave3-authoring-attempt/1",
+  "attempt": 1,
+  "status": "failed-before-model",
+  "scope": "independent Library authoring qualification; no Desktop, QuaLib, edarun, or commercial EDA",
+  "failure": "The isolated home had not created its packs directory when the authoring guard was installed. The guard correctly refused to resolve a missing packs directory.",
+  "modelRequestSteps": 0,
+  "jobsLaunched": 0,
+  "productClaims": "none",
+  "correction": "Create the Pack through hima_author before installing the guard."
+}

@@ -1336,7 +1336,6 @@ async function startRunOperation(ops: RemoteOperations, req: IncomingMessage): P
     throw new BadRequest('confirm the current Campaign proposal before starting a Run');
   }
   if (request.proposalId !== undefined) {
-    if (request.test === true) throw new BadRequest('a confirmed product Campaign cannot be changed into a Pack test');
     const current = ops.startPreparation(request.pack, request.site).proposal;
     if (current === undefined || !current.ready || !sameProposalFacts(current.id, request.proposalId)) {
       throw new BadRequest('Campaign preparation changed or is no longer ready; inspect the current proposal before confirming');

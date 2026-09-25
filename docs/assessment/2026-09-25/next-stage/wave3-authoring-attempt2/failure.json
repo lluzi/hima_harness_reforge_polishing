@@ -1,0 +1,12 @@
+{
+  "schema": "hima-wave3-authoring-attempt/1",
+  "attempt": 2,
+  "status": "failed-before-pack-files",
+  "scope": "independent Library authoring qualification; no Desktop, QuaLib, edarun, or commercial EDA",
+  "failure": "The independent author correctly refused to let /hima-spec invent INTENT.md after its second grill round exposed unresolved source/flow decisions. No Pack files and no Job were created.",
+  "modelRequestSteps": 16,
+  "userStageMessages": 7,
+  "jobsLaunched": 0,
+  "productClaims": "none",
+  "correction": "Send an explicit, user-invocable /hima-grill confirmation of the second-round recommendations before starting /hima-spec."
+}

@@ -1,6 +1,15 @@
 # S10 — Pack 作者五阶段、反例与可恢复发布（NXT-G1 / G2 / G3）
 
-状态：实施规格；基线 `1a79cb1514364aa049e775d7b18bbb063a223092`。本文复用现有作者 session、五阶段技能、Pack 合同、测试与发布链；拟议字段不是已实现能力。依从 ADR-0001/0002/0004/0010、S04 Guide、S05 memory 和 backlog。
+状态更新（2026-09-25）：**PASS**。Wave 3 的独立第二作者从新的 Library SOP、资格与报告要求开始，
+经独立 Guide 交接完成 grill → spec → fabric → terminal TEST → native release，并通过安装、幂等升级、
+stale review 拒绝、升级中断 rollback 和客户资产字节保持。现行回执见
+[wave3-pack-authoring-and-portable-method.md](../../assessment/2026-09-25/next-stage/wave3-pack-authoring-and-portable-method.md)。
+下文基线状态与拟议措辞保留为实施设计历史，不覆盖该终态证据。
+
+历史基线状态（终态 PASS 前）：实施规格；基线 `1a79cb1514364aa049e775d7b18bbb063a223092`。
+以下“拟议”“测试暂停”等措辞记录当时的实施设计，不是 2026-09-25 的当前运行状态。
+本文复用现有作者 session、五阶段技能、Pack 合同、测试与发布链；依从
+ADR-0001/0002/0004/0010、S04 Guide、S05 memory 和 backlog。
 
 ## Problem Statement
 
@@ -65,7 +74,7 @@ G1 让第二位作者从 SOP、脚本和报告形成目标、合同、节点、�
 
 最低 L2：先 `pnpm run build`，再 `pnpm run test:local --files test/contract/pipeline-stages.host.test.ts test/contract/pipeline-checkpoint.test.ts test/contract/pipeline-finalize.test.ts test/contract/pack-method-assets.test.ts test/contract/skills.test.ts`。`pipeline-stages.host.test.ts` 覆盖 Host 五阶段；checkpoint/finalize 覆盖 provenance/禁止越权最终化；`pack-method-assets.test.ts` 覆盖 release、transfer、升级、中断与资产保护。作者 UI/完整窗口 stage 变更才加 L3：`pnpm run test:desktop --files test/contract/pack-owner.desktop.test.ts test/contract/pipeline-stages.test.ts`。`test/contract-groups.json` 当前将后者列在 desktop；每次先用 Node 24 执行 `pnpm run test:local --list` 或 `pnpm run test:desktop --list` 核验选集。
 
-正例：独立作者 session 从 grill 到 seal；符合证据的 release；精确 review 后 upgrade，旧 digest/run-assets 保留。反例：作者 shell/跨 Pack 写；矛盾 spec；空报告被判 PASS；改 seal 后继续运行；stale review hash apply；同版本方法改动；未知客户文件/软链接/中断升级；memory 自动改变 Pack。测试当前暂停，命令仅为最低计划，未运行。
+正例：独立作者 session 从 grill 到 seal；符合证据的 release；精确 review 后 upgrade，旧 digest/run-assets 保留。反例：作者 shell/跨 Pack 写；矛盾 spec；空报告被判 PASS；改 seal 后继续运行；stale review hash apply；同版本方法改动；未知客户文件/软链接/中断升级；memory 自动改变 Pack。历史基线写作时测试尚暂停；当前实跑结果以本文顶部 Wave 3 PASS 回执为准。
 
 ## Out of Scope
 

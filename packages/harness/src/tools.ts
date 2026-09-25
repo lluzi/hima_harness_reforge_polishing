@@ -725,7 +725,6 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         // one naming this Pack.
         const { campaignFile, overrides } = campaignFileApplication(execution.agent, args.pack, args.file !== false);
         if (args.proposalId !== undefined) {
-          if (args.test === true) throw new Error('a confirmed product Campaign cannot be changed into a Pack test');
           const current = prepare?.(args.pack, args.site, overrides);
           if (current === undefined || !current.ready || !sameCampaignProposalFacts(current.id, args.proposalId)) {
             throw new Error('Campaign preparation changed or is no longer ready; call hima_prepare again before confirming');

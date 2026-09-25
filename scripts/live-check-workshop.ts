@@ -83,7 +83,9 @@ export class LiveCheck {
     const pilot = name === 'live-check-dtco-pilot';
     const commercial = name === 'live-check-xtop-hima-arm';
     const longRunning = pilot || commercial;
-    const maximumMs = longRunning ? 28_800_000 : finalization ? 300_000 : continuation ? 720_000 : name === 'live-check-pipeline' ? 1_200_000 : 900_000;
+    const maximumMs = longRunning ? 28_800_000 : finalization ? 300_000 : continuation ? 720_000
+      : name === 'live-check-pipeline' ? 1_200_000
+        : name === 'live-check-wave3-library-authoring' ? 1_800_000 : 900_000;
     this.limits = { timeoutMs: bounded('--timeout-ms', pilot ? 25_200_000 : commercial ? 10_800_000 : defaultMs, maximumMs), maxTurns: bounded('--max-turns', defaultTurns, longRunning ? 300 : finalization ? 4 : continuation ? 12 : 32), maxSteps: bounded('--max-steps', pilot ? 1800 : commercial ? 600 : defaultSteps, longRunning ? 2400 : finalization ? 30 : continuation ? 100 : 200) };
     this.out = path.resolve(options.get('--out') ?? path.join(repoRoot, 'docs/assessment/2026-09-12/pls-19/live-harness', `${name}-${Date.now()}`));
     if (existsSync(this.out)) throw new Error('the evidence directory already exists; use a fresh --out directory');

@@ -427,8 +427,8 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   if (req.proposalId !== undefined && existingProposal === undefined && !proposalMatchesCurrentFacts(req.proposalId, pack, site, identityOverrides)) {
     throw new RunStartError('Campaign preparation changed after confirmation; inspect a fresh proposal before starting');
   }
-  if (req.proposalId !== undefined && req.test === true) {
-    throw new RunStartError('a confirmed product Campaign cannot be changed into a Pack test');
+  if (req.proposalId !== undefined && req.test === true && packStageFrom(folder).stage === 'released') {
+    throw new RunStartError('a confirmed released product Campaign cannot be changed into a Pack test');
   }
   if (!check.fit) return { kind: 'unfit', check };
 

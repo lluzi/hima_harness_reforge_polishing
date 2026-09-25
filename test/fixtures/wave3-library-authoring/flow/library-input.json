@@ -1,0 +1,7 @@
+{
+  "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "qualification": "authoring-qualification",
+  "reportSchema": "hima-library-insight-report/1",
+  "provenance": "Wave 3 independent author source package",
+  "unknowns": ["native-qualib-not-run", "production-library-facts-not-run"]
+}

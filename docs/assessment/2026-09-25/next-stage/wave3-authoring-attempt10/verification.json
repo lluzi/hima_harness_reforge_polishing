@@ -1,0 +1,68 @@
+{
+  "schema": "hima.wave3-library-authoring-verification/1",
+  "recordedAt": "2026-09-25T16:22:14.921Z",
+  "sourceEvidence": {
+    "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-25/next-stage/wave3-authoring-attempt10/evidence.json",
+    "sha256": "98d2c4528990cf99562f676d3bd31e734a799efbc251c2d7ef203a85d8262caf"
+  },
+  "pack": {
+    "id": "library-authoring-qualification",
+    "version": "1",
+    "digest": "9eb6e342080f3244fef842844afe640e277c96b50d910524e443fd09278bc6ee",
+    "stage": {
+      "stage": "released",
+      "validated": [
+        "INTENT.md",
+        "SPEC.md",
+        "contract.yml",
+        "graph.yml",
+        "FABRIC.md",
+        "TEST.md",
+        "VERSION.yml"
+      ]
+    },
+    "path": "/private/tmp/hima-l4-L0fRqD/hima-home-w6ePN2/hima/packs/library-authoring-qualification"
+  },
+  "test": {
+    "runId": "run-15366ac9-b5d3-419a-bef4-6d22c99c0401",
+    "status": "ended-goal-met",
+    "jobsLaunched": 2,
+    "jobsFinishedExit0": 2,
+    "records": 22,
+    "testSha256": "d5a22f915b1f36510435dd52b0620c5dcf5bac99cfdf0621479c04a744a3448c",
+    "versionSha256": "b03b037749abce6ff685c7d1cedf6781bca377f318937643a06fccdf872e495a"
+  },
+  "scope": {
+    "wrappers": [
+      "python3",
+      "sh"
+    ],
+    "toolCount": 0,
+    "workshopCount": 1,
+    "licences": [],
+    "commercialEdaExecuted": false
+  },
+  "negativeReader": {
+    "exitCode": 0,
+    "value": null,
+    "unknownReason": "the flow reader envelope carries no library_contract_ready reading in unit count",
+    "successValueEmitted": false
+  },
+  "transfer": {
+    "installReviewSha256": "428f3a4306c54e1812e98b7b655d62091cd3cb21de332a9950fa7f28941497e0",
+    "upgradeReviewSha256": "832f330b58b11c87e1d48b0580d339a655f91cf8b03ed5d1a153d7bc713818b4",
+    "staleReviewSha256": "2aea7b4953c4d8b1c16c46767ce32b45bcae8c70308ca4686485df2f08ea786d",
+    "staleDestinationCreated": false
+  },
+  "rollback": {
+    "oldDigest": "9eb6e342080f3244fef842844afe640e277c96b50d910524e443fd09278bc6ee",
+    "recoveredDigest": "9eb6e342080f3244fef842844afe640e277c96b50d910524e443fd09278bc6ee",
+    "customerAssetSha256": "5aef1d89f98c6a39c68271ea0a6f03b3203f271781e999c3a33b32e3fde8157d",
+    "customerAssetPreserved": true
+  },
+  "claims": {
+    "issue60": "PASS",
+    "libraryE1E4Requalified": false,
+    "productionLibraryFact": false
+  }
+}

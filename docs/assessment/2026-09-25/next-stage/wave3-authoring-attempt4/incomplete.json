@@ -1,0 +1,14 @@
+{
+  "schema": "hima-wave3-authoring-attempt/1",
+  "attempt": 4,
+  "status": "incomplete-before-pack-files",
+  "scope": "independent Library authoring qualification; no Desktop, QuaLib, edarun, or commercial EDA",
+  "observed": [
+    "Guide created a separate native author session and delivered the three new source files by hash-bound handoff.",
+    "At the definitive process audit it remained live at 11 model request steps and 4 user-stage messages, with no Run or Job.",
+    "No Pack file, Run, Job, Reader observation, Judge, TEST record, seal, install, upgrade, or rollback was created."
+  ],
+  "failure": "A first PID audit incorrectly treated a live attempt as absent from a tool return rather than inspecting the exact PID with ps. A later authoritative audit found it live; it was then normally terminated to restore the single-attempt boundary. This is an operator/protocol failure, not a product defect.",
+  "productClaims": "none",
+  "next": "Do not start another attempt until the execution launcher can retain and monitor one bounded live process to a terminal evidence state."
+}

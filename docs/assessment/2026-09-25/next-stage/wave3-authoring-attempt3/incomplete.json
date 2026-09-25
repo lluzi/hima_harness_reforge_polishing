@@ -1,0 +1,14 @@
+{
+  "schema": "hima-wave3-authoring-attempt/1",
+  "attempt": 3,
+  "status": "stopped-operator-protocol",
+  "scope": "independent Library authoring qualification; no Desktop, QuaLib, edarun, or commercial EDA",
+  "observed": [
+    "Guide created a separate native author session and delivered the three new source files by hash-bound handoff.",
+    "The author completed grill and spec, producing INTENT.md and SPEC.md from the source package; it stopped at specified.",
+    "No local Job, Reader observation, Judge, TEST record, seal, install, upgrade, or rollback ran."
+  ],
+  "failure": "A process-and-Host audit found this attempt still in-progress at specified while a duplicate attempt had been launched. It had 20 model request steps and 5 user-stage messages but no Run or Job. The stalled process was normally terminated to restore the single-attempt budget boundary. This is an operator/protocol failure, not a product defect.",
+  "productClaims": "none",
+  "correction": "Install the existing sibling reference Pack in the isolated home before entering fabric, then start a fresh bounded attempt."
+}

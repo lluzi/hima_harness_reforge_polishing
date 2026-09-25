@@ -10,6 +10,9 @@ That receipt now records terminal PASS for all three Wave 1 lanes.
 Wave 2 implementation status is recorded in
 [wave2-vertical-slice.md](wave2-vertical-slice.md). It records terminal PASS for #49 E2–E4 and
 #57 while preserving the representative/same-source/design-unknown limits and all failed attempts.
+Wave 3 implementation status is recorded in
+[wave3-pack-authoring-and-portable-method.md](wave3-pack-authoring-and-portable-method.md). It records
+terminal PASS for #60 and #38, and TERMINAL_NEGATIVE for #40 without making a positive Fmax claim.
 The plan below remains the dependency and terminal-disposition authority for later waves.
 
 ## Objective and terminal vocabulary

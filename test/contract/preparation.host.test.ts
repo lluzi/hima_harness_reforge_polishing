@@ -117,9 +117,6 @@ test('HimaGuide preparation creates no facts, stale confirmation is refused, and
       proposalId: `${facts}.${'0'.repeat(32)}.${signature}`, pack: timingProbePackId, site: 'local', goal: fresh.goal, strategy: fresh.strategy,
     }, agent, signal: AbortSignal.timeout(20_000) });
     assert.equal(forged.isError, true, JSON.stringify(forged));
-    await assert.rejects(() => host.ctx.hima.startRun({ proposalId: fresh.id, pack: timingProbePackId, site: 'local',
-      goal: fresh.goal, strategy: fresh.strategy, ownerSessionId: String(agent.id), test: true }), /cannot be changed into a Pack test/);
-    assert.deepEqual(host.ctx.hima.ledger.runs(), []);
     const start = () => host.ctx.tools.execute({ callId: `confirm-${crypto.randomUUID()}` as never, name: 'hima_run', arguments: {
       proposalId: fresh.id, pack: timingProbePackId, site: 'local', goal: fresh.goal, strategy: fresh.strategy,
     }, agent, signal: AbortSignal.timeout(20_000) });
