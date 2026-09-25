@@ -62,6 +62,8 @@ The result vocabulary is `positive`, `negative`, `inconclusive`, `blocked` or `u
 
 Both arms reached the same qualified relative-best result: score `243.58 -> 217.96`, hold violations `221 -> 196`, setup unchanged, complete DRC/connectivity counts unchanged, and timing still open. The Hima arm retained one real DeepSeek owner, an owner-authored plan, typed Operator receipts, 25 Jobs, a Pack archive and a generation-limit ending. Exact human minutes for the control arm and infrastructure recovery were not measured consistently enough to establish a valid labor-saving comparison. The J3 verdict is therefore `inconclusive`, not positive; the technical product gates and the study itself are complete.
 
+Final Site rollback was verified after all XTop work: `selected=new old=inactive new=active`, with no active XTop/QuaLib client and no retained `hima-xtop-operator-*` container.
+
 ## Data handling and review
 
 Raw design data, databases and commercial reports remain on the approved Site or in ignored local evidence directories. Repository records contain identities, bounded summaries and commands, not proprietary raw bytes or credentials. There is no telemetry or automatic upload. The primary agent owns execution evidence; a fresh-context Sol/High reviewer must independently check result validity, permissions, data scope and the final J3 interpretation before sign-off.

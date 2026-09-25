@@ -11,7 +11,8 @@
   "pack": {
     "id": "xtop-timing-closure",
     "version": "1.0.14",
-    "status": "released",
+    "pipelineStage": "released",
+    "authorDeclaredStatus": "development",
     "methodDigest": "19207d78dc3b1e9f4fd80f6bd4c21df209f1dfffc5f83fa7afd3ac5c96fd2a92",
     "testRun": "run-ddabd488-f05c-44d6-9c9b-45abccaff226",
     "testRecordSha256": "9cae4bb4fe73e7394e0fd54b9a6f101067facb81c88ec5963f50dd9ead965c54",
@@ -40,6 +41,14 @@
     "physicalEcoSha256": "d3708c54ed656916b6907d296da7d199ad396719dea6adbb75b573d18aa683b3",
     "confinement": "enforced",
     "cancellationQualified": true
+  },
+  "environmentPostcheck": {
+    "selected": "new",
+    "old": "inactive",
+    "new": "active",
+    "activeXTopOrQuaLibClients": 0,
+    "activeNamedOperatorContainers": 0,
+    "status": "restored"
   },
   "himaArm": {
     "runId": "run-ddabd488-f05c-44d6-9c9b-45abccaff226",

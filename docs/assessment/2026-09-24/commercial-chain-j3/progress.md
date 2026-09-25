@@ -24,6 +24,10 @@ Failures were preserved rather than rewritten: actual Operator ECO filenames wer
 
 ## Release and J3 verdict
 
-`TEST.md` binds the terminal Hima Run. Harness release wrote `VERSION.yml` with every method-file hash; the Pack is released at version `1.0.14`. App notarization and clean signoff remain outside this result.
+`TEST.md` binds the terminal Hima Run. Harness release wrote `VERSION.yml` with every method-file hash; the Pack pipeline stage is `released` at version `1.0.14` while the author-declared contract status remains `development`. App notarization and clean signoff remain outside this result.
 
 Both arms produced the same engineering adoption. Hima adds native ownership, typed receipts, source-linked Workshop code, durable Ledger records and archive continuity. Exact human minutes were not recorded consistently across control orchestration, infrastructure recovery and evidence review, so the value comparison cannot establish labor savings. Final J3 verdict: **inconclusive**. This is a completed study, not a blocked one and not a positive ROI claim.
+
+## Final Site rollback
+
+After all XTop-dependent work, the administrator restored the mutually exclusive Empyrean service. Live postcheck: `selected=new old=inactive new=active`; no `icexplorer-xtop_exe` or `qualib_exe` client; no `hima-xtop-operator-*` container. This clears the final operational blocker recorded by the independent reviewer.
