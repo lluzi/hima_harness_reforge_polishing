@@ -101,6 +101,14 @@ test('real Run delegation recovers a cold completed result, gates dependencies, 
   assert.equal(cold.evidence.artifactRefs.length,1);assert.match(cold.evidence.artifactRefs[0].sha256,/^[0-9a-f]{64}$/);
   const resultRecord=host.ctx.hima.ledger.records({runId,type:'delegation'}).find(r=>r.type==='delegation'&&r.event==='result-observed');assert.ok(resultRecord);
   assert.equal(runDelegations((host.ctx.hima as any).deps?.()??{ledger:host.ctx.hima.ledger},runId).find(row=>row.delegationId==='coder')?.state,'completed');
+  control=host.ctx.hima.executionContext(runId).run.control!;
+  const adopted=await host.ctx.hima.delegate({runId,actor,action:'adopt',delegationId:'coder',requestId:'adopt-coder-result',expectedEpoch:control.epoch,expectedRevision:control.revision}) as any;
+  assert.equal(adopted.status,'accepted',JSON.stringify(adopted));assert.equal(adopted.resultRecordId,resultRecord.id);
+  const adoptedRow=runDelegations((host.ctx.hima as any).deps?.()??{ledger:host.ctx.hima.ledger},runId).find(row=>row.delegationId==='coder');
+  assert.match(adoptedRow?.adoptedRecordId??'',/^run-/);assert.equal(adoptedRow?.state,'completed');
+  control=host.ctx.hima.executionContext(runId).run.control!;
+  const duplicateAdoption=await host.ctx.hima.delegate({runId,actor,action:'adopt',delegationId:'coder',requestId:'adopt-coder-result',expectedEpoch:control.epoch,expectedRevision:control.revision}) as any;
+  assert.equal(duplicateAdoption.status,'duplicate');assert.equal(duplicateAdoption.adoptedRecordId,adopted.adoptedRecordId);
 
   control=host.ctx.hima.executionContext(runId).run.control!;
   const reviewer=await host.ctx.hima.delegate({runId,actor,action:'create',requestId:'create-reviewer',expectedEpoch:control.epoch,expectedRevision:control.revision,contract:{delegationId:'reviewer',role:'reviewer',task:'Review only the exact retained child result supplied by the parent.',inputRefs:[resultRecord.id],allowedTools:['hima_delegation_input'],budgetShare:{maxElapsedMs:5000,maxFollowups:0},dependencyIds:['coder'],recipient:{kind:'run-owner',sessionId:actor}}}) as any;

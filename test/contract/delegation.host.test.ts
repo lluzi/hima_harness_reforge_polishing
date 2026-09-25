@@ -238,3 +238,46 @@ test('native bounded delegation creates, edits, follows up, guards scope, surviv
     } finally { await parent.dispose(); }
   } finally { await host.dispose(); }
 });
+
+test('Operator delegation is minted only for one Host-qualified interactive execution', async (t) => {
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const scenario = await writeMomentScenario(home, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
+  await writeReplayOverlay(home.home, { file: scenario.file, overrideFile: scenario.override, childFiles: scenario.children });
+  await appendFile(homePatchFile(home.home), QUIET_TITLE_ROW);
+  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const parent = await createRootAgent(host.ctx, home.home);
+  const parentId = String(parent.id); const authority = new RunAuthority();
+  const disposeGuard = registerDelegationGuard(host.ctx, (childId) => authority.policy(childId)); t.after(disposeGuard);
+  const contract: DelegationContract = {
+    delegationId: 'operator-1', parentSessionId: parentId, role: 'operator',
+    task: 'Operate only the exact qualified interactive execution and report its typed receipts.',
+    inputRefs: [], workspaceRef: home.home, runRef: { runId: 'run-1', expectedEpoch: 1, expectedRevision: 0 },
+    nodeRef: 'manual-fix', allowedTools: ['hima_interactive', 'terminal_open', 'bash'],
+    budgetShare: { maxElapsedMs: 500, maxFollowups: 0, maxTokensPerTurn: 512 }, dependencyIds: [],
+    recipient: { kind: 'run-owner', sessionId: parentId }, status: 'requested',
+  };
+  const missing = await createDelegation(host.ctx, contract, authority, new AbortController().signal);
+  assert.equal(missing.status, 'refused'); assert.match(missing.reason!, /Host-qualified interactive execution/);
+  const wrong = await createDelegation(host.ctx, contract, authority, new AbortController().signal, {
+    runId: 'run-1', nodeId: 'another-node', executionId: 'execution-1', bindingDigest: 'a'.repeat(64), mutation: 'qualified', testOnly: true,
+  });
+  assert.equal(wrong.status, 'refused'); assert.match(wrong.reason!, /target differs/);
+  const created = await createDelegation(host.ctx, contract, authority, new AbortController().signal, {
+    runId: 'run-1', nodeId: 'manual-fix', executionId: 'execution-1', bindingDigest: 'a'.repeat(64), mutation: 'qualified', testOnly: true,
+  });
+  assert.equal(created.status, 'created', created.reason);
+  assert.deepEqual(created.effectiveContract?.tools, ['hima_interactive']);
+  assert.equal(created.effectiveContract?.operator?.executionId, 'execution-1');
+  assert.ok(created.unknowns.some((item) => item.includes('terminal_open')));
+  assert.ok(created.unknowns.some((item) => item.includes('bash')));
+  const childId = created.receipt?.childSessionId; assert.ok(childId);
+  const child = host.ctx.get('agents')!.get(childId as never); assert.ok(child); await child.whenIdle();
+  assert.equal(host.ctx.tools.schemas(child).some((tool) => tool.name === 'hima_interactive'), true);
+  assert.equal(host.ctx.tools.schemas(child).some((tool) => tool.name === 'terminal_open' || tool.name === 'bash'), false);
+  assert.equal(delegationToolDenial((id) => authority.policy(id), { name: 'hima_interactive', arguments: {}, agent: child } as never), undefined);
+  assert.match(delegationToolDenial((id) => authority.policy(id), { name: 'terminal_open', arguments: {}, agent: child } as never)!, /not granted|may not open/);
+  const cancelled = await cancelDelegation(host.ctx, { parentSessionId: parentId, childSessionId: childId,
+    requestId: 'cancel-operator' }, authority);
+  assert.equal(cancelled.status, 'accepted');
+  await host.dispose();
+});

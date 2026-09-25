@@ -191,6 +191,9 @@ test('the portable Pack has no AES, process-node, or customer-flow binding and d
   assert.match(await readFile(path.join(packDir, 'flow/research-template.py'), 'utf8'),
     /WORKSPACE_ARG = 2 if .*--lfr-residual.* else 1/,
     'the residual entry resolves WORKSPACE after the mode flag');
+  assert.deepEqual(await readFile(path.join(packDir, 'tools/read-stage.py')),
+    await readFile(path.join(packDir, 'flow/read-stage.py')),
+    'the shipped Reader and the staged flow parser are one byte-identical contract');
   assert.ok(loaded.contract.workspace.copy.includes('library_richness.py'));
   assert.ok(graph.nodes.some((node) => node.id === 'research-candidates'));
   assert.ok(graph.nodes.some((node) => node.id === 'read-research-selection'));

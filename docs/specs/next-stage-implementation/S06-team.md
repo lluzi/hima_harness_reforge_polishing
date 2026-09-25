@@ -1,5 +1,11 @@
 # S06 — Agent 合作合同与有界委派（NXT-C1 / C3）
 
+> **2026-09-25 现行状态：普通团队 PASS；生产 Operator 组合门待管理员切换。** 真实 DeepSeek
+> Coding/Researcher/Reviewer、共享预算、私有写根、取消、持久 transcript/result、候选与 owner
+> adoption 已通过。`role=operator` 已接入 #50 的生产资格合同且本地 Host 反例通过，但最终 XTop
+> child L4 仍须在管理员将 linglong 从 `selected=new` 切到 `old` 后执行并恢复。见
+> [Wave 1 receipt](../../assessment/2026-09-25/next-stage/wave1-hard-gates.md)。
+
 状态：实施规格；基线 `1a79cb1514364aa049e775d7b18bbb063a223092`。本规格是 C1/C3 的生命周期、预算、权限与产物合同；child 的独立视图/transcript 由 C2/S08 消费，不能在此另造 team UI。产品决定来自 ADR-0001/0002/0006/0008/0009/0014、访谈 Q6/Q15/Q16/Q17 和 backlog。
 
 ## Problem Statement

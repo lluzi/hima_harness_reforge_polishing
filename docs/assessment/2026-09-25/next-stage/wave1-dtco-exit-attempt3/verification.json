@@ -1,0 +1,34 @@
+{
+  "schema": "hima.wave1-dtco-exit-verification/1",
+  "recordedAt": "2026-09-25T11:55:04.055Z",
+  "status": "PASS",
+  "runId": "run-9bb8ec08-9014-41c4-a563-745c1ec19506",
+  "workspace": "/data/eda/project/hima_harness/wave1-dtco-exit-20260925113745/custom-cell-fmax-dtco-20260925-113747-2847",
+  "packDigest": "7b4a59be2a412d0052601b3384e5a2be35d2664c0ea7094206699f6e020fcbff",
+  "sequence": {
+    "compileJob": "run-9bb8ec08-9014-41c4-a563-745c1ec19506#000199",
+    "compileFinished": "run-9bb8ec08-9014-41c4-a563-745c1ec19506#000201",
+    "compileObservation": "run-9bb8ec08-9014-41c4-a563-745c1ec19506#000207",
+    "foundryJob": "run-9bb8ec08-9014-41c4-a563-745c1ec19506#000209",
+    "foundryFinished": "run-9bb8ec08-9014-41c4-a563-745c1ec19506#000211",
+    "foundryObservation": "run-9bb8ec08-9014-41c4-a563-745c1ec19506#000217"
+  },
+  "facts": {
+    "recordStatus": "passed",
+    "stageExit": 0,
+    "log": "/data/eda/project/hima_harness/wave1-dtco-exit-20260925113745/custom-cell-fmax-dtco-20260925-113747-2847/flow/artifacts/foundry-synth/run-f0baeb521df84aa5ae7f7b3a0543e514/base-dc.log",
+    "db1Errors": 0,
+    "netlist": {
+      "bytes": 926143,
+      "path": "flow/artifacts/foundry-synth/run-f0baeb521df84aa5ae7f7b3a0543e514/results/base.dc.v",
+      "role": "synthesis_netlist",
+      "sha256": "8aa6056ccf5a9096eddd1c73c52bea661fad001b36e595fd520087e37a5cf39d",
+      "sourceType": "design-compiler-output"
+    }
+  },
+  "environment": "selected=new old=inactive new=active",
+  "claimLimits": [
+    "continuous compile/read-compile/foundry-synth/read-foundry-synth gate only",
+    "no PPA, signoff, or full Campaign result"
+  ]
+}

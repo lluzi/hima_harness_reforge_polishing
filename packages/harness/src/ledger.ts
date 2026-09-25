@@ -1096,7 +1096,7 @@ export const experienceAdoptionRecord = z.strictObject({
 });
 const v28LedgerRecord = z.discriminatedUnion('type', [...v27LedgerRecord.options, experienceAdoptionRecord]);
 /** Native child/session operations retain their admissions and observed outcomes beside Job facts. */
-export const delegationRecord = z.strictObject({...base,type:z.literal('delegation'),delegationId:z.string().min(1),parentSessionId:z.string().min(1),childSessionId:z.string().optional(),requestId:z.string().min(1),requestDigest:sha256Hex,event:z.enum(['create-intent','created','refused','uncertain','followup-intent','followup-sent','cancel-intent','cancel-requested','cancelled','result-observed','deadline']),payload:z.json()});
+export const delegationRecord = z.strictObject({...base,type:z.literal('delegation'),delegationId:z.string().min(1),parentSessionId:z.string().min(1),childSessionId:z.string().optional(),requestId:z.string().min(1),requestDigest:sha256Hex,event:z.enum(['create-intent','created','refused','uncertain','followup-intent','followup-sent','cancel-intent','cancel-requested','cancelled','result-observed','result-adopted','deadline']),payload:z.json()});
 export const interactiveRecord = z.strictObject({...base,type:z.literal('interactive'),executionId:z.string().min(1),toolSessionId:z.string().min(1),requestId:z.string().min(1),event:z.string().min(1),payload:z.json()});
 export type DelegationRecord=z.infer<typeof delegationRecord>;
 export type InteractiveRecord=z.infer<typeof interactiveRecord>;

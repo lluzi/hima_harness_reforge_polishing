@@ -4,9 +4,11 @@
 > `library-intelligence@0.2.0` 的默认图从 `qualify-api` 开始，包含可运行 native tool。
 > Host 的现有 `beforeLaunch`/Reader admission 现在核对实际加载的 Site Permit、嵌套读取路径、
 > 私有 workspace、Python/API/`edarun` 字节身份、QuaLib 资源声明，以及同一 Run 的持久 Job
-> launch/exit-0 历史。手动 L4 仍只是前置历史证据，不替代产品验收。E1 的当前唯一缺口是
-> 在 `selected=new`、无 XTop 客户端条件下完成一次实际 Pack-to-Host vendor/SAED14/TSMC28
-> read/query/copy/re-read；E2–E4 随后分别验收。下文出现的 crash、blocked graph 和未实现
+> launch/exit-0 历史。2026-09-25 的实际 Pack-to-Host Run
+> `run-c700d636-f7c1-4f87-ba95-914fa228f43d` 已在 `selected=new`、无 XTop 客户端条件下完成
+> vendor/SAED14/TSMC28 read/query/copy/re-read，Reader 与 Judge 均 PASS；证据见
+> [Wave 1 receipt](../../assessment/2026-09-25/next-stage/wave1-hard-gates.md)。E1 已关闭，当前门转为
+> Wave 2 的 E2–E4 分别验收。下文出现的 crash、blocked graph 和未实现
 > worker 仅是带日期的原始问题/反例，不能作为当前执行状态。
 
 状态：实施规格；覆盖 backlog 的 `NXT-E1`、`NXT-E2`、`NXT-E3`、`NXT-E4`。本文件不实现、不运行测试/EDA、不安装或诊断 Liberty API。`LIB-INT-01` 仍是唯一真实接入门。

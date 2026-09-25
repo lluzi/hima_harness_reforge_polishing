@@ -5,7 +5,7 @@ import { controlling, identityOf, executionContext, type FabricDeps } from './fa
 import { timeBoxRemainingMs, ownedWaitedMs } from './budget.js';
 import { runExitFence } from './host-exit.js';
 import type { DelegationRecord, RunRecord } from './ledger.js';
-import { createDelegation, followupDelegation, cancelDelegation, readDelegationResult, type DelegationContract, type EffectiveDelegationContract, type DelegationAuthority, type DelegationReservation, type DelegationRuntimePolicy, type DurableDelegationState } from './delegation.js';
+import { createDelegation, followupDelegation, cancelDelegation, readDelegationResult, type DelegationContract, type EffectiveDelegationContract, type DelegationAuthority, type DelegationReservation, type DelegationRuntimePolicy, type DurableDelegationState, type OperatorDelegationGrant } from './delegation.js';
 const json = (value: unknown) => JSON.parse(JSON.stringify(value));
 type Creation = {
     contract: DelegationContract;
@@ -24,6 +24,8 @@ export interface RunDelegationView extends Creation {
     readonly followups: number;
     /** Most recent proven completed-turn receipt; later refinement never rewrites this record. */
     readonly resultRecordId?: string;
+    /** Explicit current-owner adoption of that exact observed candidate result. */
+    readonly adoptedRecordId?: string;
     /** Native stop/quiescence is separate from why the task ended. */
     readonly stopObserved?: true | 'unknown';
 }
@@ -35,16 +37,17 @@ export function runDelegations(deps: FabricDeps, runId: string): RunDelegationVi
         if (!creation.effective?.childSessionId || !Number.isFinite(Date.parse(creation.reservation?.deadlineAt)))
             throw new Error('retained delegation admission is malformed');
         const history = all.filter(r => r.delegationId === first.delegationId);
-        const latestLifecycle = history.filter(r => ['created', 'refused', 'uncertain', 'result-observed', 'followup-intent', 'followup-sent'].includes(r.event)).at(-1);
+        const latestLifecycle = history.filter(r => ['created', 'refused', 'uncertain', 'result-observed', 'result-adopted', 'followup-intent', 'followup-sent'].includes(r.event)).at(-1);
         // Cancellation/deadline are terminal task facts. A later result read may expose already
         // retained candidate output, but cannot rewrite why the task ended into `completed`.
         const terminal = history.filter(r => ['cancel-intent', 'cancel-requested', 'cancelled', 'deadline'].includes(r.event)).at(-1);
         const latest = terminal ?? latestLifecycle;
         const accepted = history.find(r => r.event === 'created');
         const result = history.filter(r => r.event === 'result-observed').at(-1);
+        const adopted = history.filter(r => r.event === 'result-adopted').at(-1);
         const state: RunDelegationView['state'] = !latest ? 'intent' : latest.event === 'created' ? 'accepted'
             : latest.event === 'cancelled' ? 'cancelled' : latest.event === 'deadline' ? 'expired'
-            : latest.event === 'result-observed' ? 'completed'
+            : latest.event === 'result-observed' || latest.event === 'result-adopted' ? 'completed'
             : latest.event === 'followup-intent' || latest.event === 'followup-sent' ? 'accepted'
             : latest.event === 'cancel-intent' ? 'cancel-requested'
             : latest.event as RunDelegationView['state'];
@@ -60,6 +63,7 @@ export function runDelegations(deps: FabricDeps, runId: string): RunDelegationVi
             } | undefined)?.initialMessageId,
             reason: data?.reason, recordId: latest?.id ?? first.id, followups: history.filter(r => r.event === 'followup-intent').length,
             ...(result === undefined ? {} : { resultRecordId: result.id }),
+            ...(adopted === undefined ? {} : { adoptedRecordId: adopted.id }),
             ...(stopObserved === undefined ? {} : { stopObserved }) };
     });
 }
@@ -90,7 +94,7 @@ export interface RunDelegationRequest {
     readonly runId: string;
     readonly actor: string;
     readonly origin?: 'agent' | 'human';
-    readonly action: 'create' | 'followup' | 'cancel' | 'result';
+    readonly action: 'create' | 'followup' | 'cancel' | 'result' | 'adopt';
     readonly expectedEpoch: number;
     readonly expectedRevision: number;
     readonly requestId: string;
@@ -210,7 +214,8 @@ function authority(deps: FabricDeps, request: RunDelegationRequest): DelegationA
         recordCancel: input => safe(async () => { await append(lookup(input.childSessionId), input.effect === 'confirmed' ? 'cancelled' : 'cancel-requested', input.requestId, input.requestDigest, input); }),
     };
 }
-export async function operateRunDelegation(ctx: Context, deps: FabricDeps, request: RunDelegationRequest, signal: AbortSignal): Promise<object> {
+export async function operateRunDelegation(ctx: Context, deps: FabricDeps, request: RunDelegationRequest, signal: AbortSignal,
+    options: { readonly operatorGrant?: OperatorDelegationGrant } = {}): Promise<object> {
     const run = deps.ledger.run(request.runId);
     if (!run?.control)
         throw new Error('An existing controlled Run is required.');
@@ -223,11 +228,35 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
         if (!request.contract || typeof request.contract !== 'object')
             throw new Error('A typed delegation contract is required.');
         const contract = { ...request.contract, parentSessionId: run.control.owner, runRef: { runId: run.id, expectedEpoch: request.expectedEpoch, expectedRevision: request.expectedRevision }, status: 'requested' } as DelegationContract;
-        return createDelegation(ctx, contract, auth, signal);
+        return createDelegation(ctx, contract, auth, signal, options.operatorGrant);
     }
     const found = runDelegations(deps, run.id).find(r => r.delegationId === request.delegationId);
     if (!found)
         throw new Error('Delegation not found.');
+    if (request.action === 'adopt')
+        return controlling(deps, run.id, async () => {
+            const latest = deps.ledger.run(run.id);
+            if (!latest?.control || latest.control.owner !== request.actor || latest.control.epoch !== request.expectedEpoch)
+                return { status: 'refused', artifacts: [], unknowns: [], reason: 'Delegation owner or epoch is stale.' };
+            const requestDigest = identityOf({ runId: run.id, action: 'adopt', delegationId: found.delegationId,
+                actor: request.actor, expectedEpoch: request.expectedEpoch });
+            const all = records(deps, run.id);
+            const prior = all.find(row => row.requestId === request.requestId);
+            if (prior) return prior.requestDigest === requestDigest && prior.event === 'result-adopted'
+                ? { status: 'duplicate', artifacts: [], unknowns: [], adoptedRecordId: prior.id }
+                : { status: 'refused', artifacts: [], unknowns: [], reason: 'Adoption request identity already names different intent.' };
+            if (latest.control.revision !== request.expectedRevision || latest.status !== 'running' || latest.control.stop || latest.control.paused.length)
+                return { status: 'refused', artifacts: [], unknowns: [], reason: 'Re-read the active unheld Run before adopting a child result.' };
+            const result = all.filter(row => row.delegationId === found.delegationId && row.event === 'result-observed').at(-1);
+            if (!result) return { status: 'refused', artifacts: [], unknowns: [], reason: 'Only an exact observed child result can be adopted.' };
+            const adopted = await deps.ledger.appendDelegation(run.id, { delegationId: found.delegationId,
+                parentSessionId: found.parentSessionId, childSessionId: found.childSessionId,
+                requestId: request.requestId, requestDigest, event: 'result-adopted',
+                payload: { resultRecordId: result.id, recipient: found.effective.recipient, candidateOnly: false } });
+            await deps.ledger.advanceRun(run.id, { control: { ...latest.control, revision: latest.control.revision + 1 } });
+            return { status: 'accepted', artifacts: [], unknowns: [], adoptedRecordId: adopted.id,
+                resultRecordId: result.id, recipient: found.effective.recipient };
+        });
     if (request.action === 'followup')
         return followupDelegation(ctx, { parentSessionId: found.parentSessionId, childSessionId: found.childSessionId, requestId: request.requestId, message: request.text ?? '' }, auth, signal);
     if (request.action === 'cancel')
@@ -248,4 +277,20 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
             }
         });
     return result;
+}
+
+/** Resolve the retained authority that lets exactly one Operator child use the qualified tool. */
+export function operatorInteractiveAuthority(deps: FabricDeps, childSessionId: string, target: {
+    readonly runId: string; readonly nodeId: string; readonly executionId: string;
+}): { readonly authorityOwner: string; readonly expectedBindingDigest: string } | undefined {
+    const run = deps.ledger.run(target.runId);
+    const entry = runDelegations(deps, target.runId).find(row => row.childSessionId === childSessionId);
+    const policy = delegationRuntimePolicy(deps, childSessionId);
+    const grant = entry?.effective.operator;
+    if (!run?.control || !entry || !policy?.toolsAllowed || !['intent', 'accepted'].includes(entry.state)
+        || entry.effective.role !== 'operator' || !entry.effective.tools.includes('hima_interactive')
+        || entry.effective.runRef?.runId !== target.runId || grant === undefined
+        || grant.runId !== target.runId || grant.nodeId !== target.nodeId || grant.executionId !== target.executionId
+        || grant.mutation !== 'qualified') return undefined;
+    return { authorityOwner: run.control.owner, expectedBindingDigest: grant.bindingDigest };
 }

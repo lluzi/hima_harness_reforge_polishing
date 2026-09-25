@@ -1689,7 +1689,7 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   if(rest==='/delegations') {
     if(method==='GET') {const sessionId=url.searchParams.get('sessionId')??'',runId=url.searchParams.get('runId')??'';if(!ops.validateSession?.(sessionId)||!ops.delegations)return failure(403,'hima/not-authorized','Choose a live project conversation.');return ok(await ops.delegations(sessionId,runId));}
     if(method!=='POST'||!ops.delegate)return failure(405,'hima/bad-request','Delegation requires GET or POST.');
-    const input=z.strictObject({sessionId:z.string(),runId:z.string(),action:z.enum(['create','followup','cancel','result']),requestId:z.string(),expectedEpoch:z.number().int().nonnegative(),expectedRevision:z.number().int().nonnegative(),delegationId:z.string().optional(),contract:z.unknown().optional(),text:z.string().max(8000).optional()}).parse(await readJsonBody(req));
+    const input=z.strictObject({sessionId:z.string(),runId:z.string(),action:z.enum(['create','followup','cancel','result','adopt']),requestId:z.string(),expectedEpoch:z.number().int().nonnegative(),expectedRevision:z.number().int().nonnegative(),delegationId:z.string().optional(),contract:z.unknown().optional(),text:z.string().max(8000).optional()}).parse(await readJsonBody(req));
     if(!ops.validateSession?.(input.sessionId))return failure(403,'hima/not-authorized','Choose a live project conversation.');
     return ok(await ops.delegate({...input,actor:input.sessionId,origin:'human'}));
   }

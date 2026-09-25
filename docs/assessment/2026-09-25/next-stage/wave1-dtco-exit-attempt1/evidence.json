@@ -1,0 +1,273 @@
+{
+  "schema": "hima.wave1-dtco-exit/1",
+  "recordedAt": "2026-09-25T11:29:09.888Z",
+  "status": "failed",
+  "sourceSha": "3236c66ea4d643d87109f221330cd96321b939de",
+  "pack": {
+    "id": "custom-cell-fmax-dtco",
+    "digest": "c3ef2f1df756b8f04febe960ac283a36d3f592a5c797ebe962dd27115c4b44cc"
+  },
+  "site": {
+    "remoteRoot": "/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853",
+    "foundryLib": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib",
+    "physicalInputs": "/data/eda/project/hima_harness/issue52-dc-qualification-20260924/physical-inputs.json",
+    "toolStack": "/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/tool-stack.json"
+  },
+  "environmentBefore": "selected=new old=inactive new=active\n 209543 [lc_shell_exec] <defunct>",
+  "runId": "run-0d64de0b-a44c-41e9-958e-45f23b019052",
+  "ownerId": "session-715e683b-731e-44e8-8cf0-5049a0781134",
+  "workspace": "/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3",
+  "progress": [],
+  "run": {
+    "id": "run-0d64de0b-a44c-41e9-958e-45f23b019052",
+    "campaignId": "custom-cell-fmax-dtco-20260925-112854-a4f3",
+    "siteId": "wave1-dtco-exit",
+    "packId": "custom-cell-fmax-dtco",
+    "purpose": "test",
+    "packDigest": "c3ef2f1df756b8f04febe960ac283a36d3f592a5c797ebe962dd27115c4b44cc",
+    "goal": {
+      "target_period_ns": 0.5,
+      "target_fmax_improvement_pct": 5
+    },
+    "budget": {
+      "timeBoxMs": 7200000,
+      "closingReserveMs": 900000,
+      "attemptLimit": 480,
+      "researchWriteAttempts": 256,
+      "researchWriteBytes": 4194304,
+      "retryAllowance": 1,
+      "jobCap": 1,
+      "licences": {
+        "Design-Compiler": 1,
+        "Library-Compiler": 1,
+        "Innovus": 1
+      },
+      "generationLimit": 1
+    },
+    "firstStrategy": {
+      "floorplanUtilization": 0.25,
+      "periodNs": 0.5,
+      "algorithmRevision": 0
+    },
+    "generation": 1,
+    "control": {
+      "mode": "agent",
+      "owner": "session-715e683b-731e-44e8-8cf0-5049a0781134",
+      "epoch": 1,
+      "revision": 3,
+      "paused": [
+        "bind-inputs"
+      ],
+      "executions": {
+        "execution-4d62733a-7872-43a4-a7b5-d52273540553": {
+          "id": "execution-4d62733a-7872-43a4-a7b5-d52273540553",
+          "nodeId": "bind-inputs",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "c3ef2f1df756b8f04febe960ac283a36d3f592a5c797ebe962dd27115c4b44cc",
+          "inputDigest": "6104ef4df51dd3671d027f905381d33ef30779c31a7631492f0a2b338a9febe7",
+          "phase": "failed",
+          "inputThroughSeq": 1,
+          "intent": {
+            "runId": "run-0d64de0b-a44c-41e9-958e-45f23b019052",
+            "siteId": "wave1-dtco-exit",
+            "job": {
+              "session": "hima-0d64de0b-bind-inputs-73bc39",
+              "workspace": "/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3",
+              "name": "bind-inputs",
+              "startedAt": "2026-09-25T11:29:09.156Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py' '--workspace' '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3' '--design-root' '/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes' '--rtl-glob' '/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/*.v' '--design-top' 'aes_cipher_top' '--constraints' '/data/eda/project/celluzi/commercial/aes_tsmc28/scripts/constraint_tsmc28.sdc' '--foundry-library' '/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib' '--physical-inputs' '/data/eda/project/hima_harness/issue52-dc-qualification-20260924/physical-inputs.json' '--tool-stack' '/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/tool-stack.json' > '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/hima-0d64de0b-bind-inputs-73bc39.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/hima-0d64de0b-bind-inputs-73bc39.exit'"
+            },
+            "nodeId": "bind-inputs",
+            "attempt": 1
+          },
+          "result": {
+            "kind": "hard-blocker"
+          },
+          "jobSession": "hima-0d64de0b-bind-inputs-73bc39"
+        }
+      },
+      "requests": {
+        "wave1-dtco-1": {
+          "digest": "e4e789c5cd4d2f16ed8c3f2c29dd2b3885450cf1dfc6385a8f637ecfac0c95b9",
+          "actor": "session-715e683b-731e-44e8-8cf0-5049a0781134",
+          "epoch": 1,
+          "revision": 0,
+          "origin": "agent",
+          "at": "2026-09-25T11:29:09.001Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave1-dtco-1",
+            "action": "begin",
+            "executionId": "execution-4d62733a-7872-43a4-a7b5-d52273540553"
+          }
+        },
+        "wave1-dtco-2": {
+          "digest": "fee928b0389bc1f0fae1d5ef89777c298865865184d4dd1f6b130bcd8a21140d",
+          "actor": "session-715e683b-731e-44e8-8cf0-5049a0781134",
+          "epoch": 1,
+          "revision": 1,
+          "origin": "agent",
+          "at": "2026-09-25T11:29:09.101Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave1-dtco-2",
+            "action": "work",
+            "executionId": "execution-4d62733a-7872-43a4-a7b5-d52273540553"
+          }
+        }
+      },
+      "siteDigest": "1a3f6f730cc790f1320550e60b2cc6f8531c5f41a03aacc4e9b261b070778356"
+    },
+    "createdAt": "2026-09-25T11:28:54.691Z",
+    "nextSeq": 7,
+    "status": "running",
+    "currentNode": "bind-inputs",
+    "strategy": {
+      "floorplanUtilization": 0.25,
+      "periodNs": 0.5,
+      "algorithmRevision": 0
+    },
+    "meters": {
+      "elapsedMs": 14724,
+      "jobsLaunched": 1,
+      "attempts": 1,
+      "generationMs": [
+        671
+      ]
+    }
+  },
+  "records": [
+    {
+      "id": "run-0d64de0b-a44c-41e9-958e-45f23b019052#000001",
+      "runId": "run-0d64de0b-a44c-41e9-958e-45f23b019052",
+      "siteId": "wave1-dtco-exit",
+      "seq": 1,
+      "at": "2026-09-25T11:29:08.744Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "workspace",
+      "event": "prepared",
+      "campaignId": "custom-cell-fmax-dtco-20260925-112854-a4f3",
+      "packId": "custom-cell-fmax-dtco",
+      "packVersion": "5.2.16",
+      "packDigest": "c3ef2f1df756b8f04febe960ac283a36d3f592a5c797ebe962dd27115c4b44cc",
+      "workspace": "/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3",
+      "flowRoot": "pack:custom-cell-fmax-dtco@c3ef2f1df756b8f04febe960ac283a36d3f592a5c797ebe962dd27115c4b44cc",
+      "containerName": "hima-custom-cell-fmax-dtco-20260925-112854-a4f3",
+      "copied": [
+        "bind-inputs.py",
+        "probe.py",
+        "synth.tcl",
+        "read-probe.py",
+        "stages.py",
+        "library_richness.py",
+        "domain",
+        "read-stage.py",
+        "research-template.py",
+        "ai_research_runner.py"
+      ],
+      "preparedAt": "2026-09-25T11:28:54.729Z",
+      "bindings": {
+        "designRoot": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes",
+        "rtlGlob": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/*.v",
+        "designTop": "aes_cipher_top",
+        "constraints": "/data/eda/project/celluzi/commercial/aes_tsmc28/scripts/constraint_tsmc28.sdc",
+        "foundryLibrary": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib",
+        "physicalInputs": "/data/eda/project/hima_harness/issue52-dc-qualification-20260924/physical-inputs.json",
+        "toolStack": "/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/tool-stack.json",
+        "workspaceRoot": "/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853"
+      }
+    },
+    {
+      "id": "run-0d64de0b-a44c-41e9-958e-45f23b019052#000002",
+      "runId": "run-0d64de0b-a44c-41e9-958e-45f23b019052",
+      "siteId": "wave1-dtco-exit",
+      "seq": 2,
+      "at": "2026-09-25T11:29:09.196Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-0d64de0b-bind-inputs-73bc39",
+        "workspace": "/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3",
+        "name": "bind-inputs",
+        "startedAt": "2026-09-25T11:29:09.156Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py' '--workspace' '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3' '--design-root' '/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes' '--rtl-glob' '/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/*.v' '--design-top' 'aes_cipher_top' '--constraints' '/data/eda/project/celluzi/commercial/aes_tsmc28/scripts/constraint_tsmc28.sdc' '--foundry-library' '/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib' '--physical-inputs' '/data/eda/project/hima_harness/issue52-dc-qualification-20260924/physical-inputs.json' '--tool-stack' '/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/tool-stack.json' > '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/hima-0d64de0b-bind-inputs-73bc39.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/hima-0d64de0b-bind-inputs-73bc39.exit'",
+        "pid": 1025753
+      },
+      "nodeId": "bind-inputs",
+      "attempt": 1
+    },
+    {
+      "id": "run-0d64de0b-a44c-41e9-958e-45f23b019052#000003",
+      "runId": "run-0d64de0b-a44c-41e9-958e-45f23b019052",
+      "siteId": "wave1-dtco-exit",
+      "seq": 3,
+      "at": "2026-09-25T11:29:09.212Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "bind-inputs",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-0d64de0b-bind-inputs-73bc39"
+    },
+    {
+      "id": "run-0d64de0b-a44c-41e9-958e-45f23b019052#000004",
+      "runId": "run-0d64de0b-a44c-41e9-958e-45f23b019052",
+      "siteId": "wave1-dtco-exit",
+      "seq": 4,
+      "at": "2026-09-25T11:29:09.337Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-0d64de0b-bind-inputs-73bc39",
+        "workspace": "/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3",
+        "name": "bind-inputs",
+        "startedAt": "2026-09-25T11:29:09.156Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py' '--workspace' '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3' '--design-root' '/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes' '--rtl-glob' '/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/*.v' '--design-top' 'aes_cipher_top' '--constraints' '/data/eda/project/celluzi/commercial/aes_tsmc28/scripts/constraint_tsmc28.sdc' '--foundry-library' '/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib' '--physical-inputs' '/data/eda/project/hima_harness/issue52-dc-qualification-20260924/physical-inputs.json' '--tool-stack' '/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/tool-stack.json' > '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/hima-0d64de0b-bind-inputs-73bc39.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/hima-0d64de0b-bind-inputs-73bc39.exit'",
+        "pid": 1025753
+      },
+      "exitCode": 1,
+      "nodeId": "bind-inputs"
+    },
+    {
+      "id": "run-0d64de0b-a44c-41e9-958e-45f23b019052#000005",
+      "runId": "run-0d64de0b-a44c-41e9-958e-45f23b019052",
+      "siteId": "wave1-dtco-exit",
+      "seq": 5,
+      "at": "2026-09-25T11:29:09.388Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "blocker",
+      "nodeId": "bind-inputs",
+      "attempts": 1,
+      "lastExitCode": 1,
+      "logTail": "Traceback (most recent call last):\n  File \"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py\", line 318, in <module>\n    main()\n  File \"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py\", line 299, in main\n    materialize_profile(document)\n  File \"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py\", line 143, in materialize_profile\n    document[\"FOUNDRY_CDL_SHA256\"] = sha256_identity(\n                                     ^^^^^^^^^^^^^^^^\n  File \"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py\", line 76, in sha256_identity\n    raise ValueError(f\"{label} must be one lowercase SHA-256 digest\")\nValueError: FOUNDRY_CDL_SHA256 must be one lowercase SHA-256 digest\n\nHIMA_STAGE_DIAGNOSTIC unavailable: cannot resolve /data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/records/bind-inputs.json: cannot resolve /data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/records/bind-inputs.json on site wave1-dtco-exit (luzi@192.168.50.41): ssh exited 1: realpath: /data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/records/bind-inputs.json: No such file or directory",
+      "reason": "job \"bind-inputs\" in tmux session hima-0d64de0b-bind-inputs-73bc39 exited 1; node bind-inputs has now failed 1 time and spent its retry allowance of 1"
+    },
+    {
+      "id": "run-0d64de0b-a44c-41e9-958e-45f23b019052#000006",
+      "runId": "run-0d64de0b-a44c-41e9-958e-45f23b019052",
+      "siteId": "wave1-dtco-exit",
+      "seq": 6,
+      "at": "2026-09-25T11:29:09.407Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "node",
+      "nodeId": "bind-inputs",
+      "kind": "act",
+      "state": "blocked",
+      "attempt": 1,
+      "jobSession": "hima-0d64de0b-bind-inputs-73bc39",
+      "reason": "job \"bind-inputs\" in tmux session hima-0d64de0b-bind-inputs-73bc39 exited 1; node bind-inputs has now failed 1 time and spent its retry allowance of 1"
+    }
+  ],
+  "failure": "bind-inputs failed: {\"settled\":{\"id\":\"execution-4d62733a-7872-43a4-a7b5-d52273540553\",\"nodeId\":\"bind-inputs\",\"kind\":\"act\",\"generation\":1,\"attempt\":1,\"methodDigest\":\"c3ef2f1df756b8f04febe960ac283a36d3f592a5c797ebe962dd27115c4b44cc\",\"inputDigest\":\"6104ef4df51dd3671d027f905381d33ef30779c31a7631492f0a2b338a9febe7\",\"phase\":\"failed\",\"inputThroughSeq\":1,\"intent\":{\"runId\":\"run-0d64de0b-a44c-41e9-958e-45f23b019052\",\"siteId\":\"wave1-dtco-exit\",\"job\":{\"session\":\"hima-0d64de0b-bind-inputs-73bc39\",\"workspace\":\"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3\",\"name\":\"bind-inputs\",\"startedAt\":\"2026-09-25T11:29:09.156Z\",\"wire\":\"'/usr/bin/python3' '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py' '--workspace' '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3' '--design-root' '/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes' '--rtl-glob' '/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/*.v' '--design-top' 'aes_cipher_top' '--constraints' '/data/eda/project/celluzi/commercial/aes_tsmc28/scripts/constraint_tsmc28.sdc' '--foundry-library' '/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib' '--physical-inputs' '/data/eda/project/hima_harness/issue52-dc-qualification-20260924/physical-inputs.json' '--tool-stack' '/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/tool-stack.json' > '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/hima-0d64de0b-bind-inputs-73bc39.log' 2>&1; printf '%s\\\\n' \\\"$?\\\" > '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/hima-0d64de0b-bind-inputs-73bc39.exit'\"},\"nodeId\":\"bind-inputs\",\"attempt\":1},\"result\":{\"kind\":\"hard-blocker\"},\"jobSession\":\"hima-0d64de0b-bind-inputs-73bc39\"},\"log\":{\"session\":\"hima-0d64de0b-bind-inputs-73bc39\",\"text\":\"Traceback (most recent call last):\\n  File \\\"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py\\\", line 318, in <module>\\n    main()\\n  File \\\"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py\\\", line 299, in main\\n    materialize_profile(document)\\n  File \\\"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py\\\", line 143, in materialize_profile\\n    document[\\\"FOUNDRY_CDL_SHA256\\\"] = sha256_identity(\\n                                     ^^^^^^^^^^^^^^^^\\n  File \\\"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py\\\", line 76, in sha256_identity\\n    raise ValueError(f\\\"{label} must be one lowercase SHA-256 digest\\\")\\nValueError: FOUNDRY_CDL_SHA256 must be one lowercase SHA-256 digest\\n\",\"diagnostic\":true}}\nError: bind-inputs failed: {\"settled\":{\"id\":\"execution-4d62733a-7872-43a4-a7b5-d52273540553\",\"nodeId\":\"bind-inputs\",\"kind\":\"act\",\"generation\":1,\"attempt\":1,\"methodDigest\":\"c3ef2f1df756b8f04febe960ac283a36d3f592a5c797ebe962dd27115c4b44cc\",\"inputDigest\":\"6104ef4df51dd3671d027f905381d33ef30779c31a7631492f0a2b338a9febe7\",\"phase\":\"failed\",\"inputThroughSeq\":1,\"intent\":{\"runId\":\"run-0d64de0b-a44c-41e9-958e-45f23b019052\",\"siteId\":\"wave1-dtco-exit\",\"job\":{\"session\":\"hima-0d64de0b-bind-inputs-73bc39\",\"workspace\":\"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3\",\"name\":\"bind-inputs\",\"startedAt\":\"2026-09-25T11:29:09.156Z\",\"wire\":\"'/usr/bin/python3' '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py' '--workspace' '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3' '--design-root' '/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes' '--rtl-glob' '/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/*.v' '--design-top' 'aes_cipher_top' '--constraints' '/data/eda/project/celluzi/commercial/aes_tsmc28/scripts/constraint_tsmc28.sdc' '--foundry-library' '/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib' '--physical-inputs' '/data/eda/project/hima_harness/issue52-dc-qualification-20260924/physical-inputs.json' '--tool-stack' '/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/tool-stack.json' > '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/hima-0d64de0b-bind-inputs-73bc39.log' 2>&1; printf '%s\\\\n' \\\"$?\\\" > '/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/hima-0d64de0b-bind-inputs-73bc39.exit'\"},\"nodeId\":\"bind-inputs\",\"attempt\":1},\"result\":{\"kind\":\"hard-blocker\"},\"jobSession\":\"hima-0d64de0b-bind-inputs-73bc39\"},\"log\":{\"session\":\"hima-0d64de0b-bind-inputs-73bc39\",\"text\":\"Traceback (most recent call last):\\n  File \\\"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py\\\", line 318, in <module>\\n    main()\\n  File \\\"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py\\\", line 299, in main\\n    materialize_profile(document)\\n  File \\\"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py\\\", line 143, in materialize_profile\\n    document[\\\"FOUNDRY_CDL_SHA256\\\"] = sha256_identity(\\n                                     ^^^^^^^^^^^^^^^^\\n  File \\\"/data/eda/project/hima_harness/wave1-dtco-exit-20260925112853/custom-cell-fmax-dtco-20260925-112854-a4f3/flow/bind-inputs.py\\\", line 76, in sha256_identity\\n    raise ValueError(f\\\"{label} must be one lowercase SHA-256 digest\\\")\\nValueError: FOUNDRY_CDL_SHA256 must be one lowercase SHA-256 digest\\n\",\"diagnostic\":true}}\n    at complete (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-wave1-dtco-exit.ts:98:13)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-wave1-dtco-exit.ts:105:3"
+}

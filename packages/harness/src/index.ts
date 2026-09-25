@@ -32,10 +32,10 @@ import { convergeOf, newCampaignProposalId, resumeRun, startRun, type FabricDeps
 import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs } from './budget.js';
 import { controlling, identityOf, drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
-import { operateRunDelegation, runDelegations, delegationRuntimePolicy, type RunDelegationRequest } from './delegation-runtime.js';
+import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, type RunDelegationRequest } from './delegation-runtime.js';
 import { registerDelegationGuard, readDelegationResult } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
-import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
+import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
 import { interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
 import { claimSlot } from './job-cap.js';
 import { recordExitFence, releaseExitFence, readHostExitStatus, type HostExitRequest, type HostExitStatus } from './host-exit.js';
@@ -865,8 +865,14 @@ export default class Hima extends Service {
     this.interactiveRuntime=runtime;this.interactiveTimers=createInteractiveTimerController(runtime);return runtime;
   }
   async interactive(sessionId:string,raw:unknown):Promise<object> {
-    const request=parseInteractiveRequest(raw,sessionId);
+    let request=parseInteractiveRequest(raw,sessionId);
     await authorizeProjectRun(this.guideDeps(),sessionId,request.runId);
+    const run=this.ledger.run(request.runId);
+    if(run?.control&&run.control.owner!==sessionId) {
+      const delegated=operatorInteractiveAuthority(this.deps(),sessionId,request);
+      if(!delegated)return {status:'refused',reason:'This conversation has no active Operator delegation for the exact Run execution.'};
+      request={...request,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,...delegated};
+    }
     if(this.factStop.signal.aborted)return {status:'refused',reason:'The Host is stopping.'};
     const result=await operateInteractive(this.interactiveDeps(),request);
     await reconcileInteractiveExecution(this.deps(),request.runId,request.executionId);
@@ -910,7 +916,24 @@ export default class Hima extends Service {
 
   async delegate(request:RunDelegationRequest,signal:AbortSignal=AbortSignal.timeout(30000)):Promise<object> {
     await authorizeProjectRun(this.guideDeps(),request.actor,request.runId);
-    const result=await operateRunDelegation(this.ctx,this.deps(),request,signal);this.syncDelegationDeadlines();return {'unknowns':[],...result};
+    let operatorGrant:import('./delegation.js').OperatorDelegationGrant|undefined;
+    if(request.action==='create'&&request.contract&&typeof request.contract==='object'
+        &&(request.contract as {role?:unknown}).role==='operator') {
+      const contract=request.contract as {delegationId?:unknown;nodeRef?:unknown};
+      const prior=typeof contract.delegationId==='string'?runDelegations(this.deps(),request.runId).find(row=>row.delegationId===contract.delegationId):undefined;
+      if(prior?.effective.operator) operatorGrant=prior.effective.operator;
+      else {
+        const run=this.ledger.run(request.runId);const nodeRef=contract.nodeRef;
+        const executions=run?.control&&typeof nodeRef==='string'?Object.values(run.control.executions).filter(entry=>entry.nodeId===nodeRef&&!entry.supersededBy&&entry.phase==='begun'):[];
+        if(!run?.control||executions.length!==1)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation requires exactly one freshly begun interactive execution at its declared node.'};
+        const execution=executions[0]!;
+        const qualification=await interactiveDelegationGrant(this.interactiveDeps(),{runId:run.id,nodeId:nodeRef as string,executionId:execution.id,
+          actor:run.control.owner,ownerEpoch:run.control.epoch,controlRevision:run.control.revision});
+        if('reason' in qualification)return {unknowns:[],status:'refused',artifacts:[],reason:qualification.reason};
+        operatorGrant={runId:run.id,nodeId:nodeRef as string,executionId:execution.id,...qualification};
+      }
+    }
+    const result=await operateRunDelegation(this.ctx,this.deps(),request,signal,{operatorGrant});this.syncDelegationDeadlines();return {'unknowns':[],...result};
   }
   async delegations(sessionId:string,runId:string):Promise<object> {
     await authorizeProjectRun(this.guideDeps(),sessionId,runId);

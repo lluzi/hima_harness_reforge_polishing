@@ -63,7 +63,18 @@ export interface EffectiveDelegationContract {
   readonly runRef?: DelegationContract['runRef'];
   readonly nodeRef?: string;
   readonly recipient: DelegationContract['recipient'];
+  /** Host-minted qualification for one existing interactive execution. Never model supplied. */
+  readonly operator?: OperatorDelegationGrant;
   readonly unavailable: readonly string[];
+}
+
+export interface OperatorDelegationGrant {
+  readonly runId: string;
+  readonly nodeId: string;
+  readonly executionId: string;
+  readonly bindingDigest: string;
+  readonly mutation: 'qualified';
+  readonly testOnly: boolean;
 }
 
 export interface DelegationReservation {
@@ -169,11 +180,12 @@ const recursiveTools = new Set(['subagent', 'subagent_fork']);
 const readTools = new Set(['read', 'glob', 'grep']);
 const writeTools = new Set(['write', 'edit']);
 const delegationInputTool = 'hima_delegation_input';
-const roleTools: Readonly<Record<Exclude<DelegationRole, 'operator'>, ReadonlySet<string>>> = {
+const roleTools: Readonly<Record<DelegationRole, ReadonlySet<string>>> = {
   analyst: new Set(['web_search', 'web_fetch', delegationInputTool]),
   reviewer: new Set(['web_search', 'web_fetch', delegationInputTool]),
   researcher: new Set(['web_search', 'web_fetch', delegationInputTool]),
   coding: new Set(['read', 'glob', 'grep', 'write', 'edit', delegationInputTool]),
+  operator: new Set(['hima_interactive', delegationInputTool]),
 };
 
 export class DelegationError extends Error {
@@ -221,7 +233,6 @@ function assertContract(contract: DelegationContract): void {
   if (contract.budgetShare.maxTotalTokens !== undefined || contract.budgetShare.maxCost !== undefined) {
     throw new DelegationError('hima/delegation-refused', 'The pinned continuable-child API exposes no enforceable task-total token or cost meter; request elapsed/follow-up limits and record token/cost as unmeasured.');
   }
-  if (contract.role === 'operator') throw new DelegationError('hima/delegation-refused', 'Operator delegation is unavailable until the qualified Site/Fabric interactive terminal and single-writer protocol exist.');
 }
 
 const within = (candidate: string, root: string): boolean => candidate === root || candidate.startsWith(root + path.sep);
@@ -233,7 +244,8 @@ function realDirectory(named: string, what: string): string {
   return realpathSync(named);
 }
 
-function effectiveContract(ctx: Context, parent: Agent, contract: DelegationContract, childSessionId: string): EffectiveDelegationContract {
+function effectiveContract(ctx: Context, parent: Agent, contract: DelegationContract, childSessionId: string,
+  operatorGrant?: OperatorDelegationGrant): EffectiveDelegationContract {
   const cwd = parent.session.header.cwd;
   const provider = parent.options.provider; const model = parent.options.model;
   if (!cwd || !provider || !model) throw new DelegationError('hima/delegation-unavailable', 'The live parent lacks an effective workspace or model route.');
@@ -241,7 +253,18 @@ function effectiveContract(ctx: Context, parent: Agent, contract: DelegationCont
   if (contract.workspaceRef !== undefined && realDirectory(contract.workspaceRef, 'Delegation workspace') !== workspace) {
     throw new DelegationError('hima/delegation-refused', 'The delegation workspace does not match the live parent workspace.');
   }
-  const ceiling = roleTools[contract.role as Exclude<DelegationRole, 'operator'>];
+  if (contract.role === 'operator') {
+    if (operatorGrant === undefined) throw new DelegationError('hima/delegation-refused', 'Operator delegation requires a current Host-qualified interactive execution.');
+    if (contract.runRef?.runId !== operatorGrant.runId || contract.nodeRef !== operatorGrant.nodeId) {
+      throw new DelegationError('hima/delegation-refused', 'Operator delegation target differs from the Host-qualified Run/node.');
+    }
+    if (contract.writeScope !== undefined) {
+      throw new DelegationError('hima/delegation-refused', 'Operator delegation uses only the Site-qualified interactive workspace and cannot receive generic file writes.');
+    }
+  } else if (operatorGrant !== undefined) {
+    throw new DelegationError('hima/delegation-refused', 'Interactive qualification can be attached only to an Operator delegation.');
+  }
+  const ceiling = roleTools[contract.role];
   const visible = new Set(ctx.tools.schemas(parent).map((schema) => schema.name));
   const unavailable: string[] = [];
   let writeScope: { readonly root: string } | undefined;
@@ -266,7 +289,7 @@ function effectiveContract(ctx: Context, parent: Agent, contract: DelegationCont
     budgetShare: { maxElapsedMs: contract.budgetShare.maxElapsedMs, maxFollowups: contract.budgetShare.maxFollowups,
       ...(contract.budgetShare.maxTokensPerTurn === undefined ? {} : { maxTokensPerTurn: contract.budgetShare.maxTokensPerTurn }) },
     ...(contract.runRef === undefined ? {} : { runRef: contract.runRef }), ...(contract.nodeRef === undefined ? {} : { nodeRef: contract.nodeRef }),
-    recipient: contract.recipient, unavailable,
+    recipient: contract.recipient, ...(operatorGrant === undefined ? {} : { operator: operatorGrant }), unavailable,
   };
 }
 
@@ -301,10 +324,13 @@ const taskPrompt = (contract: DelegationContract, effective: EffectiveDelegation
   `Recipient: ${effective.recipient.kind} session ${effective.recipient.sessionId}.`,
   effective.writeScope === undefined ? 'Write capability: unavailable; return proposed changes and verification needs as candidate results.'
     : `Write capability: only the guarded private directory ${effective.writeScope.root}; owner verification is still required.`,
+  effective.operator === undefined ? 'Interactive Operator capability: unavailable.'
+    : `Interactive Operator capability: only ${effective.operator.runId}/${effective.operator.nodeId}/${effective.operator.executionId} through hima_interactive; binding ${effective.operator.bindingDigest}.`,
   'Do not claim a Campaign action, verdict, tool result, or file change that the corresponding tool/session transcript does not record.',
 ].join('\n');
 
-export async function createDelegation(ctx: Context, contract: DelegationContract, authority: DelegationAuthority, signal: AbortSignal): Promise<DelegationResult> {
+export async function createDelegation(ctx: Context, contract: DelegationContract, authority: DelegationAuthority, signal: AbortSignal,
+  operatorGrant?: OperatorDelegationGrant): Promise<DelegationResult> {
   try { assertContract(contract); } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return { status: 'refused', artifacts: [], unknowns: [], reason };
@@ -318,7 +344,7 @@ export async function createDelegation(ctx: Context, contract: DelegationContrac
   if (!parent) return { status: 'refused', artifacts: [], unknowns: [], reason: 'The exact parent session is not live on this Host.' };
   const childSessionId = delegationChildSessionId(contract.parentSessionId, contract.delegationId);
   let proposed: EffectiveDelegationContract;
-  try { proposed = effectiveContract(ctx, parent, contract, childSessionId); } catch (error) {
+  try { proposed = effectiveContract(ctx, parent, contract, childSessionId, operatorGrant); } catch (error) {
     return { status: 'refused', artifacts: [], unknowns: [], reason: error instanceof Error ? error.message : String(error) };
   }
   const requestDigest = delegationRequestDigest(contract);

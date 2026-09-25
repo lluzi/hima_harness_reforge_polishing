@@ -1,5 +1,11 @@
 # S04 — Guide、上下文与准备闭环（NXT-B1 / B2 / B3）
 
+> **2026-09-25 现行状态：PASS。** 真实 DeepSeek Guide 保持独立可响应，以来源化 Run
+> context 解释节点、owner、预算、已知与未知；独立 task owner、human pause/continue receipt、
+> persisted child context 和迟到 address 防护均有当前证据。见
+> [Wave 1 receipt](../../assessment/2026-09-25/next-stage/wave1-hard-gates.md)。下文的“拟议/尚未实现”
+> 是原始实施规格，不再代表当前状态。
+
 状态：实施规格；基线 `1a79cb1514364aa049e775d7b18bbb063a223092`。本文把已确认的产品决定变成可派工切片，**不表示任何拟议字段或能力已经实现**。先决约束见产品定义、ADR-0001/0002、ADR-0008、ADR-0014 和访谈 Q1–Q19。
 
 ## Problem Statement

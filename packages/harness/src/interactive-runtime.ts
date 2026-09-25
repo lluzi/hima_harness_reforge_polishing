@@ -191,7 +191,8 @@ function validateControl(run: RunRecord, request: InteractiveAddress, operation:
   if (runExitFence(run) && (operation === 'open' || operation === 'input' && effect !== 'read')) return 'the App is closing; no new interactive mutation may start before recovery';
   if (run.status !== 'running' && !['signal', 'close'].includes(operation) && !(operation === 'input' && effect === 'read')) return `run ${run.id} is ${run.status ?? 'not running'}`;
   if (control.stop !== undefined && operation !== 'close' && operation !== 'signal') return 'the Run has a stop request; no new interactive command may start';
-  if (control.owner !== request.actor || control.epoch !== request.ownerEpoch || control.revision !== request.controlRevision) return 'owner, epoch or control revision is stale';
+  if ((control.owner !== request.actor && control.owner !== request.authorityOwner)
+      || control.epoch !== request.ownerEpoch || control.revision !== request.controlRevision) return 'owner, delegated authority, epoch or control revision is stale';
   if (!currentExecution(run, request.executionId, request.nodeId, ['signal', 'close'].includes(operation) || operation === 'input' && effect === 'read')) return 'the interactive execution is absent, settled, failed or superseded';
   const execution = run.control?.executions[request.executionId];
   if (operation === 'open' && (execution?.phase !== 'begun' || execution.intent !== undefined
@@ -247,6 +248,17 @@ async function effectiveQualification(deps: InteractiveRuntimeDeps, derived: Der
     bindingDigest: identityOf(binding), adapter: { ...binding.adapter }, environment: { ...binding.environment },
     mutation: binding.mutation, testOnly: binding.source.kind === 'trusted-test-fixture',
   };
+}
+
+/** Read-only qualification used before admitting an Operator child. */
+export async function interactiveDelegationGrant(deps: InteractiveRuntimeDeps, request: {
+  readonly runId: string; readonly nodeId: string; readonly executionId: string; readonly actor: string;
+  readonly ownerEpoch: number; readonly controlRevision: number;
+}): Promise<{ readonly bindingDigest: string; readonly mutation: 'qualified'; readonly testOnly: boolean } | { readonly reason: string }> {
+  const facts = await resolved(deps, { ...request, requestId: 'operator-delegation-qualification' }, 'open');
+  if ('reason' in facts) return facts;
+  if (facts.qualification.mutation !== 'qualified') return { reason: 'the exact interactive binding is not qualified for mutation' };
+  return { bindingDigest: facts.qualification.bindingDigest, mutation: 'qualified', testOnly: facts.qualification.testOnly };
 }
 
 function recordForRequest(records: ReturnType<typeof protocolRecords>, requestId: string): typeof records {
@@ -521,6 +533,9 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
   const facts = await resolved(deps, request, operation,
     request.action === 'read' || request.action === 'observe' || request.action === 'input' ? 'read' : undefined);
   if ('reason' in facts) return { status: 'refused', reason: facts.reason };
+  if (request.expectedBindingDigest !== undefined && facts.qualification.bindingDigest !== request.expectedBindingDigest) {
+    return { status: 'refused', reason: 'interactive qualification differs from the Operator delegation receipt' };
+  }
   const authority = new RunInteractiveAuthority(deps, request, facts.derived, facts.qualification, callerDigest);
   if (request.action === 'open') {
     if (!deps.claimJobSlot) return { status: 'refused', reason: 'interactive Job/licence slot authority is unavailable' };

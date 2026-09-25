@@ -1,0 +1,725 @@
+{
+  "check": "live-check-wave1-guide-team",
+  "startedAt": "2026-09-25T12:04:27.415Z",
+  "checkpointAt": "2026-09-25T12:04:28.851Z",
+  "limits": {
+    "timeoutMs": 600000,
+    "maxTurns": 6,
+    "maxSteps": 160
+  },
+  "passed": false,
+  "status": "failed",
+  "failure": "SyntaxError: Unexpected token 'E', \"Error: a c\"... is not valid JSON\n    at JSON.parse (<anonymous>)\n    at jsonOf (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-wave1-guide-team.ts:16:8)\n    at task (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-wave1-guide-team.ts:28:21)\n    at async LiveCheck.wait (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-workshop.ts:194:18)\n    at async runLive (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-workshop.ts:464:9)\n    at async file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-wave1-guide-team.ts:141:1",
+  "costs": {
+    "hosts": 1,
+    "electron": 0,
+    "nativeSessionsCreated": 1,
+    "nativeSessionsResumed": 0,
+    "modelSessions": 0,
+    "modelRequestSteps": 0,
+    "apiRequests": "unmeasured; request steps exclude adapter retries",
+    "tokens": "unmeasured",
+    "userMessages": 0
+  },
+  "observed": {
+    "sourceSha": "3236c66ea4d643d87109f221330cd96321b939de",
+    "privateRoot": "/private/tmp/hima-l4-aVmlfY",
+    "node": "v24.20.0",
+    "dirtyFiles": "M packages/harness/src/delegation-runtime.ts\n M packages/harness/src/delegation.ts\n M packages/harness/src/index.ts\n M packages/harness/src/interactive-job.ts\n M packages/harness/src/interactive-runtime.ts\n M packages/harness/src/ledger.ts\n M packages/harness/src/remote.ts\n M packages/harness/src/tools.ts\n M packs/custom-cell-fmax-dtco/tools/read-stage.py\n M packs/library-intelligence/TEST.md\n M packs/library-intelligence/contract.yml\n M test/contract/custom-cell-fmax-pack.test.ts\n M test/contract/delegation-run.host.test.ts\n M test/contract/delegation.host.test.ts\n M test/contract/interactive-eda.host.test.ts\n M test/contract/interactive-runtime.test.ts\n M test/contract/library-intelligence-pack.test.ts\n?? docs/assessment/2026-09-25/next-stage/wave1-dtco-exit-attempt1/\n?? docs/assessment/2026-09-25/next-stage/wave1-dtco-exit-attempt2/\n?? docs/assessment/2026-09-25/next-stage/wave1-dtco-exit-attempt3/\n?? docs/assessment/2026-09-25/next-stage/wave1-library-e1-attempt4/\n?? packs/library-intelligence/flow/\n?? scripts/live-check-wave1-dtco-exit.ts\n?? scripts/live-check-wave1-guide-team.ts\n?? scripts/live-check-wave1-library-e1.ts\n?? scripts/verify-wave1-dtco-exit.ts\n?? tmp/",
+    "model": "native configured DeepSeek adapter; no replay",
+    "installedBundle": "/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/profiles/hima/node_modules/@hima/harness",
+    "installedBuildHashes": {
+      "choosers/timing-push.yml": "b82022b1545d77e502eaff06f41629945ffda55830f532c2ba8f9b8a72c106ce",
+      "cordis.patch.yml": "9579b9a7024a8c6faf8e3b69d5120a5c644d163a571f032c1242ec8a121f2f46",
+      "lib/adapters/library-qualification.js": "54e9dc442ea2223eaef4eb90e1ee27c06c1d074dd89c3ad8c692fa5c03a9cad0",
+      "lib/adapters/library-qualification.js.map": "16f76f53ef63aba5c8647a76076896fe8a46abf24bf531106a8b53ee1c72aeac",
+      "lib/authoring.js": "dd2a399888646e083a63d3744534022c9b3a9edca4d0c8c6db504c8c6bb89373",
+      "lib/authoring.js.map": "52491c1be7b0704cce1aaa58dc74d449ea860895d67bc619dbf8b1d7b06f6855",
+      "lib/budget.js": "97734382d5208d35b8afde1e9a00a1bf2bab96c9a20a6deb3fa629a3f53bde9c",
+      "lib/budget.js.map": "0894f9d2abd18e95ab03e3eb65f7749cc3e2001334cfc1d2d7824f50e47cb820",
+      "lib/campaign-file-diff.js": "7fff1142a340f5edd044a708fef83205b8d4f9a880a6bc64660de7d415320e33",
+      "lib/campaign-file-diff.js.map": "a7fa522b77534b3a381b584d6fcfa43041b763749405ecb15e5c93374d508a6f",
+      "lib/campaign-file.js": "eb8a1d709e5a1bbb72efe9dc7c75212703d420c401dcce4ecb64869ab0ddcfcb",
+      "lib/campaign-file.js.map": "c2483b31c39eb02b72d2ae22172c831fd3f509369e30751cbfa2d3c5b9a3f1b5",
+      "lib/canvas-layout.js": "805bd6b43ab3edd6164ce5d9d7299ec916abf51003d87688820a30e8dc885a22",
+      "lib/canvas-layout.js.map": "9534c76c499689b803e9200c73d9af4be5c619c54531b68e0e41f0bfdbfcec9b",
+      "lib/card-labels.js": "0d90dd03b3059a347bb0741bd627a4382f35099691a079ab7b2d555449e7d6bf",
+      "lib/card-labels.js.map": "fc47aa1eeae12a1e4d9cb42480f9d1cb293fe451883727032b11b138536b65bc",
+      "lib/channel.js": "4f6cbb61e334e388feef8f974931af5c1496690da4071bc0ce2f179ffcc2b5bb",
+      "lib/channel.js.map": "216fc3e956d9fb8c24800a3ab1fd78c887cb2d8a9618b36a4613d0d9cbf9a525",
+      "lib/choosers.js": "6db8372460fbe211ece4b18ab91582d4064e9d888d9df5995862bff1f42f2491",
+      "lib/choosers.js.map": "b6ea6d9cdc3d2106c16e8c3454119725331606b9aae892a12fa4098bebda7ab3",
+      "lib/client/scene.js": "96bc908a596470008734c7be1bc31fc2d1f4690f09ce738f6f7e58e01c8e3dff",
+      "lib/client/scene.js.map": "19b5be3e17b3e43d4fba9566081ba1d0638fc0a7d1c71c96b580431cab25a8bd",
+      "lib/client.js": "6c51c0822aaa790bcec0a90b411a1f0558492448c955e6572cfe8c773c52c484",
+      "lib/commands.js": "11fc56cfeb1bf83a7475add1f56e17a8e723e5bf1a9f65a1dfdc21db0c573e15",
+      "lib/commands.js.map": "59f6b1c696b569e2aa4c40b1fa67df98df23c9defffec9883193cae1f72bcd93",
+      "lib/delegation-runtime.js": "fbc197a1fdf225614cce1edd8683bd4698eb7e8f1d2b36bd0428c3b3c4f9e30d",
+      "lib/delegation-runtime.js.map": "6b01e159d2b570969c055d1439288b97458d8587e849b257f0bc2da90dac069d",
+      "lib/delegation.js": "c11a5bf16501d8e43c145c5e46133f1b57ec5b35f7bef7e57838aa2239b272aa",
+      "lib/delegation.js.map": "327ac71d28d16d32caf8080f091dca886ff5c8867a908cef6a0ffb01aaeec51f",
+      "lib/errors.js": "00a0807338301708c1e49a79cca64819420ec5f5784598ebb51642a7be851642",
+      "lib/errors.js.map": "b3899a3f488216c8739afd642ad3dd3405076f180e48897b47158d26db64e8a8",
+      "lib/experience-report.js": "6c42962b64037c60e49288a17ee6102369c7fb6392ce4dea3a0892131b87f76d",
+      "lib/experience-report.js.map": "47ccc2d41182e1d4b5e32aac0ebc3842984cb9b0c76509672b8d6fcd2d3fb9f4",
+      "lib/experience.js": "6c4b0705ef6d11b7c5f1b90104e58d77e9379ead52e3c53a454c37f63e0dd88f",
+      "lib/experience.js.map": "b25b3a3214526a62902256705ea5117b4594910265cc46e5a34e563244981b37",
+      "lib/fabric.js": "b1f687aebd0148eea7a956faca2309898578587d803307353fd16534b44ae162",
+      "lib/fabric.js.map": "b756d4565a24aa6f39001cac39051a6ef41008b596af3f31021c8ec114f20971",
+      "lib/forks.js": "c5e6eaaea0461edafb455cda340469d989591d84de331b99ae91a2851e2e281c",
+      "lib/forks.js.map": "8edb328e885ee5920be67cf24e9860922304bd13531a6e6bef18c2913ce616cc",
+      "lib/generation-feedback-report.js": "0d07467fb19eedfce053f9c2e794b57cb6298a548bb861025e07e068f71891e5",
+      "lib/generation-feedback-report.js.map": "d3b0f2b012974d01fc682e33cd6402c8de649a8c2e9b60d5b56cd640c35a82ee",
+      "lib/generations.js": "e9be4c5e7f4e08874713a92802edd6f68aee5ca6f2d2d29ab1dde6de45fb2371",
+      "lib/generations.js.map": "7e26ac5d52443bb3e8942869ab789e0d56d57ee1d3046ed46e79dad2f6a4d191",
+      "lib/guide-context.js": "b529cdb9c00aa9cffc2d5da73b6515703d4d3a07fe7a792a9c27835a9d7f2af2",
+      "lib/guide-context.js.map": "a75d0a994ca4d9f8fce41f3df514bb702730a857c9b5da42d602d98685b8efa6",
+      "lib/guide-sessions.js": "42924b1933c784ed839c5eddfecf0d7ddffb7195e84209bc88f741fc12137a05",
+      "lib/guide-sessions.js.map": "0948b1be8c206b6cd38e686b9156cfc33c115993705d60d5f0e2a0971ea236f2",
+      "lib/host-exit.js": "1b060a03586e839346d3dc0e912826e4b57186696aa8f1ab7a34327a2c7dbdfd",
+      "lib/host-exit.js.map": "7950e5a35c31f695192ae9b688014d9c4992be4bfc735ad625350b71f75e080d",
+      "lib/index.js": "21fd58e3034659549c153fe7ba1338d176cf31ba5665a36575c202ff355c9f6f",
+      "lib/index.js.map": "6d34c92c578da12b5bcf1467f25179a8b6288439a2038698e65a4f45dadcd066",
+      "lib/interactive-binding.js": "b33b77e95f92cf2c2494565a96282cb1ead2627d0723265713be6dae7c8a0dc0",
+      "lib/interactive-binding.js.map": "21e0fa153d2e1e8c88054f0eda64ca1959f4412ad9813e85f7d647b00c83ce11",
+      "lib/interactive-job.js": "9f0ea416aab3df722eca63a3cbc957204272f3be83f7ffcd9fc72c53e22280ee",
+      "lib/interactive-job.js.map": "bdae10351de8d5c999ecf70f44ea297bb189718be155a00bbed5083c40fcdf33",
+      "lib/interactive-runtime.js": "f8c41f38804dc2f7250aa7425c56aefb6adaa8b4d0b8dcbb48c6613a109787e0",
+      "lib/interactive-runtime.js.map": "9503e71bc0270519c885ed3681c9d8bfb6f87dc839655d9dd76c40cd3f8a9975",
+      "lib/job-cap.js": "8b2b5e21471a4f5dd88ab9970fc0c40c096a1aa3eca338fc4925e5f9cfcb94bc",
+      "lib/job-cap.js.map": "81f8957cbfbd945a3eab25eeae089c14a3a6938c549a802de2ca003ea8ea82d1",
+      "lib/jobs.js": "d6c5c9a12bb39d09372c866c64640275efa134279fca2ef3372f6fb88222e079",
+      "lib/jobs.js.map": "54b306876954fa2d9d6afe64f071e7b37dbe8a9d7876d2296796ab485ecf9c42",
+      "lib/judge.js": "f8b6e6073e5012c8fb7d4ea39e8e8154690eea9d17b4e72aab937771d6ba14db",
+      "lib/judge.js.map": "a8f84ff71c400005cc6c9fb81dfda9facd0311cbb11462868cbfd13c333a5f6a",
+      "lib/ledger.js": "955a441a0f91456e9801996cd4603269b97dae4a45659449f3b6a7b59301df11",
+      "lib/ledger.js.map": "bd0b810ba13a76d95f9b4a20812ae02caba161c9a878596f24ef8a0b9631a5e1",
+      "lib/library-insight-report.js": "82966fa7ca8bfc35c03a3df370420da813d365bca982b7c20c8d73788251a1bf",
+      "lib/library-insight-report.js.map": "62c1afb0c3277ccdc5389cbeaa3277011a6301205f7aa4745951515204d9cec5",
+      "lib/library-prelaunch.js": "8c8063bdeb0c14c8ecbb6dcdd06fec3e35bde28607a93bde8857a1d16d0b6424",
+      "lib/library-prelaunch.js.map": "afb5b9d7731324b88c0984358c80731a285a8676dcbe8c053350aae1594b0441",
+      "lib/loops.js": "1a01574569c41925ba0af9e39d7f557f27368f6c3004a3e5fb8dc878cae6e623",
+      "lib/loops.js.map": "7bd6b188966d4ecfbdf41ab1b475efb1065c9eb8911c71b090476bdb96d25c90",
+      "lib/moments.js": "f6b98b203e163448c2452849ddebae73b061b3e31d74a183c0021ccaba0eb8a9",
+      "lib/moments.js.map": "08355afe4447c8c167db3030304927f33d3a45b7b215d1ad900e6a7aebbecc49",
+      "lib/native-session-memory.js": "c8cb8ecb88af838f82d94a185719bb4312b7fa70999ff131d2ca7770fb598263",
+      "lib/native-session-memory.js.map": "be524291b2da45d57833b8fcf396a33d6b815f492cc054076978afdaaf5e384b",
+      "lib/node-card-layout.js": "4de26fc8d653340c60c6ce120eb1e028195b123b72948064ae256e93c4bd3e0c",
+      "lib/node-card-layout.js.map": "7e39285475fafa931b31bf4726aa26a3b4a626c49c34d245ae43f0d8af05616e",
+      "lib/node-turns.js": "367a9c6c420c8619060fcc7f12d4d19a9ef6102ba600fd6739dc6a5852fcbce3",
+      "lib/node-turns.js.map": "acf32d6a7d98b3895c96576228ffb0487cb6baa1f455f9c25a29d37a42a041f9",
+      "lib/observe.js": "d617dc517ae05bf14fbff221e478830e12c7d0927b7cb24da620046826706c25",
+      "lib/observe.js.map": "e35f5408a42e07564ecdf7defa189ad4295889613639be074d1d294f34b5fbb7",
+      "lib/pack-data.js": "5f7ed0e2349fae0fd7cf15dee17bf6377f3793da7d547d888ec94dc9e721cfd8",
+      "lib/pack-data.js.map": "07b6090ba389e132b367997ebe85e9fe4126b8b633748cbaaa069cbd0e44ab29",
+      "lib/pack-folder.js": "e5f9182532e5c92917fef17a95b48eb6b68670895d899763627c0ee6596fd6d0",
+      "lib/pack-folder.js.map": "7b89a68f89e7e9ec016d48590d78c4fa3e5c3800c7daaf8510b591179e716e02",
+      "lib/packs.js": "9d1b46451ac127f4299f614d33a2d5d28b697e97a56c7ce5d436ecc1e4f70aeb",
+      "lib/packs.js.map": "35d0add6fb57ed655661fd75251dcf0141645ddeed2828c619334d0914c8e1a2",
+      "lib/paths.js": "a78b513d3b94c8be9a55d3f692b2fcf10b21d64b6f87efa51067fe54c6442423",
+      "lib/paths.js.map": "44b637e6f99f2e33528954364d54dbbd249859322bc0a1fd1e911009ee68b625",
+      "lib/readers.js": "0b64ec5e6d3151f74572aa44b6b618b8c5cd500d8c1389f06cd4c5c258ec52e5",
+      "lib/readers.js.map": "806e12c9fee9aa036807abd7c0726f29ef732f9c3bb8d4094f03e450dd0492cc",
+      "lib/record-views.js": "400351605a5346cdf51e8a645f9837bd3999a761905841e2c87b5d632af1b561",
+      "lib/record-views.js.map": "3620002a62bc83df753e803496ba97e399cc1d4dac5c6761c25c4b80ee6bff2c",
+      "lib/recovery.js": "475f1733745a7c5a7dc4e0caedb4dd2c091cc60f7e250ce0b8d4cd4b1e7a83fe",
+      "lib/recovery.js.map": "00fc273969fbbc58b29d5c45b25bc8d69cfffafea9a1b08674d24f371fed2a83",
+      "lib/release.js": "43f8d8222e425dd8bb1dd1adf2bfd42dfef28b2714f2622d94bf6d9acdc23588",
+      "lib/release.js.map": "b79eab9f3abb7c945fdb8ba7096249dd580a324691169a5eda7a296feb9c52d2",
+      "lib/remote.js": "c2c156810bd356e862327c56628f1197ada3b1d7c4d74f1d65d5073ebc6fb824",
+      "lib/remote.js.map": "139796d597de95bca7dd45258002c94aaf76fc95d28ce7b8fe533b64426f42be",
+      "lib/rules.js": "2d207d0287985cf63e802f52bb9e79fa918ece4821f66c9489f9370d1a304c4a",
+      "lib/rules.js.map": "96ca550b9cd61acb0e1ef0a5511b66dbb1dd53b7db9ef32153d83685052e9e4c",
+      "lib/run-arguments.js": "f37ab8cfd4b2d4efb82f6aa6b6a6c07e9021b0096447d96bdf414b2eda53d2d6",
+      "lib/run-arguments.js.map": "0718ebffdf8b43475f784fcae228872e2e925593307425078ad305ea36974cde",
+      "lib/run-ownership.js": "5e96541339fce7f9b876ece31820f72aaa10b14a9412466304d7372c7509d032",
+      "lib/run-ownership.js.map": "1a7eaee146766b8a49308b9f127fc8f3abefd5804b533c9f54f3d0060438f006",
+      "lib/runs.js": "fb047d47d86dff47a1d9c487e20a1320dd126d228a534c5fa1da282c2bbae16a",
+      "lib/runs.js.map": "4dae6c847c199309ec5f589a18f0c46d2be33acd674e182cda8280fb34743ce7",
+      "lib/scene.js": "8639cc0162b44459194935c1ce28fc70f95090bf957027cab269311d50359a97",
+      "lib/scene.js.map": "0d8a98ff93c4355c72985dff2bfaca1858d39628a7c93aa10a98d1c345ec2106",
+      "lib/semantics.js": "6bc9127a25f592bcdeac8145a548fdb7c89867d3072160cc695ebf9025296fc6",
+      "lib/semantics.js.map": "f94dd7caadce5afe7507620725079df3fc7ee53a8e7d0c4772331e65fa423674",
+      "lib/shell.js": "f00cdf6bcc1306a382466ac7afcc7476f725eab04cdf6f030a225d887c271b7c",
+      "lib/shell.js.map": "eb1dd95a6eaf47ec34d20c5a5006015ed2be279aa40958b7aa433dabf5143696",
+      "lib/sites.js": "0d2d04aea089f791f06343bc931489d91e2611da4719a24a485e1109c430c1ef",
+      "lib/sites.js.map": "1bb33c5696536b3673e883c3d5dfccad4d427508888ccc7387d57ca582f538a4",
+      "lib/skills.js": "09ca13393e7a94d3bf2b2978a68f6d29b0415b704006e6eb53f25c11ee23547c",
+      "lib/skills.js.map": "ae678086ea203cd8a9f1de9c8631aa0e7d7373cca4ef3aa4b9965ae11a7701dd",
+      "lib/tools.js": "93d86d515113ea4ff87d8b2fb0e515483a3ebf29799d86c798888f38417f4f38",
+      "lib/tools.js.map": "2333949411948c19e443f605b633ef68fddd59479c84209fbf119747dff14bd0",
+      "lib/types/adapters/library-qualification.d.ts": "27b690ff6e6fe83678139627256c7396ad3d2106f536a33bebac8bcaa4ee84ea",
+      "lib/types/authoring.d.ts": "c16e96716980c696c41c77e7cddbeb087eedc85e2807f35b784a803102a3e435",
+      "lib/types/budget.d.ts": "6ea43dc97359546529c7064c5a6b7f255b8a3d7ac65bbbfda54513025e5a7cb2",
+      "lib/types/campaign-file-diff.d.ts": "cc9f21e8b55fc27c1e0c4bd20d31d85cbfe2a9c5faca3bb2c79128dfa4339990",
+      "lib/types/campaign-file.d.ts": "1f7a0358cb8266b9d111fdfe12b17a9f5efceab8544f26c4ea7b6e12b54914ed",
+      "lib/types/canvas-layout.d.ts": "e534905e4d3b2204a6eb7def9cc1536e600ad908ecb1273991c65d25b55284e5",
+      "lib/types/card-labels.d.ts": "ae900a178c7d2452757fca7ef124d3665975f0b2b75e7f2870bd8d54b06dbd44",
+      "lib/types/channel.d.ts": "f891fdef796aa2bfb9bba9354559aa126165e3e57653f8b0fe5a57c064522908",
+      "lib/types/choosers.d.ts": "ba39f953c35650632cae62703b0ae773c1fe7ad8f2172451fe5df41e1bcea07e",
+      "lib/types/client/scene.d.ts": "33e206fcdb9844fec2e58169e304569d35110c0f6d9faab6de1a6bad67bee31f",
+      "lib/types/commands.d.ts": "96ce72b7b1458bfcdae81c253bfb5f359c4ae82567ccae40ba155027cb40029d",
+      "lib/types/delegation-runtime.d.ts": "0201740f46357639f59fba98f666b742cde8fb32ac065fc5a9fcd579f132dfb7",
+      "lib/types/delegation.d.ts": "b8fafd9489a1c4cce70bc907a2029a2ca61b3d9f78c7950547bb29f02fa93648",
+      "lib/types/errors.d.ts": "d8851d20a1b5eb59c59fa99c4ec76d24a8b220e9969eed760508d464456841f7",
+      "lib/types/experience-report.d.ts": "65dd6f631ea7f8aa6ed855673dae350012b7c2b2ae683e5d50a52f5bf41755c0",
+      "lib/types/experience.d.ts": "8a3e9a5a43d5965909bc420d084ed112a3181a2b305f1c33b71873e79b993a0d",
+      "lib/types/fabric.d.ts": "e8b9842b83006a17a3d652f295f25cfa486841d197d32341b5c5bd4fdeeff9f0",
+      "lib/types/forks.d.ts": "6b010ee195e9db7c0bef79cfc077f1c5e94b73e3ce376c677e27b4656e9d76f9",
+      "lib/types/generation-feedback-report.d.ts": "b1be463c41fbab087c0947b8da5ba472291674e2af09aaece18820b465666d3f",
+      "lib/types/generations.d.ts": "f6ef363bbbdd49c0db10c80e7ba593789f80b84eef86640cd102901cb3307f9f",
+      "lib/types/guide-context.d.ts": "55aa0dfe125389dc7f2ce6111eaa3a9d563cd73a2633259fd1758bb830352e11",
+      "lib/types/guide-sessions.d.ts": "91e555b96bcace2f434777b98e8fb91f8f3140781c812e0b6108a7f72c3d3f57",
+      "lib/types/host-exit.d.ts": "bcc7803d09e3a584f1fd908a150500740924ab4b1ef758396d15c6ccc680ef75",
+      "lib/types/index.d.ts": "b46ecc2c3bb28b98355193c323d574184313da927a502396e50ee33837d68fd2",
+      "lib/types/interactive-binding.d.ts": "044bf6a7ce43793f3b929672f66b856baf2afe68ff7c153059c1afecd9769502",
+      "lib/types/interactive-job.d.ts": "99ea9dff579bf8f7975505c1928b70af01fe168587a2570c244718ce70bc50d5",
+      "lib/types/interactive-runtime.d.ts": "3095cb560cd1d5041ae844ec9f806a36c8a771ea855f2988f05f21e9b607b87e",
+      "lib/types/job-cap.d.ts": "2f5c97610b42f6a6dfcc8a3b82cc7241a68f057b454d3d274cf1ba271d4db8bb",
+      "lib/types/jobs.d.ts": "05785658b306ebb9f7add8d5902bdb25e0966929cde09907400843cd55b3e3c2",
+      "lib/types/judge.d.ts": "f3779fe937c9c2e0de29ba2588964cd276cee7b823fa933aa19810f0406bce1a",
+      "lib/types/ledger.d.ts": "7db9a1fa3491bc625c22d6a122b5b21c98fc2a00f5ea4d9f8718f9cce40ba5b8",
+      "lib/types/library-insight-report.d.ts": "44b2b85fe1f15e013db8f1b90aec3ca0569e2c4de6c83889a05b025f013ecb30",
+      "lib/types/library-prelaunch.d.ts": "0f8b8f9f13f4e90c6e0b078597b687bf97c4b636a370895c635e33d07c5df92a",
+      "lib/types/loops.d.ts": "02d6d2182a6704c96c042ac387942b87165e4f4754940364fced9db71c89e55c",
+      "lib/types/moments.d.ts": "6296bfca19ff20a43c0f268858c5f69cd5120f0491d7c078960e59cf1d16fbd8",
+      "lib/types/native-session-memory.d.ts": "2647260e1ed59d04b3b48f4ceaf210db28f8ab1ffca1679870dd38fa4dd5dc0a",
+      "lib/types/node-card-layout.d.ts": "720f7803fd4bb3fa99a199ca8c6d66765e4d17f4cd13f21120333cfc89f54801",
+      "lib/types/node-turns.d.ts": "cb4a2c3e6b394c859a17f3ba04ed864cee855400ff6f69bac1a9b7012637e3fd",
+      "lib/types/observe.d.ts": "75beba7b89b67dd850ac2a9304ae2296e362aca6adc89a40fec981423486f4c4",
+      "lib/types/pack-data.d.ts": "e7fd86a06fb9bb0c3e9a0518f94fbd9252c67ea782125dfbadb8be3f29ea80eb",
+      "lib/types/pack-folder.d.ts": "819941f3697a2ae2e58c902f69f6352cd9bed052b7d1635357c0ad2d611ec1d5",
+      "lib/types/packs.d.ts": "7fbf4ac468182b134315bb6aaacab56aa4e71cdddd5732b745692b65481f5bd8",
+      "lib/types/paths.d.ts": "bccd5d51572026a0e31f0aa752f4e5a3cb2898e55987a298ed624ad75c305876",
+      "lib/types/readers.d.ts": "824497ac8d299df864cebddb65f04fc526a76417f295988e65fa046596e620bb",
+      "lib/types/record-views.d.ts": "71170581b457c7543ca47770afd96fdee776d63e6d48c8593bb6d51ccc6d4998",
+      "lib/types/recovery.d.ts": "23ceb69b661927e838f031f65cf7f792659b8d137d792e831e704a2b06f083c2",
+      "lib/types/release.d.ts": "ba7eb3c9b0ab8e1c3a3299900278142849618290b6776b63187ac132da012b04",
+      "lib/types/remote.d.ts": "f341666d073d47ad5e96f4d9743133fe5b1d3a8a84dbe5e5e1069ab43924d329",
+      "lib/types/rules.d.ts": "8b3f8af16de0d867a5cc50fe91167a5e9b95fe91436d78383f1822da078e0cad",
+      "lib/types/run-arguments.d.ts": "d37189cd3444193c14a335365e27365f4d79131b82a22965086d98391e3438e3",
+      "lib/types/run-ownership.d.ts": "3b74a6664a567a762dfabcd9cef01d0bad9d577f1233c2fa68b51af67958e85f",
+      "lib/types/runs.d.ts": "39d6c92213e0ad8349ce44a191f9dc1de398fa9d82b2e00e5dd1957dff9f1102",
+      "lib/types/scene.d.ts": "5c102fcc9df15d96315fa9fe040f7ac3f8ad387b94625de3f65a552f84411fcb",
+      "lib/types/semantics.d.ts": "7aa180358774b1cba73f3f856674cf9e0b1d91c2fe585930eb63f44ed9c4b7c2",
+      "lib/types/shell.d.ts": "f88d3d128d229ea5c4ca1208f4304880e2cf7af7481a68eb445f1acc28746b3a",
+      "lib/types/sites.d.ts": "c314d966ceb2bb1ec69aa3d01bf58b281952742f7b781fbb22850bd131941cd8",
+      "lib/types/skills.d.ts": "0bb51422d142b3cb1755fc5b9d759c3ca8275019c24ef8f07c3159ec44605f20",
+      "lib/types/tools.d.ts": "105e0c307589243f6fda5e605c9d33d39b733254442010428e11789187fdb3fa",
+      "lib/types/value-measurement.d.ts": "72863f7ac4e710f9f6d920de7cd480e0347e90d9f37675c4df8706640ebf84f6",
+      "lib/types/words.d.ts": "84bd815cb9d67998e40ed03f232dde0029a255f68f417b99d78fa4685c005e24",
+      "lib/types/workbench-style.d.ts": "ccb4f23ca99f7d833508c178783cbea224b22ed0ec1a2a7a9c1466acb95bf3a4",
+      "lib/types/workbench.d.ts": "53e733a44834dab9fc37c64034bad6f1dc92663230d7c54921bd9308ff13c9a3",
+      "lib/types/workshop.d.ts": "6721b48a1c557c2aecc2872067e5e4505493f0626dfa3d4c0277bb94587cf34d",
+      "lib/types/workspace.d.ts": "d2fe8de8b70a595c15c591c01ace72b47554c596e6649ac1a5b9f1864bbb6fba",
+      "lib/value-measurement.js": "e55c7b9b9cb2db5d621a13747071332250ea17a83870620de7d54e2833f853f7",
+      "lib/value-measurement.js.map": "61a348eb777b3c91d7841133e04cfcd1af8829a6a47af572880d46b1160de993",
+      "lib/words.js": "a6398ea4bf2f623244deacd9266bd7b8bd713615809bb5347b09fabb5de55687",
+      "lib/words.js.map": "53ce4678ee5d65a59d8787fd4ee3c306e09a251adf26251bb531c2910176f32c",
+      "lib/workbench-style.js": "28b2e33fa84d9837ca74467c246adf5ab28cb22932bb662c4841b05a4ba9b8e3",
+      "lib/workbench-style.js.map": "2db47b180da5c43c67012498db3c8a77030fc7ed23a826137381a7c0c1d2971c",
+      "lib/workbench.js": "be137c73558e5536e219b5a015cd1ea90e3cd85e555d2120aef25f164d3777bb",
+      "lib/workbench.js.map": "c53302668279a94583c54f1d04b9e622c56db1d3439d47014dd9c2c7e25ca174",
+      "lib/workshop.js": "24891477e72a4a758621607295ee51640d742c2c3a3b12be03282c1da6848318",
+      "lib/workshop.js.map": "c12e075d48c5a78cf691a2949a90805cc3c371d3924ae1ab96c3fce4c39d658d",
+      "lib/workspace.js": "58bd15014f8ac5fcd558b2f3bcc2420de772700817e102e3942bd087c5583775",
+      "lib/workspace.js.map": "84052b960e9990a2144d5c4b54d0916db6d9e1f0667c5e757a65eca5b31d8004",
+      "package.json": "6d63aa05f2fc725c7215f346888d9dc6065133191bd5ea70082be2406dd33513",
+      "presets/hima-moment/agent.cordis.yml": "9e3356343cc7ec39bd25b3681dd7ac32927dcd8bb0c24eff8bce4bc2026dd400",
+      "presets/hima-moment/preset.yml": "51b12acc5b12030615f036e7e76351525103fc851dbc30c939f9ca900a18ccf0",
+      "rules/clock-period-at-most.yml": "6c56088f7ffca158e6e60dee84ce0b9124edab4c855084a4c1e5e4293c8c4831",
+      "rules/hold-wns-all-nonnegative.yml": "8420ad7397790ec523a7b1795d15b972ad103752ddc5b5af77811af396123ca0",
+      "rules/setup-wns-all-nonnegative.yml": "511500c74eeb0dcc703ffa1113f155c2c6a044d7da4690f3fa90efce9104e98b",
+      "rules/setup-wns-reg2reg-nonnegative.yml": "f46852efc95e7ce5377f7df1e4b4c4a8a43685bcb7f7cce5abf1393aeb64812e",
+      "semantics.yml": "842087cb444dcb323ba131cf054e1bf5cd83e5c90bfc29c61b65a2194c700805",
+      "skills/hima-fabric/SKILL.md": "b910d0d739b739c301e4c465f5e348fc6379bba7e84a807e7a06592f70116205",
+      "skills/hima-grill/SKILL.md": "a46a23706e1a76d0657858b503eb6edef54eba04358ec49b94a0cf09e00aee56",
+      "skills/hima-release/SKILL.md": "8c2784f60277d844eb37c50ac22d771989058599c4bacf99d9aefa215ef7b2eb",
+      "skills/hima-spec/SKILL.md": "ac12d9f90c07397a93df78be522759f9b109bd9b6a66714ea8ab09a24fb89521",
+      "skills/hima-test/SKILL.md": "02661b9bc645db63030a30039d48968002f26dcd9fd2cf2158273989c66c46ea",
+      "skills/knowledge/assert-the-checker-options.md": "468ee95644a9c04b622b6b8bb669a5780c9f934e911aeff4ec2bbd703745e777",
+      "skills/knowledge/attribute-by-database-relation.md": "2ab109a44c321ac4e3f172ddd5bc135c560d1a7a48d3ac7c1f6f99cdbc870c42",
+      "skills/knowledge/end-honestly-in-more-than-one-way.md": "92f13b5d4e202a0490d4d81a38c4bac9f24d1ee11e8ab6355ad1d4b1ced2b7e6",
+      "skills/knowledge/one-checker-per-session.md": "8f88fc3a52747c2d5c72ef79ca6bded49aa417e1fdeb90f24da30642eb90bae1",
+      "skills/knowledge/over-constrain-and-read-the-violation.md": "691337ef030d7a229cd04440f423a8b297fc0c855ac90e1855d636ce8378262a",
+      "skills/knowledge/pack-anatomy.md": "a3a0e041b57608dba2318980a50207939dd23d919fd5b0bf28a503c93e01c50f",
+      "skills/knowledge/what-a-golden-flow-is.md": "48620bc00d6feaa3aec2105a51be2ae26d078419f34b3bcbf3cfa826b2e94a40"
+    },
+    "input": {
+      "path": "/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/numeric-flow/numbers.txt",
+      "sha256": "045537c30c6174524ce1e81cf984da94dbca5be317ba1790624574b44029981c",
+      "numbers": [
+        39,
+        12,
+        7,
+        6,
+        26,
+        22,
+        14,
+        20,
+        12,
+        21,
+        36,
+        35
+      ],
+      "limit": 12
+    },
+    "allowedReadRoots": [
+      "/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/profiles/hima/node_modules/@hima/harness",
+      "/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/hima/packs",
+      "/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/numeric-flow",
+      "/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/workspace"
+    ],
+    "allowedWriteRoot": "/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/hima/packs/live-numeric",
+    "allowedSpillReadRoot": "/private/tmp/hima-l4-aVmlfY",
+    "deniedTools": [],
+    "secretScan": {
+      "files": 246,
+      "holding": [],
+      "unreadable": []
+    }
+  },
+  "userMessages": [],
+  "toolSequence": [
+    {
+      "at": "2026-09-25T12:04:28.845Z",
+      "agent": "session-110d10ed-8443-4934-9936-de4603a5645b",
+      "callId": "wave1-team-prepare",
+      "name": "hima_prepare",
+      "args": {
+        "pack": "live-numeric",
+        "site": "local"
+      },
+      "result": {
+        "isError": false,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"id\":\"082eee4d5205b761ee3c9152d5756b3a7963c325c061f85d05612d67cee5e9eb.4c44f5c348f75dd6852d90baaae9babd.d89036aad396841b855604c383351445efdab849981ad7a8b964958b7cf393ef\",\"ready\":true,\"pack\":{\"id\":\"live-numeric\",\"title\":\"Bounded numeric analysis\",\"version\":\"2\",\"tools\":[{\"id\":\"prepare\"}],\"ontologyAliases\":{},\"knowledge\":[{\"file\":\"sum.md\",\"purpose\":\"Exact numeric analysis and timing contract\"}],\"stage\":{\"stage\":\"none\",\"validated\":[],\"next\":\"intent\",\"needs\":\"INTENT.md, written by /hima-grill\"},\"referenceGraph\":{\"entry\":\"prepare\",\"nodes\":[\"prepare\",\"analyze\",\"read-analysis\",\"judge\",\"next-cutoff\",\"blocked\"]}},\"site\":{\"name\":\"local\",\"kind\":\"local\",\"readiness\":\"ready\",\"resources\":{\"cores\":8,\"memoryGiB\":16,\"parallelJobs\":1}},\"inputs\":[{\"name\":\"flowRoot\",\"description\":\"Declared numeric Golden Flow\",\"value\":\"/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/numeric-flow\",\"ready\":true,\"source\":\"site\"},{\"name\":\"design\",\"description\":\"Numeric dataset\",\"value\":\"numeric\",\"ready\":true,\"source\":\"site\"},{\"name\":\"workspaceRoot\",\"description\":\"Private workspace\",\"value\":\"/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/workspace\",\"ready\":true,\"source\":\"site\"}],\"knowledge\":{\"documents\":1,\"ready\":true,\"currentDocuments\":0},\"probe\":{\"status\":\"declaration-only\"},\"goal\":{\"minimum\":1},\"strategy\":{\"limit\":10},\"goalDeclared\":{\"minimum\":{\"label\":\"Minimum acceptable sum\",\"unit\":\"count\",\"min\":0,\"max\":10000}},\"budget\":{\"timeBoxMinutes\":{\"value\":60,\"source\":\"harness\"},\"retries\":{\"value\":3,\"source\":\"harness\"},\"generations\":{\"value\":6,\"source\":\"harness\"},\"jobCap\":1},\"referenceGraph\":{\"entry\":\"prepare\",\"nodes\":[{\"id\":\"prepare\",\"kind\":\"act\"},{\"id\":\"analyze\",\"kind\":\"act\"},{\"id\":\"read-analysis\",\"kind\":\"act\"},{\"id\":\"judge\",\"kind\":\"judge\"},{\"id\":\"next-cutoff\",\"kind\":\"explore\"},{\"id\":\"blocked\",\"kind\":\"wait\"}],\"edges\":[{\"from\":\"prepare\",\"to\":\"analyze\"},{\"from\":\"analyze\",\"to\":\"read-analysis\"},{\"from\":\"read-analysis\",\"to\":\"judge\"},{\"from\":\"judge\",\"to\":\"next-cutoff\",\"outcome\":\"PASS\"},{\"from\":\"judge\",\"to\":\"next-cutoff\",\"outcome\":\"FAIL\"},{\"from\":\"next-cutoff\",\"to\":\"analyze\",\"revisit\":true}]},\"unknowns\":[],\"nextActions\":[\"Review this proposal and confirm once to create the Campaign.\"],\"campaignFile\":{\"path\":\"hima/campaign.yml\",\"applied\":false}}"
+          }
+        ],
+        "value": {
+          "id": "082eee4d5205b761ee3c9152d5756b3a7963c325c061f85d05612d67cee5e9eb.4c44f5c348f75dd6852d90baaae9babd.d89036aad396841b855604c383351445efdab849981ad7a8b964958b7cf393ef",
+          "ready": true,
+          "pack": {
+            "id": "live-numeric",
+            "title": "Bounded numeric analysis",
+            "version": "2",
+            "tools": [
+              {
+                "id": "prepare"
+              }
+            ],
+            "ontologyAliases": {},
+            "knowledge": [
+              {
+                "file": "sum.md",
+                "purpose": "Exact numeric analysis and timing contract"
+              }
+            ],
+            "stage": {
+              "stage": "none",
+              "validated": [],
+              "next": "intent",
+              "needs": "INTENT.md, written by /hima-grill"
+            },
+            "referenceGraph": {
+              "entry": "prepare",
+              "nodes": [
+                "prepare",
+                "analyze",
+                "read-analysis",
+                "judge",
+                "next-cutoff",
+                "blocked"
+              ]
+            }
+          },
+          "site": {
+            "name": "local",
+            "kind": "local",
+            "readiness": "ready",
+            "resources": {
+              "cores": 8,
+              "memoryGiB": 16,
+              "parallelJobs": 1
+            }
+          },
+          "inputs": [
+            {
+              "name": "flowRoot",
+              "description": "Declared numeric Golden Flow",
+              "value": "/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/numeric-flow",
+              "ready": true,
+              "source": "site"
+            },
+            {
+              "name": "design",
+              "description": "Numeric dataset",
+              "value": "numeric",
+              "ready": true,
+              "source": "site"
+            },
+            {
+              "name": "workspaceRoot",
+              "description": "Private workspace",
+              "value": "/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/workspace",
+              "ready": true,
+              "source": "site"
+            }
+          ],
+          "knowledge": {
+            "documents": 1,
+            "ready": true,
+            "currentDocuments": 0
+          },
+          "probe": {
+            "status": "declaration-only"
+          },
+          "goal": {
+            "minimum": 1
+          },
+          "strategy": {
+            "limit": 10
+          },
+          "goalDeclared": {
+            "minimum": {
+              "label": "Minimum acceptable sum",
+              "unit": "count",
+              "min": 0,
+              "max": 10000
+            }
+          },
+          "budget": {
+            "timeBoxMinutes": {
+              "value": 60,
+              "source": "harness"
+            },
+            "retries": {
+              "value": 3,
+              "source": "harness"
+            },
+            "generations": {
+              "value": 6,
+              "source": "harness"
+            },
+            "jobCap": 1
+          },
+          "referenceGraph": {
+            "entry": "prepare",
+            "nodes": [
+              {
+                "id": "prepare",
+                "kind": "act"
+              },
+              {
+                "id": "analyze",
+                "kind": "act"
+              },
+              {
+                "id": "read-analysis",
+                "kind": "act"
+              },
+              {
+                "id": "judge",
+                "kind": "judge"
+              },
+              {
+                "id": "next-cutoff",
+                "kind": "explore"
+              },
+              {
+                "id": "blocked",
+                "kind": "wait"
+              }
+            ],
+            "edges": [
+              {
+                "from": "prepare",
+                "to": "analyze"
+              },
+              {
+                "from": "analyze",
+                "to": "read-analysis"
+              },
+              {
+                "from": "read-analysis",
+                "to": "judge"
+              },
+              {
+                "from": "judge",
+                "to": "next-cutoff",
+                "outcome": "PASS"
+              },
+              {
+                "from": "judge",
+                "to": "next-cutoff",
+                "outcome": "FAIL"
+              },
+              {
+                "from": "next-cutoff",
+                "to": "analyze",
+                "revisit": true
+              }
+            ]
+          },
+          "unknowns": [],
+          "nextActions": [
+            "Review this proposal and confirm once to create the Campaign."
+          ],
+          "campaignFile": {
+            "path": "hima/campaign.yml",
+            "applied": false
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-09-25T12:04:28.850Z",
+      "agent": "session-110d10ed-8443-4934-9936-de4603a5645b",
+      "callId": "wave1-team-confirm",
+      "name": "hima_run",
+      "args": {
+        "proposalId": "082eee4d5205b761ee3c9152d5756b3a7963c325c061f85d05612d67cee5e9eb.4c44f5c348f75dd6852d90baaae9babd.d89036aad396841b855604c383351445efdab849981ad7a8b964958b7cf393ef",
+        "pack": "live-numeric",
+        "site": "local",
+        "goal": {
+          "minimum": 1
+        },
+        "strategy": {
+          "limit": 10
+        },
+        "timeBoxMs": 300000,
+        "generations": 1,
+        "retries": 1
+      },
+      "result": {
+        "isError": true,
+        "error": {
+          "message": "a confirmed Campaign uses the reviewed Pack budget; budget overrides require a new preparation and are unavailable in this product path"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Error: a confirmed Campaign uses the reviewed Pack budget; budget overrides require a new preparation and are unavailable in this product path"
+          }
+        ]
+      }
+    }
+  ],
+  "agents": [
+    {
+      "id": "session-110d10ed-8443-4934-9936-de4603a5645b",
+      "session": "session-110d10ed-8443-4934-9936-de4603a5645b",
+      "kind": "agent",
+      "cwd": "/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/workspace",
+      "options": {
+        "provider": "deepseek-official",
+        "model": "deepseek-flash"
+      },
+      "skills": [],
+      "toolCalls": [],
+      "toolResults": [],
+      "said": []
+    }
+  ],
+  "runs": [],
+  "checks": [
+    {
+      "claim": "the Guide uses the configured real DeepSeek Flash route",
+      "passed": true,
+      "saw": {
+        "provider": "deepseek-official",
+        "model": "deepseek-flash"
+      }
+    },
+    {
+      "claim": "Guide preparation is ready and creates no Run",
+      "passed": true,
+      "saw": {
+        "id": "082eee4d5205b761ee3c9152d5756b3a7963c325c061f85d05612d67cee5e9eb.4c44f5c348f75dd6852d90baaae9babd.d89036aad396841b855604c383351445efdab849981ad7a8b964958b7cf393ef",
+        "ready": true,
+        "pack": {
+          "id": "live-numeric",
+          "title": "Bounded numeric analysis",
+          "version": "2",
+          "tools": [
+            {
+              "id": "prepare"
+            }
+          ],
+          "ontologyAliases": {},
+          "knowledge": [
+            {
+              "file": "sum.md",
+              "purpose": "Exact numeric analysis and timing contract"
+            }
+          ],
+          "stage": {
+            "stage": "none",
+            "validated": [],
+            "next": "intent",
+            "needs": "INTENT.md, written by /hima-grill"
+          },
+          "referenceGraph": {
+            "entry": "prepare",
+            "nodes": [
+              "prepare",
+              "analyze",
+              "read-analysis",
+              "judge",
+              "next-cutoff",
+              "blocked"
+            ]
+          }
+        },
+        "site": {
+          "name": "local",
+          "kind": "local",
+          "readiness": "ready",
+          "resources": {
+            "cores": 8,
+            "memoryGiB": 16,
+            "parallelJobs": 1
+          }
+        },
+        "inputs": [
+          {
+            "name": "flowRoot",
+            "description": "Declared numeric Golden Flow",
+            "value": "/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/numeric-flow",
+            "ready": true,
+            "source": "site"
+          },
+          {
+            "name": "design",
+            "description": "Numeric dataset",
+            "value": "numeric",
+            "ready": true,
+            "source": "site"
+          },
+          {
+            "name": "workspaceRoot",
+            "description": "Private workspace",
+            "value": "/private/tmp/hima-l4-aVmlfY/hima-home-iDVPL7/workspace",
+            "ready": true,
+            "source": "site"
+          }
+        ],
+        "knowledge": {
+          "documents": 1,
+          "ready": true,
+          "currentDocuments": 0
+        },
+        "probe": {
+          "status": "declaration-only"
+        },
+        "goal": {
+          "minimum": 1
+        },
+        "strategy": {
+          "limit": 10
+        },
+        "goalDeclared": {
+          "minimum": {
+            "label": "Minimum acceptable sum",
+            "unit": "count",
+            "min": 0,
+            "max": 10000
+          }
+        },
+        "budget": {
+          "timeBoxMinutes": {
+            "value": 60,
+            "source": "harness"
+          },
+          "retries": {
+            "value": 3,
+            "source": "harness"
+          },
+          "generations": {
+            "value": 6,
+            "source": "harness"
+          },
+          "jobCap": 1
+        },
+        "referenceGraph": {
+          "entry": "prepare",
+          "nodes": [
+            {
+              "id": "prepare",
+              "kind": "act"
+            },
+            {
+              "id": "analyze",
+              "kind": "act"
+            },
+            {
+              "id": "read-analysis",
+              "kind": "act"
+            },
+            {
+              "id": "judge",
+              "kind": "judge"
+            },
+            {
+              "id": "next-cutoff",
+              "kind": "explore"
+            },
+            {
+              "id": "blocked",
+              "kind": "wait"
+            }
+          ],
+          "edges": [
+            {
+              "from": "prepare",
+              "to": "analyze"
+            },
+            {
+              "from": "analyze",
+              "to": "read-analysis"
+            },
+            {
+              "from": "read-analysis",
+              "to": "judge"
+            },
+            {
+              "from": "judge",
+              "to": "next-cutoff",
+              "outcome": "PASS"
+            },
+            {
+              "from": "judge",
+              "to": "next-cutoff",
+              "outcome": "FAIL"
+            },
+            {
+              "from": "next-cutoff",
+              "to": "analyze",
+              "revisit": true
+            }
+          ]
+        },
+        "unknowns": [],
+        "nextActions": [
+          "Review this proposal and confirm once to create the Campaign."
+        ],
+        "campaignFile": {
+          "path": "hima/campaign.yml",
+          "applied": false
+        }
+      }
+    },
+    {
+      "claim": "retained private home and evidence were scanned",
+      "passed": true,
+      "saw": {
+        "files": 246,
+        "holding": [],
+        "unreadable": []
+      }
+    }
+  ],
+  "finishedAt": "2026-09-25T12:04:28.902Z"
+}

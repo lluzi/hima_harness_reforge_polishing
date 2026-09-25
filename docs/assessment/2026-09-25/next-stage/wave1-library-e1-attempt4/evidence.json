@@ -1,0 +1,650 @@
+{
+  "schema": "hima.wave1-library-e1/1",
+  "recordedAt": "2026-09-25T11:25:33.449Z",
+  "sourceSha": "3236c66ea4d643d87109f221330cd96321b939de",
+  "pack": {
+    "id": "library-intelligence",
+    "version": "0.2.0",
+    "sourceDigest": "288aecf91d6bdb63068fbc27cc99979e9fecb8d25649c1f85d28c981f0774a48",
+    "installedDigest": "288aecf91d6bdb63068fbc27cc99979e9fecb8d25649c1f85d28c981f0774a48"
+  },
+  "site": {
+    "name": "wave1-library-e1",
+    "permitSha256": "4f64a1f14476ee10516a97f3a88fa0a7d8a1912ef8890f39be38aa7ee0edc025",
+    "remoteRoot": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521",
+    "manifestPath": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/qualification-manifest.json",
+    "manifestSha256": "e2ed0abf4c68fa8f9548b1cc219dcab451d96dc192e965e060fca3fea4f30718",
+    "selected": "new",
+    "port": 59099
+  },
+  "run": {
+    "id": "run-c700d636-f7c1-4f87-ba95-914fa228f43d",
+    "campaignId": "library-intelligence-20260925-112523-5af2",
+    "siteId": "wave1-library-e1",
+    "packId": "library-intelligence",
+    "purpose": "campaign",
+    "packDigest": "288aecf91d6bdb63068fbc27cc99979e9fecb8d25649c1f85d28c981f0774a48",
+    "goal": {
+      "qualification_required": 1
+    },
+    "budget": {
+      "timeBoxMs": 1200000,
+      "closingReserveMs": 0,
+      "attemptLimit": 1000,
+      "researchWriteAttempts": 256,
+      "researchWriteBytes": 4194304,
+      "retryAllowance": 1,
+      "jobCap": 1,
+      "licences": {
+        "QuaLib-2026-new-59099": 1
+      },
+      "generationLimit": 1
+    },
+    "firstStrategy": {
+      "qualificationRevision": 0
+    },
+    "generation": 1,
+    "control": {
+      "mode": "agent",
+      "owner": "session-391e260c-13f4-4ee8-bb91-f1f63129321b",
+      "epoch": 1,
+      "revision": 9,
+      "paused": [],
+      "executions": {
+        "execution-95868e9a-6c24-4550-8790-6f2e2e6b8857": {
+          "id": "execution-95868e9a-6c24-4550-8790-6f2e2e6b8857",
+          "nodeId": "qualify-api",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "288aecf91d6bdb63068fbc27cc99979e9fecb8d25649c1f85d28c981f0774a48",
+          "inputDigest": "aee17fbe4ccd23fc133ad6ab2b3adac160006eccb86d21bfb7603894e802bd60",
+          "phase": "completed",
+          "inputThroughSeq": 1,
+          "intent": {
+            "runId": "run-c700d636-f7c1-4f87-ba95-914fa228f43d",
+            "siteId": "wave1-library-e1",
+            "job": {
+              "session": "hima-c700d636-qualify-api-d9a497",
+              "workspace": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2",
+              "name": "qualify-api",
+              "startedAt": "2026-09-25T11:25:23.880Z",
+              "wire": "'/usr/local/bin/edarun' '/data/eda/venvs/qualib-libapi-2026-py37/bin/python3.7' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/flow/tools/libapi_worker.py' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/qualification-manifest.json' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2' > '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-c700d636-qualify-api-d9a497.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-c700d636-qualify-api-d9a497.exit'"
+            },
+            "nodeId": "qualify-api",
+            "licences": {
+              "QuaLib-2026-new-59099": 1
+            },
+            "attempt": 1
+          },
+          "result": {
+            "kind": "settled"
+          },
+          "jobSession": "hima-c700d636-qualify-api-d9a497"
+        },
+        "execution-0d4840d5-f08d-469a-8170-a118d20a44b3": {
+          "id": "execution-0d4840d5-f08d-469a-8170-a118d20a44b3",
+          "nodeId": "read-qualification",
+          "kind": "act",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "288aecf91d6bdb63068fbc27cc99979e9fecb8d25649c1f85d28c981f0774a48",
+          "inputDigest": "aee17fbe4ccd23fc133ad6ab2b3adac160006eccb86d21bfb7603894e802bd60",
+          "phase": "completed",
+          "inputThroughSeq": 5,
+          "intent": {
+            "runId": "run-c700d636-f7c1-4f87-ba95-914fa228f43d",
+            "siteId": "wave1-library-e1",
+            "job": {
+              "session": "hima-c700d636-reader-library-qualification-080951",
+              "workspace": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2",
+              "name": "reader-library-qualification",
+              "startedAt": "2026-09-25T11:25:31.330Z",
+              "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-readers/library-qualification/read-qualification.py' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/flow/qualification/receipt.json' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-readers/library-qualification/read-qualification-g1-a1.json' > '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-c700d636-reader-library-qualification-080951.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-c700d636-reader-library-qualification-080951.exit'"
+            },
+            "nodeId": "read-qualification",
+            "reading": {
+              "reader": {
+                "id": "library-qualification",
+                "version": "1",
+                "reportKind": "hima-library-qualification/1",
+                "emits": [
+                  "library_qualification_ok"
+                ],
+                "file": "tools/read-qualification.py",
+                "sha256": "9c56e60805f35f8877a27bea19f10e84a28ca67930b00ec0c337b9c4c1a1ca73"
+              },
+              "out": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-readers/library-qualification/read-qualification-g1-a1.json",
+              "report": {
+                "path": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/flow/qualification/receipt.json",
+                "contentSha256": "6fbf6d19dcfee2a5fb0f18c4e6eda68d6872ce1d72b229e0dccb3754e2de0ab8",
+                "bytes": 5748
+              }
+            },
+            "attempt": 1
+          },
+          "result": {
+            "kind": "settled"
+          },
+          "jobSession": "hima-c700d636-reader-library-qualification-080951"
+        },
+        "execution-0786c72e-5a04-42b3-8968-f11c5bc9b38d": {
+          "id": "execution-0786c72e-5a04-42b3-8968-f11c5bc9b38d",
+          "nodeId": "qualification-gate",
+          "kind": "judge",
+          "generation": 1,
+          "attempt": 1,
+          "methodDigest": "288aecf91d6bdb63068fbc27cc99979e9fecb8d25649c1f85d28c981f0774a48",
+          "inputDigest": "bdd32001320729aae0e3685c0e61d83f4062c75933a06144163d061f9b33a732",
+          "phase": "completed",
+          "inputThroughSeq": 11,
+          "result": {
+            "kind": "settled",
+            "outcome": "PASS"
+          }
+        }
+      },
+      "requests": {
+        "wave1-e1-1": {
+          "digest": "a1309d7efda25f3eaa6bf46f97a0361a575448535799d96a4555a7dbe7550936",
+          "actor": "session-391e260c-13f4-4ee8-bb91-f1f63129321b",
+          "epoch": 1,
+          "revision": 0,
+          "origin": "agent",
+          "at": "2026-09-25T11:25:23.799Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave1-e1-1",
+            "action": "begin",
+            "executionId": "execution-95868e9a-6c24-4550-8790-6f2e2e6b8857"
+          }
+        },
+        "wave1-e1-2": {
+          "digest": "1ad24fe9770f327b824635071a6bd57349939c820b7bc1c0dce28c7278c06e5a",
+          "actor": "session-391e260c-13f4-4ee8-bb91-f1f63129321b",
+          "epoch": 1,
+          "revision": 1,
+          "origin": "agent",
+          "at": "2026-09-25T11:25:23.819Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave1-e1-2",
+            "action": "work",
+            "executionId": "execution-95868e9a-6c24-4550-8790-6f2e2e6b8857"
+          }
+        },
+        "wave1-e1-3": {
+          "digest": "ada238141a6ed5c64076de5b24f9327417c6436f952b6a01f3468c5734602ce5",
+          "actor": "session-391e260c-13f4-4ee8-bb91-f1f63129321b",
+          "epoch": 1,
+          "revision": 2,
+          "origin": "agent",
+          "at": "2026-09-25T11:25:30.889Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave1-e1-3",
+            "action": "complete",
+            "executionId": "execution-95868e9a-6c24-4550-8790-6f2e2e6b8857"
+          }
+        },
+        "wave1-e1-4": {
+          "digest": "b8e93de26d75b883b9abd0c23ff525af43b6556df56177d6250c0d36e9205baa",
+          "actor": "session-391e260c-13f4-4ee8-bb91-f1f63129321b",
+          "epoch": 1,
+          "revision": 3,
+          "origin": "agent",
+          "at": "2026-09-25T11:25:30.932Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave1-e1-4",
+            "action": "begin",
+            "executionId": "execution-0d4840d5-f08d-469a-8170-a118d20a44b3"
+          }
+        },
+        "wave1-e1-5": {
+          "digest": "c106437b9d1e394cd34692f05ac6f54bab51aab7198a70b2f2f5b02242bf3d41",
+          "actor": "session-391e260c-13f4-4ee8-bb91-f1f63129321b",
+          "epoch": 1,
+          "revision": 4,
+          "origin": "agent",
+          "at": "2026-09-25T11:25:30.952Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave1-e1-5",
+            "action": "work",
+            "executionId": "execution-0d4840d5-f08d-469a-8170-a118d20a44b3"
+          }
+        },
+        "wave1-e1-6": {
+          "digest": "b1e68df75f62244a6903876734e4a45a9a0aed07cff2156840ea788b9651bc5b",
+          "actor": "session-391e260c-13f4-4ee8-bb91-f1f63129321b",
+          "epoch": 1,
+          "revision": 5,
+          "origin": "agent",
+          "at": "2026-09-25T11:25:32.272Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave1-e1-6",
+            "action": "complete",
+            "executionId": "execution-0d4840d5-f08d-469a-8170-a118d20a44b3"
+          }
+        },
+        "wave1-e1-7": {
+          "digest": "6790754e4ba74563be6fe3a8ed7d82cb181f33a58ee0dfae6083d6abb56351a3",
+          "actor": "session-391e260c-13f4-4ee8-bb91-f1f63129321b",
+          "epoch": 1,
+          "revision": 6,
+          "origin": "agent",
+          "at": "2026-09-25T11:25:32.327Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave1-e1-7",
+            "action": "begin",
+            "executionId": "execution-0786c72e-5a04-42b3-8968-f11c5bc9b38d"
+          }
+        },
+        "wave1-e1-8": {
+          "digest": "ac271e4f6ff0357aa8ace689662d6b6dcf7480233c24b06a443a81ab02c09c32",
+          "actor": "session-391e260c-13f4-4ee8-bb91-f1f63129321b",
+          "epoch": 1,
+          "revision": 7,
+          "origin": "agent",
+          "at": "2026-09-25T11:25:32.343Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave1-e1-8",
+            "action": "work",
+            "executionId": "execution-0786c72e-5a04-42b3-8968-f11c5bc9b38d"
+          }
+        },
+        "wave1-e1-9": {
+          "digest": "43fa71bc07b3d989bfe8671ec50a634b9c27fb6171a56128c0f11e854f1f5cd0",
+          "actor": "session-391e260c-13f4-4ee8-bb91-f1f63129321b",
+          "epoch": 1,
+          "revision": 8,
+          "origin": "agent",
+          "at": "2026-09-25T11:25:32.412Z",
+          "state": "done",
+          "receipt": {
+            "requestId": "wave1-e1-9",
+            "action": "complete",
+            "executionId": "execution-0786c72e-5a04-42b3-8968-f11c5bc9b38d"
+          }
+        }
+      },
+      "siteDigest": "bef4862408c4f93349afa30b4d21717b944623fe38c63e7f408cd894169e90cf"
+    },
+    "createdAt": "2026-09-25T11:25:23.299Z",
+    "nextSeq": 17,
+    "status": "ended-goal-not-met",
+    "currentNode": "qualification-gate",
+    "strategy": {
+      "qualificationRevision": 0
+    },
+    "meters": {
+      "elapsedMs": 9130,
+      "jobsLaunched": 2,
+      "attempts": 2,
+      "licenceMs": {
+        "QuaLib-2026-new-59099": 5534
+      },
+      "generationMs": [
+        8650
+      ]
+    }
+  },
+  "workspace": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2",
+  "jobs": [
+    {
+      "id": "run-c700d636-f7c1-4f87-ba95-914fa228f43d#000002",
+      "runId": "run-c700d636-f7c1-4f87-ba95-914fa228f43d",
+      "siteId": "wave1-library-e1",
+      "seq": 2,
+      "at": "2026-09-25T11:25:25.129Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-c700d636-qualify-api-d9a497",
+        "workspace": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2",
+        "name": "qualify-api",
+        "startedAt": "2026-09-25T11:25:23.880Z",
+        "wire": "'/usr/local/bin/edarun' '/data/eda/venvs/qualib-libapi-2026-py37/bin/python3.7' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/flow/tools/libapi_worker.py' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/qualification-manifest.json' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2' > '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-c700d636-qualify-api-d9a497.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-c700d636-qualify-api-d9a497.exit'",
+        "pid": 1020642
+      },
+      "nodeId": "qualify-api",
+      "licences": {
+        "QuaLib-2026-new-59099": 1
+      },
+      "attempt": 1
+    },
+    {
+      "id": "run-c700d636-f7c1-4f87-ba95-914fa228f43d#000004",
+      "runId": "run-c700d636-f7c1-4f87-ba95-914fa228f43d",
+      "siteId": "wave1-library-e1",
+      "seq": 4,
+      "at": "2026-09-25T11:25:30.663Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-c700d636-qualify-api-d9a497",
+        "workspace": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2",
+        "name": "qualify-api",
+        "startedAt": "2026-09-25T11:25:23.880Z",
+        "wire": "'/usr/local/bin/edarun' '/data/eda/venvs/qualib-libapi-2026-py37/bin/python3.7' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/flow/tools/libapi_worker.py' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/qualification-manifest.json' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2' > '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-c700d636-qualify-api-d9a497.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-c700d636-qualify-api-d9a497.exit'",
+        "pid": 1020642
+      },
+      "exitCode": 0,
+      "nodeId": "qualify-api"
+    },
+    {
+      "id": "run-c700d636-f7c1-4f87-ba95-914fa228f43d#000007",
+      "runId": "run-c700d636-f7c1-4f87-ba95-914fa228f43d",
+      "siteId": "wave1-library-e1",
+      "seq": 7,
+      "at": "2026-09-25T11:25:31.370Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "launched",
+      "job": {
+        "session": "hima-c700d636-reader-library-qualification-080951",
+        "workspace": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2",
+        "name": "reader-library-qualification",
+        "startedAt": "2026-09-25T11:25:31.330Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-readers/library-qualification/read-qualification.py' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/flow/qualification/receipt.json' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-readers/library-qualification/read-qualification-g1-a1.json' > '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-c700d636-reader-library-qualification-080951.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-c700d636-reader-library-qualification-080951.exit'",
+        "pid": 1021221
+      },
+      "nodeId": "read-qualification",
+      "reading": {
+        "reader": {
+          "id": "library-qualification",
+          "version": "1",
+          "reportKind": "hima-library-qualification/1",
+          "emits": [
+            "library_qualification_ok"
+          ],
+          "file": "tools/read-qualification.py",
+          "sha256": "9c56e60805f35f8877a27bea19f10e84a28ca67930b00ec0c337b9c4c1a1ca73"
+        },
+        "out": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-readers/library-qualification/read-qualification-g1-a1.json",
+        "report": {
+          "path": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/flow/qualification/receipt.json",
+          "contentSha256": "6fbf6d19dcfee2a5fb0f18c4e6eda68d6872ce1d72b229e0dccb3754e2de0ab8",
+          "bytes": 5748
+        }
+      },
+      "attempt": 1
+    },
+    {
+      "id": "run-c700d636-f7c1-4f87-ba95-914fa228f43d#000009",
+      "runId": "run-c700d636-f7c1-4f87-ba95-914fa228f43d",
+      "siteId": "wave1-library-e1",
+      "seq": 9,
+      "at": "2026-09-25T11:25:32.008Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "job",
+      "event": "finished",
+      "job": {
+        "session": "hima-c700d636-reader-library-qualification-080951",
+        "workspace": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2",
+        "name": "reader-library-qualification",
+        "startedAt": "2026-09-25T11:25:31.330Z",
+        "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-readers/library-qualification/read-qualification.py' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/flow/qualification/receipt.json' '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-readers/library-qualification/read-qualification-g1-a1.json' > '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-c700d636-reader-library-qualification-080951.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-c700d636-reader-library-qualification-080951.exit'",
+        "pid": 1021221
+      },
+      "exitCode": 0,
+      "nodeId": "read-qualification"
+    }
+  ],
+  "observation": {
+    "id": "run-c700d636-f7c1-4f87-ba95-914fa228f43d#000010",
+    "runId": "run-c700d636-f7c1-4f87-ba95-914fa228f43d",
+    "siteId": "wave1-library-e1",
+    "seq": 10,
+    "at": "2026-09-25T11:25:32.149Z",
+    "writer": "executor",
+    "generation": 1,
+    "type": "observation",
+    "path": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/flow/qualification/receipt.json",
+    "contentSha256": "6fbf6d19dcfee2a5fb0f18c4e6eda68d6872ce1d72b229e0dccb3754e2de0ab8",
+    "retainedPath": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-Fmy8Bf/hima/packs/library-intelligence/run-assets/.evidence/run-c700d636-f7c1-4f87-ba95-914fa228f43d/6fbf6d19dcfee2a5fb0f18c4e6eda68d6872ce1d72b229e0dccb3754e2de0ab8.dat",
+    "bytes": 5748,
+    "reader": {
+      "id": "library-qualification",
+      "version": "1",
+      "reportKind": "hima-library-qualification/1",
+      "emits": [
+        "library_qualification_ok"
+      ],
+      "file": "tools/read-qualification.py",
+      "sha256": "9c56e60805f35f8877a27bea19f10e84a28ca67930b00ec0c337b9c4c1a1ca73"
+    },
+    "values": [
+      {
+        "type": "library_qualification_ok",
+        "value": 1,
+        "unit": "count"
+      }
+    ]
+  },
+  "verdict": {
+    "id": "run-c700d636-f7c1-4f87-ba95-914fa228f43d#000012",
+    "runId": "run-c700d636-f7c1-4f87-ba95-914fa228f43d",
+    "siteId": "wave1-library-e1",
+    "seq": 12,
+    "at": "2026-09-25T11:25:32.363Z",
+    "writer": "judge",
+    "generation": 1,
+    "type": "verdict",
+    "outcome": "PASS",
+    "ruleId": "library-api-qualified",
+    "ruleVersion": "1",
+    "cites": [
+      "run-c700d636-f7c1-4f87-ba95-914fa228f43d#000010"
+    ],
+    "valuesAsRead": [
+      {
+        "type": "library_qualification_ok",
+        "value": 1,
+        "unit": "count"
+      }
+    ],
+    "boundParameters": {
+      "qualification_required": 1
+    }
+  },
+  "receipt": {
+    "facts": null,
+    "hostAttestationPath": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/library-intelligence-20260925-112523-5af2/hima-library-host-attestation.json",
+    "hostAttestationSha256": "a9d492297ad9bc0832935835c074bbcde82fe7cd10296ed3053b267856487ec7",
+    "launch": {
+      "attempt": 1,
+      "jobSession": "hima-c700d636-qualify-api-d9a497",
+      "nodeId": "qualify-api",
+      "runId": "run-c700d636-f7c1-4f87-ba95-914fa228f43d"
+    },
+    "manifestPath": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/qualification-manifest.json",
+    "manifestSha256": "e2ed0abf4c68fa8f9548b1cc219dcab451d96dc192e965e060fca3fea4f30718",
+    "nativeStatus": "passed",
+    "permitAttestation": "host-prelaunch",
+    "permitPath": "/data/eda/project/hima_harness/wave1-library-e1-20260925112521/permit.yml",
+    "permitSha256": "4f64a1f14476ee10516a97f3a88fa0a7d8a1912ef8890f39be38aa7ee0edc025",
+    "producer": {
+      "adapterSha256": "418f6aef7c9db164a7e0a6f40970fa79da817890b5a8f1e93c074265228a11c4",
+      "apiBuild": "2026.master.c68db94",
+      "nativeModuleSha256": "11b9eec8af31f9c19cd52999e7caffc4899c73a878fcd6b7c8e75831eaa24f56",
+      "parserLibrarySha256": "4918f49c4921c6b43f1dca1e8e5428f3476e1b631cfebae3b1e3feeea09031d5",
+      "python": "/data/eda/venvs/qualib-libapi-2026-py37/bin/python3.7",
+      "pythonSha256": "f44e090f34d65e4cce10fc545f4b00c65959a92333a6d1e2f8e1b8c3ec6dde45",
+      "wrapper": "/usr/local/bin/edarun",
+      "wrapperRealpath": "/data/eda/container/podman/bin/edarun",
+      "wrapperSha256": "14ca5925cd7c27fda7a001857e9007681ff225efa4ad5b45469e9dc00384649f"
+    },
+    "reason": null,
+    "results": [
+      {
+        "childSha256": "c3866113acb8e0920e1b2bbe03d03bea03a3b738ad9c4db342eb4d1d63e01a7e",
+        "copySha256": "7a3bf3a6fd67599319767c7e7b107f511c1821b79f527a36ea00c34c4cb76278",
+        "exitCode": 0,
+        "expectedSha256": "0f72cff56a3ccb7e1bfeff4234c44bb85c42524d31eed18df7a59c40b4f47877",
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "progressSha256": "755b73484af854a45bc0b4a9ab97f6a92e6446174ac9430ba4fc3ef2ddc18ee8",
+        "queryEvidence": {
+          "cellCount": 1,
+          "library": "example",
+          "sample": {
+            "area": 2,
+            "cell": "AN2",
+            "direction": "unknown",
+            "firstValue": 6.659999847412109,
+            "pin": "a",
+            "relatedPin": "a",
+            "tableSize": 12,
+            "tableType": "cell_fall",
+            "timingType": "combinational"
+          },
+          "units": {
+            "cap_F": 1e-12,
+            "time_s": 1e-9,
+            "voltage_V": 1
+          }
+        },
+        "reason": null,
+        "role": "vendor-fixture",
+        "signal": null,
+        "source": "/data/eda/project/hima_harness/library-intelligence-prototypes/codex-q2026-20260924-01/vendor-fixture/testParser.lib",
+        "sourceAfterSha256": "0f72cff56a3ccb7e1bfeff4234c44bb85c42524d31eed18df7a59c40b4f47877",
+        "sourceSha256": "0f72cff56a3ccb7e1bfeff4234c44bb85c42524d31eed18df7a59c40b4f47877",
+        "status": "passed",
+        "steps": {
+          "compare": "passed",
+          "copy": "passed",
+          "permit": "passed",
+          "query": "passed",
+          "re-read": "passed",
+          "read": "passed",
+          "runtime": "passed",
+          "source-after-hash": "passed",
+          "source-hash": "passed"
+        }
+      },
+      {
+        "childSha256": "a896bed63f76e041a8467a7daaefb28a5333a4c07dc86f63f9054c0a21c29bb0",
+        "copySha256": "45718252a2055e9c2c09c84594f588c26ae8610e482970d04b18656470f40738",
+        "exitCode": 0,
+        "expectedSha256": "49962e1b61d08eae063633ba32ab76fc002c405d40e391e181e92ff445442571",
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "progressSha256": "755b73484af854a45bc0b4a9ab97f6a92e6446174ac9430ba4fc3ef2ddc18ee8",
+        "queryEvidence": {
+          "cellCount": 922,
+          "library": "saed14rvt_tt0p8v25c",
+          "sample": {
+            "area": 1.0211999416351318,
+            "cell": "SAEDRVT14_ADDF_V1_0P5",
+            "direction": "output",
+            "firstValue": 0.015239999629557133,
+            "pin": "CO",
+            "relatedPin": "A",
+            "tableSize": 49,
+            "tableType": "cell_fall",
+            "timingType": "combinational"
+          },
+          "units": {
+            "cap_F": 1e-15,
+            "time_s": 1e-9,
+            "voltage_V": 1
+          }
+        },
+        "reason": null,
+        "role": "saed14",
+        "signal": null,
+        "source": "/data/eda/pdk/saed14/stdcell_rvt/db_nldm/saed14rvt_tt0p8v25c.lib",
+        "sourceAfterSha256": "49962e1b61d08eae063633ba32ab76fc002c405d40e391e181e92ff445442571",
+        "sourceSha256": "49962e1b61d08eae063633ba32ab76fc002c405d40e391e181e92ff445442571",
+        "status": "passed",
+        "steps": {
+          "compare": "passed",
+          "copy": "passed",
+          "permit": "passed",
+          "query": "passed",
+          "re-read": "passed",
+          "read": "passed",
+          "runtime": "passed",
+          "source-after-hash": "passed",
+          "source-hash": "passed"
+        }
+      },
+      {
+        "childSha256": "92894172c8c31929bc80ab863642679e1527eb390b574ab900fe1a2765743397",
+        "copySha256": "8896322785e97533e0b159d431489ff520dd50cc7a660f59205f436bef5dc485",
+        "exitCode": 0,
+        "expectedSha256": "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5",
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "progressSha256": "755b73484af854a45bc0b4a9ab97f6a92e6446174ac9430ba4fc3ef2ddc18ee8",
+        "queryEvidence": {
+          "cellCount": 1000,
+          "library": "tcbn28hpcplusbwp40p140tt0p9v25c",
+          "sample": {
+            "area": 0.5040000081062317,
+            "cell": "AN2D0BWP40P140",
+            "direction": "output",
+            "firstValue": 0.01932309940457344,
+            "pin": "Z",
+            "relatedPin": "A1",
+            "tableSize": 49,
+            "tableType": "cell_rise",
+            "timingType": "combinational"
+          },
+          "units": {
+            "cap_F": 1e-12,
+            "time_s": 1e-9,
+            "voltage_V": 1
+          }
+        },
+        "reason": null,
+        "role": "tsmc28",
+        "signal": null,
+        "source": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib",
+        "sourceAfterSha256": "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5",
+        "sourceSha256": "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5",
+        "status": "passed",
+        "steps": {
+          "compare": "passed",
+          "copy": "passed",
+          "permit": "passed",
+          "query": "passed",
+          "re-read": "passed",
+          "read": "passed",
+          "runtime": "passed",
+          "source-after-hash": "passed",
+          "source-hash": "passed"
+        }
+      }
+    ],
+    "schema": "hima-library-qualification/1",
+    "status": "passed"
+  },
+  "sourceHashesBefore": [
+    "0f72cff56a3ccb7e1bfeff4234c44bb85c42524d31eed18df7a59c40b4f47877  /data/eda/project/hima_harness/library-intelligence-prototypes/codex-q2026-20260924-01/vendor-fixture/testParser.lib",
+    "49962e1b61d08eae063633ba32ab76fc002c405d40e391e181e92ff445442571  /data/eda/pdk/saed14/stdcell_rvt/db_nldm/saed14rvt_tt0p8v25c.lib",
+    "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5  /data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib"
+  ],
+  "sourceHashesAfter": [
+    "0f72cff56a3ccb7e1bfeff4234c44bb85c42524d31eed18df7a59c40b4f47877  /data/eda/project/hima_harness/library-intelligence-prototypes/codex-q2026-20260924-01/vendor-fixture/testParser.lib",
+    "49962e1b61d08eae063633ba32ab76fc002c405d40e391e181e92ff445442571  /data/eda/pdk/saed14/stdcell_rvt/db_nldm/saed14rvt_tt0p8v25c.lib",
+    "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5  /data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib"
+  ],
+  "environmentBefore": "selected=new old=inactive new=active",
+  "environmentAfter": "selected=new old=inactive new=active",
+  "claims": {
+    "e1": "PASS",
+    "e2ToE4": "not evaluated",
+    "corpus": "not scanned",
+    "xTop": "not started"
+  }
+}

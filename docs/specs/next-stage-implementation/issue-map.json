@@ -48,7 +48,7 @@
       ],
       "issue": 56,
       "title": "独立Guide与有来源的任务上下文",
-      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "readiness": "PASS on 2026-09-25 Wave 1 real-model Guide acceptance; retained specification below is historical design authority",
       "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/56"
     },
     {
@@ -73,7 +73,7 @@
       ],
       "issue": 58,
       "title": "原生Agent团队与有界委派",
-      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "readiness": "real Coding/Researcher/Reviewer team PASS; production-qualified Operator child L4 awaits administrator license switch",
       "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/58"
     },
     {
@@ -136,8 +136,8 @@
         "NXT-E4"
       ],
       "issue": 49,
-      "title": "Library洞察（Pack-to-Host E1待验）",
-      "readiness": "library-intelligence@0.2.0 runnable; actual Pack-to-Host E1 then E2-E4 remain",
+      "title": "Library洞察（E1 PASS；E2-E4待验）",
+      "readiness": "actual library-intelligence@0.2.0 Pack-to-Host E1 PASS on 2026-09-25; Wave 2 E2-E4 remain",
       "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/49"
     },
     {

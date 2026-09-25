@@ -95,6 +95,10 @@ export interface InteractiveAuthority {
 export interface InteractiveAddress {
   readonly runId: string; readonly executionId: string; readonly nodeId: string;
   readonly requestId: string; readonly actor: string; readonly ownerEpoch: number; readonly controlRevision: number;
+  /** Host-only delegation authority. It is never accepted from model/HTTP input or written as actor. */
+  readonly authorityOwner?: string;
+  /** Host-only pin from the Operator delegation receipt. */
+  readonly expectedBindingDigest?: string;
 }
 
 export interface InteractiveSession {

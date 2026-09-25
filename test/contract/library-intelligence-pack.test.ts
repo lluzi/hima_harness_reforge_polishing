@@ -307,6 +307,8 @@ test('real Host vetoes a Site-bound Python that differs from the manifest before
       if (started.kind !== 'ran') return;
       runId = started.run.id;
       assert.equal(started.run.currentNode, 'qualify-api');
+      assert.equal(sha(await readFile(path.join(started.workspace, 'flow/tools/libapi_worker.py'))), sha(await readFile(worker)),
+        'actual Campaign preparation stages the exact Pack worker named by the tool argv');
       const begin = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: 1,
         expectedRevision: 0, requestId: 'attest-begin', action: 'begin', nodeId: 'qualify-api' });
       const executionId = begin.receipt?.executionId;

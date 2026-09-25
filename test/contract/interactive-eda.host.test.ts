@@ -9,10 +9,11 @@ import {
   BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest, loadPack, packDigestExcludes,
   type ExecutionActionResult, type JobRecord,
 } from '@hima/harness';
-import { homePatchFile } from '../../packages/desktop/src/hima-home.ts';
+import { homePatchFile, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { repoRoot } from './support/dsh-home.ts';
 import { localHome, waitUntil } from './support/fabric.ts';
+import { writeMomentScenario } from './support/moments.ts';
 import { timingProbePackId, writePackVariant } from './support/pack.ts';
 import { writeLocalSite } from './support/site.ts';
 
@@ -60,6 +61,8 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     `${JSON.stringify({ schema: 'hima-interactive-bindings/1', bindings: [{ ...binding,
       environment: { ...binding.environment, sha256: environmentSha256 } }] }, null, 2)}\n`);
   await writeBindings('0'.repeat(64));
+  const scenario = await writeMomentScenario(h, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
+  await writeReplayOverlay(h.home, { file: scenario.file, overrideFile: scenario.override, childFiles: scenario.children });
   await appendFile(homePatchFile(h.home), `\n- id: hima\n  config:\n    sitesDir: ${JSON.stringify(site.sitesDir)}\n    packsDir: ${JSON.stringify(path.join(h.home, 'hima/packs'))}\n    knowledgeDir: ${JSON.stringify(path.join(h.home, 'hima/knowledge/current'))}\n    interactiveBindingsFile: ${JSON.stringify(bindingsFile)}\n`);
 
   const host = await bootInProcess(h); t.after(() => host.dispose());
@@ -77,12 +80,14 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
   const begun = await action('begin', 'interactive-begin', { nodeId });
   assert.equal(begun.kind, 'accepted'); const executionId = begun.receipt?.executionId; assert.ok(executionId);
   if (!executionId) return;
-  const request = async (body: Record<string, unknown>) => host.ctx.hima.interactive(String(owner.id), {
+  const requestAs = async (sessionId: string, body: Record<string, unknown>) => host.ctx.hima.interactive(sessionId, {
     runId, executionId, nodeId, requestId: body.requestId,
     ownerEpoch: host.ctx.hima.ledger.run(runId)!.control!.epoch,
     controlRevision: host.ctx.hima.ledger.run(runId)!.control!.revision,
     ...body,
   }) as Promise<Record<string, any>>;
+  let interactiveSessionId = String(owner.id);
+  const request = (body: Record<string, unknown>) => requestAs(interactiveSessionId, body);
   const sessions: string[] = [];
   try {
     const wrongNode = await host.ctx.hima.interactive(String(owner.id), { action: 'open', runId, executionId,
@@ -103,6 +108,17 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     assert.equal(host.ctx.hima.ledger.records({ runId, type: 'job' }).length, 0, 'bad admin evidence starts no Job');
 
     await writeBindings(environmentDigest);
+    const control = host.ctx.hima.ledger.run(runId)!.control!;
+    const delegated = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+      requestId: 'delegate-operator', expectedEpoch: control.epoch, expectedRevision: control.revision,
+      contract: { delegationId: 'operator', role: 'operator', task: 'Use only the qualified interactive fixture and report typed receipts.',
+        inputRefs: [], nodeRef: nodeId, allowedTools: ['hima_interactive', 'terminal_open', 'bash'],
+        budgetShare: { maxElapsedMs: 30_000, maxFollowups: 0, maxTokensPerTurn: 512 }, dependencyIds: [],
+        recipient: { kind: 'run-owner', sessionId: String(owner.id) } } } as never) as Record<string, any>;
+    assert.equal(delegated.status, 'created', delegated.reason); const operatorId = delegated.receipt?.childSessionId as string; assert.ok(operatorId);
+    assert.deepEqual(delegated.effectiveContract.tools, ['hima_interactive']);
+    assert.equal(delegated.effectiveContract.operator.executionId, executionId);
+    assert.equal(host.ctx.hima.ledger.run(runId)!.control!.owner, String(owner.id), 'Operator delegation never changes the Run owner');
     const opened = await request({ action: 'open', requestId: 'interactive-open' });
     assert.equal(opened.status, 'opened', opened.reason); assert.equal(opened.readiness, 'ready');
     assert.equal(opened.session?.qualification?.testOnly, true, 'synthetic positive qualification is labelled test-only');
@@ -154,6 +170,10 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     }, 5_000, 50);
     const closed = await request({ action: 'close', requestId: 'interactive-close', toolSessionId });
     assert.equal(closed.status, 'closed');
+    const cancelControl = host.ctx.hima.ledger.run(runId)!.control!;
+    const cancelOperator = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'cancel', delegationId: 'operator',
+      requestId: 'cancel-operator', expectedEpoch: cancelControl.epoch, expectedRevision: cancelControl.revision } as never) as Record<string, any>;
+    assert.equal(cancelOperator.status, 'accepted');
     const completed = await action('complete', 'interactive-complete', { executionId });
     assert.equal(completed.kind, 'accepted');
   } finally {

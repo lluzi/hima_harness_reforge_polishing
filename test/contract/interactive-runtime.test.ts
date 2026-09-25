@@ -7,7 +7,7 @@ import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { writeLocalSite } from './support/site.ts';
 import {
   claimSlot, createInteractiveTimerController, listInteractiveSessions, operateInteractive, parseInteractiveRecord,
-  parseInteractiveRequest, reconcileInteractiveLaunchReservations, reconcileInteractiveState, interactiveCallerDigest,
+  parseInteractiveRequest, reconcileInteractiveLaunchReservations, reconcileInteractiveState, interactiveCallerDigest, interactiveDelegationGrant,
   type DerivedInteractiveOperation, type InteractiveBinding, type InteractiveRuntimeDeps,
 } from '@hima/harness';
 
@@ -73,8 +73,16 @@ test('interactive runtime derives authority from Run/Ledger, preserves single-wr
     trustedTestQualification: { bindingId: 'fixture-binding' },
     onDeadline: async (deadline) => { deadlines.push(`${deadline.kind}:${deadline.toolSessionId}`); },
   };
-  const base = { runId: run.id, executionId: 'execution-1', nodeId: 'manual', actor: String(parent.id), ownerEpoch: 1, controlRevision: 0 };
+  const ownerBase = { runId: run.id, executionId: 'execution-1', nodeId: 'manual', actor: String(parent.id), ownerEpoch: 1, controlRevision: 0 };
+  const ungranted = await operateInteractive(deps, { ...ownerBase, actor: 'operator-child', action: 'open', requestId: 'operator-ungranted' });
+  assert.equal(ungranted.status, 'refused'); assert.match(ungranted.reason!, /owner|delegated authority/);
+  const grant = await interactiveDelegationGrant(deps, ownerBase); assert.equal('reason' in grant, false);
+  if ('reason' in grant) return;
+  const base = { ...ownerBase, actor: 'operator-child', authorityOwner: String(parent.id), expectedBindingDigest: grant.bindingDigest };
   try {
+    const changedQualification = await operateInteractive(deps, { ...base, expectedBindingDigest: digest('f'),
+      action: 'open', requestId: 'operator-changed-qualification' });
+    assert.equal(changedQualification.status, 'refused'); assert.match(changedQualification.reason!, /differs from the Operator delegation receipt/);
     const opened = await operateInteractive(deps, { ...base, action: 'open', requestId: 'open-1' });
     assert.equal(opened.status, 'opened', 'reason' in opened ? opened.reason : undefined);
     if (opened.status !== 'opened') return;
@@ -107,7 +115,7 @@ test('interactive runtime derives authority from Run/Ledger, preserves single-wr
     const crossSession = await operateInteractive(deps, { ...base, action: 'input', requestId: 'input-set',
       toolSessionId: 'another-session', commandId: 'set-1', command: { name: 'set', args: { key: 'answer', value: 42 } } });
     assert.equal(crossSession.status, 'refused'); assert.match(crossSession.reason!, /different action|different.*intent/);
-    const crossActor = await operateInteractive(deps, { ...base, actor: 'foreign-actor', action: 'input', requestId: 'input-set',
+    const crossActor = await operateInteractive(deps, { ...base, actor: 'foreign-actor', authorityOwner: undefined, action: 'input', requestId: 'input-set',
       toolSessionId, commandId: 'set-1', command: { name: 'set', args: { key: 'answer', value: 42 } } });
     assert.equal(crossActor.status, 'refused'); assert.match(crossActor.reason!, /actor|intent/);
     const changed = await operateInteractive(deps, { ...base, action: 'input', requestId: 'input-set', toolSessionId,
@@ -182,7 +190,7 @@ test('interactive runtime derives authority from Run/Ledger, preserves single-wr
     const intentRequestDigest = interactiveCallerDigest(lostRequest);
     const view = listInteractiveSessions(host.ctx.hima.ledger as never, run.id).find((item) => item.toolSessionId === toolSessionId)!;
     const lostIntent = parseInteractiveRecord({ runId: run.id, executionId: 'execution-1', nodeId: 'manual', toolSessionId,
-      requestId: 'lost-request', actor: String(parent.id), ownerEpoch: 1, controlRevision: 0, operationDigest: digest('e'),
+      requestId: 'lost-request', actor: base.actor, ownerEpoch: 1, controlRevision: 0, operationDigest: digest('e'),
       callerDigest: intentRequestDigest,
       at: new Date().toISOString(), event: 'input-intent', commandId: 'lost-1', inputDigest: digest('f'),
       requestDigest: intentRequestDigest, protocolToken: 'T'.repeat(32), inputBytes: 1, submit: true, effect: 'mutation',
