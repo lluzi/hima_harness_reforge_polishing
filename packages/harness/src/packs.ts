@@ -226,10 +226,13 @@ export const packTool = z.strictObject({
   interactive: z.strictObject({
     mode: z.enum(['interactive-only', 'hybrid']),
     adapter: z.literal('hima-tcl-line-v1'),
+    /** Optional PTY startup command. Omission preserves the historical same-argv behavior. */
+    argv: z.array(z.string().min(1)).min(1).optional(),
     commands: z.strictObject({
       read: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.-]*$/)).default([]),
       mutate: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.-]*$/)).default([]),
       save: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.-]*$/)).default([]),
+      close: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.-]*$/)).default([]),
     }).superRefine((commands, ctx) => {
       const seen = new Map<string, string>();
       for (const [effect, names] of Object.entries(commands)) for (const [at, name] of names.entries()) {
@@ -1572,6 +1575,13 @@ export function toolArgv(tool: PackTool, values: Readonly<Record<string, string>
   return tool.argv.map((word) => literalArgument(substitute(word, values, `tool "${tool.id}"`), `tool "${tool.id}" argument`));
 }
 
+/** A tool's PTY startup command, or its batch argv for declarations written before separate startup. */
+export function interactiveToolArgv(tool: PackTool, values: Readonly<Record<string, string>>): string[] {
+  const argv = tool.interactive?.argv ?? tool.argv;
+  literalArgument(argv[0]!, `interactive tool "${tool.id}" wrapper`);
+  return argv.map((word) => literalArgument(substitute(word, values, `interactive tool "${tool.id}"`), `interactive tool "${tool.id}" argument`));
+}
+
 /** Where one of the contract's outputs is, relative to the Campaign workspace. */
 /**
  * One workshop's command line, with every value substituted (#62): the arguments the node supplied
@@ -1790,6 +1800,16 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
       }
     }
     wrappers.add(tool.argv[0]!);
+    const interactiveArgv = tool.interactive?.argv;
+    if (interactiveArgv !== undefined) {
+      try { literalArgument(interactiveArgv[0]!, `interactive tool "${tool.id}" wrapper`); } catch (error) { broken(packFiles.contract, (error as Error).message); }
+      for (const word of interactiveArgv) {
+        for (const name of placeholdersIn(word)) {
+          if (!declared.has(name)) broken(packFiles.contract, `interactive tool "${tool.id}" references \${${name}}, which is not one of its declared inputs`);
+        }
+      }
+      wrappers.add(interactiveArgv[0]!);
+    }
   }
   // The pack states once, in `environment`, every wrapper a Site must allow it. A tool that runs one
   // the list does not carry is held here, at load, because both facts are in this one file.
@@ -2609,9 +2629,13 @@ export function checkPack(pack: Pack, site: Site): PackCheck {
   const tools: ToolCheck[] = pack.contract.tools.map((tool) => {
     const wrapper = tool.argv[0]!;
     const head = { id: tool.id, file: tool.file, wrapper };
-    return permitsWrapper(site, wrapper)
-      ? { ...head, error: undefined }
-      : fail({ ...head, error: refusedWrapper(site, wrapper) }, `tool "${tool.id}": ${refusedWrapper(site, wrapper)}`);
+    if (!permitsWrapper(site, wrapper)) return fail({ ...head, error: refusedWrapper(site, wrapper) }, `tool "${tool.id}": ${refusedWrapper(site, wrapper)}`);
+    const interactiveWrapper = tool.interactive?.argv?.[0];
+    if (interactiveWrapper !== undefined && !permitsWrapper(site, interactiveWrapper)) {
+      const reason = `interactive tool "${tool.id}": ${refusedWrapper(site, interactiveWrapper)}`;
+      return fail({ ...head, error: reason }, reason);
+    }
+    return { ...head, error: undefined };
   });
 
   // Every workshop this pack declares (#62), held against the Site's Permit and against the pack's
@@ -2708,6 +2732,7 @@ export function checkPack(pack: Pack, site: Site): PackCheck {
   const inForce = semantics;
   /** Every wrapper this pack runs: its tools', its workshops' (#62), and its own readers' (#61). */
   const wrappersRun = new Set([...pack.contract.tools, ...pack.contract.workshops].map((runs) => runs.argv[0]!));
+  for (const tool of pack.contract.tools) if (tool.interactive?.argv !== undefined) wrappersRun.add(tool.interactive.argv[0]!);
   /** Every value type the pack's own readers declare they emit, for the coverage check below. */
   const emittedByAPackReader = new Set<string>();
   const readers: ReaderCheck[] = pack.contract.outputs

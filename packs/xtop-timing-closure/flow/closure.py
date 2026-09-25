@@ -744,6 +744,47 @@ def xtop(workspace: Path):
             "artifacts": [file_ref(netlist[0], workspace, "netlist-eco"), file_ref(physical[0], workspace, "physical-eco")]}
 
 
+def xtop_interactive_startup(workspace: Path):
+    """Materialize the fixed typed Operator startup without launching a commercial tool."""
+    runtime = load_runtime(workspace)
+    profile, export, analysis = runtime["profile"], runtime.get("currentExport"), runtime.get("currentAnalysis")
+    if not isinstance(export, dict) or not isinstance(analysis, dict) or not analysis.get("staData"):
+        raise Rejected("current export and PrimeTime timing data are required for the XTop Operator")
+    next_iteration = int(runtime["iteration"]) + 1
+    root = paths(workspace)["flow"] / "iterations" / f"g{next_iteration:03d}" / "XTOP"
+    root.mkdir(parents=True, exist_ok=True)
+    library_file = root / "libraries.tcl"
+    generate_xtop_libraries(profile, library_file)
+    env = {
+        "DESIGN": profile["design"], "TECH_LEF": profile["techLef"], "CELL_LEF_GLOB": profile["cellLefGlob"],
+        "NETLIST": export["netlist"], "DEF": export["def"], "STA_DATA": analysis["staData"], "RUN_ROOT": root,
+        "LIBRARY_TCL": library_file, "ECO_PREFIX": f"xtop_operator_g{next_iteration:03d}_eco",
+        "OPERATOR_IDENTITY": f"{profile['design']}|g{int(runtime['iteration']):03d}|{len(profile['scenarios'])}-scenario-PrimeTime",
+    }
+    return copy_template(workspace, "xtop-operator.tcl", root / "operator.tcl", env=env)
+
+
+def finalize_xtop_interactive(workspace: Path):
+    """Admit only the fixed save command's unique, sourceable keep-route ECO pair."""
+    started = time.time()
+    runtime = load_runtime(workspace)
+    iteration = int(runtime["iteration"]) + 1
+    root = paths(workspace)["flow"] / "iterations" / f"g{iteration:03d}" / "XTOP"
+    eco = root / "eco_output"
+    logical = list(eco.glob("xtop_operator_g*_eco_innovus_netlist_*.txt"))
+    physical = list(eco.glob("xtop_operator_g*_eco_innovus_physical_*.txt"))
+    if len(logical) != 1 or len(physical) != 1:
+        raise Rejected("typed XTop Operator produced no unique netlist and physical ECO pair")
+    logical_tcl = validate_sourceable_eco(logical[0], "logical")
+    physical_tcl = validate_sourceable_eco(physical[0], "physical")
+    runtime["pendingIteration"] = iteration
+    runtime["pendingEco"] = {"root": str(eco), "netlist": str(logical[0]), "physical": str(physical[0])}
+    atomic_json(paths(workspace)["runtime"], runtime)
+    return write_stage(workspace, "xtop", "passed", started, iteration=iteration, mode="typed-interactive",
+                       routePreservation={"keepRouteRequested": True, "logicalTcl": logical_tcl, "physicalTcl": physical_tcl},
+                       artifacts=[file_ref(logical[0], workspace, "netlist-eco"), file_ref(physical[0], workspace, "physical-eco")])
+
+
 @stage("apply-eco")
 def apply_eco(workspace: Path):
     runtime = load_runtime(workspace)
@@ -1146,6 +1187,8 @@ def main():
         "timing": lambda: timing_current(workspace),
         "summarize": lambda: summarize(workspace),
         "xtop": lambda: xtop(workspace),
+        "xtop-interactive-startup": lambda: print(xtop_interactive_startup(workspace)),
+        "xtop-interactive-finalize": lambda: finalize_xtop_interactive(workspace),
         "apply-eco": lambda: apply_eco(workspace),
         "compare": lambda: compare(workspace),
     }

@@ -1029,6 +1029,47 @@ class ClosureContractTest(unittest.TestCase):
         self.assertTrue(seen_logs_dir_at_launch.get("exists"),
                          "xtop() must create <root>/logs before invoking the tool with -log_dir pointing at it")
 
+    def test_interactive_startup_is_materialized_from_current_runtime_without_running_xtop(self):
+        templates = self.workspace / "flow" / "templates"
+        templates.mkdir(parents=True, exist_ok=True)
+        source = Path(__file__).resolve().parents[2] / "flow" / "templates" / "xtop-operator.tcl"
+        (templates / "xtop-operator.tcl").write_bytes(source.read_bytes())
+        lib_dir = self.workspace / "libs"
+        lib_dir.mkdir()
+        (lib_dir / "slow.lib").write_text("lib")
+        (lib_dir / "fast.lib").write_text("lib")
+        self.runtime.update({
+            "profile": {
+                "schema": closure.PROFILE_SCHEMA, "design": "top", "foundationRoot": str(self.workspace),
+                "physicalInputRoot": str(self.workspace), "inputSdc": str(self.workspace / "setup.tcl"),
+                "sourceManifestRoot": str(self.workspace), "edaShell": ["must-not-run"], "originalDriverLibrary": "slow",
+                "techLef": str(self.workspace / "tech.lef"), "cellLefGlob": str(self.workspace / "*.lef"),
+                "starrc": [{"name": "worst", "template": str(self.workspace / "worst.cmd")}],
+                "scenarios": [
+                    {"name": "slow", "libGlob": "unused", "driverLibrary": "slow", "spefCorner": "worst",
+                     "xtopCorner": "slow", "xtopLibertyGlob": str(lib_dir / "slow.lib")},
+                    {"name": "fast", "libGlob": "unused", "driverLibrary": "fast", "spefCorner": "worst",
+                     "xtopCorner": "fast", "xtopLibertyGlob": str(lib_dir / "fast.lib")},
+                ],
+            },
+            "iteration": 0,
+            "currentExport": {"netlist": str(self.workspace / "export.v"), "def": str(self.workspace / "export.def")},
+            "currentAnalysis": {"staData": str(self.workspace / "sta_data")},
+        })
+        self.save_runtime()
+
+        startup = closure.xtop_interactive_startup(self.workspace)
+        self.assertEqual(startup, self.workspace / "flow" / "iterations" / "g001" / "XTOP" / "operator.tcl")
+        text = startup.read_text()
+        self.assertIn('proc hima_operator_identity {}', text)
+        self.assertIn('proc hima_summary {mode}', text)
+        self.assertIn('proc hima_fix_hold {effort target margin}', text)
+        self.assertIn('proc hima_save_candidate {}', text)
+        self.assertIn('proc hima_close {}', text)
+        self.assertIn('HIMA:hima-tcl-line-v1:1:READY', text)
+        self.assertNotIn('operator-qualification-20260924', text)
+        self.assertTrue((startup.parent / "libraries.tcl").is_file())
+
     def test_keep_route_uses_two_sourceable_tcl_scripts_and_rejects_atomic_or_route_deletion(self):
         pack = Path(__file__).resolve().parents[2]
         xtop_template = (pack / "flow" / "templates" / "xtop.tcl").read_text()

@@ -57,6 +57,8 @@ export interface VerifiedBindingEvidence {
   readonly environmentDigest: string;
   /** Config/evidence hashes identify inputs; only an actual enforcing verifier may say enforced. */
   readonly confinement: 'unqualified' | 'enforced';
+  /** Exact Site workspace root whose one derived Campaign child may be mounted writable. */
+  readonly writableRoot?: string;
 }
 
 export interface EncodedInteractiveCommand {
@@ -236,6 +238,10 @@ async function effectiveQualification(deps: InteractiveRuntimeDeps, derived: Der
     const bindingPath = path.posix.resolve(verified.bindingFileRealpath);
     if (within(bindingPath, workspace)) throw new Error('admin qualification file is inside the task-writable workspace');
     if (verified.confinement !== 'enforced') throw new Error('interactive environment evidence is identified but confinement is not enforced; production open is unavailable');
+    if (verified.writableRoot === undefined || !path.posix.isAbsolute(verified.writableRoot)
+        || !within(workspace, path.posix.resolve(verified.writableRoot)) || workspace === path.posix.resolve(verified.writableRoot)) {
+      throw new Error('interactive workspace is not a derived Campaign workspace inside the qualified private write root');
+    }
   }
   return {
     bindingDigest: identityOf(binding), adapter: { ...binding.adapter }, environment: { ...binding.environment },
