@@ -13,7 +13,7 @@
   "commandsDigest": "<current-commands-digest>",
   "wrapper": {
     "path": "/data/eda/project/hima_harness/operator-admin/xtop-v1/xtop-operator-v1.sh",
-    "sha256": "c613eef793d6ef5432d4dac8470701b2e779247827a3d4d269dfca284df35450"
+    "sha256": "148daac7d704706e6f04d5134edea1151266c7b0ed779f5366d8d32a2993609b"
   },
   "image": {
     "reference": "localhost/edarunner",

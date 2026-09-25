@@ -63,6 +63,10 @@ test('run-xtop-fix keeps batch argv and exposes only the qualified typed Operato
   });
   assert.equal(tool.interactive?.commands.read.includes('source'), false);
   assert.equal(tool.interactive?.commands.read.includes('exec'), false);
+  const wrapper = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v1.sh'), 'utf8');
+  assert.match(wrapper, /trap cleanup_container EXIT HUP INT TERM/);
+  assert.match(wrapper, /podman run --rm -it \\\n+  --name "\$container_name"/);
+  assert.match(wrapper, /podman rm -f -- "\$container_name"/);
 
   const binding: InteractiveBinding = {
     id: 'xtop-literal-test', packId, packDigest: pack.folder.digest([]), nodeId: 'run-xtop-fix', toolId: tool.id,

@@ -36,9 +36,15 @@ case "$startup" in "$workspace"/flow/iterations/g[0-9][0-9][0-9]/XTOP/operator.t
 private_home="$workspace/.operator-home"
 mkdir -p -- "$private_home"
 chmod 700 -- "$private_home"
+container_name="hima-xtop-operator-$(id -u)-$$"
+cleanup_container() {
+  podman rm -f -- "$container_name" >/dev/null 2>&1 || true
+}
+trap cleanup_container EXIT HUP INT TERM
 
 set +e
 podman run --rm -it \
+  --name "$container_name" \
   --userns=keep-id --user "$(id -u):$(id -g)" \
   --network host --read-only --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit 4096 --shm-size=16g --tmpfs /tmp:rw,nosuid,nodev,size=4g \
