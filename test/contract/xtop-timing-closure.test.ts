@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { choose, loadPack, checkPack, packStage, loadSite, installPackMethod, resolveChooser, type ObservationRecord, type VerdictRecord } from '@hima/harness';
+import { BUILTIN_TCL_ADAPTER_DIGEST, choose, encodeRetainedInteractiveCommand, interactiveCommandsDigest, loadPack, checkPack, packDigestExcludes, packStage, loadSite, installPackMethod, resolveChooser, type InteractiveBinding, type ObservationRecord, type VerdictRecord } from '@hima/harness';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { himaCommand } from './support/command.ts';
@@ -12,12 +12,13 @@ import { writeLocalSite } from './support/site.ts';
 import { waitUntil } from './support/fabric.ts';
 
 const packId = 'xtop-timing-closure';
+const xtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/xtop-v1/xtop-operator-v1.sh';
 
 test('the XTop closure Pack loads, fits its declared execution surface and passes its cheap data-contract tests', async (t) => {
   const h = await createHimaHome();
   t.after(() => h.dispose());
   const local = await writeLocalSite(h, {
-    allowedWrappers: ['/usr/bin/python3'],
+    allowedWrappers: ['/usr/bin/python3', xtopOperatorWrapper],
     bindings: {
       inputInnovusDatabase: path.join(h.workspace, 'input.enc.dat'),
       siteProfile: path.join(h.workspace, 'site-profile.json'),
@@ -38,7 +39,7 @@ test('the XTop closure Pack loads, fits its declared execution surface and passe
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /xtop-timing-closure@1\.0\.10.*fit/s);
+    assert.match(throughHost.text, /xtop-timing-closure@1\.0\.11.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {
@@ -46,6 +47,69 @@ test('the XTop closure Pack loads, fits its declared execution surface and passe
     encoding: 'utf8',
   });
   assert.equal(tests.status, 0, `${tests.stdout}\n${tests.stderr}`);
+});
+
+test('run-xtop-fix keeps batch argv and exposes only the qualified typed Operator commands', async () => {
+  const pack = loadPack(path.join(repoRoot, 'packs'), packId);
+  const tool = pack.contract.tools.find((candidate) => candidate.id === 'run-xtop-fix');
+  assert.ok(tool);
+  assert.equal(tool.interactive?.mode, 'hybrid');
+  assert.deepEqual(tool.argv, ['/usr/bin/python3', '${WORKSPACE}/flow/closure.py', 'xtop', '${WORKSPACE}']);
+  assert.deepEqual(tool.interactive?.argv, [xtopOperatorWrapper, '${WORKSPACE}', '${WORKSPACE}/flow/closure.py',
+    '${WORKSPACE}/flow/templates/xtop-operator.tcl']);
+  assert.deepEqual(tool.interactive?.commands, {
+    read: ['hima_operator_identity', 'hima_summary'], mutate: ['hima_fix_hold'],
+    save: ['hima_save_candidate'], close: ['hima_close'],
+  });
+  assert.equal(tool.interactive?.commands.read.includes('source'), false);
+  assert.equal(tool.interactive?.commands.read.includes('exec'), false);
+
+  const binding: InteractiveBinding = {
+    id: 'xtop-literal-test', packId, packDigest: pack.folder.digest([]), nodeId: 'run-xtop-fix', toolId: tool.id,
+    source: { kind: 'trusted-test-fixture', id: 'xtop-literal-test' },
+    adapter: { id: 'hima-tcl-line-v1', version: '1', digest: BUILTIN_TCL_ADAPTER_DIGEST,
+      completionProtocol: 'versioned-marker', allowsMultiline: false },
+    environment: { id: 'fixture', digest: 'a'.repeat(64) }, mutation: 'qualified',
+    limits: { startupWaitMs: 1, callWaitMaxMs: 1, commandMaxMs: 1, sessionMaxMs: 1, idleMaxMs: 1 },
+  };
+  const hostile = '$x; [exec touch /tmp/escaped]; source /tmp/escaped.tcl';
+  const encoded = encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-1', protocolToken: 'Q'.repeat(32),
+    name: 'hima_fix_hold', args: { arguments: ['high', 0, hostile] } });
+  assert.equal(encoded.effect, 'mutation');
+  assert.ok(encoded.text.includes('"\\$x; \\[exec touch /tmp/escaped]; source /tmp/escaped.tcl"'));
+  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'source-1', protocolToken: 'S'.repeat(32),
+    name: 'source', args: { arguments: ['/tmp/untrusted.tcl'] } }), /not classified/);
+  const close = encodeRetainedInteractiveCommand(tool, binding, { commandId: 'close-1', protocolToken: 'C'.repeat(32),
+    name: 'hima_close', args: { arguments: [] } });
+  assert.equal(close.effect, 'close');
+  assert.match(close.text, /HIMA:C{32}:DONE"; exit/);
+});
+
+test('the admin generator binds qualification to linglong-swerv28 and the current Pack digest', async (t) => {
+  const h = await createHimaHome(); t.after(() => h.dispose());
+  const pack = loadPack(path.join(repoRoot, 'packs'), packId);
+  const tool = pack.contract.tools.find((candidate) => candidate.id === 'run-xtop-fix')!;
+  const template = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-environment.template.json'), 'utf8');
+  const evidence = template
+    .replace('<current-pack-digest>', pack.folder.digest(packDigestExcludes))
+    .replace('<current-adapter-digest>', BUILTIN_TCL_ADAPTER_DIGEST)
+    .replace('<current-commands-digest>', interactiveCommandsDigest(tool))
+    .replace('<passed-after-fresh-production-root-qualification>', 'passed')
+    .replaceAll('<64-lowercase-hex>', 'a'.repeat(64));
+  const environment = path.join(h.home, 'xtop-operator-environment.json');
+  const output = path.join(h.home, 'interactive-bindings.json');
+  await writeFile(environment, evidence);
+  const generated = spawnSync(process.execPath, [path.join(repoRoot, 'scripts/generate-xtop-operator-binding.mjs'),
+    '--environment', environment, '--output', output], { cwd: repoRoot, encoding: 'utf8' });
+  assert.equal(generated.status, 0, generated.stderr);
+  const document = JSON.parse(await readFile(output, 'utf8'));
+  assert.equal(document.bindings[0].site, 'linglong-swerv28');
+  assert.equal(document.bindings[0].packDigest, pack.folder.digest(packDigestExcludes));
+  assert.equal(document.bindings[0].mutation, 'qualified');
+
+  const overwrite = spawnSync(process.execPath, [path.join(repoRoot, 'scripts/generate-xtop-operator-binding.mjs'),
+    '--environment', environment, '--output', output], { cwd: repoRoot, encoding: 'utf8' });
+  assert.notEqual(overwrite.status, 0, 'generation never silently overwrites an active administrator binding');
 });
 
 test('a real Host reads XTop physical evidence through its Pack observation node', async t => {
@@ -62,7 +126,7 @@ test('a real Host reads XTop physical evidence through its Pack observation node
   const inputDb=path.join(h.workspace,'input.enc.dat');await mkdir(inputDb);await writeFile(path.join(inputDb,'db.bin'),'fixture database');
   const siteProfile=path.join(h.workspace,'site-profile.json');await writeFile(siteProfile,'{}\n');
   const sourceManifest=path.join(h.workspace,'source-manifest.sha256');await writeFile(sourceManifest,'fixture source\n');
-  await writeLocalSite(h,{allowedReadRoots:[h.workspace],allowedWriteRoots:[h.workspace],allowedWrappers:['/usr/bin/python3'],
+  await writeLocalSite(h,{allowedReadRoots:[h.workspace],allowedWriteRoots:[h.workspace],allowedWrappers:['/usr/bin/python3', xtopOperatorWrapper],
     bindings:{inputInnovusDatabase:inputDb,siteProfile,sourceManifest,workspaceRoot:h.workspace},
     licences:{Innovus:1,StarRC:1,PrimeTime:1,XTop:1}});
   const host=await bootInProcess(h);let runId:string|undefined;

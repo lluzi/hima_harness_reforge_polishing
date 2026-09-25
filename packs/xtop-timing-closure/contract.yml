@@ -1,5 +1,5 @@
 id: xtop-timing-closure
-version: "1.0.10"
+version: "1.0.11"
 title: XTop iterative timing closure
 status: development
 minimumHarnessVersion: 0.1.0
@@ -90,6 +90,7 @@ outputs:
 environment:
   wrappers:
     - /usr/bin/python3
+    - /data/eda/project/hima_harness/operator-admin/xtop-v1/xtop-operator-v1.sh
 
 workspace:
   source: pack
@@ -147,6 +148,19 @@ tools:
     description: Validate the AI plan and execute only the whitelisted XTop setup/hold actions.
     inputs: [WORKSPACE]
     licences: { XTop: 1 }
+    interactive:
+      mode: hybrid
+      adapter: hima-tcl-line-v1
+      argv:
+        - /data/eda/project/hima_harness/operator-admin/xtop-v1/xtop-operator-v1.sh
+        - ${WORKSPACE}
+        - ${WORKSPACE}/flow/closure.py
+        - ${WORKSPACE}/flow/templates/xtop-operator.tcl
+      commands:
+        read: [hima_operator_identity, hima_summary]
+        mutate: [hima_fix_hold]
+        save: [hima_save_candidate]
+        close: [hima_close]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/closure.py', xtop, '${WORKSPACE}']
 
   - id: apply-eco

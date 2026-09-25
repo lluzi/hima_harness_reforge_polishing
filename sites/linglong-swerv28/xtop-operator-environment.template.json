@@ -1,0 +1,48 @@
+{
+  "schema": "hima-interactive-environment/1",
+  "site": "linglong-swerv28",
+  "toolId": "run-xtop-fix",
+  "pack": {
+    "id": "xtop-timing-closure",
+    "digest": "<current-pack-digest>"
+  },
+  "adapter": {
+    "id": "hima-tcl-line-v1",
+    "digest": "<current-adapter-digest>"
+  },
+  "commandsDigest": "<current-commands-digest>",
+  "wrapper": {
+    "path": "/data/eda/project/hima_harness/operator-admin/xtop-v1/xtop-operator-v1.sh",
+    "sha256": "1dae9a28e83ddc57f209b44bd29a0279c35e4489e85fc81872fbb3db0e8bdff4"
+  },
+  "image": {
+    "reference": "localhost/edarunner",
+    "digest": "sha256:8467102dbae851e4136e998661ae3a01ad9b65d49711c82f2b0883ab8d1bbb8c"
+  },
+  "sourceTemplate": {
+    "path": "flow/templates/xtop-operator.tcl",
+    "sha256": "46bf85afca2adfdc5b310348a6abf293b70ad88598bd1976f47dac888c804b82"
+  },
+  "confinement": {
+    "rootFilesystem": "read-only",
+    "dataRoot": "/data/eda",
+    "dataMount": "read-only",
+    "privateWriteRoot": "/data/eda/project/hima_harness/xtop-timing-closure-runs",
+    "network": "host-localhost-licence-only",
+    "capabilities": "dropped-all",
+    "noNewPrivileges": true
+  },
+  "qualification": {
+    "status": "<passed-after-fresh-production-root-qualification>",
+    "transcriptSha256": "<64-lowercase-hex>",
+    "logicalEcoSha256": "<64-lowercase-hex>",
+    "physicalEcoSha256": "<64-lowercase-hex>",
+    "xtopReady": true,
+    "identityQuery": true,
+    "mutation": true,
+    "save": true,
+    "sourceWriteDenied": true,
+    "execWriteDenied": true,
+    "normalExit": true
+  }
+}

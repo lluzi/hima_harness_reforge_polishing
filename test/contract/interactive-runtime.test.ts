@@ -165,6 +165,18 @@ test('interactive runtime derives authority from Run/Ledger, preserves single-wr
       nodeId: 'manual', actor: String(parent.id), ownerEpoch: 1, controlRevision: 0, action: 'open', requestId: 'open-unconfined' });
     assert.equal(unconfinedRefused.status, 'refused'); assert.match(unconfinedRefused.reason!, /confinement is not enforced/);
 
+    const rootWorkspace = await makeRun('interactive-root-workspace', 'execution-root-workspace');
+    const rootBinding: InteractiveBinding = { ...binding, id: 'admin-root-workspace', source: { kind: 'admin-file',
+      path: '/trusted/admin/interactive-root.json', sha256: digest('e') } };
+    const rootDeps: InteractiveRuntimeDeps = { ...deps,
+      resolveOperation: async () => ({ ...derived, binding: rootBinding, workspace: home.workspace }),
+      verifyAdminBinding: async () => ({ bindingFileRealpath: '/trusted/admin/interactive-root.json',
+        bindingFileSha256: digest('e'), environmentDigest: binding.environment.digest,
+        confinement: 'enforced', writableRoot: home.workspace }) };
+    const rootRefused = await operateInteractive(rootDeps, { runId: rootWorkspace.id, executionId: 'execution-root-workspace',
+      nodeId: 'manual', actor: String(parent.id), ownerEpoch: 1, controlRevision: 0, action: 'open', requestId: 'open-root-workspace' });
+    assert.equal(rootRefused.status, 'refused'); assert.match(rootRefused.reason!, /derived Campaign workspace/);
+
     const lostRequest = { ...base, action: 'input' as const, requestId: 'lost-request', toolSessionId,
       commandId: 'lost-1', command: { name: 'set', args: { key: 'lost', value: 1 } } };
     const intentRequestDigest = interactiveCallerDigest(lostRequest);
