@@ -683,8 +683,11 @@ export async function readDelegationResult(ctx: Context, address: { readonly eff
   let log: Awaited<ReturnType<SessionQuery['readSession']>>;
   try { log = await query.readSession(childSessionId); }
   catch (error) { return unavailable(`The native child result could not be read: ${error instanceof Error ? error.message : String(error)}`); }
+  let sameWorkspace = false;
+  try { sameWorkspace = typeof log.session.cwd === 'string' && realpathSync(log.session.cwd) === realpathSync(effective.workspace); }
+  catch { /* Missing/unresolvable workspace is unavailable, never a matching lineage. */ }
   if (String(log.session.id) !== childSessionId || String(log.session.parentSession) !== effective.parentSessionId
-      || log.session.cwd !== effective.workspace) return unavailable('The retained native Session lineage or workspace differs from the effective delegation.');
+      || !sameWorkspace) return unavailable('The retained native Session lineage or workspace differs from the effective delegation.');
   const lastEnd = log.events.findLast(event => event.type === 'turn/end');
   const ended = lastEnd?.data as { turn?: unknown; reason?: { kind?: unknown } } | undefined;
   if (!lastEnd || !Number.isSafeInteger(ended?.turn) || ended?.reason?.kind !== 'completed') {
