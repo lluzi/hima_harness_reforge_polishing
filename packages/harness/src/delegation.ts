@@ -506,6 +506,93 @@ export interface DelegationCandidateResult {
   readonly unknowns: readonly string[];
 }
 
+export interface DelegationResultHandoff {
+  /** Identity of the complete native assistant output, before the bounded projection below. */
+  readonly outputIdentity: string;
+  /** Exact immutable Ledger admission that owns task and inputRefs. */
+  readonly contract: { readonly recordId: string; readonly requestDigest: string };
+  /** Small result projection only. The complete transcript remains in the native Session. */
+  readonly output: {
+    readonly text: string;
+    readonly content: readonly { readonly type: string; readonly text?: string }[];
+    readonly truncated: boolean;
+  };
+  readonly completedTurn: { readonly turn: number; readonly endSeq: number };
+  readonly unknowns: readonly string[];
+  readonly evidence: DelegationCandidateResult['evidence'];
+}
+
+export interface DelegationResultObservedPayload {
+  readonly candidate: true;
+  readonly source: 'native-live-session' | 'native-persisted-session';
+  readonly handoff: DelegationResultHandoff;
+}
+
+const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
+const handoffEvidenceSchema = z.strictObject({
+  artifactRefs:z.array(z.strictObject({path:z.string().max(4096),sha256,bytes:z.number().int().nonnegative(),tool:z.enum(['write','edit']),toolCallId:z.string().max(512)})).max(64),
+  diffRefs:z.array(z.strictObject({path:z.string().max(4096),sha256,hunks:z.number().int().nonnegative(),toolCallId:z.string().max(512)})).max(64),
+  testRefs:z.array(z.strictObject({name:z.string().max(1024),status:z.enum(['passed','failed']),toolCallId:z.string().max(512)})).max(64),
+  limitations:z.array(z.string().max(4096)).max(64),
+});
+export const delegationResultObservedPayloadSchema = z.strictObject({
+  candidate:z.literal(true),source:z.enum(['native-live-session','native-persisted-session']),
+  handoff:z.strictObject({
+    outputIdentity:sha256,
+    contract:z.strictObject({recordId:z.string().min(1).max(512),requestDigest:sha256}),
+    output:z.strictObject({text:z.string().max(65536),content:z.array(z.strictObject({type:z.string().min(1).max(128),text:z.string().max(65536).optional()})).max(64),truncated:z.boolean()}),
+    completedTurn:z.strictObject({turn:z.number().int().nonnegative(),endSeq:z.number().int().nonnegative()}),
+    unknowns:z.array(z.string().max(4096)).max(64),evidence:handoffEvidenceSchema,
+  }),
+});
+
+const boundedString = (value: string, limit: number): string => value.slice(0, limit);
+const boundedEvidence = (evidence: DelegationCandidateResult['evidence']): DelegationCandidateResult['evidence'] => {
+  const clipped = evidence.artifactRefs.length > 64 || evidence.diffRefs.length > 64 || evidence.testRefs.length > 64
+    || evidence.limitations.length > 63 || evidence.artifactRefs.some(item => item.path.length > 4096 || item.toolCallId.length > 512)
+    || evidence.diffRefs.some(item => item.path.length > 4096 || item.toolCallId.length > 512)
+    || evidence.testRefs.some(item => item.name.length > 1024 || item.toolCallId.length > 512)
+    || evidence.limitations.some(item => item.length > 4096);
+  const limitations = evidence.limitations.slice(0, clipped ? 63 : 64).map(item => boundedString(item, 4096));
+  if (clipped) limitations.push('The durable child handoff clipped evidence to its Ledger projection bounds; use the native Session and original artifacts for the complete history.');
+  return {
+    artifactRefs:evidence.artifactRefs.slice(0,64).map(item=>({...item,path:boundedString(item.path,4096),toolCallId:boundedString(item.toolCallId,512)})),
+    diffRefs:evidence.diffRefs.slice(0,64).map(item=>({...item,path:boundedString(item.path,4096),toolCallId:boundedString(item.toolCallId,512)})),
+    testRefs:evidence.testRefs.slice(0,64).map(item=>({...item,name:boundedString(item.name,1024),toolCallId:boundedString(item.toolCallId,512)})),
+    limitations,
+  };
+};
+
+/** Freeze one completed child turn into a bounded Ledger handoff without copying its transcript. */
+export function durableDelegationHandoff(result: DelegationCandidateResult, contract: DelegationResultHandoff['contract']): DelegationResultHandoff {
+  if (result.status !== 'candidate' || result.output === undefined || result.completedTurn === undefined || result.source === undefined) {
+    throw new DelegationError('hima/delegation-invalid', 'Only an explicitly completed native candidate can become a durable child handoff.');
+  }
+  const textBlocks = result.output.filter((block): block is Extract<ContentBlock,{type:'text'}> => block.type === 'text');
+  const completeText = textBlocks.map(block=>block.text).join('\n');
+  let remaining = 65536;
+  let contentTextTruncated = false;
+  const content = result.output.slice(0,64).map(block=>{
+    if (block.type !== 'text') return {type:block.type};
+    const text = block.text.slice(0,remaining); remaining -= text.length;
+    if (text.length !== block.text.length) contentTextTruncated = true;
+    return {type:block.type,text};
+  });
+  const truncated = completeText.length > 65536 || result.output.length > 64 || contentTextTruncated;
+  const unknownsClipped = result.unknowns.length > 64 || result.unknowns.some(item=>item.length>4096);
+  const unknowns = result.unknowns.slice(0,unknownsClipped?63:64).map(item=>boundedString(item,4096));
+  if (unknownsClipped) unknowns.push('The durable child handoff clipped unknowns to its Ledger projection bounds; inspect the native Session for the complete list.');
+  return delegationResultObservedPayloadSchema.shape.handoff.parse({
+    outputIdentity:createHash('sha256').update(stable(result.output)).digest('hex'),contract,
+    output:{text:completeText.slice(0,65536),content,truncated},completedTurn:result.completedTurn,
+    unknowns,evidence:boundedEvidence(result.evidence),
+  });
+}
+
+export function parseDelegationResultObservedPayload(payload: unknown): DelegationResultObservedPayload {
+  return delegationResultObservedPayloadSchema.parse(payload) as DelegationResultObservedPayload;
+}
+
 const noEvidence = (limitations: readonly string[] = []) => ({ artifactRefs: [], diffRefs: [], testRefs: [], limitations });
 
 type ToolCallEvent = { readonly seq: number; readonly turn: number; readonly callId: string; readonly name: string; readonly arguments: string };

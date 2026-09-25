@@ -87,7 +87,8 @@ const workMemorySummarySchema = z.strictObject({
   openQuestions: z.array(z.string().min(1)),
   todo: z.array(z.string().min(1)),
   references: z.array(z.strictObject({ recordId: z.string().min(1), contentIdentity: memoryHash, conditions: z.array(z.string().min(1)) })),
-  sources: z.array(z.strictObject({ runId: z.string().min(1), throughSeq: z.number().int().nonnegative(), observedControlRevision: z.number().int().nonnegative().optional() })),
+  sources: z.array(z.strictObject({ runId: z.string().min(1), throughSeq: z.number().int().nonnegative(),
+    observedControlRevision: z.number().int().nonnegative().optional(), runAuthorityIdentity: memoryHash.optional() })),
   nativeSources: z.array(workMemoryNativeSource).optional(),
   generatedAt: z.string().datetime(),
   modelGenerated: z.boolean(),
@@ -131,12 +132,39 @@ export interface NativeSessionMemoryEvidence {
   readonly currentThroughSeq: number;
 }
 export type NativeSessionMemoryReader = (request: { readonly sessionId: string; readonly workspaceRef: string; readonly parentSessionId?: string; readonly throughSeq?: number }) => Promise<NativeSessionMemoryEvidence>;
+export interface WorkMemoryAuthority {
+  readonly runId: string;
+  readonly status?: string;
+  readonly currentNode?: string;
+  readonly generation: number;
+  readonly controlRevision?: number;
+  readonly holds: readonly string[];
+  readonly budget?: RunRecord['budget'];
+  readonly meters?: RunRecord['meters'];
+  readonly jobs: readonly { readonly session: string; readonly event: 'launched' | 'finished' | 'killed'; readonly nodeId?: string; readonly exitCode?: number }[];
+  readonly reportRefs: readonly string[];
+}
 export type WorkMemoryRead =
   | { readonly kind: 'none' }
-  | { readonly kind: 'current'; readonly summary: WorkMemorySummary; readonly authority: readonly { readonly runId: string; readonly status?: string; readonly controlRevision?: number }[] }
-  | { readonly kind: 'stale'; readonly summary: WorkMemorySummary; readonly reason: string; readonly authority: readonly { readonly runId: string; readonly status?: string; readonly controlRevision?: number }[] }
-  | { readonly kind: 'conflicted'; readonly summary: WorkMemorySummary; readonly reason: string; readonly authority: readonly { readonly runId: string; readonly status?: string; readonly controlRevision?: number }[] }
+  | { readonly kind: 'current'; readonly summary: WorkMemorySummary; readonly authority: readonly WorkMemoryAuthority[] }
+  | { readonly kind: 'stale'; readonly summary: WorkMemorySummary; readonly reason: string; readonly authority: readonly WorkMemoryAuthority[] }
+  | { readonly kind: 'conflicted'; readonly summary: WorkMemorySummary; readonly reason: string; readonly authority: readonly WorkMemoryAuthority[] }
   | { readonly kind: 'unavailable'; readonly reason: string };
+
+const memoryIdentity = (value: unknown): string => {
+  const stable = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(stable);
+    if (item !== null && typeof item === 'object') return Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right)).map(([key, field]) => [key, stable(field)]));
+    return item;
+  };
+  return createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+};
+
+/** Bind mutable Run-row authority that can advance without appending a Ledger record. */
+function runAuthorityIdentityOf(run: RunRecord): string {
+  const { nextSeq: _recordCursor, ...authority } = run;
+  return memoryIdentity(authority);
+}
 
 const contentIdentityOf = (record: LedgerRecord): string | undefined =>
   record.type === 'knowledge' ? record.sha256
@@ -150,9 +178,25 @@ const contentIdentityOf = (record: LedgerRecord): string | undefined =>
 export function workMemoryEvidence(ledger:Ledger,runId:string) {
   const run=ledger.run(runId);if(!run)throw new Error('memory source Run is absent');
   const records=ledger.records({runId});
-  return {sources:[{runId,throughSeq:run.nextSeq-1,...(run.control?{observedControlRevision:run.control.revision}:{})}],
+  return {sources:[{runId,throughSeq:run.nextSeq-1,runAuthorityIdentity:runAuthorityIdentityOf(run),...(run.control?{observedControlRevision:run.control.revision}:{})}],
     references:records.filter(record=>contentIdentityOf(record)!==undefined&&recordValidityOf(records,record.id).valid).slice(-32)
       .map(record=>({recordId:record.id,contentIdentity:contentIdentityOf(record)!,conditions:['Exact current project Run and retained content identity.']}))};
+}
+
+function workMemoryAuthority(ledger: Ledger, runId: string): WorkMemoryAuthority {
+  const run = ledger.run(runId);
+  if (run === undefined) return { runId, generation: 0, holds: [], jobs: [], reportRefs: [] };
+  const records = ledger.records({ runId });
+  const jobs = new Map<string, WorkMemoryAuthority['jobs'][number]>();
+  for (const record of records) if (record.type === 'job') jobs.set(record.job.session, {
+    session: record.job.session, event: record.event, ...(record.nodeId === undefined ? {} : { nodeId: record.nodeId }),
+    ...(record.exitCode === undefined ? {} : { exitCode: record.exitCode }),
+  });
+  return { runId, status: run.status, currentNode: run.currentNode, generation: run.generation ?? 0,
+    ...(run.control === undefined ? {} : { controlRevision: run.control.revision }),
+    holds: run.control?.paused ?? [],
+    ...(run.budget === undefined ? {} : { budget: run.budget }), ...(run.meters === undefined ? {} : { meters: run.meters }),
+    jobs: [...jobs.values()], reportRefs: records.filter(record => ['observation', 'experience', 'code', 'knowledge'].includes(record.type)).slice(-32).map(record => record.id) };
 }
 
 async function workMemoryPath(workspace: string, scope: WorkMemoryScope, write: boolean): Promise<string> {
@@ -192,10 +236,7 @@ async function summaryState(ledger: Ledger, summary: WorkMemorySummary, native?:
   if (summary.scope.kind === 'campaign' && (summary.scope.runId === undefined || !declared.has(summary.scope.runId))) {
     return { kind: 'stale', summary, reason: 'campaign summary does not declare its scoped Run source', authority: [] };
   }
-  const authority = summary.sources.map((source) => {
-    const run = ledger.run(source.runId);
-    return { runId: source.runId, status: run?.status, ...(run?.control === undefined ? {} : { controlRevision: run.control.revision }) };
-  });
+  const authority = summary.sources.map((source) => workMemoryAuthority(ledger, source.runId));
   for (const reference of summary.references) {
     const record = ledger.record(reference.recordId);
     if (record === undefined) return { kind: 'stale', summary, reason: `source record ${reference.recordId} is unavailable`, authority };
@@ -207,10 +248,12 @@ async function summaryState(ledger: Ledger, summary: WorkMemorySummary, native?:
   for (const source of summary.sources) {
     const run = ledger.run(source.runId);
     if (run === undefined) return { kind: 'stale', summary, reason: `source Run ${source.runId} is unavailable`, authority };
+    if (source.runAuthorityIdentity === undefined) return { kind: 'stale', summary, reason: `source Run ${source.runId} row authority identity was not recorded`, authority };
     if (run.control !== undefined && source.observedControlRevision === undefined) return { kind: 'stale', summary, reason: `source Run ${source.runId} control revision was not recorded`, authority };
     if (source.observedControlRevision !== undefined && run.control?.revision !== source.observedControlRevision) return { kind: 'stale', summary, reason: `source Run ${source.runId} control changed`, authority };
     const latest = ledger.records({ runId: source.runId }).at(-1)?.seq ?? 0;
     if (latest !== source.throughSeq) return { kind: 'stale', summary, reason: `source Run ${source.runId} revision differs from the summary`, authority };
+    if (runAuthorityIdentityOf(run) !== source.runAuthorityIdentity) return { kind: 'stale', summary, reason: `source Run ${source.runId} row authority changed`, authority };
   }
   for (const source of summary.nativeSources ?? []) {
     if (native === undefined) return { kind: 'unavailable', reason: 'native Session memory cannot be qualified without the public SessionQuery carrier' };
@@ -236,6 +279,9 @@ async function summaryState(ledger: Ledger, summary: WorkMemorySummary, native?:
     if (evidence.currentThroughSeq > source.capturedThroughSeq) {
       return { kind: 'stale', summary, reason: `native Session ${source.sessionId} has newer events after the verified summary source`, authority };
     }
+    if (evidence.surfaceAvailability !== source.surfaceAvailability || evidence.surfaceIdentity !== source.surfaceIdentity) {
+      return { kind: 'stale', summary, reason: `native Session ${source.sessionId} current surface changed after the summary source was captured`, authority };
+    }
   }
   return { kind: 'current', summary, authority };
 }
@@ -259,6 +305,7 @@ export async function writeWorkMemorySummary(ledger: Ledger, workspace: string, 
     handle = await open(next, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600);
     created = true;
     await handle.writeFile(bytes);
+    await handle.sync();
     await handle.close(); handle = undefined;
     await rename(next, at);
   } finally {
@@ -834,6 +881,7 @@ export async function listRunKnowledge(deps: ExperienceDeps, currentRunId: strin
   const declared = declaredWorkshopInputs(deps, current, workshop);
   const currentlyUnavailable = new Set(unavailableInputs.map(file => workshop === undefined || file.includes('/') ? file : `${workshop}/${file}`));
   const currentProject = deps.projectOfRun === undefined ? undefined : await deps.projectOfRun(current.id);
+  const projectIdentityAvailable = deps.projectOfRun !== undefined && currentProject !== undefined;
   const candidates: RunKnowledgeCandidate[] = [];
   const unavailable: { sourceRun: string; reason: string }[] = [];
   for (const source of sources) {
@@ -863,9 +911,10 @@ export async function listRunKnowledge(deps: ExperienceDeps, currentRunId: strin
       'Workspace design names are declarations; only captured input bytes are compared.',
       'Historical measurements are background for hypotheses and next experiments, never current measurements or conclusions.',
     ];
-    let automatic = true;
+    let automatic = projectIdentityAvailable;
+    if (!projectIdentityAvailable) conditions.push('Authenticated project identity is unavailable; this history is explicit-review background only and cannot be adopted automatically.');
     if ((source.purpose ?? 'campaign') === 'test') {
-      automatic = current.purpose === 'test';
+      automatic = automatic && current.purpose === 'test';
       conditions.push(current.purpose === 'test'
         ? 'Source and current purpose are test; matching input evidence may support this test study as limited background, never a production or EDA result.'
         : 'Source purpose is test; synthetic or authoring evidence is not automatically promoted into Campaign knowledge.');

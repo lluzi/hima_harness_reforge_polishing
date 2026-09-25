@@ -33,7 +33,7 @@ import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs } from 
 import { controlling, identityOf, drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, type RunDelegationRequest } from './delegation-runtime.js';
-import { registerDelegationGuard, readDelegationResult } from './delegation.js';
+import { registerDelegationGuard, parseDelegationResultObservedPayload } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
 import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
 import { interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
@@ -81,7 +81,7 @@ import {
 export { channelFor, controlPathFor, remoteCommands, clearRemoteCommands, remoteCommandWindow, remoteCommandWindowFilled, readOnlyProbes, siteDiscoveryProbes, discoverSiteFacts, jobPlumbing, workspacePlumbing, quote, LocalChannel, SshChannel } from './channel.js';
 export type { Channel, ExecResult, ExecOptions, RemoteCommand, SiteDiscoveryFact } from './channel.js';
 export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discoveryIsStale, siteSaveIdentity, SiteDiscoveryConflictError } from './sites.js';
-export { WORK_MEMORY_SCHEMA, readWorkMemorySummary, writeWorkMemorySummary, recordExperienceAdoption } from './experience.js';
+export { WORK_MEMORY_SCHEMA, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, recordExperienceAdoption } from './experience.js';
 export * from './delegation.js';
 export { runDelegations, delegationRuntimePolicy, operateRunDelegation } from './delegation-runtime.js';
 export * from './interactive-job.js';
@@ -94,7 +94,7 @@ export { batchToolRefusal } from './packs.js';
 export { launchInteractiveJob } from './jobs.js';
 export { nativeSessionMemoryEvidence } from './native-session-memory.js';
 export type { NativeSessionMemoryEvidence, NativeSessionMemoryReader } from './experience.js';
-export type { WorkMemoryScope, WorkMemorySummary, WorkMemoryRead, ExperienceAdoptionRequest } from './experience.js';
+export type { WorkMemoryScope, WorkMemorySummary, WorkMemoryRead, WorkMemoryAuthority, ExperienceAdoptionRequest } from './experience.js';
 export type { ExperienceAdoptionRecord } from './ledger.js';
 export type { Site, SshTarget, Permit, SiteDiscovery, SiteDiscoveryRequest, SiteDiscoveryResult, SiteSaveIdentity } from './sites.js';
 
@@ -563,7 +563,7 @@ export default class Hima extends Service {
           readSessionContext: request=>readNativeSessionContext(this.ctx,request,this.ledger),
           resolveReportAddress: (sessionId, ref) => resolveReportAddress(this.guideDeps(), sessionId, ref),
           listSessionChildren: request => listSessionChildren(this.ctx, request),
-          workMemory: (sessionId, request) => this.workMemory(sessionId, request),
+          workMemory: (sessionId, request) => this.workMemory(sessionId, request, 'person'),
           correctExperience: (sessionId, request) => this.correctExperience(sessionId, request),
           experienceCandidates: (sessionId,runId)=>this.experienceCandidates(sessionId,runId),
           delegations: (sessionId,runId)=>this.delegations(sessionId,runId),
@@ -661,7 +661,7 @@ export default class Hima extends Service {
     )) this.ctx.effect(() => this.ctx.tools.register(tool));
     for (const tool of guideTools({
       inspect: (sessionId, requestId, target) => readGuideContext(this.guideDeps(), { sessionId, requestId, target }),
-      memory: (sessionId, request) => this.workMemory(sessionId, request),
+      memory: (sessionId, request) => this.workMemory(sessionId, request, 'model'),
       delegate: request=>this.delegate(request),
       delegationInput:(sessionId,request)=>this.delegationInput(sessionId,request),
       interactive:(sessionId,request)=>this.interactive(sessionId,request),
@@ -759,7 +759,7 @@ export default class Hima extends Service {
       readExperience: (runId: string) => this.readExperience(runId), readReportMaterial:(runId:string,recordId:string)=>readReportMaterial(this.deps(),runId,recordId) };
   }
 
-  async workMemory(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }): Promise<object> {
+  async workMemory(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }, authoredBy: 'model' | 'person' = 'person'): Promise<object> {
     const workspaceRef = await sessionProject(this.ctx, sessionId, true);
     if (request.runId) await authorizeProjectRun(this.guideDeps(), sessionId, request.runId);
     const parentSessionId=this.ctx.get('agents')?.get(sessionId as never)?.session.header.parentSession;
@@ -781,7 +781,7 @@ export default class Hima extends Service {
       const summary = request.summary as Record<string, unknown>;
       if (!Array.isArray(summary.sources) || summary.sources.some(source => !source || typeof source !== 'object' || typeof source.runId !== 'string')) throw new BadRequest('summary sources must name recorded project Runs');
       await checkSources(summary as { sources: { runId: string }[] });
-      await writeWorkMemorySummary(this.ledger, workspaceRef, { ...summary, schema: 'hima-work-memory/1', generatedAt:new Date().toISOString(), scope, modelGenerated: true }, source => nativeSessionMemoryEvidence(this.ctx, source));
+      await writeWorkMemorySummary(this.ledger, workspaceRef, { ...summary, schema: 'hima-work-memory/1', generatedAt:new Date().toISOString(), scope, modelGenerated: authoredBy === 'model' }, source => nativeSessionMemoryEvidence(this.ctx, source));
     }
     const result = await readWorkMemorySummary(this.ledger, workspaceRef, scope, source => nativeSessionMemoryEvidence(this.ctx, source));
     if ('summary' in result) {await checkSources(result.summary);return {...result,scope:result.summary.scope,references:result.summary.references,sources:result.summary.sources,nativeSources:result.summary.nativeSources??[]};}
@@ -900,11 +900,23 @@ export default class Hima extends Service {
     if(record.type==='delegation'&&record.event==='result-observed') {
       const source=runDelegations(this.deps(),request.runId).find(item=>item.delegationId===record.delegationId);
       if(!source)return {...base,kind:'unavailable',reason:'The child result source is missing.'};
-      const result=await readDelegationResult(this.ctx,{effective:source.effective,requestDigest:source.requestDigest});
-      const observed=record.payload as {completedTurn?:{endSeq?:number}};
-      if(result.status!=='candidate'||result.completedTurn?.endSeq!==observed.completedTurn?.endSeq)return {...base,kind:'unavailable',reason:'The exact observed native result is no longer the current retained completed turn.'};
-      const text=result.output?.filter(block=>block.type==='text').map(block=>block.text).join('\n')??'';
-      return {...base,kind:'record-fact',payload:{candidateOnly:true,text:text.slice(0,65536),truncated:text.length>65536,completedTurn:result.completedTurn,artifacts:result.evidence.artifactRefs.map(({path:_path,...artifact})=>artifact),limitations:result.evidence.limitations},source:'verified-native-completed-turn'};
+      let observed:ReturnType<typeof parseDelegationResultObservedPayload>;
+      try {observed=parseDelegationResultObservedPayload(record.payload);} catch {return {...base,kind:'unavailable',reason:'This observed child result predates or fails the durable handoff schema.'};}
+      const handoff=observed.handoff;
+      const contractRecord=this.ledger.record(handoff.contract.recordId);
+      if(source.contractRecordId!==handoff.contract.recordId||source.requestDigest!==handoff.contract.requestDigest
+          ||!contractRecord||contractRecord.type!=='delegation'||contractRecord.event!=='create-intent'
+          ||contractRecord.runId!==request.runId||contractRecord.delegationId!==record.delegationId
+          ||contractRecord.requestDigest!==handoff.contract.requestDigest
+          ||!recordValidityOf(this.ledger.records({runId:request.runId}),contractRecord.id).valid) {
+        return {...base,kind:'unavailable',reason:'The exact recorded delegation contract for this child handoff is missing or invalidated.'};
+      }
+      return {...base,kind:'record-fact',payload:{candidateOnly:true,outputIdentity:handoff.outputIdentity,
+        contractRecordId:contractRecord.id,task:source.contract.task,inputRefs:source.contract.inputRefs,
+        text:handoff.output.text,content:handoff.output.content,truncated:handoff.output.truncated,
+        completedTurn:handoff.completedTurn,unknowns:handoff.unknowns,evidence:handoff.evidence,
+        artifacts:handoff.evidence.artifactRefs.map(({path:_path,...artifact})=>artifact),limitations:handoff.evidence.limitations},
+        source:'durable-ledger-child-handoff',identity:handoff.outputIdentity,identityEncoding:'sha256-native-assistant-output'};
     }
     const payload=record.type==='observation'?{reader:record.reader,contentSha256:record.contentSha256,bytes:record.bytes,values:record.values}
       :record.type==='verdict'?{outcome:record.outcome,ruleId:record.ruleId,ruleVersion:record.ruleVersion,cites:record.cites,valuesAsRead:record.valuesAsRead,reason:record.reason}

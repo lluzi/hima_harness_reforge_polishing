@@ -7,14 +7,14 @@ import path from 'node:path';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
 import { repoRoot, type HimaHome } from './support/dsh-home.ts';
-import { readRunAssets, type ExecutionActionRequest, type ExecutionActionResult, type RunRecord } from '@hima/harness';
+import { listRunKnowledge, readRunAssets, type ExecutionActionRequest, type ExecutionActionResult, type RunRecord } from '@hima/harness';
 
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 
 const sha256 = (text: string): string => createHash('sha256').update(Buffer.from(text, 'utf8')).digest('hex');
 const experienceDeps = (host: InProcessHost, h: HimaHome) => ({ ledger: host.ctx.hima.ledger,
-  packsDir: path.join(h.home, 'hima/packs'), sitesDir: path.join(h.home, 'hima/sites') });
+  packsDir: path.join(h.home, 'hima/packs'), sitesDir: path.join(h.home, 'hima/sites'), projectOfRun: async () => h.workspace });
 
 function ownerActions(host: InProcessHost, runId: string, actor: string, prefix: string) {
   let sequence = 0;
@@ -152,6 +152,11 @@ test('recommend returns and records the matching negative archive before code, w
     assert.ok(history.untrustedHistoricalContext?.text.includes('untrustedHistoricalContext'));
     assert.match(history.untrustedHistoricalContext?.text ?? '', /Compare scale 2 with identical captured input bytes/, 'the returned negative history carries its source-linked next-experiment reason');
     assert.ok(Buffer.byteLength(history.untrustedHistoricalContext?.text ?? '') <= 8 * 1024, 'automatic historical context is byte-bounded');
+    const withoutProjectIdentity = await listRunKnowledge({ ledger: host.ctx.hima.ledger,
+      packsDir: path.join(home.h.home, 'hima/packs'), sitesDir: path.join(home.h.home, 'hima/sites') }, current.run.id, 'analyze');
+    assert.equal(withoutProjectIdentity.candidates.some(candidate => candidate.automatic), false,
+      'a low-level caller without authenticated project identity cannot auto-adopt history');
+    assert.ok(withoutProjectIdentity.candidates.some(candidate => candidate.conditions.some(condition => /project identity is unavailable/.test(condition))));
     assert.equal(history.untrustedHistoricalContext?.sourceRun, negative.id);
     const historyRecord = host.ctx.hima.ledger.record(history.untrustedHistoricalContext!.recordId);
     assert.ok(historyRecord?.type === 'knowledge' && historyRecord.origin === 'history');

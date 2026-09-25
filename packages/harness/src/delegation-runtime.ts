@@ -5,7 +5,7 @@ import { controlling, identityOf, executionContext, type FabricDeps } from './fa
 import { timeBoxRemainingMs, ownedWaitedMs } from './budget.js';
 import { runExitFence } from './host-exit.js';
 import type { DelegationRecord, RunRecord } from './ledger.js';
-import { createDelegation, followupDelegation, cancelDelegation, readDelegationResult, type DelegationContract, type EffectiveDelegationContract, type DelegationAuthority, type DelegationReservation, type DelegationRuntimePolicy, type DurableDelegationState, type OperatorDelegationGrant } from './delegation.js';
+import { createDelegation, followupDelegation, cancelDelegation, readDelegationResult, durableDelegationHandoff, type DelegationContract, type EffectiveDelegationContract, type DelegationAuthority, type DelegationReservation, type DelegationRuntimePolicy, type DurableDelegationState, type OperatorDelegationGrant } from './delegation.js';
 const json = (value: unknown) => JSON.parse(JSON.stringify(value));
 type Creation = {
     contract: DelegationContract;
@@ -21,6 +21,8 @@ export interface RunDelegationView extends Creation {
     readonly initialMessageId?: string;
     readonly reason?: string;
     readonly recordId: string;
+    /** Immutable create-intent record containing the admitted task and inputRefs. */
+    readonly contractRecordId: string;
     readonly followups: number;
     /** Most recent proven completed-turn receipt; later refinement never rewrites this record. */
     readonly resultRecordId?: string;
@@ -61,7 +63,7 @@ export function runDelegations(deps: FabricDeps, runId: string): RunDelegationVi
             requestDigest: first.requestDigest, state, initialMessageId: (accepted?.payload as {
                 initialMessageId?: string;
             } | undefined)?.initialMessageId,
-            reason: data?.reason, recordId: latest?.id ?? first.id, followups: history.filter(r => r.event === 'followup-intent').length,
+            reason: data?.reason, recordId: latest?.id ?? first.id, contractRecordId:first.id, followups: history.filter(r => r.event === 'followup-intent').length,
             ...(result === undefined ? {} : { resultRecordId: result.id }),
             ...(adopted === undefined ? {} : { adoptedRecordId: adopted.id }),
             ...(stopObserved === undefined ? {} : { stopObserved }) };
@@ -245,7 +247,8 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
             if (prior) return prior.requestDigest === requestDigest && prior.event === 'result-adopted'
                 ? { status: 'duplicate', artifacts: [], unknowns: [], adoptedRecordId: prior.id }
                 : { status: 'refused', artifacts: [], unknowns: [], reason: 'Adoption request identity already names different intent.' };
-            if (latest.control.revision !== request.expectedRevision || latest.status !== 'running' || latest.control.stop || latest.control.paused.length)
+            if (latest.control.revision !== request.expectedRevision || latest.status !== 'running' || latest.control.stop || latest.control.paused.length
+                || runExitFence(latest) || executionContext(deps, latest.id).budget.phase !== 'active')
                 return { status: 'refused', artifacts: [], unknowns: [], reason: 'Re-read the active unheld Run before adopting a child result.' };
             const result = all.filter(row => row.delegationId === found.delegationId && row.event === 'result-observed').at(-1);
             if (!result) return { status: 'refused', artifacts: [], unknowns: [], reason: 'Only an exact observed child result can be adopted.' };
@@ -268,10 +271,11 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
             if (!latest?.control || latest.control.owner !== found.parentSessionId || latest.control.epoch !== request.expectedEpoch
                 || latest.control.revision !== request.expectedRevision) throw new Error('Re-read the Run before recording this child result.');
             if (!records(deps, run.id).some(r => r.requestId === request.requestId)) {
+                const handoff = durableDelegationHandoff(result, { recordId:found.contractRecordId, requestDigest:found.requestDigest });
                 await deps.ledger.appendDelegation(run.id, { delegationId: found.delegationId, parentSessionId: found.parentSessionId,
                     childSessionId: found.childSessionId, event: 'result-observed', requestId: request.requestId,
-                    requestDigest: identityOf({ child: found.childSessionId, completedTurn: result.completedTurn, evidence: result.evidence }),
-                    payload: json({ candidate: true, source: result.source, completedTurn: result.completedTurn, evidence: result.evidence }) });
+                    requestDigest: identityOf({ child: found.childSessionId, outputIdentity:handoff.outputIdentity, completedTurn: handoff.completedTurn, evidence: handoff.evidence }),
+                    payload: json({ candidate: true, source: result.source, handoff }) });
                 const observed = deps.ledger.run(run.id)!;
                 await deps.ledger.advanceRun(run.id, { control: { ...observed.control!, revision: observed.control!.revision + 1 } });
             }

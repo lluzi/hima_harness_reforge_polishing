@@ -99,7 +99,17 @@ test('real Run delegation recovers a cold completed result, gates dependencies, 
   const cancelComplete=await host.ctx.hima.delegate({runId,actor,action:'cancel',delegationId:'coder',requestId:'cancel-completed',expectedEpoch:control.epoch,expectedRevision:control.revision}) as any;
   assert.equal(cancelComplete.status,'refused');
   assert.equal(cold.evidence.artifactRefs.length,1);assert.match(cold.evidence.artifactRefs[0].sha256,/^[0-9a-f]{64}$/);
-  const resultRecord=host.ctx.hima.ledger.records({runId,type:'delegation'}).find(r=>r.type==='delegation'&&r.event==='result-observed');assert.ok(resultRecord);
+  const resultRecord=host.ctx.hima.ledger.records({runId,type:'delegation'}).find(r=>r.type==='delegation'&&r.event==='result-observed');assert.ok(resultRecord);assert.equal(resultRecord.type,'delegation');
+  const contractRecord=host.ctx.hima.ledger.records({runId,type:'delegation'}).find(r=>r.type==='delegation'&&r.delegationId==='coder'&&r.event==='create-intent');assert.ok(contractRecord);assert.equal(contractRecord.type,'delegation');
+  const retainedHandoff=(resultRecord.payload as any).handoff;
+  assert.match(retainedHandoff.outputIdentity,/^[0-9a-f]{64}$/);
+  assert.equal(retainedHandoff.contract.recordId,contractRecord.id,'the handoff traces task/inputRefs to the exact retained contract instead of copying another task fact');
+  assert.equal(retainedHandoff.contract.requestDigest,contractRecord.requestDigest);
+  assert.deepEqual(retainedHandoff.completedTurn,cold.completedTurn);
+  assert.match(retainedHandoff.output.text,/owner|parent/);
+  assert.deepEqual(retainedHandoff.unknowns,cold.unknowns);
+  assert.deepEqual(retainedHandoff.evidence,cold.evidence);
+  assert.equal('nativeMessages' in retainedHandoff,false,'the Ledger handoff does not mirror the native transcript');
   assert.equal(runDelegations((host.ctx.hima as any).deps?.()??{ledger:host.ctx.hima.ledger},runId).find(row=>row.delegationId==='coder')?.state,'completed');
   control=host.ctx.hima.executionContext(runId).run.control!;
   const adopted=await host.ctx.hima.delegate({runId,actor,action:'adopt',delegationId:'coder',requestId:'adopt-coder-result',expectedEpoch:control.epoch,expectedRevision:control.revision}) as any;
@@ -132,6 +142,19 @@ test('real Run delegation recovers a cold completed result, gates dependencies, 
   }
   const returned=await host.ctx.get('sessionQuery')!.readSession(childId as never);
   assert.equal(String(returned.session.id),childId,'cold follow-up uses the existing native session');
+  const retainedAfterFollowup=await host.ctx.hima.delegationInput(reviewerId,{runId,recordId:resultRecord.id}) as any;
+  assert.equal(retainedAfterFollowup.kind,'record-fact',JSON.stringify(retainedAfterFollowup));
+  assert.equal(retainedAfterFollowup.payload.outputIdentity,retainedHandoff.outputIdentity);
+  assert.equal(retainedAfterFollowup.payload.contractRecordId,contractRecord.id);
+  assert.equal(retainedAfterFollowup.payload.task,request.contract.task);
+  assert.deepEqual(retainedAfterFollowup.payload.inputRefs,request.contract.inputRefs);
+  assert.match(retainedAfterFollowup.payload.text,/owner|parent/);
+  assert.doesNotMatch(retainedAfterFollowup.payload.text,/Follow-up received/,'an old result record remains bound to its original completed turn');
+  await host.dispose();host=await bootInProcess(home.h);await host.ctx.hima.reconciled;await resumeTestAgent(host.ctx,actor,ownerModel);
+  const retainedAfterRestart=await host.ctx.hima.delegationInput(reviewerId,{runId,recordId:resultRecord.id}) as any;
+  assert.equal(retainedAfterRestart.kind,'record-fact',JSON.stringify(retainedAfterRestart));
+  assert.equal(retainedAfterRestart.payload.outputIdentity,retainedHandoff.outputIdentity);
+  assert.equal(retainedAfterRestart.payload.text,retainedAfterFollowup.payload.text,'Host restart reads the immutable handoff instead of the child latest turn');
   const reopened=runDelegations((host.ctx.hima as any).deps(),runId).find(row=>row.delegationId==='coder');
   assert.equal(reopened?.state,'accepted','followup admission reopens tool authority for the exact retained child');
   control=host.ctx.hima.executionContext(runId).run.control!;
@@ -142,6 +165,9 @@ test('real Run delegation recovers a cold completed result, gates dependencies, 
 
   control=host.ctx.hima.executionContext(runId).run.control!;
   await host.ctx.hima.executionAction({runId,actor,origin:'human',action:'pause',requestId:'hold-parent',expectedEpoch:control.epoch,expectedRevision:control.revision});
+  control=host.ctx.hima.executionContext(runId).run.control!;
+  const heldAdoption=await host.ctx.hima.delegate({runId,actor,action:'adopt',delegationId:'coder',requestId:'adopt-while-held',expectedEpoch:control.epoch,expectedRevision:control.revision}) as any;
+  assert.equal(heldAdoption.status,'refused','durable handoff readability does not weaken active unheld owner adoption');
   const pausedPolicy=delegationRuntimePolicy((host.ctx.hima as any).deps(),reviewerId);assert.equal(pausedPolicy?.toolsAllowed,true);assert.equal(pausedPolicy?.writesAllowed,false);
   const reviewerAgent={id:reviewerId,options:{provider:reviewer.effectiveContract.model.provider,model:reviewer.effectiveContract.model.model,maxTokens:reviewer.effectiveContract.model.maxTokensPerTurn}};
   assert.equal(delegationToolDenial(id=>delegationRuntimePolicy((host.ctx.hima as any).deps(),id),{name:'hima_delegation_input',arguments:{runId,recordId:resultRecord.id},agent:reviewerAgent} as never),undefined,'human pause preserves exact read-only observation');
