@@ -998,8 +998,14 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
  * through one of them without its words would be a card that said the same Campaign two ways
  * depending on which button a person had pressed last.
  */
-const runAnswer = (ops: RemoteOperations, run: RunRecord): RunView =>
-  runView(ops.ledger, run, ops.runWords(run));
+const runAnswer = (ops: RemoteOperations, run: RunRecord): RunView => {
+  // A compound operation such as observe+judge can append records after its service returned the
+  // Run row it started from. Every projection must use one current ledger snapshot; otherwise the
+  // observations/verdicts are current while valueMeasurement.throughSeq still describes the stale
+  // pre-operation row. The ledger is the sole authority, so refresh here for all HTTP faces.
+  const current = ops.ledger.run(run.id) ?? run;
+  return runView(ops.ledger, current, ops.runWords(current));
+};
 
 const RECORD_TYPES = new Set<LedgerRecord['type']>(['observation', 'refusal', 'verdict', 'job', 'workspace', 'node', 'blocker', 'resumed', 'decision', 'cancel', 'loop', 'experience', 'session', 'code', 'revision']);
 

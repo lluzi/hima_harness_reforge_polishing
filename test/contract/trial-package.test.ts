@@ -5,6 +5,8 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { repoRoot } from './support/dsh-home.ts';
 
 test('the generated Computer Use start guide does not point at an undelivered trial manual', async () => {
@@ -55,7 +57,7 @@ test('trial packager refuses a candidate Pack with no contract or a manifest who
     assert.match(missingContract.stderr, /missing required asset contract\.yml/);
 
     await mkdir(path.join(pack, 'knowledge'), { recursive: true });
-    await writeFile(path.join(pack, 'contract.yml'), 'id: custom-cell-fmax-dtco\nknowledgeManifest: knowledge/manifest.yml\n');
+    await writeFile(path.join(pack, 'contract.yml'), 'id: custom-cell-fmax-dtco\nversion: "1"\nknowledgeManifest: knowledge/manifest.yml\n');
     await writeFile(path.join(pack, 'graph.yml'), 'id: custom-cell-fmax-dtco\nentry: bind-inputs\n');
     await writeFile(path.join(pack, 'knowledge/manifest.yml'), [
       'schema: hima-pack-knowledge/1',
@@ -64,11 +66,32 @@ test('trial packager refuses a candidate Pack with no contract or a manifest who
       '    file: portable-method.md',
       '',
     ].join('\n'));
+    await writeFile(path.join(pack, 'TEST.md'), '# test receipt\n');
+    const writeSeal = async () => {
+      const sealed = ['TEST.md', 'contract.yml', 'graph.yml', 'knowledge/manifest.yml',
+        ...(existsSync(path.join(pack, 'knowledge/portable-method.md')) ? ['knowledge/portable-method.md'] : [])];
+      const hashes = Object.fromEntries(await Promise.all(sealed.map(async file => [file,
+        createHash('sha256').update(await readFile(path.join(pack, file))).digest('hex')])));
+      await writeFile(path.join(pack, 'VERSION.yml'), [
+        'pack: custom-cell-fmax-dtco',
+        'version: "1"',
+        `methodDigest: ${'a'.repeat(64)}`,
+        'released: "2026-09-25T00:00:00.000Z"',
+        'test:',
+        '  record: TEST.md',
+        '  run: run-fixture',
+        'files:',
+        ...sealed.map(file => `  '${file}': '${hashes[file]}'`),
+        '',
+      ].join('\n'));
+    };
+    await writeSeal();
     const missingKnowledge = check();
     assert.equal(missingKnowledge.status, 1);
     assert.match(missingKnowledge.stderr, /names missing document portable-method\.md/);
 
     await writeFile(path.join(pack, 'knowledge/portable-method.md'), '# portable method\n');
+    await writeSeal();
     const missingTiming = check();
     assert.equal(missingTiming.status, 1);
     assert.match(missingTiming.stderr, /timing Pack xtop-timing-closure is missing contract\.yml/);
@@ -103,5 +126,9 @@ test('trial packager refuses a candidate Pack with no contract or a manifest who
     const complete = check();
     assert.equal(complete.status, 0, complete.stderr);
     assert.match(complete.stdout, /checked custom-cell-fmax-dtco, xtop-timing-closure and opene902-timing-probe assets/);
+    await writeFile(path.join(pack, 'TEST.md'), '# changed after release\n');
+    const changedAfterRelease = check();
+    assert.equal(changedAfterRelease.status, 1);
+    assert.match(changedAfterRelease.stderr, /seal hash differs for TEST\.md/);
   } finally { await (await import('node:fs/promises')).rm(output, { recursive: true, force: true }); }
 });

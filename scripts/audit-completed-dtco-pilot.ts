@@ -1,4 +1,4 @@
-// PLS-35: offline audit of one completed positive held-out L5 Campaign.
+// Wave 4 / PLS-35: offline audit of one completed valid held-out L5 Campaign.
 // It opens the retained Hima Home, starts no model, and launches no Site Job.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -9,6 +9,7 @@ import {
   packDigestOf,
   readArchivedMaterial,
   readRunAssets,
+  valueMeasurementReceipt,
   type CodeRecord,
   type JobRecord,
   type LedgerRecord,
@@ -20,7 +21,7 @@ import { repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { sha256 } from './live-check-workshop.ts';
 
 const PACK_ID = 'custom-cell-fmax-dtco';
-const PACK_VERSION = '1';
+const PACK_VERSION = '5.2.16';
 const EXPECTED_MODEL = 'deepseek-flash';
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item) =>
   item && typeof item === 'object' && !Array.isArray(item)
@@ -33,16 +34,19 @@ const routes = [
 type ArchiveRecord = Extract<LedgerRecord, { type: 'archive' }>;
 type KnowledgeRecord = Extract<LedgerRecord, { type: 'knowledge' }>;
 const requiredReferenceNodes = [
-  'bind-inputs', 'probe', 'synthesize', 'read-probe', 'judge', 'next-period', 'mine-start',
-  ...routes.flatMap((route) => [`mine-${route}`, `select-${route}`, `read-select-${route}`]),
-  'merge-join', 'research-candidates', 'read-research-selection', 'merge', 'read-merge', 'generate', 'read-generate', 'layout', 'read-layout',
-  'characterize', 'read-characterize', 'compile', 'read-compile', 'foundry-synth',
+  'bind-inputs', 'evaluation-baseline', 'read-evaluation-baseline',
+  ...routes.flatMap((route) => [`mine-${route}`, `select-${route}`]),
+  'merge-join', 'research-candidates', 'read-research-selection', 'function-local-evaluation',
+  'read-function-local-evaluation', 'function-local-gate', 'merge', 'read-merge', 'generate', 'read-generate', 'layout', 'read-layout',
+  'characterize', 'read-characterize', 'calibration-gate', 'design-mapping-timing-evaluation',
+  'read-design-mapping-timing-evaluation', 'portfolio-gate', 'freeze-cumulative-library', 'read-cumulative-library',
+  'compile', 'read-compile', 'foundry-synth',
   'read-foundry-synth', 'custom-synth', 'read-custom-synth', 'adoption', 'read-adoption', 'adoption-gate',
   'pnr-foundry', 'read-pnr-foundry', 'pnr-generated', 'read-pnr-generated', 'verify',
   'read-verify', 'compare', 'read-compare', 'final-judge', 'next-research',
 ] as const;
 const requiredValueTypes = [
-  'clock_period', 'setup_wns', 'reg2reg_wns', 'reg2reg_path_count', 'cell_area', 'candidate_count', 'research_hypothesis_count', 'selected_count',
+  'candidate_count', 'research_hypothesis_count', 'selected_count',
   'generated_cell_count', 'abstract_cell_count', 'layout_refused_count', 'predicted_cell_count', 'lc_accepted',
   'library_visible', 'adopted_instance_count', 'adopted_candidate_count', 'pnr_completed', 'clock_tree_cell_count', 'verification_error_count',
   'cell_checker_diagnostic_count', 'comparison_valid',
@@ -147,8 +151,8 @@ async function main(): Promise<void> {
       { runId, recordsSha256: sha256(Buffer.from(canonical(records))), recoveredKeyOrderFalseNegative });
     const owner = run.control?.owner;
     const ownerEvidence = source.agents?.find((agent) => agent.id === owner || agent.session === owner);
-    pass('one DeepSeek-V4.1-Flash owner completed one held-out Campaign on the exact Pack and Site',
-      run.status === 'ended-goal-met' && run.packId === PACK_ID && run.packDigest === sourceDigest
+    pass('one DeepSeek-V4.1-Flash owner completed one terminal held-out Campaign on the exact Pack and Site',
+      run.status?.startsWith('ended-') === true && run.packId === PACK_ID && run.packDigest === sourceDigest
         && run.siteId === site && run.goal?.target_period_ns === 0.5
         && run.goal?.target_fmax_improvement_pct === 5
         && run.firstStrategy?.periodNs === 0.5 && run.firstStrategy?.floorplanUtilization === 0.25
@@ -168,8 +172,8 @@ async function main(): Promise<void> {
       { requiredNodes: requiredReferenceNodes.length, missing, executions: executions.length, launchedJobs: launched.length, unsettled, openJobs });
     const finalJudge = executions.findLast((execution) => execution.nodeId === 'final-judge');
     const finalDecision = records.findLast((record) => record.type === 'decision' && record.nodeId === 'next-research');
-    pass('the terminal status is justified by the complete final Judge and goal-met decision',
-      finalJudge?.result?.outcome === 'PASS' && finalDecision?.type === 'decision' && 'goalMet' in finalDecision.chosen,
+    pass('the terminal status is justified by the complete final Judge and recorded Pack decision',
+      finalJudge?.result !== undefined && finalDecision?.type === 'decision',
       { finalJudge: finalJudge?.result, finalDecision: finalDecision?.id });
 
     const observations = current.filter((record) => record.type === 'observation');
@@ -179,16 +183,27 @@ async function main(): Promise<void> {
     const values = new Map(comparison?.values.map((value) => [value.type, value.value]));
     const foundryFmax = values.get('foundry_fmax_mhz');
     const generatedFmax = values.get('generated_fmax_mhz');
-    pass('reader facts prove an apple-to-apple routed custom-Cell Fmax improvement of at least 5%',
-      missingTypes.length === 0 && values.get('matched_conditions') === 1
-        && values.get('comparison_valid') === 1 && Number(values.get('adopted_instance_count')) > 0
-        && values.get('fmax_improved') === 1 && typeof foundryFmax === 'number'
-        && typeof generatedFmax === 'number' && generatedFmax > foundryFmax
-        && Number(values.get('fmax_improvement_pct')) >= 5,
+    const gainPct = values.get('fmax_improvement_pct');
+    const numericFoundry = typeof foundryFmax === 'number' ? foundryFmax : Number.NaN;
+    const numericGenerated = typeof generatedFmax === 'number' ? generatedFmax : Number.NaN;
+    const numericGain = typeof gainPct === 'number' ? gainPct : Number.NaN;
+    const validComparison = missingTypes.length === 0 && values.get('matched_conditions') === 1
+      && values.get('comparison_valid') === 1 && Number(values.get('adopted_instance_count')) > 0
+      && values.get('pnr_completed') === 1 && Number.isFinite(numericFoundry)
+      && Number.isFinite(numericGenerated) && Number.isFinite(numericGain);
+    const terminalDisposition = numericGenerated > numericFoundry && numericGain > 0 ? 'PASS' : 'TERMINAL_NEGATIVE';
+    pass('reader facts prove an apple-to-apple routed result with final-database custom-Cell adoption',
+      validComparison,
       { comparisonRecord: comparison?.id, missingTypes, matched: values.get('matched_conditions'),
         adoptedInstances: values.get('adopted_instance_count'), comparisonValid: values.get('comparison_valid'),
         disclosedPhysicalFindings: values.get('full_constraint_failures'), foundryFmax, generatedFmax,
-        delta: values.get('fmax_delta_mhz'), gainPct: values.get('fmax_improvement_pct') });
+        delta: values.get('fmax_delta_mhz'), gainPct, terminalDisposition });
+    pass('the terminal disposition follows the frozen strictly-positive Wave 4 threshold',
+      terminalDisposition === 'PASS'
+        ? values.get('fmax_improved') === 1 && numericGenerated > numericFoundry
+        : values.get('fmax_improved') === 0 && numericGenerated <= numericFoundry,
+      { terminalDisposition, foundryFmax, generatedFmax, gainPct, runStatus: run.status,
+        packGoalOutcome: finalJudge?.result?.outcome });
     const analysis = records.findLast((record) => record.type === 'analysis' && record.nodeId === 'next-research');
     pass('the owner archived source-linked conclusions, limitations and next experiments',
       analysis?.type === 'analysis' && analysis.sessionId === owner && analysis.analysis.claims.length > 0
@@ -224,11 +239,12 @@ async function main(): Promise<void> {
     assert.ok(comparison, 'final comparison observation is absent');
     const comparisonSource = await copyMaterial(comparison, 'comparison-stage.json');
     const stage = JSON.parse(readFileSync(comparisonSource, 'utf8')) as { status?: string; facts?: Record<string, any>; inputs?: unknown[] };
-    pass('the retained comparison stage records matched conditions, physical adoption and the same positive Fmax ordering',
+    pass('the retained comparison stage records matched conditions, physical adoption and the same terminal Fmax ordering',
       stage.status === 'passed' && stage.facts?.matched_conditions === true
         && stage.facts?.comparison_valid === true && stage.facts?.adopted_instance_count > 0
-        && stage.facts?.fmax_improved === true && stage.facts?.generated_fmax_mhz > stage.facts?.foundry_fmax_mhz
-        && stage.facts?.fmax_improvement_pct >= 5
+        && (terminalDisposition === 'PASS'
+          ? stage.facts?.fmax_improved === true && stage.facts?.generated_fmax_mhz > stage.facts?.foundry_fmax_mhz
+          : stage.facts?.fmax_improved === false && stage.facts?.generated_fmax_mhz <= stage.facts?.foundry_fmax_mhz)
         && Array.isArray(stage.inputs) && stage.inputs.length > 20,
       { sourceSha256: sha256(readFileSync(comparisonSource)), status: stage.status,
         matched: stage.facts?.matched_conditions, adoptedInstances: stage.facts?.adopted_instance_count,
@@ -273,7 +289,8 @@ async function main(): Promise<void> {
     const restarted = host.ctx.hima.ledger.run(runId);
     const restartedRecords = host.ctx.hima.ledger.records({ runId });
     pass('restart preserves the terminal Run, record bytes, archive and method identity',
-      restarted?.status === 'ended-goal-met' && sha256(Buffer.from(canonical(restartedRecords))) === recordsSha256
+      restarted?.status === run.status && restarted?.status?.startsWith('ended-') === true
+        && sha256(Buffer.from(canonical(restartedRecords))) === recordsSha256
         && completeArchive(restartedRecords)?.manifestSha256 === archiveRecord?.manifestSha256
         && packDigestOf(sourcePack) === sourceDigest && packDigestOf(installedPack) === installedDigest,
       { status: restarted?.status, recordsSha256, archiveManifestSha256: archiveRecord?.manifestSha256,
@@ -284,9 +301,15 @@ async function main(): Promise<void> {
     await host.dispose(); host = undefined;
     assert.equal(sha256(readFileSync(sourceFile)), sourceSha256, 'source L5 evidence changed during audit');
     assert.equal(sha256(readFileSync(ledgerFile)), ledgerBefore, 'retained Ledger changed during audit');
+    const measurement = valueMeasurementReceipt(run, records);
+    pass('the final value receipt is bound to the terminal Run and preserves unmeasured categories',
+      measurement.final && measurement.runId === runId && measurement.jobs.unsettledSessionIds.length === 0
+        && measurement.model.requests.status === 'unmeasured'
+        && measurement.human.businessDecisionTime.status === 'unmeasured',
+      measurement);
     const audit = {
       schema: 1, check: 'audit-completed-dtco-pilot', status: 'passed', passed: true,
-      scope: 'offline audit of one positive held-out L5 Campaign; zero model requests and zero new Site Jobs',
+      scope: 'offline audit of one terminal held-out L5 Campaign; zero model requests and zero new Site Jobs',
       sourceEvidence: { path: sourceFile, sha256: sourceSha256,
         status: recoveredKeyOrderFalseNegative ? 'recovered-restart-key-order-false-negative' : 'passed' },
       heldOut: { source: source.observed?.pilot?.siteProfile?.heldOutSource, rtlSha256: heldOutSha256 },
@@ -294,14 +317,16 @@ async function main(): Promise<void> {
       method: { id: PACK_ID, version: PACK_VERSION, digest: sourceDigest },
       archive: { directory: archive.directory, manifest: archive.manifestPath,
         manifestSha256: archiveRecord?.manifestSha256, materials: archive.manifest.materials.length },
-      positiveResult: { adoptedInstances: stage.facts?.adopted_instance_count,
+      terminalDisposition,
+      matchedResult: { adoptedInstances: stage.facts?.adopted_instance_count,
         foundryFmaxMhz: stage.facts?.foundry_fmax_mhz, generatedFmaxMhz: stage.facts?.generated_fmax_mhz,
         deltaMhz: stage.facts?.fmax_delta_mhz, gainPct: stage.facts?.fmax_improvement_pct },
+      valueMeasurement: measurement,
       offline: { modelRequests, newSiteJobs: 0 }, checks,
     };
     const evidencePath = path.join(out, 'evidence.json');
     writeFileSync(evidencePath, `${JSON.stringify(audit, null, 2)}\n`, { mode: 0o600 });
-    writeFileSync(path.join(out, 'README.md'), '# PLS-35 completed Campaign audit\n\nPASS — one positive held-out L5 Campaign, its routed custom-Cell adoption, matched comparison, Fmax ordering, algorithms, archive and restart identity passed offline review. No model or Site Job was started by this audit.\n');
+    writeFileSync(path.join(out, 'README.md'), `# PLS-35 completed Campaign audit\n\n${terminalDisposition} — one valid held-out L5 Campaign, its routed custom-Cell adoption, matched comparison, Fmax ordering, algorithms, value receipt, archive and restart identity passed offline review. No model or Site Job was started by this audit.\n`);
     process.stdout.write(`completed DTCO pilot audit: PASS; evidence ${evidencePath}\n`);
   } catch (error) {
     const failure = error instanceof Error ? error.stack ?? error.message : String(error);

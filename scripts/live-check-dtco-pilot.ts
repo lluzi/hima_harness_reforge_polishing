@@ -1,6 +1,7 @@
 // @hima-seam agent wrapped
 // @hima-seam tools direct
-// PLS-35: one native conversational owner performs the held-out L5 Campaign; this file audits facts.
+// Wave 4 / PLS-35: one bounded native held-out L5 Campaign. A valid positive or negative
+// matched result is terminal; infrastructure or evidence failure is not.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -10,12 +11,17 @@ import {
   loadPack,
   discoverSshSite,
   installPackMethod,
+  nativeSessionMemoryEvidence,
   packDigestOf,
+  readNativeSessionContext,
   saveDiscoveredSite,
   readArchivedMaterial,
   readRunAssets,
+  runDelegations,
   currentRecordsIn,
+  valueMeasurementReceipt,
   type CodeRecord,
+  type DelegationRecord,
   type JobRecord,
   type LedgerRecord,
   type NodeRecord,
@@ -25,21 +31,23 @@ import { himaProfileDir, prepareHimaHome, homePatchFile } from '../packages/desk
 import {
   bootInProcess,
   createRootAgent,
+  resumeTestAgent,
+  toolCalls,
   type InProcessHost,
 } from '../test/contract/support/boot-inprocess.ts';
+import { himaCommand } from '../test/contract/support/command.ts';
 import { createHimaHome, repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { packsDirOf } from '../test/contract/support/pack.ts';
 import { guardInstalled, runLive, sha256, type LiveCheck } from './live-check-workshop.ts';
 
 const PACK_ID = 'custom-cell-fmax-dtco';
-const ACCEPTANCE_TOP = 'aes_cipher_top';
 const EXPECTED_MODEL = 'deepseek-flash';
 const FIRST_TIME_BOX_MS = 360 * 60_000;
 const HARNESS_TIME_BOX_MS = 420 * 60_000;
 const FIRST_RETRY_ALLOWANCE = 3;
 const GENERATION_LIMIT = 4;
-const ATTEMPT_LIMIT = 240;
-const CLOSING_RESERVE_MS = 300_000;
+const ATTEMPT_LIMIT = 480;
+const CLOSING_RESERVE_MS = 900_000;
 const MAX_PRODUCT_REQUEST_STEPS = 1800;
 const MAX_USER_TURNS = 240;
 const SITE_NAME = /^[A-Za-z][A-Za-z0-9_.-]*$/;
@@ -59,16 +67,16 @@ const routes = [
 ] as const;
 
 const requiredReferenceNodes = [
-  'probe',
-  'synthesize',
-  'read-probe',
-  'judge',
-  'next-period',
-  'mine-start',
-  ...routes.flatMap((route) => [`mine-${route}`, `select-${route}`, `read-select-${route}`]),
+  'bind-inputs',
+  'evaluation-baseline',
+  'read-evaluation-baseline',
+  ...routes.flatMap((route) => [`mine-${route}`, `select-${route}`]),
   'merge-join',
   'research-candidates',
   'read-research-selection',
+  'function-local-evaluation',
+  'read-function-local-evaluation',
+  'function-local-gate',
   'merge',
   'read-merge',
   'generate',
@@ -77,6 +85,12 @@ const requiredReferenceNodes = [
   'read-layout',
   'characterize',
   'read-characterize',
+  'calibration-gate',
+  'design-mapping-timing-evaluation',
+  'read-design-mapping-timing-evaluation',
+  'portfolio-gate',
+  'freeze-cumulative-library',
+  'read-cumulative-library',
   'compile',
   'read-compile',
   'foundry-synth',
@@ -99,11 +113,6 @@ const requiredReferenceNodes = [
 ] as const;
 
 const requiredValueTypes = [
-  'clock_period',
-  'setup_wns',
-  'reg2reg_wns',
-  'reg2reg_path_count',
-  'cell_area',
   'candidate_count',
   'research_hypothesis_count',
   'selected_count',
@@ -146,14 +155,20 @@ interface L5SiteProfile {
     bindings: Record<string, string>;
     capacity: { cores: number; memoryGiB: number; parallelJobs: number; licences: Record<string, number> };
   };
-  heldOut: { rtlPath: string; sha256: string; source: string; acceptanceTopConfirmed: boolean };
+  heldOut: {
+    designTop: string;
+    source: string;
+    selectionReason: string;
+    sourceInventory: Array<{ path: string; sha256: string }>;
+    sourceInventorySha256: string;
+  };
 }
 
 type ArchiveRecord = Extract<LedgerRecord, { type: 'archive' }>;
 
 interface PilotCheckpoint {
-  schema: 3;
-  status: 'positive-held-out-l5-passed-ready-for-release-review';
+  schema: 4;
+  status: 'positive-held-out-l5-passed-ready-for-release-review' | 'held-out-l5-terminal-negative';
   home: string;
   firstRun: string;
   firstOwner: string;
@@ -215,9 +230,15 @@ const profile = JSON.parse(readFileSync(profilePath, 'utf8')) as L5SiteProfile;
 assert.equal(profile.schema, 1, 'unsupported private Site profile');
 assert.match(profile.site.name, SITE_NAME, 'invalid Site name');
 assert.match(profile.site.ssh.destination, /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+(?::[0-9]{1,5})?$/, 'invalid SSH destination');
-assert.equal(profile.heldOut.acceptanceTopConfirmed, true, 'PLS-35 target top must be explicitly confirmed');
-assert.match(profile.heldOut.sha256, /^[0-9a-f]{64}$/, 'held-out RTL identity must be SHA-256');
-assert.match(profile.heldOut.rtlPath, SAFE_REMOTE_PATH, 'held-out RTL path is not a safe absolute path');
+assert.match(profile.heldOut.designTop, /^[A-Za-z_][A-Za-z0-9_$]*$/, 'held-out top is invalid');
+assert.ok(profile.heldOut.source.trim().length > 0, 'held-out source is required');
+assert.ok(profile.heldOut.selectionReason.trim().length > 0, 'held-out selection reason is required');
+assert.ok(profile.heldOut.sourceInventory.length > 0, 'held-out source inventory is empty');
+assert.match(profile.heldOut.sourceInventorySha256, /^[0-9a-f]{64}$/, 'held-out inventory identity must be SHA-256');
+for (const item of profile.heldOut.sourceInventory) {
+  assert.match(item.path, SAFE_REMOTE_PATH, 'held-out RTL path is not a safe absolute path');
+  assert.match(item.sha256, /^[0-9a-f]{64}$/, 'held-out RTL identity must be SHA-256');
+}
 for (const value of [profile.site.workspaceRoot, ...profile.site.allowedReadRoots, ...profile.site.allowedWriteRoots,
   ...Object.values(profile.site.bindings).filter((value) => value.startsWith('/'))]) {
   assert.match(value, SAFE_REMOTE_PATH, `unsafe Site path: ${value}`);
@@ -225,17 +246,17 @@ for (const value of [profile.site.workspaceRoot, ...profile.site.allowedReadRoot
 assert.deepEqual(Object.keys(profile.site.bindings).sort(), [
   'constraints', 'designRoot', 'designTop', 'foundryLibrary', 'physicalInputs', 'rtlGlob', 'toolStack', 'workspaceRoot',
 ].sort(), 'private Site profile must bind exactly the portable Pack inputs');
-assert.equal(profile.site.bindings.designTop, ACCEPTANCE_TOP, 'PLS-35 acceptance must run aes_cipher_top');
+assert.equal(profile.site.bindings.designTop, profile.heldOut.designTop, 'held-out top differs from the Site binding');
 const boundDesignRoot = profile.site.bindings.designRoot!;
 const boundRtlGlob = profile.site.bindings.rtlGlob!;
-assert.ok(profile.heldOut.rtlPath.startsWith(`${boundDesignRoot}/`),
-  'top RTL identity must be inside the bound designRoot');
-assert.ok(boundRtlGlob === profile.heldOut.rtlPath
-    || (boundRtlGlob.includes('*')
-      && path.posix.dirname(profile.heldOut.rtlPath) === path.posix.dirname(boundRtlGlob)),
-  'top RTL identity must belong to the bound RTL set');
+assert.ok(profile.heldOut.sourceInventory.every(item => item.path.startsWith(`${boundDesignRoot}/`)),
+  'every RTL identity must be inside the bound designRoot');
+assert.ok(profile.heldOut.sourceInventory.every(item => boundRtlGlob === item.path
+    || (boundRtlGlob.includes('*') && path.posix.dirname(item.path) === path.posix.dirname(boundRtlGlob))),
+  'every RTL identity must belong to the bound RTL set');
 assert.equal(profile.site.bindings.workspaceRoot, profile.site.workspaceRoot, 'Site and binding workspace roots differ');
-assert.ok(profile.site.allowedReadRoots.some((root) => profile.heldOut.rtlPath.startsWith(`${root}/`)), 'held-out RTL is outside allowed read roots');
+assert.ok(profile.heldOut.sourceInventory.every(item => profile.site.allowedReadRoots.some((root) => item.path.startsWith(`${root}/`))),
+  'held-out RTL is outside allowed read roots');
 assert.ok(profile.site.allowedWriteRoots.includes(profile.site.workspaceRoot), 'Campaign workspace root is not writable');
 assert.ok(profile.site.toolCommands.includes('eda'), 'Site discovery must probe the Pack-required eda command');
 assert.ok(profile.site.allowedWrappers.includes('/usr/bin/python3') && profile.site.allowedWrappers.includes('/usr/local/bin/eda'),
@@ -248,7 +269,7 @@ for (const licence of ['Design-Compiler', 'Library-Compiler', 'Innovus']) {
 const packSource = path.join(repoRoot, 'packs', PACK_ID);
 const sourcePack = loadPack(path.join(repoRoot, 'packs'), PACK_ID);
 const sourceDigest = packDigestOf(packSource);
-assert.equal(sourcePack.contract.version, '1', 'PLS-35 requires the portable v1 Pack');
+assert.equal(sourcePack.contract.version, '5.2.16', 'Wave 4 requires the Wave 3 sealed portable Pack');
 assert.equal(sourcePack.contract.status, 'development', 'PLS-35 must preserve the Pack author-declared status');
 
 const declared = {
@@ -262,7 +283,10 @@ const declared = {
     sha256: sha256(readFileSync(profilePath)),
     site: profile.site.name,
     heldOutSource: profile.heldOut.source,
-    heldOutRtlSha256: profile.heldOut.sha256,
+    heldOutDesignTop: profile.heldOut.designTop,
+    heldOutSelectionReason: profile.heldOut.selectionReason,
+    heldOutSourceFiles: profile.heldOut.sourceInventory.length,
+    heldOutRtlSha256: profile.heldOut.sourceInventorySha256,
   },
   approvedLimits: {
     firstCampaignMs: FIRST_TIME_BOX_MS,
@@ -354,15 +378,23 @@ function completeArchiveRecord(records: LedgerRecord[]): ArchiveRecord | undefin
 await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) => {
   const sshArguments = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-o', 'ControlPath=none'];
   if (profile.site.ssh.jumps.length > 0) sshArguments.push('-J', profile.site.ssh.jumps.join(','));
-  const remoteIdentity = execFileSync('ssh', [
+  const remoteInventoryText = execFileSync('ssh', [
     ...sshArguments,
     profile.site.ssh.destination,
-    `sha256sum -- ${profile.heldOut.rtlPath}`,
-  ], { encoding: 'utf8', timeout: 30_000 }).trim().split(/\s+/)[0];
-  check.require('held-out RTL identity was re-read from the Site before the only L5 Campaign',
-    remoteIdentity === profile.heldOut.sha256,
-    { source: profile.heldOut.source, acceptanceTopConfirmed: profile.heldOut.acceptanceTopConfirmed,
-      rtlSha256: remoteIdentity });
+    `sha256sum -- ${profile.heldOut.sourceInventory.map(item => item.path).join(' ')}`,
+  ], { encoding: 'utf8', timeout: 30_000 }).trim();
+  const remoteInventory = remoteInventoryText.split('\n').filter(Boolean).map(line => {
+    const match = line.match(/^([0-9a-f]{64})\s+(.+)$/); assert.ok(match, `invalid remote sha256sum row: ${line}`);
+    return { path: match[2]!, sha256: match[1]! };
+  }).sort((left, right) => left.path.localeCompare(right.path));
+  const declaredInventory = [...profile.heldOut.sourceInventory].sort((left, right) => left.path.localeCompare(right.path));
+  const remoteInventorySha256 = sha256(Buffer.from(canonical(remoteInventory)));
+  check.require('held-out RTL inventory was re-read from the Site before the only L5 Campaign',
+    canonical(remoteInventory) === canonical(declaredInventory)
+      && remoteInventorySha256 === profile.heldOut.sourceInventorySha256,
+    { source: profile.heldOut.source, designTop: profile.heldOut.designTop,
+      selectionReason: profile.heldOut.selectionReason, sourceFiles: remoteInventory.length,
+      rtlSha256: remoteInventorySha256 });
 
   const persistentHomes = path.join(repoRoot, '.hima-tmp/pilot-release/homes');
   mkdirSync(persistentHomes, { recursive: true, mode: 0o700 });
@@ -434,6 +466,10 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   });
 
   const initialRunIds = new Set(host.ctx.hima.ledger.runs().map((run) => run.id));
+  const guide = check.track(await createRootAgent(host.ctx, home.workspace));
+  const guideId = String(guide.id);
+  check.require('the independent Guide uses the configured DeepSeek-V4.1-Flash model',
+    guide.options.model === EXPECTED_MODEL, guide.options);
   const owner = check.track(await createRootAgent(host.ctx, home.workspace));
   const ownerId = String(owner.id);
   check.require('the native owner uses the configured DeepSeek-V4.1-Flash model',
@@ -441,6 +477,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     owner.options);
   check.observed.pilot = declared;
   check.observed.realEdaRequested = true;
+  check.observed.guide = guideId;
   check.observed.owner = ownerId;
   check.observed.persistentHome = home.home;
   check.observed.executionSurface = 'headless real Host; retained for separate same-home desktop review';
@@ -482,7 +519,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     callId: 'pls35-prepare' as never,
     name: 'hima_prepare',
     arguments: { pack: PACK_ID, site: profile.site.name },
-    agent: owner,
+    agent: guide,
     signal: AbortSignal.timeout(30_000),
   });
   const prepared = jsonOf(preparedResult);
@@ -492,38 +529,195 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
       && ownedRuns().length === 0,
     { ready: prepared.ready, pack: prepared.pack?.id, site: prepared.site?.name,
       inputs: prepared.inputs, unknowns: prepared.unknowns, runs: ownedRuns().length });
-  const confirmedResult = await host.ctx.tools.execute({
-    callId: 'pls35-confirm' as never,
-    name: 'hima_run',
-    arguments: { proposalId: prepared.id, pack: PACK_ID, site: profile.site.name,
-      goal: prepared.goal, strategy: prepared.strategy },
-    agent: owner,
-    signal: AbortSignal.timeout(30_000),
-  });
-  const confirmed = jsonOf(confirmedResult);
+  const confirmed = await host.ctx.hima.startRun({ proposalId: prepared.id, pack: PACK_ID, site: profile.site.name,
+    goal: prepared.goal, strategy: prepared.strategy, ownerSessionId: ownerId, guideSessionId: guideId,
+    notifyOwnerOnOpen: false, timeBoxMs: FIRST_TIME_BOX_MS, generationLimit: GENERATION_LIMIT,
+    retryAllowance: FIRST_RETRY_ALLOWANCE });
   check.require('one confirmation created one Campaign and one persistent Run',
-    confirmedResult.isError !== true && confirmed.kind === 'ran' && typeof confirmed.runId === 'string'
+    confirmed.kind === 'ran' && typeof (confirmed.kind === 'ran' ? confirmed.run.id : undefined) === 'string'
       && ownedRuns().length === 1,
-    { kind: confirmed.kind, runId: confirmed.runId, campaignId: confirmed.campaignId,
+    { kind: confirmed.kind, runId: confirmed.kind === 'ran' ? confirmed.run.id : undefined,
+      campaignId: confirmed.kind === 'ran' ? confirmed.run.campaignId : undefined,
       createdRuns: ownedRuns().map((run) => run.id) });
+  if (confirmed.kind !== 'ran') throw new Error('Wave 4 Campaign was not created');
+  check.require('Guide and Campaign owner are distinct durable sessions',
+    guideId !== ownerId && confirmed.run.control?.guideSessionId === guideId && confirmed.run.control?.owner === ownerId,
+    confirmed.run.control);
+
+  // Wave 4 uses the actual owner session as the memory carrier.  The summary is deliberately
+  // compacted before any Site work, then made stale by the current control record; it is never
+  // treated as permission to continue the Campaign.
+  await check.say(owner, [
+    `This is a bounded recovery preflight for already-confirmed Run ${confirmed.run.id}.`,
+    'Do not call tools, delegate, change the Run, or start work. Reply once that a saved summary is not control authority and that Run, Job, hold, budget, and adopted child facts must be re-read after recovery.',
+    `Context padding: ${'The saved summary is not control authority. '.repeat(350)}`,
+  ].join('\n'));
+  const nativeBeforeCompact = await nativeSessionMemoryEvidence(host.ctx, { sessionId: ownerId, workspaceRef: home.workspace });
+  const sessionSources = await host.ctx.hima.workMemory(ownerId, { action: 'sources' }) as any;
+  const savedSessionMemory = await host.ctx.hima.workMemory(ownerId, { action: 'save', summary: {
+    subject: 'Wave 4 owner preflight checkpoint',
+    decisions: ['The owner must re-read live Run, Job, hold, budget, and delegation receipts after recovery.'],
+    openQuestions: [],
+    todo: ['Do not use this summary as authority to launch or repeat work.'],
+    references: [],
+    sources: [],
+    nativeSources: sessionSources.nativeSources,
+  } }) as any;
+  check.require('the owner saved a native-session work-memory checkpoint before compaction',
+    savedSessionMemory.kind === 'current' && savedSessionMemory.summary?.modelGenerated === false,
+    savedSessionMemory);
+  const compact = await himaCommand(host, home.workspace, '/compact', undefined, owner);
+  const preservedPrefix = await nativeSessionMemoryEvidence(host.ctx, {
+    sessionId: ownerId,
+    workspaceRef: home.workspace,
+    throughSeq: nativeBeforeCompact.capturedThroughSeq,
+  });
+  const compactedOwnerContext = await readNativeSessionContext(host.ctx, { sessionId: ownerId, targetSessionId: ownerId });
+  const staleSessionMemory = await host.ctx.hima.workMemory(ownerId, { action: 'read' }) as any;
+  check.require('owner compaction preserves its transcript prefix and makes the old summary stale',
+    compact.kind === 'success'
+      && preservedPrefix.transcriptIdentity === nativeBeforeCompact.transcriptIdentity
+      && /compacted-summary/.test(JSON.stringify(compactedOwnerContext.context))
+      && staleSessionMemory.kind === 'stale',
+    { compact, prefixIdentity: preservedPrefix.transcriptIdentity, context: compactedOwnerContext.context, staleSessionMemory });
+
+  const campaignMemorySources = await host.ctx.hima.workMemory(ownerId, { action: 'sources', runId: confirmed.run.id }) as any;
+  const savedCampaignMemory = await host.ctx.hima.workMemory(ownerId, { action: 'save', runId: confirmed.run.id, summary: {
+    subject: 'Wave 4 Campaign before delegated review',
+    decisions: ['No child candidate or saved summary can replace current owner/control authority.'],
+    openQuestions: [],
+    todo: ['Re-read current control and the exact adopted Reviewer receipt before Site work.'],
+    references: campaignMemorySources.references,
+    sources: campaignMemorySources.sources,
+    nativeSources: [],
+  } }) as any;
+  let recoveryControl = host.ctx.hima.executionContext(confirmed.run.id).run.control!;
+  const recoveryPause = await host.ctx.hima.executionAction({
+    runId: confirmed.run.id,
+    actor: guideId,
+    origin: 'human',
+    action: 'pause',
+    requestId: 'wave4-memory-pause',
+    expectedEpoch: recoveryControl.epoch,
+    expectedRevision: recoveryControl.revision,
+  });
+  const staleCampaignMemory = await host.ctx.hima.workMemory(ownerId, { action: 'read', runId: confirmed.run.id }) as any;
+  recoveryControl = host.ctx.hima.executionContext(confirmed.run.id).run.control!;
+  const recoveryContinue = await host.ctx.hima.executionAction({
+    runId: confirmed.run.id,
+    actor: guideId,
+    origin: 'human',
+    action: 'continue',
+    requestId: 'wave4-memory-continue',
+    expectedEpoch: recoveryControl.epoch,
+    expectedRevision: recoveryControl.revision,
+  });
+  check.require('Campaign work memory becomes stale on a newer human hold and recovery re-reads the live control receipt',
+    savedCampaignMemory.kind === 'current'
+      && recoveryPause.kind === 'accepted'
+      && staleCampaignMemory.kind === 'stale'
+      && /control changed/.test(String(staleCampaignMemory.reason))
+      && recoveryContinue.kind === 'accepted',
+    { savedCampaignMemory, pause: recoveryPause, staleCampaignMemory, continue: recoveryContinue });
+
+  // The team is intentionally bounded to Pack-method review before the owner can launch a Site
+  // Job.  Its candidate outputs become usable only through the recorded Reviewer adoption below.
+  let delegationSequence = 0;
+  const delegate = (body: Record<string, unknown>) => {
+    const control = host.ctx.hima.executionContext(confirmed.run.id).run.control!;
+    return host.ctx.hima.delegate({ runId: confirmed.run.id, actor: ownerId,
+      expectedEpoch: control.epoch, expectedRevision: control.revision, ...body } as never, AbortSignal.timeout(90_000)) as Promise<any>;
+  };
+  const research = await delegate({ action: 'create', requestId: 'wave4-create-research', contract: {
+    delegationId: 'wave4-pack-research', role: 'researcher',
+    task: `Use the read tool to inspect exactly ${path.join(installedPack, 'flow/research-template.py')}. Return a concise candidate note stating what the sealed template permits and one limitation. Do not write, execute EDA, alter the Pack, or claim any value result.`,
+    inputRefs: [], allowedTools: ['read'], budgetShare: { maxElapsedMs: 75_000, maxFollowups: 1, maxTokensPerTurn: 2200 },
+    dependencyIds: [], recipient: { kind: 'run-owner', sessionId: ownerId },
+  } });
+  check.require('a bounded Research child was created with an effective read-only Pack-method tool grant',
+    research.status === 'created' && research.effectiveContract?.tools.includes('read') && typeof research.receipt?.childSessionId === 'string',
+    research);
+  if (research.status !== 'created' || typeof research.receipt?.childSessionId !== 'string') throw new Error('Wave 4 Research child is unavailable');
+  const researchSessionId = research.receipt.childSessionId;
+  const researchAgent = check.track(host.ctx.get('agents')!.get(researchSessionId as never)!);
+  await check.wait(researchAgent.whenIdle());
+  check.require('the Research child actually read its exact sealed Pack source before returning a candidate',
+    researchAgent.session.snapshotEvents().some(event => event.type === 'tool/call' && (event.data as { name?: string }).name === 'read'),
+    researchAgent.session.snapshotEvents());
+  const resultOf = async (delegationId: string, childSessionId: string) => {
+    let result = await delegate({ action: 'result', requestId: `wave4-result-${delegationId}-${++delegationSequence}`, delegationId });
+    if (result.status !== 'candidate') {
+      const follow = await delegate({ action: 'followup', requestId: `wave4-finish-${delegationId}-${++delegationSequence}`,
+        delegationId, text: 'Return one concise candidate result now from only the retained granted facts; keep every limitation explicit.' });
+      check.require(`the ${delegationId} child received one bounded completion follow-up when needed`, follow.status === 'accepted', { result, follow });
+      const resumed = host.ctx.get('agents')!.get(childSessionId as never); if (resumed) await check.wait(resumed.whenIdle());
+      result = await delegate({ action: 'result', requestId: `wave4-result-${delegationId}-${++delegationSequence}`, delegationId });
+    }
+    return result;
+  };
+  const researchResult = await resultOf('wave4-pack-research', researchSessionId);
+  check.require('the Research output remains candidate-only before owner adoption', researchResult.status === 'candidate', researchResult);
+  const researchRecord = host.ctx.hima.ledger.records({ runId: confirmed.run.id }).findLast((record): record is DelegationRecord =>
+    record.type === 'delegation' && record.delegationId === 'wave4-pack-research' && record.event === 'result-observed');
+  assert.ok(researchRecord, 'Research candidate receipt is absent');
+
+  const reviewer = await delegate({ action: 'create', requestId: 'wave4-create-reviewer', contract: {
+    delegationId: 'wave4-independent-review', role: 'reviewer',
+    task: 'Independently use hima_delegation_input to read the exact Research candidate receipt. Check that it names a sealed source, remains read-only, and makes no Fmax/value claim. Return a candidate review with any limitation; do not adopt it.',
+    inputRefs: [researchRecord.id], allowedTools: ['hima_delegation_input'], budgetShare: { maxElapsedMs: 75_000, maxFollowups: 1, maxTokensPerTurn: 2200 },
+    dependencyIds: ['wave4-pack-research'], recipient: { kind: 'run-owner', sessionId: ownerId },
+  } });
+  check.require('an independent Reviewer child was created from the exact Research candidate receipt',
+    reviewer.status === 'created' && reviewer.receipt?.childSessionId !== researchSessionId
+      && reviewer.effectiveContract?.tools.includes('hima_delegation_input'), reviewer);
+  if (reviewer.status !== 'created' || typeof reviewer.receipt?.childSessionId !== 'string') throw new Error('Wave 4 Reviewer child is unavailable');
+  const reviewerSessionId = reviewer.receipt.childSessionId;
+  const reviewerAgent = check.track(host.ctx.get('agents')!.get(reviewerSessionId as never)!);
+  await check.wait(reviewerAgent.whenIdle());
+  const reviewerResult = await resultOf('wave4-independent-review', reviewerSessionId);
+  check.require('the independent Reviewer result remains candidate-only until explicit owner adoption', reviewerResult.status === 'candidate', reviewerResult);
+  const reviewerRecord = host.ctx.hima.ledger.records({ runId: confirmed.run.id }).findLast((record): record is DelegationRecord =>
+    record.type === 'delegation' && record.delegationId === 'wave4-independent-review' && record.event === 'result-observed');
+  assert.ok(reviewerRecord, 'Reviewer candidate receipt is absent');
+  const adoption = await delegate({ action: 'adopt', requestId: 'wave4-adopt-independent-review', delegationId: 'wave4-independent-review' });
+  const team = runDelegations((host.ctx.hima as unknown as { deps(): any }).deps(), confirmed.run.id);
+  const allocatedChildBudgetMs = team.reduce((sum, row) => sum + row.effective.budgetShare.maxElapsedMs, 0);
+  const retainedChildTranscripts = await Promise.all(team.map(row => readNativeSessionContext(host.ctx, {
+    sessionId: ownerId, targetSessionId: row.childSessionId, parentSessionId: ownerId,
+  }, host.ctx.hima.ledger)));
+  check.require('the persistent owner explicitly adopts the exact Reviewer candidate and the two-child team stays inside one Run budget',
+    adoption.status === 'accepted' && adoption.resultRecordId === reviewerRecord.id
+      && team.length === 2 && allocatedChildBudgetMs <= confirmed.run.budget!.timeBoxMs
+      && retainedChildTranscripts.every(view => view.events.length > 0),
+    { adoption, team, allocatedChildBudgetMs, parentBudgetMs: confirmed.run.budget?.timeBoxMs, retainedChildTranscripts });
+  check.observed.collaboration = { research, researchResult, researchRecordId: researchRecord.id,
+    reviewer, reviewerResult, reviewerRecordId: reviewerRecord.id, adoption, team, allocatedChildBudgetMs,
+    parentBudgetMs: confirmed.run.budget?.timeBoxMs, retainedChildTranscripts };
+  check.observed.workMemory = { savedSessionMemory, compact, staleSessionMemory, savedCampaignMemory,
+    staleCampaignMemory, pause: recoveryPause.receipt, continue: recoveryContinue.receipt };
+  await check.say(guide, `Inspect current Run ${confirmed.run.id} and its adopted child result. Explain the held-out source identity, distinct owner, current control state, unknown value result, and next admitted action. Do not execute, delegate, change ownership, or start another task.`);
+  check.require('the independent Guide remains responsive and uses sourced read-only Hima context after team adoption',
+    toolCalls(guide).some(call => ['hima_inspect', 'hima_context', 'hima_status'].includes(call.name))
+      && host.ctx.hima.ledger.run(confirmed.run.id)?.control?.owner === ownerId,
+    { calls: toolCalls(guide), owner: host.ctx.hima.ledger.run(confirmed.run.id)?.control?.owner });
 
   const firstPrompt = [
-    `Execute only the already confirmed Campaign Run ${confirmed.runId}.`,
+    `Execute only the already confirmed Campaign Run ${confirmed.run.id}.`,
     'You are the only execution owner. Use only hima_context and hima_execute for business actions. Do not start another Run, edit the method, use shell, open another Agent/model, or auto-drive the graph.',
-    'At every Explore node, use the Pack recommendation and complete the recommendation exactly; do not invent a replacement numeric Strategy. In the probe loop, reg2reg pressure PASS plus clock Goal PASS means goalMet immediately, even on the first measurement. Convergence is a fallback ending, not a quota for extra samples. Never relax period above the 0.5 ns Goal merely to obtain a second observation.',
+    'At every Explore node, use the Pack recommendation and complete the recommendation exactly; do not invent a replacement numeric Strategy. Convergence is an evidence-backed ending, not a quota for extra samples. Never relax period above the 0.5 ns Goal merely to obtain another observation.',
     'Complete the full reference method from actual facts. Generation one mines the pressured DC graph. If the matched routed gain is below 5%, next-research revisits the same mining nodes; later generations mine the prior generated final routed netlist and its expanded reg2reg timing-path report, preserve the strongest actually adopted candidates, introduce new candidates into the remaining common-library slots, and repeat one DC/APR pair. Stop only at the 5% Goal, honest convergence, generation limit, budget, or a real blocker.',
     'At research-candidates use recommend. Read every compact research_<route> projection, probe, researchTemplate and full-mining-method.md; read a full raw/source artifact when a research question needs it. Copy the exact researchTemplate and implement only research(candidates, context). Candidates expose source_phase, current/remaining gain, per-path delay, timing-family coverage, endpoint families, Boolean interface/equivalence, occurrence, implementation route and prior adoption feedback. Use at least three collaborative lenses, including timing-graph family coverage and theoretical gain upper bounds. Fill min(context["max_new_cells"], len(candidates)); retained adopted Cells already occupy the other active-library slots. Order new selections best-first. Do not rank a method as winner or create method-specific EDA arms. Candidate ids may be deterministic tie breakers but must never be embedded. Write entry.py through hima_execute, run those exact recorded bytes, and preserve every failure and retry.',
     'Treat learned characterization as predicted, Site tool outputs as executed tool evidence, and post-route values as measured only where the readers say so. Never turn asked, derived, predicted, missing, failed, or unknown values into measurements or success.',
     'Keep setup, hold, route-DRC, connectivity and cell-checker diagnostic findings in the final analysis. comparison_valid proves matched final-database evidence, not physical signoff cleanliness; do not hide or rename disclosed physical findings.',
-    'At next-research, record source-linked analysis with current record citations, limitations, and discriminating next experiments. Goal-met requires every final rule to PASS, including an actual routed custom Cell instance and at least 5% matched Fmax improvement. A smaller positive gain must revise the algorithm and continue while budget and convergence permit; never convert it into success.',
+    'At next-research, record source-linked analysis with current record citations, limitations, and discriminating next experiments. The Pack research Goal remains 5%, so a smaller positive gain should continue while budget and convergence permit. The separate Wave 4 closure contract will classify the final valid comparison as PASS for any strictly positive Fmax change or TERMINAL_NEGATIVE for zero/negative change; do not rewrite either result.',
     'A node in retrying state has only recorded a failed attempt; Fabric does not launch a hidden automatic retry. Read the failed Job log once, diagnose it, and either begin one fresh admitted attempt or stop truthfully. Never poll the same completed failure while waiting for a nonexistent retry.',
-    'The Pack reserves 5 minutes for closing, permits at most 240 attempts, four generations, and has a 6-hour Campaign limit. The enclosing live harness has 7 hours, 1800 product request steps and 240 user turns. These are upper limits, not a promise that the model or tools will finish.',
+    'The Pack reserves 15 minutes for closing, permits at most 480 attempts, four generations, and has a 6-hour Campaign limit. The enclosing live harness has 7 hours, 1800 product request steps and 240 user turns. These are upper limits, not a promise that the model or tools will finish.',
     'When a Job is asynchronous, yield and let its native tool notification report settlement. Continue from the current context only; never repeat a launch with a new request identity.',
   ].join('\n');
   let created = ownedRuns();
   check.require('the owner opened exactly one first Campaign', created.length === 1, created);
   const firstId = created[0]!.id;
-  check.require('the confirmed Run identity is the only owner Run', firstId === confirmed.runId, { firstId, confirmed: confirmed.runId });
+  check.require('the confirmed Run identity is the only owner Run', firstId === confirmed.run.id, { firstId, confirmed: confirmed.run.id });
   const first = host.ctx.hima.ledger.run(firstId)!;
   check.require('the first Campaign admitted the exact Pack, Site, Goal, strategy, and approved budget',
     (first.purpose ?? 'campaign') === 'campaign'
@@ -556,7 +750,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     firstId,
     [
       `Continue only existing Run ${firstId} from the latest public context.`,
-      'Act on ready nodes in the full reference method, await native Job notifications, preserve failures and raw facts, record source-linked analysis at next-research, and finish/archive truthfully. At every Explore node use and complete the Pack recommendation exactly; a pressure PASS plus Goal PASS is goalMet and needs no convergence sample. Do not create a Run or change the method.',
+      'Act on ready nodes in the full current reference method, await native Job notifications, preserve failures and raw facts, record source-linked analysis at next-research, and finish/archive truthfully. At every Explore node use and complete the Pack recommendation exactly. Do not create a Run or change the method.',
     ].join('\n'),
     100,
   );
@@ -574,21 +768,15 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const unsettledExecutions = firstContext.executions.filter((execution) => execution.supersededBy === undefined
     && (execution.phase === 'begun' || execution.phase === 'working' || execution.phase === 'ready' || execution.phase === 'uncertain'));
   const launchedJobs = firstRecords.filter((record): record is JobRecord => record.type === 'job' && record.event === 'launched');
-  const probeSynthJobs = launchedJobs.filter((record) => record.nodeId === 'synthesize');
-  const pressureVerdict = firstRecords.findLast((record) => record.type === 'verdict'
-    && record.ruleId === 'reg2reg-pressure-at-least-100ps');
-  const probeGoalVerdict = firstRecords.findLast((record) => record.type === 'verdict'
-    && record.loopId !== undefined && record.ruleId === 'clock-period-at-most');
-  const pressureDecision = firstRecords.findLast((record) => record.type === 'decision'
-    && record.nodeId === 'next-period');
-  check.require('one 0.5 ns probe established at least 100 ps reg2reg pressure without a closure-seeking rerun',
-    probeSynthJobs.length === 1
-      && pressureVerdict?.type === 'verdict' && pressureVerdict.outcome === 'PASS'
-      && probeGoalVerdict?.type === 'verdict' && probeGoalVerdict.outcome === 'PASS'
-      && pressureDecision?.type === 'decision' && 'goalMet' in pressureDecision.chosen
-      && firstRun.strategy?.periodNs === 0.5,
-    { probeSynthJobs: probeSynthJobs.map((job) => job.id), pressureVerdict, probeGoalVerdict,
-      pressureDecision, finalStrategy: firstRun.strategy });
+  const baselineJobs = launchedJobs.filter((record) => record.nodeId === 'evaluation-baseline');
+  const baselineObservation = firstRecords.findLast((record) => record.type === 'observation'
+    && record.reader.id === 'read-evaluation-baseline');
+  check.require('one held-out baseline mapping established the source-linked 0.5 ns research substrate',
+    baselineJobs.length === 1 && baselineObservation?.type === 'observation'
+      && baselineObservation.values.some(value => value.type === 'proxy_worst_reg2reg_delay_indicator')
+      && firstRun.firstStrategy?.periodNs === 0.5,
+    { baselineJobs: baselineJobs.map((job) => job.id), baselineObservation,
+      firstStrategy: firstRun.firstStrategy, finalStrategy: firstRun.strategy });
   const openJobs = launchedJobs.filter((launch) => !firstRecords.some((record) =>
     record.type === 'job'
       && record.seq > launch.seq
@@ -600,12 +788,8 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
 
   const finalJudge = firstContext.executions.findLast((execution) => execution.nodeId === 'final-judge');
   const finalDecision = firstRecords.findLast((record) => record.type === 'decision' && record.nodeId === 'next-research');
-  const positiveEnding = firstRun.status === 'ended-goal-met'
-    && finalJudge?.result?.outcome === 'PASS'
-    && finalDecision?.type === 'decision'
-    && 'goalMet' in finalDecision.chosen;
-  check.require('the held-out Campaign ended goal-met through the complete final Judge',
-    positiveEnding,
+  check.require('the held-out Campaign reached its final Judge and recorded the Pack decision before terminal settlement',
+    finalJudge?.result !== undefined && finalDecision?.type === 'decision',
     { status: firstRun.status, finalJudge, finalDecision });
 
   const firstAnalysis = firstRecords.findLast((record) => record.type === 'analysis'
@@ -633,19 +817,31 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     ? comparison.values.map((value) => [value.type, value.value]) : []);
   const foundryFmax = comparisonValues.get('foundry_fmax_mhz');
   const generatedFmax = comparisonValues.get('generated_fmax_mhz');
-  check.require('the final matched comparison proves routed adoption and at least 5% custom-arm Fmax improvement',
-    comparison?.type === 'observation'
-      && comparisonValues.get('adopted_instance_count')! > 0
-      && comparisonValues.get('comparison_valid') === 1
-      && comparisonValues.get('matched_conditions') === 1
-      && comparisonValues.get('fmax_improved') === 1
-      && Number(comparisonValues.get('fmax_improvement_pct')) >= 5
-      && typeof foundryFmax === 'number' && typeof generatedFmax === 'number'
-      && generatedFmax > foundryFmax,
+  const gainPct = comparisonValues.get('fmax_improvement_pct');
+  const numericFoundryFmax = typeof foundryFmax === 'number' ? foundryFmax : Number.NaN;
+  const numericGeneratedFmax = typeof generatedFmax === 'number' ? generatedFmax : Number.NaN;
+  const numericGainPct = typeof gainPct === 'number' ? gainPct : Number.NaN;
+  const validMatchedResult = comparison?.type === 'observation'
+    && Number(comparisonValues.get('adopted_instance_count')) > 0
+    && comparisonValues.get('pnr_completed') === 1
+    && comparisonValues.get('comparison_valid') === 1
+    && comparisonValues.get('matched_conditions') === 1
+    && Number.isFinite(numericFoundryFmax) && Number.isFinite(numericGeneratedFmax)
+    && Number.isFinite(numericGainPct);
+  const positiveResult = validMatchedResult && numericGeneratedFmax > numericFoundryFmax && numericGainPct > 0;
+  const terminalDisposition = positiveResult ? 'PASS' : 'TERMINAL_NEGATIVE';
+  check.require('the final matched comparison proves completed routes, non-zero final-DB adoption and same-DB timing',
+    validMatchedResult,
     { comparisonRecord: comparison?.id, adoptedInstances: comparisonValues.get('adopted_instance_count'),
       matchedConditions: comparisonValues.get('matched_conditions'), comparisonValid: comparisonValues.get('comparison_valid'),
       disclosedPhysicalFindings: comparisonValues.get('full_constraint_failures'), foundryFmax, generatedFmax,
-      delta: comparisonValues.get('fmax_delta_mhz') });
+      delta: comparisonValues.get('fmax_delta_mhz'), gainPct, terminalDisposition });
+  check.require('the terminal disposition follows the frozen strictly-positive Wave 4 threshold without changing Pack facts',
+    terminalDisposition === 'PASS'
+      ? comparisonValues.get('fmax_improved') === 1 && numericGeneratedFmax > numericFoundryFmax
+      : comparisonValues.get('fmax_improved') === 0 && numericGeneratedFmax <= numericFoundryFmax,
+    { terminalDisposition, foundryFmax, generatedFmax, gainPct,
+      packGoalOutcome: finalJudge?.result?.outcome, runStatus: firstRun.status });
 
   const codeRecords = firstRecords.filter((record): record is CodeRecord => record.type === 'code');
   const templateSha256 = sha256(readFileSync(path.join(packSource, 'flow/research-template.py')));
@@ -658,9 +854,9 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   check.require('the same model owner supplied one executed non-template cross-route research algorithm',
     researchLaunch?.workshop !== undefined && researchCode !== undefined && researchCode.sha256 !== templateSha256,
     { researchLaunch, researchCode, templateSha256 });
-  check.require('no separate research model session was opened inside the Campaign',
-    firstRecords.every((record) => record.type !== 'session') && check.requestSessions.size === 1,
-    { sessionRecords: firstRecords.filter((record) => record.type === 'session'), requestSessions: [...check.requestSessions] });
+  check.require('the Campaign research algorithm is authored by the one persistent Run owner',
+    researchCode?.sessionId === ownerId,
+    { researchCode: researchCode?.id, sessionId: researchCode?.sessionId, ownerId });
 
   const firstArchive = await readRunAssets(experienceDeps(host, home), firstId);
   check.require('the first technical report and Pack-local archive are readable and hash-bound',
@@ -754,6 +950,24 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   host = await bootInProcess(home);
   check.attach(host);
   check.observed.hostBoots = 2;
+  const ownerResume = await resumeTestAgent(host.ctx, ownerId, {
+    provider: owner.options.provider!,
+    model: owner.options.model!,
+  });
+  check.trackResumed(ownerResume.agent);
+  const resumedOwnerContext = await readNativeSessionContext(host.ctx, { sessionId: ownerId, targetSessionId: ownerId });
+  const restartedCampaignMemory = await host.ctx.hima.workMemory(ownerId, { action: 'read', runId: firstId }) as any;
+  const restartedChildTranscripts = await Promise.all(team.map(row => readNativeSessionContext(host.ctx, {
+    sessionId: ownerId, targetSessionId: row.childSessionId, parentSessionId: ownerId,
+  }, host.ctx.hima.ledger)));
+  check.require('reopened owner and child transcripts retain compaction while Work Memory re-reads terminal Run authority',
+    /compacted-summary/.test(JSON.stringify(resumedOwnerContext.context))
+      && restartedCampaignMemory.kind === 'stale'
+      && restartedCampaignMemory.authority?.[0]?.status === firstRun.status
+      && restartedChildTranscripts.every(view => view.events.length > 0),
+    { resumedOwnerContext: resumedOwnerContext.context, restartedCampaignMemory, restartedChildTranscripts });
+  check.observed.recovery = { resumedOwner: ownerId, resumedOwnerContext: resumedOwnerContext.context,
+    restartedCampaignMemory, restartedChildTranscripts };
   const restartedFirst = host.ctx.hima.ledger.run(firstId);
   const restartedFirstRecords = host.ctx.hima.ledger.records({ runId: firstId });
   const restartedFirstArchive = await readRunAssets(experienceDeps(host, home), firstId);
@@ -772,9 +986,18 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
       && packDigestOf(installedPack) === sourceDigest,
     { runs: ownedRuns(), sourceDigest: packDigestOf(packSource), installedDigest: packDigestOf(installedPack) });
 
+  const dispositionStatus: PilotCheckpoint['status'] = terminalDisposition === 'PASS'
+    ? 'positive-held-out-l5-passed-ready-for-release-review'
+    : 'held-out-l5-terminal-negative';
+  const measurement = valueMeasurementReceipt(firstRun, firstRecords);
+  check.require('the final value receipt is bound to the terminal Run and keeps unavailable human/model usage unmeasured',
+    measurement.final && measurement.runId === firstId && measurement.jobs.unsettledSessionIds.length === 0
+      && measurement.model.requests.status === 'unmeasured'
+      && measurement.human.businessDecisionTime.status === 'unmeasured',
+    measurement);
   const checkpoint: PilotCheckpoint = {
-    schema: 3,
-    status: 'positive-held-out-l5-passed-ready-for-release-review',
+    schema: 4,
+    status: dispositionStatus,
     home: home.home,
     firstRun: firstId,
     firstOwner: ownerId,
@@ -801,6 +1024,11 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     },
     restartRecordsSha256: beforeRestart,
     checkpoint: checkpointPath,
-    outcome: 'positive-held-out-l5-passed-ready-for-release-review',
+    outcome: dispositionStatus,
+    terminalDisposition,
+    matchedResult: { foundryFmaxMhz: foundryFmax, generatedFmaxMhz: generatedFmax,
+      deltaMhz: comparisonValues.get('fmax_delta_mhz'), gainPct,
+      adoptedInstances: comparisonValues.get('adopted_instance_count') },
+    valueMeasurement: measurement,
   };
 });

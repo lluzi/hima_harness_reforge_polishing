@@ -5,6 +5,7 @@ import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readF
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parse } from 'yaml';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const node24 = '/Users/lluzi/.local/node24/bin/node';
@@ -42,7 +43,7 @@ const sourceState = () => {
  */
 function assertTrialPackAssets(packsRoot) {
   const pack = path.join(packsRoot, trialPackId);
-  const required = ['contract.yml', 'graph.yml', 'knowledge/manifest.yml'];
+  const required = ['contract.yml', 'graph.yml', 'knowledge/manifest.yml', 'TEST.md', 'VERSION.yml'];
   for (const relativeFile of required) {
     const file = path.join(pack, relativeFile);
     if (!existsSync(file) || !lstatSync(file).isFile()) fail(`trial Pack ${trialPackId} is missing required asset ${relativeFile}`);
@@ -54,6 +55,34 @@ function assertTrialPackAssets(packsRoot) {
   if (!/^knowledgeManifest: knowledge\/manifest\.yml$/m.test(contract)) fail(`trial Pack ${trialPackId} contract does not declare its knowledge manifest`);
   if (!new RegExp(`^id: ${trialPackId}$`, 'm').test(graph) || !/^entry: \S+$/m.test(graph)) fail(`trial Pack ${trialPackId} graph identity or entry is missing`);
   if (!/^schema: hima-pack-knowledge\/1$/m.test(manifest)) fail(`trial Pack ${trialPackId} knowledge manifest schema is missing`);
+  const version = /^version:\s*["']?([^"'\s]+)["']?/m.exec(contract)?.[1];
+  const seal = parse(readFileSync(path.join(pack, 'VERSION.yml'), 'utf8'));
+  if (!seal || seal.pack !== trialPackId || seal.version !== version
+      || typeof seal.methodDigest !== 'string' || !/^[a-f0-9]{64}$/.test(seal.methodDigest)
+      || seal.test?.record !== 'TEST.md' || typeof seal.test?.run !== 'string'
+      || !seal.files || typeof seal.files !== 'object' || Array.isArray(seal.files)) {
+    fail(`trial Pack ${trialPackId} has an invalid native release seal`);
+  }
+  const sealedFiles = Object.keys(seal.files).sort();
+  const currentFiles = [];
+  const walk = (directory) => {
+    for (const name of readdirSync(directory).sort()) {
+      if (name === '.DS_Store' || name === 'VERSION.yml' || name === 'run-assets' || name.startsWith('.')) continue;
+      const at = path.join(directory, name);
+      const stat = lstatSync(at);
+      if (stat.isDirectory()) walk(at);
+      else if (stat.isFile()) currentFiles.push(relative(pack, at));
+      else fail(`trial Pack ${trialPackId} contains an unsupported sealed asset ${relative(pack, at)}`);
+    }
+  };
+  walk(pack);
+  currentFiles.sort();
+  if (JSON.stringify(currentFiles) !== JSON.stringify(sealedFiles)) {
+    fail(`trial Pack ${trialPackId} method files differ from VERSION.yml`);
+  }
+  for (const file of sealedFiles) {
+    if (hash(path.join(pack, file)) !== seal.files[file]) fail(`trial Pack ${trialPackId} seal hash differs for ${file}`);
+  }
   const documents = [...manifest.matchAll(/^\s*-\s+file:\s+([^\s#]+)\s*$/gm), ...manifest.matchAll(/^\s+file:\s+([^\s#]+)\s*$/gm)]
     .map((match) => match[1])
     .filter((value, index, values) => values.indexOf(value) === index);
@@ -62,7 +91,7 @@ function assertTrialPackAssets(packsRoot) {
     const file = path.join(pack, 'knowledge', document);
     if (!existsSync(file) || !lstatSync(file).isFile()) fail(`trial Pack ${trialPackId} knowledge manifest names missing document ${document}`);
   }
-  return { pack, documents };
+  return { pack, documents, version, methodDigest: seal.methodDigest, testRun: seal.test.run };
 }
 
 function assertTimingPackAssets(packsRoot) {
@@ -141,7 +170,13 @@ function verify(app, allowPending = false) {
   for (const required of ['Contents/MacOS/HimaHarness', 'Contents/Resources/app/lib/main.js', 'Contents/Resources/app/node/bin/node', 'Contents/Resources/app/profiles/hima/package.json', `Contents/Resources/app/${trialPackRelative}/contract.yml`, `Contents/Resources/app/${trialPackRelative}/graph.yml`, `Contents/Resources/app/${trialPackRelative}/knowledge/manifest.yml`, `Contents/Resources/app/${timingPackRelative}/contract.yml`, `Contents/Resources/app/${timingPackRelative}/graph.yml`, `Contents/Resources/app/${demoPackRelative}/contract.yml`, `Contents/Resources/app/${demoPackRelative}/graph.yml`]) {
     if (!existsSync(path.join(app, required))) fail(`required release file missing: ${required}`);
   }
-  assertTrialPackAssets(path.join(resource, 'packs'));
+  const trialPack = assertTrialPackAssets(path.join(resource, 'packs'));
+  if (manifest.runtimeInputs?.trialPack?.id !== trialPackId
+      || manifest.runtimeInputs?.trialPack?.version !== trialPack.version
+      || manifest.runtimeInputs?.trialPack?.methodDigest !== trialPack.methodDigest
+      || manifest.runtimeInputs?.trialPack?.testRun !== trialPack.testRun) {
+    fail('manifest trial Pack identity differs from the bundled native release seal');
+  }
   assertTimingPackAssets(path.join(resource, 'packs'));
   assertDemoPackAssets(path.join(resource, 'packs'));
   const architecture = run('file', [path.join(app, 'Contents/MacOS/HimaHarness')]);
@@ -457,7 +492,7 @@ if (args.includes('--help') || args.includes('-h')) {
     assertSourceTreeIsSafe(path.join(root, trialPackRelative));
     assertSourceTreeIsSafe(path.join(root, timingPackRelative));
     assertSourceTreeIsSafe(path.join(root, demoPackRelative));
-    assertTrialPackAssets(path.join(root, 'packs'));
+    const trialPack = assertTrialPackAssets(path.join(root, 'packs'));
     assertTimingPackAssets(path.join(root, 'packs'));
     assertDemoPackAssets(path.join(root, 'packs'));
     cpSync(path.join(root, 'profiles'), path.join(resource, 'profiles'), { recursive: true });
@@ -496,7 +531,9 @@ if (args.includes('--help') || args.includes('-h')) {
       artifactDigest: createHash('sha256').update(JSON.stringify(files)).digest('hex'),
       platform: 'macos-arm64', signing: 'ad-hoc, not notarized',
       runtimeInputs: { node: '24', ledgerSchema: runtimeLedger.ledgerSpec.version,
-        bundledPacks: [trialPackId, timingPackId, demoPackId] },
+        bundledPacks: [trialPackId, timingPackId, demoPackId],
+        trialPack: { id: trialPackId, version: trialPack.version, methodDigest: trialPack.methodDigest,
+          testRun: trialPack.testRun } },
       compatibility: { home: 'version-isolated; no automatic migration', oldLedger: 'explicit offline import only' },
       impactedChecks: ['local contracts', 'isolated Desktop workbench', 'packaged Host and Pack-read smoke'],
       rollbackRef: 'v0.3.0-trial.18', status: 'building',
