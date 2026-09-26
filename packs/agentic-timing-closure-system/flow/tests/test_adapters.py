@@ -86,6 +86,31 @@ def _scenario_inputs():
     }
 
 
+class HashLibraryGlobTest(unittest.TestCase):
+    """C4 (final review, per-scenario library identity): `adapters.hash_library_glob`
+    catches an unmatched Site `libGlob` in Python, before PT ever launches, with an
+    informative error -- the same failure Tcl's own `lsort [glob -nocomplain ...]`
+    check inside `pt-scenario.tcl`/`pt-presta.tcl` would otherwise only surface as an
+    opaque PT `error`."""
+
+    def setUp(self):
+        self.tmp = _tmp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def test_matches_are_hashed_and_sorted_by_path(self):
+        (self.tmp / "b.db").write_bytes(b"b")
+        (self.tmp / "a.db").write_bytes(b"a")
+        result = adapters.hash_library_glob(str(self.tmp / "*.db"))
+        self.assertEqual([entry["path"] for entry in result], [str(self.tmp / "a.db"), str(self.tmp / "b.db")])
+        self.assertEqual(result[0]["sha256"], core.file_sha256(self.tmp / "a.db"))
+        self.assertEqual(result[1]["sha256"], core.file_sha256(self.tmp / "b.db"))
+
+    def test_no_match_is_a_missing_input_refusal(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.hash_library_glob(str(self.tmp / "nope-*.db"))
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+
 class PtScenarioTaskTest(unittest.TestCase):
     def test_compiles_all_four_scenario_names(self):
         query_spec = {"precision": "gba", "requiredScenarios": list(adapters.REQUIRED_SCENARIOS), "maxPaths": 500}
@@ -156,6 +181,45 @@ class PtScenarioTaskTest(unittest.TestCase):
         query_spec = {"precision": "bogus", "requiredScenarios": [], "maxPaths": 100}
         with self.assertRaises(core.AtcsError):
             adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(), "/ws/reports")
+
+
+class PtPrestaTaskTest(unittest.TestCase):
+    """C4 (final review): `pt-presta.tcl` never set `target_library`/`link_path` at
+    all before this fix -- `link_design` for a real (non-fixture) netlist would have
+    had no cell library to resolve references against. `compile_pt_presta_task`'s
+    `inputs` gains the same optional `libGlob`/`driverLibrary`/`originalDriverLibrary`
+    triple `compile_pt_scenario_task` already accepted."""
+
+    def _inputs(self, **extra):
+        return {
+            "design": "top", "netlist": "/ws/design.v", "sdc": "/ws/design.sdc", "spef": "/ws/corner.spef",
+            **extra,
+        }
+
+    def test_without_library_fields_the_env_carries_no_library_vars(self):
+        task = adapters.compile_pt_presta_task("func_ssg_rcworst_m40", self._inputs(), "/ws/reports")
+        self.assertNotIn("LIB_GLOB", task["env"])
+        self.assertNotIn("DRIVER_LIBRARY", task["env"])
+        self.assertNotIn('set env(LIB_GLOB)', task["tcl"])
+
+    def test_with_library_fields_the_env_carries_them_and_the_tcl_links_a_library(self):
+        inputs = self._inputs(
+            libGlob="/foundation/libdb/ssg_m40c/*.db",
+            driverLibrary="tcbn28...ssg0p81vm40c", originalDriverLibrary="tcbn28...typ0p9v25c",
+        )
+        task = adapters.compile_pt_presta_task("func_ssg_rcworst_m40", inputs, "/ws/reports")
+        self.assertEqual(task["env"]["LIB_GLOB"], inputs["libGlob"])
+        self.assertEqual(task["env"]["DRIVER_LIBRARY"], inputs["driverLibrary"])
+        self.assertEqual(task["env"]["ORIGINAL_DRIVER_LIBRARY"], inputs["originalDriverLibrary"])
+        self.assertIn("set_app_var target_library", task["tcl"])
+        self.assertIn("info exists env(LIB_GLOB)", task["tcl"])
+
+    def test_missing_a_required_input_is_refused(self):
+        inputs = self._inputs()
+        del inputs["spef"]
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_pt_presta_task("func_ssg_rcworst_m40", inputs, "/ws/reports")
+        self.assertEqual(ctx.exception.code, "missing-input")
 
 
 # ---------------------------------------------------------------------------

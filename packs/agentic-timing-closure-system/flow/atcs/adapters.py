@@ -113,6 +113,7 @@ still `unknown` with a reason, never guessed.
 """
 from __future__ import annotations
 
+import glob as glob_module
 import json
 import math
 import re
@@ -302,6 +303,26 @@ def run_tool(site_profile, command, cwd, log_path, shell_env=None):
     if re.search(r"(?m)^(?:\*\*)?(?:ERROR|Error|Fatal):", text):
         raise AdapterToolError("tool log reports an error", log)
     return log
+
+
+def hash_library_glob(lib_glob, label="libGlob"):
+    """The sorted `[{"path","sha256"}]` of every file `lib_glob` matches, hashed now.
+
+    C4 (final review, per-scenario library identity): the same glob PT's own
+    `lsort [glob -nocomplain $env(LIB_GLOB)]` will match inside
+    `pt-scenario.tcl`/`pt-presta.tcl`, computed here in Python *before* PT
+    ever launches, so a Site whose configured `libGlob` matches nothing is
+    caught fail-closed, with an informative error, rather than surfacing only
+    as PT's own opaque Tcl `error`. The result is recorded verbatim into a
+    scenario's own `sta_receipts[...]["inputs"]["libraries"]` (`_cmd_sta`),
+    so a real library-set identity -- not just a corner name -- is part of
+    what a later `evaluate` can inspect. Raises `AtcsError("missing-input",
+    ...)` when nothing matches.
+    """
+    matches = sorted(glob_module.glob(lib_glob))
+    if not matches:
+        raise core.AtcsError("missing-input", f"no files matched {label} {lib_glob!r}")
+    return [{"path": path, "sha256": core.file_sha256(Path(path))} for path in matches]
 
 
 # ---------------------------------------------------------------------------
@@ -551,7 +572,19 @@ def parse_query_slack(text):
 
 
 def compile_pt_presta_task(scenario, inputs, report_root):
-    """One `pt-presta.tcl` task -- see module docstring and `pt-presta.tcl` for scope."""
+    """One `pt-presta.tcl` task -- see module docstring and `pt-presta.tcl` for scope.
+
+    C4 (final review, per-scenario library identity): `inputs` gains the same
+    optional `libGlob`/`driverLibrary`/`originalDriverLibrary` triple
+    `compile_pt_scenario_task` accepts. `pt-presta.tcl` never actually set
+    `target_library`/`link_path` before this fix -- a real PT session's own
+    `link_design` for the not-yet-implemented candidate netlist would have
+    had no cell library to resolve references against at all (confirmed by
+    reading the template's own pre-fix body, which jumps straight from
+    `read_verilog`/`current_design` to `link_design` with no
+    `target_library`/`link_path` in between). When `inputs` carries the
+    library triple, it is filled the same way `pt-scenario.tcl` fills it.
+    """
     validate_path_segment(scenario, "scenario")
     for key in ("design", "netlist", "sdc", "spef"):
         if not inputs.get(key):
@@ -561,6 +594,11 @@ def compile_pt_presta_task(scenario, inputs, report_root):
         "DESIGN": inputs["design"], "NETLIST": inputs["netlist"], "INPUT_SDC": inputs["sdc"],
         "SPEF": inputs["spef"], "SCENARIO": scenario, "REPORT_ROOT": str(report_root),
     }
+    if inputs.get("libGlob"):
+        env["LIB_GLOB"] = inputs["libGlob"]
+    if inputs.get("driverLibrary") and inputs.get("originalDriverLibrary"):
+        env["DRIVER_LIBRARY"] = inputs["driverLibrary"]
+        env["ORIGINAL_DRIVER_LIBRARY"] = inputs["originalDriverLibrary"]
     tcl = compile_task("pt-presta.tcl", env=env)
     return {"tcl": tcl, "env": env, "globalTiming": str(Path(report_root) / scenario / "global_timing.rpt")}
 
