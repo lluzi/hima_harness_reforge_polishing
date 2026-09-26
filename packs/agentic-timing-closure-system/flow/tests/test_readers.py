@@ -309,13 +309,19 @@ class WorkPackageReaderTest(unittest.TestCase):
 class CampaignPlanReaderTest(unittest.TestCase):
     """Task 12c item 4a: the `campaign-plan` reader kind counts problems across
     all three work packages (`workspaces.request_invalid_count`), not just
-    slot w01's own package."""
+    slot w01's own package. Fix round 2 item 3: it also counts a top-level
+    `workPackages` key (a second, unenforced copy) and a `baseState` whose
+    id disagrees with `state/working-state.json`'s current one."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.workspace = _make_workspace(self.tmp.name)
         self.design = _build_design_state(self.workspace)
+        # Fix round 2 item 3's own check needs a real, current state/working-state.json
+        # to compare envelope.baseState against; every "zero problems" case in this class
+        # keeps it matching self.design, and the dedicated mismatch tests below diverge it.
+        core.write_artifact(self.workspace / "state" / "working-state.json", self.design)
 
     def _valid_package(self, task_id):
         return {
@@ -367,6 +373,36 @@ class CampaignPlanReaderTest(unittest.TestCase):
         report.write_text(json.dumps(envelope))
         with self.assertRaises(ValueError):
             read_atcs.read("campaign-plan", report, self.workspace)
+
+    def test_top_level_workpackages_key_is_counted(self):
+        """Fix round 2 item 3: a second, top-level copy is a problem even when it is
+        byte-identical to candidate.workPackages -- prepare-workers refuses it outright."""
+        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
+        report = self._write_envelope(packages)
+        envelope = json.loads(report.read_text())
+        envelope["workPackages"] = packages  # identical copy -- still a problem
+        report.write_text(json.dumps(envelope))
+        values = read_atcs.read("campaign-plan", report, self.workspace)
+        self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_base_state_disagreeing_with_working_state_is_counted(self):
+        """Fix round 2 item 3: a baseState snapshot that no longer matches the campaign's
+        CURRENT state/working-state.json is a stale-plan problem."""
+        other_design = _build_design_state(self.workspace, name="other")
+        core.write_artifact(self.workspace / "state" / "working-state.json", other_design)
+        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
+        report = self._write_envelope(packages)  # envelope.baseState is still self.design
+        values = read_atcs.read("campaign-plan", report, self.workspace)
+        self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_missing_working_state_is_counted_not_treated_as_a_match(self):
+        """Fix round 2 item 3: an unreadable/missing state/working-state.json can never be
+        silently treated as "matches" -- it is itself counted as a problem."""
+        (self.workspace / "state" / "working-state.json").unlink()
+        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
+        report = self._write_envelope(packages)
+        values = read_atcs.read("campaign-plan", report, self.workspace)
+        self.assertGreaterEqual(values[0]["value"], 1)
 
 
 class WorkerResultReaderTest(unittest.TestCase):

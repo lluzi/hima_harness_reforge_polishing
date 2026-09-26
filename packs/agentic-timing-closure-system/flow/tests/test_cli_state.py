@@ -251,13 +251,13 @@ class TwoRoundFlowTest(unittest.TestCase):
             _write_report_set(impl_root / "sta" / scenario, _clean_reports())
         query_spec_path = workspace / f"query-spec-{instance}.json"
         _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
-        sdc_path = workspace / f"sdc-{instance}.json"
-        _write_json(sdc_path, {"sdc": ["constraints.sdc"]})
+        # Fix round 2 item 2: SDC comes from base_design_state's own recorded sdc[0]
+        # (sha256-verified), never a separate analysisContract/sdc.json copy.
         scenario_corners_path = workspace / f"scenario-corners-{instance}.json"
         _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
         base_design_state_path = workspace / f"base-design-state-{instance}.json"
         _write_json(base_design_state_path, base_state)
-        result = _run("sta", workspace, query_spec_path, sdc_path, scenario_corners_path,
+        result = _run("sta", workspace, query_spec_path, scenario_corners_path,
                        base_design_state_path, site_profile_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         sta = json.loads((workspace / "state" / "sta.json").read_text())
@@ -939,8 +939,20 @@ class ResidualPtQueryEvidenceTest(unittest.TestCase):
         }
         _write_json(self.workspace / "state" / "sta.json", sta)
 
+        # Fix round 2 item 1: residual now queries the EVALUATED CANDIDATE's own
+        # design-state (implementations/<mergeId>/design-state.json), cross-checked
+        # against evaluation.stateId -- reuse the working (baseline) state itself as
+        # that candidate's state here, since this test is about evidence-collection
+        # mechanics, not about the candidate/parent distinction (see
+        # ResidualQueriesTheEvaluatedCandidateStateTest for that).
+        merge_id = "cand-1"
+        _write_json(self.workspace / "state" / "implement.json", {
+            "mergeCommitId": merge_id, "design": "top", "parentStateId": self.working_state["id"],
+        })
+        core.write_artifact(self.workspace / "implementations" / merge_id / "design-state.json", self.working_state)
+
         evaluation = core.stamp("evaluation", {
-            "candidateId": "cand-1", "parentStateId": self.working_state["id"], "stateId": "cand-state-1",
+            "candidateId": merge_id, "parentStateId": self.working_state["id"], "stateId": self.working_state["id"],
             "finalSetupWns": core.known(-0.12), "finalHoldWns": core.known(0.03),
             "missingRequiredCheckCount": core.known(0), "finalIdentityErrorCount": core.known(0),
             "constraintFailureCount": core.known(1), "constraintUnknownCount": core.known(0),
@@ -1004,6 +1016,163 @@ class ResidualPtQueryEvidenceTest(unittest.TestCase):
         self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
         payload = json.loads(result.stderr)
         self.assertEqual(payload["code"], "no-intervention")
+
+
+class ResidualQueriesTheEvaluatedCandidateStateTest(unittest.TestCase):
+    """Fix round 2 item 1 (Important): once an evaluation exists, residual's targeted PT
+    queries run against the EVALUATED CANDIDATE's own design-state
+    (implementations/<mergeId>/design-state.json, cross-checked against
+    evaluation.stateId) -- never state/working-state.json, which is still the PARENT
+    state for a refused (non-adopted) candidate (adopt never rewrites it on refusal)."""
+
+    CHECK_KEY = "func_ssg_rcworst_m40|setup|U_FF_2/D"
+
+    def test_refused_candidate_uses_its_own_netlist_and_spef_not_the_parents(self):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        manifest = _make_baseline_manifest(workspace)  # parent netlist "netlist.v", spef "corner1.spef"
+        _write_json(workspace / "manifest.json", manifest)
+        result = _run("baseline", workspace, workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        parent_state = json.loads((workspace / "state" / "working-state.json").read_text())
+        readiness = _full_flow_readiness(workspace, manifest)
+        core.write_artifact(workspace / "state" / "readiness.json", readiness)
+
+        # A distinct CANDIDATE implementation with its OWN netlist/SPEF, never adopted --
+        # state/working-state.json below stays the PARENT throughout this test.
+        merge_id = "merge-candidate-1"
+        candidate_root = workspace / "implementations" / merge_id
+        candidate_netlist = candidate_root / "EXPORT" / "design.v"
+        _write_text(candidate_netlist, "module top(); wire candidate_only_net; endmodule\n")
+        candidate_spef = candidate_root / f"{CORNER}.spef"
+        _write_text(candidate_spef, "*SPEF IEEE 1481-1999 candidate\n")
+        db_path = candidate_root / "DBS" / "top.enc"
+        _write_text(db_path, "candidate db bytes")
+        _sha256_matching_empty_directory(db_path.parent / "top.enc.dat")
+
+        candidate_manifest = {
+            "top": "top", "stage": "postroute", "root": str(workspace),
+            "database": {
+                "enc": str(db_path.relative_to(workspace)),
+                "encDat": str((db_path.parent / "top.enc.dat").relative_to(workspace)),
+            },
+            "netlist": str(candidate_netlist.relative_to(workspace)),
+            "spef": {CORNER: str(candidate_spef.relative_to(workspace))},
+            "sdc": ["constraints.sdc"],  # unchanged by the ECO -- inherited from the parent
+            "scenarios": [{"name": name, "corner": CORNER} for name in REQUIRED_SCENARIOS],
+            "parentId": parent_state["id"],
+        }
+        candidate_state = state.design_state(candidate_manifest)
+        core.write_artifact(candidate_root / "design-state.json", candidate_state)
+
+        _write_json(workspace / "state" / "implement.json", {
+            "mergeCommitId": merge_id, "design": "top", "parentStateId": parent_state["id"],
+        })
+        evaluation = core.stamp("evaluation", {
+            "candidateId": merge_id, "parentStateId": parent_state["id"], "stateId": candidate_state["id"],
+            "finalSetupWns": core.known(-0.12), "finalHoldWns": core.known(0.03),
+            "missingRequiredCheckCount": core.known(0), "finalIdentityErrorCount": core.known(0),
+            "constraintFailureCount": core.known(1), "constraintUnknownCount": core.known(0),
+            "fixedCheckCount": core.known(0), "missingPriorCheckCount": core.known(0),
+            "comparison": {
+                "fixed": [], "remaining": [self.CHECK_KEY], "entrant": [], "regressed": [], "missingPrior": [],
+            },
+            "physical": {"drc": {"total": core.known(0)}, "connectivity": {"total": core.known(0)}},
+        })
+        _write_json(workspace / "state" / "evaluation.json", evaluation)
+        sta = {
+            "designStateId": candidate_state["id"], "database": {},
+            "sta": {
+                "func_ssg_rcworst_m40": {
+                    "corner": CORNER, "inputs": {},
+                    "observation": {
+                        "precision": "gba",
+                        "checks": {
+                            self.CHECK_KEY: {"slack": core.known(-0.12), "startpoint": "U_FF_1/CP", "pathGroup": "reg2reg"},
+                        },
+                        "scenarios": {}, "sources": [],
+                    },
+                },
+            },
+        }
+        _write_json(workspace / "state" / "sta.json", sta)
+
+        # Refused (never adopted): the working state is still the PARENT.
+        self.assertEqual(
+            json.loads((workspace / "state" / "working-state.json").read_text())["id"], parent_state["id"],
+        )
+
+        scenario_corners_path = workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        site_profile_path = _site_profile_path(workspace)
+        result = _run("residual", workspace, scenario_corners_path, site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        pt_tcl = (workspace / "research" / "residual" / "func_ssg_rcworst_m40" / "pt-query.tcl").read_text()
+        self.assertIn(str(candidate_netlist), pt_tcl)
+        self.assertIn(str(candidate_spef), pt_tcl)
+        self.assertNotIn(str(workspace / "netlist.v"), pt_tcl)
+        self.assertNotIn(str(workspace / f"{CORNER}.spef"), pt_tcl)
+
+    def test_evaluated_candidate_state_that_cannot_be_verified_leaves_evidence_unknown(self):
+        """When the candidate's own recorded state cannot be located (a broken/incomplete
+        implementations/<mergeId>/design-state.json), every bounded check's evidence is
+        `unknown` with the reason -- never a silent fall-back to the parent state."""
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        result = _run("baseline", workspace, workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        parent_state = json.loads((workspace / "state" / "working-state.json").read_text())
+        readiness = _full_flow_readiness(workspace, manifest)
+        core.write_artifact(workspace / "state" / "readiness.json", readiness)
+
+        merge_id = "merge-candidate-2"
+        _write_json(workspace / "state" / "implement.json", {
+            "mergeCommitId": merge_id, "design": "top", "parentStateId": parent_state["id"],
+        })
+        # No implementations/<merge_id>/design-state.json ever written.
+        evaluation = core.stamp("evaluation", {
+            "candidateId": merge_id, "parentStateId": parent_state["id"], "stateId": "0" * 20,
+            "finalSetupWns": core.known(-0.12), "finalHoldWns": core.known(0.03),
+            "missingRequiredCheckCount": core.known(0), "finalIdentityErrorCount": core.known(0),
+            "constraintFailureCount": core.known(1), "constraintUnknownCount": core.known(0),
+            "fixedCheckCount": core.known(0), "missingPriorCheckCount": core.known(0),
+            "comparison": {
+                "fixed": [], "remaining": [self.CHECK_KEY], "entrant": [], "regressed": [], "missingPrior": [],
+            },
+            "physical": {"drc": {"total": core.known(0)}, "connectivity": {"total": core.known(0)}},
+        })
+        _write_json(workspace / "state" / "evaluation.json", evaluation)
+        sta = {
+            "designStateId": "0" * 20, "database": {},
+            "sta": {
+                "func_ssg_rcworst_m40": {
+                    "corner": CORNER, "inputs": {},
+                    "observation": {
+                        "precision": "gba",
+                        "checks": {
+                            self.CHECK_KEY: {"slack": core.known(-0.12), "startpoint": "U_FF_1/CP", "pathGroup": "reg2reg"},
+                        },
+                        "scenarios": {}, "sources": [],
+                    },
+                },
+            },
+        }
+        _write_json(workspace / "state" / "sta.json", sta)
+
+        scenario_corners_path = workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        site_profile_path = _site_profile_path(workspace)
+        result = _run("residual", workspace, scenario_corners_path, site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        residual_doc = json.loads((workspace / "state" / "residual-cases.json").read_text())
+        case = residual_doc["cases"][0]
+        for measure in case["evidence"].values():
+            self.assertFalse(core.is_known(measure))
+        self.assertTrue(residual_doc["queryNotes"])
+        self.assertFalse((workspace / "research" / "residual").exists())
 
 
 class ResidualBaselineOnlyTest(unittest.TestCase):
@@ -1177,11 +1346,10 @@ class AprPrepareRunTest(unittest.TestCase):
             _write_report_set(impl_root / "sta" / scenario, _clean_reports())
         query_spec_path = self.workspace / "query-spec.json"
         _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
-        sdc_path = self.workspace / "sdc.json"
-        _write_json(sdc_path, {"sdc": ["constraints.sdc"]})
+        # Fix round 2 item 2: SDC comes from working-state's own recorded sdc[0].
         scenario_corners_path = self.workspace / "scenario-corners.json"
         _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
-        result = _run("sta", self.workspace, query_spec_path, sdc_path, scenario_corners_path,
+        result = _run("sta", self.workspace, query_spec_path, scenario_corners_path,
                        self.workspace / "state" / "working-state.json", site_profile_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -1457,6 +1625,49 @@ class ComposeFactsSecondPassTest(unittest.TestCase):
         self.assertEqual(len(facts["conflicts"]), 1)  # still reported as a fact...
         self.assertEqual(facts["conflicts"][0]["key"], self.conflict_key)
         self.assertEqual(facts["unresolvedCount"], 0)  # ...just now resolved, via the admitted plan.
+
+    def test_a_plan_for_a_stale_base_state_id_is_skipped_like_a_first_pass(self):
+        """Fix round 2 item 4: an admitted plan file left over from an earlier round, whose
+        own baseStateId no longer matches the CURRENT working state, is treated exactly
+        like no plan exists yet -- never re-applied to the current batch."""
+        plan_path = self.workspace / "integration-plan.json"
+        _write_json(plan_path, {
+            "plan": {
+                "batchId": "old-batch", "baseStateId": "some-other-stale-state-id",
+                "select": ["contrib-a"],
+                "resolutions": [{"conflictKey": self.conflict_key, "decision": "keep:contrib-a"}],
+                "deferred": ["contrib-b"], "reason": "an earlier round's own plan",
+            },
+            "facts": {},
+        })
+        result = _run("compose-facts", self.workspace, plan_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        facts = json.loads((self.workspace / "state" / "composition-facts.json").read_text())
+        self.assertEqual(facts["unresolvedCount"], 1)  # resolutions NOT applied
+
+    def test_a_plan_whose_batch_was_already_replayed_is_skipped(self):
+        """Fix round 2 item 4: an admitted plan whose own batchId already appears in
+        state/replay-request.json (that exact batch has already been prepared/replayed)
+        is stale -- skipped like a first pass, never re-applied."""
+        replay_request = core.stamp("replay-request", {
+            "batchId": "batch1", "baseStateId": self.base_state_id, "steps": [], "expectedDelta": {},
+        })
+        core.write_artifact(self.workspace / "state" / "replay-request.json", replay_request)
+
+        plan_path = self.workspace / "integration-plan.json"
+        _write_json(plan_path, {
+            "plan": {
+                "batchId": "batch1", "baseStateId": self.base_state_id,
+                "select": ["contrib-a"],
+                "resolutions": [{"conflictKey": self.conflict_key, "decision": "keep:contrib-a"}],
+                "deferred": ["contrib-b"], "reason": "already replayed in an earlier pass",
+            },
+            "facts": {},
+        })
+        result = _run("compose-facts", self.workspace, plan_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        facts = json.loads((self.workspace / "state" / "composition-facts.json").read_text())
+        self.assertEqual(facts["unresolvedCount"], 1)  # resolutions NOT applied
 
 
 class RecordExperienceProvenanceTest(unittest.TestCase):

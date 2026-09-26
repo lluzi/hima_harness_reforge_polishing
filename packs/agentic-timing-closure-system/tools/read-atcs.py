@@ -470,6 +470,25 @@ def _read_campaign_plan(report, workspace, extra, mods):
     slots, and a missing or blank `reason` string -- so a Reader-visible
     problem exists for every way the *shape* itself (not just one slot's
     own content) can be wrong.
+
+    Fix round 2 item 3 (Minor) adds two more Reader-visible problems, both
+    counted even though `prepare-workers` (`atcs_cli.py`) independently
+    refuses the same conditions outright -- a Judge should see a nonzero
+    `tc_request_invalid_count` for these before that Tool ever runs, not
+    only discover them as a Tool-side exit-3 refusal:
+
+    - a top-level `workPackages` key on the envelope itself (a second,
+      unenforced copy of the same data `candidate.workPackages` already
+      carries -- `prepare-workers` refuses this as `ambiguous-plan`
+      regardless of whether the two copies happen to agree);
+    - `envelope.baseState`'s own `id` disagreeing with the id currently
+      recorded in `state/working-state.json` (read from `workspace`, the
+      same Campaign root this handler already resolves every other
+      workspace-relative reference against) -- a stale `baseState` snapshot
+      from an earlier round admitted against a base this campaign has since
+      moved on from. When `state/working-state.json` itself cannot be read
+      or identity-verified, that is counted as a problem too (an "unknown"
+      current state can never be treated as "matches").
     """
     core = mods["core"]
     workspaces_mod = mods["workspaces"]
@@ -490,6 +509,22 @@ def _read_campaign_plan(report, workspace, extra, mods):
     _verify_design_state_refs(base_state, workspace, core)
 
     problems = 0
+
+    if "workPackages" in envelope:
+        # A second, top-level copy -- `prepare-workers` refuses this outright
+        # (ambiguous-plan); the Reader must not report zero problems for it.
+        problems += 1
+
+    working_state_id = None
+    try:
+        working_state = _load_json(Path(workspace) / "state" / "working-state.json")
+        _verify_identity(working_state, "design-state", core)
+        working_state_id = working_state.get("id")
+    except (ValueError, OSError):
+        working_state_id = None
+    if working_state_id is None or base_state.get("id") != working_state_id:
+        problems += 1
+
     work_packages = candidate.get("workPackages")
     if not isinstance(work_packages, dict):
         problems += 1

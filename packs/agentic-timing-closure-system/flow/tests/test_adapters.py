@@ -557,7 +557,7 @@ class CliMissingInputExitCodeTest(unittest.TestCase):
         "presta": ["MISSING/base.json", "MISSING/corners.json", "MISSING/site.json"],
         "implement": ["MISSING/state.json", "MISSING/site.json"],
         "extract": ["MISSING/corners.json", "MISSING/site.json"],
-        "sta": ["MISSING/query.json", "MISSING/sdc.json", "MISSING/corners.json", "MISSING/base.json", "MISSING/site.json"],
+        "sta": ["MISSING/query.json", "MISSING/corners.json", "MISSING/base.json", "MISSING/site.json"],
         "observe": ["MISSING/query.json", "MISSING/site.json", "MISSING/scenario-corners.json", "1000"],
         "replay-prepare": ["MISSING/base.json", "MISSING/plan.json", "MISSING/site.json"],
     }

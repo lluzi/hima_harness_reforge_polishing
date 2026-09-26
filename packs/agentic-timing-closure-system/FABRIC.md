@@ -149,9 +149,9 @@ Deviations from the brief where the code is the authority:
   through `reads`.
 - G15 The SPEC's `workerManifestNN` is one output, `workerManifests` (`state/workers.json`), because
   `prepare-workers` writes one index for all slots.
-- G17 The Operator's `before.dump`, `after.dump` and `summary.json` are not Ledger readings;
+- G16 The Operator's `before.dump`, `after.dump` and `summary.json` are not Ledger readings;
   `contributions.seal` re-validates them when `capture-contribution` reads them.
-- G18 Earlier APR is executable end to end in the graph and reachable from the baseline round:
+- G17 Earlier APR is executable end to end in the graph and reachable from the baseline round:
   `residual` gives PT path-detail evidence (from the baseline observation or the latest evaluation),
   the next-investment Workshop may choose `earlier-apr` with a stage, and the route runs
   `apr-prepare` → `apr-run` → the implementation chain. `check-apr-scope` judges
@@ -161,26 +161,26 @@ Deviations from the brief where the code is the authority:
   `apr-prepare`'s own scope refusal is a second line the graph does not reach. `apr-prepare` fails
   the node (`no-intervention`) when no residual case yields a stage setting. Not yet run with real
   tools (Task 17).
-- G19 `residual` runs bounded PT path-detail queries (the 20 worst known checks) at every Campaign
+- G18 `residual` runs bounded PT path-detail queries (the 20 worst known checks) at every Campaign
   start and after every evaluation. Decisions reached from a pre-implementation failure route (plan,
   integration plan, composition, replay or pre-check) see the residual cases of the baseline or the
   last evaluation, not refreshed ones.
 
 Known gaps carried from earlier tasks:
 
-- G20 (Task 12) `presta` compares the batch's new nets against the working state's SPEF, so
+- G19 (Task 12) `presta` compares the batch's new nets against the working state's SPEF, so
   `tc_unqualified_rc_net_count > 0` for every batch containing `insert_buffer`; such batches always
   route to the next decision and are implemented only by an explicit implement decision.
-- G21 (Task 12) `parse_path_detail` is unverified against a real PT per-arc report; the earlier-APR
+- G20 (Task 12) `parse_path_detail` is unverified against a real PT per-arc report; the earlier-APR
   route now depends on it.
-- G22 (Task 12) Side files left by an EDA run that fails mid-way are untested.
-- G23 (Task 9) Adoption is single-writer; `designStateId` honesty rests on `sta` building the
+- G21 (Task 12) Side files left by an EDA run that fails mid-way are untested.
+- G22 (Task 9) Adoption is single-writer; `designStateId` honesty rests on `sta` building the
   design-state from the implemented DB, which M6 does not cross-check.
-- G24 (Tasks 15, 17) The XTop Operator is `interactive-only`; its settlement in a real Run is
+- G23 (Tasks 15, 17) The XTop Operator is `interactive-only`; its settlement in a real Run is
   unproven. Task 15's Site wrapper (`sites/linglong-atcs28/atcs-xtop-operator.sh`, contract
   `<wrapper> <workspace> <slot>`) and the administrator's interactive binding still need L4
   qualification.
-- G25 (Task 15) `checkPack` is fit against `linglong-atcs28` and the local Site; against the frozen
+- G24 (Task 15) `checkPack` is fit against `linglong-atcs28` and the local Site; against the frozen
   `linglong-swerv28` it is unfit only on Site facts (unbound inputs, `python3` and the ATCS wrapper not
   permitted, `innovus`/`primetime`/`starrc`/`xtop` licences undeclared), which is expected.
 
