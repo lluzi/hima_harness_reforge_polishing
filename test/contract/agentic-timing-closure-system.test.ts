@@ -30,7 +30,11 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
   assert.equal(packStage(packDir).stage, 'compiled');
   assert.equal(pack.graph.nodes.length, 106);
-  assert.equal(pack.graph.edges.length, 141);
+  // Final review (Minor): +2 edges -- check-setup-goal/check-hold-goal each gain
+  // an explicit UNDETERMINED edge to `residual` (an unknown final WNS is an
+  // evidence gap, not a person-facing wait) instead of falling through to the
+  // engine's own unlabelled-UNDETERMINED default (wait-for-person).
+  assert.equal(pack.graph.edges.length, 143);
 
   const localCheck = checkPack(pack, loadSite(local.sitesDir, local.name));
   assert.equal(localCheck.fit, true, localCheck.errors.join('\n'));

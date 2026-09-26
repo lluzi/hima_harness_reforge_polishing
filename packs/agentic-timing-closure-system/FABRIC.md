@@ -10,7 +10,13 @@ helper from `flow/atcs_cli.py`.
   (24 `python3` subcommand tools of `flow/atcs_cli.py`, 1 interactive-only XTop Operator tool),
   7 Workshops (5 families, the worker family expanded to slots 01–03), 23 rules, 2 Goal parameters,
   1 Strategy knob (`maxPaths`), 10 knowledge files.
-- `graph.yml` — 106 nodes (60 act, 36 judge, 9 explore, 1 wait), 141 edges, 9 revisit edges.
+- `graph.yml` — 106 nodes (60 act, 36 judge, 9 explore, 1 wait), 143 edges, 9 revisit edges.
+  Final review (Minor): `check-setup-goal`/`check-hold-goal` each gained an explicit
+  `UNDETERMINED` edge to `residual` (+2 edges) -- an unknown final setup/hold WNS is an
+  evidence gap the residual/next-decision loop can investigate, the same as a coverage,
+  identity or constraint-unknowns FAIL already routes there, never a person-facing wait;
+  the engine's edge-label schema (`verdictOutcome.options`) allows a judge node's
+  UNDETERMINED outcome to be labelled explicitly, same as PASS/FAIL.
 - `rules/inputs-ready.yml`
 - `rules/lifecycle-available.yml`
 - `rules/request-admissible.yml`

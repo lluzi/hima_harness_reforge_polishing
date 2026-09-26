@@ -546,8 +546,20 @@ edges:
   - { from: check-constraint-unknowns, to: residual, outcome: FAIL }
   - { from: check-setup-goal, to: check-hold-goal, outcome: PASS }
   - { from: check-setup-goal, to: adopt, outcome: FAIL }
+  # Minor (final review): an unknown final setup/hold WNS (tc_final_setup_wns_ns/
+  # tc_final_hold_wns_ns unknown) makes this Judge's own verdict UNDETERMINED --
+  # that is an evidence gap, the same kind check-final-coverage/-identity/
+  # -constraint-unknowns already route to residual on FAIL, never a policy
+  # PASS/FAIL this Run can actually judge. Left unlabelled, the schema's own
+  # unlabelled-UNDETERMINED default would send it to wait-for-person instead,
+  # asking a person to resolve evidence the residual/next-decision loop can
+  # investigate on its own -- an explicit UNDETERMINED edge is what the
+  # engine's own edge-label schema allows for a judge node's third outcome
+  # (`verdictOutcome.options` = PASS/FAIL/UNDETERMINED), so this names it.
+  - { from: check-setup-goal, to: residual, outcome: UNDETERMINED }
   - { from: check-hold-goal, to: adopt, outcome: PASS }
   - { from: check-hold-goal, to: adopt, outcome: FAIL }
+  - { from: check-hold-goal, to: residual, outcome: UNDETERMINED }
   - { from: adopt, to: read-acceptance }
   - { from: read-acceptance, to: check-artifact-ready }
   - { from: check-artifact-ready, to: residual, outcome: PASS }
