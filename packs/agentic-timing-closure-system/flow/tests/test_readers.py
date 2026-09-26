@@ -306,6 +306,69 @@ class WorkPackageReaderTest(unittest.TestCase):
             read_atcs.read("work-package", report, self.workspace)
 
 
+class CampaignPlanReaderTest(unittest.TestCase):
+    """Task 12c item 4a: the `campaign-plan` reader kind counts problems across
+    all three work packages (`workspaces.request_invalid_count`), not just
+    slot w01's own package."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.workspace = _make_workspace(self.tmp.name)
+        self.design = _build_design_state(self.workspace)
+
+    def _valid_package(self, task_id):
+        return {
+            "taskId": task_id, "baseStateId": self.design["id"], "problem": "hold violation",
+            "targets": ["func_ssg_rcworst_m40|hold|X"], "editDomain": {"instances": ["U1"], "nets": [], "regions": []},
+            "protected": {"instances": [], "nets": []}, "mayAffect": [], "actions": ["size_cell"],
+            "budget": {"xtopMinutes": 30, "queries": 5, "attempts": 3},
+        }
+
+    def _write_envelope(self, work_packages, reason="close the campaign's targeted checks", site_capabilities=None):
+        envelope = {
+            "candidate": {"workPackages": work_packages, "reason": reason},
+            "baseState": self.design, "siteCapabilities": site_capabilities or {},
+        }
+        report = self.workspace / "flow" / "records" / "campaign-plan.json"
+        _write(report, json.dumps(envelope))
+        return report
+
+    def test_three_valid_packages_have_zero_invalid_count(self):
+        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
+        report = self._write_envelope(packages)
+        values = read_atcs.read("campaign-plan", report, self.workspace)
+        self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 0}])
+
+    def test_a_problem_in_w03_is_counted(self):
+        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
+        packages["w03"]["actions"] = ["not-a-real-action"]
+        report = self._write_envelope(packages)
+        values = read_atcs.read("campaign-plan", report, self.workspace)
+        self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_missing_slot_is_counted(self):
+        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02")}  # w03 missing
+        report = self._write_envelope(packages)
+        values = read_atcs.read("campaign-plan", report, self.workspace)
+        self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_blank_reason_is_counted(self):
+        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
+        report = self._write_envelope(packages, reason="   ")
+        values = read_atcs.read("campaign-plan", report, self.workspace)
+        self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_tampered_base_state_is_refused(self):
+        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
+        report = self._write_envelope(packages)
+        envelope = json.loads(report.read_text())
+        envelope["baseState"] = dict(self.design, top="not-the-real-top")
+        report.write_text(json.dumps(envelope))
+        with self.assertRaises(ValueError):
+            read_atcs.read("campaign-plan", report, self.workspace)
+
+
 class WorkerResultReaderTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

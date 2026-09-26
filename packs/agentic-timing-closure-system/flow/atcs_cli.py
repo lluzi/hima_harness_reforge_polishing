@@ -82,14 +82,14 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 1 | `bind-inputs` | manifest, siteCapabilities | `state.input_readiness` | `state/readiness.json` |
 | 2 | `baseline` | manifest | `state.design_state` | `state/baseline.json` (also seeds `state/working-state.json`) |
 | 3 | `policy` | analysisContractDir, targetSetupNs(`{from: goal}`), targetHoldNs(`{from: goal}`) | reads `<analysisContractDir>/policy.json` + `state/baseline.json` + `state/observation.json` | `state/policy.json` (stamped) |
-| 4 | `observe` | querySpec, siteProfile, scenarioInputs, maxPaths(`{from: strategy}`, an upper cap -- see "Fix round 1" below) | `adapters.compile_pt_scenario_tasks` + `run_tool` (x4) then `state.capture` | `state/observation.json` (also `state/observation-prev.json`, `observations/<id>.json` and `research/observe/max-paths.json`) |
+| 4 | `observe` | querySpec, siteProfile, scenarioCorners(Site-fixed `analysisContract/scenario-corners.json` -- see "Task 12c fix round" below), maxPaths(`{from: strategy}`, an upper cap -- see "Fix round 1" below) | `_scenario_pt_inputs` (x4, built from `state/working-state.json`, re-verified by sha256) then `adapters.compile_pt_scenario_tasks` + `run_tool` (x4) then `state.capture` | `state/observation.json` (also `state/observation-prev.json`, `observations/<id>.json` and `research/observe/max-paths.json`) |
 | 5 | `risk` | priorObservation(`state/observation-prev.json`), currentObservation(`state/observation.json`), recheck | `state.compare_checks` (self-compares on the campaign's first observation, when `priorObservation` does not exist yet) | `state/risk.json` |
-| 6 | `prepare-workers` | baseState(`state/working-state.json`), siteCapabilities, edaProfile, wp01, wp02, wp03 | `workspaces.validate_work_package` + `workspaces.prepare` (x3) + `adapters.compile_xtop_operator_task`/`compile_xtop_analysis_manual_task` (x3, materialized into each worker's own root) | `state/workers.json` (now embeds each slot's full `workPackage`/`workspaceManifest`) |
+| 6 | `prepare-workers` | baseState(`state/working-state.json`), siteCapabilities, edaProfile, campaignPlan(the ONE admitted `{"workPackages":{"w01"..,"w02"..,"w03"..},"reason"}` document -- see "Task 12c fix round" below) | `workspaces.validate_work_package` + `workspaces.prepare` (x3) + `adapters.compile_xtop_operator_task`/`compile_xtop_analysis_manual_task` (x3, materialized into each worker's own root) | `state/workers.json` (now embeds each slot's full `workPackage`/`workspaceManifest`) |
 | 7 | `capture-contribution` | slot | `contributions.seal` (base_ref/result_refs composed from `state/workers.json[slot]` and the slot's own workspace root -- see `_cmd_capture_contribution`'s docstring for the exact `before.dump`/`after.dump`/`ops.jsonl`/`summary.json` file names) | `state/contribution-<slot>.json` (one of 3 literal names) |
-| 8 | `collect` | (none) | reads whichever `contribution-w0N.json` exist (`contribution-index` read envelope: `{"contributions","pending"}`) | `state/contributions-collected.json` |
-| 9 | `compose-facts` | resolutions | `composition.analyze` (`baseStateId` from `state/working-state.json`) | `state/composition-facts.json` |
-| 10 | `replay-prepare` | baseState(`state/working-state.json`), plan, siteProfile | `integration.validate_plan` + `integration.prepare_replay` then `adapters.compile_xtop_replay_task` + `run_tool` (best-effort) | `state/replay-request.json` |
-| 11 | `reconcile` | wp01, wp02, wp03 | `integration.reconcile` | `state/integration-state.json` |
+| 8 | `collect` | (none) | reads whichever `contribution-w0N.json` exist AND still matches `state/workers.json[slot]`'s current revision (`contribution-index` read envelope: `{"contributions","pending":[{"slot","reason"}]}` -- see "Task 12c fix round" below) | `state/contributions-collected.json` |
+| 9 | `compose-facts` | plan(the SAME admitted integration-plan envelope row 10 reads; absent on the first pass -- see "Task 12c fix round" below) | `composition.analyze` (`baseStateId` from `state/working-state.json`; `resolutions` from the admitted plan, `[]` on the first pass) | `state/composition-facts.json` |
+| 10 | `replay-prepare` | baseState(`state/working-state.json`), plan(the admitted integration-plan envelope `{"plan":...,"facts":...}` -- see "Task 12c fix round" below), siteProfile | `integration.validate_plan` + `integration.prepare_replay` then `adapters.compile_xtop_replay_task` + `run_tool` (best-effort) | `state/replay-request.json` |
+| 11 | `reconcile` | (none -- edit domains come from `state/workers.json`, see "Task 12c fix round" below) | `integration.reconcile` | `state/integration-state.json` |
 | 12 | `presta` | baseState(`state/working-state.json`), scenarioCorners, siteProfile | `integration.seal_batch` (read-only re-derivation, for `newNets`) + `adapters.compile_pt_presta_task` + `run_tool`, `verification.precheck_evidence` | `state/presta.json` (the stamped `precheckEvidence` artifact) |
 | 13 | `implement` | currentDesignState(`state/working-state.json`), siteProfile | `integration.seal_batch` then `adapters.compile_innovus_eco_task` + `run_tool` | `state/implement.json` |
 | 14 | `extract` | corners, siteProfile | `adapters.compile_starrc_task` + `run_tool` (per corner) | `state/extract.json` |
@@ -97,10 +97,10 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 16 | `physical` | (candidate) mode only; (baseline) drcReport, connectivityReport, mode | (I/O packaging only; candidate mode reads+re-hashes `state/implement.json`'s `drcReport`/`connectivityReport`) | `state/baseline-physical.json` or `state/physical.json` |
 | 17 | `evaluate` | policy(`state/policy.json`) | `verification.plan_checks` + `verification.assemble` | `state/evaluation.json` |
 | 18 | `adopt` | policy(`state/policy.json`) | `adoption.publish` (`expectedBase` from `state/working-state.json`; rewrites `state/working-state.json` whenever `working` moves) | `accepted/latest.json` (envelope: `{"acceptanceRecord","refreshLedger"}` paths) |
-| 19 | `residual` | (none) | `residual.extract` | `state/residual-cases.json` |
+| 19 | `residual` | scenarioCorners(Site-fixed, same file row 4 reads), siteProfile -- see "Task 12c fix round" below | `_scenario_pt_inputs` + `adapters.compile_pt_query_task` + `run_tool` (per scenario, bounded to `RESIDUAL_QUERY_BOUND` worst checks) + `adapters.parse_path_detail` then `residual.extract` | `state/residual-cases.json` (also `queryNotes`, a side field) |
 | 20 | `apr-prepare` | (none -- see "Fix round 1" below) | reads `research/requests/next-decision.json` then `lifecycle.compile_intervention` + `lifecycle.stage_task` | `state/apr-task.json` (one fixed literal path for every stage; carries `taskId` and `stage`) |
 | 21 | `apr-run` | siteProfile | reads `state/apr-task.json` then `run_tool` (stage batch) + `adapters.compile_innovus_export_task` + `run_tool` (export batch) | `state/implement.json` (same shape `implement` writes) |
-| 22 | `record-experience` | reasonSource(an `integration-plan` -- only actually read for a merge-commit candidate; see "Fix round 1" below) | `experience.record` (lineage/decision/outcome composed from `state/working-state.json`, `state/implement.json`, `state/evaluation.json`, `state/contributions-collected.json`, `state/merge-commit.json`, `state/sta.json`, `state/policy.json`/`state/pointers.json`) | `state/experience.json` |
+| 22 | `record-experience` | reasonSource(the SAME admitted integration-plan envelope row 10 reads -- only actually read when `_merge_commit_provenance` says `"merge"`; see "Task 12c fix round" below) | `experience.record` (lineage/decision/outcome composed from `state/working-state.json`, `state/implement.json`, `state/evaluation.json`, `state/contributions-collected.json`, `state/merge-commit.json`/`state/apr-task.json` (provenance), `state/sta.json`, `state/policy.json`/`state/pointers.json`) | `state/experience.json` |
 
 Gaps closed by Task 12b (G1-G7, G11, G19, G24 per `FABRIC.md`)
 -------------------------------------------------------------------
@@ -187,17 +187,83 @@ Fix round 1 (controller review of Task 12b + two more CLI seams from Task 14's r
   (`cap`/`requested`/`used`/`clamped`) is recorded at the non-declared side
   path `research/observe/max-paths.json` (item 5).
 
+Task 12c fix round (Opus review of the compiled graph: CLI/Reader fixes)
+-----------------------------------------------------------------------------
+
+1. **Earlier APR is now executable.** `residual` (item 1a) builds
+   `observation["checkDetails"]` itself: for up to `RESIDUAL_QUERY_BOUND`
+   (20) of the evaluated candidate's `remaining` failing checks, the worst
+   by known slack, it groups them by scenario, compiles and runs one
+   `pt-query.tcl` task per scenario through the PT wrapper
+   (`site_profile`/`scenarioCorners`, both new argv, see `_cmd_residual`)
+   against the *working* design-state's own recorded netlist/SDC/SPEF
+   (`_scenario_pt_inputs` -- shared with `observe`, re-verified by sha256),
+   and parses each report with `adapters.parse_path_detail`. A query/parse
+   failure leaves that one check's evidence `unknown` (never guessed) and
+   is recorded in `queryNotes`. Item 1b: when `state/evaluation.json` does
+   not exist yet, "remaining failing checks" are instead derived directly
+   from `state/observation.json`'s own known-negative-slack checks
+   (`_failing_checks_from_observation`), so earlier APR can be chosen
+   straight from the baseline (SPEC Constraint 3). Item 1c is unchanged:
+   `lifecycle.compile_intervention` (via `apr-prepare`) still refuses
+   `no-intervention` (exit 3) when no case yields a setting.
+2. **`reconcile`'s edit domains come from admitted state.** No longer takes
+   `research/requests/work-package-w0N.json` argv paths at all; edit
+   domains are read from `state/workers.json[slot]["workPackage"]
+   ["editDomain"]` (written by `prepare-workers` from the validated
+   package) -- a rewritten raw request file is never consulted.
+3. **`observe`'s scenario inputs are not model-authored.** The
+   `research/requests/observe-scenario-inputs.json` input is gone; `observe`
+   builds every scenario's `{"design","netlist","sdc","spef"}` PT inputs
+   itself from `state/working-state.json` (`_scenario_pt_inputs`,
+   re-verified by sha256), using the *Site-fixed*
+   `analysisContract/scenario-corners.json` for the corner map (not
+   `state/policy.json`, which does not exist yet at `observe-baseline` time
+   -- `graph.yml`'s own node order is `baseline -> observe-baseline ->
+   policy`; `scenario-corners.json` is the same fixed document `sta`/
+   `presta` already read). The model's own observation request still only
+   chooses what to query (precision, required scenarios, path breadth).
+4. **One admitted document per Workshop output.**
+   a. `prepare-workers` reads the ONE campaign-plan document
+      (`{"workPackages":{"w01"..,"w02"..,"w03"..},"reason"}`) instead of
+      three separate, unadmitted `work-package-w0N.json` files -- see
+      `_cmd_prepare_workers`'s own docstring for why "verifies the same
+      bytes the Reader admitted" reduces to "there is only one copy of
+      these bytes to read" in this Harness's Reader contract. A new
+      `campaign-plan` reader kind in `tools/read-atcs.py` counts problems
+      (`workspaces.request_invalid_count`) across all three packages plus
+      structural problems (missing `workPackages`/a slot/`reason`).
+   b. `replay-prepare`, `compose-facts` (second pass) and
+      `record-experience` all read the SAME integration-plan envelope file
+      (`{"plan":...,"facts":...}` -- the exact shape
+      `tools/read-atcs.py`'s existing `integration-plan` reader already
+      expects) via the new shared `_read_admitted_plan` helper; the
+      separate, unadmitted `integration-plan.json` (raw plan) is gone.
+   c. `compose-facts` no longer takes `research/requests/resolutions.json`;
+      its one `plan` argv arg is the same integration-plan envelope. The
+      first pass (before the compose Workshop ever runs) has no file yet,
+      so `resolutions=[]`; the second pass (after the plan is admitted)
+      reads that plan's own `resolutions`, and *that* output is what feeds
+      `composition-ready`/`replay-prepare`.
+5. **Experience provenance is decided by id, not by file existence.**
+   `_merge_commit_provenance` compares `state/implement.json`'s own
+   `mergeCommitId` against `state/merge-commit.json`'s own `id` and
+   `state/apr-task.json`'s own `taskId` -- fixing a real bug where a stale
+   `state/merge-commit.json` left over from an earlier batch (never deleted
+   by `apr-run`) would make `record-experience` misattribute a later
+   `apr-run` candidate to that stale batch's own (wrong) reason.
+   `_load_merge_commit_like` shares the same fix.
+6. **No resurrected contributions.** `collect` only accepts a slot's sealed
+   `state/contribution-<slot>.json` when its own `revision` still matches
+   `state/workers.json[slot]["workspaceManifest"]["revision"]` -- the
+   CURRENT `prepare-workers` call for that slot. A slot with no
+   `state/workers.json` entry, or whose contribution's revision no longer
+   matches, is reported in `pending` (now `{"slot","reason"}`, not a bare
+   slot string) and its old contribution is never re-collected.
+
 Known gaps still open (see also `adapters.py`'s own "Gaps")
 -------------------------------------------------------------------------------
 
-- `residual` does not itself launch `pt-query.tcl` to populate
-  `observation["checkDetails"]` before calling `residual.extract` --
-  `adapters.compile_pt_query_task`/`parse_path_detail` are ready building
-  blocks for a follow-up task to wire in, but grouping "which scenario
-  each remaining check's targeted query belongs to" needs a per-scenario
-  input map this dispatcher does not yet receive. `residual.extract`
-  itself is fail-closed for missing evidence (unknown, never fabricated),
-  so this subcommand still returns honest, evidence-scoped residual cases.
 - `presta` runs its cheap pre-check against the **base** state's own
   netlist/SPEF (not an intermediate, ECO-applied-but-not-yet-extracted
   netlist XTop would hold only inside a live session) -- this is the
@@ -429,6 +495,56 @@ def _cmd_baseline(workspace, args):
     return _paths(workspace)["baseline"], body
 
 
+def _scenario_pt_inputs(workspace, working_state, scenario_corners, scenario):
+    """One scenario's `{"design","netlist","sdc","spef"}` PT inputs, built from the *working*
+    design-state's own recorded files -- never a model-supplied path (Task 12c item 3).
+
+    `working_state` is an already schema/id-verified `design-state` artifact
+    (`_read_declared`); this function additionally re-verifies, by sha256,
+    that the netlist/SDC/SPEF files it is about to hand to PT still match
+    the bytes that `design_state` recorded -- the same defense-in-depth
+    `tools/read-atcs.py`'s `_verify_design_state_refs` applies on the Reader
+    side. `scenario_corners` is the Site-fixed `{scenario: corner}` map
+    (`analysisContract/scenario-corners.json` -- the *same* fixed document
+    `sta`/`presta` already read; never `state/policy.json`, which does not
+    exist yet at `observe-baseline` time -- see this function's callers'
+    own docstrings and this task's report for why). Raises
+    `InputError("invalid-input", ...)` for a scenario missing from
+    `scenario_corners`, `AtcsError("missing-input", ...)` for a working
+    state missing the named corner's SPEF or any SDC entry, and
+    `AtcsError("identity-mismatch", ...)` when a referenced file's current
+    sha256 no longer matches the working state's own recorded one.
+    """
+    corner = scenario_corners.get(scenario)
+    if not corner:
+        raise InputError("invalid-input", f"scenario corners is missing {scenario!r}")
+    netlist_ref = working_state.get("netlist") or {}
+    sdc_list = working_state.get("sdc") or []
+    spef_ref = (working_state.get("spef") or {}).get(corner)
+    if not netlist_ref.get("path"):
+        raise core.AtcsError("missing-input", "working state has no netlist")
+    if not sdc_list:
+        raise core.AtcsError("missing-input", "working state has no SDC entries")
+    if not spef_ref:
+        raise core.AtcsError("missing-input", f"working state has no SPEF for corner {corner!r}")
+
+    netlist_path = workspace / netlist_ref["path"]
+    sdc_ref = sdc_list[0]
+    sdc_path = workspace / sdc_ref["path"]
+    spef_path = workspace / spef_ref["path"]
+    if core.file_sha256(netlist_path) != netlist_ref.get("sha256"):
+        raise core.AtcsError("identity-mismatch", f"working state netlist sha256 mismatch at {netlist_path}")
+    if core.file_sha256(sdc_path) != sdc_ref.get("sha256"):
+        raise core.AtcsError("identity-mismatch", f"working state sdc sha256 mismatch at {sdc_path}")
+    if core.file_sha256(spef_path) != spef_ref.get("sha256"):
+        raise core.AtcsError("identity-mismatch", f"working state spef sha256 mismatch at {spef_path}")
+
+    return {
+        "design": working_state["top"], "netlist": str(netlist_path),
+        "sdc": str(sdc_path), "spef": str(spef_path),
+    }
+
+
 def _cmd_observe(workspace, args):
     """Run PT for every required scenario and compose the `observation-set` from what this call itself produced.
 
@@ -442,6 +558,21 @@ def _cmd_observe(workspace, args):
     roles identically. `maxPaths` (G11's Strategy knob, `--max-paths`)
     arrives as a plain argv value, merged into `query_spec` here rather than
     baked into a Workshop/Site-authored `query_spec` file.
+
+    Task 12c item 3 (observe inputs are not model-authored): the per-scenario
+    PT inputs (design, netlist, SDC, SPEF per corner) are no longer read from
+    a `scenario_inputs`/`observe-scenario-inputs.json` file the diagnose-and-
+    observe Workshop wrote itself -- that file let the model point PT at an
+    arbitrary path with no admission at all. This call now builds every
+    scenario's inputs itself, from `state/working-state.json`'s own recorded
+    files (`_scenario_pt_inputs`, re-verified by sha256) plus the *Site-fixed*
+    `scenario_corners` map (`analysisContract/scenario-corners.json` -- the
+    model never writes it, and it is already available before `observe-
+    baseline` runs, unlike `state/policy.json`, which this call cannot use
+    for the corner map since `policy` itself runs immediately *after*
+    `observe-baseline` in `graph.yml`). The model's own observation request
+    (`query_spec`) only ever chose *what* to query (precision, required
+    scenarios, path breadth); it never supplied a file path.
 
     G19: before overwriting the declared `state/observation.json`, the
     *previous* current observation (if any) is preserved verbatim at
@@ -460,10 +591,10 @@ def _cmd_observe(workspace, args):
     non-declared side file, `research/observe/max-paths.json`, since
     `atcs.state.capture`'s own `observation-set` shape has no field for it.
     """
-    query_spec_path, site_profile_path, scenario_inputs_path, max_paths_raw = args
+    query_spec_path, site_profile_path, scenario_corners_path, max_paths_raw = args
     query_spec = dict(_read_plain(query_spec_path))
     site_profile = _read_plain(site_profile_path)
-    scenario_inputs = _read_plain(scenario_inputs_path)
+    scenario_corners = _read_plain(scenario_corners_path)
     try:
         cap = int(max_paths_raw)
     except (TypeError, ValueError):
@@ -486,6 +617,10 @@ def _cmd_observe(workspace, args):
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
 
     report_root = workspace / "research" / "observe"
+    scenario_inputs = {
+        scenario: _scenario_pt_inputs(workspace, working_state, scenario_corners, scenario)
+        for scenario in adapters.REQUIRED_SCENARIOS
+    }
     tasks = adapters.compile_pt_scenario_tasks(query_spec, scenario_inputs, str(report_root))
     scenario_source_refs = {}
     for scenario, task in tasks.items():
@@ -533,13 +668,45 @@ def _cmd_risk(workspace, args):
 
 
 def _cmd_prepare_workers(workspace, args):
-    base_state_path, site_caps_path, eda_profile_path, wp01_path, wp02_path, wp03_path = args
+    """Every slot's raw candidate comes from the ONE admitted campaign-plan document (Task 12c item 4a).
+
+    Previously this read three separate, unadmitted
+    `research/requests/work-package-w0N.json` files -- no `readers/*.yml`
+    entry ever validated them, so their content could silently diverge from
+    `research/requests/campaign-plan.json`, the file the plan Workshop's
+    `campaignPlan` output actually admits via the Reader (`tc_request_
+    invalid_count`). This call now reads that *same* single file (the plan
+    Workshop's `{"workPackages": {"w01": ..., "w02": ..., "w03": ...},
+    "reason": ...}` document) and validates each slot's own candidate from
+    it via `workspaces.validate_work_package`, exactly as before.
+
+    "Verifies the same bytes the Reader admitted": this Harness's Reader
+    contract has no channel to pass a recorded digest forward to a Tool (a
+    Reader's own `OUT` only ever carries typed numeric values, never a
+    hash) -- and since `read-campaign-plan` and `prepare-workers` both read
+    the *same* fixed campaign-plan path with no rewriting node in between
+    (`graph.yml`), "the envelope the graph admits is the file itself": by
+    construction there is only ever one copy of these bytes for this call
+    to read. What actually changed here is removing the *second*,
+    unadmitted copy (the three separate `work-package-w0N.json` files) that
+    used to let `prepare-workers` diverge from what the Reader saw at all;
+    any content that would flip the Reader's own `tc_request_invalid_count`
+    away from zero also makes `workspaces.validate_work_package` refuse
+    here, since both call the identical validation function on the
+    identical bytes.
+    """
+    base_state_path, site_caps_path, eda_profile_path, campaign_plan_path = args
     base_state = _read_declared(base_state_path, "design-state")
     site_capabilities = _read_plain(site_caps_path)
     eda_profile = _read_plain(eda_profile_path)
     for key in ("design", "techLef", "cellLefGlob"):
         if not eda_profile.get(key):
             raise InputError("invalid-input", f"eda profile is missing {key!r}")
+
+    campaign_plan = _read_plain(campaign_plan_path)
+    work_packages = campaign_plan.get("workPackages")
+    if not isinstance(work_packages, dict):
+        raise InputError("invalid-input", f"campaign plan at {campaign_plan_path} is missing workPackages")
 
     workspace = Path(workspace)
     netlist_path = workspace / base_state["netlist"]["path"]
@@ -548,8 +715,10 @@ def _cmd_prepare_workers(workspace, args):
         def_path = workspace / base_state["def"]["path"]
 
     index = {}
-    for slot, wp_path in zip(workspaces.TASK_IDS, (wp01_path, wp02_path, wp03_path)):
-        raw = _read_plain(wp_path)
+    for slot in workspaces.TASK_IDS:
+        raw = work_packages.get(slot)
+        if not isinstance(raw, dict):
+            raise InputError("invalid-input", f"campaign plan workPackages is missing slot {slot!r}")
         validated = workspaces.validate_work_package(raw, base_state, site_capabilities)
         manifest = workspaces.prepare(validated, str(workspace), base_state)
 
@@ -664,34 +833,106 @@ def _cmd_capture_contribution(workspace, args):
 
 
 def _cmd_collect(workspace, args):
-    """Aggregate whichever worker slots have sealed a contribution so far.
+    """Aggregate whichever worker slots sealed a contribution for the CURRENT `state/workers.json` revision.
 
     Output matches `tools/read-atcs.py`'s `contribution-index` read envelope
     exactly: ``{"contributions": [<full contribution artifact>, ...],
-    "pending": [<slot>, ...]}``. A slot with no `state/contribution-<slot>.json`
-    yet is not a missing-input refusal here -- it is meaningful data (that
-    worker's research is still in progress), reported in `pending` for
-    `tc_pending_research_count` rather than blocking `collect` outright.
+    "pending": [{"slot": <slot>, "reason": <str>}, ...]}``. A slot with no
+    `state/contribution-<slot>.json` yet is not a missing-input refusal here
+    -- it is meaningful data (that worker's research is still in progress),
+    reported in `pending` for `tc_pending_research_count` rather than
+    blocking `collect` outright.
+
+    Task 12c item 6 (no resurrected contributions): a slot's sealed
+    contribution is only ever collected when its own `revision` (set by
+    `contributions.seal` from the workspace-manifest it was sealed against)
+    still matches `state/workers.json[slot]["workspaceManifest"]["revision"]`
+    -- the CURRENT `prepare-workers` call for that slot. A slot whose
+    `state/workers.json` entry is absent (its request was never admitted
+    this batch) or whose contribution's revision no longer matches the
+    current one (a leftover contribution from an earlier batch/work
+    package, superseded by a new `prepare-workers` revision) is reported in
+    `pending` with a `reason` -- its old contribution is never silently
+    re-collected into a new batch.
     """
     del args
+    workspace = Path(workspace)
+    workers_doc = _read_json_or_default(_paths(workspace)["workers"], {"workers": {}})
+    workers = workers_doc.get("workers", {}) or {}
+
     collected = []
     pending = []
     for slot in workspaces.TASK_IDS:
         path = _contribution_path(workspace, slot)
-        if path.is_file():
-            collected.append(_read_declared(path, "contribution"))
-        else:
-            pending.append(slot)
+        if not path.is_file():
+            pending.append({"slot": slot, "reason": "no contribution sealed yet"})
+            continue
+        contribution = _read_declared(path, "contribution")
+        entry = workers.get(slot)
+        current_revision = (entry or {}).get("workspaceManifest", {}).get("revision")
+        if entry is None:
+            pending.append({"slot": slot, "reason": "no state/workers.json entry for this slot"})
+            continue
+        if contribution.get("revision") != current_revision:
+            pending.append({
+                "slot": slot,
+                "reason": (
+                    f"stale contribution revision {contribution.get('revision')!r} does not match "
+                    f"current workspace revision {current_revision!r}"
+                ),
+            })
+            continue
+        collected.append(contribution)
     return _paths(workspace)["contributions_collected"], {"contributions": collected, "pending": pending}
 
 
+def _read_admitted_plan(plan_path):
+    """The raw `integration-plan` candidate from the SAME envelope file the integration-plan
+    Reader admits (Task 12c item 4b), or `None` when that file does not exist yet.
+
+    Envelope shape: ``{"plan": {...unstamped integration-plan fields...},
+    "facts": {...a stamped composition-facts artifact, for the Reader's own
+    validation...}}`` -- the exact shape `tools/read-atcs.py`'s
+    `_read_integration_plan` already expects. Only `envelope["plan"]` is
+    ever used here: this dispatcher independently re-reads
+    `state/composition-facts.json` as its own source of truth for `facts`
+    rather than trusting the envelope's embedded copy, so a stale copy
+    baked into the envelope can never substitute for the real, current
+    composition facts. Replaces the old, separate, unadmitted
+    `integration-plan.json` / `resolutions.json` files -- `replay-prepare`,
+    `compose-facts` (second pass) and `record-experience` all consume this
+    one file, in this one shape, at this one fixed path.
+    """
+    target = Path(plan_path)
+    if not target.is_file():
+        return None
+    envelope = _read_plain(plan_path)
+    plan_raw = envelope.get("plan") if isinstance(envelope, dict) else None
+    if not isinstance(plan_raw, dict):
+        raise InputError("invalid-input", f"integration plan envelope at {plan_path} is missing 'plan'")
+    return plan_raw
+
+
 def _cmd_compose_facts(workspace, args):
-    """`baseStateId` comes from `state/working-state.json`'s own `id`, not a literal argv id (G1)."""
-    (resolutions_path,) = args
+    """`baseStateId` comes from `state/working-state.json`'s own `id`, not a literal argv id (G1).
+
+    Task 12c item 4c: `resolutions` come from the SAME admitted
+    integration-plan envelope `replay-prepare`/`record-experience` read
+    (`_read_admitted_plan`), never a separate `resolutions.json`. The first
+    pass -- before the compose Workshop has ever run, so no plan file
+    exists yet -- has no resolutions (`composition.analyze`'s own
+    `resolutions=[]` default; `unresolvedCount` then counts every conflict).
+    The second pass -- after the Workshop's plan has been admitted -- reads
+    that plan's own `resolutions` and applies them; *this* second-pass
+    output (a lower `unresolvedCount`) is what feeds `composition-ready`
+    and `replay-prepare`.
+    """
+    (plan_path,) = args
     workspace = Path(workspace)
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
     collected = _read_plain(_paths(workspace)["contributions_collected"])
-    resolutions = _read_plain(resolutions_path).get("resolutions", [])
+    plan_raw = _read_admitted_plan(plan_path)
+    resolutions = (plan_raw or {}).get("resolutions") or []
     body = composition.analyze(working_state["id"], collected["contributions"], resolutions)
     return _paths(workspace)["composition_facts"], body
 
@@ -701,7 +942,9 @@ def _cmd_replay_prepare(workspace, args):
     workspace = Path(workspace)
     facts = _read_declared(_paths(workspace)["composition_facts"], "composition-facts")
     collected = _read_plain(_paths(workspace)["contributions_collected"])
-    plan_raw = _read_plain(plan_path)
+    plan_raw = _read_admitted_plan(plan_path)
+    if plan_raw is None:
+        raise InputError("missing-input", f"declared input not found: {plan_path}")
     site_profile = _read_plain(site_profile_path)
     base_state = _read_declared(base_state_path, "design-state")
     if base_state["id"] != facts.get("baseStateId"):
@@ -732,20 +975,32 @@ def _cmd_replay_prepare(workspace, args):
 
 
 def _cmd_reconcile(workspace, args):
-    wp01_path, wp02_path, wp03_path = args
+    """Edit domains come from `state/workers.json`'s own validated `workPackage` (Task 12c item 2).
+
+    Previously this took three positional `research/requests/work-package-
+    w0N.json` argv paths and rebuilt `edit_domains` from whatever those raw,
+    never-Reader-admitted files said -- a worker's own raw request file
+    could be rewritten after `prepare-workers` already validated and sealed
+    its edit domain into `state/workers.json`, silently widening or
+    narrowing what `integration.reconcile`'s own out-of-scope check
+    enforces. `edit_domains` is now built exclusively from
+    `state/workers.json[slot]["workPackage"]["editDomain"]` -- the *same*
+    validated package `prepare-workers` wrote (M2 `validate_work_package`'s
+    own output) -- keyed by each collected contribution's own `taskId`; no
+    `research/requests/work-package-*` file is read here at all any more.
+    """
+    del args
     workspace = Path(workspace)
     request = _read_declared(_paths(workspace)["replay_request"], "replay-request")
     receipts_doc = _read_plain(_paths(workspace)["replay_receipts"])
     collected = _read_plain(_paths(workspace)["contributions_collected"])
-
-    work_packages_by_task = {}
-    for wp_path in (wp01_path, wp02_path, wp03_path):
-        wp = _read_plain(wp_path)
-        work_packages_by_task[wp.get("taskId")] = wp
+    workers_doc = _read_plain(_paths(workspace)["workers"])
+    workers = workers_doc.get("workers", {}) or {}
 
     edit_domains = {}
     for contribution in collected["contributions"]:
-        work_package = work_packages_by_task.get(contribution.get("taskId"))
+        entry = workers.get(contribution.get("taskId"))
+        work_package = (entry or {}).get("workPackage")
         if work_package is not None:
             edit_domains[contribution["id"]] = work_package.get("editDomain", {})
 
@@ -923,24 +1178,62 @@ def _cmd_extract(workspace, args):
     return _paths(workspace)["extract"], {"spef": spef_out}
 
 
+def _merge_commit_provenance(workspace, implement):
+    """Whether `implement`'s own candidate id is a real Integration Fix Session merge
+    commit's id, or a prepared APR stage task's id -- decided by comparing ids, never
+    by which state file merely happens to exist on disk (Task 12c item 5).
+
+    `_cmd_implement` always writes `state/merge-commit.json` as a side
+    effect; `_cmd_apr_run` never does. The bug this fixes: `_cmd_apr_run`
+    also never *removes* a `state/merge-commit.json` left over from an
+    earlier real batch -- so once any batch has ever been composed for this
+    campaign, that file keeps existing on disk for every later generation,
+    including a later `apr-run` candidate that composed no batch at all.
+    Deciding provenance from mere file existence (the old rule) would then
+    misattribute that later APR candidate to the *stale* earlier batch.
+
+    This instead compares `implement["mergeCommitId"]` against the actual
+    `id` recorded in `state/merge-commit.json` (a real batch) and, failing
+    that, against `state/apr-task.json`'s own `taskId` (a prepared APR
+    stage) -- both are written by whichever call actually produced this
+    exact candidate, so only one of them can ever match `implement`'s own
+    id by construction. Returns `"merge"` or `"apr"`; raises
+    `InputError("missing-input", ...)` when neither matches -- a candidate
+    id that names neither a real merge commit nor a prepared APR task is
+    not something this dispatcher can honestly attribute a provenance to.
+    """
+    candidate_id = implement.get("mergeCommitId")
+    merge_commit_path = _paths(workspace)["merge_commit"]
+    if merge_commit_path.is_file():
+        merge_commit = _read_declared(merge_commit_path, "merge-commit")
+        if merge_commit.get("id") == candidate_id:
+            return "merge"
+    apr_task_path = _paths(workspace)["apr_task"]
+    if apr_task_path.is_file():
+        apr_task = _read_plain(apr_task_path)
+        if apr_task.get("taskId") == candidate_id:
+            return "apr"
+    raise InputError(
+        "missing-input",
+        f"cannot establish provenance for candidate {candidate_id!r}: it matches neither "
+        "state/merge-commit.json's own id nor state/apr-task.json's own taskId",
+    )
+
+
 def _load_merge_commit_like(workspace, implement):
     """Return the sealed `merge-commit` `implement` was built from, or a synthetic stand-in for an APR-run candidate.
 
-    `_cmd_implement` always writes `state/merge-commit.json` as a side
-    effect. `_cmd_apr_run` never does -- a pure APR stage intervention has
-    no Integration Fix Session batch behind it -- so `sta`/`evaluate`, which
-    both need only `merge_commit["id"]`/`["parentStateId"]`/`.get("operations")`,
-    fall back to `implement`'s own `mergeCommitId`/`parentStateId` fields
-    (both `_cmd_implement` and `_cmd_apr_run` write them) with `operations: []`
+    See `_merge_commit_provenance` for how "which one" is decided (by id,
+    never by file existence). The synthetic stand-in carries `operations: []`
     (an APR stage intervention never changes netlist topology or PG
     structures, so `verification.plan_checks` adds no extra functional/pg
     checks for it, correctly).
     """
-    merge_commit_path = _paths(workspace)["merge_commit"]
-    if merge_commit_path.is_file():
-        return _read_declared(merge_commit_path, "merge-commit")
+    provenance = _merge_commit_provenance(workspace, implement)
+    if provenance == "merge":
+        return _read_declared(_paths(workspace)["merge_commit"], "merge-commit")
     if not implement.get("parentStateId"):
-        raise InputError("missing-input", f"declared input not found: {merge_commit_path}")
+        raise InputError("missing-input", f"declared input not found: {_paths(workspace)['merge_commit']}")
     return {"id": implement.get("mergeCommitId"), "parentStateId": implement["parentStateId"], "operations": []}
 
 
@@ -1136,30 +1429,210 @@ def _cmd_adopt(workspace, args):
     return _paths(workspace)["accepted"], envelope
 
 
+RESIDUAL_QUERY_BOUND = 20
+
+
+def _unknown_evidence(reason):
+    """`{field: unknown(reason)}` for every `residual.EVIDENCE_FIELDS` -- a whole check's
+    evidence when its targeted PT query or report parse could not be completed at all."""
+    return {field: core.unknown(reason) for field in residual_module.EVIDENCE_FIELDS}
+
+
+def _failing_checks_from_observation(observation):
+    """Check keys with a known, negative `slack` in `observation["checks"]` (Task 12c item 1b).
+
+    Used only when `state/evaluation.json` does not exist yet -- there is no
+    real `check-comparison` to draw `remaining` from, so "remaining failing
+    checks" is instead read directly off the current observation itself: a
+    check whose slack is not known is a coverage gap, not a confirmed
+    failure, and is excluded (the same rule `atcs.residual.extract` applies
+    to `evaluation.comparison.remaining` entries with unknown current
+    slack).
+    """
+    checks = observation.get("checks", {}) or {}
+    failing = []
+    for key, entry in checks.items():
+        slack = entry.get("slack") if isinstance(entry, dict) else None
+        if core.is_known(slack) and core.value_of(slack) < 0:
+            failing.append(key)
+    return sorted(failing)
+
+
+def _bounded_remaining_checks(observation, remaining_keys, limit):
+    """The `limit` worst (most negative known slack) entries of `remaining_keys`.
+
+    A `remaining` key whose current slack is not known contributes no
+    residual case anyway (`atcs.residual.extract`'s own coverage rule), so
+    it is simply never selected here -- this bound only ever trims which of
+    the *confirmed*-failing checks get a PT query, never which ones
+    `residual.extract` itself considers.
+    """
+    checks = observation.get("checks", {}) or {}
+    scored = []
+    for key in remaining_keys:
+        entry = checks.get(key)
+        slack = entry.get("slack") if isinstance(entry, dict) else None
+        if core.is_known(slack):
+            scored.append((core.value_of(slack), key))
+    scored.sort(key=lambda pair: pair[0])
+    return [key for _, key in scored[:limit]]
+
+
+def _collect_residual_evidence(workspace, working_state, scenario_corners, site_profile, observation, remaining_keys):
+    """Populate `observation["checkDetails"]` for up to `RESIDUAL_QUERY_BOUND` remaining
+    failing checks (Task 12c item 1a) -- the earlier-APR route needs
+    `residual-case.evidence` to actually be populated, or
+    `lifecycle.compile_intervention` can never compile a real intervention.
+
+    Groups the bounded, worst-slack checks by scenario (parsed from each
+    check key's own `"<scenario>|<mode>|<endpoint>"` structure), compiles
+    and runs one `pt-query.tcl` task per scenario (`adapters.
+    compile_pt_query_task`) against the *working* design-state's own
+    recorded netlist/SDC/SPEF (`_scenario_pt_inputs`, re-verified by
+    sha256 -- never a model-supplied path, matching `_cmd_observe`'s own
+    item-3 fix), and parses each target's own report with `adapters.
+    parse_path_detail`. A check whose query or parse could not be
+    completed -- a missing/unsafe startpoint, a scenario input that failed
+    identity verification, a PT run failure, or a missing report -- is left
+    `unknown` with a reason (`_unknown_evidence`), never guessed; that
+    reason is also folded into the returned `notes` list, a side field of
+    `state/residual-cases.json` (`queryNotes`), not part of
+    `atcs.residual`'s own artifact shape.
+
+    Returns `(check_details, notes)`.
+    """
+    checks = observation.get("checks", {}) or {}
+    bounded_keys = _bounded_remaining_checks(observation, remaining_keys, RESIDUAL_QUERY_BOUND)
+    check_details = {}
+    notes = []
+    if not bounded_keys:
+        return check_details, notes
+
+    by_scenario = {}
+    for key in bounded_keys:
+        parts = key.split("|", 2)
+        if len(parts) != 3:
+            reason = f"{key}: malformed check key"
+            notes.append(reason)
+            check_details[key] = _unknown_evidence(reason)
+            continue
+        scenario, _mode, endpoint = parts
+        entry = checks.get(key) or {}
+        startpoint = entry.get("startpoint")
+        if not isinstance(startpoint, str) or not startpoint:
+            reason = f"{key}: no startpoint recorded in observation"
+            notes.append(reason)
+            check_details[key] = _unknown_evidence(reason)
+            continue
+        by_scenario.setdefault(scenario, []).append({"checkKey": key, "startpoint": startpoint, "endpoint": endpoint})
+
+    for scenario, targets in sorted(by_scenario.items()):
+        try:
+            inputs = _scenario_pt_inputs(workspace, working_state, scenario_corners, scenario)
+            report_root = workspace / "research" / "residual" / scenario
+            task = adapters.compile_pt_query_task(inputs, str(report_root), targets)
+        except (InputError, core.AtcsError) as exc:
+            reason = f"{scenario}: {exc.detail}"
+            notes.append(reason)
+            for target in targets:
+                check_details[target["checkKey"]] = _unknown_evidence(reason)
+            continue
+
+        tcl_path = report_root / "pt-query.tcl"
+        tcl_path.parent.mkdir(parents=True, exist_ok=True)
+        tcl_path.write_text(task["tcl"], encoding="utf-8")
+        log_path = report_root / "pt.log"
+        try:
+            adapters.run_tool(site_profile, ["pt_shell", "-f", str(tcl_path)], cwd=report_root, log_path=log_path)
+        except adapters.AdapterToolError as exc:
+            reason = f"{scenario}: pt-query failed: {exc.detail}"
+            notes.append(reason)
+            for target in targets:
+                check_details[target["checkKey"]] = _unknown_evidence(reason)
+            continue
+
+        for target in targets:
+            report_path = Path(task["reports"][target["checkKey"]])
+            if not report_path.is_file():
+                reason = f"{target['checkKey']}: pt-query produced no report at {report_path}"
+                notes.append(reason)
+                check_details[target["checkKey"]] = _unknown_evidence(reason)
+                continue
+            check_details[target["checkKey"]] = adapters.parse_path_detail(report_path.read_text(encoding="utf-8"))
+
+    return check_details, notes
+
+
 def _cmd_residual(workspace, args):
-    del args
+    """Fill residual evidence via a bounded, working-state-scoped PT query, then extract residual cases.
+
+    Task 12c item 1a: for up to `RESIDUAL_QUERY_BOUND` of the evaluated
+    candidate's still-`remaining` failing checks (see
+    `_collect_residual_evidence`), this compiles and runs the targeted
+    `pt-query.tcl` path-detail query through the PT wrapper (`site_profile`
+    -- the same Site-fixed `siteCapabilities`/`siteProfile` document every
+    other PT-launching subcommand takes) and passes the resulting
+    `observation["checkDetails"]` to `residual.extract` -- previously this
+    field was never populated at all, so every evidence field was always
+    `unknown` and `lifecycle.compile_intervention` could never compile a
+    real setting.
+
+    Item 1b: when `state/evaluation.json` does not exist yet (no candidate
+    has ever been implemented and evaluated for this campaign), the
+    "remaining failing checks" are instead derived directly from
+    `state/observation.json` -- every check whose own `slack` Measure is
+    known and negative (`_failing_checks_from_observation`) -- wrapped in
+    the minimal `{"comparison": {"remaining": [...]}}` shape
+    `residual.extract` itself needs (it only ever reads `evaluation
+    ["comparison"]["remaining"]`). This lets the earlier-APR route be
+    chosen straight from the baseline (SPEC Constraint 3), before any
+    Compose/Implement cycle has ever run.
+
+    Item 1c is unchanged: if, after (a), no residual case yields a single
+    setting, `lifecycle.compile_intervention` (called by `apr-prepare`)
+    still raises `AtcsError("no-intervention")` (exit 3) -- this subcommand
+    never manufactures a setting to avoid that refusal.
+    """
+    scenario_corners_path, site_profile_path = args
     workspace = Path(workspace)
-    evaluation = _read_declared(_paths(workspace)["evaluation"], "evaluation")
+    scenario_corners = _read_plain(scenario_corners_path)
+    site_profile = _read_plain(site_profile_path)
+    working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
     readiness = _read_declared(_paths(workspace)["readiness"], "input-readiness")
     exp = _read_json_or_default(_paths(workspace)["experience"], {"schema": "atcs.experience/1", "entries": []})
 
-    sta = _read_plain(_paths(workspace)["sta"])
-    combined_checks = {}
-    combined_scenarios = {}
-    sources = []
-    for scenario, entry in sta.get("sta", {}).items():
-        observation = entry.get("observation", {})
-        combined_checks.update(observation.get("checks", {}))
-        combined_scenarios.update(observation.get("scenarios", {}))
-        sources.extend(observation.get("sources", []))
-    combined_observation = {
-        "designStateId": sta.get("designStateId"), "precision": None,
-        "scenarios": combined_scenarios, "checks": combined_checks,
-        "missingScenarios": [], "coverage": {"complete": True, "reasons": []}, "sources": sources,
-    }
+    evaluation_path = _paths(workspace)["evaluation"]
+    if evaluation_path.is_file():
+        evaluation = _read_declared(evaluation_path, "evaluation")
+        sta = _read_plain(_paths(workspace)["sta"])
+        combined_checks, combined_scenarios, sources = {}, {}, []
+        precision = None
+        for entry in sta.get("sta", {}).values():
+            observation_entry = entry.get("observation", {})
+            combined_checks.update(observation_entry.get("checks", {}))
+            combined_scenarios.update(observation_entry.get("scenarios", {}))
+            sources.extend(observation_entry.get("sources", []))
+            if precision is None:
+                precision = observation_entry.get("precision")
+        base_observation = {
+            "designStateId": sta.get("designStateId"), "precision": precision,
+            "scenarios": combined_scenarios, "checks": combined_checks,
+            "missingScenarios": [], "coverage": {"complete": True, "reasons": []}, "sources": sources,
+        }
+        remaining_keys = evaluation.get("comparison", {}).get("remaining", [])
+    else:
+        base_observation = _read_declared(_paths(workspace)["observation"], "observation-set")
+        remaining_keys = _failing_checks_from_observation(base_observation)
+        evaluation = {"comparison": {"remaining": remaining_keys}}
 
-    cases = residual_module.extract(evaluation, combined_observation, exp, readiness)
-    return _paths(workspace)["residual_cases"], {"cases": cases}
+    check_details, notes = _collect_residual_evidence(
+        workspace, working_state, scenario_corners, site_profile, base_observation, remaining_keys,
+    )
+    observation_for_extract = dict(base_observation)
+    observation_for_extract["checkDetails"] = check_details
+
+    cases = residual_module.extract(evaluation, observation_for_extract, exp, readiness)
+    return _paths(workspace)["residual_cases"], {"cases": cases, "queryNotes": notes}
 
 
 def _cmd_apr_prepare(workspace, args):
@@ -1298,16 +1771,26 @@ def _selected_predicted_min_wns(collected, merge_commit):
 def _cmd_record_experience(workspace, args):
     """Compose lineage/decision/outcome from state files -- no `research/requests/experience-*` inputs (G5).
 
-    Fix round 1 (item 4, Task 14 G2): `<reasonSource>` is read only when
-    `state/merge-commit.json` exists (a real Integration Fix Session batch
-    was composed) -- otherwise (an `apr-run` candidate, which never composes
-    one, see `_cmd_apr_run`/`_load_merge_commit_like`) the reason comes
-    instead from the next-investment Workshop's own `next-decision`, at its
-    fixed contract path (`NEXT_DECISION_REL_PATH`), never the
-    (nonexistent) integration plan. Either way the reason document's own
-    `reason` field must be a non-empty string, or this refuses
-    (`InputError("missing-input", ...)`, exit 2) rather than ever writing a
-    blank hypothesis (item 1).
+    Fix round 1 (item 4, Task 14 G2) + Task 12c item 5: `<reasonSource>` is
+    read only when `implement`'s own candidate id is actually a real
+    Integration Fix Session merge commit's id (`_merge_commit_provenance`
+    == `"merge"`) -- decided by comparing ids, never by whether
+    `state/merge-commit.json` merely happens to exist on disk (a stale copy
+    from an earlier batch persists across a later `apr-run` candidate,
+    since `apr-run` never deletes it). Otherwise (provenance `"apr"`) the
+    reason comes instead from the next-investment Workshop's own
+    `next-decision`, at its fixed contract path (`NEXT_DECISION_REL_PATH`),
+    never a stale integration plan. `<reasonSource>` is now the SAME
+    integration-plan envelope file `replay-prepare`/`compose-facts` read
+    (Task 12c item 4b: `{"plan": {..., "reason": ...}, "facts": {...}}` --
+    see `_read_admitted_plan`) -- this dispatcher unwraps `envelope["plan"]`
+    itself rather than calling `_read_admitted_plan` (which additionally
+    tolerates a missing file for the compose-facts first-pass case that
+    does not apply here: a real merge batch always has an admitted plan by
+    the time it reaches `record-experience`). Either way the reason
+    document's own `reason` field must be a non-empty string, or this
+    refuses (`InputError("missing-input", ...)`, exit 2) rather than ever
+    writing a blank hypothesis (item 1).
 
     `decisionId` is the accepted candidate's own resulting design-state id
     (`evaluation["stateId"]`) -- unique per accepted candidate, so a replay
@@ -1332,13 +1815,15 @@ def _cmd_record_experience(workspace, args):
     """
     (reason_source_path,) = args
     workspace = Path(workspace)
-    merge_commit_path = _paths(workspace)["merge_commit"]
-    if merge_commit_path.is_file():
-        reason_doc = _read_plain(reason_source_path)
+    implement = _read_plain(_paths(workspace)["implement"])
+    if _merge_commit_provenance(workspace, implement) == "merge":
+        envelope = _read_plain(reason_source_path)
+        plan_raw = envelope.get("plan") if isinstance(envelope, dict) else None
+        reason_doc = plan_raw if isinstance(plan_raw, dict) else {}
     else:
-        # No Integration Fix Session batch was ever composed for this
-        # candidate (an apr-run candidate) -- the "why" lives in the
-        # next-investment Workshop's own next-decision instead.
+        # No Integration Fix Session batch produced this candidate (an
+        # apr-run candidate) -- the "why" lives in the next-investment
+        # Workshop's own next-decision instead.
         reason_doc = _read_plain(workspace / NEXT_DECISION_REL_PATH)
     reason = reason_doc.get("reason")
     if not isinstance(reason, str) or not reason.strip():
@@ -1346,7 +1831,6 @@ def _cmd_record_experience(workspace, args):
     hypothesis = reason
 
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
-    implement = _read_plain(_paths(workspace)["implement"])
     evaluation = _read_declared(_paths(workspace)["evaluation"], "evaluation")
     collected = _read_json_or_default(_paths(workspace)["contributions_collected"], {"contributions": []})
     sta = _read_json_or_default(_paths(workspace)["sta"], {})

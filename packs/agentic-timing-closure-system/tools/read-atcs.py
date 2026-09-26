@@ -102,8 +102,20 @@ from pathlib import Path
 #   worker-request          "baseState": {...a stamped "design-state" artifact...},
 #                            "siteCapabilities": {"pgVerification": bool, ...}}
 #
+#   campaign-plan           {"candidate": {"workPackages": {"w01": {...}, "w02": {...},
+#                             "w03": {...}}, "reason": "<str>"},
+#                            "baseState": {...a stamped "design-state" artifact...},
+#                            "siteCapabilities": {"pgVerification": bool, ...}}
+#                           (Task 12c item 4a: the plan Workshop's ONE campaign-plan
+#                            document, holding all three work packages -- replaces the
+#                            old "work-package" reader binding for `campaignPlan`, which
+#                            only ever saw slot w01's own package.)
+#
 #   contribution-index     {"contributions": [<full stamped "contribution" artifact>, ...],
 #                            "pending": [<opaque pending-research id>, ...]}
+#                           (as of Task 12c, a pending entry the CLI's own `collect` writes
+#                            is `{"slot","reason"}`, not a bare string -- either shape is
+#                            accepted here, since only `len(pending)` is ever read.)
 #
 #   integration-plan        {"plan": {...unstamped or stamped "integration-plan" fields...},
 #                            "facts": {...a stamped "composition-facts" artifact...}}
@@ -438,6 +450,64 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
     return [_emit_count("tc_request_invalid_count", count)]
 
 
+def _read_campaign_plan(report, workspace, extra, mods):
+    """The plan Workshop's ONE campaign-plan document, holding all three work packages (Task 12c item 4a).
+
+    Envelope (this script's own contract; see module docstring)::
+
+        {"candidate": {"workPackages": {"w01": {...}, "w02": {...}, "w03": {...}},
+                        "reason": "<str>"},
+         "baseState": {...a stamped "design-state" artifact...},
+         "siteCapabilities": {"pgVerification": bool, ...}}
+
+    `baseState` is schema/id- and source-verified in full
+    (`_verify_design_state_refs`) before any package is validated against
+    it, exactly like `_read_request_envelope`. `tc_request_invalid_count`
+    is the sum of `workspaces.request_invalid_count` (never
+    `validate_work_package`, which raises) over each of `w01`/`w02`/`w03`,
+    plus one structural problem for each of: a missing/non-dict
+    `workPackages` object, a missing or non-dict entry for any of the three
+    slots, and a missing or blank `reason` string -- so a Reader-visible
+    problem exists for every way the *shape* itself (not just one slot's
+    own content) can be wrong.
+    """
+    core = mods["core"]
+    workspaces_mod = mods["workspaces"]
+    envelope = _load_json(report)
+    if not isinstance(envelope, dict):
+        raise ValueError("campaign-plan envelope must be a JSON object")
+    candidate = envelope.get("candidate")
+    base_state = envelope.get("baseState")
+    site_capabilities = envelope.get("siteCapabilities")
+    if not isinstance(candidate, dict):
+        raise ValueError("envelope.candidate must be a JSON object")
+    if not isinstance(base_state, dict):
+        raise ValueError("envelope.baseState must be a JSON object")
+    if not isinstance(site_capabilities, dict):
+        raise ValueError("envelope.siteCapabilities must be a JSON object")
+
+    _verify_identity(base_state, "design-state", core)
+    _verify_design_state_refs(base_state, workspace, core)
+
+    problems = 0
+    work_packages = candidate.get("workPackages")
+    if not isinstance(work_packages, dict):
+        problems += 1
+        work_packages = {}
+    for task_id in ("w01", "w02", "w03"):
+        package = work_packages.get(task_id)
+        if not isinstance(package, dict):
+            problems += 1
+            continue
+        problems += workspaces_mod.request_invalid_count(package, base_state, site_capabilities)
+
+    reason = candidate.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        problems += 1
+
+    return [_emit_count("tc_request_invalid_count", problems)]
+
+
 def _read_worker_result(report, workspace, expected_task_id, mods):
     """A sealed `contribution` artifact (one worker slot's research result)."""
     core = mods["core"]
@@ -755,6 +825,7 @@ _HANDLERS = {
     "readiness": lambda report, workspace, extra, mods: _read_readiness(report, workspace, extra, mods),
     "observation-request": lambda report, workspace, extra, mods: _read_observation_request(report, workspace, extra, mods),
     "work-package": lambda report, workspace, extra, mods: _read_request_envelope(report, workspace, None, mods),
+    "campaign-plan": lambda report, workspace, extra, mods: _read_campaign_plan(report, workspace, extra, mods),
     "worker-request": lambda report, workspace, extra, mods: _read_request_envelope(report, workspace, extra[0] if extra else None, mods),
     "worker-result": lambda report, workspace, extra, mods: _read_worker_result(report, workspace, extra[0] if extra else None, mods),
     "contribution-index": lambda report, workspace, extra, mods: _read_contribution_index(report, workspace, extra, mods),

@@ -539,20 +539,20 @@ class CliMissingInputExitCodeTest(unittest.TestCase):
         "physical": ["MISSING/drc.rpt", "MISSING/connectivity.rpt", "baseline"],
         "evaluate": ["MISSING/policy.json"],
         "adopt": ["MISSING/policy.json"],
-        "residual": [],
+        "residual": ["MISSING/scenario-corners.json", "MISSING/site.json"],
         "apr-prepare": [],
         "apr-run": ["MISSING/site.json"],
         "policy": ["MISSING/analysis-contract-dir", "0.0", "0.0"],
         "record-experience": ["MISSING/reason.json"],
         "capture-contribution": ["w01"],
         "prepare-workers": ["MISSING/base.json", "MISSING/site.json", "MISSING/eda.json",
-                             "MISSING/wp01.json", "MISSING/wp02.json", "MISSING/wp03.json"],
-        "reconcile": ["MISSING/wp01.json", "MISSING/wp02.json", "MISSING/wp03.json"],
+                             "MISSING/campaign-plan.json"],
+        "reconcile": [],
         "presta": ["MISSING/base.json", "MISSING/corners.json", "MISSING/site.json"],
         "implement": ["MISSING/state.json", "MISSING/site.json"],
         "extract": ["MISSING/corners.json", "MISSING/site.json"],
         "sta": ["MISSING/query.json", "MISSING/sdc.json", "MISSING/corners.json", "MISSING/base.json", "MISSING/site.json"],
-        "observe": ["MISSING/query.json", "MISSING/site.json", "MISSING/scenarios.json", "1000"],
+        "observe": ["MISSING/query.json", "MISSING/site.json", "MISSING/scenario-corners.json", "1000"],
         "replay-prepare": ["MISSING/base.json", "MISSING/plan.json", "MISSING/site.json"],
     }
 
@@ -645,13 +645,15 @@ class CliCollectContributionIndexTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         body = json.loads((workspace / "state" / "contributions-collected.json").read_text())
         self.assertEqual(body["contributions"], [])
-        self.assertEqual(sorted(body["pending"]), ["w01", "w02", "w03"])
+        self.assertEqual(sorted(entry["slot"] for entry in body["pending"]), ["w01", "w02", "w03"])
+        self.assertTrue(all(entry.get("reason") for entry in body["pending"]))
 
     def test_collect_reports_one_pending_when_two_of_three_slots_sealed(self):
         from atcs import contributions as contributions_module
 
         workspace = _tmp()
         self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        workers = {}
         for slot, task_id in (("w01", "w01"), ("w02", "w02")):
             contribution = core.stamp("contribution", {
                 "taskId": task_id, "revision": 1, "baseStateId": "base123", "kind": "no-fix",
@@ -663,13 +665,81 @@ class CliCollectContributionIndexTest(unittest.TestCase):
                 "admissible": True, "refusals": [], "outOfScope": [], "beforeDumpSha256": "0" * 64,
             })
             _write_json(workspace / "state" / f"contribution-{slot}.json", contribution)
+            # Item 6: `collect` only accepts a contribution matching the CURRENT
+            # `state/workers.json[slot]` revision -- seed that same revision here.
+            workers[slot] = {"workspaceManifest": {"revision": 1}}
+        _write_json(workspace / "state" / "workers.json", {"workers": workers})
         result = subprocess.run([sys.executable, str(CLI_PATH), "collect", str(workspace)],
                                  capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         body = json.loads((workspace / "state" / "contributions-collected.json").read_text())
         self.assertEqual(len(body["contributions"]), 2)
-        self.assertEqual(body["pending"], ["w03"])
+        self.assertEqual([entry["slot"] for entry in body["pending"]], ["w03"])
         del contributions_module  # imported only to document the shape's producer module
+
+
+class CliCollectNoResurrectionTest(unittest.TestCase):
+    """Task 12c item 6: `collect` never resurrects a previous batch's contribution.
+
+    A slot's sealed `state/contribution-<slot>.json` is only collected when
+    its own `revision` still matches `state/workers.json[slot]`'s CURRENT
+    `workspaceManifest.revision` -- a contribution left over from an
+    earlier `prepare-workers` revision (a new batch's work package for that
+    slot has since been prepared) must be reported as `pending`, never
+    silently re-collected into the new batch.
+    """
+
+    def test_stale_revision_contribution_is_pending_not_collected(self):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        stale_contribution = core.stamp("contribution", {
+            "taskId": "w01", "revision": 1, "baseStateId": "base123", "kind": "no-fix",
+            "operations": [], "script": None,
+            "delta": {"mastersChanged": {}, "added": {}, "removed": {}},
+            "touches": {"instances": [], "nets": [], "regions": [], "checks": [], "cones": []},
+            "preconditions": [], "dependencies": [], "atomicGroups": [],
+            "predicted": {}, "validationLevel": "none", "diagnosis": "from an earlier batch",
+            "admissible": True, "refusals": [], "outOfScope": [], "beforeDumpSha256": "0" * 64,
+        })
+        _write_json(workspace / "state" / "contribution-w01.json", stale_contribution)
+        # A new `prepare-workers` call has since produced revision 2 for this slot.
+        _write_json(workspace / "state" / "workers.json", {
+            "workers": {"w01": {"workspaceManifest": {"revision": 2}}},
+        })
+
+        result = subprocess.run([sys.executable, str(CLI_PATH), "collect", str(workspace)],
+                                 capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        body = json.loads((workspace / "state" / "contributions-collected.json").read_text())
+        self.assertEqual(body["contributions"], [])
+        pending_by_slot = {entry["slot"]: entry["reason"] for entry in body["pending"]}
+        self.assertIn("w01", pending_by_slot)
+        self.assertIn("revision", pending_by_slot["w01"])
+
+    def test_current_revision_contribution_is_collected(self):
+        """Sanity check: the same slot IS collected once its revision matches current."""
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        contribution = core.stamp("contribution", {
+            "taskId": "w01", "revision": 2, "baseStateId": "base123", "kind": "no-fix",
+            "operations": [], "script": None,
+            "delta": {"mastersChanged": {}, "added": {}, "removed": {}},
+            "touches": {"instances": [], "nets": [], "regions": [], "checks": [], "cones": []},
+            "preconditions": [], "dependencies": [], "atomicGroups": [],
+            "predicted": {}, "validationLevel": "none", "diagnosis": "this batch's own result",
+            "admissible": True, "refusals": [], "outOfScope": [], "beforeDumpSha256": "0" * 64,
+        })
+        _write_json(workspace / "state" / "contribution-w01.json", contribution)
+        _write_json(workspace / "state" / "workers.json", {
+            "workers": {"w01": {"workspaceManifest": {"revision": 2}}},
+        })
+
+        result = subprocess.run([sys.executable, str(CLI_PATH), "collect", str(workspace)],
+                                 capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        body = json.loads((workspace / "state" / "contributions-collected.json").read_text())
+        self.assertEqual(len(body["contributions"]), 1)
+        self.assertEqual(body["contributions"][0]["id"], contribution["id"])
 
 
 class CliPrestaEnvelopeTest(unittest.TestCase):

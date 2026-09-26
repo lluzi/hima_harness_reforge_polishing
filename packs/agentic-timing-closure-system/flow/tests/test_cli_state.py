@@ -314,9 +314,11 @@ class TwoRoundFlowTest(unittest.TestCase):
         self.assertNotEqual(round1_state_id, baseline["id"])
 
         # --- Round 2: compose-facts and prepare-workers must use the ADOPTED state's id ---
-        resolutions_path = workspace / "resolutions.json"
-        _write_json(resolutions_path, {"resolutions": []})
-        result = _run("compose-facts", workspace, resolutions_path)
+        # No integration plan has been admitted yet for round 2 -- Task 12c item 4c's
+        # first pass: an absent plan path means resolutions=[] (never a separate
+        # resolutions.json).
+        plan_path = workspace / "integration-plan.json"
+        result = _run("compose-facts", workspace, plan_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         facts_round2 = json.loads((workspace / "state" / "composition-facts.json").read_text())
         self.assertEqual(facts_round2["baseStateId"], round1_state_id)
@@ -326,19 +328,22 @@ class TwoRoundFlowTest(unittest.TestCase):
         _write_json(eda_profile_path, {"design": "top", "techLef": "tech.lef", "cellLefGlob": "*.lef"})
         site_caps_path = workspace / "site-caps.json"
         _write_json(site_caps_path, {"pgVerification": False})
-        wp_paths = []
-        for task_id in workspaces.TASK_IDS:
-            wp_path = workspace / f"wp-round2-{task_id}.json"
-            _write_json(wp_path, {
+        # Task 12c item 4a: `prepare-workers` reads the ONE admitted campaign-plan
+        # document, never three separate work-package-w0N.json files.
+        work_packages = {
+            task_id: {
                 "taskId": task_id, "baseStateId": round1_state_id, "problem": "round 2",
                 "targets": [], "editDomain": {"instances": [], "nets": [], "regions": []},
                 "protected": {"instances": [], "nets": []}, "mayAffect": [],
                 "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
-            })
-            wp_paths.append(wp_path)
+            }
+            for task_id in workspaces.TASK_IDS
+        }
+        campaign_plan_path = workspace / "campaign-plan-round2.json"
+        _write_json(campaign_plan_path, {"workPackages": work_packages, "reason": "round 2 plan"})
         working_state_path = workspace / "state" / "working-state.json"
         result = _run("prepare-workers", workspace, working_state_path, site_caps_path,
-                       eda_profile_path, *wp_paths)
+                       eda_profile_path, campaign_plan_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         workers = json.loads((workspace / "state" / "workers.json").read_text())
         for task_id in workspaces.TASK_IDS:
@@ -351,6 +356,114 @@ class TwoRoundFlowTest(unittest.TestCase):
         self.assertNotEqual(round2_state_id, round1_state_id)
         working_state_after_round2 = json.loads(working_state_path.read_text())
         self.assertEqual(working_state_after_round2["id"], round2_state_id)
+
+
+class ReconcileIgnoresRewrittenWorkPackageTest(unittest.TestCase):
+    """Task 12c item 2: `reconcile` takes each contribution's edit domain from
+    `state/workers.json[slot]["workPackage"]["editDomain"]`, never from a
+    (possibly rewritten) `research/requests/work-package-w0N.json` -- there
+    is no argv slot left for that file to be read through at all."""
+
+    def test_out_of_scope_decision_follows_workers_json_never_the_raw_request_file(self):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+
+        request = core.stamp("replay-request", {
+            "batchId": "batch1", "baseStateId": "base1",
+            "steps": [{
+                "stepId": "s1", "contributionId": "c1", "opIndex": 0,
+                "op": {"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"},
+                "xtopTcl": "size_cell {U1} BUFX2",
+            }],
+            "expectedDelta": {},
+        })
+        core.write_artifact(workspace / "state" / "replay-request.json", request)
+        _write_json(workspace / "state" / "replay-receipts.json", {
+            "receipts": [{
+                "stepId": "s1", "status": "ok",
+                "observedDelta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+            }],
+        })
+        _write_json(workspace / "state" / "contributions-collected.json", {
+            "contributions": [{"id": "c1", "taskId": "w01"}],
+        })
+        # The ADMITTED, validated package: U1 is in scope.
+        _write_json(workspace / "state" / "workers.json", {
+            "workers": {"w01": {"workPackage": {"editDomain": {"instances": ["U1"], "nets": [], "regions": []}}}},
+        })
+        # A rewritten raw request file claiming an EMPTY edit domain (U1 would
+        # be out-of-scope if this were ever consulted) -- reconcile must never
+        # read this file at all.
+        _write_json(workspace / "research" / "requests" / "work-package-w01.json", {
+            "taskId": "w01", "baseStateId": "base1", "problem": "tampered after admission",
+            "targets": [], "editDomain": {"instances": [], "nets": [], "regions": []},
+            "protected": {"instances": [], "nets": []}, "mayAffect": [],
+            "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+        })
+
+        result = _run("reconcile", workspace)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        integration_state = json.loads((workspace / "state" / "integration-state.json").read_text())
+        self.assertEqual(integration_state["outOfScope"], [])
+        self.assertIn("s1", integration_state["applied"])
+
+
+class PrepareWorkersByteIdentityTest(unittest.TestCase):
+    """Task 12c item 4a: `prepare-workers` reads the ONE admitted campaign-plan
+    document -- any content divergent from what the Reader would have found
+    valid (i.e. different bytes at that same fixed path) is caught by the
+    same `workspaces.validate_work_package` call the Reader's own
+    `tc_request_invalid_count` uses, since both run over the identical
+    current file."""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+        manifest = _make_baseline_manifest(self.workspace)
+        _write_json(self.workspace / "manifest.json", manifest)
+        result = _run("baseline", self.workspace, self.workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.working_state_path = self.workspace / "state" / "working-state.json"
+        self.working_state = json.loads(self.working_state_path.read_text())
+        self.eda_profile_path = self.workspace / "eda-profile.json"
+        _write_json(self.eda_profile_path, {"design": "top", "techLef": "tech.lef", "cellLefGlob": "*.lef"})
+        self.site_caps_path = self.workspace / "site-caps.json"
+        _write_json(self.site_caps_path, {"pgVerification": False})
+
+    def _work_packages(self, **w02_overrides):
+        packages = {
+            task_id: {
+                "taskId": task_id, "baseStateId": self.working_state["id"], "problem": "p",
+                "targets": [], "editDomain": {"instances": [], "nets": [], "regions": []},
+                "protected": {"instances": [], "nets": []}, "mayAffect": [],
+                "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+            }
+            for task_id in workspaces.TASK_IDS
+        }
+        packages["w02"].update(w02_overrides)
+        return packages
+
+    def test_a_valid_admitted_plan_is_accepted_bytes_and_all(self):
+        campaign_plan_path = self.workspace / "campaign-plan.json"
+        _write_json(campaign_plan_path, {"workPackages": self._work_packages(), "reason": "valid plan"})
+        result = _run("prepare-workers", self.workspace, self.working_state_path, self.site_caps_path,
+                       self.eda_profile_path, campaign_plan_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_bytes_differing_from_the_admitted_plan_are_refused(self):
+        """Simulates a plan whose bytes changed after admission: w02's own package now
+        names an action outside ACTION_KINDS -- the exact same content problem the
+        campaign-plan Reader's own `tc_request_invalid_count` would have flagged."""
+        campaign_plan_path = self.workspace / "campaign-plan.json"
+        _write_json(campaign_plan_path, {
+            "workPackages": self._work_packages(actions=["not-a-real-action"]), "reason": "tampered after admission",
+        })
+        result = _run("prepare-workers", self.workspace, self.working_state_path, self.site_caps_path,
+                       self.eda_profile_path, campaign_plan_path)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "invalid-work-package")
+        self.assertFalse((self.workspace / "state" / "workers.json").exists())
 
 
 class CaptureContributionComposedTest(unittest.TestCase):
@@ -576,19 +689,15 @@ class ObserveMaxPathsTest(unittest.TestCase):
             query_spec["maxPaths"] = requested_max_paths
         query_spec_path = self.workspace / "query-spec.json"
         _write_json(query_spec_path, query_spec)
-        scenario_inputs = {
-            scenario: {
-                "design": "top", "netlist": str(self.workspace / "netlist.v"),
-                "sdc": str(self.workspace / "constraints.sdc"), "spef": str(self.workspace / f"{CORNER}.spef"),
-            }
-            for scenario in REQUIRED_SCENARIOS
-        }
-        scenario_inputs_path = self.workspace / "scenario-inputs.json"
-        _write_json(scenario_inputs_path, scenario_inputs)
+        # Task 12c item 3: `observe` builds scenario inputs itself from
+        # `state/working-state.json` (already seeded by `baseline` in
+        # `setUp`) -- only the Site-fixed corner map is still an argv input.
+        scenario_corners_path = self.workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
         site_profile_path = _site_profile_path(self.workspace)
         for scenario in REQUIRED_SCENARIOS:
             _write_report_set(self.workspace / "research" / "observe" / scenario, _clean_reports())
-        return _run("observe", self.workspace, query_spec_path, site_profile_path, scenario_inputs_path, str(cap))
+        return _run("observe", self.workspace, query_spec_path, site_profile_path, scenario_corners_path, str(cap))
 
     def _clamp_record(self):
         return json.loads((self.workspace / "research" / "observe" / "max-paths.json").read_text())
@@ -610,6 +719,67 @@ class ObserveMaxPathsTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         record = self._clamp_record()
         self.assertEqual(record, {"cap": 800, "requested": None, "used": 800, "clamped": False})
+
+
+class ObserveInputsFromWorkingStateTest(unittest.TestCase):
+    """Task 12c item 3: `observe` builds its own PT scenario inputs from
+    `state/working-state.json` (re-verified by sha256) and never trusts a
+    model-supplied file path -- there is no `scenario_inputs`/`observe-
+    scenario-inputs.json` argv slot left for one to arrive through."""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+        manifest = _make_baseline_manifest(self.workspace)
+        _write_json(self.workspace / "manifest.json", manifest)
+        result = _run("baseline", self.workspace, self.workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def _run_observe(self):
+        query_spec_path = self.workspace / "query-spec.json"
+        _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
+        scenario_corners_path = self.workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        site_profile_path = _site_profile_path(self.workspace)
+        for scenario in REQUIRED_SCENARIOS:
+            _write_report_set(self.workspace / "research" / "observe" / scenario, _clean_reports())
+        return _run("observe", self.workspace, query_spec_path, site_profile_path, scenario_corners_path, "1000")
+
+    def test_succeeds_using_the_working_states_own_recorded_files(self):
+        result = self._run_observe()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        observation = json.loads((self.workspace / "state" / "observation.json").read_text())
+        working_state = json.loads((self.workspace / "state" / "working-state.json").read_text())
+        self.assertEqual(observation["designStateId"], working_state["id"])
+
+    def test_refuses_when_the_working_states_spef_sha_changed(self):
+        """A tampered/rotated SPEF file (never a model-supplied path) is caught by identity, not trusted."""
+        (self.workspace / f"{CORNER}.spef").write_text("*SPEF IEEE 1481-1999 -- tampered\n", encoding="utf-8")
+        result = self._run_observe()
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "identity-mismatch")
+        self.assertFalse((self.workspace / "state" / "observation.json").exists())
+
+    def test_ignores_a_model_supplied_scenario_inputs_file(self):
+        """There is no argv slot for a model-authored scenario-inputs file any more: even when one
+        exists on disk at the old conventional path, pointing at a bogus netlist, `observe` never
+        reads it -- only `state/working-state.json`'s own recorded files are ever used."""
+        bogus_netlist = self.workspace / "bogus-netlist.v"
+        bogus_netlist.write_text("module NOT_THE_REAL_DESIGN(); endmodule\n", encoding="utf-8")
+        _write_json(self.workspace / "research" / "requests" / "observe-scenario-inputs.json", {
+            scenario: {
+                "design": "top", "netlist": str(bogus_netlist),
+                "sdc": str(self.workspace / "constraints.sdc"), "spef": str(self.workspace / f"{CORNER}.spef"),
+            }
+            for scenario in REQUIRED_SCENARIOS
+        })
+        result = self._run_observe()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        # The real netlist (never the bogus one) is what was actually queried.
+        pt_tcl = (self.workspace / "research" / "observe" / REQUIRED_SCENARIOS[0] / "pt-scenario.tcl").read_text()
+        self.assertNotIn(str(bogus_netlist), pt_tcl)
+        self.assertIn("netlist.v", pt_tcl)
 
 
 class RiskFirstObservationTest(unittest.TestCase):
@@ -666,6 +836,175 @@ def _write_next_decision(workspace, stage, reason="residual evidence points at a
     }
     _write_json(workspace / NEXT_DECISION_REL_PATH, next_decision)
     return next_decision
+
+
+class ResidualPtQueryEvidenceTest(unittest.TestCase):
+    """Task 12c item 1a: `residual` actually launches a targeted `pt-query.tcl`
+    for its worst remaining checks and passes the parsed evidence to
+    `residual.extract`, so `apr-prepare` can compile a real intervention
+    hook (previously `observation["checkDetails"]` was never populated, so
+    every evidence field was always `unknown` and `compile_intervention`
+    could never fire a setting)."""
+
+    CHECK_KEY = "func_ssg_rcworst_m40|setup|U_FF_2/D"
+
+    # A real per-arc PT `report_timing` sample (same shape `adapters.
+    # parse_path_detail`'s own fixture test uses): cellDelay 0.08+0.04=0.12,
+    # netDelay 0.10 -- net-delay-dominated is NOT the case here so this
+    # sample is only used to prove evidence comes back *known*; a second,
+    # net-delay-dominated sample below drives the actual hook.
+    NET_DOMINATED_REPORT = """  Point                                                   Fanout     Trans      Cap        Incr       Path
+  ------------------------------------------------------------------------------------------------------------
+  clock core_clock (rise edge)                                                              0.00       0.00
+  U_FF_1/CP (DFQD1BWP)                                                                       0.00       0.00 r
+  U_FF_1/Q (DFQD1BWP)                                          4    0.02      1.50    0.08       0.08 f
+  net1 (net)                                                                                 0.10       0.18 f
+  U_FF_2/D (DFQD1BWP)                                                                        0.00       0.18 f
+  data arrival time                                                                                     0.18
+"""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+        self.manifest = _make_baseline_manifest(self.workspace)
+        _write_json(self.workspace / "manifest.json", self.manifest)
+        result = _run("baseline", self.workspace, self.workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.working_state = json.loads((self.workspace / "state" / "working-state.json").read_text())
+
+        readiness = _full_flow_readiness(self.workspace, self.manifest)
+        core.write_artifact(self.workspace / "state" / "readiness.json", readiness)
+
+        sta = {
+            "designStateId": self.working_state["id"], "database": {},
+            "sta": {
+                "func_ssg_rcworst_m40": {
+                    "corner": CORNER, "inputs": {},
+                    "observation": {
+                        "precision": "gba",
+                        "checks": {
+                            self.CHECK_KEY: {
+                                "slack": core.known(-0.12), "startpoint": "U_FF_1/CP", "pathGroup": "reg2reg",
+                            },
+                        },
+                        "scenarios": {}, "sources": [],
+                    },
+                },
+            },
+        }
+        _write_json(self.workspace / "state" / "sta.json", sta)
+
+        evaluation = core.stamp("evaluation", {
+            "candidateId": "cand-1", "parentStateId": self.working_state["id"], "stateId": "cand-state-1",
+            "finalSetupWns": core.known(-0.12), "finalHoldWns": core.known(0.03),
+            "missingRequiredCheckCount": core.known(0), "finalIdentityErrorCount": core.known(0),
+            "constraintFailureCount": core.known(1), "constraintUnknownCount": core.known(0),
+            "fixedCheckCount": core.known(0), "missingPriorCheckCount": core.known(0),
+            "comparison": {
+                "fixed": [], "remaining": [self.CHECK_KEY], "entrant": [], "regressed": [], "missingPrior": [],
+            },
+            "physical": {"drc": {"total": core.known(0)}, "connectivity": {"total": core.known(0)}},
+        })
+        _write_json(self.workspace / "state" / "evaluation.json", evaluation)
+
+    def _run_residual(self, report_text):
+        scenario_corners_path = self.workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        site_profile_path = _site_profile_path(self.workspace)
+
+        # The fake wrapper never actually launches PT -- pre-write the report
+        # at the exact deterministic path `_cmd_residual` will look for
+        # (`compile_pt_query_task` names the sole target `q000`).
+        report_path = self.workspace / "research" / "residual" / "func_ssg_rcworst_m40" / "q000.rpt"
+        _write_text(report_path, report_text)
+        return _run("residual", self.workspace, scenario_corners_path, site_profile_path)
+
+    def test_residual_evidence_is_known_and_apr_prepare_compiles_a_real_hook(self):
+        result = self._run_residual(self.NET_DOMINATED_REPORT)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        residual_doc = json.loads((self.workspace / "state" / "residual-cases.json").read_text())
+        self.assertEqual(len(residual_doc["cases"]), 1)
+        case = residual_doc["cases"][0]
+        self.assertEqual(case["checks"], [self.CHECK_KEY])
+        self.assertTrue(core.is_known(case["evidence"]["cellDelay"]))
+        self.assertTrue(core.is_known(case["evidence"]["netDelay"]))
+        self.assertAlmostEqual(core.value_of(case["evidence"]["netDelay"]), 0.10, places=6)
+        self.assertEqual(residual_doc["queryNotes"], [])
+        # netDelay (0.10) > cellDelay (0.08) -- residual.extract's own suggestedStage rule.
+        self.assertEqual(case["suggestedStage"], "route")
+
+        _write_next_decision(self.workspace, "route")
+        result = _run("apr-prepare", self.workspace)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        task = json.loads((self.workspace / "state" / "apr-task.json").read_text())
+        self.assertIn("setPathGroupOptions", task["tcl"])
+
+    def test_missing_report_leaves_evidence_unknown_and_notes_the_reason(self):
+        """No report was ever produced (fake wrapper is a no-op with nothing pre-written):
+        evidence is honestly unknown, never guessed, and apr-prepare then has no
+        intervention to compile."""
+        scenario_corners_path = self.workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        site_profile_path = _site_profile_path(self.workspace)
+        result = _run("residual", self.workspace, scenario_corners_path, site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        residual_doc = json.loads((self.workspace / "state" / "residual-cases.json").read_text())
+        case = residual_doc["cases"][0]
+        for measure in case["evidence"].values():
+            self.assertFalse(core.is_known(measure))
+        self.assertTrue(residual_doc["queryNotes"])
+
+        _write_next_decision(self.workspace, "route")
+        result = _run("apr-prepare", self.workspace)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "no-intervention")
+
+
+class ResidualBaselineOnlyTest(unittest.TestCase):
+    """Task 12c item 1b: `residual` derives its remaining failing checks from
+    `state/observation.json` when `state/evaluation.json` does not exist yet,
+    so earlier APR can be chosen straight from the baseline (SPEC Constraint 3)."""
+
+    def test_derives_remaining_checks_from_observation_when_no_evaluation_exists(self):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        result = _run("baseline", workspace, workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+        readiness = _full_flow_readiness(workspace, manifest)
+        core.write_artifact(workspace / "state" / "readiness.json", readiness)
+
+        failing_check = "func_ssg_rcworst_m40|setup|U1/D"
+        passing_check = "func_ssg_rcworst_m40|hold|U2/D"
+        observation = core.stamp("observation-set", {
+            "designStateId": baseline["id"], "precision": "gba", "scenarios": {},
+            "checks": {
+                failing_check: {"slack": core.known(-0.05), "startpoint": "U1/CP", "pathGroup": "reg2reg"},
+                passing_check: {"slack": core.known(0.02), "startpoint": "U2/CP", "pathGroup": "reg2reg"},
+            },
+            "missingScenarios": [], "coverage": {"complete": True, "reasons": []}, "sources": [],
+        })
+        core.write_artifact(workspace / "state" / "observation.json", observation)
+        self.assertFalse((workspace / "state" / "evaluation.json").exists())
+
+        scenario_corners_path = workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        site_profile_path = _site_profile_path(workspace)
+
+        result = _run("residual", workspace, scenario_corners_path, site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        residual_doc = json.loads((workspace / "state" / "residual-cases.json").read_text())
+        # Only the check with known, NEGATIVE slack is a confirmed failure;
+        # the positive-slack check never becomes a residual case.
+        self.assertEqual(len(residual_doc["cases"]), 1)
+        self.assertEqual(residual_doc["cases"][0]["checks"], [failing_check])
+        # No PT report exists for this check yet -- evidence is honestly unknown.
+        for measure in residual_doc["cases"][0]["evidence"].values():
+            self.assertFalse(core.is_known(measure))
+        self.assertTrue(residual_doc["queryNotes"])
 
 
 class AprPrepareRunTest(unittest.TestCase):
@@ -848,7 +1187,6 @@ class RecordExperienceComposedTest(unittest.TestCase):
                           predicted_setup=0.02, predicted_hold=0.05, validation_level="xtop",
                           parent_known=True, precision="gba"):
         self.decision_id_seed += 1
-        merge_id = f"merge-{self.decision_id_seed}"
         state_id = f"candidate-state-{self.decision_id_seed}"
 
         if parent_known:
@@ -862,16 +1200,21 @@ class RecordExperienceComposedTest(unittest.TestCase):
         else:
             (self.workspace / "state" / "policy.json").unlink(missing_ok=True)
 
-        _write_json(self.workspace / "state" / "implement.json", {
-            "mergeCommitId": merge_id, "design": "top", "parentStateId": self.working_state["id"],
-        })
+        # Task 12c item 5: provenance is decided by comparing implement.json's own
+        # mergeCommitId against merge-commit.json's own (real, digest-computed) id --
+        # never an arbitrary label -- so this fixture's merge_id must be the actual
+        # stamped id, not a synthetic string.
         merge_commit = core.stamp("merge-commit", {
             "parentStateId": self.working_state["id"],
             "contributions": [{"id": "contrib-1", "revision": 1}],
             "operations": [{"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"}],
             "innovusEcoTcl": "ecoChangeCell -inst {U1} -cell BUFX2", "sourceMap": {}, "newNets": [],
         })
+        merge_id = merge_commit["id"]
         _write_json(self.workspace / "state" / "merge-commit.json", merge_commit)
+        _write_json(self.workspace / "state" / "implement.json", {
+            "mergeCommitId": merge_id, "design": "top", "parentStateId": self.working_state["id"],
+        })
 
         predicted = {}
         if validation_level == "xtop":
@@ -916,7 +1259,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def test_measured_positive_delta_is_helped(self):
         reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
-        _write_json(reason_path, {"reason": "candidate closed the remaining setup violation on U1"})
+        _write_json(reason_path, {"plan": {"reason": "candidate closed the remaining setup violation on U1"}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -928,7 +1271,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def test_measured_negative_delta_is_hurt(self):
         reason_path = self._write_candidate(parent_min_wns=0.05, candidate_setup_wns=0.01, candidate_hold_wns=0.01)
-        _write_json(reason_path, {"reason": "candidate regressed relative to the parent"})
+        _write_json(reason_path, {"plan": {"reason": "candidate regressed relative to the parent"}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -938,7 +1281,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def test_measured_zero_delta_is_neutral(self):
         reason_path = self._write_candidate(parent_min_wns=0.04, candidate_setup_wns=0.04, candidate_hold_wns=0.09)
-        _write_json(reason_path, {"reason": "candidate matched the parent exactly"})
+        _write_json(reason_path, {"plan": {"reason": "candidate matched the parent exactly"}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -950,7 +1293,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
         reason_path = self._write_candidate(
             parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04, parent_known=False,
         )
-        _write_json(reason_path, {"reason": "no recorded parent min WNS for this state"})
+        _write_json(reason_path, {"plan": {"reason": "no recorded parent min WNS for this state"}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -962,7 +1305,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def test_blank_reason_is_refused(self):
         reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
-        _write_json(reason_path, {"reason": "   "})
+        _write_json(reason_path, {"plan": {"reason": "   "}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
@@ -972,7 +1315,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def test_missing_reason_field_is_refused(self):
         reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
-        _write_json(reason_path, {"question": "no reason field at all"})
+        _write_json(reason_path, {"plan": {"question": "no reason field at all"}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
@@ -983,7 +1326,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
         reason_path = self._write_candidate(
             parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04, precision=None,
         )
-        _write_json(reason_path, {"reason": "a real reason, but sta has no precision anywhere"})
+        _write_json(reason_path, {"plan": {"reason": "a real reason, but sta has no precision anywhere"}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
@@ -993,10 +1336,154 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def test_no_research_requests_experience_file_is_ever_read_or_written(self):
         reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
-        _write_json(reason_path, {"reason": "candidate closed the remaining setup violation on U1"})
+        _write_json(reason_path, {"plan": {"reason": "candidate closed the remaining setup violation on U1"}, "facts": {}})
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse((self.workspace / "research").exists())
+
+
+class ComposeFactsSecondPassTest(unittest.TestCase):
+    """Task 12c item 4c: `compose-facts`' `resolutions` come only from the SAME
+    admitted integration-plan envelope `replay-prepare`/`record-experience`
+    read -- no separate `resolutions.json`. The first pass (no plan file
+    exists yet) resolves nothing; the second pass (after the compose
+    Workshop's plan is admitted) applies its own `resolutions` and lowers
+    `unresolvedCount` -- the conflict itself is still reported as a fact,
+    just now counted as resolved."""
+
+    def _contribution(self, contribution_id, base_state_id, to_master):
+        body = {
+            "taskId": "w01", "revision": 1, "baseStateId": base_state_id, "kind": "fix",
+            "operations": [{"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": to_master}],
+            "script": None, "beforeDumpSha256": "0" * 64,
+            "delta": {"mastersChanged": {"U1": ["BUFX1", to_master]}, "added": {}, "removed": {}},
+            "touches": {"instances": ["U1"], "nets": [], "regions": [], "checks": [], "cones": []},
+            "preconditions": [], "dependencies": [], "atomicGroups": [],
+            "predicted": {}, "validationLevel": "none", "diagnosis": None,
+            "admissible": True, "refusals": [], "outOfScope": [],
+        }
+        stamped = core.stamp("contribution", body)
+        stamped["id"] = contribution_id
+        return stamped
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+        working_state = core.stamp("design-state", {
+            "top": "top", "stage": "postroute",
+            "database": {"path": "db.enc", "sha256": "a" * 64, "datDigest": "b" * 64},
+            "netlist": {"path": "netlist.v", "sha256": "c" * 64}, "def": None,
+            "spef": {}, "sdc": [], "tools": {}, "scenarios": [], "parentId": None,
+        })
+        _write_json(self.workspace / "state" / "working-state.json", working_state)
+        self.base_state_id = working_state["id"]
+        contribution_a = self._contribution("contrib-a", self.base_state_id, "BUFX2")
+        contribution_b = self._contribution("contrib-b", self.base_state_id, "BUFX3")
+        _write_json(self.workspace / "state" / "contributions-collected.json",
+                    {"contributions": [contribution_a, contribution_b]})
+        self.conflict_key = composition.conflict_key(
+            "same-instance-different-master", ["contrib-a", "contrib-b"], ["U1"],
+        )
+
+    def test_first_pass_has_no_resolutions_and_reports_the_conflict_unresolved(self):
+        plan_path = self.workspace / "integration-plan.json"  # not admitted yet -- does not exist
+        result = _run("compose-facts", self.workspace, plan_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        facts = json.loads((self.workspace / "state" / "composition-facts.json").read_text())
+        self.assertEqual(len(facts["conflicts"]), 1)
+        self.assertEqual(facts["conflicts"][0]["key"], self.conflict_key)
+        self.assertEqual(facts["unresolvedCount"], 1)
+
+    def test_second_pass_applies_the_admitted_plans_own_resolutions(self):
+        plan_path = self.workspace / "integration-plan.json"
+        envelope = {
+            "plan": {
+                "batchId": "batch1", "baseStateId": self.base_state_id,
+                "select": ["contrib-a"],
+                "resolutions": [{"conflictKey": self.conflict_key, "decision": "keep:contrib-a"}],
+                "deferred": ["contrib-b"], "reason": "keep contrib-a, defer contrib-b",
+            },
+            "facts": {},
+        }
+        _write_json(plan_path, envelope)
+        result = _run("compose-facts", self.workspace, plan_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        facts = json.loads((self.workspace / "state" / "composition-facts.json").read_text())
+        self.assertEqual(len(facts["conflicts"]), 1)  # still reported as a fact...
+        self.assertEqual(facts["conflicts"][0]["key"], self.conflict_key)
+        self.assertEqual(facts["unresolvedCount"], 0)  # ...just now resolved, via the admitted plan.
+
+
+class RecordExperienceProvenanceTest(unittest.TestCase):
+    """Task 12c item 5: `record-experience` decides merge-vs-APR by comparing ids
+    (`state/implement.json`'s `mergeCommitId` against `state/merge-commit.json`'s
+    own `id` and `state/apr-task.json`'s own `taskId`), never by whether
+    `state/merge-commit.json` merely exists on disk -- a stale merge-commit
+    left over from an earlier batch (never deleted by `apr-run`) must not make
+    a later `apr-run` candidate's `record-experience` call read that stale
+    batch's own (wrong) reason."""
+
+    def test_stale_merge_commit_file_does_not_override_the_apr_candidates_reason(self):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        result = _run("baseline", workspace, workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        working_state = json.loads((workspace / "state" / "working-state.json").read_text())
+
+        # A real, earlier batch's own merge commit -- left on disk (apr-run never deletes it).
+        stale_merge_commit = core.stamp("merge-commit", {
+            "parentStateId": working_state["id"], "contributions": [], "operations": [],
+            "innovusEcoTcl": "ecoChangeCell -inst {U1} -cell BUFX2", "sourceMap": {}, "newNets": [],
+        })
+        _write_json(workspace / "state" / "merge-commit.json", stale_merge_commit)
+
+        # The CURRENT candidate is a pure APR-run stage intervention -- no batch was composed.
+        apr_task_id = "apr-task-1"
+        _write_json(workspace / "state" / "apr-task.json", {"tcl": "# stage tcl", "taskId": apr_task_id, "stage": "route"})
+        _write_json(workspace / "state" / "implement.json", {
+            "mergeCommitId": apr_task_id, "design": "top", "parentStateId": working_state["id"],
+        })
+
+        evaluation = core.stamp("evaluation", {
+            "candidateId": apr_task_id, "parentStateId": working_state["id"], "stateId": "apr-candidate-state",
+            "finalSetupWns": core.known(0.05), "finalHoldWns": core.known(0.04),
+            "missingRequiredCheckCount": core.known(0), "finalIdentityErrorCount": core.known(0),
+            "constraintFailureCount": core.known(0), "constraintUnknownCount": core.known(0),
+            "fixedCheckCount": core.known(1), "missingPriorCheckCount": core.known(0),
+            "comparison": {"fixed": [], "remaining": [], "entrant": [], "regressed": [], "missingPrior": []},
+            "physical": {"drc": {"total": core.known(0)}, "connectivity": {"total": core.known(0)}},
+        })
+        _write_json(workspace / "state" / "evaluation.json", evaluation)
+        _write_json(workspace / "state" / "contributions-collected.json", {"contributions": []})
+        _write_json(workspace / "state" / "sta.json", {
+            "designStateId": "apr-candidate-state", "database": {},
+            "sta": {"func_ssg_rcworst_m40": {"corner": CORNER, "inputs": {}, "observation": {"precision": "gba"}}},
+        })
+        policy = core.stamp("policy", {
+            "allowDegradedWorking": True, "degradeLimitNs": 1.0, "maxNewConstraintFailures": 0,
+            "scenarioCorners": {}, "requiredScenarios": list(REQUIRED_SCENARIOS),
+            "goal": {"setup": 0.0, "hold": 0.0}, "baselineStateId": working_state["id"],
+            "baselineMinWns": 0.0, "campaignRoot": str(workspace),
+        })
+        _write_json(workspace / "state" / "policy.json", policy)
+
+        # The stale batch's own (WRONG -- must never be read) integration-plan envelope.
+        integration_plan_path = workspace / "research" / "requests" / "integration-plan.json"
+        _write_json(integration_plan_path, {
+            "plan": {"reason": "WRONG: this is the earlier stale batch's own reason"}, "facts": {},
+        })
+        # The next-investment Workshop's own reason for THIS (APR) candidate.
+        _write_json(workspace / NEXT_DECISION_REL_PATH, {
+            "action": "earlier-apr", "stage": "route", "reason": "earlier APR route chosen for this candidate",
+        })
+
+        result = _run("record-experience", workspace, integration_plan_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        experience = json.loads((workspace / "state" / "experience.json").read_text())
+        entry = experience["entries"][-1]
+        self.assertEqual(entry["hypothesis"], "earlier APR route chosen for this candidate")
 
 
 if __name__ == "__main__":
