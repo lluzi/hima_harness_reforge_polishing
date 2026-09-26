@@ -14,6 +14,7 @@ Runnable via discovery:
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -119,6 +120,21 @@ def parse_h2_sections(text):
     return sections
 
 
+def contains_token(text, token):
+    """True if `token` occurs in `text` as a standalone identifier.
+
+    A plain substring check (`token in text`) would let `replay-consistent`
+    be satisfied by `replay-consistent-mismatch`, since the former is a
+    literal substring of the latter. `\\b` word boundaries do not fix this
+    either: a hyphen is a non-word character, so `\\breplay-consistent\\b`
+    still matches at the boundary right before the "-mismatch" suffix. So
+    this instead requires that no identifier character (letter, digit,
+    underscore or hyphen) sits on either side of the match.
+    """
+    pattern = re.compile(r"(?<![A-Za-z0-9_-])" + re.escape(token) + r"(?![A-Za-z0-9_-])")
+    return pattern.search(text) is not None
+
+
 class IntentRecordTest(unittest.TestCase):
     def test_file_exists(self):
         self.assertTrue(INTENT_PATH.is_file(), f"missing {INTENT_PATH}")
@@ -160,13 +176,25 @@ class SpecRecordTest(unittest.TestCase):
 
     def test_mentions_every_semantics_value_name(self):
         text = SPEC_PATH.read_text(encoding="utf-8")
-        missing = [name for name in SPEC_VALUE_NAMES if name not in text]
-        self.assertEqual(missing, [], f"SPEC.md is missing value name(s): {missing}")
+        sections = dict(parse_h2_sections(text))
+        semantics_body = sections.get("Semantics", "")
+        missing = [
+            name for name in SPEC_VALUE_NAMES if not contains_token(semantics_body, name)
+        ]
+        self.assertEqual(
+            missing, [], f"SPEC.md Semantics chapter is missing value name(s): {missing}"
+        )
 
     def test_mentions_every_rule_id(self):
         text = SPEC_PATH.read_text(encoding="utf-8")
-        missing = [rule_id for rule_id in SPEC_RULE_IDS if rule_id not in text]
-        self.assertEqual(missing, [], f"SPEC.md is missing rule id(s): {missing}")
+        sections = dict(parse_h2_sections(text))
+        judge_rules_body = sections.get("Judge rules", "")
+        missing = [
+            rule_id for rule_id in SPEC_RULE_IDS if not contains_token(judge_rules_body, rule_id)
+        ]
+        self.assertEqual(
+            missing, [], f"SPEC.md Judge rules chapter is missing rule id(s): {missing}"
+        )
 
 
 if __name__ == "__main__":

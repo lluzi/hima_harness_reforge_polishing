@@ -63,7 +63,7 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 
 - Post-route 最低输入必须足以恢复当前设计并正确运行其所需的提取、STA 和 ECO；最低输入不成立时不能仅因全流程资料不足而宣布 post-route 可运行。
 - Full-flow 资料必须共同支持项目约定的 Innovus 全阶段起点、阶段配置/脚本、物理与时序依赖、恢复和下游运行。完整性由声明的资料清单与实际可恢复性核验，不按目录名称或文件数量猜测。
-- `lifecycle_available = 1` 当且仅当全套要求得到确认；否则为 0，并记录缺项，执行范围为 post-route-only。未知依赖不能视为存在。
+- `tc_lifecycle_available = 1` 当且仅当全套要求得到确认；否则为 0，并记录缺项，执行范围为 post-route-only。未知依赖不能视为存在。
 - 不额外开放“只有 CTS 数据所以回退 CTS”的第三种范围；不从 post-route DB 或零散资料构造用户未提供的早期流程。
 
 **状态及研究单位**：
@@ -149,7 +149,7 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 |---|---|---|---|
 | `tc_required_input_missing_count` | count | 输入核验；post-route 最低必要输入缺项数 | 显式核验才可为 0 |
 | `tc_lifecycle_available` | count | full-flow 完整性成立为 1，否则 0 并附缺项 | 未完成核验为 unknown |
-| `tc_request_invalid_count` | count | typed 请求结构/引用/范围的失败项 | 合法性报告完整才可为 0 |
+| `tc_request_invalid_count` | count | typed 请求结构/引用/范围的失败项；覆盖 `observationRequest`、`work-package` 等请求类产物，也覆盖 `next-decision` 本身的 schema/结构失败项（例如 `action` 不在允许枚举内、缺必需字段、引用的 state/observation/budget 不可解析） | 合法性报告完整才可为 0；对应产物未经过完整合法性校验则 unknown |
 | `tc_pending_research_count` | count | 当前实际未完成研究数 | 不是必须等于 0 才可封批 |
 | `tc_ready_contribution_count` | count | 合同有效、可进入当前集成的提交数 | 有效 no-fix 不计作修复贡献 |
 | `tc_replay_mismatch_count` | count | 预期局部变化与实际变化不符的项 | 实际 diff 可取得时才可为 0 |
@@ -171,7 +171,9 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 | `tc_next_action` | count | 下一项投资决策；来自通过 schema 校验的 `next-decision` 产物的 `action` 字段编码 | 编码为 1 observe、2 research、3 compose、4 revise、5 implement、6 earlier-apr、7 wait、8 goal-met；只在 `next-decision` 通过 schema 校验时产生对应编码，否则为 unknown |
 | `tc_selected_contribution_count` | count | 当前 `integration-plan` 的 `select` 列表长度，即本批次选定进入集成重放的贡献数 | `select` 明确为空但仍需封批（例如 no-fix 批次）时为 0；未产生有效 `integration-plan` 为 unknown |
 
-当前 Harness 的 Judge 节点只按第一条命中的规则路由；因此本 SPEC 中出现的复合谓词（`replay-consistent`、`final-evidence-ready`、`required-constraints-pass`）编译为按下一章 Judge rules 所列顺序串联的多个单谓词判定节点，不假装现有单谓词 YAML 支持任意复合表达式；一个 Judge 第一条规则的路由结果不能被误当作全部规则已经通过。
+`tc_next_action` 与 `tc_stop_required` 来自同一个 `next-decision` Reader，两者必须一致：`tc_next_action == 7`（wait）当且仅当 `tc_stop_required == 1`；`tc_next_action` 为其余任一编码时 `tc_stop_required` 必须为 0。Reader 在这两者不一致时拒绝整份 `next-decision` 文档（两个值都记 unknown，并各自带上不一致的 reason），不产出一份自相矛盾的判决。
+
+当前 Harness 的 Judge 节点的出边只由该节点 `rules[0]` 的判定结果决定；列表中排在其后的规则从不被读取，也不参与路由（`packs.ts:701`）。因此本 SPEC 中出现的复合谓词（`replay-consistent`、`final-evidence-ready`、`required-constraints-pass`）编译为按下一章 Judge rules 所列顺序串联的多个单谓词判定节点——每个节点各自的 `rules[0]` 只决定该节点自己的出边——不假装现有单谓词 YAML 支持任意复合表达式；一个 Judge 节点的路由结果只反映它自己 `rules[0]` 的判定，不能被误当作整条串联链或全部规则已经通过。
 
 若工具只给出“无负 slack”而非真实最差正 slack，Reader 可以在明确语义下支持 0 阈值结论，但不能借此支持正 margin 目标。报告精度不足以判定边界时增加适当精度的查询，不能向有利方向舍入。
 
@@ -219,7 +221,7 @@ Judge 只执行已声明谓词，不解释根因、不选择最佳修复。Reade
 
 当前 Harness 的 Chooser DSL 不是完整工程推理引擎。Agent/Workshop 提出下一次行动及证据；Chooser 与现有 owner 执行接口承担合法策略和终态映射。不得用一条“score 下降就继续”替代本方法。
 
-`nextDecision` 至少包含：当前 state/observation/预算引用、待解决问题、选定动作、作用对象、理由、反证/停止条件、预计成本依据、所需产物。它是计划，不是测量。`nextDecision` 的 `action` 字段由 `tc_next_action` 编码；owner 执行接口按该编码路由到下表对应的领域行动，不解释文字原因；`tc_next_action` 为 unknown 时不路由到任何行动，视为 `request-admissible` 未通过。
+`nextDecision` 至少包含：当前 state/observation/预算引用、待解决问题、选定动作、作用对象、理由、反证/停止条件、预计成本依据、所需产物。它是计划，不是测量。`nextDecision` 的 `action` 字段由 `tc_next_action` 编码；owner 执行接口按该编码路由到下表对应的领域行动，不解释文字原因；`tc_next_action` 为 unknown 时不路由到任何行动；这与 `request-admissible` 未通过是同一件事——同一个 `next-decision` Reader 在拒绝该文档时把 `tc_request_invalid_count` 记为非 0，`request-admissible` 因此可判 FAIL，而不是凭空假设 unknown 等于未通过。
 
 允许的领域行动及其前置条件：
 
@@ -278,7 +280,7 @@ Python 研究程序在 admitted Workshop 目录中读声明资料、计算并产
 
 Workshop 文件合同统一为 `language: python`、`entry: entry.py`、`argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']`。三个操作数分别是本次生成的程序、Campaign 根和本次私有代码目录；不得按猜测的父目录层数反推路径。静态 directory 分别为 `research/diagnose`、`research/plan`、`research/worker-01`、`research/worker-02`、`research/worker-03`、`research/compose`、`research/next`。worker 变体（`worker-01`..`worker-03`）在方法编译时展开对应静态 reads/produces，`research-worker-01`/`02`/`03` 的输出准确指向 `workerRequest01`/`02`/`03`。不把 Harness 提供的保留变量重复声明为业务 inputs。
 
-**每个 Workshop 的产出如何变成 Semantics 声明的 value**（编译决策，闭合“Workshop 产出未必是 typed value”这条自检）：`diagnose-and-observe` 的 `observationRequest` 由请求 Reader 校验产出 `tc_request_invalid_count`；`plan-campaign` 的 `campaignPlan` 与 `research-worker` 的 `workerRequestNN`/其研究结果一起，由计划/收集 Reader 核验产出 `tc_pending_research_count` 与 `tc_ready_contribution_count`（后者读 `contributionIndex` 中 Contribution 的 `admissible` 字段）；`compose-contributions` 的 `integrationPlan` 连同 `compositionFacts` 由确定重放 Reader 产出 `tc_unresolved_conflict_count`、`tc_replay_mismatch_count`、`tc_out_of_scope_edit_count` 与 `tc_selected_contribution_count`（`integrationPlan.select` 的长度）；`evaluate-next-investment` 的 `nextDecision` 由请求 Reader 产出 `tc_next_action`（`action` 字段编码）与 `tc_stop_required`。不存在未经声明 Reader 直接消费的 Workshop 输出。
+**每个 Workshop 的产出如何变成 Semantics 声明的 value**（编译决策，闭合“Workshop 产出未必是 typed value”这条自检）：`diagnose-and-observe` 的 `observationRequest` 由请求 Reader 校验产出 `tc_request_invalid_count`；`plan-campaign` 的 `campaignPlan` 与 `research-worker` 的 `workerRequestNN`/其研究结果一起，由计划/收集 Reader 核验产出 `tc_pending_research_count` 与 `tc_ready_contribution_count`（后者读 `contributionIndex` 中 Contribution 的 `admissible` 字段）；`compose-contributions` 的 `integrationPlan` 连同 `compositionFacts` 由确定重放 Reader 产出 `tc_unresolved_conflict_count`、`tc_replay_mismatch_count`、`tc_out_of_scope_edit_count` 与 `tc_selected_contribution_count`（`integrationPlan.select` 的长度）；`evaluate-next-investment` 的 `nextDecision` 由请求 Reader 产出 `tc_next_action`（`action` 字段编码）、`tc_stop_required`，以及 `tc_request_invalid_count`（`next-decision` 自身的 schema/结构失败项，只有其合法性校验完整才可为 0）——`request-admissible` 因此能读到一个 `nextDecision` 真正产出的值，`tc_next_action` 为 unknown 时这条路由是可达的。不存在未经声明 Reader 直接消费的 Workshop 输出。
 
 每个 worker 保有独立上下文和私有写域；单一工具 session 保持单写者。子任务结果由 owner 显式采用为候选贡献，不能自行完成整个 Campaign 或改 Goal。
 

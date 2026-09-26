@@ -14,9 +14,9 @@
 
 **source-linked 反例**（继承自 B_lazy 已跑通的同一 Foundation Flow 与 Run 证据，供后续 Reader/Rule 测试使用，见 Golden Flow 一节）：
 - 真零 vs 缺值：B_lazy Run `run-ddabd488-f05c-44d6-9c9b-45abccaff226` 的 `endpointDelta` 报告 `missing: 6`——六个端点身份在新报告中消失而非被修复；这必须落在 `tc_missing_prior_check_count`/`tc_fixed_check_count` 的“消失不计 fixed”规则下，不能被读成 `tc_fixed_check_count += 6`。
-- 覆盖度截断：Foundation 旧 connectivity 报告在 1,000 条处截断，而 B_lazy 的完整物理报告是 DRC 72,799、connectivity 3,465——两个总数分母不同，直接相减比较是错的；这是 `tc_final_identity_error_count`/覆盖判定必须能识别并拒绝的截断输入。
+- 覆盖度截断：Foundation 旧 connectivity 报告在 1,000 条处截断；同一 J3 对照实验里可比的完整物理报告（DRC 72,799、connectivity 3,465）来自 control arm（人工/既定流程，workspace `qualification-v109-20260924-1535`），不是 B_lazy 自身 Run 的字段——两份报告的分母不同、且不能把 control arm 的物理数字直接当成 B_lazy 的物理证据；这是 `tc_applicable_constraint_unknown_count`（约束证据不充分）必须能识别并拒绝的截断/来源错配输入，不是 `tc_final_identity_error_count`。
 - 同名不同状态：`closed.enc` 文件名里的 “closed” 不代表 timing clean（该 Run 的历史终态是 `ended-budget-exhausted`），这是 `tc_accepted_artifact_ready` 不能只按文件是否存在判定为 1 的直接反例。
-- 精度不足冒充 0：SSG −40 setup WNS 稳定在 −0.04 ns（12 违例）跨两轮回灌未变，不能因为“接近 0”就被 Reader/Chooser 舍入成通过。
+- 有利舍入风险：−0.04 ns 这个数出现在两处不同证据里——Foundation Flow 自己的两轮 ECO 历史（第二轮回灌后报告 SSG −40 setup 约 −0.04 ns，该角 setup 数量 43→12，见 Golden Flow 一节的 §8 引用）；以及 B_lazy Run 自己一次 generation 的 setup 结果（`run-ddabd488-...` 该 generation 前后均为 −0.04 ns/12 违例，未在这次 generation 内改变）。两者都足够接近 0，是 Reader/Chooser 不能因为“接近 0”就向达标方向舍入、也不能把两个不同来源的相同数字误读成一次连续观察的直接反例。
 
 **输入/反馈/预算边界**：输入身份是 `designStateManifest`（top、stage、可恢复 Innovus 状态、匹配的 netlist/physical/约束引用，可选完整流程资料索引）、`analysisContract`（必需 scenario/check、库与 RC 映射、时钟/SDC 权威、最终 PBA/覆盖方法、Goal/必要约束）、`siteCapabilities`（真实工具、qualified Operator、wrapper、阶段能力、预算/资源绑定）与 `workspaceRoot`。反馈是每个 workspace 的重放/预验证/物理结果与 `campaignExperience`；不线性相加多个分支的收益。预算是 Site 提供的有限、可见默认额度，用户可覆盖，Agent 不得自行提高硬上限；主任务与 child 不得重复扩大。
 
@@ -45,7 +45,7 @@ Golden Flow 是已验证的 SWERV28 Foundation Flow，权威参考根：
 
 1. Timing closure 范围：只负责 timing closure，不承担输入设计已有其他物理问题的全面整改；不等同整芯 signoff。
 2. 资源换时间：预设容量/成本硬上限内优先最早合格交付时间，资源成本单独报告，不冒称方法智能收益。
-3. 自主变更范围：RTL 冻结、起点 Innovus，不做综合/RTL 修改；data ECO、clock/useful-skew 与局部重新 APR 先纳入自主范围，PG 结构与目标规格变化留待项目决策（后续 Q6/Q7 细化）。
+3. 自主变更范围：RTL 冻结、起点 Innovus，不涉及 RTL 修改或逻辑综合；此回答本身不决定等价网表变换与 PG 调整的具体权限，两者分别留给 Q6、Q7 和 Q11 回答。
 4. 非单调探索：允许有明确后续机制、退化限度与截止点的暂时退化状态作为继续工作起点，同时独立保留最佳已验证状态。
 5. 最终分析口径：选 B，采用预先固定且覆盖合格的 PBA 口径判定 closure，不额外要求 GBA 同时 clean。
 6. 等价网表变换：选 A，RTL 冻结不禁止 Innovus 内保持功能等价的门级实现变换；不修改 RTL、不跑综合。
@@ -60,10 +60,14 @@ Golden Flow 是已验证的 SWERV28 Foundation Flow，权威参考根：
 
 ## Ambiguities resolved
 
-- 同步封批 vs 动态封批：早期草稿倾向等所有 worker 完成才集成实施；一致性检查与 Q14 最终确定按等待价值、依赖与联合验证成本动态封批，不以全部 worker 结束为前提（ADR-0005）。
-- working/best 分离缺失：早期草稿未明确区分“继续工作的状态”与“最佳已验证状态”；Q4 与一致性检查确认三个指针 `workingState`/`bestVerifiedState`/`deliveryState` 独立记账，非单调探索不得覆盖最佳已验证状态（ADR-0003）。
-- 局部 ECO 耗尽才转 APR vs 按时间证据提前转 APR：旧建议要求穷尽 local ECO 才能转早期 APR 阶段；一致性检查与 Q12 最终确定证据支持更早阶段能缩短总时间时可直接转，不必穷尽 local ECO（ADR-0005）。
-- 旧 ADR 把网表/PG 权限列为待定 vs 已决：此前 ADR 草稿仍把功能等价网表变换与 PG 局部调整标为待确认；Q6/Q7/Q11 已经把两者转为已确认的自主范围——在约定范围与必要验证能力具备时（ADR-0002）。
+以下 ADR 编号均指 campaign 文档自己的 ADR 目录
+（`/Users/lluzi/Documents/linglong setup/agentic_closure_campaign/docs/adr/000{2,3,5}-*.md`），
+不是本仓库 `docs/adr/0002`–`0005`（无关文档）。
+
+- 同步封批 vs 动态封批：早期草稿倾向等所有 worker 完成才集成实施；一致性检查与 Q14 最终确定按等待价值、依赖与联合验证成本动态封批，不以全部 worker 结束为前提（campaign ADR-0005）。
+- working/best 分离缺失：早期草稿未明确区分“继续工作的状态”与“最佳已验证状态”；Q4 与一致性检查确认三个指针 `workingState`/`bestVerifiedState`/`deliveryState` 独立记账，非单调探索不得覆盖最佳已验证状态（campaign ADR-0003）。
+- 局部 ECO 耗尽才转 APR vs 按时间证据提前转 APR：旧建议要求穷尽 local ECO 才能转早期 APR 阶段；一致性检查与 Q12 最终确定证据支持更早阶段能缩短总时间时可直接转，不必穷尽 local ECO（campaign ADR-0005）。
+- 旧 ADR 把网表/PG 权限列为待定 vs 已决：此前 ADR 草稿仍把功能等价网表变换与 PG 局部调整标为待确认；Q6/Q7/Q11 已经把两者转为已确认的自主范围——在约定范围与必要验证能力具备时（campaign ADR-0002）。
 - 修 Runtime 建议 vs 固定 Harness 策略：早期文档曾建议在 Runtime 补充控制逻辑以支持动态封批等行为；一致性检查确认 Harness 源码保持不变，业务判断只放在 Pack，未验证的执行形状要在开发测试中证明，不靠额外后台控制器补齐。
 
 ## Knowledge applied

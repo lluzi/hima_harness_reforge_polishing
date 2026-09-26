@@ -26,15 +26,36 @@ evidence files it names: `docs/assessment/2026-09-24/commercial-chain-j3/result.
 
 ## Measured ending
 
+All figures below are attributed to their actual arm in `result.json`. The Hima arm
+(`run-ddabd488-...`, B_lazy itself) and the control arm (`qualification-v109-20260924-1535`, the
+human/manual comparison arm run for the same J3 exercise) are two different `result.json` objects;
+do not read one arm's numbers as if they belonged to the other.
+
+**Hima arm (`.himaArm` — this is B_lazy's own frozen Run):**
+
 - Status: `ended-budget-exhausted`, ended by `generation-limit`, `generation = 1`.
-- Setup: WNS `-0.04 ns`, `12` violations (unchanged before/after this Run's one generation).
-- Hold: WNS `-0.15 ns`, `196` violations (from `-0.16 ns` / `221` before this Run's generation).
+- Final metrics only (this object carries no separate "before" baseline of its own): setup WNS
+  `-0.04 ns` / `12` violations; hold WNS `-0.15 ns` / `196` violations; `closureScore 217.96`.
 - Endpoint delta for this generation: `original 153`, `remaining 147`, `fixed 0`, `entrant 0`,
   `regressed 0`, `missing 6` — six endpoint identities disappeared from the report rather than being
   fixed; they must not be counted as `tc_fixed_check_count`.
-- Physical (same arm, before/after this generation): full-chip DRC `72,799` (unchanged), connectivity
-  `3,465` (unchanged); `0` normalized-added and `0` normalized-removed violations for the increment.
-- Verdicts recorded for this Run: `evidenceValid = PASS`, `setupClean = FAIL`, `holdClean = FAIL`.
+- Verdicts: `evidenceValid = PASS`, `setupClean = FAIL`, `holdClean = FAIL`.
+- Cost data recorded for this arm: `jobsLaunched = 25`; licence milliseconds Innovus `496649`,
+  StarRC `1222907`, PrimeTime `212997`, XTop `216053`. `.himaArm` carries **no physical (DRC/
+  connectivity) figures of its own** — see the control arm below for the only physical figures
+  `result.json` reports for this comparison.
+
+**Control arm (`.controlArm`, workspace `qualification-v109-20260924-1535` — the human/manual
+comparison arm, not B_lazy; kept here only because the "what this Run lacks" section below needs it
+and because it is the source of the physical totals that must not be misattributed to B_lazy):**
+
+- Before: setup WNS `-0.04 ns` / `12` violations; hold WNS `-0.16 ns` / `221` violations;
+  `closureScore 243.58`.
+- After: setup WNS `-0.04 ns` / `12` violations; hold WNS `-0.15 ns` / `196` violations;
+  `closureScore 217.96` (matches the Hima arm's final metrics — both arms reached the same
+  qualified engineering adoption, which is what J3's `inconclusive` verdict below is about).
+- Physical, before/after (unchanged in both): full-chip DRC `72,799`, connectivity `3,465`; `0`
+  normalized-added and `0` normalized-removed violations.
 
 ## J3 verdict
 
@@ -66,11 +87,15 @@ comparison on:
    or are still open. A same-oracle comparison needs an accounting under
    `tc_missing_prior_check_count` (kept separate from structural-replacement lineage per Semantics),
    which this Run's own artifacts do not resolve.
-4. **A directly comparable full-chip DRC/connectivity denominator.** This Run's own DRC 72,799 /
-   connectivity 3,465 are internally before/after-consistent, but they are not comparable to the
-   Foundation Flow's earlier connectivity report, which is capped at 1,000 problems (a different,
-   truncated denominator) — mixing the two totals into one series is exactly the truncation case
-   `tc_final_identity_error_count`/coverage judgment must reject, not silently average.
+4. **A directly comparable full-chip DRC/connectivity denominator, and none at all from the Hima
+   arm itself.** The DRC 72,799 / connectivity 3,465 figures above belong to the **control arm**, not
+   to B_lazy's own Run — `.himaArm` in `result.json` carries no physical figures of its own to compare
+   against either baseline. The control arm's figures are also not comparable to the Foundation Flow's
+   earlier connectivity report, which is capped at 1,000 problems (a different, truncated denominator).
+   Mixing a capped report, an uncapped control-arm report, and a Hima arm that reports no physical
+   figures at all into one series is exactly the incomplete/mismatched-evidence case
+   `tc_applicable_constraint_unknown_count` must flag — not `tc_final_identity_error_count`, and not
+   silently averaged or treated as B_lazy's own physical evidence.
 5. **An independent Host Ledger confirmation of Run terminal status.** The Run's own
    `flow/state/runtime.json` is B_lazy's own working state and, per the source guide, "does not
    replace the Host Ledger's authority over the Run's terminal state" — a same-oracle comparison needs
