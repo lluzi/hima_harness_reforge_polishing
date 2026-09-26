@@ -200,6 +200,14 @@ Known gaps carried from earlier tasks:
   configuration this Pack itself is guaranteed to make un-satisfiable, not a Campaign that could
   plausibly still succeed. `min == max == 0` makes the schema itself refuse that configuration rather
   than admitting a Run this Pack cannot ever complete.
+- G26 (final review, I12) `research/observe/`/`research/residual/`'s raw PT evidence directories are
+  now per-generation write-once (`atcs_cli._next_evidence_generation_dir`, a `g<N>` subdirectory named
+  from a monotonic counter file, never a directory-existence scan); `integrations/<batchId>/` is
+  write-once by refusal (`AtcsError("batch-id-reused", ...)`) instead, since a `batchId` is an
+  external, Workshop-authored identity this dispatcher never invents. No declared output path or
+  `contract.yml`/`graph.yml` shape changed -- every Reader-facing artifact was already
+  content-addressed or fixed-"latest"; only the *raw*, non-declared evidence directories a failed or
+  repeated run could previously have silently overwritten are affected.
 
 ## Reviews
 

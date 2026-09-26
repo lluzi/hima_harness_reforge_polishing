@@ -43,7 +43,17 @@ generates (Workshop-authored plans/resolutions also live under
 ``integrations/<batchId>/`` and ``implementations/<mergeId>/`` are
 content-addressed, Pack-internal stores this dispatcher reads/writes across
 its own subcommand invocations; ``accepted/`` and ``apr/<stage>/<id>/`` hold
-M7/M11 output. Because a Harness `outputs[]` entry must be one **fixed,
+M7/M11 output. I12 (final review): ``research/observe/`` and
+``research/residual/`` are themselves per-generation write-once --
+`_next_evidence_generation_dir` names each call's own raw-evidence
+subdirectory ``g<N>`` from a plain monotonic counter file
+(``<dir>/.generation``, never a directory-existence scan, so a Site/adapter
+or a test's own fake-wrapper convention pre-seeding that exact path is never
+mistaken for "the slot is already taken"); `integrations/<batchId>/`'s own
+uniqueness is instead enforced by refusal (`AtcsError("batch-id-reused",
+...)`, `_cmd_replay_prepare`), since a Workshop-authored `batchId` is an
+external identity this dispatcher never invents, not a counter it controls.
+Because a Harness `outputs[]` entry must be one **fixed,
 literal** path (`.superpowers/sdd/pack-mechanics.md` Sec.1.2 -- no
 per-run/per-id templating), every subcommand's *declared* output (the one
 Reader-facing file T14 lists in `contract.yml`) is instead a small, fixed
@@ -459,6 +469,44 @@ def _canonical_write(path, obj):
     core.write_artifact(path, obj)
 
 
+def _next_evidence_generation_dir(parent_dir):
+    """A fresh `<parent_dir>/g<N>` subdirectory naming this call's own generation
+    (I12, final review: write-once raw evidence).
+
+    `research/observe/`/`research/residual/` used to write every call's own raw PT
+    reports at one fixed, scenario-named path -- a second `observe`/`residual` call in
+    the same Campaign (a follow-up diagnostic query, or the "at every evaluation" cadence
+    `residual` already runs at, per FABRIC.md G18) silently overwrote the previous
+    generation's own raw evidence at that same path, even though the *parsed*
+    observation/residual-case artifacts this Pack writes are each their own,
+    content-addressed, never-overwritten file. This makes each call's own raw evidence
+    directory itself write-once: a fresh `g<N>` every call, so a failed or partial run
+    never gets mistaken for -- or silently destroys -- a different generation's own
+    files, the same rule this dispatcher's module docstring already states for
+    `implementations/<mergeId>/`/`integrations/<batchId>/`.
+
+    `N` comes from a plain monotonic counter file (`<parent_dir>/.generation`,
+    starting at `1`), never from scanning which `g<N>` directories already happen to
+    exist on disk: a Site/adapter (or a test's own fake-wrapper convention: pre-seed
+    the exact report path this call is about to look for, since the fake wrapper
+    never actually runs PT) is expected to write real files *into* the directory this
+    function names before this call returns -- that is this call's own generation's
+    evidence, not a sign the slot is already taken by someone else. The counter itself
+    is what "write-once" is actually enforced by: it only ever advances, one call at a
+    time, never re-issuing a generation number this campaign has already used, even
+    across the entire life of the Campaign workspace.
+    """
+    parent_dir = Path(parent_dir)
+    counter_path = parent_dir / ".generation"
+    try:
+        generation = int(counter_path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        generation = 1
+    parent_dir.mkdir(parents=True, exist_ok=True)
+    counter_path.write_text(str(generation + 1), encoding="utf-8")
+    return parent_dir / f"g{generation}"
+
+
 # ---------------------------------------------------------------------------
 # Fixed workspace paths (see module docstring's table)
 # ---------------------------------------------------------------------------
@@ -784,7 +832,11 @@ def _cmd_observe(workspace, args):
     )
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
 
-    report_root = workspace / "research" / "observe"
+    # I12 (final review): a fresh, write-once generation directory every call -- a
+    # second observe (a follow-up query, or the next Campaign round) must never
+    # silently overwrite a previous generation's own raw PT reports at a shared
+    # scenario-named path.
+    report_root = _next_evidence_generation_dir(workspace / "research" / "observe")
     scenario_inputs = {
         scenario: _scenario_pt_inputs(workspace, working_state, scenario_corners, scenario)
         for scenario in adapters.REQUIRED_SCENARIOS
@@ -1167,6 +1219,20 @@ def _cmd_replay_prepare(workspace, args):
 
     batch_id = adapters.validate_path_segment(request.get("batchId"), "replay-request.batchId")
     output_root = workspace / "integrations" / batch_id
+    # I12 (final review): batch ids must be unique -- `xtop-replay.tcl` is the one
+    # file only THIS call ever writes (`presta`'s own `integrations/<batchId>/presta/`
+    # subtree is a separate path this check never sees), so its presence is an honest
+    # "this exact batch id already replayed for real" signal, never a false positive
+    # from another subcommand's own write into the same batch's directory. A Workshop-
+    # authored `batchId` (`plan.batchId`, never invented by this dispatcher) has no
+    # freshness guarantee of its own; replaying the same id twice would silently mix
+    # one generation's raw XTop evidence into what looks like a second, distinct one.
+    if output_root.exists() and (output_root / "xtop-replay.tcl").is_file():
+        raise core.AtcsError(
+            "batch-id-reused",
+            f"integrations/{batch_id}/xtop-replay.tcl already exists -- batch ids must be unique, "
+            "this Pack never replays the same batch id a second time",
+        )
     current_db = workspace / base_state["database"]["path"]
     task = adapters.compile_xtop_replay_task(str(current_db), base_state["top"], request.get("steps", []), output_root)
     Path(task["stepsPath"]).parent.mkdir(parents=True, exist_ok=True)
@@ -2107,10 +2173,20 @@ def _collect_residual_evidence(workspace, working_state, scenario_corners, site_
             continue
         by_scenario.setdefault(scenario, []).append({"checkKey": key, "startpoint": startpoint, "endpoint": endpoint})
 
+    # I12 (final review): one fresh, write-once generation directory for this whole
+    # call (every scenario queried below shares it) -- a later `residual` call (the
+    # "at every evaluation" cadence FABRIC.md G18 already describes) must never
+    # silently overwrite this generation's own raw PT reports. Computed only once
+    # `by_scenario` is known non-empty, so a call with nothing to query still creates
+    # no directory at all (unchanged from before).
+    residual_generation_root = (
+        _next_evidence_generation_dir(workspace / "research" / "residual") if by_scenario else None
+    )
+
     for scenario, targets in sorted(by_scenario.items()):
         try:
             inputs = _scenario_pt_inputs(workspace, working_state, scenario_corners, scenario)
-            report_root = workspace / "research" / "residual" / scenario
+            report_root = residual_generation_root / scenario
             task = adapters.compile_pt_query_task(inputs, str(report_root), targets)
         except (InputError, core.AtcsError) as exc:
             reason = f"{scenario}: {exc.detail}"

@@ -30,6 +30,7 @@ FLOW_DIR = TESTS_DIR.parent
 sys.path.insert(0, str(FLOW_DIR))
 sys.path.insert(0, str(TESTS_DIR))
 
+import atcs_cli  # noqa: E402
 from atcs import core  # noqa: E402
 
 import fixtures  # noqa: E402
@@ -222,7 +223,7 @@ class BaselineExternalRootTest(unittest.TestCase):
         cli._write_json(scenario_corners_path, {scenario: cli.CORNER for scenario in cli.REQUIRED_SCENARIOS})
         site_profile_path = cli._site_profile_path(self.workspace)
         for scenario in cli.REQUIRED_SCENARIOS:
-            cli._write_report_set(self.workspace / "research" / "observe" / scenario, cli._clean_reports())
+            cli._write_report_set(self.workspace / "research" / "observe" / "g1" / scenario, cli._clean_reports())
 
         result = cli._run(
             "observe", self.workspace, query_spec_path, site_profile_path, scenario_corners_path, "1000",
@@ -318,6 +319,69 @@ class EvaluateComparesAgainstTheCorrectGenerationTest(cli.TwoRoundFlowTest):
         evaluation_round2 = json.loads((workspace / "state" / "evaluation.json").read_text())
         self.assertFalse(core.is_known(evaluation_round2["fixedCheckCount"]))
         self.assertFalse(core.is_known(evaluation_round2["missingPriorCheckCount"]))
+
+
+class EvidenceGenerationWriteOnceTest(unittest.TestCase):
+    """I12 (final review): `research/observe/`/`research/residual/`'s own raw PT
+    evidence directories are per-generation write-once -- a second `observe` call in
+    the same Campaign (a follow-up diagnostic query, or the next round) must never
+    silently overwrite the first generation's own raw reports at a shared path."""
+
+    def setUp(self):
+        self.workspace = cli._tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+
+    def test_generation_dir_helper_never_reuses_a_number(self):
+        parent = self.workspace / "research" / "observe"
+        first = atcs_cli._next_evidence_generation_dir(parent)
+        second = atcs_cli._next_evidence_generation_dir(parent)
+        third = atcs_cli._next_evidence_generation_dir(parent)
+        self.assertEqual([path.name for path in (first, second, third)], ["g1", "g2", "g3"])
+
+    def test_two_observe_calls_each_get_their_own_write_once_generation(self):
+        manifest = cli._make_baseline_manifest(self.workspace)
+        cli._write_json(self.workspace / "manifest.json", manifest)
+        self.assertEqual(cli._run("baseline", self.workspace, self.workspace / "manifest.json").returncode, 0)
+
+        query_spec_path = self.workspace / "query-spec.json"
+        cli._write_json(
+            query_spec_path, {"precision": "gba", "requiredScenarios": list(cli.REQUIRED_SCENARIOS), "maxPaths": 1000},
+        )
+        scenario_corners_path = self.workspace / "scenario-corners.json"
+        cli._write_json(scenario_corners_path, {scenario: cli.CORNER for scenario in cli.REQUIRED_SCENARIOS})
+        site_profile_path = cli._site_profile_path(self.workspace)
+
+        # First generation, at the exact deterministic path the dispatcher's own
+        # counter-driven `_next_evidence_generation_dir` will name first (`g1`).
+        for scenario in cli.REQUIRED_SCENARIOS:
+            cli._write_report_set(self.workspace / "research" / "observe" / "g1" / scenario, cli._clean_reports())
+        result1 = cli._run(
+            "observe", self.workspace, query_spec_path, site_profile_path, scenario_corners_path, "1000",
+        )
+        self.assertEqual(result1.returncode, 0, result1.stdout + result1.stderr)
+
+        # Second call, same working state, distinct (worse) reports -- names its
+        # own `g2`, never reusing or overwriting `g1`.
+        for scenario in cli.REQUIRED_SCENARIOS:
+            cli._write_report_set(
+                self.workspace / "research" / "observe" / "g2" / scenario, cli._clean_reports(setup_wns=-0.02),
+            )
+        result2 = cli._run(
+            "observe", self.workspace, query_spec_path, site_profile_path, scenario_corners_path, "1000",
+        )
+        self.assertEqual(result2.returncode, 0, result2.stdout + result2.stderr)
+
+        g1_report = self.workspace / "research" / "observe" / "g1" / cli.REQUIRED_SCENARIOS[0] / "global_timing.rpt"
+        g2_report = self.workspace / "research" / "observe" / "g2" / cli.REQUIRED_SCENARIOS[0] / "global_timing.rpt"
+        self.assertTrue(g1_report.is_file())
+        self.assertTrue(g2_report.is_file())
+        self.assertNotEqual(g1_report.read_text(), g2_report.read_text())
+        # The second call's own observation reflects the SECOND generation's own
+        # (worse) reports -- proof the dispatcher actually read `g2`, not `g1` again.
+        observation = json.loads((self.workspace / "state" / "observation.json").read_text())
+        self.assertAlmostEqual(
+            core.value_of(observation["scenarios"][cli.REQUIRED_SCENARIOS[0]]["setup"]["wns"]), -0.02, places=6,
+        )
 
 
 if __name__ == "__main__":

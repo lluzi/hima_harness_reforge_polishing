@@ -1187,7 +1187,7 @@ class ObserveMaxPathsTest(unittest.TestCase):
         _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
         site_profile_path = _site_profile_path(self.workspace)
         for scenario in REQUIRED_SCENARIOS:
-            _write_report_set(self.workspace / "research" / "observe" / scenario, _clean_reports())
+            _write_report_set(self.workspace / "research" / "observe" / "g1" / scenario, _clean_reports())
         return _run("observe", self.workspace, query_spec_path, site_profile_path, scenario_corners_path, str(cap))
 
     def _clamp_record(self):
@@ -1233,7 +1233,7 @@ class ObserveInputsFromWorkingStateTest(unittest.TestCase):
         _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
         site_profile_path = _site_profile_path(self.workspace)
         for scenario in REQUIRED_SCENARIOS:
-            _write_report_set(self.workspace / "research" / "observe" / scenario, _clean_reports())
+            _write_report_set(self.workspace / "research" / "observe" / "g1" / scenario, _clean_reports())
         return _run("observe", self.workspace, query_spec_path, site_profile_path, scenario_corners_path, "1000")
 
     def test_succeeds_using_the_working_states_own_recorded_files(self):
@@ -1278,7 +1278,7 @@ class ObserveInputsFromWorkingStateTest(unittest.TestCase):
         result = self._run_observe()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         # The real netlist (never the bogus one) is what was actually queried.
-        pt_tcl = (self.workspace / "research" / "observe" / REQUIRED_SCENARIOS[0] / "pt-scenario.tcl").read_text()
+        pt_tcl = (self.workspace / "research" / "observe" / "g1" / REQUIRED_SCENARIOS[0] / "pt-scenario.tcl").read_text()
         self.assertNotIn(str(bogus_netlist), pt_tcl)
         self.assertIn("netlist.v", pt_tcl)
 
@@ -1437,7 +1437,7 @@ class ResidualPtQueryEvidenceTest(unittest.TestCase):
         # The fake wrapper never actually launches PT -- pre-write the report
         # at the exact deterministic path `_cmd_residual` will look for
         # (`compile_pt_query_task` names the sole target `q000`).
-        report_path = self.workspace / "research" / "residual" / "func_ssg_rcworst_m40" / "q000.rpt"
+        report_path = self.workspace / "research" / "residual" / "g1" / "func_ssg_rcworst_m40" / "q000.rpt"
         _write_text(report_path, report_text)
         return _run("residual", self.workspace, scenario_corners_path, site_profile_path)
 
@@ -1573,7 +1573,7 @@ class ResidualQueriesTheEvaluatedCandidateStateTest(unittest.TestCase):
         result = _run("residual", workspace, scenario_corners_path, site_profile_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-        pt_tcl = (workspace / "research" / "residual" / "func_ssg_rcworst_m40" / "pt-query.tcl").read_text()
+        pt_tcl = (workspace / "research" / "residual" / "g1" / "func_ssg_rcworst_m40" / "pt-query.tcl").read_text()
         self.assertIn(str(candidate_netlist), pt_tcl)
         self.assertIn(str(candidate_spef), pt_tcl)
         self.assertNotIn(str(workspace / "netlist.v"), pt_tcl)
@@ -2018,6 +2018,69 @@ class RecordExperienceComposedTest(unittest.TestCase):
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse((self.workspace / "research").exists())
+
+
+class ReplayPrepareBatchIdWriteOnceTest(unittest.TestCase):
+    """I12 (final review): batch ids must be unique -- `replay-prepare` refuses to
+    replay the same `batchId` a second time (`integrations/<batchId>/` write-once)."""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+        working_state = core.stamp("design-state", {
+            "top": "top", "stage": "postroute",
+            "database": {"path": "db.enc", "sha256": "a" * 64, "datDigest": "b" * 64},
+            "netlist": {"path": "netlist.v", "sha256": "c" * 64}, "def": None,
+            "spef": {}, "sdc": [], "tools": {}, "scenarios": [], "parentId": None,
+        })
+        self.base_state_path = self.workspace / "base-state.json"
+        _write_json(self.base_state_path, working_state)
+        self.base_state_id = working_state["id"]
+
+        contribution = core.stamp("contribution", {
+            "taskId": "w01", "revision": 1, "baseStateId": self.base_state_id, "kind": "fix",
+            "operations": [{"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"}],
+            "script": None, "beforeDumpSha256": "0" * 64,
+            "delta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+            "touches": {"instances": ["U1"], "nets": [], "regions": [], "checks": [], "cones": []},
+            "preconditions": [], "dependencies": [], "atomicGroups": [],
+            "predicted": {}, "validationLevel": "none", "diagnosis": None,
+            "admissible": True, "refusals": [], "outOfScope": [],
+        })
+        _write_json(self.workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
+        facts = composition.analyze(self.base_state_id, [contribution], [])
+        _write_json(self.workspace / "state" / "composition-facts.json", facts)
+
+        self.plan_path = self.workspace / "integration-plan.json"
+        _write_json(self.plan_path, {
+            "plan": {
+                "batchId": "batch-1", "baseStateId": self.base_state_id,
+                "select": [contribution["id"]], "resolutions": [], "deferred": [], "reason": "single fix",
+            },
+            "facts": facts,
+        })
+        self.site_profile_path = _site_profile_path(self.workspace)
+
+    def test_second_replay_prepare_with_the_same_batch_id_is_refused(self):
+        result1 = _run("replay-prepare", self.workspace, self.base_state_path, self.plan_path, self.site_profile_path)
+        self.assertEqual(result1.returncode, 0, result1.stdout + result1.stderr)
+        self.assertTrue((self.workspace / "integrations" / "batch-1" / "xtop-replay.tcl").is_file())
+
+        result2 = _run("replay-prepare", self.workspace, self.base_state_path, self.plan_path, self.site_profile_path)
+        self.assertEqual(result2.returncode, 3, result2.stdout + result2.stderr)
+        payload = json.loads(result2.stderr)
+        self.assertEqual(payload["code"], "batch-id-reused")
+
+    def test_a_genuinely_different_batch_id_succeeds_independently(self):
+        result1 = _run("replay-prepare", self.workspace, self.base_state_path, self.plan_path, self.site_profile_path)
+        self.assertEqual(result1.returncode, 0, result1.stdout + result1.stderr)
+
+        envelope = json.loads(self.plan_path.read_text())
+        envelope["plan"]["batchId"] = "batch-2"
+        _write_json(self.plan_path, envelope)
+        result2 = _run("replay-prepare", self.workspace, self.base_state_path, self.plan_path, self.site_profile_path)
+        self.assertEqual(result2.returncode, 0, result2.stdout + result2.stderr)
+        self.assertTrue((self.workspace / "integrations" / "batch-2" / "xtop-replay.tcl").is_file())
 
 
 class ComposeFactsSecondPassTest(unittest.TestCase):
