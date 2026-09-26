@@ -19,6 +19,7 @@ import type { InteractiveRecord as LedgerInteractiveRecord, JobRecord, Ledger, N
 import { runExitFence } from './host-exit.js';
 import { channelFor } from './channel.js';
 import { loadSite } from './sites.js';
+import type { InteractiveCommandContract } from './packs.js';
 
 export { reconcileInteractiveLaunchReservations } from './jobs.js';
 export type { InteractiveLaunchReservationResult } from './jobs.js';
@@ -49,6 +50,8 @@ export interface DerivedInteractiveOperation {
   readonly argv: readonly string[];
   readonly name: string;
   readonly licences: Readonly<Record<string, number>>;
+  /** Exact retained Pack command surface shown to a qualified Operator child. */
+  readonly commands: readonly InteractiveCommandContract[];
 }
 
 export interface VerifiedBindingEvidence {
@@ -256,11 +259,13 @@ async function effectiveQualification(deps: InteractiveRuntimeDeps, derived: Der
 export async function interactiveDelegationGrant(deps: InteractiveRuntimeDeps, request: {
   readonly runId: string; readonly nodeId: string; readonly executionId: string; readonly actor: string;
   readonly ownerEpoch: number; readonly controlRevision: number;
-}): Promise<{ readonly bindingDigest: string; readonly mutation: 'qualified'; readonly testOnly: boolean } | { readonly reason: string }> {
+}): Promise<{ readonly bindingDigest: string; readonly mutation: 'qualified'; readonly testOnly: boolean;
+  readonly commands: readonly InteractiveCommandContract[] } | { readonly reason: string }> {
   const facts = await resolved(deps, { ...request, requestId: 'operator-delegation-qualification' }, 'open');
   if ('reason' in facts) return facts;
   if (facts.qualification.mutation !== 'qualified') return { reason: 'the exact interactive binding is not qualified for mutation' };
-  return { bindingDigest: facts.qualification.bindingDigest, mutation: 'qualified', testOnly: facts.qualification.testOnly };
+  return { bindingDigest: facts.qualification.bindingDigest, mutation: 'qualified', testOnly: facts.qualification.testOnly,
+    commands: facts.derived.commands };
 }
 
 function recordForRequest(records: ReturnType<typeof protocolRecords>, requestId: string): typeof records {

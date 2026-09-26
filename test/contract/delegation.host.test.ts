@@ -329,10 +329,20 @@ test('Operator delegation is minted only for one Host-qualified interactive exec
   assert.equal(missing.status, 'refused'); assert.match(missing.reason!, /Host-qualified interactive execution/);
   const wrong = await createDelegation(host.ctx, contract, authority, new AbortController().signal, {
     runId: 'run-1', nodeId: 'another-node', executionId: 'execution-1', bindingDigest: 'a'.repeat(64), mutation: 'qualified', testOnly: true,
+    commands: [{ name: 'hima_summary', effect: 'read', arguments: [{ name: 'mode', type: 'string', choices: ['setup', 'hold'] }] }],
   });
   assert.equal(wrong.status, 'refused'); assert.match(wrong.reason!, /target differs/);
   const created = await createDelegation(host.ctx, contract, authority, new AbortController().signal, {
     runId: 'run-1', nodeId: 'manual-fix', executionId: 'execution-1', bindingDigest: 'a'.repeat(64), mutation: 'qualified', testOnly: true,
+    commands: [
+      { name: 'hima_summary', effect: 'read', arguments: [{ name: 'mode', type: 'string', choices: ['setup', 'hold'] }] },
+      { name: 'hima_fix_hold', effect: 'mutate', arguments: [
+        { name: 'effort', type: 'string', choices: ['low', 'medium', 'high'] },
+        { name: 'target', type: 'number', minimum: -0.2, maximum: 0.2 },
+        { name: 'margin', type: 'number', minimum: -0.2, maximum: 0.2 },
+      ] },
+      { name: 'hima_save_candidate', effect: 'save', arguments: [] },
+    ],
   });
   assert.equal(created.status, 'created', created.reason);
   assert.deepEqual(created.effectiveContract?.tools, ['hima_interactive']);
@@ -341,6 +351,14 @@ test('Operator delegation is minted only for one Host-qualified interactive exec
   assert.ok(created.unknowns.some((item) => item.includes('bash')));
   const childId = created.receipt?.childSessionId; assert.ok(childId);
   const child = host.ctx.get('agents')!.get(childId as never); assert.ok(child); await child.whenIdle();
+  const transcript = readDelegationTranscript(host.ctx, childId);
+  assert.equal(transcript.availability, 'available');
+  if (transcript.availability === 'available') {
+    const task = transcript.messages.find((message) => message.role === 'user')?.text ?? '';
+    assert.match(task, /hima_summary\(mode: string \{setup\|hold\}\)/);
+    assert.match(task, /hima_fix_hold\(effort: string \{low\|medium\|high\}, target: number \[-0\.2\.\.0\.2\], margin: number \[-0\.2\.\.0\.2\]\)/);
+    assert.match(task, /hima_save_candidate\(\)/);
+  }
   assert.equal(host.ctx.tools.schemas(child).some((tool) => tool.name === 'hima_interactive'), true);
   assert.equal(host.ctx.tools.schemas(child).some((tool) => tool.name === 'terminal_open' || tool.name === 'bash'), false);
   assert.equal(delegationToolDenial((id) => authority.policy(id), { name: 'hima_interactive', arguments: {}, agent: child } as never), undefined);

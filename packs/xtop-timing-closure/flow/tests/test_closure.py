@@ -1099,6 +1099,10 @@ class ClosureContractTest(unittest.TestCase):
         self.assertIn('proc hima_save_candidate {}', text)
         self.assertIn('proc hima_close {}', text)
         self.assertIn('HIMA:hima-tcl-line-v1:1:READY', text)
+        self.assertNotIn('save_workspace', text,
+                         'Operator retries must not persist collision-prone named XTop workspaces')
+        self.assertIn('write_design_changes -format INNOVUS', text)
+        self.assertIn('candidate ECO output already exists; refusing an uncertain overwrite', text)
         self.assertNotIn('operator-qualification-20260924', text)
         self.assertTrue((startup.parent / "libraries.tcl").is_file())
 

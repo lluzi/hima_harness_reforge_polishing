@@ -49,7 +49,11 @@ test('interactive runtime derives authority from Run/Ledger, preserves single-wr
   const run = await makeRun('interactive-runtime', 'execution-1');
   const sessions: string[] = [];
   let derived: DerivedInteractiveOperation = { binding, site: 'local', workspace: home.workspace,
-    argv: ['sh', '-c', `exec ${shellQuote(process.execPath)} ${shellQuote(fixture)} fixture-repl 1`], name: 'runtime-repl', licences: { fixture: 1 } };
+    argv: ['sh', '-c', `exec ${shellQuote(process.execPath)} ${shellQuote(fixture)} fixture-repl 1`], name: 'runtime-repl', licences: { fixture: 1 },
+    commands: [
+      { name: 'get', effect: 'read' }, { name: 'set', effect: 'mutate' },
+      { name: 'fake-prompt', effect: 'mutate' }, { name: 'exit', effect: 'close' },
+    ] };
   const deadlines: string[] = [];
   const deps: InteractiveRuntimeDeps = {
     fabric: { ledger: host.ctx.hima.ledger, sitesDir: site.sitesDir } as never,

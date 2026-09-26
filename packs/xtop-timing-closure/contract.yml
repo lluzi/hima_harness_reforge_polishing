@@ -1,8 +1,8 @@
 id: xtop-timing-closure
-version: "1.0.14"
+version: "1.0.15"
 title: XTop iterative timing closure
 status: development
-minimumHarnessVersion: 0.1.0
+minimumHarnessVersion: 0.1.1
 
 ontology:
   aliases:
@@ -90,7 +90,7 @@ outputs:
 environment:
   wrappers:
     - /usr/bin/python3
-    - /data/eda/project/hima_harness/operator-admin/xtop-v1/xtop-operator-v1.sh
+    - /data/eda/project/hima_harness/operator-admin/xtop-v2/xtop-operator-v2.sh
 
 workspace:
   source: pack
@@ -152,7 +152,7 @@ tools:
       mode: hybrid
       adapter: hima-tcl-line-v1
       argv:
-        - /data/eda/project/hima_harness/operator-admin/xtop-v1/xtop-operator-v1.sh
+        - /data/eda/project/hima_harness/operator-admin/xtop-v2/xtop-operator-v2.sh
         - ${WORKSPACE}
         - ${WORKSPACE}/flow/closure.py
         - ${WORKSPACE}/flow/templates/xtop-operator.tcl
@@ -161,6 +161,16 @@ tools:
         mutate: [hima_fix_hold]
         save: [hima_save_candidate]
         close: [hima_close]
+      arguments:
+        hima_operator_identity: []
+        hima_summary:
+          - { name: mode, type: string, choices: [setup, hold] }
+        hima_fix_hold:
+          - { name: effort, type: string, choices: [low, medium, high] }
+          - { name: target, type: number, minimum: -0.2, maximum: 0.2 }
+          - { name: margin, type: number, minimum: -0.2, maximum: 0.2 }
+        hima_save_candidate: []
+        hima_close: []
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/closure.py', xtop, '${WORKSPACE}']
 
   - id: apply-eco

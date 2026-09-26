@@ -203,6 +203,50 @@ export const contractOutput = z.strictObject({
  * Permit decides on. The script beside it is the same command line written for a person; that the
  * two agree is asserted of the shipped pack by the contract suite, where a reader can see both.
  */
+const interactiveCommandName = z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.-]*$/);
+const interactiveArgumentValue = z.union([z.string(), z.number().finite(), z.boolean()]);
+const interactiveArgumentDeclaration = z.strictObject({
+  name: declaredName,
+  type: z.enum(['string', 'number', 'boolean']),
+  choices: z.array(interactiveArgumentValue).min(1).max(64).optional(),
+  minimum: z.number().finite().optional(),
+  maximum: z.number().finite().optional(),
+}).superRefine((argument, ctx) => {
+  if (argument.choices?.some((choice) => typeof choice !== argument.type)) {
+    ctx.addIssue({ code: 'custom', path: ['choices'], message: `interactive argument choices must all be ${argument.type}` });
+  }
+  if (argument.type !== 'number' && (argument.minimum !== undefined || argument.maximum !== undefined)) {
+    ctx.addIssue({ code: 'custom', message: 'only a numeric interactive argument may declare minimum or maximum' });
+  }
+  if (argument.minimum !== undefined && argument.maximum !== undefined && argument.minimum > argument.maximum) {
+    ctx.addIssue({ code: 'custom', message: 'interactive argument minimum exceeds maximum' });
+  }
+  if (argument.type === 'number' && argument.choices?.some((choice) => typeof choice === 'number'
+      && (argument.minimum !== undefined && choice < argument.minimum || argument.maximum !== undefined && choice > argument.maximum))) {
+    ctx.addIssue({ code: 'custom', path: ['choices'], message: 'interactive numeric argument choice falls outside its declared bounds' });
+  }
+});
+const interactiveCommandClasses = z.strictObject({
+  read: z.array(interactiveCommandName).default([]),
+  mutate: z.array(interactiveCommandName).default([]),
+  save: z.array(interactiveCommandName).default([]),
+  close: z.array(interactiveCommandName).default([]),
+}).superRefine((commands, ctx) => {
+  const seen = new Map<string, string>();
+  for (const [effect, names] of Object.entries(commands)) for (const [at, name] of names.entries()) {
+    const earlier = seen.get(name);
+    if (earlier !== undefined) ctx.addIssue({ code: 'custom', path: [effect, at],
+      message: `interactive command "${name}" is classified as both ${earlier} and ${effect}` });
+    else seen.set(name, effect);
+  }
+  commands.read.forEach((name, at) => {
+    const primitive = name.split('::').filter(Boolean).at(-1) ?? name;
+    if (['eval', 'exec', 'source', 'uplevel'].includes(primitive)) ctx.addIssue({ code: 'custom', path: ['read', at],
+      message: `interactive read command "${name}" can execute arbitrary Tcl and cannot be classified read-only` });
+  });
+  if (seen.size === 0) ctx.addIssue({ code: 'custom', message: 'an interactive tool must classify at least one command as read, mutate or save' });
+});
+
 export const packTool = z.strictObject({
   id: packId,
   /** The executable a Pack author recommends for this tool. It is advice for review, not a lock. */
@@ -228,26 +272,17 @@ export const packTool = z.strictObject({
     adapter: z.literal('hima-tcl-line-v1'),
     /** Optional PTY startup command. Omission preserves the historical same-argv behavior. */
     argv: z.array(z.string().min(1)).min(1).optional(),
-    commands: z.strictObject({
-      read: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.-]*$/)).default([]),
-      mutate: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.-]*$/)).default([]),
-      save: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.-]*$/)).default([]),
-      close: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.-]*$/)).default([]),
-    }).superRefine((commands, ctx) => {
-      const seen = new Map<string, string>();
-      for (const [effect, names] of Object.entries(commands)) for (const [at, name] of names.entries()) {
-        const earlier = seen.get(name);
-        if (earlier !== undefined) ctx.addIssue({ code: 'custom', path: [effect, at],
-          message: `interactive command "${name}" is classified as both ${earlier} and ${effect}` });
-        else seen.set(name, effect);
-      }
-      commands.read.forEach((name, at) => {
-        const primitive = name.split('::').filter(Boolean).at(-1) ?? name;
-        if (['eval', 'exec', 'source', 'uplevel'].includes(primitive)) ctx.addIssue({ code: 'custom', path: ['read', at],
-          message: `interactive read command "${name}" can execute arbitrary Tcl and cannot be classified read-only` });
-      });
-      if (seen.size === 0) ctx.addIssue({ code: 'custom', message: 'an interactive tool must classify at least one command as read, mutate or save' });
-    }),
+    commands: interactiveCommandClasses,
+    /** Optional named argument contract in Tcl positional order. Older Packs retain positional arrays. */
+    arguments: z.record(interactiveCommandName, z.array(interactiveArgumentDeclaration).max(32)
+      .refine((items) => new Set(items.map(({ name }) => name)).size === items.length,
+        { error: 'interactive command argument names must be unique' })).default({}),
+  }).superRefine((interactive, ctx) => {
+    const classified = new Set(Object.values(interactive.commands).flat());
+    for (const name of Object.keys(interactive.arguments)) if (!classified.has(name)) {
+      ctx.addIssue({ code: 'custom', path: ['arguments', name],
+        message: `interactive arguments name unclassified command "${name}"` });
+    }
   }).optional(),
 });
 
@@ -621,6 +656,24 @@ export type PackContract = z.infer<typeof packContract>;
 export type PackTool = z.infer<typeof packTool>;
 export type ContractOutput = z.infer<typeof contractOutput>;
 
+export interface InteractiveCommandContract {
+  readonly name: string;
+  readonly effect: 'read' | 'mutate' | 'save' | 'close';
+  /** Exact named-object keys in Tcl positional order. Undefined preserves a legacy positional Pack. */
+  readonly arguments?: readonly {
+    readonly name: string; readonly type: 'string' | 'number' | 'boolean'; readonly choices?: readonly (string | number | boolean)[];
+    readonly minimum?: number; readonly maximum?: number;
+  }[];
+}
+
+/** One stable, reviewable projection used by qualification, the encoder and the Operator child. */
+export function interactiveCommandContracts(tool: PackTool): readonly InteractiveCommandContract[] {
+  if (!tool.interactive) return [];
+  return (['read', 'mutate', 'save', 'close'] as const).flatMap((effect) =>
+    tool.interactive!.commands[effect].map((name) => ({ name, effect,
+      ...(tool.interactive!.arguments[name] === undefined ? {} : { arguments: tool.interactive!.arguments[name] }) })));
+}
+
 export const packKnowledgeManifest = z.strictObject({
   schema: z.literal('hima-pack-knowledge/1'),
   documents: z.array(z.strictObject({
@@ -634,7 +687,7 @@ export const packKnowledgeManifest = z.strictObject({
 export type PackKnowledgeManifest = z.infer<typeof packKnowledgeManifest>;
 
 /** The Harness version against which Pack minimum versions are compared. */
-export const harnessVersion = '0.1.0';
+export const harnessVersion = '0.1.1';
 
 export type PackAuthorStatus = 'development' | 'trial' | 'released' | 'deprecated' | 'other';
 

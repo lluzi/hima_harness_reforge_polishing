@@ -47,11 +47,11 @@ const environmentSha256 = createHash('sha256').update(bytes).digest('hex');
 const document = {
   schema: 'hima-interactive-bindings/1',
   bindings: [{
-    id: `linglong-swerv28:xtop-operator-v1:${packDigest.slice(0, 16)}`,
+    id: `linglong-swerv28:xtop-operator-v2:${packDigest.slice(0, 16)}`,
     site: 'linglong-swerv28', packDigest, toolId: tool.id,
     adapter: 'hima-tcl-line-v1', adapterHash: BUILTIN_TCL_ADAPTER_DIGEST,
     commandsDigest,
-    environment: { id: 'linglong-swerv28:xtop-operator-v1', file: environmentFile, sha256: environmentSha256 },
+    environment: { id: 'linglong-swerv28:xtop-operator-v2', file: environmentFile, sha256: environmentSha256 },
     mutation: 'qualified',
   }],
 };

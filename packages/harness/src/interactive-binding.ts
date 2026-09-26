@@ -6,7 +6,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { z } from 'zod';
-import { boundInputs, interactiveToolArgv, runGraphsOf, type Pack, type PackNode, type PackTool } from './packs.js';
+import { boundInputs, interactiveCommandContracts, interactiveToolArgv, runGraphsOf,
+  type Pack, type PackNode, type PackTool } from './packs.js';
 import { nodeArguments } from './node-turns.js';
 import { loadRunPack } from './release.js';
 import { packDigestExcludes } from './pack-folder.js';
@@ -109,7 +110,13 @@ const scalar = z.union([z.string().max(64 * 1024), z.number().finite(), z.boolea
 const commandArgs = z.strictObject({ arguments: z.array(scalar).max(256).default([]) });
 
 const hash = (bytes: string | Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
-export const interactiveCommandsDigest = (tool: PackTool): string => hash(JSON.stringify(tool.interactive?.commands ?? null));
+export const interactiveCommandsDigest = (tool: PackTool): string => {
+  const interactive = tool.interactive;
+  if (!interactive) return hash(JSON.stringify(null));
+  return hash(JSON.stringify(Object.keys(interactive.arguments).length === 0
+    ? interactive.commands
+    : { commands: interactive.commands, arguments: interactive.arguments }));
+};
 
 function plainAdminFile(file: string, what: string): { readonly path: string; readonly bytes: Buffer; readonly sha256: string } {
   if (!path.isAbsolute(file)) throw new Error(`${what} path must be absolute`);
@@ -170,7 +177,30 @@ function encodeTcl(tool: PackTool, request: Parameters<InteractiveBindingBridge[
   if (effect === undefined) throw new Error(`interactive command "${request.name}" is not classified by retained tool ${tool.id}`);
   const primitive = request.name.split('::').filter(Boolean).at(-1) ?? request.name;
   if (effect === 'read' && forbiddenReadCommands.has(primitive)) throw new Error(`read command "${request.name}" could execute arbitrary Tcl and is refused`);
-  const args = commandArgs.parse(request.args).arguments.map(tclLiteralWord).join(' ');
+  const signature = tool.interactive?.arguments[request.name];
+  let values: readonly (string | number | boolean)[];
+  if (signature === undefined) values = commandArgs.parse(request.args).arguments;
+  else {
+    const names = signature.map(({ name }) => name);
+    if (request.args === null || typeof request.args !== 'object' || Array.isArray(request.args)) {
+      throw new Error(`interactive command "${request.name}" requires named arguments ${names.join(', ')}`);
+    }
+    const raw = request.args as Record<string, unknown>;
+    const missing = names.filter((name) => !Object.hasOwn(raw, name));
+    const extra = Object.keys(raw).filter((name) => !names.includes(name));
+    if (missing.length > 0) throw new Error(`interactive command "${request.name}" requires named arguments ${names.join(', ')}; missing ${missing.join(', ')}`);
+    if (extra.length > 0) throw new Error(`interactive command "${request.name}" accepts only named arguments ${names.join(', ')}; unexpected ${extra.join(', ')}`);
+    const supplied = z.record(z.string(), scalar).parse(raw);
+    for (const argument of signature) {
+      const value = supplied[argument.name]!;
+      if (typeof value !== argument.type) throw new Error(`interactive command "${request.name}" argument ${argument.name} must be ${argument.type}`);
+      if (argument.choices !== undefined && !argument.choices.includes(value)) throw new Error(`interactive command "${request.name}" argument ${argument.name} must be one of ${argument.choices.join(', ')}`);
+      if (typeof value === 'number' && argument.minimum !== undefined && value < argument.minimum) throw new Error(`interactive command "${request.name}" argument ${argument.name} is below ${String(argument.minimum)}`);
+      if (typeof value === 'number' && argument.maximum !== undefined && value > argument.maximum) throw new Error(`interactive command "${request.name}" argument ${argument.name} exceeds ${String(argument.maximum)}`);
+    }
+    values = signature.map(({ name }) => supplied[name]!);
+  }
+  const args = values.map(tclLiteralWord).join(' ');
   const invocation = `${request.name}${args === '' ? '' : ` ${args}`}`;
   const token = request.protocolToken;
   const success = effect === 'close'
@@ -268,7 +298,7 @@ export function createInteractiveBindingBridge(config: InteractiveBindingBridgeC
           sessionMaxMs: 60 * 60_000, idleMaxMs: 10 * 60_000 },
       };
       return { binding, site: request.site.name, workspace: request.workspace, argv,
-        name: `${node.id}-interactive`, licences: tool.licences };
+        name: `${node.id}-interactive`, licences: tool.licences, commands: interactiveCommandContracts(tool) };
     },
 
     async verifyAdminBinding(binding) {

@@ -39,6 +39,10 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
   tool.argv = [wrapper, '${WORKSPACE}/flow/interactive-repl.tcl'];
   tool.interactive = { mode: 'interactive-only', adapter: 'hima-tcl-line-v1', argv: [wrapper, '${WORKSPACE}/flow/interactive-repl.tcl'], commands: {
     read: ['get_value'], mutate: ['set_value', 'fail_command'], save: ['save_state', 'close_session'],
+  }, arguments: {
+    get_value: [{ name: 'key', type: 'string' }],
+    set_value: [{ name: 'key', type: 'string' }, { name: 'value', type: 'number' }],
+    fail_command: [], save_state: [{ name: 'file', type: 'string' }], close_session: [],
   } };
   await writeFile(contractFile, stringify(contract));
   const sourceTemplate = path.join(h.home, 'hima/packs', packId, 'interactive-repl.tcl');
@@ -143,6 +147,9 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     assert.equal(delegated.status, 'created', delegated.reason); const operatorId = delegated.receipt?.childSessionId as string; assert.ok(operatorId);
     assert.deepEqual(delegated.effectiveContract.tools, ['hima_interactive']);
     assert.equal(delegated.effectiveContract.operator.executionId, executionId);
+    assert.deepEqual(delegated.effectiveContract.operator.commands.find((command: { name: string }) => command.name === 'set_value'), {
+      name: 'set_value', effect: 'mutate', arguments: [{ name: 'key', type: 'string' }, { name: 'value', type: 'number' }],
+    }, 'the Host-minted Operator contract carries the retained Pack argument catalog');
     assert.equal(host.ctx.hima.ledger.run(runId)!.control!.owner, String(owner.id), 'Operator delegation never changes the Run owner');
     process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = 'local-tcl-fixture';
     const opened = await request({ action: 'open', requestId: 'interactive-open' });
@@ -158,36 +165,36 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     assert.equal(host.ctx.hima.ledger.records({ runId, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched').length, 1);
 
     const set = await request({ action: 'input', requestId: 'interactive-set', toolSessionId, commandId: 'set-1',
-      command: { name: 'set_value', args: { arguments: ['answer', 42] } }, waitMs: 1_000 });
+      command: { name: 'set_value', args: { key: 'answer', value: 42 } }, waitMs: 1_000 });
     assert.equal(set.status, 'completed');
     const duplicate = await request({ action: 'input', requestId: 'interactive-set', toolSessionId, commandId: 'set-1',
-      command: { name: 'set_value', args: { arguments: ['answer', 42] } }, waitMs: 0 });
+      command: { name: 'set_value', args: { key: 'answer', value: 42 } }, waitMs: 0 });
     assert.equal(duplicate.status, 'duplicate');
     assert.equal(host.ctx.hima.ledger.records({ runId, type: 'job' })
       .find((record): record is JobRecord => record.type === 'job' && record.event === 'launched')?.job.pid, originalPid);
 
     const get = await request({ action: 'input', requestId: 'interactive-get', toolSessionId, commandId: 'get-1',
-      command: { name: 'get_value', args: { arguments: ['answer'] } }, waitMs: 1_000 });
+      command: { name: 'get_value', args: { key: 'answer' } }, waitMs: 1_000 });
     assert.equal(get.status, 'completed'); assert.match(get.transcript.text, /VALUE answer=42/);
     const failed = await request({ action: 'input', requestId: 'interactive-fail', toolSessionId, commandId: 'fail-1',
-      command: { name: 'fail_command', args: { arguments: [] } }, waitMs: 1_000 });
+      command: { name: 'fail_command', args: {} }, waitMs: 1_000 });
     assert.equal(failed.status, 'failed'); assert.match(failed.transcript.text, /intentional fixture failure/);
 
     assert.equal((await action('pause', 'interactive-pause', { nodeId })).kind, 'accepted');
     const heldMutation = await request({ action: 'input', requestId: 'interactive-held-set', toolSessionId, commandId: 'held-set',
-      command: { name: 'set_value', args: { arguments: ['held', true] } }, waitMs: 0 });
+      command: { name: 'set_value', args: { key: 'held', value: 1 } }, waitMs: 0 });
     assert.equal(heldMutation.status, 'refused'); assert.match(heldMutation.reason, /held/);
     const heldRead = await request({ action: 'input', requestId: 'interactive-held-get', toolSessionId, commandId: 'held-get',
-      command: { name: 'get_value', args: { arguments: ['answer'] } }, waitMs: 1_000 });
+      command: { name: 'get_value', args: { key: 'answer' } }, waitMs: 1_000 });
     assert.equal(heldRead.status, 'completed'); assert.match(heldRead.transcript.text, /VALUE answer=42/);
     assert.equal((await action('continue', 'interactive-continue', { nodeId })).kind, 'accepted');
 
     const workspace = launched[0]!.job.workspace; const savedFile = path.join(workspace, 'interactive-state.txt');
     const saved = await request({ action: 'input', requestId: 'interactive-save', toolSessionId, commandId: 'save-1',
-      command: { name: 'save_state', args: { arguments: [savedFile] } }, waitMs: 1_000 });
+      command: { name: 'save_state', args: { file: savedFile } }, waitMs: 1_000 });
     assert.equal(saved.status, 'completed'); assert.match(await readFile(savedFile, 'utf8'), /answer 42/);
     const exited = await request({ action: 'input', requestId: 'interactive-exit', toolSessionId, commandId: 'exit-1',
-      command: { name: 'close_session', args: { arguments: [] } }, waitMs: 1_000 });
+      command: { name: 'close_session', args: {} }, waitMs: 1_000 });
     assert.equal(exited.status, 'completed', exited.reason);
     await waitUntil('interactive Job exits and original execution becomes ready', () => {
       const context = host.ctx.hima.executionContext(runId);

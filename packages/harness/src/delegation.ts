@@ -12,6 +12,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { ContentBlock } from '@deepseek-ai/dsh-llm';
 import type { ToolExecution } from '@deepseek-ai/dsh-tools';
+import type { InteractiveCommandContract } from './packs.js';
 
 export type DelegationRole = 'analyst' | 'reviewer' | 'researcher' | 'coding' | 'operator';
 
@@ -77,6 +78,8 @@ export interface OperatorDelegationGrant {
   readonly bindingDigest: string;
   readonly mutation: 'qualified';
   readonly testOnly: boolean;
+  /** Host-derived from the exact retained Pack; never supplied by the owner or child. */
+  readonly commands: readonly InteractiveCommandContract[];
 }
 
 export interface DelegationReservation {
@@ -342,6 +345,9 @@ const taskPrompt = (contract: DelegationContract, effective: EffectiveDelegation
     : `Write capability: only the guarded private directory ${effective.writeScope.root}; owner verification is still required.`,
   effective.operator === undefined ? 'Interactive Operator capability: unavailable.'
     : `Interactive Operator capability: only ${effective.operator.runId}/${effective.operator.nodeId}/${effective.operator.executionId} through hima_interactive; binding ${effective.operator.bindingDigest}.`,
+  effective.operator === undefined ? 'Interactive typed commands: unavailable.'
+    : `Interactive typed commands: ${effective.operator.commands.map((command) =>
+      `${command.effect} ${command.name}(${command.arguments?.map((argument) => `${argument.name}: ${argument.type}${argument.choices === undefined ? '' : ` {${argument.choices.join('|')}}`}${argument.minimum === undefined && argument.maximum === undefined ? '' : ` [${argument.minimum ?? '-inf'}..${argument.maximum ?? '+inf'}]`}`).join(', ') ?? 'legacy positional arguments'})`).join('; ')}. Supply declared names inside command.args; the Host validates exact keys before dispatch.`,
   'Do not claim a Campaign action, verdict, tool result, or file change that the corresponding tool/session transcript does not record.',
 ].join('\n');
 

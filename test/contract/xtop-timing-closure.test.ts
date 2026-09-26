@@ -12,7 +12,7 @@ import { writeLocalSite } from './support/site.ts';
 import { waitUntil } from './support/fabric.ts';
 
 const packId = 'xtop-timing-closure';
-const xtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/xtop-v1/xtop-operator-v1.sh';
+const xtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/xtop-v2/xtop-operator-v2.sh';
 
 test('the XTop closure Pack loads, fits its declared execution surface and passes its cheap data-contract tests', async (t) => {
   const h = await createHimaHome();
@@ -39,7 +39,7 @@ test('the XTop closure Pack loads, fits its declared execution surface and passe
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /xtop-timing-closure@1\.0\.14.*fit/s);
+    assert.match(throughHost.text, /xtop-timing-closure@1\.0\.15.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {
@@ -61,9 +61,20 @@ test('run-xtop-fix keeps batch argv and exposes only the qualified typed Operato
     read: ['hima_operator_identity', 'hima_summary'], mutate: ['hima_fix_hold'],
     save: ['hima_save_candidate'], close: ['hima_close'],
   });
+  assert.deepEqual(tool.interactive?.arguments, {
+    hima_operator_identity: [],
+    hima_summary: [{ name: 'mode', type: 'string', choices: ['setup', 'hold'] }],
+    hima_fix_hold: [
+      { name: 'effort', type: 'string', choices: ['low', 'medium', 'high'] },
+      { name: 'target', type: 'number', minimum: -0.2, maximum: 0.2 },
+      { name: 'margin', type: 'number', minimum: -0.2, maximum: 0.2 },
+    ],
+    hima_save_candidate: [],
+    hima_close: [],
+  }, 'the retained Pack tells an Operator child the exact positional shape of every typed command');
   assert.equal(tool.interactive?.commands.read.includes('source'), false);
   assert.equal(tool.interactive?.commands.read.includes('exec'), false);
-  const wrapper = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v1.sh'), 'utf8');
+  const wrapper = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v2.sh'), 'utf8');
   assert.match(wrapper, /trap cleanup_container EXIT HUP INT TERM/);
   assert.match(wrapper, /podman run --rm -it \\\n+  --name "\$container_name"/);
   assert.match(wrapper, /podman rm -f -- "\$container_name"/);
@@ -78,15 +89,46 @@ test('run-xtop-fix keeps batch argv and exposes only the qualified typed Operato
   };
   const hostile = '$x; [exec touch /tmp/escaped]; source /tmp/escaped.tcl';
   const encoded = encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-1', protocolToken: 'Q'.repeat(32),
-    name: 'hima_fix_hold', args: { arguments: ['high', 0, hostile] } });
+    name: 'hima_fix_hold', args: { effort: 'high', target: 0, margin: 0.02 } });
   assert.equal(encoded.effect, 'mutation');
-  assert.ok(encoded.text.includes('"\\$x; \\[exec touch /tmp/escaped]; source /tmp/escaped.tcl"'));
+  assert.match(encoded.text, /hima_fix_hold "high" "0" "0\.02"/);
   assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'source-1', protocolToken: 'S'.repeat(32),
     name: 'source', args: { arguments: ['/tmp/untrusted.tcl'] } }), /not classified/);
+  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-wrong-shape', protocolToken: 'A'.repeat(32),
+    name: 'hima_fix_hold', args: { effort: 'high', target: 0 } }), /effort, target, margin/,
+  'a declared command is refused before Tcl dispatch when the Operator omits an argument');
+  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-positional', protocolToken: 'P'.repeat(32),
+    name: 'hima_fix_hold', args: { arguments: ['high', 0, 0.02] } }), /effort, target, margin/,
+  'declared named arguments cannot silently fall back to an undiscoverable positional payload');
+  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-extra', protocolToken: 'E'.repeat(32),
+    name: 'hima_fix_hold', args: { effort: 'high', target: 0, margin: 0.02, script: 'source /tmp/x' } }), /unexpected.*script/i,
+  'the retained signature rejects extra keys instead of ignoring them');
+  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-invalid-enum', protocolToken: 'I'.repeat(32),
+    name: 'hima_fix_hold', args: { effort: hostile, target: 0, margin: 0.02 } }), /one of low, medium, high/);
+  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-wrong-type', protocolToken: 'T'.repeat(32),
+    name: 'hima_fix_hold', args: { effort: 'high', target: '0', margin: 0.02 } }), /target must be number/);
+  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-nonfinite', protocolToken: 'F'.repeat(32),
+    name: 'hima_fix_hold', args: { effort: 'high', target: Number.POSITIVE_INFINITY, margin: 0.02 } }), /finite|number/i);
+  for (const boundary of [-0.2, 0.2]) assert.doesNotThrow(() => encodeRetainedInteractiveCommand(tool, binding, {
+    commandId: `hold-boundary-${String(boundary)}`, protocolToken: 'B'.repeat(32), name: 'hima_fix_hold',
+    args: { effort: 'high', target: boundary, margin: boundary },
+  }));
+  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-below', protocolToken: 'L'.repeat(32),
+    name: 'hima_fix_hold', args: { effort: 'high', target: -0.2001, margin: 0.02 } }), /below -0\.2/);
+  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-above', protocolToken: 'U'.repeat(32),
+    name: 'hima_fix_hold', args: { effort: 'high', target: 0, margin: 0.2001 } }), /exceeds 0\.2/);
   const close = encodeRetainedInteractiveCommand(tool, binding, { commandId: 'close-1', protocolToken: 'C'.repeat(32),
-    name: 'hima_close', args: { arguments: [] } });
+    name: 'hima_close', args: {} });
   assert.equal(close.effect, 'close');
   assert.match(close.text, /HIMA:C{32}:DONE"; exit/);
+
+  const template = await readFile(path.join(repoRoot, 'packs/xtop-timing-closure/flow/templates/xtop-operator.tcl'), 'utf8');
+  const saves = template.split('\n').filter((line) => line.trimStart().startsWith('save_workspace -as '));
+  assert.deepEqual(saves, [], 'Operator retries retain only the admitted ECO output pair, never collision-prone named XTop workspaces');
+  assert.match(template, /write_design_changes -format INNOVUS .* -output_dir \$::eco_output_dir -keep_route/,
+    'hima_save_candidate still persists the declared logical/physical ECO pair');
+  assert.match(template, /candidate ECO output already exists; refusing an uncertain overwrite/,
+    'a retry cannot overwrite an earlier or uncertain candidate artifact');
 });
 
 test('the admin generator binds qualification to linglong-swerv28 and the current Pack digest', async (t) => {
@@ -108,8 +150,17 @@ test('the admin generator binds qualification to linglong-swerv28 and the curren
   assert.equal(generated.status, 0, generated.stderr);
   const document = JSON.parse(await readFile(output, 'utf8'));
   assert.equal(document.bindings[0].site, 'linglong-swerv28');
+  assert.match(document.bindings[0].id, /^linglong-swerv28:xtop-operator-v2:/);
+  assert.equal(document.bindings[0].environment.id, 'linglong-swerv28:xtop-operator-v2');
   assert.equal(document.bindings[0].packDigest, pack.folder.digest(packDigestExcludes));
+  assert.equal(document.bindings[0].commandsDigest, interactiveCommandsDigest(tool));
   assert.equal(document.bindings[0].mutation, 'qualified');
+  const parsedEvidence = JSON.parse(evidence);
+  const wrapperBytes = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v2.sh'));
+  const sourceBytes = await readFile(path.join(repoRoot, 'packs/xtop-timing-closure/flow/templates/xtop-operator.tcl'));
+  assert.equal(parsedEvidence.wrapper.path, xtopOperatorWrapper);
+  assert.equal(parsedEvidence.wrapper.sha256, createHash('sha256').update(wrapperBytes).digest('hex'));
+  assert.equal(parsedEvidence.sourceTemplate.sha256, createHash('sha256').update(sourceBytes).digest('hex'));
 
   const overwrite = spawnSync(process.execPath, [path.join(repoRoot, 'scripts/generate-xtop-operator-binding.mjs'),
     '--environment', environment, '--output', output], { cwd: repoRoot, encoding: 'utf8' });

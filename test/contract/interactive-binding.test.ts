@@ -75,6 +75,10 @@ test('production binding resolves retained Pack/Site facts, pins admin evidence,
   const pack = loadPack(installed.packsDir, packId);
   const packDigest = pack.folder.digest(packDigestExcludes);
   const tool = pack.contract.tools.find((candidate) => candidate.id === 'synth')!;
+  assert.equal(interactiveCommandsDigest(tool), createHash('sha256').update(JSON.stringify(tool.interactive!.commands)).digest('hex'),
+    'a legacy names-only Pack keeps its existing command digest under a newer compatible Harness');
+  assert.equal(BUILTIN_TCL_ADAPTER_DIGEST, '95117b5828b6626f42eb083568d7a89eff0eb857c9fc282eaf8b4d3b520defc6',
+    'named argument validation does not rewrite the unchanged legacy Tcl adapter identity');
   assert.equal(batchToolRefusal(tool)?.includes('interactive-only'), true);
   const hybrid = { ...tool, interactive: { ...tool.interactive!, mode: 'hybrid' as const } };
   assert.equal(batchToolRefusal(hybrid), undefined, 'hybrid preserves only the original batch argv path');
@@ -162,6 +166,19 @@ test('Pack schema refuses duplicate effects and Tcl execution primitives classif
         save: []
     argv:`]]);
   assert.throws(() => loadPack(installed.packsDir, 'interactive-duplicate-command'), /classified as both read and mutate/);
+
+  await writePackVariant(installed.packsDir, 'interactive-contradictory-argument', [['    argv:', `    interactive:
+      mode: interactive-only
+      adapter: hima-tcl-line-v1
+      commands:
+        read: [get_value]
+        mutate: []
+        save: []
+      arguments:
+        get_value:
+          - { name: level, type: number, choices: [2], maximum: 1 }
+    argv:`]]);
+  assert.throws(() => loadPack(installed.packsDir, 'interactive-contradictory-argument'), /choice falls outside its declared bounds/);
   assert.notEqual(timingProbePackId, '', 'fixture varies the shipped Pack rather than a synthetic parser-only object');
 });
 

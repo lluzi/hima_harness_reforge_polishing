@@ -22,7 +22,6 @@ import_designs
 check_placement_readiness
 source $env(LIBRARY_TCL)
 read_timing_data -data_dir $env(STA_DATA)
-save_workspace -as ${design}_operator_baseline
 check_inst_reference_library
 check_inst_timing_library
 set_parameter eco_new_object_prefix hima_operator_eco
@@ -56,9 +55,11 @@ proc hima_fix_hold {effort target margin} {
     fix_hold_gba_violations -effort $effort -hold_target $target -setup_margin $margin
 }
 proc hima_save_candidate {} {
+    if {[file exists $::eco_output_dir]} {
+        error "candidate ECO output already exists; refusing an uncertain overwrite"
+    }
     file mkdir $::eco_output_dir
     write_design_changes -format INNOVUS -eco_file_prefix $::env(ECO_PREFIX) -output_dir $::eco_output_dir -keep_route
-    save_workspace -as ${::design}_operator_candidate
     return $::eco_output_dir
 }
 proc hima_close {} {
