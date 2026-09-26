@@ -51,6 +51,13 @@ that `input_readiness` can compute, without any outside knowledge base,
 which SPEF corners the declared scenarios actually need. `design_state`'s
 own `scenarios` output field is the plain list of scenario names.
 
+The manifest is Site-supplied evidence, not an internal contract a caller
+already validated — a missing required key (`top`, `stage`, `database`,
+`database.enc`, `database.encDat`, `netlist`, a scenario's `name`/`corner`)
+therefore raises `AtcsError("missing-input", "<dotted key path>")` from
+`design_state`/`input_readiness`, never a bare `KeyError`, via the shared
+`_require` helper below.
+
 `design_state(manifest)`
 -------------------------
 
@@ -90,20 +97,21 @@ Lifecycle availability (`lifecycleAvailable`, `lifecycleMissing`, `scope`):
 - Otherwise, every stage in `REQUIRED_LIFECYCLE_STAGES` (`init`, `place`,
   `cts`, `route`, `postroute`) must appear in
   ``manifest["lifecycle"]["stages"]`` with a `checkpoint` and a `script`
-  that both exist and are **hash-bound** (actually read, not just
-  stat-checked — see `_hash_bind`), and ``manifest["lifecycle"]`` must also
-  carry a `flowConfig` key. Each absent/non-existent piece adds one string
-  to `lifecycleMissing` (e.g. ``"cts checkpoint missing"``,
+  that both exist and are **hash-bound** (actually read via
+  `core.file_sha256`, not just stat-checked), and ``manifest["lifecycle"]``
+  must also carry a `flowConfig` key. Each absent/non-existent piece adds
+  one string to `lifecycleMissing` (e.g. ``"cts checkpoint missing"``,
   ``"flowConfig missing"``) and forces `lifecycleAvailable = known(0)` —
   there is no partial/partial-stage scope; `scope` stays
   `"post-route-only"` (never a third "resume from stage X" scope, per
   SPEC's Run contract "Auto 输入判定").
-- If a checkpoint/script file exists but cannot be *read* (e.g. a
-  permission error during hashing), that single fact makes the whole
-  lifecycle verification inconclusive: `lifecycleAvailable =
-  unknown("lifecycle checkpoint/script unreadable: <detail>")`,
-  `lifecycleMissing` records the same reason, and `scope` still falls back
-  to `"post-route-only"` (an unknown never promotes to `"full-flow"`).
+- If one or more checkpoint/script files exist but cannot be *read* (e.g. a
+  permission error during hashing), that fact makes the whole lifecycle
+  verification inconclusive: `lifecycleAvailable =
+  unknown("<stage> <piece> unreadable: <detail>; ...")` — every unreadable
+  piece is named, not just the last one seen — `lifecycleMissing` records
+  the same reasons, and `scope` still falls back to `"post-route-only"`
+  (an unknown never promotes to `"full-flow"`).
 - Only when every stage's checkpoint+script hash-binds successfully **and**
   `flowConfig` is present is `lifecycleAvailable = known(1)` and `scope =
   "full-flow"`.
@@ -164,10 +172,28 @@ failing that, `recheck`) has a known slack for the same key, the pair of
 signs (negative counts as "in violation") decides `fixed` (was negative,
 now not), `remaining` (negative, still negative), `regressed` (was not
 negative, now negative), or no bucket at all (was not negative, still not
-negative — not interesting). If neither `current` nor `recheck` can
-resolve the key, it goes to `missingPrior` — this is deliberately not the
-same as `fixed`: a check that merely disappeared from a truncated report
-was never re-observed, positively or negatively.
+negative — not interesting).
+
+When neither `current` nor `recheck` can resolve the key (it is simply
+absent from both), what happens depends on the check's *prior* sign and on
+whether `current`'s coverage for that check's scenario/mode was complete
+(via `current["scenarios"][<scenario>]["complete"][<mode>]`, read from the
+check key's own `"<scenario>|<mode>|<endpoint>"` — a scenario absent from
+`current["scenarios"]` entirely counts as incomplete):
+
+- Prior **negative** (it was a violation): always `missingPrior`,
+  regardless of `current`'s coverage — a real violation that can no longer
+  be located is never silently dropped, and is deliberately not the same
+  as `fixed`: disappearing from a truncated report was never a positive
+  re-observation.
+- Prior **non-negative** (it was clean): `missingPrior` only when
+  `current`'s coverage for that scenario/mode was itself incomplete
+  (truncated or the scenario is missing) — the absence might just be
+  under-reporting, not evidence either way. When `current`'s coverage for
+  that scenario/mode was complete, an absent previously-clean check is not
+  listed in *any* category: a complete report that simply stopped
+  reporting a check that was never violating means it did not become a
+  violator, which is not comparison-worthy on its own.
 
 Every key present in `current` but absent from `prior` with a known
 negative slack is a `entrant` (newly-observed violation); a new key with a
@@ -192,47 +218,68 @@ def _resolve(root, path):
     return path
 
 
-def _hash_bind_file(path):
-    """Return the sha256 of `path`, or raise on any read/stat failure."""
-    return core.file_sha256(path)
+def _require(mapping, key, label="manifest"):
+    """Return `mapping[key]`, or raise `AtcsError("missing-input", ...)` if absent.
+
+    The manifest is Site-supplied evidence, not a caller-validated internal
+    contract, so a missing required key must never surface as a raw
+    `KeyError`.
+    """
+    if key not in mapping:
+        raise core.AtcsError("missing-input", f"{label}.{key}")
+    return mapping[key]
+
+
+def _scenario_name(scenario):
+    return _require(scenario, "name", "scenario")
+
+
+def _scenario_corner(scenario):
+    return _require(scenario, "corner", "scenario")
 
 
 def design_state(manifest):
     root = manifest.get("root")
 
-    database = manifest["database"]
-    enc_path = _resolve(root, database["enc"])
-    enc_dat_path = _resolve(root, database["encDat"])
+    top = _require(manifest, "top")
+    stage = _require(manifest, "stage")
+    database = _require(manifest, "database")
+    enc_rel = _require(database, "enc", "manifest.database")
+    enc_dat_rel = _require(database, "encDat", "manifest.database")
+    netlist_rel = _require(manifest, "netlist")
+
+    enc_path = _resolve(root, enc_rel)
+    enc_dat_path = _resolve(root, enc_dat_rel)
     database_out = {
-        "path": database["enc"],
-        "sha256": _hash_bind_file(enc_path),
+        "path": enc_rel,
+        "sha256": core.file_sha256(enc_path),
         "datDigest": core.tree_digest(enc_dat_path),
     }
 
-    netlist_path = _resolve(root, manifest["netlist"])
-    netlist_out = {"path": manifest["netlist"], "sha256": _hash_bind_file(netlist_path)}
+    netlist_path = _resolve(root, netlist_rel)
+    netlist_out = {"path": netlist_rel, "sha256": core.file_sha256(netlist_path)}
 
     if manifest.get("def") is not None:
         def_path = _resolve(root, manifest["def"])
-        def_out = {"path": manifest["def"], "sha256": _hash_bind_file(def_path)}
+        def_out = {"path": manifest["def"], "sha256": core.file_sha256(def_path)}
     else:
         def_out = None
 
     spef_out = {}
     for corner, rel_path in manifest.get("spef", {}).items():
         resolved = _resolve(root, rel_path)
-        spef_out[corner] = {"path": rel_path, "sha256": _hash_bind_file(resolved)}
+        spef_out[corner] = {"path": rel_path, "sha256": core.file_sha256(resolved)}
 
     sdc_out = []
     for rel_path in manifest.get("sdc", []):
         resolved = _resolve(root, rel_path)
-        sdc_out.append({"path": rel_path, "sha256": _hash_bind_file(resolved)})
+        sdc_out.append({"path": rel_path, "sha256": core.file_sha256(resolved)})
 
-    scenario_names = [scenario["name"] for scenario in manifest.get("scenarios", [])]
+    scenario_names = [_scenario_name(scenario) for scenario in manifest.get("scenarios", [])]
 
     body = {
-        "top": manifest["top"],
-        "stage": manifest["stage"],
+        "top": top,
+        "stage": stage,
         "database": database_out,
         "netlist": netlist_out,
         "def": def_out,
@@ -253,7 +300,7 @@ def _exists(path):
 
 
 def _required_corners(manifest):
-    return sorted({scenario["corner"] for scenario in manifest.get("scenarios", [])})
+    return sorted({_scenario_corner(scenario) for scenario in manifest.get("scenarios", [])})
 
 
 def _check_minimum_inputs(manifest, root):
@@ -304,7 +351,7 @@ def _check_lifecycle(manifest, root):
     the "lifecycle not provided at all" case is handled directly in `input_readiness`."""
     lifecycle = manifest["lifecycle"]
     missing = []
-    unreadable_reason = None
+    unreadable_reasons = []
     stages = lifecycle.get("stages", {})
     for stage in REQUIRED_LIFECYCLE_STAGES:
         stage_entry = stages.get(stage)
@@ -321,16 +368,17 @@ def _check_lifecycle(manifest, root):
                 missing.append(f"{stage} {piece} missing")
                 continue
             try:
-                _hash_bind_file(resolved)
+                core.file_sha256(resolved)
             except OSError as exc:
-                unreadable_reason = f"{stage} {piece} unreadable: {exc}"
-                missing.append(unreadable_reason)
+                reason = f"{stage} {piece} unreadable: {exc}"
+                unreadable_reasons.append(reason)
+                missing.append(reason)
 
     if "flowConfig" not in lifecycle:
         missing.append("flowConfig missing")
 
-    if unreadable_reason is not None:
-        return core.unknown(unreadable_reason), missing, False
+    if unreadable_reasons:
+        return core.unknown("; ".join(unreadable_reasons)), missing, False
     if missing:
         return core.known(0), missing, False
     return core.known(1), [], True
@@ -359,6 +407,13 @@ def input_readiness(manifest, site_capabilities):
     })
 
 
+def _read_and_track_source(path, sources):
+    """Read `path` as text, append its `{"path", "sha256"}` to `sources`, return the text."""
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    sources.append({"path": path, "sha256": core.file_sha256(path)})
+    return text
+
+
 def capture(source_refs, query_spec):
     max_paths = query_spec["maxPaths"]
     required_scenarios = query_spec.get("requiredScenarios", [])
@@ -373,17 +428,10 @@ def capture(source_refs, query_spec):
     all_complete = True
 
     for name, refs in available.items():
-        global_text = Path(refs["globalTiming"]).read_text(encoding="utf-8", errors="replace")
-        sources.append({"path": refs["globalTiming"], "sha256": core.file_sha256(refs["globalTiming"])})
-
-        setup_text = Path(refs["setupPaths"]).read_text(encoding="utf-8", errors="replace")
-        sources.append({"path": refs["setupPaths"], "sha256": core.file_sha256(refs["setupPaths"])})
-
-        hold_text = Path(refs["holdPaths"]).read_text(encoding="utf-8", errors="replace")
-        sources.append({"path": refs["holdPaths"], "sha256": core.file_sha256(refs["holdPaths"])})
-
-        check_text = Path(refs["checkTiming"]).read_text(encoding="utf-8", errors="replace")
-        sources.append({"path": refs["checkTiming"], "sha256": core.file_sha256(refs["checkTiming"])})
+        global_text = _read_and_track_source(refs["globalTiming"], sources)
+        setup_text = _read_and_track_source(refs["setupPaths"], sources)
+        hold_text = _read_and_track_source(refs["holdPaths"], sources)
+        check_text = _read_and_track_source(refs["checkTiming"], sources)
 
         global_timing = reports.parse_global_timing(global_text)
         check_timing = reports.parse_check_timing(check_text)
@@ -442,6 +490,19 @@ def _resolved_slack(key, current_checks, recheck):
     return None
 
 
+def _current_coverage_complete(current, scenario, mode):
+    """True only if `current` positively confirms complete coverage for `scenario`/`mode`.
+
+    A scenario absent from `current["scenarios"]` entirely (e.g. it was a
+    `missingScenario`) counts as incomplete, same as an explicit
+    `complete[mode] = False`.
+    """
+    scenario_entry = current.get("scenarios", {}).get(scenario)
+    if scenario_entry is None:
+        return False
+    return bool(scenario_entry.get("complete", {}).get(mode, False))
+
+
 def compare_checks(prior, current, recheck):
     recheck = recheck or {}
     prior_checks = prior.get("checks", {})
@@ -457,9 +518,19 @@ def compare_checks(prior, current, recheck):
 
         resolved = _resolved_slack(key, current_checks, recheck)
         if resolved is None:
-            # Vanished from both the current report and any supplemental
-            # recheck — ambiguous either way, never counted as `fixed`.
-            missing_prior.append(key)
+            if prior_negative:
+                # A real violation that can no longer be located is never
+                # silently dropped, whatever current's coverage looks like.
+                missing_prior.append(key)
+            else:
+                # It was clean before; only flag its disappearance as
+                # ambiguous if current's coverage for this scenario/mode was
+                # itself incomplete. A complete report that stopped
+                # reporting a check that was never violating is not
+                # comparison-worthy — it did not become a violator.
+                scenario, mode, _endpoint = key.split("|", 2)
+                if not _current_coverage_complete(current, scenario, mode):
+                    missing_prior.append(key)
             continue
 
         current_negative = resolved < 0

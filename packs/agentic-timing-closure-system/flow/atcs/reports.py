@@ -50,7 +50,9 @@ Three report kinds are parsed:
   these, so a mismatch means the wrong file was fed to the wrong `mode`.
 
 - ``check_timing.rpt`` — via `parse_check_timing`, looking for
-  ``There are <N> endpoints which are not constrained``. Returns
+  ``There are <N> endpoints which are not constrained`` with `N` a
+  non-negative integer literal (no leading `-`; a negative count is not a
+  real PT output and is treated the same as no line at all). Returns
   ``{"unconstrainedEndpoints": Measure}``. Per the fail-closed rule, `0` is
   only produced when the report explicitly states a count of 0 for that
   line; a report with no such line at all (never generated, or a different
@@ -82,7 +84,7 @@ _ENDPOINT_RE = re.compile(r"(?m)^\s*Endpoint:\s*(\S+)")
 _PATH_GROUP_RE = re.compile(r"(?m)^\s*Path Group:\s*(\S+)")
 _PATH_TYPE_RE = re.compile(r"(?m)^\s*Path Type:\s*(\S+)")
 _SLACK_RE = re.compile(r"(?m)^\s*slack\s*\(VIOLATED\)\s+(-?[0-9.eE+]+)")
-_UNCONSTRAINED_RE = re.compile(r"There are\s+(-?\d+)\s+endpoints which are not constrained")
+_UNCONSTRAINED_RE = re.compile(r"There are\s+(\d+)\s+endpoints which are not constrained")
 
 _EXPECTED_PATH_TYPE = {"setup": "max", "hold": "min"}
 

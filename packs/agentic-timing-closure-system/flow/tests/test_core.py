@@ -197,6 +197,15 @@ class ParsePathReportTest(unittest.TestCase):
             reports.parse_path_report(text, "setup", max_paths=10)
         self.assertEqual(ctx.exception.code, "identity-mismatch")
 
+    def test_non_finite_slack_raises_malformed_report(self):
+        # "1e400" is within the slack regex's character class (digits/e/+)
+        # but overflows float parsing to +inf — a report grammar Python's
+        # own float() would otherwise accept silently.
+        text = fixtures.path_report([("epA", "1e400")], "setup")
+        with self.assertRaises(core.AtcsError) as ctx:
+            reports.parse_path_report(text, "setup", max_paths=10)
+        self.assertEqual(ctx.exception.code, "malformed-report")
+
 
 class ParseCheckTimingTest(unittest.TestCase):
     def test_explicit_count_is_known(self):
@@ -213,7 +222,10 @@ class ParseCheckTimingTest(unittest.TestCase):
         result = reports.parse_check_timing("some unrelated report text\n")
         self.assertIn("unknown", result["unconstrainedEndpoints"])
 
+    def test_negative_count_is_unknown(self):
+        result = reports.parse_check_timing("There are -3 endpoints which are not constrained\n")
+        self.assertIn("unknown", result["unconstrainedEndpoints"])
+
 
 if __name__ == "__main__":
-    import unittest.mock  # noqa: F401  (imported lazily above via unittest.mock.patch)
     unittest.main(verbosity=2)

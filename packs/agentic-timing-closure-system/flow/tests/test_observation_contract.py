@@ -90,6 +90,28 @@ class DesignStateTest(DesignStateTestBase):
             state.design_state(manifest)
         self.assertEqual(ctx.exception.code, "missing-input")
 
+    def test_missing_top_level_key_raises_missing_input_not_key_error(self):
+        manifest = self.base_manifest()
+        del manifest["top"]
+        with self.assertRaises(core.AtcsError) as ctx:
+            state.design_state(manifest)
+        self.assertEqual(ctx.exception.code, "missing-input")
+        self.assertEqual(ctx.exception.detail, "manifest.top")
+
+    def test_missing_database_enc_key_raises_missing_input_not_key_error(self):
+        manifest = self.base_manifest()
+        del manifest["database"]["enc"]
+        with self.assertRaises(core.AtcsError) as ctx:
+            state.design_state(manifest)
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_scenario_missing_name_raises_missing_input_not_key_error(self):
+        manifest = self.base_manifest()
+        manifest["scenarios"] = [{"corner": "ssg_m40"}]
+        with self.assertRaises(core.AtcsError) as ctx:
+            state.design_state(manifest)
+        self.assertEqual(ctx.exception.code, "missing-input")
+
 
 class InputReadinessMinimumInputsTest(DesignStateTestBase):
     def test_missing_sdc_gives_missing_count_one(self):
@@ -105,6 +127,23 @@ class InputReadinessMinimumInputsTest(DesignStateTestBase):
         result = state.input_readiness(self.base_manifest(), site_capabilities={})
         self.assertEqual(result["missing"], [])
         self.assertEqual(result["missingCount"], {"value": 0})
+
+    def test_manifest_missing_database_key_entirely_is_reported_not_key_error(self):
+        manifest = self.base_manifest()
+        del manifest["database"]
+
+        result = state.input_readiness(manifest, site_capabilities={})
+
+        self.assertIn("database.enc", result["missing"])
+        self.assertIn("database.encDat", result["missing"])
+
+    def test_scenario_missing_corner_raises_missing_input_not_key_error(self):
+        manifest = self.base_manifest()
+        manifest["scenarios"] = [{"name": "func_ssg_rcworst_m40"}]
+
+        with self.assertRaises(core.AtcsError) as ctx:
+            state.input_readiness(manifest, site_capabilities={})
+        self.assertEqual(ctx.exception.code, "missing-input")
 
 
 class InputReadinessLifecycleTest(DesignStateTestBase):
@@ -176,6 +215,35 @@ class InputReadinessLifecycleTest(DesignStateTestBase):
 
         self.assertIn("unknown", result["lifecycleAvailable"])
         self.assertEqual(result["scope"], "post-route-only")
+
+    def test_multiple_unreadable_lifecycle_files_are_all_named(self):
+        manifest = self.base_manifest()
+        stages = self.stage_files()
+        manifest["lifecycle"] = {"stages": stages, "flowConfig": ["step-a"]}
+        unreadable_paths = {
+            str(Path(stages["cts"]["checkpoint"])),
+            str(Path(stages["route"]["script"])),
+        }
+
+        real_file_sha256 = core.file_sha256
+
+        def side_effect(path):
+            if str(path) in unreadable_paths:
+                raise PermissionError("permission denied (simulated)")
+            return real_file_sha256(path)
+
+        with mock.patch("atcs.core.file_sha256", side_effect=side_effect):
+            result = state.input_readiness(manifest, site_capabilities={})
+
+        reason = result["lifecycleAvailable"]["unknown"]
+        self.assertIn("cts checkpoint unreadable", reason)
+        self.assertIn("route script unreadable", reason)
+        self.assertTrue(
+            any("cts checkpoint unreadable" in item for item in result["lifecycleMissing"])
+        )
+        self.assertTrue(
+            any("route script unreadable" in item for item in result["lifecycleMissing"])
+        )
 
 
 class CaptureTest(unittest.TestCase):
@@ -292,6 +360,46 @@ class CompareChecksTest(unittest.TestCase):
         result = state.compare_checks(prior, current, {})
 
         self.assertEqual(result["remaining"], [key])
+
+    def test_non_negative_prior_absent_from_incomplete_current_is_missing_prior(self):
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epE")
+        prior = {"checks": {key: {"slack": core.known(0.05), "startpoint": "s", "pathGroup": "g"}}}
+        current = {
+            "checks": {},
+            "scenarios": {"func_ssg_rcworst_m40": {"complete": {"setup": False, "hold": True}}},
+        }
+
+        result = state.compare_checks(prior, current, {})
+
+        self.assertEqual(result["missingPrior"], [key])
+
+    def test_non_negative_prior_absent_from_complete_current_is_not_tracked(self):
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epE")
+        prior = {"checks": {key: {"slack": core.known(0.05), "startpoint": "s", "pathGroup": "g"}}}
+        current = {
+            "checks": {},
+            "scenarios": {"func_ssg_rcworst_m40": {"complete": {"setup": True, "hold": True}}},
+        }
+
+        result = state.compare_checks(prior, current, {})
+
+        self.assertEqual(result["missingPrior"], [])
+        self.assertEqual(result["fixed"], [])
+        self.assertEqual(result["remaining"], [])
+        self.assertEqual(result["regressed"], [])
+        self.assertEqual(result["entrant"], [])
+
+    def test_non_negative_prior_absent_when_scenario_itself_missing_is_missing_prior(self):
+        # current never observed this scenario at all (e.g. it was a
+        # missingScenario) -- that counts as incomplete coverage, same as an
+        # explicit complete=False.
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epE")
+        prior = {"checks": {key: {"slack": core.known(0.05), "startpoint": "s", "pathGroup": "g"}}}
+        current = {"checks": {}, "scenarios": {}}
+
+        result = state.compare_checks(prior, current, {})
+
+        self.assertEqual(result["missingPrior"], [key])
 
 
 if __name__ == "__main__":
