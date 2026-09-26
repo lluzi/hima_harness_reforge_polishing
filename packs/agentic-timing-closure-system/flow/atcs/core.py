@@ -239,3 +239,37 @@ UNSAFE_TCL_CHARS = set(';[]{}$"\n\\')
 a string unsafe to embed literally in generated Tcl. Final review (mechanical dedupe):
 `atcs.adapters._UNSAFE_TCL_CHARS` (without the backslash) and `atcs.integration._UNSAFE_TCL_CHARS`
 (with it) used to each define their own copy -- both now re-export this one, backslash included."""
+
+UNSAFE_TCL_CHARS_IN_BRACES = set(';{}$"\\')
+"""I7 (final review, bus-bit-safe names): the characters still unsafe for a value that a caller
+is about to embed inside a literal Tcl brace group (`{...}`, e.g. via `adapters.tcl_list_literal`
+or `integration._tcl_list`) -- `[`/`]` are dropped relative to `UNSAFE_TCL_CHARS` because Tcl's
+brace quoting disables every substitution of the group's own contents, so a real bus-bit signal
+or pin name (`bus[3]`, `U/A[2]`) is safe there without being refused. A backslash, `{`/`}` (would
+break the enclosing brace's own balance), `$`/`"`/`;` (kept refused defensively, even though brace
+quoting alone would already neutralize them, since this task's brief scopes the relaxation to
+bus-bit brackets specifically) remain unsafe, as do whitespace and any other control character
+(both checked separately by `is_tcl_unsafe`, never folded into this set, since they are refused
+in every context regardless of bracing). Every caller of a check that consults this set MUST
+actually wrap the checked value in `{...}` (or an `adapters.tcl_list_literal`/`integration._tcl_list`
+call) at its own use site -- this set is deliberately never used for a value substituted bare or
+inside a double-quoted Tcl string, where `[`/`]` would still trigger real command/array
+substitution."""
+
+
+def is_tcl_unsafe(value, allow_brackets=False):
+    """True when `value` contains a character unsafe to embed literally in generated Tcl.
+
+    Shared by `adapters.tcl_safe`/`integration._validate_tcl_value` (the emitters) and
+    `workspaces._collect_problems` (final review, I7: a work package's `editDomain`
+    instance/net names are now pre-flighted against the exact same rule the emitters
+    apply at replay/capture time, so a name a tool would refuse is never admitted by
+    the Reader/validator first) -- one shared rule, so "a Reader never admits what a
+    tool refuses" by construction, not by keeping two independently-maintained copies
+    in sync by hand. Every control character (checked by codepoint, not just the
+    common whitespace ones `str.isspace()` already covers) is always unsafe,
+    regardless of `allow_brackets`; see `UNSAFE_TCL_CHARS_IN_BRACES`'s own docstring
+    for what `allow_brackets=True` additionally admits and why.
+    """
+    charset = UNSAFE_TCL_CHARS_IN_BRACES if allow_brackets else UNSAFE_TCL_CHARS
+    return any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F or ch in charset for ch in value)

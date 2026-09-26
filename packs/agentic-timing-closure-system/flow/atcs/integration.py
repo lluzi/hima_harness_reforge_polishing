@@ -304,19 +304,26 @@ def _hashable(value):
 # ---------------------------------------------------------------------------
 
 
-def _validate_tcl_value(value, label):
+def _validate_tcl_value(value, label, allow_brackets=False):
     """Return `value` unchanged, or raise `AtcsError("unsafe-name", ...)`.
 
     Every string this module substitutes into a Tcl command passes through
-    here: non-empty, no whitespace, none of `;[]{}$"\\` or a newline, and
-    not starting with `-` (which would let it be read as a flag rather
-    than the literal value it is).
+    here: non-empty, no whitespace, no control character, none of `;[]{}$"\\`
+    or a newline, and not starting with `-` (which would let it be read as a
+    flag rather than the literal value it is).
+
+    I7 (final review, bus-bit-safe names): `allow_brackets=True` admits `[`/`]`
+    (`core.UNSAFE_TCL_CHARS_IN_BRACES`) -- every call site in this module that
+    passes it also wraps the returned value in `_tcl_list([...])` (or joins it
+    into one already inside such a list) before embedding it, so a real
+    bus-bit instance/pin/net name (`bus[3]`, `U/A[2]`) is never refused just
+    for looking like one.
     """
     if not isinstance(value, str) or value == "":
         raise core.AtcsError("unsafe-name", f"{label} must be a non-empty string, got {value!r}")
     if value.startswith("-"):
         raise core.AtcsError("unsafe-name", f"{label} must not start with '-': {value!r}")
-    if any(ch.isspace() for ch in value) or any(ch in _UNSAFE_TCL_CHARS for ch in value):
+    if core.is_tcl_unsafe(value, allow_brackets=allow_brackets):
         raise core.AtcsError("unsafe-name", f"{label} contains an unsafe character: {value!r}")
     return value
 
@@ -361,15 +368,17 @@ def xtop_tcl(op):
     """
     op_kind = op.get("op")
     if op_kind == "size_cell":
-        instance = _validate_tcl_value(op.get("instance"), "instance")
-        to_master = _validate_tcl_value(op.get("toMaster"), "master")
-        return f"size_cell {_tcl_list([instance])} {to_master}"
+        # I7 (final review): every substituted value here is wrapped in `_tcl_list`
+        # below, so a bus-bit name is safe (`allow_brackets=True`).
+        instance = _validate_tcl_value(op.get("instance"), "instance", allow_brackets=True)
+        to_master = _validate_tcl_value(op.get("toMaster"), "master", allow_brackets=True)
+        return f"size_cell {_tcl_list([instance])} {_tcl_list([to_master])}"
 
     if op_kind == "insert_buffer":
-        load_pins = [_validate_tcl_value(pin, "loadPins entry") for pin in (op.get("loadPins") or [])]
-        master = _validate_tcl_value(op.get("master"), "master")
-        new_instance = _validate_tcl_value(op.get("newInstance"), "newInstance")
-        new_net = _validate_tcl_value(op.get("newNet"), "newNet")
+        load_pins = [_validate_tcl_value(pin, "loadPins entry", allow_brackets=True) for pin in (op.get("loadPins") or [])]
+        master = _validate_tcl_value(op.get("master"), "master", allow_brackets=True)
+        new_instance = _validate_tcl_value(op.get("newInstance"), "newInstance", allow_brackets=True)
+        new_net = _validate_tcl_value(op.get("newNet"), "newNet", allow_brackets=True)
         command = (
             f"insert_buffer {_tcl_list(load_pins)} {_tcl_list([master])} "
             f"-new_cell_names {_tcl_list([new_instance])} -new_net_names {_tcl_list([new_net])}"
@@ -381,7 +390,7 @@ def xtop_tcl(op):
         return command
 
     if op_kind == "delete_buffer":
-        instance = _validate_tcl_value(op.get("instance"), "instance")
+        instance = _validate_tcl_value(op.get("instance"), "instance", allow_brackets=True)
         return f"remove_buffer {_tcl_list([instance])}"
 
     if op_kind == "pg_local_adjust":
@@ -393,20 +402,28 @@ def xtop_tcl(op):
 def _innovus_eco_line(op):
     op_kind = op.get("op")
     if op_kind == "size_cell":
-        instance = _validate_tcl_value(op.get("instance"), "instance")
-        to_master = _validate_tcl_value(op.get("toMaster"), "master")
-        return f"ecoChangeCell -inst {_tcl_list([instance])} -cell {to_master}"
+        # I7 (final review): every substituted value here is wrapped in `_tcl_list`
+        # below, so a bus-bit name is safe (`allow_brackets=True`).
+        instance = _validate_tcl_value(op.get("instance"), "instance", allow_brackets=True)
+        to_master = _validate_tcl_value(op.get("toMaster"), "master", allow_brackets=True)
+        return f"ecoChangeCell -inst {_tcl_list([instance])} -cell {_tcl_list([to_master])}"
 
     if op_kind == "insert_buffer":
-        load_pins = [_validate_tcl_value(pin, "loadPins entry") for pin in (op.get("loadPins") or [])]
+        load_pins = [_validate_tcl_value(pin, "loadPins entry", allow_brackets=True) for pin in (op.get("loadPins") or [])]
         if not load_pins:
             raise core.AtcsError("malformed-input", "insert_buffer op has no loadPins")
-        master = _validate_tcl_value(op.get("master"), "master")
-        new_instance = _validate_tcl_value(op.get("newInstance"), "newInstance")
-        new_net = _validate_tcl_value(op.get("newNet"), "newNet")
+        master = _validate_tcl_value(op.get("master"), "master", allow_brackets=True)
+        new_instance = _validate_tcl_value(op.get("newInstance"), "newInstance", allow_brackets=True)
+        new_net = _validate_tcl_value(op.get("newNet"), "newNet", allow_brackets=True)
+        # I7: each load pin is its own brace group (`-term {p1} {p2}`), not a bare,
+        # space-joined token list -- a bus-bit pin name (`U/A[2]`) used to be silently
+        # unreachable (rejected by `_validate_tcl_value` before this point) and, if the
+        # check had merely been dropped instead of fixed, a bare `-term U/A[2]` would
+        # have let Tcl attempt command substitution on `[2]` when Innovus later
+        # evaluates this generated Tcl text.
         command = (
-            f"ecoAddRepeater -term {' '.join(load_pins)} -cell {master} "
-            f"-name {new_instance} -newNetName {new_net}"
+            f"ecoAddRepeater -term {' '.join(_tcl_list([pin]) for pin in load_pins)} "
+            f"-cell {_tcl_list([master])} -name {_tcl_list([new_instance])} -newNetName {_tcl_list([new_net])}"
         )
         formatted_location = _validate_location(op.get("location"))
         if formatted_location is not None:
@@ -415,7 +432,7 @@ def _innovus_eco_line(op):
         return command
 
     if op_kind == "delete_buffer":
-        instance = _validate_tcl_value(op.get("instance"), "instance")
+        instance = _validate_tcl_value(op.get("instance"), "instance", allow_brackets=True)
         return f"ecoDeleteRepeater -inst {_tcl_list([instance])}"
 
     if op_kind == "pg_local_adjust":

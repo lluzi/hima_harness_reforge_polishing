@@ -152,6 +152,19 @@ def _collect_problems(obj, base_state, site_capabilities):
     for net in sorted(edit_nets & protected_nets):
         problems.append(f"editDomain net {net!r} is protected")
 
+    # I7 (final review): a Reader must never admit a name the emitters
+    # (`atcs.integration.xtop_tcl`/`_innovus_eco_line`, `atcs.adapters.tcl_safe`)
+    # would themselves refuse at replay/capture time -- checked here with the
+    # exact same rule those emitters apply once a value is wrapped in a Tcl
+    # brace group (`allow_brackets=True`; a bus-bit name like `bus[3]` is fine),
+    # so a work package this call admits can never later fail deep in `replay-
+    # prepare`/`capture-contribution` on a name shape this Reader should have
+    # caught up front.
+    for kind, names in (("instance", edit_instances), ("net", edit_nets)):
+        for name in sorted(names):
+            if not isinstance(name, str) or not name or core.is_tcl_unsafe(name, allow_brackets=True):
+                problems.append(f"editDomain {kind} {name!r} is not a safe Tcl name")
+
     actions = obj.get("actions") if isinstance(obj.get("actions"), list) else []
     for action in actions:
         if action not in ACTION_KINDS:

@@ -182,7 +182,7 @@ def find_conflict(facts, kind):
 
 class XtopTclTests(unittest.TestCase):
     def test_size_cell(self):
-        self.assertEqual(integration.xtop_tcl(size_op("U1", "INVX1", "INVX4")), "size_cell {U1} INVX4")
+        self.assertEqual(integration.xtop_tcl(size_op("U1", "INVX1", "INVX4")), "size_cell {U1} {INVX4}")
 
     def test_insert_buffer_without_location(self):
         op = insert_op("N1", "atcs_w01_r1_buf0", "atcs_w01_r1_net0", "BUFX2", load_pins=["U/A", "U/B"])
@@ -224,6 +224,26 @@ class XtopTclTests(unittest.TestCase):
             integration.xtop_tcl(size_op("U1", "INVX1", "-force"))
         self.assertEqual(ctx.exception.code, "unsafe-name")
 
+    def test_bus_bit_instance_name_is_brace_quoted_not_refused(self):
+        """I7 (final review): a real bus-bit signal/instance name (`bus[3]`) used to be
+        refused outright by `_validate_tcl_value`; it is now admitted and rendered
+        inside a literal Tcl brace group, where `[`/`]` are inert."""
+        self.assertEqual(
+            integration.xtop_tcl(size_op("bus[3]", "INVX1", "INVX4")), "size_cell {bus[3]} {INVX4}"
+        )
+
+    def test_bus_bit_load_pin_and_master_are_brace_quoted(self):
+        op = insert_op("N1", "buf0", "net0", "BUFX2", load_pins=["U/A[2]", "U/B[15]"])
+        self.assertEqual(
+            integration.xtop_tcl(op),
+            "insert_buffer {U/A[2] U/B[15]} {BUFX2} -new_cell_names {buf0} -new_net_names {net0}",
+        )
+
+    def test_control_character_in_instance_name_still_rejected(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.xtop_tcl(size_op("U1\x01", "INVX1", "INVX4"))
+        self.assertEqual(ctx.exception.code, "unsafe-name")
+
     def test_rendered_text_has_no_line_continuation(self):
         tcl = integration.xtop_tcl(insert_op("N1", "buf0", "net0", "BUFX2", location=[1.0, 2.0]))
         self.assertNotIn("\\\n", tcl)
@@ -244,7 +264,7 @@ class XtopTclTests(unittest.TestCase):
 class InnovusEcoTclTests(unittest.TestCase):
     def test_size_cell_uses_eco_change_cell(self):
         self.assertEqual(
-            integration.innovus_eco_tcl([size_op("U1", "INVX1", "INVX4")]), "ecoChangeCell -inst {U1} -cell INVX4"
+            integration.innovus_eco_tcl([size_op("U1", "INVX1", "INVX4")]), "ecoChangeCell -inst {U1} -cell {INVX4}"
         )
 
     def test_delete_buffer_uses_eco_delete_repeater(self):
@@ -254,7 +274,7 @@ class InnovusEcoTclTests(unittest.TestCase):
         op = insert_op("N1", "atcs_w01_r1_buf0", "atcs_w01_r1_net0", "BUFX2", load_pins=["U/A"])
         self.assertEqual(
             integration.innovus_eco_tcl([op]),
-            "ecoAddRepeater -term U/A -cell BUFX2 -name atcs_w01_r1_buf0 -newNetName atcs_w01_r1_net0",
+            "ecoAddRepeater -term {U/A} -cell {BUFX2} -name {atcs_w01_r1_buf0} -newNetName {atcs_w01_r1_net0}",
         )
 
     def test_buffer_insertion_with_multiple_pins_and_location(self):
@@ -263,18 +283,42 @@ class InnovusEcoTclTests(unittest.TestCase):
         )
         self.assertEqual(
             integration.innovus_eco_tcl([op]),
-            "ecoAddRepeater -term U/A U/B -cell BUFX2 -name atcs_w01_r1_buf0 "
-            "-newNetName atcs_w01_r1_net0 -loc {10.5 20.25}",
+            "ecoAddRepeater -term {U/A} {U/B} -cell {BUFX2} -name {atcs_w01_r1_buf0} "
+            "-newNetName {atcs_w01_r1_net0} -loc {10.5 20.25}",
         )
 
     def test_multiple_ops_join_with_newline(self):
         tcl = integration.innovus_eco_tcl([size_op("U1", "A", "B"), delete_op("U2", "C")])
-        self.assertEqual(tcl, "ecoChangeCell -inst {U1} -cell B\necoDeleteRepeater -inst {U2}")
+        self.assertEqual(tcl, "ecoChangeCell -inst {U1} -cell {B}\necoDeleteRepeater -inst {U2}")
 
     def test_pg_local_adjust_unsupported(self):
         with self.assertRaises(core.AtcsError) as ctx:
             integration.innovus_eco_tcl([pg_op()])
         self.assertEqual(ctx.exception.code, "unsupported-op")
+
+    def test_bus_bit_pin_name_is_brace_quoted_not_refused(self):
+        """I7 (final review): the old code embedded load pins bare, space-joined, with
+        no brace quoting at all (`-term U/A U/B`) -- a real bus-bit pin name would
+        either be refused outright (old `_validate_tcl_value`) or, had the refusal
+        merely been dropped, would have let Tcl attempt command substitution on the
+        `[...]` when this generated line is later sourced by Innovus. Each pin is now
+        its own brace group."""
+        op = insert_op("N1", "buf0", "net0", "BUFX2", load_pins=["U/A[2]", "U/B[15]"])
+        self.assertEqual(
+            integration.innovus_eco_tcl([op]),
+            "ecoAddRepeater -term {U/A[2]} {U/B[15]} -cell {BUFX2} -name {buf0} -newNetName {net0}",
+        )
+
+    def test_bus_bit_master_name_is_brace_quoted(self):
+        self.assertEqual(
+            integration.innovus_eco_tcl([size_op("bus[3]", "INVX1", "INVX4")]),
+            "ecoChangeCell -inst {bus[3]} -cell {INVX4}",
+        )
+
+    def test_control_character_in_instance_name_still_rejected(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.innovus_eco_tcl([size_op("U1\x01", "INVX1", "INVX4")])
+        self.assertEqual(ctx.exception.code, "unsafe-name")
 
 
 class ValidatePlanTests(unittest.TestCase):
@@ -1072,8 +1116,8 @@ class SealBatchTests(unittest.TestCase):
         merge_commit = integration.seal_batch(state, request, facts, [c1])
 
         self.assertEqual(merge_commit["newNets"], ["atcs_w01_r1_net0"])
-        self.assertIn("-name atcs_w01_r1_buf0", merge_commit["innovusEcoTcl"])
-        self.assertIn("-newNetName atcs_w01_r1_net0", merge_commit["innovusEcoTcl"])
+        self.assertIn("-name {atcs_w01_r1_buf0}", merge_commit["innovusEcoTcl"])
+        self.assertIn("-newNetName {atcs_w01_r1_net0}", merge_commit["innovusEcoTcl"])
 
     def test_same_inputs_produce_the_same_merge_commit_id(self):
         op = size_op("U1", "A", "B")

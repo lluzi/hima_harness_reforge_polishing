@@ -157,19 +157,25 @@ class AdapterToolError(Exception):
 # ---------------------------------------------------------------------------
 
 
-def tcl_safe(value, label):
+def tcl_safe(value, label, allow_brackets=False):
     """Return `value` unchanged, or raise `AtcsError("unsafe-name", ...)`.
 
     Same rule as `atcs.integration._validate_tcl_value`: a non-empty string
-    with no whitespace and none of ``;[]{}$"\`` (backslash included, final
-    review: mechanical dedupe onto the one shared `core.UNSAFE_TCL_CHARS`)
-    or a newline. Re-checked here (rather than trusted from an
-    already-validated `operation`) because these values are about to be
+    with no whitespace, no control character and none of ``;[]{}$"\`` (backslash
+    included, final review: mechanical dedupe onto the one shared
+    `core.UNSAFE_TCL_CHARS`) or a newline. Re-checked here (rather than trusted
+    from an already-validated `operation`) because these values are about to be
     embedded literally in Tcl this module generates for a template.
+
+    I7 (final review, bus-bit-safe names): `allow_brackets=True` admits `[`/`]`
+    (see `core.UNSAFE_TCL_CHARS_IN_BRACES`'s own docstring) -- pass it only when
+    the caller is about to wrap the returned value in a literal Tcl brace group
+    (`tcl_list_literal`, or an equivalent `"{" + value + "}"`), never for a value
+    substituted bare or inside a double-quoted Tcl string.
     """
     if not isinstance(value, str) or value == "":
         raise core.AtcsError("unsafe-name", f"{label} must be a non-empty string, got {value!r}")
-    if any(ch.isspace() or ch in _UNSAFE_TCL_CHARS for ch in value):
+    if core.is_tcl_unsafe(value, allow_brackets=allow_brackets):
         raise core.AtcsError("unsafe-name", f"{label} contains an unsafe character: {value!r}")
     return value
 
@@ -211,8 +217,12 @@ def tcl_quote(value):
 
 
 def tcl_list_literal(values, label):
-    """A Tcl list literal (``{a b c}``) of `values`, each checked via `tcl_safe`."""
-    safe_values = [tcl_safe(value, f"{label} entry") for value in values]
+    """A Tcl list literal (``{a b c}``) of `values`, each checked via `tcl_safe`.
+
+    I7 (final review): the whole list is one brace-quoted group, so each entry is
+    checked with `allow_brackets=True` -- a bus-bit name (`bus[3]`) is admitted.
+    """
+    safe_values = [tcl_safe(value, f"{label} entry", allow_brackets=True) for value in values]
     return "{" + " ".join(safe_values) + "}"
 
 
@@ -382,8 +392,11 @@ def compile_pt_query_task(inputs, report_root, targets):
     for index, target in enumerate(targets):
         name = f"q{index:03d}"
         report_names[target["checkKey"]] = name
-        startpoint = tcl_safe(target["startpoint"], "startpoint")
-        endpoint = tcl_safe(target["endpoint"], "endpoint")
+        # I7 (final review): each target is one nested brace group inside the outer
+        # ATCS_QUERY_TARGETS list below, so a bus-bit startpoint/endpoint (`bus[3]`)
+        # is safe here (`allow_brackets=True`).
+        startpoint = tcl_safe(target["startpoint"], "startpoint", allow_brackets=True)
+        endpoint = tcl_safe(target["endpoint"], "endpoint", allow_brackets=True)
         tcl_targets.append("{" + f"{startpoint} {endpoint} {name}" + "}")
 
     env = {

@@ -150,6 +150,34 @@ class ValidateWorkPackageTest(unittest.TestCase):
         count = workspaces.request_invalid_count(package, self.base_state, self.site_capabilities)
         self.assertGreaterEqual(count, 2)
 
+    def test_bus_bit_edit_domain_names_are_admitted(self):
+        """I7 (final review): a Reader must never refuse a name the emitters
+        (`atcs.integration.xtop_tcl`/`_innovus_eco_line`) would themselves admit --
+        a real bus-bit signal name (`bus[3]`) is a legitimate `editDomain` entry."""
+        package = make_work_package(
+            base_state_id=self.base_state["id"], edit_instances=["U1/BUF1", "bus[3]"]
+        )
+        stamped = workspaces.validate_work_package(package, self.base_state, self.site_capabilities)
+        self.assertEqual(stamped["editDomain"]["instances"], ["U1/BUF1", "bus[3]"])
+        self.assertEqual(
+            workspaces.request_invalid_count(package, self.base_state, self.site_capabilities), 0
+        )
+
+    def test_unsafe_edit_domain_instance_name_rejected(self):
+        """A Reader now catches, up front, exactly the names the emitters would
+        themselves refuse at replay/capture time (a semicolon, brace or backslash)
+        -- never lets a work package through only to fail deep inside `replay-
+        prepare`/`capture-contribution` later."""
+        package = make_work_package(
+            base_state_id=self.base_state["id"], edit_instances=["U1;rm -rf"]
+        )
+        with self.assertRaises(core.AtcsError) as ctx:
+            workspaces.validate_work_package(package, self.base_state, self.site_capabilities)
+        self.assertEqual(ctx.exception.code, "invalid-work-package")
+        self.assertGreaterEqual(
+            workspaces.request_invalid_count(package, self.base_state, self.site_capabilities), 1
+        )
+
 
 class PrepareWorkspaceTest(unittest.TestCase):
     def setUp(self):

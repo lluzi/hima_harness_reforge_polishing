@@ -72,6 +72,44 @@ class SharedConstantsDedupeTest(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "unsafe-name")
 
 
+class IsTclUnsafeTest(unittest.TestCase):
+    """`core.is_tcl_unsafe` -- final review (I7, bus-bit-safe names): the one shared
+    predicate `adapters.tcl_safe`/`integration._validate_tcl_value` (the emitters)
+    and `workspaces._collect_problems` (the Reader-side pre-flight) both consult, so
+    a name a tool would refuse is never admitted by a Reader first."""
+
+    def test_plain_name_is_safe_in_both_modes(self):
+        self.assertFalse(core.is_tcl_unsafe("U1/BUF1"))
+        self.assertFalse(core.is_tcl_unsafe("U1/BUF1", allow_brackets=True))
+
+    def test_brackets_are_unsafe_by_default(self):
+        self.assertTrue(core.is_tcl_unsafe("bus[3]"))
+
+    def test_brackets_are_safe_when_allowed(self):
+        self.assertFalse(core.is_tcl_unsafe("bus[3]", allow_brackets=True))
+
+    def test_braces_stay_unsafe_even_when_brackets_are_allowed(self):
+        self.assertTrue(core.is_tcl_unsafe("{bus}", allow_brackets=True))
+
+    def test_backslash_stays_unsafe_even_when_brackets_are_allowed(self):
+        self.assertTrue(core.is_tcl_unsafe("bus\\3", allow_brackets=True))
+
+    def test_dollar_quote_and_semicolon_stay_unsafe_even_when_brackets_are_allowed(self):
+        for value in ("bus$3", 'bus"3', "bus;3"):
+            with self.subTest(value=value):
+                self.assertTrue(core.is_tcl_unsafe(value, allow_brackets=True))
+
+    def test_whitespace_stays_unsafe_in_both_modes(self):
+        self.assertTrue(core.is_tcl_unsafe("bus 3"))
+        self.assertTrue(core.is_tcl_unsafe("bus 3", allow_brackets=True))
+
+    def test_a_non_newline_control_character_is_unsafe_in_both_modes(self):
+        """Neither mode previously refused a bare control character (e.g. SOH) that is
+        not itself whitespace and not in the old fixed punctuation set -- both do now."""
+        self.assertTrue(core.is_tcl_unsafe("bus\x013"))
+        self.assertTrue(core.is_tcl_unsafe("bus\x013", allow_brackets=True))
+
+
 class CanonicalDigestTest(unittest.TestCase):
     def test_digest_stable_under_key_order(self):
         a = {"top": "swerv", "stage": "postroute", "sdc": ["x.sdc"]}
