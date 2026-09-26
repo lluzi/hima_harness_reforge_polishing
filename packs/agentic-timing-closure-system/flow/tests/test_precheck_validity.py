@@ -49,6 +49,8 @@ NETLIST_SHA = "n" * 64
 DEF_SHA = "d" * 64
 SPEF_A_SHA = "a" * 64
 SPEF_B_SHA = "b" * 64
+DATABASE_SHA = "e" * 64
+DATABASE_DAT_DIGEST = "t" * 64
 
 SCENARIO_WNS = {
     "func_ssg_rcworst_m40": (-0.100, -0.010),
@@ -78,7 +80,7 @@ def _base_receipts():
             "observation": _observation(scenario, core.known(setup_wns), core.known(hold_wns)),
         }
     return {
-        "database": {"path": "design.enc", "sha256": "e" * 64},
+        "database": {"path": "design.enc", "sha256": DATABASE_SHA, "datDigest": DATABASE_DAT_DIGEST},
         "netlist": {"path": "design.v", "sha256": NETLIST_SHA},
         "def": {"path": "design.def", "sha256": DEF_SHA},
         "spef": spef,
@@ -93,7 +95,7 @@ def _base_receipts():
 def _base_plan():
     scenario_corners = {scenario: BASE_CORNER for scenario in SCENARIO_WNS}
     return verification.plan_checks(
-        {"id": "mc-1", "operations": [{"op": "size_cell"}]},
+        {"id": "mc-1", "parentStateId": "state-0", "operations": [{"op": "size_cell"}]},
         {"scenarioCorners": scenario_corners},
     )
 
@@ -121,9 +123,16 @@ class PlanChecksTest(unittest.TestCase):
         plan = verification.plan_checks(merge_commit, {})
         self.assertEqual(plan["functional"], ["connectivity"])
 
-    def test_carries_merge_commit_id(self):
-        plan = verification.plan_checks({"id": "mc-4", "operations": []}, {})
-        self.assertEqual(plan["mergeCommitId"], "mc-4")
+    def test_carries_candidate_id_and_parent_state_id(self):
+        plan = verification.plan_checks(
+            {"id": "mc-4", "parentStateId": "state-3", "operations": []}, {}
+        )
+        self.assertEqual(plan["candidateId"], "mc-4")
+        self.assertEqual(plan["parentStateId"], "state-3")
+
+    def test_parent_state_id_defaults_to_none_when_merge_commit_omits_it(self):
+        plan = verification.plan_checks({"id": "mc-4b", "operations": []}, {})
+        self.assertIsNone(plan["parentStateId"])
 
     def test_scenario_corners_copied_from_policy(self):
         scenario_corners = {"func_ssg_rcworst_m40": "rcworst_m40"}
@@ -209,6 +218,11 @@ class AssembleTest(unittest.TestCase):
 
         self.assertEqual(evaluation["schema"], "atcs.evaluation/1")
         self.assertEqual(evaluation["candidateId"], "mc-1")
+        self.assertEqual(evaluation["parentStateId"], "state-0")
+        self.assertEqual(
+            evaluation["database"],
+            {"path": "design.enc", "sha256": DATABASE_SHA, "datDigest": DATABASE_DAT_DIGEST},
+        )
         self.assertEqual(evaluation["finalIdentityErrorCount"], core.known(0))
         self.assertEqual(evaluation["missingRequiredCheckCount"], core.known(0))
         expected_setup = min(v[0] for v in SCENARIO_WNS.values())
@@ -331,7 +345,7 @@ def _sta_with_corners(receipt_corner_by_scenario):
 
 def _corner_receipts(receipt_corner_by_scenario):
     return {
-        "database": {"path": "design.enc", "sha256": "e" * 64},
+        "database": {"path": "design.enc", "sha256": DATABASE_SHA, "datDigest": DATABASE_DAT_DIGEST},
         "netlist": {"path": "design.v", "sha256": NETLIST_SHA},
         "def": {"path": "design.def", "sha256": DEF_SHA},
         "spef": _spef_for_corners(FOUR_CORNERS),
@@ -412,6 +426,16 @@ class MissingIdentityLegTest(unittest.TestCase):
         evaluation = verification.assemble(self.plan, receipts, self.prior_observation, self.baseline_physical)
 
         self.assertFalse(core.is_known(evaluation["finalIdentityErrorCount"]))
+        self.assertIsNone(evaluation["database"])
+
+    def test_missing_database_datdigest_makes_identity_count_unknown_and_database_none(self):
+        receipts = _base_receipts()
+        del receipts["database"]["datDigest"]
+
+        evaluation = verification.assemble(self.plan, receipts, self.prior_observation, self.baseline_physical)
+
+        self.assertFalse(core.is_known(evaluation["finalIdentityErrorCount"]))
+        self.assertIsNone(evaluation["database"])
 
     def test_scenario_corners_map_absent_makes_identity_count_unknown(self):
         # A plan built without any scenarioCorners policy at all.

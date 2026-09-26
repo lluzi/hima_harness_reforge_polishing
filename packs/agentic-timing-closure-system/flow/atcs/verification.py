@@ -37,7 +37,12 @@ and never a silently-assumed PASS.
 ::
 
     {
-        "database": {"path": "<path>", "sha256": "<64 hex>"},
+        "database": {
+            "path": "<campaign-relative path to the .enc database file>",
+            "sha256": "<64 hex>",
+            "datDigest": "<64 hex — core.tree_digest of the .enc.dat directory
+                            beside it, i.e. \"<path>.dat\">",
+        },
         "netlist": {"path": "<path>", "sha256": "<64 hex>"},
         "def": {"path": "<path>", "sha256": "<64 hex>"} | None,
         "spef": {
@@ -62,7 +67,15 @@ this shape from the actual Innovus/StarRC/PrimeTime tool outputs it
 collects — in particular, every `receipts["sta"][scenario]` entry now
 carries its own `"corner"` (the SPEF corner that STA run actually used),
 not just its input hashes; T12 must record that corner alongside the
-hashes it already has to hand, not infer or omit it.
+hashes it already has to hand, not infer or omit it. `receipts["database"]`
+must likewise now carry `"datDigest"` alongside its existing `"path"`/
+`"sha256"` — this is the same `{"path", "sha256", "datDigest"}` shape
+`atcs.state.design_state` already stamps onto every `design-state`
+artifact's own `database` field (a `.enc` file's `sha256` plus
+`core.tree_digest` of the `.enc.dat` directory beside it), so a candidate's
+database identity is recorded in exactly the same canonical shape from M1
+through M7's `atcs.adoption.artifact_ready`, never a Pack-specific
+reinterpretation.
 
 `baseline_physical` is `{"drc": "<text>", "connectivity": "<text>"}` in the
 same report grammar — the pre-implementation (or control-arm) physical
@@ -111,12 +124,18 @@ operation (it changes net topology) adds `"connectivity"` to `functional`
 beyond the always-required physical connectivity check. Any
 `pg_local_adjust` operation adds `"pg"` to `pg`.
 
-`mergeCommitId` is carried through from `merge_commit.get("id")` (the
-merge-commit artifact's own stamped id, when the caller passes a stamped
-artifact) purely so a later `assemble` call over the same plan can label
-its `evaluation.candidateId` — `check-plan` itself does not otherwise
-reference a "candidate", since a merge commit is already the sealed
-candidate this plan is for.
+`candidateId` and `parentStateId` are carried through from
+`merge_commit.get("id")` and `merge_commit.get("parentStateId")`
+respectively (both the merge-commit artifact's own stamped fields, when the
+caller passes a stamped artifact) purely so a later `assemble` call over
+the same plan can label its `evaluation.candidateId`/`evaluation.parentStateId`
+— `check-plan` itself does not otherwise reference a "candidate" or a
+"parent state", since a merge commit is already the sealed candidate this
+plan is for, built from its own recorded parent. `atcs.adoption.publish`
+is the consumer that needs `parentStateId` on the evaluation itself (not
+just on the plan) — it is the value CAS-checked against `expected_base`,
+independently of and in addition to the pointers document's own `working`
+check (see `atcs.adoption`'s module docstring).
 
 `presta_qualification(new_nets, spef_net_names)`
 ----------------------------------------------------
@@ -197,8 +216,9 @@ Builds the final `evaluation` artifact. Order of operations:
    -> SPEF -> STA is checked *per scenario*, and is fail-closed at the leg
    level: `finalIdentityErrorCount` is only ever a known count when every
    leg below was actually present to check. If any leg is missing —
-   `receipts["database"]["sha256"]` or `receipts["netlist"]["sha256"]`
-   absent, `receipts["def"]` is `None` (or its `sha256` absent), any
+   `receipts["database"]["sha256"]` or `receipts["database"]["datDigest"]`
+   or `receipts["netlist"]["sha256"]` absent, `receipts["def"]` is `None`
+   (or its `sha256` absent), any
    `receipts["spef"][corner]` lacks `inputDefSha256`, or `plan["scenarioCorners"]`
    is absent/empty or lacks an entry for one of `plan["requiredScenarios"]`
    — the whole count is `unknown`, naming every missing leg (never a
@@ -247,9 +267,22 @@ Builds the final `evaluation` artifact. Order of operations:
    `fixedCheckCount`/`missingPriorCheckCount` are `known(len(...))` of its
    `fixed`/`missingPrior` lists.
 
-`candidateId` is `plan.get("mergeCommitId")` (see `plan_checks` above) —
-`assemble` never re-derives an id from `receipts` itself, since receipts
-are per-domain evidence bundles, not an artifact with its own identity.
+`candidateId` and `parentStateId` are `plan.get("candidateId")` and
+`plan.get("parentStateId")` respectively (see `plan_checks` above) —
+`assemble` never re-derives either id from `receipts` itself, since
+receipts are per-domain evidence bundles, not an artifact with its own
+identity or lineage.
+
+`database` is `receipts["database"]` copied through verbatim as
+`{"path", "sha256", "datDigest"}` — the same canonical database-identity
+shape `atcs.state.design_state` stamps — but only when all three fields are
+actually present; otherwise `database` is `None` (never a partially-filled
+dict), consistent with `_missing_identity_legs` above also treating a
+missing `datDigest` as a missing identity leg (so `finalIdentityErrorCount`
+goes `unknown` in the same case that would otherwise leave `evaluation`
+carrying a `database` ref no one could actually re-hash). `atcs.adoption`
+is the sole consumer that re-hashes this ref (`artifact_ready`) to decide
+whether a `delivery` may be recorded for it.
 """
 from __future__ import annotations
 
@@ -310,7 +343,8 @@ def plan_checks(merge_commit, policy):
         "functional": functional,
         "pg": pg,
         "scenarioCorners": dict(policy.get("scenarioCorners") or {}),
-        "mergeCommitId": merge_commit.get("id"),
+        "candidateId": merge_commit.get("id"),
+        "parentStateId": merge_commit.get("parentStateId"),
     }
     return core.stamp("check-plan", body)
 
@@ -423,8 +457,11 @@ def _missing_identity_legs(plan, receipts):
     the chain must be fully walkable to certify a known error count, even `0`."""
     missing = []
 
-    if not (receipts.get("database") or {}).get("sha256"):
+    database_entry = receipts.get("database") or {}
+    if not database_entry.get("sha256"):
         missing.append("missing database sha256")
+    if not database_entry.get("datDigest"):
+        missing.append("missing database datDigest")
     if not (receipts.get("netlist") or {}).get("sha256"):
         missing.append("missing netlist sha256")
 
@@ -489,6 +526,16 @@ def _final_identity_error_count(plan, receipts):
     return core.known(len(_identity_errors(plan, receipts)))
 
 
+def _database_ref(receipts):
+    """`receipts["database"]` copied through as `{"path", "sha256", "datDigest"}`
+    only when all three are present; otherwise `None` (see module docstring)."""
+    entry = receipts.get("database") or {}
+    path, sha256, dat_digest = entry.get("path"), entry.get("sha256"), entry.get("datDigest")
+    if path and sha256 and dat_digest:
+        return {"path": path, "sha256": sha256, "datDigest": dat_digest}
+    return None
+
+
 def _combine_sta_observations(sta_receipts):
     checks = {}
     scenarios = {}
@@ -544,7 +591,9 @@ def assemble(plan, receipts, prior_observation, baseline_physical):
     comparison = state.compare_checks(prior_observation, current_observation, {})
 
     body = {
-        "candidateId": plan.get("mergeCommitId"),
+        "candidateId": plan.get("candidateId"),
+        "parentStateId": plan.get("parentStateId"),
+        "database": _database_ref(receipts),
         "finalSetupWns": final_setup_wns,
         "finalHoldWns": final_hold_wns,
         "missingRequiredCheckCount": missing_required_check_count,

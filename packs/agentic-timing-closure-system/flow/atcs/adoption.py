@@ -18,50 +18,94 @@ base points to one concrete state, never a mutable directory name):
   `bestVerifiedState` and/or `deliveryState`, via compare-and-swap against
   `expected_base`.
 - `artifact_ready(database_ref)` -> Measure — re-hashes the candidate's
-  actual on-disk database (``.enc`` file, ``.enc.dat`` directory tree)
-  against the identity `database_ref` recorded at evaluation time, so a
-  delivery is only ever recorded for a database that is *still*, right now,
-  byte-identical and restorable — never for one that merely had a matching
-  hash at some earlier moment.
+  actual on-disk database (the `.enc` file and its `.enc.dat` sibling
+  directory) against the identity `database_ref` recorded at evaluation
+  time, so a delivery is only ever recorded for a database that is *still*,
+  right now, byte-identical and restorable — never for one that merely had
+  a matching hash at some earlier moment.
 
 Fail-closed is the rule for every function here, same as the rest of this
 Pack: a missing, truncated or partially-evidenced input yields `unknown`
 with a reason or a refused `acceptance-record` — never a silently-assumed
 pass and never `0` unless the data explicitly proves it.
 
+Concurrency: `publish` is single-writer by design — exactly one graph node
+in this Pack's compiled flow owns calling it, serialized the same way every
+other state-mutating tool in this Pack is (one Campaign Run keeps one
+owner, per ``SPEC.md``'s "Run contract"). It performs an unlocked
+read-modify-write of the pointers file (`load_pointers` then
+`core.write_artifact`) and takes no file lock, because it never needs one:
+a second concurrent writer is a scenario this Pack's graph never creates,
+not a race this module defends against.
+
 ``evaluation["database"]`` (binding for `publish`/`artifact_ready`)
 ---------------------------------------------------------------------
 
 Per this task's Decisions, the evaluation to publish carries its own
 database identity rather than `publish` taking a second, separately-aimed
-argument that could itself go stale relative to `evaluation`::
+argument that could itself go stale relative to `evaluation`. Its shape is
+the same canonical `{"path", "sha256", "datDigest"}` triple
+`atcs.state.design_state` already stamps onto every `design-state`
+artifact's own `database` field, and `atcs.verification.assemble` copies
+through onto `evaluation["database"]` unchanged::
 
     {
-        "enc": {"path": "<path to the .enc database file>", "sha256": "<64 hex>"},
-        "encDat": {"path": "<path to the .enc.dat directory>", "treeDigest": "<64 hex>"},
+        "path": "<campaign-relative path to the .enc database file>",
+        "sha256": "<64 hex — sha256 of the .enc file itself>",
+        "datDigest": "<64 hex — core.tree_digest of the .enc.dat directory
+                        beside it, i.e. \"<path>.dat\">",
     }
 
-`publish` reads this via `evaluation.get("database")` and passes it straight
-to `artifact_ready` — it never re-derives or defaults it. A caller whose
-evaluation input genuinely lacks this ref gets `artifact_ready`'s
-`unknown("missing-...")` back, which fail-closed excludes that candidate
-from ever becoming a `delivery` (see below) without needing a second
-signature shape.
+`publish` reads this via `evaluation.get("database")`, resolves `"path"`
+against `policy["campaignRoot"]` (see below), and passes the resolved ref
+to `artifact_ready`. A caller whose evaluation input genuinely lacks this
+ref gets `artifact_ready`'s `unknown("missing-...")` back, which
+fail-closed excludes that candidate from ever becoming a `delivery` (see
+below) without needing a second signature shape.
 
 `artifact_ready(database_ref)`
 -----------------------------------
 
-Re-hashes `database_ref["enc"]["path"]` via `core.file_sha256` and
-`database_ref["encDat"]["path"]` via `core.tree_digest`, and compares both
-against the recorded `sha256`/`treeDigest`. `database_ref` itself missing,
-or missing either leg's `path`/identity field, is `unknown` (`"we don't
-have enough identity to check"`, a data-completeness problem). Once both
-legs are actually present, a mismatch, or a file/directory that no longer
-exists, is `known(0)` — not `unknown` — because a bytes-changed or
-now-missing database is *proven* not currently restorable to the recorded
-identity, which is exactly what this Measure exists to certify. Only when
-both the file hash and the tree digest match exactly is the result
-`known(1)`.
+`database_ref` is the canonical `{"path", "sha256", "datDigest"}` triple
+above, with `"path"` already resolved to something `core.file_sha256` can
+actually open (an absolute path, or one already correct relative to the
+process's own working directory — resolving a *campaign-relative* path is
+`publish`'s job, not this function's; see "Campaign-relative path
+resolution" below). Re-hashes `database_ref["path"]` via
+`core.file_sha256` and `f"{database_ref['path']}.dat"` via
+`core.tree_digest`, and compares both against the recorded
+`sha256`/`datDigest`.
+
+`database_ref` itself missing, or missing any of its three fields, is
+`unknown` (`"we don't have enough identity to check"`, a data-completeness
+problem). Once all three are actually present, any of the following is
+`known(0)` — not `unknown` — because each one *proves* the database is not
+currently restorable to the recorded identity, which is exactly what this
+Measure exists to certify: a hash/digest mismatch; the `.enc` file or
+`.enc.dat` directory no longer existing; or an `OSError` reading either one
+(e.g. permission denied) — a database this process cannot currently read
+is precisely as un-restorable, right now, as one that has changed or
+vanished, even though the underlying bytes might in principle be fine.
+Only when both the file hash and the tree digest match exactly is the
+result `known(1)`.
+
+Campaign-relative path resolution (`policy["campaignRoot"]`)
+--------------------------------------------------------------
+
+`database_ref["path"]` is campaign-relative (per `atcs.state.design_state`'s
+own convention), so `publish` resolves it against `policy["campaignRoot"]`
+before ever calling `artifact_ready` — exactly the same
+root-plus-relative-path join `atcs.state`'s own `_resolve` helper performs
+for a design-state manifest's own paths. This resolution only happens (and
+`campaignRoot` is only required) when there is an actual database ref to
+check: `evaluation["database"] is None` needs no root at all and reports
+`artifact_ready`'s own `unknown("missing-database-ref")` untouched. When a
+database ref *is* present but `policy` carries no `campaignRoot`, `publish`
+never even attempts to resolve or re-hash anything: the reported
+`acceptedArtifactReady` is `unknown("missing-campaign-root")`, and — since
+that can never be the known `1` a `delivery` requires — this candidate can
+still become `working`/`best` (subject to every other guard) but never
+`delivery`.
 
 Pointer value shape (internal to the pointers document)
 -------------------------------------------------------
@@ -72,8 +116,10 @@ Each of `working`/`best`/`delivery` is either `None` (never set) or::
         "candidateId": "<evaluation's candidateId — the merge-commit/state id>",
         "evaluationId": "<the evaluation artifact's own stamped id>",
         "minWns": <float> | None,        # min(finalSetupWns, finalHoldWns) when both
-                                          # were known at publish time, else None
-        "failingChecks": <int> | None,   # constraintFailureCount's value when known
+                                          # were known (and finite) at publish time
+        "failingTimingChecks": <int>,    # len(comparison.remaining) + len(comparison.entrant)
+                                          # + len(comparison.regressed) at publish time — the
+                                          # brief's "fewer failing checks" tie-break metric
     }
 
 `expected_base` is compared against `working["candidateId"]` (`None` when
@@ -81,26 +127,45 @@ Each of `working`/`best`/`delivery` is either `None` (never set) or::
 "the state the candidate's batch was built on": a batch that was built on
 top of an older state than the one `working` now names is late/stale and
 must never overwrite anything, no matter how good its own numbers look.
+`evaluation["parentStateId"]` (the same base the candidate's merge commit
+itself was actually sealed against — see `atcs.verification.plan_checks`'s
+docstring) must *independently* equal `expected_base` too: a caller cannot
+supply a truthful `expected_base` for the pointers file while handing over
+an evaluation whose own candidate disagrees about what it was built on —
+both must agree, or the publish is exactly as stale/untrustworthy as a
+`working`-pointer mismatch and is refused the same way.
 
 Guard order in `publish`
 -------------------------------
 
+0. **Identity validation** (raises, does not refuse) — `evaluation["schema"]`
+   must be `"atcs.evaluation/1"` and `evaluation["id"]` must equal
+   `core.digest` of the rest of the body, exactly the check
+   `core.read_artifact` performs on every artifact this Pack reads back off
+   disk. A caller handing `publish` something that is not a genuine,
+   unmodified `evaluation` artifact is a programming error, not a
+   candidate that merely fails a guard: `AtcsError("schema-mismatch", ...)`.
 1. **Idempotency** — if `evaluation["id"]` already names an entry in the
    pointers document's `history`, `publish` does no further work: it
-   returns a fresh `acceptance-record` carrying the *same* decision this
-   evaluation already earned (the highest pointer tier any of its history
-   entries touched: `delivery` > `best` > `working-only`), re-checks
-   `artifact_ready` for the report (a pure re-read, no state change), and
-   leaves the pointers file untouched — not even rewritten with identical
-   bytes, and `version` is not bumped. This must run *before* the
-   compare-and-swap check below, precisely so a late replay of an
-   evaluation that was already accepted keeps returning its original,
-   truthful answer even after `working` has since moved on.
+   returns a fresh `acceptance-record` reporting the *original* `decision`
+   and the *original* `pointersAfter`/`pointersBefore` snapshots exactly as
+   they were the moment this evaluation was first accepted — reconstructed
+   by folding `history` up to (and including, for `pointersAfter`) this
+   evaluation's own entries — never the *current* pointers, which may have
+   moved on since. `acceptedArtifactReady` is still re-checked live (a pure
+   re-read with no state change), so a caller can tell whether a
+   previously-accepted database is *still* restorable right now. Nothing is
+   written: no version bump, not even a rewrite of identical bytes. This
+   must run *before* the compare-and-swap check below, precisely so a late
+   replay of an evaluation that was already accepted keeps returning its
+   original, truthful answer even after `working` has since moved on.
 2. **Compare-and-swap** — `expected_base != working["candidateId"]` (or
-   `None` when `working` has never been set) refuses with reason
-   `"stale-base"`. This is the guard that makes a genuinely late result
-   (built on a base that is no longer current) harmless even though its own
-   evidence might look perfectly good in isolation.
+   `None` when `working` has never been set), or
+   `evaluation.get("parentStateId") != expected_base` — either mismatch
+   refuses with reason `"stale-base"`. This is the guard that makes a
+   genuinely late result (built on a base that is no longer current)
+   harmless even though its own evidence might look perfectly good in
+   isolation.
 3. **Verification** (`final-evidence-ready`'s two Judge nodes, read
    directly off the evaluation) — `missingRequiredCheckCount` and
    `finalIdentityErrorCount` must both be known Measures equal to `0`.
@@ -108,55 +173,71 @@ Guard order in `publish`
    (`"missing-required-checks"` / `"identity-errors-present"`) — an
    evaluation this Pack cannot even prove covers every required check with
    a consistent identity chain can never move any pointer, degraded or not.
-4. **WNS known** — `finalSetupWns`/`finalHoldWns` must both be known
-   Measures. Per this task's Decisions ("'Better' ... is computed only from
-   known Measures; an evaluation whose finalSetupWns or finalHoldWns is
-   unknown can never become best or delivery"), this module goes one step
-   further and fail-closes `working` too when WNS is unknown
-   (`"wns-unknown"`): the degraded-working gate below bounds a *known*
-   regression — it cannot bound an unmeasured one, so an unknown WNS is
-   refused rather than silently treated as either "fine" or "as bad as the
-   limit allows".
-5. **Degraded-working gate** — "degraded" here means *worse than the
-   candidate `working` itself already names*, not "has not yet reached
-   `policy['goal']`" — most evaluations published over a campaign have not
-   reached the final goal yet, and that is the normal, expected case that
-   never needs `allowDegradedWorking` at all. Concretely: when `working` has
-   never been set (bootstrap), there is nothing to regress against, so this
-   gate never fires. Otherwise, `regression = working["minWns"] -
-   min(finalSetupWns, finalHoldWns)`; `regression <= 0` (this candidate is
-   at least as good as current `working`) always passes. `regression > 0`
-   (a real step backward) requires `policy["allowDegradedWorking"] is True`
-   *and* `regression <= policy["degradeLimitNs"]`, else refused
-   (`"degraded-working-not-allowed"` / `"degrade-limit-exceeded"`). This is
-   the one guard about *how far backward* `working` may be pushed, not about
-   evidence quality — a controlled, bounded regression `working` may carry
-   per `SPEC.md`'s "workingState 可以指向受控的暂时退化实现", never an
-   unbounded one.
+4. **Constraints known** — `constraintFailureCount` and
+   `constraintUnknownCount` must both be known Measures, and
+   `constraintUnknownCount`'s value must be `0`. Either being unknown, or a
+   nonzero `constraintUnknownCount`, refuses *every* pointer at once
+   (`"constraints-not-verified"`) — unlike coverage/identity this is not
+   "never becomes best", it is "never becomes anything", because
+   `working` itself must never carry a candidate this Pack cannot even say
+   how many of its required constraints are unproven.
+5. **WNS known** — `finalSetupWns`/`finalHoldWns` must both be known,
+   *finite* Measures (a non-finite value — `inf`/`nan` — is treated
+   identically to unknown: no comparison or bound below can be computed
+   from it). Anything else refuses (`"wns-unknown"`): the degraded-working
+   gate below bounds a *known, finite* regression — it cannot bound an
+   unmeasured or infinite one, so this is refused rather than silently
+   treated as either "fine" or "as bad as the limit allows".
+6. **Degraded-working gate** — "degraded" here means *worse than the best
+   this Pack has ever verified* (falling back to `working` only when
+   `best` has never been set), not "has not yet reached `policy['goal']`"
+   — most evaluations published over a campaign have not reached the final
+   goal yet, and that is the normal, expected case that never needs
+   `allowDegradedWorking` at all. Concretely: `baseline = best or working`;
+   when neither has ever been set (bootstrap), there is nothing to
+   regress against, so this gate never fires. Otherwise two independent
+   signals can trigger it: (a) a real step backward in WNS —
+   `regression = baseline["minWns"] - min(finalSetupWns, finalHoldWns)`,
+   only a trigger when `> 0`; and (b) a known, nonzero
+   `constraintFailureCount` — a candidate that regresses a physical
+   constraint is degraded even when its WNS alone looks fine. Either
+   signal firing requires `policy["allowDegradedWorking"] is True`, *and*
+   the WNS regression specifically (`0` when signal (a) did not fire) must
+   be `<= policy["degradeLimitNs"]` — so `working` can never be pushed more
+   than `degradeLimitNs` below the best it has ever verified, `best`
+   itself included: repeated small steps that would each individually
+   pass a *working-relative* bound cannot silently accumulate into an
+   unbounded drift, because every step is bounded against the same fixed
+   `best` baseline instead of chasing the last step. Otherwise: refused
+   (`"degraded-working-not-allowed"` / `"degrade-limit-exceeded"`).
 
-Once all five guards pass, `working` always moves to this candidate. Two
+Once all guards pass, `working` always moves to this candidate. Two
 further, independent eligibility checks then decide whether `best` and/or
 `delivery` *also* move (all three pointers are independent — moving
 `working` never implies moving the others, and moving `delivery` does not
 require `best` to have just moved too, though in practice it usually has):
 
-- **`best` eligibility** — `required-constraints-pass`
-  (`constraintFailureCount == 0` and `constraintUnknownCount == 0`, both
-  known) *and* this candidate compares as better than the current `best`
-  per the brief's fixed comparison policy: higher `min(finalSetupWns,
-  finalHoldWns)` wins; a tie breaks on fewer `constraintFailureCount`
-  failures; a `None` current `best` always loses (anything admissible
-  becomes the first `best`). A `constraintUnknownCount` that is unknown or
-  `> 0` therefore can never win `best`, exactly per this task's Decisions,
-  regardless of how good its WNS is.
+- **`best` eligibility** — `constraintFailureCount == 0` (already known
+  and `constraintUnknownCount == 0` by guard 4 above — this is exactly
+  `required-constraints-pass`) *and* this candidate compares as better
+  than the current `best` per the brief's fixed comparison policy: higher
+  `min(finalSetupWns, finalHoldWns)` wins; a tie breaks on fewer
+  `failingTimingChecks` (`len(comparison.remaining) + len(comparison.entrant)
+  + len(comparison.regressed)`); a full tie on *both* — the incumbent
+  keeps `best`, since nothing here is a strict improvement. A `None`
+  current `best` always loses (anything admissible becomes the first
+  `best`). A `constraintFailureCount` that is unknown or `> 0` therefore
+  can never win `best` — the unknown case is already excluded entirely by
+  guard 4, and the known-nonzero case fails this check directly.
 - **`delivery` eligibility** — `required-constraints-pass` *and*
   `finalSetupWns`/`finalHoldWns` both meet `policy["goal"]` *and*
-  `artifact_ready(evaluation.get("database"))` is the known Measure `1`.
-  This does not require `best` eligibility too: a later, slightly-worse-but
-  still goal-meeting candidate whose database is verified restorable may
-  still deliver even while an earlier, better-scoring candidate remains
-  `best` (its own database having since gone stale) — the two pointers
-  answer different questions and this Pack never conflates them.
+  `artifact_ready` (over the campaign-root-resolved `database` ref) is the
+  known Measure `1`. This does not require `best` eligibility too: a
+  later, slightly-worse-but-still-goal-meeting candidate whose database is
+  verified restorable may still deliver even while an earlier, better
+  scoring candidate remains `best` (its own database having since gone
+  stale) — the two pointers answer different questions and this Pack
+  never conflates them.
 
 `publish`'s returned `decision` is the highest tier actually reached this
 call: `"delivery"` if the delivery pointer moved, else `"best"` if the best
@@ -179,7 +260,11 @@ and/or `delivery` only when they moved too), each entry carrying
 deliberately **no timestamp**, so history stays deterministic and
 replayable, and the returned `acceptance-record`'s own `id` is recorded
 alongside the pointer values it caused to change (per this task's
-Decisions: "Record the acceptance-record id in history").
+Decisions: "Record the acceptance-record id in history"). This is also
+exactly what makes idempotent-replay's reconstruction possible: folding
+`history` in order and keeping the latest `"new"` per pointer name, up to
+and including a given `acceptanceRecordId`'s entries, reproduces that
+publish's `pointersAfter` without needing any separate log.
 
 A `refused` decision — for *any* reason, not only `"stale-base"` — writes
 nothing at all: the pointers file (if any) is left byte-identical, since
@@ -187,6 +272,7 @@ nothing was accepted and there is nothing new to record.
 """
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from . import core
@@ -212,35 +298,68 @@ def load_pointers(path):
     return core.read_artifact(target, "pointers")
 
 
+def _resolve_database_path(campaign_root, path):
+    if campaign_root and not Path(path).is_absolute():
+        return str(Path(campaign_root) / path)
+    return path
+
+
 def artifact_ready(database_ref):
     """Re-hash `database_ref`'s `.enc`/`.enc.dat` against its recorded identity
-    (see module docstring). Returns a Measure."""
+    (see module docstring). `database_ref["path"]` must already be resolved
+    to something openable — `publish` does that resolution, not this
+    function. Returns a Measure."""
     if not isinstance(database_ref, dict):
         return core.unknown("missing-database-ref")
 
-    enc = database_ref.get("enc") or {}
-    enc_dat = database_ref.get("encDat") or {}
-    enc_path, enc_sha = enc.get("path"), enc.get("sha256")
-    dat_path, dat_digest = enc_dat.get("path"), enc_dat.get("treeDigest")
-
-    if not enc_path or not enc_sha:
-        return core.unknown("missing-enc-identity")
-    if not dat_path or not dat_digest:
-        return core.unknown("missing-encDat-identity")
+    path = database_ref.get("path")
+    sha256 = database_ref.get("sha256")
+    dat_digest = database_ref.get("datDigest")
+    if not path or not sha256 or not dat_digest:
+        return core.unknown("missing-database-identity")
 
     try:
-        actual_enc_sha = core.file_sha256(enc_path)
+        actual_sha256 = core.file_sha256(path)
     except OSError:
         return core.known(0)
 
     try:
-        actual_dat_digest = core.tree_digest(dat_path)
-    except core.AtcsError:
+        actual_dat_digest = core.tree_digest(f"{path}.dat")
+    except (OSError, core.AtcsError):
         return core.known(0)
 
-    if actual_enc_sha != enc_sha or actual_dat_digest != dat_digest:
+    if actual_sha256 != sha256 or actual_dat_digest != dat_digest:
         return core.known(0)
     return core.known(1)
+
+
+def _compute_ready(database_ref, policy):
+    """`artifact_ready` over `database_ref`, resolving its `"path"` against
+    `policy["campaignRoot"]` first (see module docstring's "Campaign-relative
+    path resolution")."""
+    if database_ref is None:
+        return artifact_ready(None)
+    campaign_root = policy.get("campaignRoot")
+    path = database_ref.get("path")
+    if path and not campaign_root:
+        return core.unknown("missing-campaign-root")
+    resolved = dict(database_ref)
+    if path:
+        resolved["path"] = _resolve_database_path(campaign_root, path)
+    return artifact_ready(resolved)
+
+
+def _validate_evaluation_identity(evaluation):
+    """Raise `AtcsError("schema-mismatch", ...)` unless `evaluation` is a
+    genuine, unmodified ``atcs.evaluation/1`` artifact (see module docstring's
+    guard 0)."""
+    schema = evaluation.get("schema")
+    if schema != "atcs.evaluation/1":
+        raise core.AtcsError("schema-mismatch", f"expected atcs.evaluation/1, got {schema!r}")
+    body = dict(evaluation)
+    stored_id = body.pop("id", None)
+    if stored_id != core.digest(body):
+        raise core.AtcsError("schema-mismatch", "evaluation id does not match recomputed digest")
 
 
 def _is_verified(evaluation):
@@ -253,6 +372,16 @@ def _is_verified(evaluation):
     return True, None
 
 
+def _constraints_known(evaluation):
+    """`constraintFailureCount` and `constraintUnknownCount` both known, and
+    the unknown-count itself is `0` (see module docstring's guard 4)."""
+    failure = evaluation.get("constraintFailureCount")
+    unknown_count = evaluation.get("constraintUnknownCount")
+    if not core.is_known(failure) or not core.is_known(unknown_count):
+        return False
+    return core.value_of(unknown_count) == 0
+
+
 def _wns_status(evaluation, goal):
     setup = evaluation.get("finalSetupWns")
     hold = evaluation.get("finalHoldWns")
@@ -261,18 +390,24 @@ def _wns_status(evaluation, goal):
 
     setup_v = core.value_of(setup)
     hold_v = core.value_of(hold)
+    if not (math.isfinite(setup_v) and math.isfinite(hold_v)):
+        return {"known": False, "goalMet": False, "min": None}
+
     goal_met = setup_v >= goal.get("setup", 0.0) and hold_v >= goal.get("hold", 0.0)
     return {"known": True, "goalMet": goal_met, "min": min(setup_v, hold_v)}
 
 
-def _constraints_pass(evaluation):
-    failure = evaluation.get("constraintFailureCount")
-    unknown_count = evaluation.get("constraintUnknownCount")
-    if not core.is_known(failure) or core.value_of(failure) != 0:
-        return False
-    if not core.is_known(unknown_count) or core.value_of(unknown_count) != 0:
-        return False
-    return True
+def _timing_failure_count(evaluation):
+    """`len(comparison.remaining) + len(comparison.entrant) + len(comparison.regressed)`
+    — the brief's "fewer failing checks" tie-break metric, read from the
+    evaluation's own `check-comparison` (missing/absent lists count as `0`,
+    this is a tie-break heuristic, not a fail-closed gate)."""
+    comparison = evaluation.get("comparison") or {}
+    return (
+        len(comparison.get("remaining", []))
+        + len(comparison.get("entrant", []))
+        + len(comparison.get("regressed", []))
+    )
 
 
 def _is_better(candidate, current_best):
@@ -285,23 +420,29 @@ def _is_better(candidate, current_best):
         return True
     if candidate_min != current_min:
         return candidate_min > current_min
-    candidate_fail = candidate.get("failingChecks")
-    current_fail = current_best.get("failingChecks")
+    candidate_fail = candidate.get("failingTimingChecks")
+    current_fail = current_best.get("failingTimingChecks")
     candidate_fail = candidate_fail if candidate_fail is not None else float("inf")
     current_fail = current_fail if current_fail is not None else float("inf")
-    return candidate_fail < current_fail
-
-
-def _measure_value_or_none(measure):
-    if measure is not None and core.is_known(measure):
-        return core.value_of(measure)
-    return None
+    if candidate_fail != current_fail:
+        return candidate_fail < current_fail
+    return False  # a full tie (minWns and failingTimingChecks both equal): incumbent wins
 
 
 def _normalize_policy(policy):
     policy = dict(policy or {})
     policy.setdefault("allowDegradedWorking", False)
     policy.setdefault("degradeLimitNs", 0.0)
+
+    allow_degraded = policy["allowDegradedWorking"]
+    if not isinstance(allow_degraded, bool):
+        raise core.AtcsError("invalid-policy", "allowDegradedWorking must be a bool")
+
+    degrade_limit = policy["degradeLimitNs"]
+    if isinstance(degrade_limit, bool) or not isinstance(degrade_limit, (int, float)) \
+            or not math.isfinite(degrade_limit) or degrade_limit < 0:
+        raise core.AtcsError("invalid-policy", "degradeLimitNs must be a finite number >= 0")
+
     goal = dict(policy.get("goal") or {})
     goal.setdefault("setup", 0.0)
     goal.setdefault("hold", 0.0)
@@ -327,18 +468,64 @@ def _decision_for_history(entries):
     return "working-only"
 
 
+def _fold_history_up_to(history, last_index):
+    """Fold `history[:last_index + 1]` into the pointers state as of right
+    after that index's entry, plus the count of distinct acceptance records
+    seen (== the pointers document's `version` at that point)."""
+    state = {"working": None, "best": None, "delivery": None}
+    seen_records = []
+    for entry in history[: last_index + 1]:
+        state[entry["pointer"]] = entry["new"]
+        record_id = entry["acceptanceRecordId"]
+        if record_id not in seen_records:
+            seen_records.append(record_id)
+    return state, len(seen_records)
+
+
+def _reconstruct_after_snapshot(history, record_id):
+    """The pointers snapshot exactly as it was right after `record_id`'s
+    entries were appended (see module docstring's idempotency guard)."""
+    last_index = max(i for i, entry in enumerate(history) if entry["acceptanceRecordId"] == record_id)
+    state, version = _fold_history_up_to(history, last_index)
+    return {"version": version, "working": state["working"], "best": state["best"], "delivery": state["delivery"]}
+
+
+def _replay_record(pointers, prior_entries, database_ref, policy):
+    """The `acceptance-record` this evaluation originally earned, replayed
+    from `history` — never derived from `pointers`' *current* state, which
+    may have moved on since (see module docstring's idempotency guard)."""
+    record_id = prior_entries[0]["acceptanceRecordId"]
+    after_snapshot = _reconstruct_after_snapshot(pointers["history"], record_id)
+    before_snapshot = dict(after_snapshot)
+    before_snapshot["version"] = after_snapshot["version"] - 1
+    for entry in prior_entries:
+        before_snapshot[entry["pointer"]] = entry["previous"]
+
+    body = {
+        "decision": _decision_for_history(prior_entries),
+        "pointersBefore": before_snapshot,
+        "pointersAfter": after_snapshot,
+        "acceptedArtifactReady": _compute_ready(database_ref, policy),
+        "reason": "idempotent-replay",
+    }
+    return core.stamp("acceptance-record", body)
+
+
 def publish(evaluation, expected_base, pointers_path, policy):
     """Publish `evaluation` into the three state pointers at `pointers_path`,
     guarded by compare-and-swap on `expected_base` (see module docstring).
 
     Returns an ``acceptance-record``. Never raises for a candidate that
     simply fails a guard — those are reported as a `"refused"` decision with
-    a `reason`, not an `AtcsError`. `AtcsError("missing-input", ...)` is
-    only raised when `evaluation` itself lacks the identity fields
-    (`id`/`candidateId`) this module cannot proceed without at all.
+    a `reason`, not an `AtcsError`. `AtcsError` is only raised for
+    structural problems `publish` cannot proceed past at all:
+    `"schema-mismatch"` when `evaluation` is not a genuine, unmodified
+    ``atcs.evaluation/1`` artifact, `"missing-input"` when it lacks
+    `candidateId`, and `"invalid-policy"` when `policy` itself is malformed.
     """
     policy = _normalize_policy(policy)
-    evaluation_id = _require(evaluation, "id", "evaluation")
+    _validate_evaluation_identity(evaluation)
+    evaluation_id = evaluation["id"]
     candidate_id = _require(evaluation, "candidateId", "evaluation")
     database_ref = evaluation.get("database")
 
@@ -346,15 +533,7 @@ def publish(evaluation, expected_base, pointers_path, policy):
 
     prior_entries = [entry for entry in pointers["history"] if entry.get("evaluationId") == evaluation_id]
     if prior_entries:
-        snapshot = _snapshot(pointers)
-        body = {
-            "decision": _decision_for_history(prior_entries),
-            "pointersBefore": snapshot,
-            "pointersAfter": snapshot,
-            "acceptedArtifactReady": artifact_ready(database_ref),
-            "reason": "idempotent-replay",
-        }
-        return core.stamp("acceptance-record", body)
+        return _replay_record(pointers, prior_entries, database_ref, policy)
 
     before_snapshot = _snapshot(pointers)
 
@@ -372,37 +551,48 @@ def publish(evaluation, expected_base, pointers_path, policy):
     working_candidate = working_ptr["candidateId"] if working_ptr else None
     if expected_base != working_candidate:
         return _refuse("stale-base")
+    if evaluation.get("parentStateId") != expected_base:
+        return _refuse("stale-base")
 
     verified, verify_reason = _is_verified(evaluation)
     if not verified:
         return _refuse(verify_reason)
 
+    if not _constraints_known(evaluation):
+        return _refuse("constraints-not-verified")
+    constraint_failure_value = core.value_of(evaluation["constraintFailureCount"])
+
     wns = _wns_status(evaluation, policy["goal"])
     if not wns["known"]:
         return _refuse("wns-unknown")
 
-    current_working_min = working_ptr.get("minWns") if working_ptr else None
-    is_degraded = current_working_min is not None and (current_working_min - wns["min"]) > 0
+    baseline_ptr = pointers["best"] or working_ptr
+    baseline_min = baseline_ptr.get("minWns") if baseline_ptr else None
+    wns_regression = (baseline_min - wns["min"]) if baseline_min is not None else 0.0
+    is_wns_degraded = baseline_min is not None and wns_regression > 0
+    is_constraint_degraded = constraint_failure_value > 0
+    is_degraded = is_wns_degraded or is_constraint_degraded
+
     if is_degraded:
-        regression = current_working_min - wns["min"]
         if not policy["allowDegradedWorking"]:
             return _refuse("degraded-working-not-allowed")
-        if regression > policy["degradeLimitNs"]:
+        bound = wns_regression if is_wns_degraded else 0.0
+        if bound > policy["degradeLimitNs"]:
             return _refuse("degrade-limit-exceeded")
 
-    constraints_ok = _constraints_pass(evaluation)
     new_ptr_value = {
         "candidateId": candidate_id,
         "evaluationId": evaluation_id,
         "minWns": wns["min"],
-        "failingChecks": _measure_value_or_none(evaluation.get("constraintFailureCount")),
+        "failingTimingChecks": _timing_failure_count(evaluation),
     }
 
-    best_eligible = constraints_ok and _is_better(new_ptr_value, pointers["best"])
+    constraints_pass = constraint_failure_value == 0
+    best_eligible = constraints_pass and _is_better(new_ptr_value, pointers["best"])
 
-    ready_measure = artifact_ready(database_ref)
+    ready_measure = _compute_ready(database_ref, policy)
     delivery_eligible = (
-        constraints_ok
+        constraints_pass
         and wns["goalMet"]
         and core.is_known(ready_measure)
         and core.value_of(ready_measure) == 1
@@ -417,13 +607,13 @@ def publish(evaluation, expected_base, pointers_path, policy):
     decision = "delivery" if delivery_eligible else ("best" if best_eligible else "working-only")
 
     notes = []
-    if not constraints_ok:
-        notes.append("constraints-not-verified")
-    if is_degraded:
+    if is_constraint_degraded:
+        notes.append("constraint-failures-degraded-working")
+    if is_wns_degraded:
         notes.append("degraded-working-within-limit")
-    if constraints_ok and not best_eligible:
+    if constraints_pass and not best_eligible:
         notes.append("not-better-than-current-best")
-    if constraints_ok and wns["goalMet"] and not delivery_eligible:
+    if constraints_pass and wns["goalMet"] and not delivery_eligible:
         notes.append("artifact-not-ready-for-delivery")
     reason = "; ".join(notes) if notes else "accepted"
 
