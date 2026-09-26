@@ -487,15 +487,7 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
             self.assertEqual(kind, "judge", f"explore {dst} is entered from {kind} {src}")
             self.assertGreaterEqual(len(rules), 2, f"explore {dst} is entered from judge {src} with {rules}")
 
-    # Fix round 2 item 2 (controller decision, one SDC source): `sta` no longer takes a
-    # separate `sdc` argv arg in atcs_cli.py (it now reads SDC from the design state being
-    # timed, `_verified_state_sdc_path`), but the controller explicitly asked this round's
-    # commit not to touch contract.yml -- its `sta` tool argv still names
-    # `${ANALYSIS_CONTRACT}/sdc.json` and is reported to Task 14 to remove separately (see
-    # this task's report). Excluded here for exactly that one, already-reported,
-    # controller-acknowledged gap -- remove this exclusion once contract.yml's `sta` argv
-    # drops that entry.
-    _PENDING_CONTRACT_ARGV_FIXES = {"sta"}
+    _PENDING_CONTRACT_ARGV_FIXES = set()
 
     def test_every_tool_argv_arity_matches_the_cli_table(self):
         import ast

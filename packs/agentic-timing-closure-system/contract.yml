@@ -27,7 +27,7 @@ inputs:
       Read-only directory of the fixed analysis contract, one JSON document per concern, read by the
       tools at fixed names: query-spec.json (final PBA/coverage query: precision, requiredScenarios,
       nworst; maxPaths comes from the Strategy), scenario-corners.json ({scenario: RC corner}),
-      corners.json ({"corners": [...]}), sdc.json ({"sdc": [...]}), recheck.json, policy.json (the static acceptance terms only:
+      corners.json ({"corners": [...]}), recheck.json, policy.json (the static acceptance terms only:
       allowDegradedWorking, degradeLimitNs, maxNewConstraintFailures, scenarioCorners,
       requiredScenarios; the policy tool refuses a file setting goal or a run-time field),
       baseline-verify-drc.rpt and baseline-verify-connectivity.rpt (starting-state physical reports).
@@ -423,7 +423,6 @@ tools:
       - sta
       - ${WORKSPACE}
       - ${ANALYSIS_CONTRACT}/query-spec.json
-      - ${ANALYSIS_CONTRACT}/sdc.json
       - ${ANALYSIS_CONTRACT}/scenario-corners.json
       - ${WORKSPACE}/state/working-state.json
       - ${SITE_CAPABILITIES}

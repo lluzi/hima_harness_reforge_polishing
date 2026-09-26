@@ -289,11 +289,8 @@ Fix round 2 (Opus re-review of Task 14 + Task 12c)
    copy; `_verified_state_sdc_path` reads SDC from the design state actually
    being timed (`baseDesignState`'s own recorded `sdc[0]`, sha256-verified)
    -- the exact same source `observe`/`residual` already use via
-   `_scenario_pt_inputs`. **`contract.yml`'s `sta` tool argv still names
-   `${ANALYSIS_CONTRACT}/sdc.json`** -- removing that one argv entry is
-   outside this fix round's authorized file scope (`atcs_cli.py`,
-   `tools/read-atcs.py`, their tests, `FABRIC.md` numbering only); see this
-   task's report for the exact change Task 14 must apply.
+   `_scenario_pt_inputs`. `contract.yml`'s `sta` argv no longer names an
+   SDC file.
 
 Known gaps still open (see also `adapters.py`'s own "Gaps")
 -------------------------------------------------------------------------------
