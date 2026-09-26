@@ -157,16 +157,23 @@ Deviations from the brief where the code is the authority:
   `prepare-workers` writes one index for all slots.
 - G16 The Operator's `before.dump`, `after.dump` and `summary.json` are not Ledger readings;
   `contributions.seal` re-validates them when `capture-contribution` reads them.
-- G17 Earlier APR is executable end to end in the graph and reachable from the baseline round:
-  `residual` gives PT path-detail evidence (from the baseline observation or the latest evaluation),
-  the next-investment Workshop may choose `earlier-apr` with a stage, and the route runs
-  `apr-prepare` → `apr-run` → the implementation chain. `check-apr-scope` judges
-  `[lifecycle-available, inputs-ready]` on a fresh readiness reading and routes on
-  `lifecycle-available` alone (the second rule is the verdict the Explore needs); a post-route-only
-  scope FAILs back to the next-investment Workshop through `revisit-next-decision`, not to wait, and
-  `apr-prepare`'s own scope refusal is a second line the graph does not reach. `apr-prepare` fails
-  the node (`no-intervention`) when no residual case yields a stage setting. Not yet run with real
-  tools (Task 17).
+- G17 (final review batch B: refreshed for accuracy) Earlier APR is executable end to end in the
+  graph and reachable from the baseline round: `residual` gives PT path-detail evidence (from the
+  baseline observation or the latest evaluation), the next-investment Workshop may choose
+  `earlier-apr` with a stage, and the route runs `apr-prepare` → `apr-run` → the implementation
+  chain. `check-apr-scope` judges `[lifecycle-available, inputs-ready]` on a fresh readiness reading
+  and routes on `lifecycle-available` alone (the second rule is the verdict the Explore needs); a
+  post-route-only scope FAILs back to the next-investment Workshop through `revisit-next-decision`,
+  not to wait, and `apr-prepare`'s own scope refusal is a second line the graph does not reach.
+  `apr-prepare` fails the node (`no-intervention`) when no residual case yields a stage setting.
+  `apr-run` itself is now more independently verifiable than the original text of this gap implied:
+  it recompiles the same stage task from the current residual-cases/readiness/working-state on disk
+  and refuses if that does not reproduce `state/apr-task.json`'s own recorded `tcl`/`taskId` (I8), and
+  its predecessor-stage checkpoint is now actually staged into the workspace at `baseline` time (I2,
+  see G29) rather than referencing a path nothing ever populated. Both are still self-consistency
+  checks within this Pack's own recorded state, not proof against real Foundation data -- the
+  `restoreDesign` convention itself (G29) and the whole route are still not yet run with real tools
+  (Task 17).
 - G18 `residual` runs bounded PT path-detail queries (the 20 worst known checks) at every Campaign
   start and after every evaluation. Decisions reached from a pre-implementation failure route (plan,
   integration plan, composition, replay or pre-check) see the residual cases of the baseline or the
@@ -177,8 +184,13 @@ Known gaps carried from earlier tasks:
 - G19 (Task 12) `presta` compares the batch's new nets against the working state's SPEF, so
   `tc_unqualified_rc_net_count > 0` for every batch containing `insert_buffer`; such batches always
   route to the next decision and are implemented only by an explicit implement decision.
-- G20 (Task 12) `parse_path_detail` is unverified against a real PT per-arc report; the earlier-APR
-  route now depends on it.
+- G20 (Task 12; final review batch B: refreshed for accuracy) `parse_path_detail` is unverified
+  against a real PT per-arc report; the earlier-APR route now depends on it (via `residual`'s own
+  `pt-query.tcl` evidence gathering, `_collect_residual_evidence`). `pt-query.tcl` gained a
+  library-linking/driver-library-SDC-normalization preamble in this batch (C4/G27, so `residual`'s
+  own `link_design` can succeed against a real netlist at all) -- this changes nothing about the
+  `report_timing -from -to ... -input_pins -nets -transition_time -capacitance` output format
+  `parse_path_detail` itself parses, so this gap's scope is unchanged, not narrowed.
 - G21 (Task 12) Side files left by an EDA run that fails mid-way are untested.
 - G22 (Task 9) Adoption is single-writer; `designStateId` honesty rests on `sta` building the
   design-state from the implemented DB, which M6 does not cross-check.
@@ -208,8 +220,107 @@ Known gaps carried from earlier tasks:
   `contract.yml`/`graph.yml` shape changed -- every Reader-facing artifact was already
   content-addressed or fixed-"latest"; only the *raw*, non-declared evidence directories a failed or
   repeated run could previously have silently overwritten are affected.
+- G27 (final review batch B, C4) Per-scenario library identity is now Site-declared:
+  `analysisContract/scenarios.json` (`[{name, corner, libGlob, driverLibrary,
+  originalDriverLibrary}]`) replaces the old bare `scenario-corners.json`, and
+  `observe`/`sta`/`residual`/`presta` all actually thread `libGlob`/`driverLibrary`/
+  `originalDriverLibrary` into their PT tasks (`pt-scenario.tcl`/`pt-presta.tcl`/`pt-query.tcl` all
+  gained the `target_library`/`link_path`/driver-library-SDC-normalization block `pt-scenario.tcl`
+  alone had before -- `pt-presta.tcl`/`pt-query.tcl` could not previously have linked any real,
+  non-trivial netlist at all). `sta` hashes each scenario's own matched `.db` files fresh
+  (`adapters.hash_library_glob`) and records them in `sta_receipts[scenario]["inputs"]["libraries"]`;
+  `verification._missing_identity_legs` treats an absent/empty `libraries` list as a missing identity
+  leg. This is a fail-closed *presence* check only, not a cross-generation library-drift detector:
+  there is no earlier per-generation declaration of a scenario's expected library set to diff a later
+  one against (unlike netlist/SPEF, which flow `implement -> extract -> sta`), so a library set that
+  silently changed between two generations of the *same* Campaign (a Site editing `scenarios.json`
+  mid-Campaign) would not itself be flagged as an identity error -- only its total absence would be.
+  `policy`'s own `scenarioCorners`/`requiredScenarios` are now derived from `scenarios.json` (the
+  single source); a static `policy.json` may still carry either field for documentation, but is
+  refused if it disagrees with the derived value.
+- G28 (final review batch B, I1) StarRC extraction now uses each corner's own Site-provided template
+  (`analysisContract/corners.json`: `{"corners": {corner: templatePath}}`, hashed and recorded in
+  `state/extract.json`'s `spef[corner].template`) instead of this Pack's one shipped `starrc.cmd`
+  fallback for every corner regardless -- real Foundation corners (`cworst_T`/`cbest`) each need their
+  own qualified command-file template (`STAR_MODE`, layer stack, etc. genuinely differ per corner).
+- G29 (final review batch B, I2 -- **only half closed**) `baseline` now stages every declared
+  full-flow lifecycle stage's own checkpoint (`.enc` script + `.enc.dat` directory) into
+  `<workspace>/DBS/<stage>.enc(.dat)`, the exact workspace-relative location `atcs.lifecycle.
+  stage_task` has always restored from but that nothing ever populated before this batch -- an
+  `apr-run` for any stage past the very first would previously have restored a checkpoint that was
+  never actually staged. **Still open:** `innovus-eco.tcl`/`innovus-export.tcl`/`apr-stage.tcl`'s
+  `restoreDesign` calls do not source the Foundation flow config (`FF/vars.tcl` and friends) the old
+  qualified `xtop-timing-closure` Pack sources before restoring a real Foundation checkpoint
+  (`packs/xtop-timing-closure/flow/templates/apply-eco.tcl`'s own `cd $env(WORK_ROOT)` / `source
+  FF/vars.tcl` / `foreach file $vars(config_files) { source $file }` / `source FF/procs.tcl`
+  preamble, read-only reference). Implementing this speculatively -- without live re-verification of
+  the exact `FF/vars.tcl` contract, which staging/config-file set a Foundation `restoreDesign`
+  genuinely needs, and how that interacts with this Pack's own `OUTPUT_ROOT`/per-generation directory
+  convention (materially different from the old Pack's own `WORK_ROOT`-as-cwd design) -- was judged a
+  higher risk of introducing an unverifiable regression into already-tested, working Innovus task
+  compilation than leaving it open. A real Run against Foundation data may fail at `restoreDesign`
+  until this is closed with server access to confirm the exact contract.
+- G30 (final review batch B, I3) `xtop-replay.tcl` now builds its own fresh XTop workspace from the
+  batch's own base-state LEF/netlist/DEF (`create_workspace`/`link_reference_library`/
+  `create_design_definition`/`import_designs`, the same shape a worker session's own
+  `xtop-operator.tcl` startup uses) instead of calling `open_workspace` on an Innovus `.enc` restore
+  script, which could never actually have opened anything real (`open_workspace` opens a previously
+  *saved XTop* workspace, not an Innovus checkpoint). A replay run that fails outright is recorded
+  (`state/replay-receipts.json`'s own `toolFailure` field), never silently swallowed; `tools/
+  read-atcs.py`'s `tc_replay_mismatch_count` is now `unknown` whenever any step is `pending`, `failed`
+  or an `unknownReceipts` entry, since that step's true mismatch status was never established.
+- G31 (batch A2, I5 -- restated here for FABRIC completeness) `fixedCheckCount`/
+  `missingPriorCheckCount` can be `unknown` for two independent, indistinguishable-from-the-artifact
+  reasons: no prior observation was ever found for the parent state (C5), or the bounded
+  parent-violator recheck (`STA_RECHECK_BOUND` = 200, worst known slack first) did not complete for
+  every one of the parent's own violating checks (`receipts["recheckIncomplete"]`). No field in
+  `evaluation` distinguishes the two; a controller call on whether that is worth a dedicated reason
+  field if a future consumer needs to tell them apart.
+- G32 (batch A2, I6 -- restated here for FABRIC completeness) `missingRequiredCheckCount` can go
+  non-zero for a reason beyond "a required scenario's STA never ran": an unconstrained-endpoint
+  regression against the Campaign baseline's own `check_timing`-derived count
+  (`verification._unconstrained_regressions`). The combined count does not, by itself, say which of
+  the two causes applies to a given scenario.
+- G33 (final review batch B, I11 -- **not closed**) The four required scenario names remain a
+  Pack-wide, code-level fixed set (`core.REQUIRED_SCENARIOS`), not a value this Pack's own code reads
+  generically from `policy.requiredScenarios`/`scenarios.json` at every point of use: `_load_scenarios_
+  contract` refuses any scenario-name set other than exactly the four literal linglong names (and
+  their four literal names are still hard-coded as the hashing/validation/completeness anchor across
+  `adapters.py`, `verification.py` and `refresh.py`). C4 makes `scenarios.json` the single Site-level
+  *source of the corner/library binding* for those four fixed names; it does not make the *names
+  themselves* Site-configurable. `.superpowers/sdd/global-context.md`'s own Global Constraints section
+  lists these four names as binding for this Pack (not a per-Site variable), so a deeper refactor
+  threading a dynamic `required_scenarios` value through every internal validation point in those
+  three modules was judged higher-risk, lower-value churn across an already well-tested surface than
+  a genuine bug fix, and out of this batch's scope; a controller call on whether a differently-scoped
+  derivative Pack would ever need this decoupled.
 
 ## Reviews
 
 - Task 14 (contract, graph, rules, choosers, FABRIC): review pending; the controller records the
   reviewer's verdict here.
+- Final whole-branch review (Opus): found C1-C5 (favourable-WNS/precision-boundary parsing,
+  design-state root resolution, stale-reimplement/write-once, wrong-generation comparison, PBA
+  mismatch), I1-I13 and several Minor items across the pipeline. Landed across three implementer
+  batches:
+  - Batch A (`.superpowers/sdd/final-fix-A-report.md`, part 1): C1-C5 and I4/I9 fixed and tested;
+    I5/I6/I12 and four Minor items explicitly deferred to a follow-up (see that report's "Not
+    completed").
+  - Batch A2 (same report, part 2): I5 (bounded parent-violator recheck, `STA_RECHECK_BOUND`), I6
+    (unconstrained-endpoint coverage vs. baseline), I12 (write-once raw evidence generations and
+    batch ids) and the four remaining Minor items (Goal-knob max, PBA precision actually applied,
+    UNDETERMINED routing, `core.require`/`REQUIRED_SCENARIOS`/`UNSAFE_TCL_CHARS` dedupe) — all
+    landed; see G25/G26/G31/G32 above.
+  - Batch B (`.superpowers/sdd/final-fix-B-report.md`): C4 (per-scenario library identity, G27), I1
+    (StarRC per-corner templates, G28), I2 (staged lifecycle checkpoint, G29 -- restore convention
+    with Foundation flow-config sourcing left open), I3 (XTop replay source + tool-failure recording,
+    G30), I7 (bus-bit-safe Tcl quoting), I8 (whole-flow integrity digest + apr-run recompile check),
+    I10 (`sta` maxPaths from the Strategy), I13 (baseline physical reports from this Pack's own
+    Innovus export) landed; I11 (scenario names generic beyond the fixed four) explicitly not closed
+    (G33); Site/README corrected for every input-shape change this batch made.
+  - Every landed item has TDD evidence (RED before, GREEN after) in its own batch's implementer
+    report; `python3 -m unittest discover -s packs/agentic-timing-closure-system/flow/tests` and the
+    Node contract test (`loadPack`/`checkPack` against `linglong-atcs28` and the local Site) were run
+    green after every commit in every batch.
+  - **Pending re-review**: this FABRIC.md's own G27-G33 and the three batches' combined diff have not
+    yet had a second reviewer pass since batch B landed.
