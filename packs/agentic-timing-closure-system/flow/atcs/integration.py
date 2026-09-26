@@ -281,7 +281,9 @@ from . import core
 
 
 _DELTA_KEYS = ("mastersChanged", "added", "removed")
-_UNSAFE_TCL_CHARS = set(';[]{}$"\n\\')
+# Final review (mechanical dedupe): re-exported from `atcs.core`, the one shared
+# source (`atcs.adapters._UNSAFE_TCL_CHARS` re-exports the same set, backslash included).
+_UNSAFE_TCL_CHARS = core.UNSAFE_TCL_CHARS
 
 
 # ---------------------------------------------------------------------------

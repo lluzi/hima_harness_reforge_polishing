@@ -22,10 +22,54 @@ FLOW_DIR = TESTS_DIR.parent
 sys.path.insert(0, str(FLOW_DIR))
 sys.path.insert(0, str(TESTS_DIR))
 
+from atcs import adapters  # noqa: E402
 from atcs import core  # noqa: E402
+from atcs import integration  # noqa: E402
 from atcs import reports  # noqa: E402
+from atcs import verification  # noqa: E402
 
 import fixtures  # noqa: E402
+
+
+class RequireHelperTest(unittest.TestCase):
+    """`core.require` -- final review (mechanical dedupe): the one shared
+    helper every `atcs` module used to define its own private, byte-identical
+    copy of (`contributions.py`, `experience.py`, `lifecycle.py`,
+    `residual.py`, `state.py`, `workspaces.py`)."""
+
+    def test_returns_the_present_value(self):
+        self.assertEqual(core.require({"a": 1}, "a", "thing"), 1)
+
+    def test_missing_key_raises_missing_input_named_by_label_and_key(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            core.require({"a": 1}, "b", "thing")
+        self.assertEqual(ctx.exception.code, "missing-input")
+        self.assertEqual(ctx.exception.detail, "thing.b")
+
+    def test_non_dict_mapping_is_treated_like_a_missing_key_not_a_typeerror(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            core.require(["not", "a", "dict"], "a", "thing")
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+
+class SharedConstantsDedupeTest(unittest.TestCase):
+    """Final review (mechanical dedupe): one `REQUIRED_SCENARIOS` source and one
+    `_UNSAFE_TCL_CHARS` source (backslash included), each re-exported rather than
+    redefined."""
+
+    def test_required_scenarios_is_the_same_tuple_everywhere(self):
+        self.assertIs(adapters.REQUIRED_SCENARIOS, core.REQUIRED_SCENARIOS)
+        self.assertIs(verification.REQUIRED_SCENARIOS, core.REQUIRED_SCENARIOS)
+
+    def test_unsafe_tcl_chars_includes_backslash(self):
+        self.assertIn("\\", core.UNSAFE_TCL_CHARS)
+        self.assertIs(adapters._UNSAFE_TCL_CHARS, core.UNSAFE_TCL_CHARS)
+        self.assertIs(integration._UNSAFE_TCL_CHARS, core.UNSAFE_TCL_CHARS)
+
+    def test_tcl_safe_rejects_a_backslash_the_same_way_integration_does(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.tcl_safe("evil\\name", "value")
+        self.assertEqual(ctx.exception.code, "unsafe-name")
 
 
 class CanonicalDigestTest(unittest.TestCase):

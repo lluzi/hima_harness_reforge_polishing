@@ -127,13 +127,6 @@ EVIDENCE_FIELDS = ("cellDelay", "netDelay", "slew", "fanout", "location")
 NO_DETAIL_REASON = "no path detail observed"
 
 
-def _require(mapping, key, label):
-    """Return `mapping[key]`, or raise `AtcsError("missing-input", ...)` if absent."""
-    if key not in mapping:
-        raise core.AtcsError("missing-input", f"{label}.{key}")
-    return mapping[key]
-
-
 def _evidence_for(check_detail):
     detail = check_detail or {}
     return {
@@ -177,14 +170,14 @@ def _limits_for(evidence):
 
 def extract(evaluation, observation, exp, readiness):
     """Build one ``residual-case`` per still-unclosed check (see module docstring)."""
-    comparison = _require(evaluation, "comparison", "evaluation")
-    remaining_keys = _require(comparison, "remaining", "evaluation.comparison")
+    comparison = core.require(evaluation, "comparison", "evaluation")
+    remaining_keys = core.require(comparison, "remaining", "evaluation.comparison")
 
-    checks = _require(observation, "checks", "observation")
-    precision = _require(observation, "precision", "observation")
+    checks = core.require(observation, "checks", "observation")
+    precision = core.require(observation, "precision", "observation")
     check_details = observation.get("checkDetails", {})
 
-    scope = _require(readiness, "scope", "readiness")
+    scope = core.require(readiness, "scope", "readiness")
     lifecycle_missing = readiness.get("lifecycleMissing", [])
 
     cases = []

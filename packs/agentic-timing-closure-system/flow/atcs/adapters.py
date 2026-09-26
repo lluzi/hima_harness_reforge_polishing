@@ -126,16 +126,16 @@ from . import integration as integration_module
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
-REQUIRED_SCENARIOS = (
-    "func_ssg_rcworst_m40",
-    "func_ssg_rcworst_125",
-    "func_ffg_cbest_m40",
-    "func_ffg_cbest_125",
-)
+# Final review (mechanical dedupe): both re-exported from `atcs.core`, the one shared
+# source, rather than each defining its own copy (`REQUIRED_SCENARIOS` used to also be
+# defined in `atcs.verification`; `_UNSAFE_TCL_CHARS` used to also be defined, without a
+# backslash, in `atcs.integration`, which defines it with one -- `core.UNSAFE_TCL_CHARS`
+# always includes it).
+REQUIRED_SCENARIOS = core.REQUIRED_SCENARIOS
 
 DEFAULT_NWORST = 20
 
-_UNSAFE_TCL_CHARS = set(';[]{}$"\n')
+_UNSAFE_TCL_CHARS = core.UNSAFE_TCL_CHARS
 
 
 class AdapterToolError(Exception):
@@ -160,10 +160,11 @@ def tcl_safe(value, label):
     """Return `value` unchanged, or raise `AtcsError("unsafe-name", ...)`.
 
     Same rule as `atcs.integration._validate_tcl_value`: a non-empty string
-    with no whitespace and none of ``;[]{}$"`` or a newline. Re-checked here
-    (rather than trusted from an already-validated `operation`) because
-    these values are about to be embedded literally in Tcl this module
-    generates for a template.
+    with no whitespace and none of ``;[]{}$"\`` (backslash included, final
+    review: mechanical dedupe onto the one shared `core.UNSAFE_TCL_CHARS`)
+    or a newline. Re-checked here (rather than trusted from an
+    already-validated `operation`) because these values are about to be
+    embedded literally in Tcl this module generates for a template.
     """
     if not isinstance(value, str) or value == "":
         raise core.AtcsError("unsafe-name", f"{label} must be a non-empty string, got {value!r}")

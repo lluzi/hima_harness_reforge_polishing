@@ -115,13 +115,6 @@ _REQUIRED_WORK_PACKAGE_FIELDS = (
 )
 
 
-def _require(mapping, key, label):
-    """Return `mapping[key]`, or raise `AtcsError("missing-input", ...)` if absent."""
-    if not isinstance(mapping, dict) or key not in mapping:
-        raise core.AtcsError("missing-input", f"{label}.{key}")
-    return mapping[key]
-
-
 def _collect_problems(obj, base_state, site_capabilities):
     """Return every `work-package` validation problem found in `obj` (never raises)."""
     problems = []
@@ -238,9 +231,9 @@ def prepare(work_package, campaign_root, base_state):
 
     See module docstring for the full idempotency/concurrency contract.
     """
-    task_id = _require(work_package, "taskId", "work_package")
-    work_package_id = _require(work_package, "id", "work_package")
-    base_state_id = _require(work_package, "baseStateId", "work_package")
+    task_id = core.require(work_package, "taskId", "work_package")
+    work_package_id = core.require(work_package, "id", "work_package")
+    base_state_id = core.require(work_package, "baseStateId", "work_package")
 
     if task_id not in TASK_IDS:
         # TASK_IDS is checked before any path is built: this is what keeps a

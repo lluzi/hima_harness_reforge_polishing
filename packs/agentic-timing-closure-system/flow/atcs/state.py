@@ -56,7 +56,9 @@ already validated — a missing required key (`top`, `stage`, `database`,
 `database.enc`, `database.encDat`, `netlist`, a scenario's `name`/`corner`)
 therefore raises `AtcsError("missing-input", "<dotted key path>")` from
 `design_state`/`input_readiness`, never a bare `KeyError`, via the shared
-`_require` helper below.
+`core.require` helper (final review: hoisted out of this module, which used
+to define its own private copy, into `atcs.core` -- see `core.require`'s own
+docstring).
 
 `design_state(manifest)`
 -------------------------
@@ -247,35 +249,23 @@ def _resolve(root, path):
     return path
 
 
-def _require(mapping, key, label="manifest"):
-    """Return `mapping[key]`, or raise `AtcsError("missing-input", ...)` if absent.
-
-    The manifest is Site-supplied evidence, not a caller-validated internal
-    contract, so a missing required key must never surface as a raw
-    `KeyError`.
-    """
-    if key not in mapping:
-        raise core.AtcsError("missing-input", f"{label}.{key}")
-    return mapping[key]
-
-
 def _scenario_name(scenario):
-    return _require(scenario, "name", "scenario")
+    return core.require(scenario, "name", "scenario")
 
 
 def _scenario_corner(scenario):
-    return _require(scenario, "corner", "scenario")
+    return core.require(scenario, "corner", "scenario")
 
 
 def design_state(manifest):
     root = manifest.get("root")
 
-    top = _require(manifest, "top")
-    stage = _require(manifest, "stage")
-    database = _require(manifest, "database")
-    enc_rel = _require(database, "enc", "manifest.database")
-    enc_dat_rel = _require(database, "encDat", "manifest.database")
-    netlist_rel = _require(manifest, "netlist")
+    top = core.require(manifest, "top", "manifest")
+    stage = core.require(manifest, "stage", "manifest")
+    database = core.require(manifest, "database", "manifest")
+    enc_rel = core.require(database, "enc", "manifest.database")
+    enc_dat_rel = core.require(database, "encDat", "manifest.database")
+    netlist_rel = core.require(manifest, "netlist", "manifest")
 
     enc_path = _resolve(root, enc_rel)
     enc_dat_path = _resolve(root, enc_dat_rel)

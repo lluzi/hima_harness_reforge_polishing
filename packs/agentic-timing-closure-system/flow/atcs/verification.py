@@ -382,12 +382,9 @@ from . import core
 from . import state
 
 
-REQUIRED_SCENARIOS = (
-    "func_ssg_rcworst_m40",
-    "func_ssg_rcworst_125",
-    "func_ffg_cbest_m40",
-    "func_ffg_cbest_125",
-)
+# Final review (mechanical dedupe): re-exported from `atcs.core`, the one shared
+# source (`atcs.adapters.REQUIRED_SCENARIOS` re-exports the same tuple).
+REQUIRED_SCENARIOS = core.REQUIRED_SCENARIOS
 
 DEFAULT_PHYSICAL_CHECKS = ("drc", "connectivity")
 

@@ -133,16 +133,9 @@ CONDITION_KEYS = ("stage", "scenario", "precision", "toolVersion")
 OPTIONAL_CONDITION_KEYS = ("predictionModel",)
 
 
-def _require(mapping, key, label):
-    """Return `mapping[key]`, or raise `AtcsError("missing-input", ...)` if absent."""
-    if key not in mapping:
-        raise core.AtcsError("missing-input", f"{label}.{key}")
-    return mapping[key]
-
-
 def _read_conditions(mapping, label):
-    conditions_in = _require(mapping, "conditions", label)
-    conditions = {key: _require(conditions_in, key, f"{label}.conditions") for key in CONDITION_KEYS}
+    conditions_in = core.require(mapping, "conditions", label)
+    conditions = {key: core.require(conditions_in, key, f"{label}.conditions") for key in CONDITION_KEYS}
     for key in OPTIONAL_CONDITION_KEYS:
         if key in conditions_in:
             conditions[key] = conditions_in[key]
@@ -176,14 +169,14 @@ def record(path, lineage, decision, outcome):
     `lineage["decisionId"]` already names an entry in the ledger — see the
     module docstring's "Ledger persistence and append-only enforcement".
     """
-    decision_id = _require(lineage, "decisionId", "lineage")
+    decision_id = core.require(lineage, "decisionId", "lineage")
     conditions = _read_conditions(lineage, "lineage")
 
-    hypothesis = _require(decision, "hypothesis", "decision")
-    action = _require(decision, "action", "decision")
-    predicted = _require(decision, "predicted", "decision")
+    hypothesis = core.require(decision, "hypothesis", "decision")
+    action = core.require(decision, "action", "decision")
+    predicted = core.require(decision, "predicted", "decision")
 
-    measured = _require(outcome, "measured", "outcome")
+    measured = core.require(outcome, "measured", "outcome")
 
     entries = _load_entries(path)
     if any(entry.get("decisionId") == decision_id for entry in entries):
@@ -206,10 +199,10 @@ def record(path, lineage, decision, outcome):
 
 def applicable(exp, conditions):
     """Entries of `exp` whose recorded conditions match `conditions` (see module docstring)."""
-    stage = _require(conditions, "stage", "conditions")
-    scenario = _require(conditions, "scenario", "conditions")
-    precision = _require(conditions, "precision", "conditions")
-    tool_version = _require(conditions, "toolVersion", "conditions")
+    stage = core.require(conditions, "stage", "conditions")
+    scenario = core.require(conditions, "scenario", "conditions")
+    precision = core.require(conditions, "precision", "conditions")
+    tool_version = core.require(conditions, "toolVersion", "conditions")
 
     matches = []
     for entry in exp.get("entries", []):

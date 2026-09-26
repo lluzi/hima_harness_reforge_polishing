@@ -201,3 +201,41 @@ def value_of(measure):
 def check_key(scenario, mode, endpoint):
     """The canonical `"<scenario>|<mode>|<endpoint>"` check identity string."""
     return f"{scenario}|{mode}|{endpoint}"
+
+
+def require(mapping, key, label):
+    """Return `mapping[key]`, or raise `AtcsError("missing-input", ...)` if absent.
+
+    Final review (mechanical dedupe): every `atcs` module used to define its own
+    private, byte-identical copy of this helper (`contributions.py`,
+    `experience.py`, `lifecycle.py`, `residual.py`, `state.py`, `workspaces.py`)
+    -- this is the one shared source every one of them now imports instead.
+    `label` is the mapping's own name (e.g. `"work_package"`, `"workspaceManifest"`),
+    used to compose the error detail as `"<label>.<key>"`; every caller passes it
+    explicitly, since a single Pack-wide default could not describe every mapping's
+    meaning. `mapping` must be a `dict` -- a non-dict is treated exactly like a
+    missing key, since these are Site/Workshop-supplied external inputs, not
+    caller-guaranteed internal structures, and a raw `KeyError`/`TypeError` must
+    never escape.
+    """
+    if not isinstance(mapping, dict) or key not in mapping:
+        raise AtcsError("missing-input", f"{label}.{key}")
+    return mapping[key]
+
+
+REQUIRED_SCENARIOS = (
+    "func_ssg_rcworst_m40",
+    "func_ssg_rcworst_125",
+    "func_ffg_cbest_m40",
+    "func_ffg_cbest_125",
+)
+"""The Pack-wide fixed set of required STA scenarios (`.superpowers/sdd/global-context.md`'s
+"Required scenarios"). Final review (mechanical dedupe): `atcs.adapters.REQUIRED_SCENARIOS` and
+`atcs.verification.REQUIRED_SCENARIOS` used to each define their own identical copy of this same
+tuple -- both now re-export this one."""
+
+UNSAFE_TCL_CHARS = set(';[]{}$"\n\\')
+"""Characters (plus a backslash, so a value can never begin a Tcl-level escape sequence) that make
+a string unsafe to embed literally in generated Tcl. Final review (mechanical dedupe):
+`atcs.adapters._UNSAFE_TCL_CHARS` (without the backslash) and `atcs.integration._UNSAFE_TCL_CHARS`
+(with it) used to each define their own copy -- both now re-export this one, backslash included."""

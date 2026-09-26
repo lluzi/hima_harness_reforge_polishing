@@ -185,12 +185,6 @@ _TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "templates" / "apr-sta
 _INVALID_TOKEN_CHARS = ("\n", ";", "[", "]")
 
 
-def _require(mapping, key, label):
-    if key not in mapping:
-        raise core.AtcsError("missing-input", f"{label}.{key}")
-    return mapping[key]
-
-
 def _validate_token(value):
     """Return `value` unchanged if it is a safe single-line Tcl token, else refuse.
 
@@ -216,7 +210,7 @@ def _format_ns(value):
 
 
 def _check_scope(readiness):
-    scope = _require(readiness, "scope", "readiness")
+    scope = core.require(readiness, "scope", "readiness")
     if scope != "full-flow":
         raise core.AtcsError("lifecycle-unavailable", f"scope={scope!r}")
 
@@ -324,8 +318,8 @@ def compile_intervention(residual_cases, stage, readiness):
     settings = []
     seen_hooks = set()
     for case in residual_cases:
-        evidence = _require(case, "evidence", "residual-case")
-        checks = _require(case, "checks", "residual-case")
+        evidence = core.require(case, "evidence", "residual-case")
+        checks = core.require(case, "checks", "residual-case")
         check_key = checks[0] if checks else "<unknown>"
 
         candidates = [
@@ -379,12 +373,12 @@ def stage_task(stage, readiness, intervention, workspace_root, parent_state_id=N
     _check_scope(readiness)
     _check_stage(stage)
 
-    intervention_stage = _require(intervention, "stage", "intervention")
+    intervention_stage = core.require(intervention, "stage", "intervention")
     if intervention_stage != stage:
         raise core.AtcsError("stage-mismatch", f"intervention is for {intervention_stage!r}, task is for {stage!r}")
-    hook_tcl = _require(intervention, "hookTcl", "intervention")
-    readback_tcl = _require(intervention, "readbackTcl", "intervention")
-    declared_outputs = _require(intervention, "outputs", "intervention")
+    hook_tcl = core.require(intervention, "hookTcl", "intervention")
+    readback_tcl = core.require(intervention, "readbackTcl", "intervention")
+    declared_outputs = core.require(intervention, "outputs", "intervention")
 
     workspace_root = str(workspace_root)
     if not workspace_root or workspace_root.startswith("/"):

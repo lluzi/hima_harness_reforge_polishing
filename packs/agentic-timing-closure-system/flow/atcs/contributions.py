@@ -514,12 +514,6 @@ def implied_delta(operations, before):
     return actual_delta(before, state)
 
 
-def _require(mapping, key, label):
-    if not isinstance(mapping, dict) or key not in mapping:
-        raise core.AtcsError("missing-input", f"{label}.{key}")
-    return mapping[key]
-
-
 def _read_dump_bytes(path, label):
     try:
         return Path(path).read_bytes()
@@ -835,9 +829,9 @@ def seal(base_ref, result_refs, operation_trace):
     `admissible: False` plus `refusals[]` — see the module docstring for
     the full contract.
     """
-    manifest = _require(base_ref, "workspaceManifest", "base_ref")
-    work_package = _require(base_ref, "workPackage", "base_ref")
-    state_id = _require(base_ref, "stateId", "base_ref")
+    manifest = core.require(base_ref, "workspaceManifest", "base_ref")
+    work_package = core.require(base_ref, "workPackage", "base_ref")
+    state_id = core.require(base_ref, "stateId", "base_ref")
 
     if manifest.get("baseStateId") != state_id:
         raise core.AtcsError(
@@ -855,14 +849,14 @@ def seal(base_ref, result_refs, operation_trace):
             f"workspaceManifest.workPackageId {manifest.get('workPackageId')!r} != workPackage.id {work_package.get('id')!r}",
         )
 
-    task_id = _require(manifest, "taskId", "workspaceManifest")
-    revision = _require(manifest, "revision", "workspaceManifest")
-    name_prefix = _require(manifest, "namePrefix", "workspaceManifest")
+    task_id = core.require(manifest, "taskId", "workspaceManifest")
+    revision = core.require(manifest, "revision", "workspaceManifest")
+    name_prefix = core.require(manifest, "namePrefix", "workspaceManifest")
 
     operations = parse_ops_log(operation_trace)
 
-    before_path = _require(result_refs, "beforeDump", "result_refs")
-    after_path = _require(result_refs, "afterDump", "result_refs")
+    before_path = core.require(result_refs, "beforeDump", "result_refs")
+    after_path = core.require(result_refs, "afterDump", "result_refs")
     dependencies = _dependencies(result_refs)
     before_bytes = _read_dump_bytes(before_path, "beforeDump")
     before_dump_sha256 = hashlib.sha256(before_bytes).hexdigest()
