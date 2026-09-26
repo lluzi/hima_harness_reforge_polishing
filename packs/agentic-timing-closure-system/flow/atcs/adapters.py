@@ -873,8 +873,20 @@ def compile_xtop_analysis_manual_task(workspace_manifest, edit_domain, operator_
     return {"tcl": tcl, "env": env, "editDomain": {"instances": instances, "nets": nets}}
 
 
-def compile_xtop_replay_task(current_db_path, design, steps, output_root):
+def compile_xtop_replay_task(design, tech_lef, cell_lef_glob, netlist, def_path, steps, output_root):
     """One `xtop-replay.tcl` batch-replay task for `steps` (a `replay-request.steps` list).
+
+    I3 (final review, XTop replay source): builds its own fresh XTop workspace
+    from the batch's own base-state LEF/netlist/DEF -- `create_workspace` +
+    `link_reference_library` + `create_design_definition` + `import_designs`,
+    the same shape `compile_xtop_operator_task` uses for a worker session --
+    never `open_workspace` on an Innovus `.enc` restore script (confirmed by
+    reading the pre-fix template directly: `open_workspace` opens a
+    previously-*saved XTop* workspace, not an Innovus checkpoint, so the old
+    call could never actually have opened anything real). No STA data or
+    timing library is needed here: replay only ever performs structural
+    edits (`size_cell`/`insert_buffer`/`delete_buffer`) and reads back plain
+    cell/master names, never a timing query.
 
     Each step's Tcl is `atcs.integration.xtop_tcl(op)` -- this function
     never re-derives XTop command text itself. Stops at the first failing
@@ -895,8 +907,9 @@ def compile_xtop_replay_task(current_db_path, design, steps, output_root):
         lines.append(f'atcs_replay_step "{step_id}" {{{op_tcl}}} {index}\n')
     steps_text = "".join(lines)
     env = {
-        "CURRENT_DB": str(current_db_path), "DESIGN": design, "STEPS_TCL": str(steps_path),
-        "DUMP_DIR": str(dump_dir), "RECEIPTS_LOG": str(receipts_log),
+        "DESIGN": design, "TECH_LEF": tech_lef, "CELL_LEF_GLOB": cell_lef_glob,
+        "NETLIST": netlist, "DEF": def_path if def_path else "",
+        "STEPS_TCL": str(steps_path), "DUMP_DIR": str(dump_dir), "RECEIPTS_LOG": str(receipts_log),
     }
     tcl = compile_task("xtop-replay.tcl", env=env)
     return {

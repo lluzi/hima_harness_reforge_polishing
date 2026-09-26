@@ -564,7 +564,7 @@ class IntegrationStateReaderTest(unittest.TestCase):
     def test_counts_from_lists(self):
         obj = core.stamp("integration-state", {
             "batchId": "b1", "applied": {}, "failed": [], "pending": [],
-            "replayMismatch": ["s1"], "outOfScope": ["s2", "s3"], "delta": {},
+            "replayMismatch": ["s1"], "outOfScope": ["s2", "s3"], "unknownReceipts": [], "delta": {},
         })
         report = self.workspace / "flow" / "records" / "state.json"
         core.write_artifact(report, obj)
@@ -572,6 +572,44 @@ class IntegrationStateReaderTest(unittest.TestCase):
         by_type = {v["type"]: v for v in values}
         self.assertEqual(by_type["tc_replay_mismatch_count"]["value"], 1)
         self.assertEqual(by_type["tc_out_of_scope_edit_count"]["value"], 2)
+
+    def test_a_pending_step_makes_the_mismatch_count_unknown(self):
+        """I3 (final review): a step that never even replayed must not let a precise
+        mismatch count through -- its own true status was never established."""
+        obj = core.stamp("integration-state", {
+            "batchId": "b1", "applied": {}, "failed": [], "pending": ["s2"],
+            "replayMismatch": [], "outOfScope": [], "unknownReceipts": [], "delta": {},
+        })
+        report = self.workspace / "flow" / "records" / "state.json"
+        core.write_artifact(report, obj)
+        values = read_atcs.read("integration-state", report, self.workspace)
+        by_type = {v["type"]: v for v in values}
+        self.assertIsNone(by_type["tc_replay_mismatch_count"]["value"])
+        self.assertIn("unknownReason", by_type["tc_replay_mismatch_count"])
+
+    def test_a_failed_step_makes_the_mismatch_count_unknown(self):
+        obj = core.stamp("integration-state", {
+            "batchId": "b1", "applied": {}, "failed": ["s1"], "pending": [],
+            "replayMismatch": [], "outOfScope": [], "unknownReceipts": [], "delta": {},
+        })
+        report = self.workspace / "flow" / "records" / "state.json"
+        core.write_artifact(report, obj)
+        values = read_atcs.read("integration-state", report, self.workspace)
+        by_type = {v["type"]: v for v in values}
+        self.assertIsNone(by_type["tc_replay_mismatch_count"]["value"])
+        self.assertIn("unknownReason", by_type["tc_replay_mismatch_count"])
+
+    def test_an_unknown_receipt_makes_the_mismatch_count_unknown(self):
+        obj = core.stamp("integration-state", {
+            "batchId": "b1", "applied": {}, "failed": [], "pending": [],
+            "replayMismatch": [], "outOfScope": [], "unknownReceipts": ["ghost-step"], "delta": {},
+        })
+        report = self.workspace / "flow" / "records" / "state.json"
+        core.write_artifact(report, obj)
+        values = read_atcs.read("integration-state", report, self.workspace)
+        by_type = {v["type"]: v for v in values}
+        self.assertIsNone(by_type["tc_replay_mismatch_count"]["value"])
+        self.assertIn("unknownReason", by_type["tc_replay_mismatch_count"])
 
 
 class PrecheckEvidenceReaderTest(unittest.TestCase):

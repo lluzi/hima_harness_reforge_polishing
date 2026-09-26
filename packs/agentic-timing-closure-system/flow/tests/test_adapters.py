@@ -432,7 +432,10 @@ proc set_parameter {args} {}
 proc create_workspace {args} {}
 proc link_reference_library {args} {}
 proc create_design_definition {args} {}
+proc set_site_map {args} {}
+proc set_removable_fillers {args} {}
 proc import_designs {args} {}
+proc check_placement_readiness {args} {}
 proc read_timing_data {args} {}
 proc save_workspace {args} {}
 proc get_attribute {obj attr} {
@@ -566,6 +569,78 @@ class DumpCellsTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         parsed = contributions_module.parse_cell_dump(dump_path.read_text(encoding="utf-8"))
         self.assertEqual(parsed, {"U_IN_DOMAIN": "MASTERX", "U_OUT_DOMAIN": "MASTERX"})
+
+
+class XtopReplayWorkspaceTest(unittest.TestCase):
+    """I3 (final review): `xtop-replay.tcl` builds its own fresh XTop workspace from
+    the batch's own base-state LEF/netlist/DEF -- never `open_workspace` on an
+    Innovus `.enc` restore script."""
+
+    def test_never_calls_open_workspace(self):
+        task = adapters.compile_xtop_replay_task(
+            "top", "/pdk/tech.lef", "/pdk/cells/*.lef", "/ws/netlist.v", "/ws/design.def", [], "/ws/run",
+        )
+        code_lines = [line for line in task["tcl"].splitlines() if not line.strip().startswith("#")]
+        self.assertFalse(any("open_workspace" in line for line in code_lines), task["tcl"])
+        self.assertIn("create_workspace", task["tcl"])
+        self.assertIn("link_reference_library", task["tcl"])
+        self.assertIn("create_design_definition", task["tcl"])
+
+    def test_env_carries_lef_and_design_inputs_not_a_current_db(self):
+        task = adapters.compile_xtop_replay_task(
+            "top", "/pdk/tech.lef", "/pdk/cells/*.lef", "/ws/netlist.v", "/ws/design.def", [], "/ws/run",
+        )
+        self.assertEqual(task["env"]["TECH_LEF"], "/pdk/tech.lef")
+        self.assertEqual(task["env"]["CELL_LEF_GLOB"], "/pdk/cells/*.lef")
+        self.assertEqual(task["env"]["NETLIST"], "/ws/netlist.v")
+        self.assertEqual(task["env"]["DEF"], "/ws/design.def")
+        self.assertNotIn("CURRENT_DB", task["env"])
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class XtopReplayEndToEndTest(unittest.TestCase):
+    """Real `tclsh` execution (documented XTop commands stubbed): confirms the
+    compiled `xtop-replay.tcl` actually builds a workspace and replays a step,
+    never just that its text happens to contain the right substrings."""
+
+    def setUp(self):
+        self.tmp = _tmp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        for name in ("tech.lef", "cells.lef", "netlist.v", "design.def"):
+            (self.tmp / name).write_text("stub", encoding="utf-8")
+        self.run_root = self.tmp / "run"
+        self.run_root.mkdir()
+
+    def _compile_and_write(self, steps):
+        task = adapters.compile_xtop_replay_task(
+            "top", str(self.tmp / "tech.lef"), str(self.tmp / "cells.lef"),
+            str(self.tmp / "netlist.v"), str(self.tmp / "design.def"), steps, str(self.run_root),
+        )
+        Path(task["stepsPath"]).write_text(task["stepsText"], encoding="utf-8")
+        script_path = self.tmp / "replay-session.tcl"
+        script_path.write_text(_STUB_PROCS + task["tcl"], encoding="utf-8")
+        return task, script_path
+
+    def test_a_successful_step_produces_an_ok_receipt_and_two_dumps(self):
+        steps = [{"stepId": "s1", "op": {"op": "size_cell", "instance": "U_IN_DOMAIN", "toMaster": "MOCKBUFX4"}}]
+        task, script_path = self._compile_and_write(steps)
+        result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipts = adapters.read_replay_receipts(task["receiptsLog"])
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(receipts[0]["stepId"], "s1")
+        self.assertEqual(receipts[0]["status"], "ok")
+        self.assertTrue((Path(task["dumpDir"]) / "000.dump").is_file())
+        self.assertTrue((Path(task["dumpDir"]) / "001.dump").is_file())
+
+    def test_a_missing_required_input_refuses_before_any_workspace_command(self):
+        # DEF file does not exist -- must fail on the `file readable` check, never
+        # silently proceed to `create_workspace`.
+        (self.tmp / "design.def").unlink()
+        task, script_path = self._compile_and_write([])
+        result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("not readable", result.stdout + result.stderr)
 
 
 # ---------------------------------------------------------------------------

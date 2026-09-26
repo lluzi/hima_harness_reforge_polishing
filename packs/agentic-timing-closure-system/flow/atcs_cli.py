@@ -1347,6 +1347,24 @@ def _cmd_compose_facts(workspace, args):
 
 
 def _cmd_replay_prepare(workspace, args):
+    """I3 (final review, XTop replay source): `xtop-replay.tcl` builds its own fresh
+    XTop workspace from the batch's own base-state LEF/netlist/DEF -- the same shape
+    `prepare-workers` builds a worker session's own startup from -- never
+    `open_workspace` on an Innovus `.enc` restore script (confirmed by reading the
+    pre-fix template: `open_workspace` opens a previously-saved *XTop* workspace, not
+    an Innovus checkpoint, so that call could never actually have opened anything
+    real). `techLef`/`cellLefGlob`/`design` come from the same `siteCapabilities`
+    document `edaShell` already does -- no new argv input.
+
+    I3 (final review): a replay run that itself fails outright (the `xtop` process
+    exits non-zero, or its log reports an `ERROR`/`Fatal` line) is no longer silently
+    swallowed -- its detail and log path are recorded at the non-declared
+    `state/replay-receipts.json` side file's own `toolFailure` field, so `reconcile`'s
+    caller (and a human reviewing the workspace) can tell "the tool itself never ran
+    to completion" apart from "every step it did attempt is accounted for in
+    `receipts.jsonl`". `reconcile` itself is unaffected: a step with no receipt at all
+    still reports as `pending`, exactly as before.
+    """
     base_state_path, plan_path, site_profile_path = args
     workspace = Path(workspace)
     facts = _read_declared(_paths(workspace)["composition_facts"], "composition-facts")
@@ -1378,22 +1396,35 @@ def _cmd_replay_prepare(workspace, args):
             f"integrations/{batch_id}/xtop-replay.tcl already exists -- batch ids must be unique, "
             "this Pack never replays the same batch id a second time",
         )
-    current_db = workspace / base_state["database"]["path"]
-    task = adapters.compile_xtop_replay_task(str(current_db), base_state["top"], request.get("steps", []), output_root)
+    for key in ("design", "techLef", "cellLefGlob"):
+        if not site_profile.get(key):
+            raise InputError("invalid-input", f"site capabilities is missing {key!r}")
+    netlist_path = workspace / base_state["netlist"]["path"]
+    def_path = workspace / base_state["def"]["path"] if base_state.get("def") else None
+    task = adapters.compile_xtop_replay_task(
+        site_profile["design"], site_profile["techLef"], site_profile["cellLefGlob"],
+        str(netlist_path), str(def_path) if def_path else "", request.get("steps", []), output_root,
+    )
     Path(task["stepsPath"]).parent.mkdir(parents=True, exist_ok=True)
     Path(task["stepsPath"]).write_text(task["stepsText"], encoding="utf-8")
     main_tcl_path = output_root / "xtop-replay.tcl"
     main_tcl_path.write_text(task["tcl"], encoding="utf-8")
     log_path = output_root / "xtop-replay.log"
+    tool_failure = None
     try:
         adapters.run_tool(site_profile, ["xtop", "-f", str(main_tcl_path)], cwd=output_root, log_path=log_path)
-    except adapters.AdapterToolError:
+    except adapters.AdapterToolError as exc:
         # A step failure stops the batch (architecture Sec.8.4): later steps
         # simply stay receipt-less (pending) -- `reconcile` reports that, it
-        # is not a `replay-prepare` refusal in its own right.
-        pass
+        # is not a `replay-prepare` refusal in its own right. I3 (final
+        # review): the failure itself is no longer swallowed -- its detail and
+        # log path are recorded below, never silently discarded.
+        tool_failure = {"detail": exc.detail, "log": str(exc.log_path)}
     receipts = adapters.read_replay_receipts(task["receiptsLog"])
-    _canonical_write(_paths(workspace)["replay_receipts"], {"receipts": receipts})
+    receipts_body = {"receipts": receipts}
+    if tool_failure is not None:
+        receipts_body["toolFailure"] = tool_failure
+    _canonical_write(_paths(workspace)["replay_receipts"], receipts_body)
     return _paths(workspace)["replay_request"], request
 
 

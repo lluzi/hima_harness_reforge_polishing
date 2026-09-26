@@ -7,13 +7,36 @@
 # recovered by re-reading the dumps rather than re-inserting an edit
 # (architecture Sec.8.4).
 #
-# Required env vars: CURRENT_DB DESIGN STEPS_TCL DUMP_DIR RECEIPTS_LOG
+# I3 (final review, XTop replay source): builds its own fresh XTop workspace
+# from the batch's own base-state LEF/netlist/DEF -- the same shape a worker
+# session's own `xtop-operator.tcl` startup uses -- never `open_workspace`
+# on an Innovus `.enc` restore script (that command opens a previously
+# *saved XTop* workspace, not an Innovus checkpoint; it could never have
+# opened anything real against a `.enc` path).
+#
+# Required env vars: DESIGN TECH_LEF CELL_LEF_GLOB NETLIST DEF STEPS_TCL
+#                     DUMP_DIR RECEIPTS_LOG
 ########################################################################
-foreach required {CURRENT_DB DESIGN STEPS_TCL DUMP_DIR RECEIPTS_LOG} {
+foreach required {DESIGN TECH_LEF CELL_LEF_GLOB NETLIST DEF STEPS_TCL DUMP_DIR RECEIPTS_LOG} {
     if {![info exists env($required)]} { error "$required is required" }
+}
+set design $env(DESIGN)
+set cell_lefs [lsort [glob -nocomplain $env(CELL_LEF_GLOB)]]
+set lef_files [linsert $cell_lefs 0 $env(TECH_LEF)]
+foreach file [concat [list $env(NETLIST) $env(DEF)] $lef_files] {
+    if {![file readable $file]} { error "required XTop input is not readable: $file" }
 }
 if {![file readable $env(STEPS_TCL)]} { error "STEPS_TCL is not readable: $env(STEPS_TCL)" }
 file mkdir $env(DUMP_DIR)
+
+set_parameter max_thread_number 8
+create_workspace ${design}_replay -overwrite
+link_reference_library -format lef $lef_files
+create_design_definition -verilogs $env(NETLIST) -def $env(DEF)
+set_site_map {unit core}
+set_removable_fillers {FILL* DCAP*}
+import_designs
+check_placement_readiness
 
 proc atcs_dump_cells {path} {
     # Same documented get_cells/foreach_in_collection/get_attribute pattern
@@ -36,7 +59,6 @@ proc atcs_json_escape {s} {
     return [string map {"\\" "\\\\" "\"" "\\\"" "\n" "\\n"} $s]
 }
 
-open_workspace $env(CURRENT_DB)
 atcs_dump_cells $env(DUMP_DIR)/000.dump
 
 # `STEPS_TCL` is generated per run by `atcs.adapters.compile_xtop_replay_task`;

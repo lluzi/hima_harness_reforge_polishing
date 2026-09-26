@@ -654,17 +654,45 @@ def _read_integration_plan(report, workspace, extra, mods):
 
 
 def _read_integration_state(report, workspace, extra, mods):
+    """I3 (final review): `tc_replay_mismatch_count` is only ever a known count when
+    every one of this batch's steps was actually verified against its expected delta
+    -- a `pending` step (never replayed at all, e.g. the run stopped at an earlier
+    failure), a `failed` step (its own replay errored) or an `unknownReceipts` entry
+    (a receipt this Reader cannot even attribute to a real step) each mean at least
+    one step's true mismatch status was never established. Reporting a known count
+    while any of those is non-empty would silently claim more was verified than
+    actually was."""
     core = mods["core"]
     obj = _load_json(report)
     _verify_identity(obj, "integration-state", core)
     replay_mismatch = obj.get("replayMismatch")
     out_of_scope = obj.get("outOfScope")
+    pending = obj.get("pending")
+    failed = obj.get("failed")
+    unknown_receipts = obj.get("unknownReceipts")
     if not isinstance(replay_mismatch, list):
         raise ValueError("integration-state.replayMismatch must be a list")
     if not isinstance(out_of_scope, list):
         raise ValueError("integration-state.outOfScope must be a list")
+    if not isinstance(pending, list):
+        raise ValueError("integration-state.pending must be a list")
+    if not isinstance(failed, list):
+        raise ValueError("integration-state.failed must be a list")
+    if not isinstance(unknown_receipts, list):
+        raise ValueError("integration-state.unknownReceipts must be a list")
+
+    if pending or failed or unknown_receipts:
+        replay_mismatch_value = _emit(
+            "tc_replay_mismatch_count", "count",
+            core.unknown(
+                f"{len(pending)} pending, {len(failed)} failed, {len(unknown_receipts)} unknown-receipt "
+                "step(s) were never verified against their expected delta"
+            ),
+        )
+    else:
+        replay_mismatch_value = _emit_count("tc_replay_mismatch_count", len(replay_mismatch))
     return [
-        _emit_count("tc_replay_mismatch_count", len(replay_mismatch)),
+        replay_mismatch_value,
         _emit_count("tc_out_of_scope_edit_count", len(out_of_scope)),
     ]
 

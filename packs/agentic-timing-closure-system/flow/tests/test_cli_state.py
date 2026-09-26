@@ -75,9 +75,17 @@ def _no_op_wrapper(root):
 
 
 def _site_profile_path(root):
+    """`siteCapabilities.json` -- `edaShell` is all most subcommands read; `design`/
+    `techLef`/`cellLefGlob` are also included (I3, final review: `replay-prepare`
+    now reads these three the same way `prepare-workers` already did) as plain,
+    non-empty placeholder strings -- the fake no-op wrapper never actually launches
+    XTop, so nothing here needs to resolve to a real file on disk."""
     wrapper = _no_op_wrapper(root)
     path = root / "site-profile.json"
-    _write_json(path, {"edaShell": [str(wrapper)]})
+    _write_json(path, {
+        "edaShell": [str(wrapper)], "design": "top",
+        "techLef": str(root / "tech.lef"), "cellLefGlob": str(root / "cells" / "*.lef"),
+    })
     return path
 
 
@@ -2498,6 +2506,80 @@ class ReplayPrepareBatchIdWriteOnceTest(unittest.TestCase):
         result2 = _run("replay-prepare", self.workspace, self.base_state_path, self.plan_path, self.site_profile_path)
         self.assertEqual(result2.returncode, 0, result2.stdout + result2.stderr)
         self.assertTrue((self.workspace / "integrations" / "batch-2" / "xtop-replay.tcl").is_file())
+
+
+class ReplayPrepareToolFailureTest(unittest.TestCase):
+    """I3 (final review): a replay run that fails outright is no longer silently
+    swallowed -- its detail and log path are recorded, never discarded."""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+        working_state = core.stamp("design-state", {
+            "top": "top", "stage": "postroute",
+            "database": {"path": "db.enc", "sha256": "a" * 64, "datDigest": "b" * 64},
+            "netlist": {"path": "netlist.v", "sha256": "c" * 64}, "def": None,
+            "spef": {}, "sdc": [], "tools": {}, "scenarios": [], "parentId": None,
+        })
+        self.base_state_path = self.workspace / "base-state.json"
+        _write_json(self.base_state_path, working_state)
+        self.base_state_id = working_state["id"]
+
+        contribution = core.stamp("contribution", {
+            "taskId": "w01", "revision": 1, "baseStateId": self.base_state_id, "kind": "fix",
+            "operations": [{"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"}],
+            "script": None, "beforeDumpSha256": "0" * 64,
+            "delta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+            "touches": {"instances": ["U1"], "nets": [], "regions": [], "checks": [], "cones": []},
+            "preconditions": [], "dependencies": [], "atomicGroups": [],
+            "predicted": {}, "validationLevel": "none", "diagnosis": None,
+            "admissible": True, "refusals": [], "outOfScope": [],
+        })
+        _write_json(self.workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
+        facts = composition.analyze(self.base_state_id, [contribution], [])
+        _write_json(self.workspace / "state" / "composition-facts.json", facts)
+        self.plan_path = self.workspace / "integration-plan.json"
+        _write_json(self.plan_path, {
+            "plan": {
+                "batchId": "batch-fail", "baseStateId": self.base_state_id,
+                "select": [contribution["id"]], "resolutions": [], "deferred": [], "reason": "single fix",
+            },
+            "facts": facts,
+        })
+        # A wrapper that always fails -- stands in for a real XTop session that
+        # never even reaches the point of producing any receipts.
+        failing_wrapper = self.workspace / "failing-wrapper.sh"
+        failing_wrapper.write_text("#!/bin/sh\necho 'ERROR: xtop crashed' >&2\nexit 7\n", encoding="utf-8")
+        failing_wrapper.chmod(0o755)
+        self.site_profile_path = self.workspace / "site-profile.json"
+        _write_json(self.site_profile_path, {
+            "edaShell": [str(failing_wrapper)], "design": "top",
+            "techLef": str(self.workspace / "tech.lef"), "cellLefGlob": str(self.workspace / "cells" / "*.lef"),
+        })
+
+    def test_a_failed_replay_run_records_tool_failure_instead_of_being_swallowed(self):
+        result = _run("replay-prepare", self.workspace, self.base_state_path, self.plan_path, self.site_profile_path)
+        # Not a replay-prepare refusal in its own right (architecture Sec.8.4):
+        # the declared output is still written, exit 0.
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipts_doc = json.loads((self.workspace / "state" / "replay-receipts.json").read_text())
+        self.assertIn("toolFailure", receipts_doc)
+        self.assertIn("log", receipts_doc["toolFailure"])
+        self.assertTrue(Path(receipts_doc["toolFailure"]["log"]).is_file())
+        self.assertEqual(receipts_doc["receipts"], [])
+
+    def test_a_successful_replay_run_never_carries_a_tool_failure_field(self):
+        ok_wrapper = self.workspace / "ok-wrapper.sh"
+        ok_wrapper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        ok_wrapper.chmod(0o755)
+        _write_json(self.site_profile_path, {
+            "edaShell": [str(ok_wrapper)], "design": "top",
+            "techLef": str(self.workspace / "tech.lef"), "cellLefGlob": str(self.workspace / "cells" / "*.lef"),
+        })
+        result = _run("replay-prepare", self.workspace, self.base_state_path, self.plan_path, self.site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipts_doc = json.loads((self.workspace / "state" / "replay-receipts.json").read_text())
+        self.assertNotIn("toolFailure", receipts_doc)
 
 
 class ComposeFactsSecondPassTest(unittest.TestCase):
