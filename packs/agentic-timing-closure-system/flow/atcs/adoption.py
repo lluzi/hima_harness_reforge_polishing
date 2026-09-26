@@ -38,6 +38,24 @@ read-modify-write of the pointers file (`load_pointers` then
 a second concurrent writer is a scenario this Pack's graph never creates,
 not a race this module defends against.
 
+Id namespace (controller decision, binding for this module)
+-------------------------------------------------------------
+
+State ids everywhere in this Pack — `work-package.baseStateId`,
+`merge-commit.parentStateId`, `expected_base`, and every pointer in this
+module's own pointers document — are **design-state ids**
+(`atcs.state.design_state(...)["id"]`), never a merge-commit id. A merge
+commit's own `id` (`atcs.verification`'s `candidateId`) is carried through
+purely for provenance/reporting: it is never compared, CAS-checked, or
+used as pointer identity anywhere in this module. Concretely:
+`evaluation["stateId"]` (the post-implementation design-state's own id,
+copied through by `atcs.verification.assemble` from
+`receipts["designStateId"]`) is what this module stores as each pointer's
+identity and what `publish`'s compare-and-swap actually protects;
+`evaluation["candidateId"]` (the merge commit's id) rides along on each
+pointer value only so a caller can trace a pointer back to the merge commit
+that produced it.
+
 ``evaluation["database"]`` (binding for `publish`/`artifact_ready`)
 ---------------------------------------------------------------------
 
@@ -113,27 +131,36 @@ Pointer value shape (internal to the pointers document)
 Each of `working`/`best`/`delivery` is either `None` (never set) or::
 
     {
-        "candidateId": "<evaluation's candidateId — the merge-commit/state id>",
+        "stateId": "<evaluation's stateId — the design-state id this pointer
+                     actually protects; see "Id namespace" above>",
+        "candidateId": "<evaluation's candidateId — the merge-commit id,
+                         provenance only, never compared>",
         "evaluationId": "<the evaluation artifact's own stamped id>",
         "minWns": <float> | None,        # min(finalSetupWns, finalHoldWns) when both
                                           # were known (and finite) at publish time
-        "failingTimingChecks": <int>,    # len(comparison.remaining) + len(comparison.entrant)
-                                          # + len(comparison.regressed) at publish time — the
-                                          # brief's "fewer failing checks" tie-break metric
+        "failingTimingChecks": <int> | None,   # len(comparison.remaining) + len(comparison.entrant)
+                                          # + len(comparison.regressed) at publish time -- the
+                                          # brief's "fewer failing checks" tie-break metric;
+                                          # None (treated as +inf, never wins a tie) when
+                                          # `evaluation["comparison"]` doesn't actually carry
+                                          # all three lists
     }
 
-`expected_base` is compared against `working["candidateId"]` (`None` when
-`working` has never been set) — per this task's Decisions, `working` is
-"the state the candidate's batch was built on": a batch that was built on
-top of an older state than the one `working` now names is late/stale and
-must never overwrite anything, no matter how good its own numbers look.
-`evaluation["parentStateId"]` (the same base the candidate's merge commit
-itself was actually sealed against — see `atcs.verification.plan_checks`'s
-docstring) must *independently* equal `expected_base` too: a caller cannot
-supply a truthful `expected_base` for the pointers file while handing over
-an evaluation whose own candidate disagrees about what it was built on —
-both must agree, or the publish is exactly as stale/untrustworthy as a
-`working`-pointer mismatch and is refused the same way.
+Compare-and-swap: `evaluation["parentStateId"]` must always equal
+`expected_base` — the candidate's own merge commit must agree about what
+base it was built from. In addition: when `working` has been set,
+`expected_base` must equal `working["stateId"]` — the design-state id
+`working` currently protects. When `working` has never been set
+(bootstrap), there is no `working["stateId"]` to compare against, so
+`expected_base` must instead equal `policy["baselineStateId"]` — the
+Campaign's declared starting design-state id, which `policy` must supply
+for a bootstrap publish to ever succeed (`AtcsError("invalid-policy", ...)`
+if it's missing at that point — this is a configuration error, not a
+candidate that fails a guard). Either half failing refuses `"stale-base"`:
+a caller cannot supply a truthful `expected_base` while handing over an
+evaluation whose own candidate disagrees about what it was built on, and a
+late/stale evaluation is exactly as harmless against a moved `working` as
+against a bootstrap whose declared baseline it doesn't name.
 
 Guard order in `publish`
 -------------------------------
@@ -144,7 +171,10 @@ Guard order in `publish`
    `core.read_artifact` performs on every artifact this Pack reads back off
    disk. A caller handing `publish` something that is not a genuine,
    unmodified `evaluation` artifact is a programming error, not a
-   candidate that merely fails a guard: `AtcsError("schema-mismatch", ...)`.
+   candidate that merely fails a guard: `AtcsError("schema-mismatch", ...)`
+   for a wrong `schema`, `AtcsError("identity-mismatch", ...)` for a
+   tampered/recomputed-doesn't-match `id` — the same two codes and the same
+   split `core.read_artifact` uses.
 1. **Idempotency** — if `evaluation["id"]` already names an entry in the
    pointers document's `history`, `publish` does no further work: it
    returns a fresh `acceptance-record` reporting the *original* `decision`
@@ -156,24 +186,23 @@ Guard order in `publish`
    re-read with no state change), so a caller can tell whether a
    previously-accepted database is *still* restorable right now. Nothing is
    written: no version bump, not even a rewrite of identical bytes. This
-   must run *before* the compare-and-swap check below, precisely so a late
-   replay of an evaluation that was already accepted keeps returning its
-   original, truthful answer even after `working` has since moved on.
-2. **Compare-and-swap** — `expected_base != working["candidateId"]` (or
-   `None` when `working` has never been set), or
-   `evaluation.get("parentStateId") != expected_base` — either mismatch
-   refuses with reason `"stale-base"`. This is the guard that makes a
-   genuinely late result (built on a base that is no longer current)
-   harmless even though its own evidence might look perfectly good in
-   isolation.
-3. **Verification** (`final-evidence-ready`'s two Judge nodes, read
+   must run *before* every other guard below, precisely so a late replay of
+   an evaluation that was already accepted keeps returning its original,
+   truthful answer even after `working` has since moved on.
+2. **Identity completeness** — `evaluation["stateId"]` and
+   `evaluation["candidateId"]` must both be truthy. Either falsy (missing,
+   `None`, or empty) refuses `"missing-identity"`: this module can never
+   construct or store a pointer value it cannot actually identify, no
+   matter what the rest of the evaluation claims.
+3. **Compare-and-swap** — see above; refuses `"stale-base"`.
+4. **Verification** (`final-evidence-ready`'s two Judge nodes, read
    directly off the evaluation) — `missingRequiredCheckCount` and
    `finalIdentityErrorCount` must both be known Measures equal to `0`.
    Anything else (unknown, or a nonzero count) refuses
    (`"missing-required-checks"` / `"identity-errors-present"`) — an
    evaluation this Pack cannot even prove covers every required check with
    a consistent identity chain can never move any pointer, degraded or not.
-4. **Constraints known** — `constraintFailureCount` and
+5. **Constraints known** — `constraintFailureCount` and
    `constraintUnknownCount` must both be known Measures, and
    `constraintUnknownCount`'s value must be `0`. Either being unknown, or a
    nonzero `constraintUnknownCount`, refuses *every* pointer at once
@@ -181,35 +210,54 @@ Guard order in `publish`
    "never becomes best", it is "never becomes anything", because
    `working` itself must never carry a candidate this Pack cannot even say
    how many of its required constraints are unproven.
-5. **WNS known** — `finalSetupWns`/`finalHoldWns` must both be known,
+6. **Constraint-failure cap** — even with `constraintUnknownCount == 0`,
+   `constraintFailureCount`'s known value must be `<=
+   policy["maxNewConstraintFailures"]` (default `0`). Exceeding the cap
+   refuses `"constraint-failures-exceed-cap"` for *every* pointer,
+   regardless of `policy["allowDegradedWorking"]` — this is a hard ceiling
+   a caller cannot raise by also granting degraded-working permission; it
+   only decides how many *known* failures are even eligible to be
+   considered a bounded, permitted degradation (guard 8 below), not
+   whether any amount is tolerable once permission is granted.
+7. **WNS known** — `finalSetupWns`/`finalHoldWns` must both be known,
    *finite* Measures (a non-finite value — `inf`/`nan` — is treated
    identically to unknown: no comparison or bound below can be computed
    from it). Anything else refuses (`"wns-unknown"`): the degraded-working
    gate below bounds a *known, finite* regression — it cannot bound an
    unmeasured or infinite one, so this is refused rather than silently
    treated as either "fine" or "as bad as the limit allows".
-6. **Degraded-working gate** — "degraded" here means *worse than the best
-   this Pack has ever verified* (falling back to `working` only when
-   `best` has never been set), not "has not yet reached `policy['goal']`"
+8. **Degraded-working gate** — "degraded" here means *worse than the best
+   this Pack has ever verified*, not "has not yet reached `policy['goal']`"
    — most evaluations published over a campaign have not reached the final
    goal yet, and that is the normal, expected case that never needs
-   `allowDegradedWorking` at all. Concretely: `baseline = best or working`;
-   when neither has ever been set (bootstrap), there is nothing to
-   regress against, so this gate never fires. Otherwise two independent
-   signals can trigger it: (a) a real step backward in WNS —
-   `regression = baseline["minWns"] - min(finalSetupWns, finalHoldWns)`,
-   only a trigger when `> 0`; and (b) a known, nonzero
-   `constraintFailureCount` — a candidate that regresses a physical
-   constraint is degraded even when its WNS alone looks fine. Either
-   signal firing requires `policy["allowDegradedWorking"] is True`, *and*
-   the WNS regression specifically (`0` when signal (a) did not fire) must
-   be `<= policy["degradeLimitNs"]` — so `working` can never be pushed more
-   than `degradeLimitNs` below the best it has ever verified, `best`
-   itself included: repeated small steps that would each individually
-   pass a *working-relative* bound cannot silently accumulate into an
-   unbounded drift, because every step is bounded against the same fixed
-   `best` baseline instead of chasing the last step. Otherwise: refused
-   (`"degraded-working-not-allowed"` / `"degrade-limit-exceeded"`).
+   `allowDegradedWorking` at all. The anchor is: `pointers["best"]` when
+   set; otherwise the *first* `working` pointer value ever recorded in
+   `history` (**not** the current, possibly-since-moved `working`) — using
+   the live `working` here would let a sequence of small, each-individually
+   -within-limit steps accumulate into unbounded drift before `best` is
+   ever set, exactly the bug this anchor choice closes. When there is no
+   anchor at all yet (the very first publish ever, `best` unset and
+   `history` empty), there is nothing to regress against, so this gate
+   never fires — a first candidate becomes `working` outright once it
+   clears every guard above, including the constraint-failure signal
+   below. Otherwise two independent signals can trigger degradation: (a) a
+   real step backward in WNS — `regression = anchor["minWns"] -
+   min(finalSetupWns, finalHoldWns)`, only a trigger when `> 0`; and (b) a
+   known, nonzero `constraintFailureCount` (already capped by guard 6
+   above) — a candidate that regresses a physical constraint is degraded
+   even when its WNS alone looks fine, or even on the very first publish
+   (there being no anchor does not exempt a constraint-failing candidate
+   from needing permission). Either signal firing requires
+   `policy["allowDegradedWorking"] is True`, *and* the WNS regression
+   specifically (`0` when signal (a) did not fire) must be `<=
+   policy["degradeLimitNs"]` — so `working` can never be pushed more than
+   `degradeLimitNs` below the best (or, pre-`best`, the very first
+   `working`) this Pack has ever verified: repeated small steps that would
+   each individually pass a *working-relative* bound cannot silently
+   accumulate into an unbounded drift, because every step is bounded
+   against the same fixed anchor instead of chasing the last step.
+   Otherwise: refused (`"degraded-working-not-allowed"` /
+   `"degrade-limit-exceeded"`).
 
 Once all guards pass, `working` always moves to this candidate. Two
 further, independent eligibility checks then decide whether `best` and/or
@@ -218,17 +266,18 @@ further, independent eligibility checks then decide whether `best` and/or
 require `best` to have just moved too, though in practice it usually has):
 
 - **`best` eligibility** — `constraintFailureCount == 0` (already known
-  and `constraintUnknownCount == 0` by guard 4 above — this is exactly
+  and `constraintUnknownCount == 0` by guard 5 above — this is exactly
   `required-constraints-pass`) *and* this candidate compares as better
   than the current `best` per the brief's fixed comparison policy: higher
   `min(finalSetupWns, finalHoldWns)` wins; a tie breaks on fewer
-  `failingTimingChecks` (`len(comparison.remaining) + len(comparison.entrant)
-  + len(comparison.regressed)`); a full tie on *both* — the incumbent
-  keeps `best`, since nothing here is a strict improvement. A `None`
-  current `best` always loses (anything admissible becomes the first
-  `best`). A `constraintFailureCount` that is unknown or `> 0` therefore
-  can never win `best` — the unknown case is already excluded entirely by
-  guard 4, and the known-nonzero case fails this check directly.
+  `failingTimingChecks`; a `None` `failingTimingChecks` (missing
+  comparison lists) counts as `+inf` and so can never win a tie; a full
+  tie on *both* metrics — the incumbent keeps `best`, since nothing here
+  is a strict improvement. A `None` current `best` always loses (anything
+  admissible becomes the first `best`). A `constraintFailureCount` that is
+  unknown or `> 0` therefore can never win `best` — the unknown case is
+  already excluded entirely by guard 5, and the known-nonzero case fails
+  this check directly.
 - **`delivery` eligibility** — `required-constraints-pass` *and*
   `finalSetupWns`/`finalHoldWns` both meet `policy["goal"]` *and*
   `artifact_ready` (over the campaign-root-resolved `database` ref) is the
@@ -264,7 +313,9 @@ Decisions: "Record the acceptance-record id in history"). This is also
 exactly what makes idempotent-replay's reconstruction possible: folding
 `history` in order and keeping the latest `"new"` per pointer name, up to
 and including a given `acceptanceRecordId`'s entries, reproduces that
-publish's `pointersAfter` without needing any separate log.
+publish's `pointersAfter` without needing any separate log — and it is
+what lets the degraded-working gate find "the first `working` entry ever
+recorded" (guard 8) directly, without a separate anchor field.
 
 A `refused` decision — for *any* reason, not only `"stale-base"` — writes
 nothing at all: the pointers file (if any) is left byte-identical, since
@@ -276,13 +327,6 @@ import math
 from pathlib import Path
 
 from . import core
-
-
-def _require(mapping, key, label):
-    """Return `mapping[key]`, or raise `AtcsError("missing-input", ...)` if absent."""
-    if key not in mapping:
-        raise core.AtcsError("missing-input", f"{label}.{key}")
-    return mapping[key]
 
 
 def _default_pointers():
@@ -350,16 +394,17 @@ def _compute_ready(database_ref, policy):
 
 
 def _validate_evaluation_identity(evaluation):
-    """Raise `AtcsError("schema-mismatch", ...)` unless `evaluation` is a
-    genuine, unmodified ``atcs.evaluation/1`` artifact (see module docstring's
-    guard 0)."""
+    """Raise `AtcsError` unless `evaluation` is a genuine, unmodified
+    ``atcs.evaluation/1`` artifact (see module docstring's guard 0) — the
+    same `"schema-mismatch"`/`"identity-mismatch"` split
+    `core.read_artifact` uses."""
     schema = evaluation.get("schema")
     if schema != "atcs.evaluation/1":
         raise core.AtcsError("schema-mismatch", f"expected atcs.evaluation/1, got {schema!r}")
     body = dict(evaluation)
     stored_id = body.pop("id", None)
     if stored_id != core.digest(body):
-        raise core.AtcsError("schema-mismatch", "evaluation id does not match recomputed digest")
+        raise core.AtcsError("identity-mismatch", "evaluation id does not match recomputed digest")
 
 
 def _is_verified(evaluation):
@@ -374,7 +419,7 @@ def _is_verified(evaluation):
 
 def _constraints_known(evaluation):
     """`constraintFailureCount` and `constraintUnknownCount` both known, and
-    the unknown-count itself is `0` (see module docstring's guard 4)."""
+    the unknown-count itself is `0` (see module docstring's guard 5)."""
     failure = evaluation.get("constraintFailureCount")
     unknown_count = evaluation.get("constraintUnknownCount")
     if not core.is_known(failure) or not core.is_known(unknown_count):
@@ -400,14 +445,17 @@ def _wns_status(evaluation, goal):
 def _timing_failure_count(evaluation):
     """`len(comparison.remaining) + len(comparison.entrant) + len(comparison.regressed)`
     — the brief's "fewer failing checks" tie-break metric, read from the
-    evaluation's own `check-comparison` (missing/absent lists count as `0`,
-    this is a tie-break heuristic, not a fail-closed gate)."""
-    comparison = evaluation.get("comparison") or {}
-    return (
-        len(comparison.get("remaining", []))
-        + len(comparison.get("entrant", []))
-        + len(comparison.get("regressed", []))
-    )
+    evaluation's own `check-comparison`. Returns `None` (treated as `+inf` —
+    never wins a tie — by `_is_better`) when `evaluation["comparison"]` isn't
+    a dict carrying all three lists; a genuinely empty list still counts as
+    `0`, only an actually-missing list is `+inf`."""
+    comparison = evaluation.get("comparison")
+    if not isinstance(comparison, dict):
+        return None
+    keys = ("remaining", "entrant", "regressed")
+    if not all(key in comparison for key in keys):
+        return None
+    return sum(len(comparison[key]) for key in keys)
 
 
 def _is_better(candidate, current_best):
@@ -433,6 +481,7 @@ def _normalize_policy(policy):
     policy = dict(policy or {})
     policy.setdefault("allowDegradedWorking", False)
     policy.setdefault("degradeLimitNs", 0.0)
+    policy.setdefault("maxNewConstraintFailures", 0)
 
     allow_degraded = policy["allowDegradedWorking"]
     if not isinstance(allow_degraded, bool):
@@ -443,10 +492,19 @@ def _normalize_policy(policy):
             or not math.isfinite(degrade_limit) or degrade_limit < 0:
         raise core.AtcsError("invalid-policy", "degradeLimitNs must be a finite number >= 0")
 
+    max_new_failures = policy["maxNewConstraintFailures"]
+    if isinstance(max_new_failures, bool) or not isinstance(max_new_failures, int) or max_new_failures < 0:
+        raise core.AtcsError("invalid-policy", "maxNewConstraintFailures must be an int >= 0")
+
     goal = dict(policy.get("goal") or {})
     goal.setdefault("setup", 0.0)
     goal.setdefault("hold", 0.0)
+    for key in ("setup", "hold"):
+        value = goal[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise core.AtcsError("invalid-policy", f"goal.{key} must be a finite number")
     policy["goal"] = goal
+
     return policy
 
 
@@ -466,6 +524,17 @@ def _decision_for_history(entries):
     if "best" in pointers_touched:
         return "best"
     return "working-only"
+
+
+def _first_working_entry(history):
+    """The *first* `working` pointer value ever recorded in `history` — the
+    degraded-working anchor while `best` has never been set (see module
+    docstring's guard 8: this is deliberately not the current, possibly
+    since-moved `working`)."""
+    for entry in history:
+        if entry.get("pointer") == "working":
+            return entry.get("new")
+    return None
 
 
 def _fold_history_up_to(history, last_index):
@@ -519,14 +588,17 @@ def publish(evaluation, expected_base, pointers_path, policy):
     simply fails a guard — those are reported as a `"refused"` decision with
     a `reason`, not an `AtcsError`. `AtcsError` is only raised for
     structural problems `publish` cannot proceed past at all:
-    `"schema-mismatch"` when `evaluation` is not a genuine, unmodified
-    ``atcs.evaluation/1`` artifact, `"missing-input"` when it lacks
-    `candidateId`, and `"invalid-policy"` when `policy` itself is malformed.
+    `"schema-mismatch"`/`"identity-mismatch"` when `evaluation` is not a
+    genuine, unmodified ``atcs.evaluation/1`` artifact, and
+    `"invalid-policy"` when `policy` itself is malformed (including a
+    missing `policy["baselineStateId"]` reached at bootstrap — see module
+    docstring).
     """
     policy = _normalize_policy(policy)
     _validate_evaluation_identity(evaluation)
     evaluation_id = evaluation["id"]
-    candidate_id = _require(evaluation, "candidateId", "evaluation")
+    candidate_id = evaluation.get("candidateId")
+    state_id = evaluation.get("stateId")
     database_ref = evaluation.get("database")
 
     pointers = load_pointers(pointers_path)
@@ -547,12 +619,22 @@ def publish(evaluation, expected_base, pointers_path, policy):
         }
         return core.stamp("acceptance-record", body)
 
-    working_ptr = pointers["working"]
-    working_candidate = working_ptr["candidateId"] if working_ptr else None
-    if expected_base != working_candidate:
-        return _refuse("stale-base")
+    if not state_id or not candidate_id:
+        return _refuse("missing-identity")
+
     if evaluation.get("parentStateId") != expected_base:
         return _refuse("stale-base")
+
+    working_ptr = pointers["working"]
+    if working_ptr is not None:
+        if expected_base != working_ptr.get("stateId"):
+            return _refuse("stale-base")
+    else:
+        baseline_state_id = policy.get("baselineStateId")
+        if not baseline_state_id:
+            raise core.AtcsError("invalid-policy", "policy.baselineStateId is required for bootstrap")
+        if expected_base != baseline_state_id:
+            return _refuse("stale-base")
 
     verified, verify_reason = _is_verified(evaluation)
     if not verified:
@@ -561,12 +643,14 @@ def publish(evaluation, expected_base, pointers_path, policy):
     if not _constraints_known(evaluation):
         return _refuse("constraints-not-verified")
     constraint_failure_value = core.value_of(evaluation["constraintFailureCount"])
+    if constraint_failure_value > policy["maxNewConstraintFailures"]:
+        return _refuse("constraint-failures-exceed-cap")
 
     wns = _wns_status(evaluation, policy["goal"])
     if not wns["known"]:
         return _refuse("wns-unknown")
 
-    baseline_ptr = pointers["best"] or working_ptr
+    baseline_ptr = pointers["best"] or _first_working_entry(pointers["history"])
     baseline_min = baseline_ptr.get("minWns") if baseline_ptr else None
     wns_regression = (baseline_min - wns["min"]) if baseline_min is not None else 0.0
     is_wns_degraded = baseline_min is not None and wns_regression > 0
@@ -581,6 +665,7 @@ def publish(evaluation, expected_base, pointers_path, policy):
             return _refuse("degrade-limit-exceeded")
 
     new_ptr_value = {
+        "stateId": state_id,
         "candidateId": candidate_id,
         "evaluationId": evaluation_id,
         "minWns": wns["min"],

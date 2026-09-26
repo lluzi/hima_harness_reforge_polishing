@@ -37,6 +37,11 @@ and never a silently-assumed PASS.
 ::
 
     {
+        "designStateId": "<the post-implementation design-state's own stamped
+                            id — atcs.state.design_state(...)[\"id\"] for the
+                            design-state T12 builds for the implemented
+                            database, whose own parentId is the base state
+                            this candidate was built from>",
         "database": {
             "path": "<campaign-relative path to the .enc database file>",
             "sha256": "<64 hex>",
@@ -76,6 +81,18 @@ artifact's own `database` field (a `.enc` file's `sha256` plus
 database identity is recorded in exactly the same canonical shape from M1
 through M7's `atcs.adoption.artifact_ready`, never a Pack-specific
 reinterpretation.
+
+Per this Pack's controller id-namespace decision, state ids everywhere in
+this Pack (`work-package.baseStateId`, `merge-commit.parentStateId`, M7's
+`expected_base` and its pointers) are `design-state` ids
+(`atcs.state.design_state(...)["id"]`) — never a merge-commit id. After
+implementing a merge commit, T12 must build a *new* design-state for the
+resulting, actually-implemented database (its `parentId` is the base state
+the candidate was built from) and pass that design-state's own stamped
+`id` through as `receipts["designStateId"]` — the real, physical identity
+of the candidate's resulting state, as opposed to `candidateId` (below),
+which is only the merge-commit's own provenance id and is never used for
+compare-and-swap or pointer identity anywhere in this Pack.
 
 `baseline_physical` is `{"drc": "<text>", "connectivity": "<text>"}` in the
 same report grammar — the pre-implementation (or control-arm) physical
@@ -131,11 +148,16 @@ caller passes a stamped artifact) purely so a later `assemble` call over
 the same plan can label its `evaluation.candidateId`/`evaluation.parentStateId`
 — `check-plan` itself does not otherwise reference a "candidate" or a
 "parent state", since a merge commit is already the sealed candidate this
-plan is for, built from its own recorded parent. `atcs.adoption.publish`
-is the consumer that needs `parentStateId` on the evaluation itself (not
-just on the plan) — it is the value CAS-checked against `expected_base`,
-independently of and in addition to the pointers document's own `working`
-check (see `atcs.adoption`'s module docstring).
+plan is for, built from its own recorded parent. Per the id-namespace note
+above, `parentStateId` is itself a design-state id (the merge commit's own
+`parentStateId` is already recorded in that namespace, unchanged by this
+Pack at any step); `candidateId` stays the merge-commit id and is carried
+through purely for provenance/reporting, never for identity comparison.
+`atcs.adoption.publish` is the consumer that needs `parentStateId` (and
+`evaluation["stateId"]`, see `assemble` below) on the evaluation itself —
+`parentStateId` is CAS-checked against `expected_base`, independently of
+and in addition to the pointers document's own `working` check (see
+`atcs.adoption`'s module docstring).
 
 `presta_qualification(new_nets, spef_net_names)`
 ----------------------------------------------------
@@ -216,8 +238,10 @@ Builds the final `evaluation` artifact. Order of operations:
    -> SPEF -> STA is checked *per scenario*, and is fail-closed at the leg
    level: `finalIdentityErrorCount` is only ever a known count when every
    leg below was actually present to check. If any leg is missing —
-   `receipts["database"]["sha256"]` or `receipts["database"]["datDigest"]`
-   or `receipts["netlist"]["sha256"]` absent, `receipts["def"]` is `None`
+   `receipts["designStateId"]` absent (the resulting state's own physical
+   identity was never even recorded), `receipts["database"]["sha256"]` or
+   `receipts["database"]["datDigest"]` or `receipts["netlist"]["sha256"]`
+   absent, `receipts["def"]` is `None`
    (or its `sha256` absent), any
    `receipts["spef"][corner]` lacks `inputDefSha256`, or `plan["scenarioCorners"]`
    is absent/empty or lacks an entry for one of `plan["requiredScenarios"]`
@@ -272,6 +296,17 @@ Builds the final `evaluation` artifact. Order of operations:
 `assemble` never re-derives either id from `receipts` itself, since
 receipts are per-domain evidence bundles, not an artifact with its own
 identity or lineage.
+
+`stateId` is `receipts.get("designStateId") or None` — the resulting,
+post-implementation design-state's own id (per the id-namespace note
+above), as opposed to `candidateId`'s merge-commit provenance id.
+`stateId` is `None` whenever `designStateId` is missing or falsy, which
+(per `_missing_identity_legs` above) also makes `finalIdentityErrorCount`
+`unknown` in the same case: this Pack never lets an evaluation claim a
+known-clean identity chain while its own resulting state was never
+actually recorded. `atcs.adoption.publish` is the consumer that stores
+`stateId` on the pointers document and uses it (not `candidateId`) for
+compare-and-swap.
 
 `database` is `receipts["database"]` copied through verbatim as
 `{"path", "sha256", "datDigest"}` — the same canonical database-identity
@@ -457,6 +492,9 @@ def _missing_identity_legs(plan, receipts):
     the chain must be fully walkable to certify a known error count, even `0`."""
     missing = []
 
+    if not receipts.get("designStateId"):
+        missing.append("missing designStateId")
+
     database_entry = receipts.get("database") or {}
     if not database_entry.get("sha256"):
         missing.append("missing database sha256")
@@ -593,6 +631,7 @@ def assemble(plan, receipts, prior_observation, baseline_physical):
     body = {
         "candidateId": plan.get("candidateId"),
         "parentStateId": plan.get("parentStateId"),
+        "stateId": receipts.get("designStateId") or None,
         "database": _database_ref(receipts),
         "finalSetupWns": final_setup_wns,
         "finalHoldWns": final_hold_wns,

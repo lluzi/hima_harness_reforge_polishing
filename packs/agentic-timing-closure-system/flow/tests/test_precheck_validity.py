@@ -51,6 +51,7 @@ SPEF_A_SHA = "a" * 64
 SPEF_B_SHA = "b" * 64
 DATABASE_SHA = "e" * 64
 DATABASE_DAT_DIGEST = "t" * 64
+DESIGN_STATE_ID = "ds-implemented-1"
 
 SCENARIO_WNS = {
     "func_ssg_rcworst_m40": (-0.100, -0.010),
@@ -80,6 +81,7 @@ def _base_receipts():
             "observation": _observation(scenario, core.known(setup_wns), core.known(hold_wns)),
         }
     return {
+        "designStateId": DESIGN_STATE_ID,
         "database": {"path": "design.enc", "sha256": DATABASE_SHA, "datDigest": DATABASE_DAT_DIGEST},
         "netlist": {"path": "design.v", "sha256": NETLIST_SHA},
         "def": {"path": "design.def", "sha256": DEF_SHA},
@@ -219,6 +221,7 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(evaluation["schema"], "atcs.evaluation/1")
         self.assertEqual(evaluation["candidateId"], "mc-1")
         self.assertEqual(evaluation["parentStateId"], "state-0")
+        self.assertEqual(evaluation["stateId"], DESIGN_STATE_ID)
         self.assertEqual(
             evaluation["database"],
             {"path": "design.enc", "sha256": DATABASE_SHA, "datDigest": DATABASE_DAT_DIGEST},
@@ -345,6 +348,7 @@ def _sta_with_corners(receipt_corner_by_scenario):
 
 def _corner_receipts(receipt_corner_by_scenario):
     return {
+        "designStateId": DESIGN_STATE_ID,
         "database": {"path": "design.enc", "sha256": DATABASE_SHA, "datDigest": DATABASE_DAT_DIGEST},
         "netlist": {"path": "design.v", "sha256": NETLIST_SHA},
         "def": {"path": "design.def", "sha256": DEF_SHA},
@@ -394,6 +398,15 @@ class MissingIdentityLegTest(unittest.TestCase):
         self.plan = _base_plan()
         self.prior_observation = {"checks": {}}
         self.baseline_physical = {"drc": fixtures.drc_report([]), "connectivity": fixtures.connectivity_report([])}
+
+    def test_missing_design_state_id_makes_identity_count_unknown_and_state_id_none(self):
+        receipts = _base_receipts()
+        del receipts["designStateId"]
+
+        evaluation = verification.assemble(self.plan, receipts, self.prior_observation, self.baseline_physical)
+
+        self.assertFalse(core.is_known(evaluation["finalIdentityErrorCount"]))
+        self.assertIsNone(evaluation["stateId"])
 
     def test_def_none_makes_identity_count_unknown(self):
         receipts = _base_receipts()
