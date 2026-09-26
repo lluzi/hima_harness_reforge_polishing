@@ -38,6 +38,8 @@ export interface DelegationContract {
   readonly runRef?: { readonly runId: string; readonly expectedEpoch: number; readonly expectedRevision: number };
   readonly nodeRef?: string;
   readonly allowedTools: readonly string[];
+  /** A private, existing directory strictly below the parent workspace, readable but never writable by itself. */
+  readonly readScope?: { readonly root: string };
   /** A private, existing directory strictly below the parent session workspace. */
   readonly writeScope?: { readonly root: string };
   readonly budgetShare: DelegationBudgetShare;
@@ -56,7 +58,7 @@ export interface EffectiveDelegationContract {
   readonly tools: readonly string[];
   /** Exact recorded Run facts made available through hima_delegation_input. */
   readonly inputRefs: readonly string[];
-  /** Generic file tools exist only for a coding child's private task directory. */
+  /** Generic file tools reach only the explicitly granted private task directory. */
   readonly readScope?: { readonly root: string };
   readonly writeScope?: { readonly root: string };
   readonly budgetShare: Pick<DelegationBudgetShare, 'maxElapsedMs' | 'maxFollowups' | 'maxTokensPerTurn'>;
@@ -183,7 +185,7 @@ const delegationInputTool = 'hima_delegation_input';
 const roleTools: Readonly<Record<DelegationRole, ReadonlySet<string>>> = {
   analyst: new Set(['web_search', 'web_fetch', delegationInputTool]),
   reviewer: new Set(['web_search', 'web_fetch', delegationInputTool]),
-  researcher: new Set(['web_search', 'web_fetch', delegationInputTool]),
+  researcher: new Set(['read', 'glob', 'grep', 'web_search', 'web_fetch', delegationInputTool]),
   coding: new Set(['read', 'glob', 'grep', 'write', 'edit', delegationInputTool]),
   operator: new Set(['hima_interactive', delegationInputTool]),
 };
@@ -213,7 +215,8 @@ const delegationContractSchema = z.strictObject({
   delegationId:z.string(),parentSessionId:z.string(),role:z.enum(['analyst','reviewer','researcher','coding','operator']),
   task:z.string(),inputRefs:z.array(z.string()).max(64),workspaceRef:z.string().optional(),
   runRef:z.strictObject({runId:z.string(),expectedEpoch:z.number().int().nonnegative(),expectedRevision:z.number().int().nonnegative()}).optional(),
-  nodeRef:z.string().optional(),allowedTools:z.array(z.string().min(1)).max(32),writeScope:z.strictObject({root:z.string()}).optional(),
+  nodeRef:z.string().optional(),allowedTools:z.array(z.string().min(1)).max(32),
+  readScope:z.strictObject({root:z.string()}).optional(),writeScope:z.strictObject({root:z.string()}).optional(),
   budgetShare:z.strictObject({maxElapsedMs:z.number(),maxFollowups:z.number(),maxTokensPerTurn:z.number().optional(),maxTotalTokens:z.number().optional(),maxCost:z.number().optional()}),
   dependencyIds:z.array(z.string()).max(32),recipient:z.strictObject({kind:z.enum(['parent','run-owner']),sessionId:z.string()}),status:z.literal('requested'),
 });
@@ -258,8 +261,8 @@ function effectiveContract(ctx: Context, parent: Agent, contract: DelegationCont
     if (contract.runRef?.runId !== operatorGrant.runId || contract.nodeRef !== operatorGrant.nodeId) {
       throw new DelegationError('hima/delegation-refused', 'Operator delegation target differs from the Host-qualified Run/node.');
     }
-    if (contract.writeScope !== undefined) {
-      throw new DelegationError('hima/delegation-refused', 'Operator delegation uses only the Site-qualified interactive workspace and cannot receive generic file writes.');
+    if (contract.readScope !== undefined || contract.writeScope !== undefined) {
+      throw new DelegationError('hima/delegation-refused', 'Operator delegation uses only the Site-qualified interactive workspace and cannot receive generic file access.');
     }
   } else if (operatorGrant !== undefined) {
     throw new DelegationError('hima/delegation-refused', 'Interactive qualification can be attached only to an Operator delegation.');
@@ -267,17 +270,27 @@ function effectiveContract(ctx: Context, parent: Agent, contract: DelegationCont
   const ceiling = roleTools[contract.role];
   const visible = new Set(ctx.tools.schemas(parent).map((schema) => schema.name));
   const unavailable: string[] = [];
+  let readScope: { readonly root: string } | undefined;
   let writeScope: { readonly root: string } | undefined;
+  if (contract.readScope !== undefined) {
+    const root = realDirectory(contract.readScope.root, 'Delegation read scope');
+    if (root === workspace || !within(root, workspace)) throw new DelegationError('hima/delegation-refused', 'Generic reads require a private directory strictly below the parent workspace.');
+    readScope = { root };
+  }
   if (contract.writeScope !== undefined) {
     const root = realDirectory(contract.writeScope.root, 'Delegation write scope');
     if (root === workspace || !within(root, workspace)) throw new DelegationError('hima/delegation-refused', 'Coding writes require a private directory strictly below the parent workspace.');
     if (contract.role !== 'coding') unavailable.push('write scope removed: this role is read-only');
-    else writeScope = { root };
+    else {
+      writeScope = { root };
+      if (readScope === undefined) readScope = { root };
+      else if (!within(root, readScope.root)) throw new DelegationError('hima/delegation-refused', 'Coding write scope must stay inside its granted read scope.');
+    }
   }
   const tools = [...new Set(contract.allowedTools)].filter((name) => {
     if (!ceiling.has(name) || terminalTools.has(name) || recursiveTools.has(name) || !visible.has(name)) { unavailable.push(`tool unavailable: ${name}`); return false; }
     if (writeTools.has(name) && writeScope === undefined) { unavailable.push(`tool unavailable without guarded private write scope: ${name}`); return false; }
-    if (readTools.has(name) && writeScope === undefined) { unavailable.push(`generic file tool unavailable without a coding private task directory: ${name}`); return false; }
+    if (readTools.has(name) && readScope === undefined) { unavailable.push(`generic file tool unavailable without a private read scope: ${name}`); return false; }
     if (name === delegationInputTool && (contract.runRef === undefined || contract.inputRefs.length === 0)) { unavailable.push(`tool unavailable without exact recorded Run inputs: ${name}`); return false; }
     return true;
   });
@@ -285,7 +298,8 @@ function effectiveContract(ctx: Context, parent: Agent, contract: DelegationCont
   return {
     delegationId: contract.delegationId, parentSessionId: contract.parentSessionId, childSessionId,
     role: contract.role, workspace, model: { provider, model, ...(contract.budgetShare.maxTokensPerTurn === undefined ? {} : { maxTokensPerTurn: contract.budgetShare.maxTokensPerTurn }) },
-    tools, inputRefs: [...contract.inputRefs], ...(writeScope === undefined ? {} : { readScope: { root: writeScope.root }, writeScope }),
+    tools, inputRefs: [...contract.inputRefs], ...(readScope === undefined ? {} : { readScope }),
+    ...(writeScope === undefined ? {} : { writeScope }),
     budgetShare: { maxElapsedMs: contract.budgetShare.maxElapsedMs, maxFollowups: contract.budgetShare.maxFollowups,
       ...(contract.budgetShare.maxTokensPerTurn === undefined ? {} : { maxTokensPerTurn: contract.budgetShare.maxTokensPerTurn }) },
     ...(contract.runRef === undefined ? {} : { runRef: contract.runRef }), ...(contract.nodeRef === undefined ? {} : { nodeRef: contract.nodeRef }),
@@ -322,6 +336,8 @@ const taskPrompt = (contract: DelegationContract, effective: EffectiveDelegation
       ? `Recorded input reader: use ${delegationInputTool} with Run ${effective.runRef?.runId ?? '(unavailable)'} and only one of the exact input identities above.`
       : 'Recorded input reader: unavailable in this effective tool grant; ask the owner to coordinate rather than reading the parent workspace.',
   `Recipient: ${effective.recipient.kind} session ${effective.recipient.sessionId}.`,
+  effective.readScope === undefined ? 'Generic file reads: unavailable; use only exact recorded inputs when granted.'
+    : `Generic file reads: only the guarded private directory ${effective.readScope.root}.`,
   effective.writeScope === undefined ? 'Write capability: unavailable; return proposed changes and verification needs as candidate results.'
     : `Write capability: only the guarded private directory ${effective.writeScope.root}; owner verification is still required.`,
   effective.operator === undefined ? 'Interactive Operator capability: unavailable.'

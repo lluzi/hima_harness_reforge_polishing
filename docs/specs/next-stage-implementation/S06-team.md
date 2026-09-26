@@ -52,7 +52,7 @@ C3 以该合同提供 Coding、Researcher 与 Operator 的不同权限包。Codi
 
 ### 合同：输入、输出、错误与顺序
 
-拟议 `DelegationContract`：`{ delegationId, parentSessionId, childSessionId?, role: 'analyst'|'reviewer'|'researcher'|'coding'|'operator', task, inputRefs[], workspaceRef?, runRef?, nodeRef?, allowedTools[], writeScope?, budgetShare, dependencyIds[], recipient, status }`。实际模型/effort、工具、权限、预算和 workspace 必须与 `requested` 分开呈现为 `effective`；`childSessionId` 在 native spawn 成功前缺失。`DelegationResult`：`{ status: 'created'|'accepted'|'refused'|'duplicate'|'uncertain'|'completed', effectiveContract?, receipt?, artifacts[], unknowns[], reason? }`。
+拟议 `DelegationContract`：`{ delegationId, parentSessionId, childSessionId?, role: 'analyst'|'reviewer'|'researcher'|'coding'|'operator', task, inputRefs[], workspaceRef?, runRef?, nodeRef?, allowedTools[], readScope?, writeScope?, budgetShare, dependencyIds[], recipient, status }`。`readScope` 是 parent workspace 下现存的私有子目录，只授予所列的 `read/glob/grep`；`writeScope` 仍仅属于 Coding，且必须位于读范围内。实际模型/effort、工具、权限、预算和 workspace 必须与 `requested` 分开呈现为 `effective`；`childSessionId` 在 native spawn 成功前缺失。`DelegationResult`：`{ status: 'created'|'accepted'|'refused'|'duplicate'|'uncertain'|'completed', effectiveContract?, receipt?, artifacts[], unknowns[], reason? }`。
 
 调度顺序：(1) 认证 parent/workspace；(2) 校验 role、输入 identities、合同格式；(3) 重读 Run owner/epoch、human hold、总预算、Site/许可证和依赖；(4) 缩减为实际可授予的工具/私有 workspace/预算；(5) 调用已资格化的 DSH child API；(6) 写 receipt/reference；(7) 仅将结果作为候选交给明确 recipient；(8) owner/Judge 依既有路径采用。错误优先级：身份/workspace 拒绝 → 合同格式/role 无效 → 输入/依赖不存在 → 权限/Site Permit/共享写入禁止 → human hold/owner/epoch/revision 拒绝 → 总预算/容量不足 → native API 不支持或 spawn 失败 → uncertain delivery。取消也必须按同一 identity 与 receipt 返回，未知停止不能转为 completed/stopped。
 

@@ -134,7 +134,7 @@ export const fetchSessionContext = (body: { sessionId: string; targetSessionId: 
   runRequest('/hima/api/context/session', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 export type DelegationEntry = RunDelegationView & {
   readonly status: RunDelegationView['state'];
-  readonly requested: Pick<RunDelegationView['contract'], 'allowedTools' | 'writeScope' | 'budgetShare'>;
+  readonly requested: Pick<RunDelegationView['contract'], 'allowedTools' | 'readScope' | 'writeScope' | 'budgetShare'>;
   readonly nativeStatus?: string;
   readonly unknowns: readonly string[];
   readonly artifacts: readonly string[];

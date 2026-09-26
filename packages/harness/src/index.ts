@@ -949,7 +949,7 @@ export default class Hima extends Service {
   }
   async delegations(sessionId:string,runId:string):Promise<object> {
     await authorizeProjectRun(this.guideDeps(),sessionId,runId);
-    return {delegations:runDelegations(this.deps(),runId).map(row=>({...row,...row.contract,status:row.state,effective:row.effective,requested:{allowedTools:row.contract.allowedTools,writeScope:row.contract.writeScope,budgetShare:row.contract.budgetShare},nativeStatus:this.ctx.get('agents')?.get(row.childSessionId as never)?.status,unknowns:row.effective.unavailable,artifacts:this.delegationEvidence(runId,row.delegationId)?.artifactRefs.map(item=>item.path)??[],evidence:this.delegationEvidence(runId,row.delegationId)})),asOf:new Date().toISOString(),sourceRevision:this.ledger.run(runId)?.control?.revision};
+    return {delegations:runDelegations(this.deps(),runId).map(row=>({...row,...row.contract,status:row.state,effective:row.effective,requested:{allowedTools:row.contract.allowedTools,readScope:row.contract.readScope,writeScope:row.contract.writeScope,budgetShare:row.contract.budgetShare},nativeStatus:this.ctx.get('agents')?.get(row.childSessionId as never)?.status,unknowns:row.effective.unavailable,artifacts:this.delegationEvidence(runId,row.delegationId)?.artifactRefs.map(item=>item.path)??[],evidence:this.delegationEvidence(runId,row.delegationId)})),asOf:new Date().toISOString(),sourceRevision:this.ledger.run(runId)?.control?.revision};
   }
   private delegationEvidence(runId:string,delegationId:string):import('./delegation.js').DelegationCandidateResult['evidence']|undefined {
     const last=this.ledger.records({runId,type:'delegation'}).findLast(record=>record.type==='delegation'&&record.delegationId===delegationId&&record.event==='result-observed');

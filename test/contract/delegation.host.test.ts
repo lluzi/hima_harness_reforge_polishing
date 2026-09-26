@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -112,6 +112,75 @@ const contractFor = (parentSessionId: string, workspace: string, privateRoot: st
   nodeRef: 'research-code', allowedTools: ['read', 'glob', 'write', 'edit', 'bash', 'subagent', 'hima_execute'], writeScope: { root: privateRoot },
   budgetShare: { maxElapsedMs: 1_000, maxFollowups: 1, maxTokensPerTurn: 512 }, dependencyIds: [],
   recipient: { kind: 'run-owner', sessionId: parentSessionId }, status: 'requested',
+});
+
+test('a Research child may read only an explicit private source scope without receiving write authority', async (t) => {
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const scenario = await writeMomentScenario(home, 'research-read', path.join(repoRoot, 'test/fixtures/delegation'));
+  await writeReplayOverlay(home.home, { file: scenario.file, overrideFile: scenario.override, childFiles: scenario.children });
+  await appendFile(homePatchFile(home.home), QUIET_TITLE_ROW);
+  const scope = path.dirname(scenario.readyFile); await mkdir(scope, { recursive: true });
+  await writeFile(scenario.readyFile, 'sealed method source\n');
+  const authority = new RunAuthority(); const host = await bootInProcess(home);
+  try {
+    const parent = await createRootAgent(host.ctx, home.home); const parentId = String(parent.id);
+    const disposeGuard = registerDelegationGuard(host.ctx, childId => authority.policy(childId)); t.after(disposeGuard);
+    const contract: DelegationContract = {
+      delegationId: 'research-read', parentSessionId: parentId, role: 'researcher',
+      task: 'Read the exact granted source and return a candidate limitation.', inputRefs: [], workspaceRef: home.home,
+      runRef: { runId: 'run-1', expectedEpoch: 1, expectedRevision: 0 },
+      allowedTools: ['read', 'glob', 'grep', 'write', 'edit'], readScope: { root: scope },
+      budgetShare: { maxElapsedMs: 1_000, maxFollowups: 0 }, dependencyIds: [],
+      recipient: { kind: 'parent', sessionId: parentId }, status: 'requested',
+    };
+    const missingScope = await createDelegation(host.ctx, { ...contract, delegationId: 'research-no-scope', readScope: undefined }, authority, new AbortController().signal);
+    assert.equal(missingScope.status, 'refused'); assert.match(missingScope.reason!, /No requested tool/);
+    const broadScope = await createDelegation(host.ctx, { ...contract, delegationId: 'research-broad-scope', readScope: { root: home.home } }, authority, new AbortController().signal);
+    assert.equal(broadScope.status, 'refused'); assert.match(broadScope.reason!, /strictly below/);
+    const outsideScope = await createDelegation(host.ctx, { ...contract, delegationId: 'research-outside-scope', readScope: { root: repoRoot } }, authority, new AbortController().signal);
+    assert.equal(outsideScope.status, 'refused'); assert.match(outsideScope.reason!, /strictly below/);
+    const created = await createDelegation(host.ctx, contract, authority, new AbortController().signal);
+    assert.equal(created.status, 'created', created.reason); assert.ok(created.receipt?.childSessionId);
+    assert.deepEqual(created.effectiveContract?.tools, ['read', 'glob', 'grep']);
+    assert.equal(created.effectiveContract?.readScope?.root, scope);
+    assert.equal(created.effectiveContract?.writeScope, undefined);
+    assert.ok(created.unknowns.some(item => item.includes('write')));
+    assert.ok(created.unknowns.some(item => item.includes('edit')));
+    const changedScope = path.join(home.home, 'research-read-changed'); await mkdir(changedScope);
+    const drifted = await createDelegation(host.ctx, { ...contract, readScope: { root: changedScope } }, authority, new AbortController().signal);
+    assert.equal(drifted.status, 'refused'); assert.match(drifted.reason!, /different intent/);
+    const child = host.ctx.get('agents')!.get(created.receipt.childSessionId as never); assert.ok(child); await child.whenIdle();
+    assert.ok(child.session.snapshotEvents().some(event => event.type === 'tool/call'
+      && (event.data as { name?: string }).name === 'read'));
+    assert.equal(delegationToolDenial(id => authority.policy(id), {
+      name: 'read', arguments: { file_path: scenario.readyFile }, agent: child,
+    } as never), undefined);
+    assert.equal(delegationToolDenial(id => authority.policy(id), {
+      name: 'glob', arguments: { path: scope, pattern: '*' }, agent: child,
+    } as never), undefined);
+    assert.equal(delegationToolDenial(id => authority.policy(id), {
+      name: 'grep', arguments: { path: scope, pattern: 'sealed' }, agent: child,
+    } as never), undefined);
+    assert.match(delegationToolDenial(id => authority.policy(id), {
+      name: 'glob', arguments: { pattern: '*' }, agent: child,
+    } as never)!, /private task directory/);
+    assert.match(delegationToolDenial(id => authority.policy(id), {
+      name: 'read', arguments: { file_path: path.join(home.home, 'outside.txt') }, agent: child,
+    } as never)!, /private task directory/);
+    const outsideFile = path.join(home.home, 'outside-source.txt'); await writeFile(outsideFile, 'outside\n');
+    const escapingLink = path.join(scope, 'escaping-link'); await symlink(outsideFile, escapingLink);
+    assert.match(delegationToolDenial(id => authority.policy(id), {
+      name: 'read', arguments: { file_path: escapingLink }, agent: child,
+    } as never)!, /private task directory/);
+    assert.match(delegationToolDenial(id => authority.policy(id), {
+      name: 'write', arguments: { file_path: path.join(scope, 'forbidden.txt'), content: 'no' }, agent: child,
+    } as never)!, /not granted tool write/);
+    const candidate = await readDelegationResult(host.ctx, {
+      effective: created.effectiveContract!, requestDigest: created.receipt.requestDigest,
+    });
+    assert.equal(candidate.status, 'candidate'); assert.deepEqual(candidate.evidence.artifactRefs, []);
+    assert.ok(candidate.evidence.limitations.some(item => /read-only/i.test(item)));
+  } finally { await host.dispose(); }
 });
 
 test('native bounded delegation creates, edits, follows up, guards scope, survives restart, and stays below Run authority', async (t) => {

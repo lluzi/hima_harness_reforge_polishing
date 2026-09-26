@@ -1,0 +1,18 @@
+[
+  {
+    "kind": "chunks",
+    "chunks": [
+      { "type": "block-start", "index": 0, "blockType": "tool-call" },
+      { "type": "block-end", "index": 0, "block": { "type": "tool-call", "id": "call-delegation-read", "name": "read", "arguments": "{\"file_path\":\"{{readyFile}}\"}" } },
+      { "type": "finish", "reason": { "kind": "tool-calls" } }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      { "type": "block-start", "index": 0, "blockType": "text" },
+      { "type": "block-end", "index": 0, "block": { "type": "text", "text": "Read the exact granted source. This is a read-only candidate; the parent still owns adoption." } },
+      { "type": "finish", "reason": { "kind": "stop" } }
+    ]
+  }
+]

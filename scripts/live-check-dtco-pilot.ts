@@ -4,7 +4,7 @@
 // matched result is terminal; infrastructure or evidence failure is not.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import {
@@ -646,6 +646,15 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   // The team is intentionally bounded to Pack-method review before the owner can launch a Site
   // Job.  Its candidate outputs become usable only through the recorded Reviewer adoption below.
   let delegationSequence = 0;
+  const researchReadScope = path.join(home.workspace, 'delegations/wave4-pack-research');
+  mkdirSync(researchReadScope, { recursive: true, mode: 0o700 });
+  const researchTemplateSource = path.join(installedPack, 'flow/research-template.py');
+  const researchTemplateCopy = path.join(researchReadScope, 'research-template.py');
+  copyFileSync(researchTemplateSource, researchTemplateCopy);
+  check.require('the Research child source scope contains the exact installed sealed method bytes',
+    sha256(readFileSync(researchTemplateCopy)) === sha256(readFileSync(researchTemplateSource)),
+    { source: researchTemplateSource, copy: researchTemplateCopy,
+      sha256: sha256(readFileSync(researchTemplateCopy)) });
   const delegate = (body: Record<string, unknown>) => {
     const control = host.ctx.hima.executionContext(confirmed.run.id).run.control!;
     return host.ctx.hima.delegate({ runId: confirmed.run.id, actor: ownerId,
@@ -653,20 +662,42 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   };
   const research = await delegate({ action: 'create', requestId: 'wave4-create-research', contract: {
     delegationId: 'wave4-pack-research', role: 'researcher',
-    task: `Use the read tool to inspect exactly ${path.join(installedPack, 'flow/research-template.py')}. Return a concise candidate note stating what the sealed template permits and one limitation. Do not write, execute EDA, alter the Pack, or claim any value result.`,
-    inputRefs: [], allowedTools: ['read'], budgetShare: { maxElapsedMs: 75_000, maxFollowups: 1, maxTokensPerTurn: 2200 },
+    task: `Use the read tool to inspect exactly ${researchTemplateCopy}. Return a concise candidate note stating what the hash-equal sealed template permits and one limitation. Do not write, execute EDA, alter the Pack, or claim any value result.`,
+    inputRefs: [], allowedTools: ['read'], readScope: { root: researchReadScope },
+    budgetShare: { maxElapsedMs: 75_000, maxFollowups: 1, maxTokensPerTurn: 2200 },
     dependencyIds: [], recipient: { kind: 'run-owner', sessionId: ownerId },
   } });
   check.require('a bounded Research child was created with an effective read-only Pack-method tool grant',
-    research.status === 'created' && research.effectiveContract?.tools.includes('read') && typeof research.receipt?.childSessionId === 'string',
+    research.status === 'created' && research.effectiveContract?.tools.includes('read')
+      && research.effectiveContract?.readScope?.root === researchReadScope
+      && research.effectiveContract?.writeScope === undefined
+      && typeof research.receipt?.childSessionId === 'string',
     research);
   if (research.status !== 'created' || typeof research.receipt?.childSessionId !== 'string') throw new Error('Wave 4 Research child is unavailable');
   const researchSessionId = research.receipt.childSessionId;
   const researchAgent = check.track(host.ctx.get('agents')!.get(researchSessionId as never)!);
   await check.wait(researchAgent.whenIdle());
-  check.require('the Research child actually read its exact sealed Pack source before returning a candidate',
-    researchAgent.session.snapshotEvents().some(event => event.type === 'tool/call' && (event.data as { name?: string }).name === 'read'),
-    researchAgent.session.snapshotEvents());
+  const researchEvents = researchAgent.session.snapshotEvents();
+  const exactReadCall = researchEvents.find(event => {
+    const data = event.data as { name?: unknown; callId?: unknown; arguments?: unknown } | undefined;
+    if (event.type !== 'tool/call' || data?.name !== 'read' || typeof data.arguments !== 'string') return false;
+    try { return (JSON.parse(data.arguments) as { file_path?: unknown }).file_path === researchTemplateCopy; }
+    catch { return false; }
+  });
+  const exactReadCallId = (exactReadCall?.data as { callId?: unknown } | undefined)?.callId;
+  const exactReadResult = researchEvents.find(event => {
+    if (event.type !== 'tool/result' || typeof exactReadCallId !== 'string') return false;
+    const content = (event.data as { message?: { content?: unknown } } | undefined)?.message?.content;
+    return Array.isArray(content) && content.some(block => block && typeof block === 'object'
+      && (block as { type?: unknown }).type === 'tool-result'
+      && (block as { toolCallId?: unknown }).toolCallId === exactReadCallId
+      && (block as { isError?: unknown }).isError !== true);
+  });
+  check.require('the Research child successfully read the exact hash-equal private copy before returning a candidate',
+    exactReadCall !== undefined && exactReadResult !== undefined
+      && sha256(readFileSync(researchTemplateCopy)) === sha256(readFileSync(researchTemplateSource)),
+    { exactReadCall, exactReadResult, researchTemplateCopy,
+      sha256: sha256(readFileSync(researchTemplateCopy)), events: researchEvents });
   const resultOf = async (delegationId: string, childSessionId: string) => {
     let result = await delegate({ action: 'result', requestId: `wave4-result-${delegationId}-${++delegationSequence}`, delegationId });
     if (result.status !== 'candidate') {

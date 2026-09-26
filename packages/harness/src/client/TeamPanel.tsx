@@ -84,6 +84,7 @@ function DelegationCard({ sessionId, runId, view, entry, onChanged, onInspect }:
     <p className='hima-small'>{entry.contract.role} · child {entry.childSessionId} · parent {entry.parentSessionId}</p>
     <details><summary>Requested and effective scope</summary>
       <p className='hima-small'>Requested tools: {entry.requested.allowedTools.join(', ') || 'none'}</p>
+      <p className='hima-small'>Requested read root: {entry.requested.readScope?.root ?? 'Explicit granted inputs only'}</p>
       <p className='hima-small'>Effective tools: {entry.effective.tools.join(', ') || 'none'}</p>
       <p className='hima-small'>Read root: {entry.effective.readScope?.root ?? 'Explicit granted inputs only'}</p>
       <p className='hima-small'>Write root: {entry.effective.writeScope?.root ?? 'read-only'}</p>
