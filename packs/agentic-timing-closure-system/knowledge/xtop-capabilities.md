@@ -46,7 +46,7 @@ still treat their real-world effect as unverified until a `contribution`'s
 | Sizing | `size_cell` | `cell_list lib_cell [-design design_name] [-location coord]` |
 | Buffer insertion | `insert_buffer` | `pin_list lib_cells [-design design_name] [-inverter_pair] [-new_cell_names names] [-new_net_names names] [-locations coord] [-force]` |
 | Buffer deletion | `remove_buffer` | `cell_list [-design design_name]` |
-| Change export | `write_design_changes` | `-format {NATIVE\|INNOVUS\|CUI\|SOC\|ICC\|ICC2\|PT\|ATOP\|V_DEF}`, `-eco_file_prefix`, `-output_dir`, `-last_n count`, `-reorder`, `-exclude_new_created`, `-keep_route`, `-write_atomic_cmd \| -force \| -strong_force`, `-exclude_phy_info`, `-version val` |
+| Change export | `write_design_changes` | `-format {NATIVE\|INNOVUS\|CUI\|SOC\|ICC\|ICC2\|PT\|ATOP\|V_DEF}`, `-eco_file_prefix`, `-output_dir`, `{-last_n count \| -reorder}`, `-exclude_new_created`, `-keep_route`, `{-write_atomic_cmd \| -force \| -strong_force}`, `-exclude_phy_info`, `-version val` |
 | Workspace save | `save_workspace` | `[-as path [-overwrite]]` |
 | Workspace restore | `open_workspace` | `workspace_path` |
 | ECO action audit | `report_eco_actions` | `-last_n count`, `-types {move_cell\|size_cell\|exchange_cells\|insert_buffer\|remove_buffer\|insert_dummy_cell\|reconnect_pin\|insert_buffer_chain\|split_load\|split_net}`, `-top_n count`, `-sort_by {count\|area}` |
@@ -59,10 +59,17 @@ Boundaries a compiler must respect, each confirmed directly in the man page text
   changes, it will always output all the changes"). A `capture_changes` operation
   cannot infer a contribution's full edit boundary from `-last_n` or from counting
   commands in the physical file; it must diff against the declared base state instead.
-- **`-write_atomic_cmd` and `-reorder` are mutually exclusive** in the command's own
-  synopsis (`[-last_n output_command_count | -reorder]` sits in the same alternative
-  group as the atomic-command flags); a template that needs both is invalid and must
-  be rejected before compiling, not discovered by a tool error at runtime.
+- **The synopsis has two separate exclusive groups, not one.** `-last_n` and
+  `-reorder` are mutually exclusive with each other (`[-last_n output_command_count |
+  -reorder]`); independently, `-write_atomic_cmd`, `-force` and `-strong_force` are
+  mutually exclusive with each other (`[-write_atomic_cmd | -force | -strong_force]`).
+  `-reorder` is not exclusive with `-write_atomic_cmd` — the DESCRIPTION recommends
+  combining them: when atomic commands end up mixed with macro commands (typically
+  from `-force`), use `-reorder` to put all the atomic commands at the end of the
+  output sequence. A compiler must reject only the two documented same-group
+  combinations (`-last_n` with `-reorder`; any two of `-write_atomic_cmd`/`-force`/
+  `-strong_force`), not the cross-group pairing of `-reorder` with
+  `-write_atomic_cmd`.
 - **`undo` checkpoints do not survive `save_workspace`/`open_workspace` round-trips.**
   `undo.1`: "Once a workspace is closed and reopened again, the check points will be
   destroyed." `save_workspace.1` confirms the same for a saved-then-reopened workspace:

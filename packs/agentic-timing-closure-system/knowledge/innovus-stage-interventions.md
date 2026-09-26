@@ -2,10 +2,9 @@
 
 ## Source
 
-- Innovus Text Command Reference, install root
-  `/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/doc/innovusTCR/`
-  (read-only on `192.168.50.41`, page footer "Product Version 23.14, Last Updated in
-  February 2025"): `setPathGroupOptions.html`, `setAttribute.html`,
+- Innovus Text Command Reference (product version 23.14, updated 2025-02), install
+  root `/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/doc/innovusTCR/`
+  (read-only on `192.168.50.41`): `setPathGroupOptions.html`, `setAttribute.html`,
   `setUsefulSkewMode.html`, `set_ccopt_property.html`, `specifyCellPad.html`,
   `createPlaceBlockage.html`, `setPlaceMode.html`, `ecoChangeCell.html`,
   `ecoAddRepeater.html`, `ecoDeleteRepeater.html`.
@@ -14,6 +13,10 @@
   「当前 Foundation Flow 的真实接入点」表、「在安装目录核对到的接口」表。
 - `/Users/lluzi/Documents/linglong setup/agentic_closure_campaign/HIMAPACK_DEVELOPMENT_SPEC.zh-CN.md`
   （2026-09-26 快照）§7.3「Innovus、提取与功能/物理验证 Adapter」。
+- 本 Pack `SPEC.md`（`packs/agentic-timing-closure-system/SPEC.md`）Run contract章节，
+  `siteCapabilities` 输入行（真实工具、qualified Operator、wrapper、阶段能力）；
+  该输入承载 `siteCapabilities.pgVerification` 这类具体能力门（PG 局部调整仅在 Site
+  声明该能力时可采用，见 `ACTION_KINDS`/`pg_local_adjust` 的准入条件）。
 
 ## Applies when
 
@@ -30,7 +33,10 @@
 All commands below are **documented** — confirmed present with these exact flags in
 the vendor TCR page — not **qualified**: none has been run against a real design in
 this task; each still needs its own readback/qualification before a Site trusts its
-outcome, per `docs/agents/model-policy.md`-adjacent Site capability gating.
+outcome. The gate is this Pack's own `siteCapabilities` input (SPEC.md Run contract):
+an intervention that touches PG (power/ground) is admissible only when
+`siteCapabilities.pgVerification == true`; lacking that capability restricts only
+PG-touching actions, it does not block the rest of this table.
 
 | Intervention | Command (documented) | Flags relevant to this Pack |
 |---|---|---|
