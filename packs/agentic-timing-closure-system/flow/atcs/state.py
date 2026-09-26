@@ -149,8 +149,10 @@ Builds an ``observation-set`` artifact body. For every scenario present in
 from `source_refs["scenarios"]` is recorded in `missingScenarios` instead
 of being parsed. Every path row from every parsed setup/hold report becomes
 one `checks[<checkKey>]` entry keyed by `core.check_key(scenario, mode,
-endpoint)`; `atcs.reports.parse_path_report` already refuses duplicate
-endpoints within a single report, so no further dedup is needed here.
+endpoint)`; `atcs.reports.parse_path_report` already collapses duplicate
+endpoints within a single report to their worst slack (or refuses the
+report outright when the duplicates disagree on path group), so no further
+dedup is needed here.
 `coverage.complete` is `True` only when `missingScenarios` is empty and
 every parsed scenario's setup and hold path reports were both `complete`;
 `coverage.reasons` lists every contributing gap. `sources[]` lists every

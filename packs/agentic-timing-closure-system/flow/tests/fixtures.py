@@ -32,15 +32,33 @@ NUM      {hold_num} 0 0 0 0
 """
 
 
-def path_report(rows, mode):
-    """A `setup.rpt`/`hold.rpt`-shaped report for `rows = [(endpoint, slack), ...]`."""
+def path_report(rows, mode, groups=None, slack_annotations=None):
+    """A `setup.rpt`/`hold.rpt`-shaped report for `rows = [(endpoint, slack), ...]`.
+
+    Repeating the same `endpoint` across several `rows` (with distinct
+    per-row `U_START_<index>` startpoints, as a real report's own
+    `-nworst`-driven listing does) reproduces the real Foundation/B_lazy
+    corpus's "several worst paths converge on one endpoint" grammar that
+    `atcs.reports.parse_path_report` collapses to the worst slack. `groups`,
+    when given, is a list of per-row path-group names parallel to `rows`
+    (defaults to `"core_clock"` for every row) — pass distinct groups for a
+    repeated endpoint to instead reproduce the genuinely-ambiguous case
+    `parse_path_report` still refuses. `slack_annotations`, when given, is a
+    list of per-row suffix strings appended inside the slack line's
+    `(VIOLATED...)` parenthetical (default `""`) -- pass
+    `": increase significant digits"` to reproduce the real PT annotation
+    `parse_path_report` must tolerate (confirmed against the real
+    Foundation/B_lazy corpus).
+    """
     delay = "max" if mode == "setup" else "min"
+    groups = groups if groups is not None else ["core_clock"] * len(rows)
+    slack_annotations = slack_annotations if slack_annotations is not None else [""] * len(rows)
     return "\n".join(
         f"""  Startpoint: U_START_{index}
   Endpoint: {endpoint}
-  Path Group: core_clock
+  Path Group: {groups[index]}
   Path Type: {delay}
-  slack (VIOLATED) {slack}
+  slack (VIOLATED{slack_annotations[index]}) {slack}
 
 """ for index, (endpoint, slack) in enumerate(rows)
     )
@@ -97,4 +115,72 @@ def connectivity_report(nets, report_path="/site/verify_connectivity.rpt", limit
     lines.append(f"    {total_value} Problem(s) ({category}): {category_label}")
     lines.append(f"    {total_value} total info(s) created.")
     lines.append("End Summary")
+    return "\n".join(lines) + "\n"
+
+
+def path_detail_report(stages, tail_net_fanout=None):
+    """A single-path ``report_timing -path_type full_clock_expanded
+    -input_pins -nets -transition_time -capacitance``-shaped report, in the
+    grammar `atcs.adapters.parse_path_detail` parses (Task 16 real-corpus
+    preflight): long instance/pin names wrap onto their own line with the
+    numeric columns on the next line, a stray ``&`` annotation token sits
+    between each arc's Incr and Path values, and a net's own line only ever
+    carries `Fanout` and (except a path's final, off-chip net) `Cap` --
+    never Incr/Path. Cross-checked against a real Foundation ROUND3
+    ``setup.rpt`` sample (``docs/assessment/2026-09-26/atcs-qualification/
+    corpus-preflight.md``); no customer, PDK or library report content is
+    used here -- every cell/instance/net name below is invented.
+
+    ``stages`` is ``[(in_pin, out_pin, cell, in_trans, in_incr, out_trans,
+    out_incr, net_name, fanout, cap), ...]``, one tuple per logic stage: a
+    net-delay arc into a cell's input pin, that same cell's own delay out
+    its output pin, then the net its output drives -- the repeating unit a
+    real full_clock_expanded report under ``-nets`` uses. `tail_net_fanout`,
+    when given, appends one more net line with only a fanout (no cap) after
+    the last stage, the shape a real path's very last net (beyond an output
+    port) has.
+    """
+    lines = [
+        "  Point                       Fanout    Cap      Trans       Incr       Path",
+        "  -----------------------------------------------------------------------------",
+        "  clock core_clock (rise edge)                               0.00       0.00",
+    ]
+    path = 0.0
+    for in_pin, out_pin, cell, in_trans, in_incr, out_trans, out_incr, net_name, fanout, cap in stages:
+        path += in_incr
+        lines.append(f"  {in_pin} ({cell})")
+        lines.append(f"                    {in_trans}       {in_incr} &     {path} r")
+        path += out_incr
+        lines.append(f"  {out_pin} ({cell})")
+        lines.append(f"                    {out_trans}       {out_incr} &     {path} r")
+        lines.append(f"  {net_name} (net)")
+        lines.append(f"                    {fanout}     {cap}")
+    if tail_net_fanout is not None:
+        lines.append("  tail_net (net)")
+        lines.append(f"                    {tail_net_fanout}")
+    lines.append(f"  data arrival time                                                     {path}")
+    return "\n".join(lines) + "\n"
+
+
+def spef_net_name_map_and_d_nets(name_map, d_nets):
+    """A ``*NAME_MAP``/``*D_NET``-shaped SPEF excerpt, in the grammar
+    `atcs.adapters.parse_spef_net_names` parses (Task 16 real-corpus
+    preflight): a real SPEF does not write net names literally on its
+    ``*D_NET`` lines -- they are index-substituted through a ``*NAME_MAP``
+    block (``*<index> <name>``), and ``*D_NET`` then references a net by
+    its ``*<index>`` alias plus a total-capacitance value. Cross-checked
+    against a real Foundation ROUND3 StarRC ``.spef`` sample; every index
+    and name below is invented.
+
+    ``name_map`` is ``{index: name}``; ``d_nets`` is ``[(index_or_literal,
+    total_cap), ...]`` -- pass an `int` to reference a `name_map` index via
+    alias, or a plain string to instead cover a ``*D_NET`` line that names
+    its net literally (no index substitution at all).
+    """
+    lines = ["*NAME_MAP"]
+    for index, name in name_map.items():
+        lines.append(f"*{index} {name}")
+    for token, cap in d_nets:
+        ref = f"*{token}" if isinstance(token, int) else token
+        lines.append(f"*D_NET {ref} {cap}")
     return "\n".join(lines) + "\n"

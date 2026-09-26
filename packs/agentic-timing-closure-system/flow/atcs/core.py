@@ -31,9 +31,11 @@ task (M2-M8, Readers) builds on:
 - `check_key()` — the canonical `"<scenario>|<mode>|<endpoint>"` string used
   everywhere a specific timing check needs to be named. Note this key does
   **not** include the path group: two path-report rows for the same
-  scenario/mode/endpoint but different path groups collide on purpose (see
-  `atcs.reports.parse_path_report`, which refuses such reports as
-  `AtcsError("duplicate-check", ...)` rather than silently keeping one).
+  scenario/mode/endpoint but *different* path groups collide on purpose
+  (see `atcs.reports.parse_path_report`, which refuses such reports as
+  `AtcsError("duplicate-check", ...)` rather than silently keeping one —
+  same-endpoint/same-path-group repeats, the shape a real `-nworst>1`
+  report produces, are instead collapsed to the worst slack).
 
 Fail-closed is the rule for every helper here: a missing, truncated,
 duplicated, non-finite or identity-mismatched input yields `unknown` with a

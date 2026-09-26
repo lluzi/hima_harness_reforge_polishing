@@ -184,11 +184,54 @@ class ParsePathReportTest(unittest.TestCase):
         self.assertFalse(result["complete"])
         self.assertEqual(result["paths"], [])
 
-    def test_duplicate_endpoint_raises(self):
-        text = fixtures.path_report([("epA", -0.1), ("epA", -0.3)], "setup")
+    def test_duplicate_endpoint_same_group_keeps_worst_slack(self):
+        # A real `-nworst>1` report (this Pack's own default,
+        # `atcs.adapters.DEFAULT_NWORST = 20`) lists several of an
+        # endpoint's worst paths, all in the same path group — confirmed
+        # against the real Foundation/B_lazy corpus. The worst (most
+        # negative) slack is kept; the less-critical repeat contributes
+        # nothing.
+        text = fixtures.path_report([("epA", -0.1), ("epA", -0.3), ("epA", -0.2)], "setup")
+        result = reports.parse_path_report(text, "setup", max_paths=10)
+        self.assertEqual(len(result["paths"]), 1)
+        self.assertEqual(result["paths"][0]["endpoint"], "epA")
+        self.assertEqual(result["paths"][0]["slack"], -0.3)
+
+    def test_duplicate_endpoint_different_group_raises(self):
+        # Two rows for the same endpoint that disagree on path group are
+        # genuinely ambiguous (this Pack's check key omits path group) and
+        # still refuse the whole report.
+        text = fixtures.path_report(
+            [("epA", -0.1), ("epA", -0.3)], "setup", groups=["core_clock", "other_clock"]
+        )
         with self.assertRaises(core.AtcsError) as ctx:
             reports.parse_path_report(text, "setup", max_paths=10)
         self.assertEqual(ctx.exception.code, "duplicate-check")
+
+    def test_incomplete_when_raw_block_count_reaches_cap_despite_dedup(self):
+        # A real report's `-max_paths` cap bounds the tool's own raw path
+        # count, not the number of distinct endpoints they land on: ten
+        # raw blocks all converging on one endpoint, with `max_paths=10`,
+        # must still report `complete=False` even though only one
+        # deduplicated path survives.
+        text = fixtures.path_report([("epA", -0.1 * (i + 1)) for i in range(10)], "setup")
+        result = reports.parse_path_report(text, "setup", max_paths=10)
+        self.assertFalse(result["complete"])
+        self.assertEqual(len(result["paths"]), 1)
+
+    def test_annotated_violated_slack_is_parsed_not_refused(self):
+        # Real PT reports append an annotation to the slack line's own
+        # parenthetical whenever a violation rounds to a displayed -0.00
+        # (confirmed against the real Foundation/B_lazy corpus) -- this
+        # must still parse as a violated path, not fail as malformed.
+        text = fixtures.path_report(
+            [("epA", -0.0), ("epB", -0.2)],
+            "setup",
+            slack_annotations=[": increase significant digits", ""],
+        )
+        result = reports.parse_path_report(text, "setup", max_paths=10)
+        self.assertEqual(len(result["paths"]), 2)
+        self.assertEqual({p["endpoint"]: p["slack"] for p in result["paths"]}, {"epA": -0.0, "epB": -0.2})
 
     def test_path_type_mismatch_raises_identity_mismatch(self):
         # A hold report (Path Type: min) fed in as mode="setup".
