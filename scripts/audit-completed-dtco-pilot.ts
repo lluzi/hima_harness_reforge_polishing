@@ -21,7 +21,7 @@ import { repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { sha256 } from './live-check-workshop.ts';
 
 const PACK_ID = 'custom-cell-fmax-dtco';
-const PACK_VERSION = '5.2.17';
+const PACK_VERSION = '5.2.18';
 const EXPECTED_MODEL = 'deepseek-flash';
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item) =>
   item && typeof item === 'object' && !Array.isArray(item)

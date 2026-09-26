@@ -35,8 +35,18 @@ CELL_INST_RE = re.compile(
     r"(?ms)^\s*(\\[^\s(]+|[A-Za-z_][A-Za-z0-9_$]*)"
     r"\s+([^\s(]+)\s*\((.*?)\)\s*;"
 )
-CONN_RE = re.compile(r"\.(\w+)\s*\(\s*([^)]*?)\s*\)")
-SIMPLE_NET_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*(?:\[[0-9]+\])?\Z")
+CONN_RE = re.compile(r"\.(\w+)\s*\(([^)]*)\)")
+PLAIN_NET_REF_RE = re.compile(
+    r"(?P<base>[A-Za-z_][A-Za-z0-9_$]*)"
+    r"(?:\s*(?P<select>\[\s*[0-9]+\s*(?::\s*[0-9]+\s*)?\]))?\Z"
+)
+ESCAPED_SELECTED_NET_REF_RE = re.compile(
+    r"(?P<base>\\[^\s]+)\s+"
+    r"(?P<select>\[\s*[0-9]+\s*(?::\s*[0-9]+\s*)?\])\s*\Z"
+)
+ESCAPED_SCALAR_NET_REF_RE = re.compile(r"(?P<base>\\[^\s]+)\s+\Z")
+NET_SELECT_RE = re.compile(r"\[\s*([0-9]+)\s*(?::\s*([0-9]+)\s*)?\]\Z")
+MAX_ALIAS_RANGE_WIDTH = 65536
 
 # Verilog primitive gates in the technology-independent input. Output pin first.
 PRIMITIVE_GATES = ("and", "or", "nand", "nor", "xor", "xnor", "not", "buf")
@@ -110,7 +120,20 @@ def _split_positional(body: str):
     tail = "".join(current).strip()
     if tail:
         terms.append(tail)
-    return [re.sub(r"\s+", "", term) for term in terms if term]
+    return [_canonical_connection_net(term) for term in terms if term]
+
+
+def _canonical_connection_net(text):
+    """Keep the escaped-identifier terminator when a connection is a net ref."""
+    reference = _simple_net_reference(text)
+    if reference is None:
+        return re.sub(r"\s+", "", text)
+    base, bits = reference
+    if bits is None:
+        return base
+    if len(bits) == 1:
+        return _format_net_bit(base, bits[0])
+    return "%s[%d:%d]" % (base, bits[0], bits[-1])
 
 
 def parse_modules(text: str):
@@ -128,7 +151,7 @@ def parse_modules(text: str):
             named = CONN_RE.findall(conn_body)
             if named:
                 conns = {
-                    pin: re.sub(r"\s+", "", net) for pin, net in named
+                    pin: _canonical_connection_net(net) for pin, net in named
                 }
                 if cell_type in YOSYS_INTERNAL_GATES:
                     gate, arity = YOSYS_INTERNAL_GATES[cell_type]
@@ -185,12 +208,75 @@ def _without_verilog_comments(text):
     return re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.DOTALL)
 
 
+def _simple_net_reference(text):
+    """Return ``(base, ordered bit indices or None)`` for one alias operand.
+
+    An escaped Verilog identifier ends at whitespace, so a following select must
+    be separated from it. Keeping that boundary until after parsing prevents a
+    legal ``\\hierarchical.name [31:0]`` from being mistaken for one escaped name.
+    """
+    value = text.lstrip()
+    match = PLAIN_NET_REF_RE.fullmatch(value.strip())
+    escaped = False
+    if match is None:
+        match = ESCAPED_SELECTED_NET_REF_RE.fullmatch(value)
+        escaped = match is not None
+    if match is None:
+        match = ESCAPED_SCALAR_NET_REF_RE.fullmatch(value)
+        escaped = match is not None
+    if match is None:
+        return None
+    base = match.group("base") + (" " if escaped else "")
+    select = match.groupdict().get("select")
+    if select is None:
+        return base, None
+    selected = NET_SELECT_RE.fullmatch(select)
+    if selected is None:  # Kept fail-closed if the two declarations ever drift.
+        return None
+    first = int(selected.group(1))
+    last_text = selected.group(2)
+    if last_text is None:
+        return base, (first,)
+    last = int(last_text)
+    width = abs(first - last) + 1
+    if width > MAX_ALIAS_RANGE_WIDTH:
+        return None
+    step = 1 if last > first else -1
+    return base, tuple(range(first, last + step, step))
+
+
+def _format_net_bit(base, bit):
+    """Append a select without erasing an escaped identifier's terminator."""
+    return "%s[%d]" % (base, bit)
+
+
+def _simple_assign_aliases(lhs_text, rhs_text):
+    """Expand one whole-net or equal-width bit/range alias into scalar pairs."""
+    lhs = _simple_net_reference(lhs_text)
+    rhs = _simple_net_reference(rhs_text)
+    if lhs is None or rhs is None:
+        return None
+    lhs_base, lhs_bits = lhs
+    rhs_base, rhs_bits = rhs
+    lhs_nets = ((lhs_base,) if lhs_bits is None else tuple(
+        _format_net_bit(lhs_base, bit) for bit in lhs_bits
+    ))
+    rhs_nets = ((rhs_base,) if rhs_bits is None else tuple(
+        _format_net_bit(rhs_base, bit) for bit in rhs_bits
+    ))
+    if len(lhs_nets) != len(rhs_nets):
+        return None
+    return tuple(zip(lhs_nets, rhs_nets))
+
+
 def top_assign_aliases(text: str, top: str):
     """Return validated ``(lhs, rhs)`` aliases from the selected module.
 
-    The proxy models only zero-delay scalar net aliases. Every continuous
-    ``assign`` is inspected; expressions, constants, slices, delays, strengths,
-    malformed statements and repeated left-hand drivers fail closed.
+    The proxy models only zero-delay whole-net aliases and scalarizable bit/range
+    aliases. Equal-width ranges expand positionally into scalar pairs. Every
+    continuous ``assign`` is inspected; expressions, constants, width mismatches,
+    delays, strengths, malformed statements and repeated left-hand drivers fail
+    closed.
     """
     bodies = {}
     for match in MODULE_RE.finditer(text):
@@ -212,23 +298,25 @@ def top_assign_aliases(text: str, top: str):
         end = body.find(";", start)
         if end < 0:
             raise VerilogNetlistError("unterminated continuous assign in top %s" % top)
-        statement = body[start:end].strip()
+        statement_source = body[start:end]
+        statement = statement_source.strip()
         cursor = end + 1
         if statement.count("=") != 1:
             raise VerilogNetlistError(
                 "unsupported continuous assign expression %r" % statement
             )
-        lhs, rhs = (re.sub(r"\s+", "", item) for item in statement.split("=", 1))
-        if not SIMPLE_NET_RE.fullmatch(lhs) or not SIMPLE_NET_RE.fullmatch(rhs):
+        expanded = _simple_assign_aliases(*statement_source.split("=", 1))
+        if expanded is None:
             raise VerilogNetlistError(
                 "unsupported continuous assign expression %r" % statement
             )
-        if lhs in seen_lhs:
-            raise VerilogNetlistError(
-                "continuous assign net %s has multiple assign drivers" % lhs
-            )
-        seen_lhs.add(lhs)
-        aliases.append((lhs, rhs))
+        for lhs, rhs in expanded:
+            if lhs in seen_lhs:
+                raise VerilogNetlistError(
+                    "continuous assign net %s has multiple assign drivers" % lhs
+                )
+            seen_lhs.add(lhs)
+            aliases.append((lhs, rhs))
     return tuple(aliases)
 
 

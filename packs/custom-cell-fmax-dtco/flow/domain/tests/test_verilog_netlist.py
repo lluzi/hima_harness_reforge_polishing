@@ -8,7 +8,12 @@ from pathlib import Path
 DOMAIN = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DOMAIN))
 
-from verilog_netlist import generic_arity_census, parse_modules  # noqa: E402
+from verilog_netlist import (  # noqa: E402
+    build_named_net_graph,
+    generic_arity_census,
+    parse_modules,
+    top_assign_aliases,
+)
 
 
 class YosysInternalCellTests(unittest.TestCase):
@@ -28,6 +33,25 @@ endmodule
             generic_arity_census(modules), {"GEN_not1": 1, "GEN_xor2": 1}
         )
         self.assertEqual(modules["top"][0].conns, {"A0": "a", "A1": "b", "Y": "n0"})
+
+    def test_positional_primitives_share_escaped_net_identity_with_assign_aliases(self):
+        text = r'''module top(input a,output y);
+  and g0(\out.path [0], \in.path [0], a);
+  assign \alias.path [0] = \out.path [0];
+  buf g1(y, \alias.path [0]);
+endmodule
+'''
+        modules = parse_modules(text)
+        aliases = top_assign_aliases(text, "top")
+        self.assertEqual(aliases, ((r"\alias.path [0]", r"\out.path [0]"),))
+        graph = build_named_net_graph(modules["top"], {
+            "GEN_and2": {"A0": "input", "A1": "input", "Y": "output"},
+            "GEN_buf1": {"A0": "input", "Y": "output"},
+        }, aliases)
+        self.assertEqual(
+            graph.instances["g0"].conns["Y"],
+            graph.instances["g1"].conns["A0"],
+        )
 
 
 if __name__ == "__main__":

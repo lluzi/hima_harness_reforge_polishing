@@ -327,6 +327,59 @@ class LibertyTimingTests(unittest.TestCase):
         )
         self.assertAlmostEqual(result["worst_delay"], 2.6444444444444444)
 
+    def test_escaped_vector_assign_alias_expands_matching_ranges_bitwise(self):
+        model = self.parse(library(sequential_cell(), cell()), {"DFF", "BUF"})
+        netlist = r'''module top(input clk,seed,output q1);
+          DFF launch(.D(seed),.CK(clk),.Q(\source.path [31]));
+          BUF distinct_name(.A(seed),.Y(\source.path[31] ));
+          assign \alias.path [31:30] = \source.path [31:30];
+          assign scalar_alias = \alias.path [31];
+          assign scalar_bit[0] = scalar_alias;
+          BUF logic0(.A(scalar_bit[0]),.Y(n0));
+          DFF capture(.D(n0),.CK(clk),.Q(q1));
+        endmodule'''
+        result = analyze_mapped_netlist_reg2reg(
+            model, netlist, "top", clock_period=2.0
+        )
+        self.assertEqual(result["net_aliases"], [
+            [r"\alias.path [31]", r"\source.path [31]"],
+            [r"\alias.path [30]", r"\source.path [30]"],
+            ["scalar_alias", r"\alias.path [31]"],
+            ["scalar_bit[0]", "scalar_alias"],
+        ])
+        self.assertEqual(result["path_count"], 1)
+        self.assertEqual(result["paths"][0]["launchpoint"], "launch/Q")
+        self.assertEqual(result["paths"][0]["endpoint"], "capture/D")
+
+        mismatched = netlist.replace(
+            r"\source.path [31:30]", r"\source.path [31:29]"
+        )
+        with self.assertRaisesRegex(
+            LibertyTimingError, "unsupported continuous assign"
+        ):
+            analyze_mapped_netlist_reg2reg(
+                model, mismatched, "top", clock_period=2.0
+            )
+
+        original_assign = (
+            r"assign \alias.path [31:30] = \source.path [31:30];"
+        )
+        for replacement in (
+            r"assign {\alias.path [31], \alias.path [30]} = \source.path [31:30];",
+            r"assign \alias.path [31:30] = 2'b0;",
+            r"assign \alias.path [31:30] = \source.path [31];",
+            r"assign \alias.path[31:30]= \source.path [31:30];",
+            r"assign \alias.path [31:30] = \source.path[31:30];",
+        ):
+            with self.subTest(replacement=replacement):
+                unsupported = netlist.replace(original_assign, replacement)
+                with self.assertRaisesRegex(
+                    LibertyTimingError, "unsupported continuous assign"
+                ):
+                    analyze_mapped_netlist_reg2reg(
+                        model, unsupported, "top", clock_period=2.0
+                    )
+
     def test_assign_cycles_expressions_and_driver_merges_fail_closed(self):
         model = self.parse(library(sequential_cell(), cell()), {"DFF", "BUF"})
         cycle = '''module top(input clk,seed,output q1);
