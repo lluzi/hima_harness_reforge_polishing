@@ -1,0 +1,7 @@
+id: atcs-observation-request
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'observation-request', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-observation-request/1
+emits:
+  - tc_request_invalid_count

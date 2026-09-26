@@ -1,0 +1,7 @@
+id: atcs-work-package
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'work-package', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-work-package-request/1
+emits:
+  - tc_request_invalid_count

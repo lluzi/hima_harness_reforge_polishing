@@ -1,0 +1,8 @@
+id: atcs-integration-plan
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'integration-plan', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-integration-plan-review/1
+emits:
+  - tc_request_invalid_count
+  - tc_selected_contribution_count

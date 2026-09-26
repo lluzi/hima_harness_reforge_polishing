@@ -1,0 +1,10 @@
+id: atcs-worker-result-03
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'worker-result', '${REPORT}', '${OUT}', '${WORKSPACE}', w03]
+reportKind: atcs-contribution/1
+emits:
+  - tc_xtop_setup_wns_ns
+  - tc_xtop_hold_wns_ns
+  - tc_presta_setup_wns_ns
+  - tc_presta_hold_wns_ns
