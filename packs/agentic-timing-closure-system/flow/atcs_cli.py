@@ -118,6 +118,22 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 21 | `apr-run` | siteProfile | reads `state/apr-task.json` then `run_tool` (stage batch) + `adapters.compile_innovus_export_task` + `run_tool` (export batch) | `state/implement.json` (same shape `implement` writes) |
 | 22 | `record-experience` | reasonSource(the SAME admitted integration-plan envelope row 10 reads -- only actually read when `_merge_commit_provenance` says `"merge"`; see "Task 12c fix round" below) | `experience.record` (lineage/decision/outcome composed from `state/working-state.json`, `state/implement.json`, `state/evaluation.json`, `state/contributions-collected.json`, `state/merge-commit.json`/`state/apr-task.json` (provenance), `state/sta.json`, `state/policy.json`/`state/pointers.json`) | `state/experience.json` |
 
+Site-admin utility (not a Harness graph subcommand -- no workspace, no declared output)
+-------------------------------------------------------------------------------------------
+
+- `flow-digest` (I8, final review, whole-flow integrity): `python3 atcs_cli.py
+  flow-digest [<flow-dir>]` prints a deterministic 64-hex-char sha256
+  (`flow_digest`/`_flow_digest_entries`) over exactly what `contract.yml`'s
+  `workspace.copy` stages into a Campaign workspace's own `flow/` tree
+  (`atcs_cli.py` itself, `atcs/`, `templates/` -- never `flow/tests/`).
+  `<flow-dir>` defaults to this file's own directory (the deployed copy's own
+  `flow/` root when run from inside a Campaign workspace); an explicit path
+  lets the admin check the repository's own `packs/agentic-timing-closure-
+  system/flow/` before deployment. See `sites/linglong-atcs28/README.md`'s
+  "Installing the wrapper" step for how the admin uses this alongside
+  `adapter_sha256` to pin the whole deployed Pack, not just the one
+  dispatcher file.
+
 Gaps closed by Task 12b (G1-G7, G11, G19, G24 per `FABRIC.md`)
 -------------------------------------------------------------------
 
@@ -364,6 +380,7 @@ Known gaps still open (see also `adapters.py`'s own "Gaps")
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -3060,6 +3077,19 @@ def _cmd_apr_run(workspace, args):
     itself writes only after a full, successful run -- refuses
     `AtcsError("write-once", ...)` (exit 3) rather than ever re-running the
     stage/export batches into a directory a prior run already completed.
+
+    I8 (final review, whole-flow integrity): before running anything, this
+    call recompiles the SAME stage task `apr-prepare` compiled (`lifecycle.
+    compile_intervention` + `lifecycle.stage_task`, from the current
+    `residual_cases`/`readiness`/`working_state` on disk -- the identical
+    inputs `apr-prepare` itself reads) and refuses
+    (`AtcsError("identity-mismatch", ...)`) unless the freshly recompiled
+    Tcl is byte-identical to `state/apr-task.json`'s own recorded `tcl`. A
+    `state/apr-task.json` that was tampered with, or whose upstream
+    residual-case/readiness/working-state inputs have since changed, must
+    never be trusted blindly -- only a task whose text this call can
+    independently reproduce, right now, from the same recorded recipe, is
+    actually run.
     """
     (site_profile_path,) = args
     workspace = Path(workspace)
@@ -3073,6 +3103,26 @@ def _cmd_apr_run(workspace, args):
         raise InputError("invalid-input", f"apr task stage must be one of {APR_STAGES}, got {stage!r}")
     task_id = adapters.validate_path_segment(task["taskId"], "apr task.taskId")
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
+
+    # I8: recompile from the same recorded recipe and refuse on any mismatch --
+    # done before any output directory is even created.
+    residual_doc = _read_plain(_paths(workspace)["residual_cases"])
+    readiness = _read_declared(_paths(workspace)["readiness"], "input-readiness")
+    recompiled_intervention = lifecycle.compile_intervention(residual_doc.get("cases", []), stage, readiness)
+    recompiled_task = lifecycle.stage_task(
+        stage, readiness, recompiled_intervention, ".", parent_state_id=working_state["id"],
+    )
+    recompiled_task_id = lifecycle.task_id_for(
+        stage, recompiled_intervention["hookTcl"], recompiled_intervention["readbackTcl"],
+        parent_state_id=working_state["id"],
+    )
+    if recompiled_task_id != task_id or recompiled_task["tcl"] != task["tcl"]:
+        raise core.AtcsError(
+            "identity-mismatch",
+            "recompiling the apr task from its recorded recipe (residual cases, readiness, working "
+            "state) does not reproduce state/apr-task.json's own tcl/taskId -- the recorded task is "
+            "stale or was tampered with",
+        )
 
     output_root = workspace / "apr" / stage / task_id
     # C2 (final review, write-once): `apr-run-complete.json` is a completion
@@ -3145,6 +3195,55 @@ def _cmd_apr_run(workspace, args):
     return _paths(workspace)["implement"], body
 
 
+DEPLOYED_FLOW_ROOTS = ("atcs_cli.py", "atcs", "templates")
+"""I8 (final review, whole-flow integrity): exactly what `contract.yml`'s
+`workspace.copy` stages into every Campaign workspace's own `flow/` tree -- never
+`flow/tests/`, which this Pack's own tests exercise but which is never deployed."""
+
+
+def _flow_digest_entries(flow_dir):
+    """`[{"path","size","sha256"}]`, sorted, over `DEPLOYED_FLOW_ROOTS` only.
+
+    Mirrors `atcs.core.tree_digest`'s own algorithm (same entry shape, same
+    canonical-JSON-then-sha256 final step) but combines the THREE deployed
+    roots into one flat list rather than walking a single directory -- a
+    plain `tree_digest(flow_dir)` would incorrectly fold in `flow/tests/`
+    (never deployed to a real Campaign workspace) and any other file this
+    Pack's own repository keeps beside the deployed tree.
+    """
+    flow_dir = Path(flow_dir)
+    entries = []
+    cli_path = flow_dir / "atcs_cli.py"
+    if not cli_path.is_file():
+        raise core.AtcsError("missing-input", f"not a file: {cli_path}")
+    entries.append({"path": "atcs_cli.py", "size": cli_path.stat().st_size, "sha256": core.file_sha256(cli_path)})
+    for rel_root in ("atcs", "templates"):
+        root = flow_dir / rel_root
+        if not root.is_dir():
+            raise core.AtcsError("missing-input", f"not a directory: {root}")
+        for current, dirnames, filenames in os.walk(root):
+            dirnames.sort()
+            for name in sorted(filenames):
+                full = Path(current) / name
+                rel = full.relative_to(flow_dir).as_posix()
+                entries.append({"path": rel, "size": full.stat().st_size, "sha256": core.file_sha256(full)})
+    entries.sort(key=lambda entry: entry["path"])
+    return entries
+
+
+def flow_digest(flow_dir):
+    """Deterministic full (64 hex char) sha256 over `_flow_digest_entries(flow_dir)`.
+
+    I8 (final review): the value `atcs_cli.py flow-digest` prints, and the value a
+    Site's own wrapper should pin instead of (or in addition to) hashing
+    `flow/atcs_cli.py` alone (`sites/linglong-atcs28/README.md`'s "Installing the
+    wrapper" step) -- a modified helper module (`atcs/*.py`) or template
+    (`templates/*.tcl`) is just as real a compromise of the deployed Pack as a
+    modified dispatcher, and pinning only `atcs_cli.py` would miss it entirely.
+    """
+    return hashlib.sha256(core.canonical(_flow_digest_entries(flow_dir))).hexdigest()
+
+
 SUBCOMMANDS = {
     "bind-inputs": _cmd_bind_inputs,
     "baseline": _cmd_baseline,
@@ -3181,6 +3280,19 @@ def _fail(code, detail, exit_code, extra=None):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv:
+        return _fail("missing-input", "usage: atcs_cli.py <subcommand> <workspace> [args]", 2)
+    # I8 (final review): `flow-digest` is a Site-admin diagnostic, not a Campaign
+    # subcommand -- it takes no workspace and writes no declared output, only prints
+    # a deterministic digest of the deployed flow/ tree this file itself lives in
+    # (or, given one positional arg, an explicit override path).
+    if argv[0] == "flow-digest":
+        flow_dir = argv[1] if len(argv) > 1 else Path(__file__).resolve().parent
+        try:
+            print(flow_digest(flow_dir))
+        except core.AtcsError as exc:
+            return _fail(exc.code, exc.detail, 3)
+        return 0
     if len(argv) < 2:
         return _fail("missing-input", "usage: atcs_cli.py <subcommand> <workspace> [args]", 2)
     subcommand, workspace, *rest = argv

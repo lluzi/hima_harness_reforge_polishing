@@ -282,6 +282,69 @@ class LoadScenariosContractTest(unittest.TestCase):
         self.assertEqual(corners, {name: f"corner-{name}" for name in REQUIRED_SCENARIOS})
 
 
+class FlowDigestTest(unittest.TestCase):
+    """I8 (final review, whole-flow integrity): `flow-digest` prints a deterministic
+    digest over exactly what `contract.yml`'s `workspace.copy` deploys (atcs_cli.py,
+    atcs/, templates/) -- never `flow/tests/`, and never a stray file living beside
+    the deployed tree."""
+
+    def setUp(self):
+        self.tmp = _tmp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        (self.tmp / "atcs_cli.py").write_text("print('cli')\n", encoding="utf-8")
+        (self.tmp / "atcs").mkdir()
+        (self.tmp / "atcs" / "core.py").write_text("X = 1\n", encoding="utf-8")
+        (self.tmp / "templates").mkdir()
+        (self.tmp / "templates" / "a.tcl").write_text("puts hi\n", encoding="utf-8")
+
+    def test_deterministic_across_repeated_calls(self):
+        first = atcs_cli.flow_digest(self.tmp)
+        second = atcs_cli.flow_digest(self.tmp)
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 64)
+        int(first, 16)  # raises ValueError if not hex
+
+    def test_changing_a_deployed_file_changes_the_digest(self):
+        before = atcs_cli.flow_digest(self.tmp)
+        (self.tmp / "atcs" / "core.py").write_text("X = 2\n", encoding="utf-8")
+        after = atcs_cli.flow_digest(self.tmp)
+        self.assertNotEqual(before, after)
+
+    def test_a_file_outside_the_deployed_roots_never_affects_the_digest(self):
+        """`flow/tests/` (and anything else beside the deployed tree) is never
+        copied into a Campaign workspace -- it must not be able to change the
+        pinned digest at all."""
+        before = atcs_cli.flow_digest(self.tmp)
+        (self.tmp / "tests").mkdir()
+        (self.tmp / "tests" / "test_whatever.py").write_text("assert True\n", encoding="utf-8")
+        (self.tmp / "some-other-file.txt").write_text("irrelevant\n", encoding="utf-8")
+        after = atcs_cli.flow_digest(self.tmp)
+        self.assertEqual(before, after)
+
+    def test_missing_a_deployed_root_is_refused(self):
+        shutil.rmtree(self.tmp / "templates")
+        with self.assertRaises(core.AtcsError) as ctx:
+            atcs_cli.flow_digest(self.tmp)
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_cli_subcommand_prints_the_same_digest_and_writes_no_output(self):
+        result = subprocess.run(
+            [sys.executable, str(CLI_PATH), "flow-digest", str(self.tmp)], capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        printed = result.stdout.strip()
+        self.assertEqual(printed, atcs_cli.flow_digest(self.tmp))
+        self.assertFalse((self.tmp / "state").exists())
+
+    def test_cli_subcommand_defaults_to_this_files_own_directory(self):
+        """No explicit flow-dir argument -- digests the real, deployed `flow/` this
+        atcs_cli.py itself lives in."""
+        result = subprocess.run([sys.executable, str(CLI_PATH), "flow-digest"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(result.stdout.strip()), 64)
+        int(result.stdout.strip(), 16)
+
+
 class BaselineStagesLifecycleCheckpointsTest(unittest.TestCase):
     """I2 (final review): `atcs.lifecycle.stage_task` has always restored
     `./DBS/<prevStage>.enc.dat`, workspace-relative -- but nothing ever staged a
@@ -2219,6 +2282,63 @@ class AprPrepareRunTest(unittest.TestCase):
                      "*SPEF IEEE 1481-1999\n")
         result = _run("extract", self.workspace, corners_path, site_profile_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_apr_run_refuses_when_the_recorded_tcl_does_not_match_a_fresh_recompile(self):
+        """I8 (final review): `apr-run` recompiles the task from its recorded recipe
+        (residual cases, readiness, working state) and refuses if the result does not
+        reproduce state/apr-task.json's own tcl -- a tampered or stale recorded task
+        is never trusted blindly."""
+        readiness = _full_flow_readiness(self.workspace, self.manifest)
+        core.write_artifact(self.workspace / "state" / "readiness.json", readiness)
+        self._write_residual_cases()
+        _write_next_decision(self.workspace, "place")
+        result = _run("apr-prepare", self.workspace)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        task_path = self.workspace / "state" / "apr-task.json"
+        task = json.loads(task_path.read_text())
+        task["tcl"] = task["tcl"] + "\n# tampered\n"
+        _write_json(task_path, task)
+
+        site_profile_path = _site_profile_path(self.workspace)
+        result = _run("apr-run", self.workspace, site_profile_path)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "identity-mismatch")
+        self.assertFalse((self.workspace / "state" / "implement.json").exists())
+        self.assertFalse((self.workspace / "apr" / "place" / task["taskId"]).exists())
+
+    def test_apr_run_refuses_when_residual_cases_changed_since_prepare(self):
+        """A stale `apr-task.json` compiled against different residual-case evidence
+        must also be caught -- not only a hand-edited `tcl` string."""
+        readiness = _full_flow_readiness(self.workspace, self.manifest)
+        core.write_artifact(self.workspace / "state" / "readiness.json", readiness)
+        self._write_residual_cases()
+        _write_next_decision(self.workspace, "place")
+        result = _run("apr-prepare", self.workspace)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        task = json.loads((self.workspace / "state" / "apr-task.json").read_text())
+
+        # The residual evidence changes (e.g. a fresh `residual` re-run) to a
+        # cell/transition-dominated case (useful-skew mechanism) instead of the
+        # original net-delay-dominated one (path-group mechanism) -- a genuinely
+        # different compiled hook, not just different numbers feeding the same one.
+        _write_json(self.workspace / "state" / "residual-cases.json", {"cases": [{
+            "checks": ["func_ssg_rcworst_m40|setup|U1/reg"],
+            "evidence": {
+                "cellDelay": core.known(0.5), "netDelay": core.unknown("not observed"),
+                "slew": core.known(0.2), "fanout": core.unknown("not observed"),
+                "location": core.unknown("not observed"),
+            },
+            "attempts": [], "limits": [], "suggestedStage": "route", "requiredInputs": [],
+        }]})
+
+        site_profile_path = _site_profile_path(self.workspace)
+        result = _run("apr-run", self.workspace, site_profile_path)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "identity-mismatch")
+        self.assertFalse((self.workspace / "apr" / "place" / task["taskId"]).exists())
 
     def test_apr_run_candidate_flows_through_sta_evaluate_adopt(self):
         """Item 6: an apr-run candidate, driven all the way through sta -> evaluate -> adopt."""

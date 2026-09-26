@@ -85,7 +85,19 @@ reports are likewise no longer a Site-authored `baseline-verify-*.rpt` document 
    `adapter_sha256` placeholder. `atcs_cli.py` is deployed verbatim into every Campaign workspace at
    `<workspace>/flow/atcs_cli.py` (`contract.yml`'s `workspace.source: pack`,
    `workspace.copy: [atcs_cli.py, atcs, templates]`), so this one hash is stable for the whole Pack
-   release, exactly like the frozen `xtop-timing-closure` wrapper pins `closure.py`.
+   release, exactly like the frozen `xtop-timing-closure` wrapper pins `closure.py`. **I8 (final
+   review):** `adapter_sha256` alone only pins the dispatcher file -- a modified helper module
+   (`flow/atcs/*.py`) or template (`flow/templates/*.tcl`) is just as real a compromise of the
+   deployed Pack, and this one hash would miss it entirely. Also run
+   `python3 packs/agentic-timing-closure-system/flow/atcs_cli.py flow-digest
+   packs/agentic-timing-closure-system/flow` (no workspace argument -- this is a Site-admin
+   diagnostic, not a Campaign subcommand) and record the printed 64-hex-char digest alongside
+   `adapter_sha256` as this release's pinned **flow digest**; recompute and compare it against a
+   deployed Campaign workspace's own `<workspace>/flow` directory (same command, that path instead)
+   before trusting any real Run, and again whenever `interactive-bindings.json` or the qualified
+   image changes. A future wrapper revision should assert this digest itself, the same way
+   `adapter_sha256` is already asserted, once `scripts/generate-xtop-operator-binding.mjs` (see
+   "Known gaps" above) supports it.
 2. Confirm (or build) the qualified `edarunner` container image this server already uses for the
    frozen `xtop-timing-closure-v1` wrapper, or a fresh qualified image for this Pack, and put its
    `sha256:...` digest in the `image` placeholder.
