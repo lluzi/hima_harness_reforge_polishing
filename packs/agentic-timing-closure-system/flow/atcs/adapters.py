@@ -114,6 +114,7 @@ still `unknown` with a reason, never guessed.
 from __future__ import annotations
 
 import json
+import math
 import re
 import shlex
 import subprocess
@@ -493,6 +494,42 @@ def parse_path_detail(text):
         "fanout": core.known(worst_fanout) if worst_fanout is not None else core.unknown("no fanout column parsed"),
         "location": core.known(last_location) if last_location else core.unknown("no cell instance parsed"),
     }
+
+
+_QUERY_SLACK_RE = re.compile(
+    r"(?m)^\s*slack\s*\((?P<verdict>MET|VIOLATED)(?P<annotation>[^)]*)\)\s+(?P<value>-?[0-9.eE+]+)"
+)
+
+
+def parse_query_slack(text):
+    """The single targeted path's own slack Measure from a `pt-query.tcl` `report_timing`
+    report (I5, final review: fixed count via a bounded parent-violator recheck).
+
+    `atcs_cli._cmd_sta`'s bounded recheck feeds this straight into `atcs.state.
+    compare_checks`'s own `recheck` parameter -- a plain `{checkKey: Measure}` map
+    (slack sign only, no separate `violated` fact of its own, per `compare_checks`'s
+    own docstring). Unlike `atcs.reports.parse_path_report` (which, via `-slack_lesser_
+    than 0.0`, only ever sees rows PT itself already classified `VIOLATED`), this
+    template's own single targeted-path query has no such filter and may report either
+    verdict: `MET` (a check that is now genuinely fixed) or `VIOLATED` (still failing).
+    A precision-limited row (PT's own "increase significant digits" annotation, either
+    verdict) leaves the displayed number untrustworthy at this precision -- `unknown`,
+    never guessed from the sign alone, the same rule `parse_path_report` already
+    applies to a violated path's own slack. Returns `unknown` when no slack line could
+    be parsed at all (a malformed or empty report).
+    """
+    match = _QUERY_SLACK_RE.search(text)
+    if not match:
+        return core.unknown("no slack line parsed")
+    if match.group("annotation"):
+        return core.unknown("precision-limited: re-query with more significant digits")
+    try:
+        value = float(match.group("value"))
+    except ValueError:
+        return core.unknown(f"unparsable-value: {match.group('value')!r}")
+    if math.isnan(value) or math.isinf(value):
+        return core.unknown(f"non-finite-value: {match.group('value')!r}")
+    return core.known(value)
 
 
 # ---------------------------------------------------------------------------

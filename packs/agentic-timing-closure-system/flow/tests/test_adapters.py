@@ -538,6 +538,34 @@ class ParsePathDetailTest(unittest.TestCase):
             self.assertFalse(core.is_known(measure))
 
 
+class ParseQuerySlackTest(unittest.TestCase):
+    """`adapters.parse_query_slack` -- I5 (final review): the single targeted path's own
+    slack Measure from one `pt-query.tcl` report, MET or VIOLATED, fed to
+    `atcs.state.compare_checks`'s own `recheck` parameter."""
+
+    def test_met_verdict_is_a_known_non_negative_slack(self):
+        text = "  slack (MET)                       0.12\n"
+        self.assertEqual(adapters.parse_query_slack(text), core.known(0.12))
+
+    def test_violated_verdict_is_a_known_negative_slack(self):
+        text = "  slack (VIOLATED)                  -0.05\n"
+        self.assertEqual(adapters.parse_query_slack(text), core.known(-0.05))
+
+    def test_precision_limited_violated_row_is_unknown_never_a_bare_zero(self):
+        text = "  slack (VIOLATED: increase significant digits) -0.00\n"
+        measure = adapters.parse_query_slack(text)
+        self.assertFalse(core.is_known(measure))
+
+    def test_precision_limited_met_row_is_also_unknown(self):
+        text = "  slack (MET: increase significant digits)      0.00\n"
+        measure = adapters.parse_query_slack(text)
+        self.assertFalse(core.is_known(measure))
+
+    def test_no_slack_line_is_unknown(self):
+        measure = adapters.parse_query_slack("not a timing report at all\n")
+        self.assertFalse(core.is_known(measure))
+
+
 class ParseSpefNetNamesTest(unittest.TestCase):
     """Grammar cross-checked against a real Foundation ROUND3 StarRC
     ``.spef`` sample (Task 16, ``docs/assessment/2026-09-26/atcs-

@@ -579,6 +579,22 @@ def _current_coverage_complete(current, scenario, mode):
     return bool(scenario_entry.get("complete", {}).get(mode, False))
 
 
+def violating_check_keys(observation):
+    """The sorted check keys of `observation["checks"]` that `_violation_status`
+    classifies as currently violating (I5, final review: fixed count via a bounded
+    parent-violator recheck).
+
+    `atcs_cli._cmd_sta` uses this on the PARENT's own persisted observation to decide
+    which checks are worth re-querying, by worst known slack, on the just-implemented
+    candidate -- the same `violated`-fact-first, slack-sign-fallback rule `compare_
+    checks` itself uses to decide "was this check violating", so the set of checks a
+    recheck targets is never inconsistent with how that same recheck's own results are
+    later interpreted.
+    """
+    checks = observation.get("checks", {}) or {}
+    return sorted(key for key, entry in checks.items() if _violation_status(entry) is True)
+
+
 def compare_checks(prior, current, recheck):
     recheck = recheck or {}
     prior_checks = prior.get("checks", {})

@@ -1517,6 +1517,86 @@ def _load_merge_commit_like(workspace, implement, provenance=None):
     return {"id": implement.get("mergeCommitId"), "parentStateId": implement["parentStateId"], "operations": []}
 
 
+STA_RECHECK_BOUND = 200
+
+
+def _bounded_parent_violator_recheck(workspace, prior_observation, scenario_inputs_by_scenario, site_profile, report_root):
+    """I5 (final review, fixed count): re-query, on the CANDIDATE's own netlist/SPEF/SDC
+    (`scenario_inputs_by_scenario`, the exact per-scenario inputs the real STA loop
+    above just used), up to `STA_RECHECK_BOUND` of the PARENT's own worst-known-slack
+    violating checks (`state.violating_check_keys` on `prior_observation`) -- so
+    `evaluate`'s `fixedCheckCount`/`missingPriorCheckCount` never mistake "this
+    generation's own top-N-worst-path STA no longer happened to report this check" for
+    a genuine `missingPrior`: a parent violator that has dropped out of the worst-N
+    listing precisely because it is now FIXED must still be recognized as fixed.
+
+    Returns `(recheck, complete, notes)`: `recheck` is `{checkKey: Measure}` (slack
+    only -- `state.compare_checks`'s own `recheck` contract, no `violated` fact);
+    `complete` is `True` only when every one of the parent's own violating checks was
+    within the bound AND every scenario's targeted query and report parse actually
+    produced a value for it; `notes` names every reason a specific check (or the whole
+    recheck) could not be completed, for provenance (not part of any binding shape).
+    """
+    if prior_observation is None:
+        return {}, False, ["no prior observation recorded for the parent state -- recheck skipped"]
+
+    violator_keys = state.violating_check_keys(prior_observation)
+    bounded_keys = _bounded_remaining_checks(prior_observation, violator_keys, STA_RECHECK_BOUND)
+
+    notes = []
+    if len(bounded_keys) < len(violator_keys):
+        notes.append(
+            f"{len(violator_keys) - len(bounded_keys)} parent violator(s) exceeded the recheck "
+            f"bound ({STA_RECHECK_BOUND})"
+        )
+
+    checks = prior_observation.get("checks", {}) or {}
+    by_scenario = {}
+    for key in bounded_keys:
+        parts = key.split("|", 2)
+        if len(parts) != 3:
+            notes.append(f"{key}: malformed check key")
+            continue
+        scenario, _mode, endpoint = parts
+        entry = checks.get(key) or {}
+        startpoint = entry.get("startpoint")
+        if not isinstance(startpoint, str) or not startpoint:
+            notes.append(f"{key}: no startpoint recorded in the parent observation")
+            continue
+        if scenario not in scenario_inputs_by_scenario:
+            notes.append(f"{key}: scenario {scenario!r} is not one of this generation's own required scenarios")
+            continue
+        by_scenario.setdefault(scenario, []).append({"checkKey": key, "startpoint": startpoint, "endpoint": endpoint})
+
+    recheck = {}
+    for scenario, targets in sorted(by_scenario.items()):
+        inputs = scenario_inputs_by_scenario[scenario]
+        scenario_report_root = report_root / scenario
+        try:
+            task = adapters.compile_pt_query_task(inputs, str(scenario_report_root), targets)
+        except core.AtcsError as exc:
+            notes.append(f"{scenario}: {exc.detail}")
+            continue
+        tcl_path = scenario_report_root / "pt-query.tcl"
+        tcl_path.parent.mkdir(parents=True, exist_ok=True)
+        tcl_path.write_text(task["tcl"], encoding="utf-8")
+        log_path = scenario_report_root / "pt.log"
+        try:
+            adapters.run_tool(site_profile, ["pt_shell", "-f", str(tcl_path)], cwd=scenario_report_root, log_path=log_path)
+        except adapters.AdapterToolError as exc:
+            notes.append(f"{scenario}: pt-query failed: {exc.detail}")
+            continue
+        for target in targets:
+            report_path = Path(task["reports"][target["checkKey"]])
+            if not report_path.is_file():
+                notes.append(f"{target['checkKey']}: pt-query produced no report at {report_path}")
+                continue
+            recheck[target["checkKey"]] = adapters.parse_query_slack(report_path.read_text(encoding="utf-8"))
+
+    complete = len(bounded_keys) == len(violator_keys) and all(key in recheck for key in bounded_keys)
+    return recheck, complete, notes
+
+
 def _cmd_sta(workspace, args):
     """Fix round 2 item 2 (controller decision, one SDC source): the SDC this candidate is
     timed against comes from `base_state` (the design state actually being timed, `state/
@@ -1612,6 +1692,7 @@ def _cmd_sta(workspace, args):
     report_root = workspace / "implementations" / merge_id / "sta"
     sta_receipts = {}
     sta_sources = {}
+    scenario_inputs_by_scenario = {}
     for scenario in adapters.REQUIRED_SCENARIOS:
         corner = scenario_corners[scenario]
         spef_ref = extract["spef"].get(corner)
@@ -1633,6 +1714,7 @@ def _cmd_sta(workspace, args):
             "design": implement["design"], "netlist": str(workspace / implement["netlist"]["path"]),
             "sdc": str(sdc_path), "spef": str(workspace / spef_ref["path"]),
         }
+        scenario_inputs_by_scenario[scenario] = inputs
         task = adapters.compile_pt_scenario_task(scenario, inputs, str(report_root), query_spec)
         scenario_dir = report_root / scenario
         tcl_path = scenario_dir / "pt-scenario.tcl"
@@ -1675,9 +1757,26 @@ def _cmd_sta(workspace, args):
     from atcs import refresh  # local import: keeps this dispatcher loadable if this module is ever absent
     refresh.record_refresh(str(_paths(workspace)["refresh_ledger"]), merge_commit["id"], design_state["id"], sta_sources)
 
+    # I5 (final review, fixed count): the PARENT's own persisted observation (the one
+    # whose designStateId equals base_state["id"], the same lookup evaluate itself
+    # uses via parent_state_id) names which checks were violating before this
+    # implementation -- recheck up to STA_RECHECK_BOUND of them, by worst known slack,
+    # on the candidate's own fresh netlist/SPEF/SDC (the exact per-scenario inputs the
+    # STA loop above just used), and feed the result forward so evaluate can pass it
+    # to compare_checks as `recheck` instead of leaving every no-longer-top-N-worst
+    # check to default to `missingPrior`.
+    parent_observation = _find_prior_observation_for_state(workspace, base_state["id"])
+    recheck, recheck_complete, recheck_notes = _bounded_parent_violator_recheck(
+        workspace, parent_observation, scenario_inputs_by_scenario, site_profile,
+        workspace / "implementations" / merge_id / "recheck",
+    )
+
     body = {
         "designStateId": design_state["id"], "database": design_state["database"], "sta": sta_receipts,
+        "recheck": recheck, "recheckComplete": recheck_complete,
     }
+    if recheck_notes:
+        body["recheckNotes"] = recheck_notes
     # C5: archive this exact sta.json body under the candidate's own
     # implementations/<mergeId>/ directory, so a later evaluate (or any
     # other consumer) can always recover the STA receipts a given
@@ -1827,7 +1926,15 @@ def _cmd_evaluate(workspace, args):
         "designStateId": sta["designStateId"], "database": sta["database"],
         "netlist": implement["netlist"], "def": implement["def"], "spef": extract["spef"],
         "sta": sta["sta"], "physical": physical,
+        # I5 (final review): `sta`'s own bounded parent-violator recheck, already
+        # captured -- never a fresh query this call would have to launch itself.
+        "recheck": sta.get("recheck") or {},
     }
+    if not sta.get("recheckComplete", False):
+        receipts["recheckIncomplete"] = True
+        recheck_notes = sta.get("recheckNotes") or []
+        if recheck_notes:
+            receipts["recheckIncompleteReason"] = "; ".join(recheck_notes)
     # I6 (final review): the baseline's own check_timing-derived unconstrained-endpoint
     # counts, already captured by observe-baseline -- never a fresh query this call
     # would have to launch itself.

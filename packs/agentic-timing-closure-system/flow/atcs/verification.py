@@ -756,9 +756,32 @@ def assemble(plan, receipts, prior_observation, baseline_physical, baseline_unco
         fixed_check_count = core.unknown(reason)
         missing_prior_check_count = core.unknown(reason)
     else:
-        comparison = state.compare_checks(prior_observation, current_observation, {})
-        fixed_check_count = core.known(len(comparison["fixed"]))
-        missing_prior_check_count = core.known(len(comparison["missingPrior"]))
+        # I5 (final review, fixed count): `receipts["recheck"]` -- when the caller (`sta`)
+        # offers one -- is a bounded `{checkKey: Measure}` re-observation of the PARENT's
+        # own violating checks, queried fresh on the candidate; `compare_checks` uses it
+        # to resolve a check that this generation's own top-N-worst-path STA no longer
+        # happened to report (because it is now genuinely fixed, not because it vanished)
+        # instead of defaulting it to `missingPrior`. A caller with nothing to offer (every
+        # pre-I5 receipts shape) passes no `"recheck"` key at all, which is exactly `{}`
+        # here -- `compare_checks`'s own prior behaviour, unchanged.
+        recheck = receipts.get("recheck") or {}
+        comparison = state.compare_checks(prior_observation, current_observation, recheck)
+        if receipts.get("recheckIncomplete"):
+            # The recheck itself could not cover every one of the parent's violators
+            # (a query/parse failure, or more violators than its own bound) -- an
+            # un-rechecked violator still defaults to `missingPrior` above, which would
+            # silently overcount "still failing" for a check that might really be fixed.
+            # `fixedCheckCount`/`missingPriorCheckCount` must not claim a precise count
+            # neither this recheck nor this generation's own STA can actually back up.
+            reason = receipts.get("recheckIncompleteReason") or (
+                "the parent-violator recheck did not cover every one of the parent's "
+                "own violating checks"
+            )
+            fixed_check_count = core.unknown(reason)
+            missing_prior_check_count = core.unknown(reason)
+        else:
+            fixed_check_count = core.known(len(comparison["fixed"]))
+            missing_prior_check_count = core.known(len(comparison["missingPrior"]))
 
     body = {
         "candidateId": plan.get("candidateId"),

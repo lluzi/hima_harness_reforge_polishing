@@ -395,6 +395,47 @@ class CaptureWnsIdentityCrossCheckTest(unittest.TestCase):
         self.assertEqual(result["scenarios"]["func_ssg_rcworst_m40"]["setup"]["wns"], {"value": 0.0})
 
 
+class ViolatingCheckKeysTest(unittest.TestCase):
+    """`state.violating_check_keys` -- I5 (final review): the set of checks
+    `_cmd_sta`'s bounded parent-violator recheck must target, using the same
+    `violated`-fact-first rule `compare_checks` itself uses."""
+
+    def test_known_negative_slack_is_violating(self):
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epA")
+        observation = {"checks": {key: {"slack": core.known(-0.02), "startpoint": "s", "pathGroup": "g"}}}
+        self.assertEqual(state.violating_check_keys(observation), [key])
+
+    def test_known_non_negative_slack_is_not_violating(self):
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epA")
+        observation = {"checks": {key: {"slack": core.known(0.02), "startpoint": "s", "pathGroup": "g"}}}
+        self.assertEqual(state.violating_check_keys(observation), [])
+
+    def test_precision_limited_row_with_a_true_violated_fact_is_still_violating(self):
+        """The whole reason `violated` exists: an unknown slack must not hide a confirmed violator."""
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epA")
+        observation = {
+            "checks": {key: {"slack": core.unknown("precision-limited"), "violated": True,
+                              "startpoint": "s", "pathGroup": "g"}},
+        }
+        self.assertEqual(state.violating_check_keys(observation), [key])
+
+    def test_no_violated_fact_and_unknown_slack_is_not_classified_either_way(self):
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epA")
+        observation = {"checks": {key: {"slack": core.unknown("no data"), "startpoint": "s", "pathGroup": "g"}}}
+        self.assertEqual(state.violating_check_keys(observation), [])
+
+    def test_results_are_sorted(self):
+        key_a = core.check_key("func_ssg_rcworst_m40", "setup", "epZ")
+        key_b = core.check_key("func_ssg_rcworst_m40", "setup", "epA")
+        observation = {
+            "checks": {
+                key_a: {"slack": core.known(-0.01), "startpoint": "s", "pathGroup": "g"},
+                key_b: {"slack": core.known(-0.02), "startpoint": "s", "pathGroup": "g"},
+            },
+        }
+        self.assertEqual(state.violating_check_keys(observation), sorted([key_a, key_b]))
+
+
 class CompareChecksTest(unittest.TestCase):
     def test_missing_from_truncated_current_is_missing_prior_not_fixed(self):
         key = core.check_key("func_ssg_rcworst_m40", "setup", "epA")

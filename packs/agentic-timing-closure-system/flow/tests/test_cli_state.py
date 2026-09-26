@@ -553,6 +553,236 @@ class StaIdentityByHashingAtUseTest(TwoRoundFlowTest):
         self.assertFalse((workspace / "state" / "sta.json").exists())
 
 
+class StaParentViolatorRecheckTest(TwoRoundFlowTest):
+    """I5 (final review, fixed count): `sta` re-queries the parent's own violating
+    checks on the candidate (bounded, worst-known-slack first), and `evaluate` uses
+    that recheck to tell a genuinely fixed check apart from one this generation's own
+    top-N-worst-path STA simply stopped reporting -- never defaulting the latter to
+    `missingPrior` the way a bare `compare_checks(prior, current, {})` would."""
+
+    def test_two_round_flow_uses_adopted_state_id(self):
+        self.skipTest("inherited from TwoRoundFlowTest -- already covered there, not this class's own case")
+
+    def _baseline_observation_with_one_violation(self, workspace, base_state, scenario, endpoint, slack):
+        report_root = workspace / "baseline-pt-violating"
+        scenario_refs = {}
+        for s in REQUIRED_SCENARIOS:
+            directory = report_root / s
+            if s == scenario:
+                reports = {
+                    "global_timing.rpt": fixtures.global_report(slack, "0.00", "1", "0.03", "0.00", "0"),
+                    "setup.rpt": fixtures.path_report([(endpoint, slack)], "setup"),
+                    "hold.rpt": fixtures.path_report([], "hold"),
+                    "check_timing.rpt": fixtures.check_timing_report(0),
+                }
+            else:
+                reports = _clean_reports()
+            _write_report_set(directory, reports)
+            scenario_refs[s] = {
+                "globalTiming": str(directory / "global_timing.rpt"), "setupPaths": str(directory / "setup.rpt"),
+                "holdPaths": str(directory / "hold.rpt"), "checkTiming": str(directory / "check_timing.rpt"),
+            }
+        source_refs = {"designStateId": base_state["id"], "scenarios": scenario_refs}
+        query_spec = {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000}
+        return state.capture(source_refs, query_spec)
+
+    def test_a_check_no_longer_in_the_worst_n_paths_is_recognized_as_fixed_not_missing(self):
+        workspace = self.workspace
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        self.assertEqual(_run("baseline", workspace, workspace / "manifest.json").returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+
+        regressed_scenario = REQUIRED_SCENARIOS[0]
+        endpoint = "U_FIXED/D"
+        baseline_observation = self._baseline_observation_with_one_violation(
+            workspace, baseline, regressed_scenario, endpoint, -0.05,
+        )
+        core.write_artifact(workspace / "state" / "observation.json", baseline_observation)
+        contract_dir = _analysis_contract_dir(workspace)
+        self.assertEqual(_run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
+        drc_path, connectivity_path = workspace / "b-drc.rpt", workspace / "b-conn.rpt"
+        _write_text(drc_path, fixtures.drc_report([]))
+        _write_text(connectivity_path, fixtures.connectivity_report([]))
+        self.assertEqual(_run("physical", workspace, drc_path, connectivity_path, "baseline").returncode, 0)
+
+        contribution, work_package = self._build_fix_contribution(baseline, instance="U1")
+        _write_json(workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
+        facts = composition.analyze(baseline["id"], [contribution], [])
+        plan_raw = {
+            "batchId": "batch-U1", "baseStateId": baseline["id"], "select": [contribution["id"]],
+            "resolutions": [], "deferred": [], "reason": "single fix",
+        }
+        plan = integration.validate_plan(plan_raw, facts)
+        request = integration.prepare_replay(plan, facts, [contribution])
+        step = request["steps"][0]
+        receipt = {
+            "stepId": step["stepId"], "status": "ok",
+            "observedDelta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        }
+        edit_domains = {contribution["id"]: work_package["editDomain"]}
+        integration_state = integration.reconcile(request, [receipt], edit_domains)
+        core.write_artifact(workspace / "state" / "composition-facts.json", facts)
+        core.write_artifact(workspace / "state" / "replay-request.json", request)
+        core.write_artifact(workspace / "state" / "integration-state.json", integration_state)
+
+        merge_commit = integration.seal_batch(integration_state, request, facts, [contribution])
+        merge_id = merge_commit["id"]
+        impl_root = workspace / "implementations" / merge_id
+        (impl_root / "DBS").mkdir(parents=True, exist_ok=True)
+        (impl_root / "DBS" / "top.enc").write_bytes(f"database for {merge_id}".encode("utf-8"))
+        _sha256_matching_empty_directory(impl_root / "DBS" / "top.enc.dat")
+        _write_text(impl_root / "EXPORT" / "design.def", "DEF placeholder\n")
+        _write_text(impl_root / "EXPORT" / "design.v", "module top(); endmodule\n")
+        _write_text(impl_root / "RPT" / "verify_drc.rpt", fixtures.drc_report([]))
+        _write_text(impl_root / "RPT" / "verify_connectivity.rpt", fixtures.connectivity_report([]))
+
+        site_profile_path = _site_profile_path(workspace)
+        current_state_path = workspace / "current-state.json"
+        _write_json(current_state_path, baseline)
+        self.assertEqual(_run("implement", workspace, current_state_path, site_profile_path).returncode, 0)
+
+        for corner in (CORNER,):
+            _write_text(impl_root / "starrc" / corner / f"top.{corner}.spef", "*SPEF IEEE 1481-1999\n")
+        corners_path = workspace / "corners.json"
+        _write_json(corners_path, {"corners": [CORNER]})
+        self.assertEqual(_run("extract", workspace, corners_path, site_profile_path).returncode, 0)
+
+        # The candidate's own full STA is entirely clean -- the fixed check is no
+        # longer among the worst-N paths this generation's own setup.rpt reports at
+        # all (a real -slack_lesser_than 0.0 report would never list a now-positive
+        # path). Without the recheck, `compare_checks` would find it in neither
+        # `current` nor `recheck` and default it to `missingPrior`.
+        for scenario in REQUIRED_SCENARIOS:
+            _write_report_set(impl_root / "sta" / scenario, _clean_reports())
+
+        # Pre-seed the ONE recheck report `_cmd_sta`'s bounded parent-violator
+        # recheck will look for (the fake wrapper never launches real PT): the
+        # regressed scenario's own targeted query for `endpoint`, PT's own "q000"
+        # naming (`adapters.compile_pt_query_task`, the first/only target).
+        recheck_report_path = impl_root / "recheck" / regressed_scenario / "q000.rpt"
+        _write_text(recheck_report_path, "  slack (MET)                       0.05\n")
+
+        query_spec_path = workspace / "query-spec.json"
+        _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
+        scenario_corners_path = workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        base_design_state_path = workspace / "base-design-state.json"
+        _write_json(base_design_state_path, baseline)
+        self.assertEqual(
+            _run("sta", workspace, query_spec_path, scenario_corners_path,
+                 base_design_state_path, site_profile_path).returncode,
+            0,
+        )
+        sta = json.loads((workspace / "state" / "sta.json").read_text())
+        check_key = core.check_key(regressed_scenario, "setup", endpoint)
+        self.assertTrue(sta["recheckComplete"], sta.get("recheckNotes"))
+        self.assertEqual(sta["recheck"][check_key], core.known(0.05))
+
+        self.assertEqual(_run("physical", workspace, "candidate").returncode, 0)
+        result = _run("evaluate", workspace, workspace / "state" / "policy.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        evaluation = json.loads((workspace / "state" / "evaluation.json").read_text())
+
+        # The whole point: recognized as FIXED, never miscounted as missing, even
+        # though this generation's own full STA never reported it at all.
+        self.assertEqual(core.value_of(evaluation["fixedCheckCount"]), 1)
+        self.assertEqual(core.value_of(evaluation["missingPriorCheckCount"]), 0)
+        self.assertIn(check_key, evaluation["comparison"]["fixed"])
+
+    def test_a_failed_recheck_makes_the_counts_unknown_not_a_false_missing_prior(self):
+        workspace = self.workspace
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        self.assertEqual(_run("baseline", workspace, workspace / "manifest.json").returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+
+        regressed_scenario = REQUIRED_SCENARIOS[0]
+        endpoint = "U_UNRESOLVED/D"
+        baseline_observation = self._baseline_observation_with_one_violation(
+            workspace, baseline, regressed_scenario, endpoint, -0.05,
+        )
+        core.write_artifact(workspace / "state" / "observation.json", baseline_observation)
+        contract_dir = _analysis_contract_dir(workspace)
+        self.assertEqual(_run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
+        drc_path, connectivity_path = workspace / "b-drc.rpt", workspace / "b-conn.rpt"
+        _write_text(drc_path, fixtures.drc_report([]))
+        _write_text(connectivity_path, fixtures.connectivity_report([]))
+        self.assertEqual(_run("physical", workspace, drc_path, connectivity_path, "baseline").returncode, 0)
+
+        contribution, work_package = self._build_fix_contribution(baseline, instance="U1")
+        _write_json(workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
+        facts = composition.analyze(baseline["id"], [contribution], [])
+        plan_raw = {
+            "batchId": "batch-U1", "baseStateId": baseline["id"], "select": [contribution["id"]],
+            "resolutions": [], "deferred": [], "reason": "single fix",
+        }
+        plan = integration.validate_plan(plan_raw, facts)
+        request = integration.prepare_replay(plan, facts, [contribution])
+        step = request["steps"][0]
+        receipt = {
+            "stepId": step["stepId"], "status": "ok",
+            "observedDelta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        }
+        edit_domains = {contribution["id"]: work_package["editDomain"]}
+        integration_state = integration.reconcile(request, [receipt], edit_domains)
+        core.write_artifact(workspace / "state" / "composition-facts.json", facts)
+        core.write_artifact(workspace / "state" / "replay-request.json", request)
+        core.write_artifact(workspace / "state" / "integration-state.json", integration_state)
+
+        merge_commit = integration.seal_batch(integration_state, request, facts, [contribution])
+        merge_id = merge_commit["id"]
+        impl_root = workspace / "implementations" / merge_id
+        (impl_root / "DBS").mkdir(parents=True, exist_ok=True)
+        (impl_root / "DBS" / "top.enc").write_bytes(f"database for {merge_id}".encode("utf-8"))
+        _sha256_matching_empty_directory(impl_root / "DBS" / "top.enc.dat")
+        _write_text(impl_root / "EXPORT" / "design.def", "DEF placeholder\n")
+        _write_text(impl_root / "EXPORT" / "design.v", "module top(); endmodule\n")
+        _write_text(impl_root / "RPT" / "verify_drc.rpt", fixtures.drc_report([]))
+        _write_text(impl_root / "RPT" / "verify_connectivity.rpt", fixtures.connectivity_report([]))
+
+        site_profile_path = _site_profile_path(workspace)
+        current_state_path = workspace / "current-state.json"
+        _write_json(current_state_path, baseline)
+        self.assertEqual(_run("implement", workspace, current_state_path, site_profile_path).returncode, 0)
+
+        for corner in (CORNER,):
+            _write_text(impl_root / "starrc" / corner / f"top.{corner}.spef", "*SPEF IEEE 1481-1999\n")
+        corners_path = workspace / "corners.json"
+        _write_json(corners_path, {"corners": [CORNER]})
+        self.assertEqual(_run("extract", workspace, corners_path, site_profile_path).returncode, 0)
+
+        for scenario in REQUIRED_SCENARIOS:
+            _write_report_set(impl_root / "sta" / scenario, _clean_reports())
+        # Deliberately never pre-seed the recheck report -- the fake wrapper produces
+        # nothing, so the targeted query "fails" (no report at the expected path).
+
+        query_spec_path = workspace / "query-spec.json"
+        _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
+        scenario_corners_path = workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        base_design_state_path = workspace / "base-design-state.json"
+        _write_json(base_design_state_path, baseline)
+        self.assertEqual(
+            _run("sta", workspace, query_spec_path, scenario_corners_path,
+                 base_design_state_path, site_profile_path).returncode,
+            0,
+        )
+        sta = json.loads((workspace / "state" / "sta.json").read_text())
+        self.assertFalse(sta["recheckComplete"])
+        self.assertTrue(sta.get("recheckNotes"))
+
+        self.assertEqual(_run("physical", workspace, "candidate").returncode, 0)
+        result = _run("evaluate", workspace, workspace / "state" / "policy.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        evaluation = json.loads((workspace / "state" / "evaluation.json").read_text())
+
+        # An incomplete recheck must never let a real count through -- neither a
+        # false "fixed" nor a false "missingPrior".
+        self.assertFalse(core.is_known(evaluation["fixedCheckCount"]))
+        self.assertFalse(core.is_known(evaluation["missingPriorCheckCount"]))
+
+
 class ReconcileIgnoresRewrittenWorkPackageTest(unittest.TestCase):
     """Task 12c item 2: `reconcile` takes each contribution's edit domain from
     `state/workers.json[slot]["workPackage"]["editDomain"]`, never from a

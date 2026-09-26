@@ -34,8 +34,16 @@ foreach target $::ATCS_QUERY_TARGETS {
     set endpoint [lindex $target 1]
     set report_name [lindex $target 2]
     redirect $env(REPORT_ROOT)/$report_name.rpt {
+        # -significant_digits 4 (same knob, same default-2 rule as report_timing(2)/
+        # report_global_timing(2), PT X-2025.06 man page, read-only verified -- see
+        # pt-scenario.tcl's own comment) -- a genuinely fixed or still-violating
+        # targeted check must not display as a bare "0.00"/"-0.00" that
+        # atcs.adapters.parse_query_slack could misread; PT's own MET/VIOLATED
+        # verdict plus its "increase significant digits" annotation remain the
+        # actual fail-closed backstop either way.
         report_timing -from $startpoint -to $endpoint -path_type full_clock_expanded \
-            -input_pins -nets -transition_time -capacitance -max_paths 1
+            -input_pins -nets -transition_time -capacitance -max_paths 1 \
+            -significant_digits 4
     }
 }
 exit

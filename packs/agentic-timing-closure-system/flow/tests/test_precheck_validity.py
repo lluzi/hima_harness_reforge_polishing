@@ -368,6 +368,52 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(evaluation["missingPriorCheckCount"], core.known(0))
         self.assertEqual(evaluation["comparison"]["fixed"], [core.check_key("func_ssg_rcworst_m40", "setup", "EP1")])
 
+    def test_recheck_in_receipts_resolves_a_check_missing_from_the_top_n_worst_paths(self):
+        """I5 (final review): a parent violator that this generation's own full STA no
+        longer happened to report among its worst-N paths (because it is now genuinely
+        fixed) must be recognized as fixed via `receipts["recheck"]`, never defaulted
+        to `missingPrior` just because `compare_checks` never saw it in `current`."""
+        receipts = _base_receipts()
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "EP1")
+        prior_observation = {"checks": {key: {"slack": core.known(-0.02), "startpoint": "SP1", "pathGroup": "g"}}}
+        receipts["recheck"] = {key: core.known(0.01)}  # now genuinely fixed
+
+        evaluation = verification.assemble(self.plan, receipts, prior_observation, self.baseline_physical)
+
+        self.assertEqual(evaluation["fixedCheckCount"], core.known(1))
+        self.assertEqual(evaluation["missingPriorCheckCount"], core.known(0))
+
+    def test_no_recheck_in_receipts_behaves_exactly_as_before(self):
+        """Every pre-I5 caller (every existing call site) never sets `receipts["recheck"]`
+        at all -- `assemble` must behave exactly as it always did."""
+        receipts = _base_receipts()
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "EP1")
+        prior_observation = {"checks": {key: {"slack": core.known(-0.02), "startpoint": "SP1", "pathGroup": "g"}}}
+
+        evaluation = verification.assemble(self.plan, receipts, prior_observation, self.baseline_physical)
+
+        self.assertEqual(evaluation["missingPriorCheckCount"], core.known(1))
+        self.assertEqual(evaluation["fixedCheckCount"], core.known(0))
+
+    def test_incomplete_recheck_makes_fixed_and_missing_prior_counts_unknown(self):
+        """I5: when `sta` itself could not confirm the recheck covered every one of the
+        parent's own violators (a bound truncation or a query/parse failure),
+        `fixedCheckCount`/`missingPriorCheckCount` must not claim a precise count the
+        evidence cannot actually back up, even though `comparison`'s own raw lists are
+        still reported (the honest, unresolved evidence itself, not a summary count)."""
+        receipts = _base_receipts()
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "EP1")
+        prior_observation = {"checks": {key: {"slack": core.known(-0.02), "startpoint": "SP1", "pathGroup": "g"}}}
+        receipts["recheck"] = {}  # nothing actually came back
+        receipts["recheckIncomplete"] = True
+        receipts["recheckIncompleteReason"] = "pt-query failed"
+
+        evaluation = verification.assemble(self.plan, receipts, prior_observation, self.baseline_physical)
+
+        self.assertFalse(core.is_known(evaluation["fixedCheckCount"]))
+        self.assertFalse(core.is_known(evaluation["missingPriorCheckCount"]))
+        self.assertEqual(evaluation["comparison"]["missingPrior"], [key])
+
     def test_no_baseline_unconstrained_data_never_changes_coverage(self):
         """I6 (final review): omitting `baseline_unconstrained` (the default, `None`) is a
         caller that has no comparison to offer at all -- never the same thing as a caller
