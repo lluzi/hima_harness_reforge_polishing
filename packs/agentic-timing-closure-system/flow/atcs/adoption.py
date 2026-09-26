@@ -196,14 +196,16 @@ Guard order in `publish`
    matter what the rest of the evaluation claims. `stateId ==
    parentStateId` refuses `"self-parent"` — a state can never be its own
    parent, no matter how the rest of the evaluation looks. Finally,
-   `stateId` must not already name a *different* evaluation's pointer entry
-   anywhere in `history` — a state id claimed by two distinct evaluations
-   is impossible if ids are genuinely content-derived, so this refuses
-   `"state-id-reused"` rather than silently let a second evaluation ride
-   on an id it doesn't actually own. (Note: the *same* evaluation
-   reappearing here is guard 1's idempotency case, already returned by the
-   time guard 2 runs — this check only ever sees an `evaluationId`
-   mismatch.)
+   `stateId` must not already be spoken for: either it equals
+   `policy["baselineStateId"]` itself (a candidate may not claim to *be*
+   the Campaign's declared baseline state), or it already names a
+   *different* evaluation's pointer entry anywhere in `history` — a state
+   id claimed by two distinct evaluations is impossible if ids are
+   genuinely content-derived. Either case refuses `"state-id-reused"`
+   rather than silently let a second claimant ride on an id it doesn't
+   actually own. (Note: the *same* evaluation reappearing here is guard 1's
+   idempotency case, already returned by the time guard 2 runs — this
+   check only ever sees an `evaluationId` mismatch.)
 3. **Compare-and-swap** — see above; refuses `"stale-base"`.
 4. **Verification** (`final-evidence-ready`'s two Judge nodes, read
    directly off the evaluation) — `missingRequiredCheckCount` and
@@ -240,38 +242,36 @@ Guard order in `publish`
    this Pack has ever verified*, not "has not yet reached `policy['goal']`"
    — most evaluations published over a campaign have not reached the final
    goal yet, and that is the normal, expected case that never needs
-   `allowDegradedWorking` at all. The anchor is: `pointers["best"]` when
-   set; otherwise the *first* `working` pointer value ever recorded in
-   `history` (**not** the current, possibly-since-moved `working`) — using
-   the live `working` here would let a sequence of small, each-individually
-   -within-limit steps accumulate into unbounded drift before `best` is
-   ever set, exactly the bug this anchor choice closes; otherwise, when
-   `history` has no `working` entry at all yet (the pointers file is
-   genuinely empty — the very first publish ever for it),
-   `policy["baselineMinWns"]` — the Campaign's declared baseline
-   observation's `min(setup, hold)` WNS, required (as a finite number) at
-   this point exactly like `policy["baselineStateId"]` is
-   (`AtcsError("invalid-policy", ...)` if missing — a configuration error,
-   not a candidate-level refusal). Unlike round 1/2's design, this anchor
-   is now *always* a real number by this point — there is no "no anchor at
-   all, gate never fires" case left; a first-ever publish is bounded
-   against the Campaign's actual starting point just as much as any later
-   one is bounded against `best`. Two independent signals can trigger
-   degradation: (a) a real step backward in WNS — `regression =
-   anchor_min - min(finalSetupWns, finalHoldWns)`, only a trigger when
-   `> 0`; and (b) a known, nonzero `constraintFailureCount` (already capped
-   by guard 6 above) — a candidate that regresses a physical constraint is
-   degraded even when its WNS alone looks fine, including on the very
-   first publish. Either signal firing requires
+   `allowDegradedWorking` at all. The anchor is: `pointers["best"]["minWns"]`
+   when `best` is set; otherwise `policy["baselineMinWns"]` — the Campaign's
+   declared baseline observation's `min(setup, hold)` WNS — **whenever**
+   `best` is `None`, not only on a genuinely empty pointers file: this is
+   deliberately *not* the current (or first-ever) `working` value, because
+   bounding against a moving or once-off `working` snapshot instead of the
+   fixed, externally-declared baseline is exactly what let a sequence of
+   small, each-individually-within-limit steps accumulate into unbounded
+   drift before `best` was ever won — every step while `best` is unset is
+   now bounded against the *same* fixed baseline, not against whatever the
+   last accepted step happened to leave behind.
+   `policy["baselineMinWns"]` is required (as a finite number) at exactly
+   this point — `AtcsError("invalid-policy", ...)` if missing — the same
+   lazy pattern as `policy["baselineStateId"]`, and, like it, needed for
+   every publish while `best` is unset, not merely the very first one. Two
+   independent signals can trigger degradation: (a) a real step backward in
+   WNS — `regression = anchor_min - min(finalSetupWns, finalHoldWns)`, only
+   a trigger when `> 0`; and (b) a known, nonzero `constraintFailureCount`
+   (already capped by guard 6 above) — a candidate that regresses a
+   physical constraint is degraded even when its WNS alone looks fine,
+   including on the very first publish. Either signal firing requires
    `policy["allowDegradedWorking"] is True`, *and* the WNS regression
    specifically (`0` when signal (a) did not fire) must be `<=
    policy["degradeLimitNs"]` — so `working` can never be pushed more than
-   `degradeLimitNs` below the best (or, pre-`best`, the first `working`, or
-   pre-that, the declared baseline) this Pack has ever verified: repeated
-   small steps that would each individually pass a *working-relative*
-   bound cannot silently accumulate into an unbounded drift, because every
-   step is bounded against the same fixed anchor instead of chasing the
-   last step. Otherwise: refused (`"degraded-working-not-allowed"` /
+   `degradeLimitNs` below the best `best` this Pack has ever verified, or,
+   before any `best` exists, below the declared baseline: repeated small
+   steps that would each individually pass a *working-relative* bound
+   cannot silently accumulate into an unbounded drift, because every step
+   is bounded against the same fixed anchor instead of chasing the last
+   step. Otherwise: refused (`"degraded-working-not-allowed"` /
    `"degrade-limit-exceeded"`).
 
 Once all guards pass, `working` always moves to this candidate. Two
@@ -285,28 +285,29 @@ require `best` to have just moved too, though in practice it usually has):
   is exactly `required-constraints-pass`; a `constraintFailureCount` that
   is unknown or `> 0` therefore can never win `best` — the unknown case is
   already excluded entirely by guard 5, and the known-nonzero case fails
-  this check directly), *and* one of three comparisons depending on
-  `pointers["best"]`'s own state:
+  this check directly), *and*, depending on `pointers["best"]`'s own state:
   - `best` already set — this candidate must compare as *better* per the
     brief's fixed comparison policy: higher `min(finalSetupWns,
     finalHoldWns)` wins; a tie breaks on fewer `failingTimingChecks`; a
     `None` `failingTimingChecks` (missing comparison lists) counts as
     `+inf` and so can never win a tie; a full tie on *both* metrics — the
     incumbent keeps `best`, since nothing here is a strict improvement.
-  - `best` never set, and this *is* the true-bootstrap case (guard 8's
-    `policy["baselineMinWns"]` anchor) — this candidate must *not* be
-    WNS-degraded relative to that baseline (`min(finalSetupWns,
-    finalHoldWns) >= policy["baselineMinWns"]`): a worse-than-the-Campaign's
-    -own-starting-point candidate may still become `working` under
-    `allowDegradedWorking` (guard 8), but never `best` — `best` must always
-    represent genuine progress over the Campaign's real starting point,
-    never merely "the first candidate that happened to pass constraints".
-  - `best` never set, and a `working` entry already exists (someone earlier
-    reached `working` without ever winning `best`, e.g. via a permitted
-    constraint-based degradation) — any constraints-passing candidate still
-    trivially wins the first real `best`, exactly the original "`None`
-    current `best` always loses" rule, since there is no genuine "verified,
-    constraints-passing" incumbent to compare against yet.
+  - `best` never set — this candidate must *not* be WNS-degraded relative
+    to `policy["baselineMinWns"]` (`min(finalSetupWns, finalHoldWns) >=
+    policy["baselineMinWns"]`, i.e. guard 8's `is_wns_degraded` is
+    `False`): a worse-than-the-Campaign's-own-starting-point candidate may
+    still become `working` under `allowDegradedWorking` (guard 8), but
+    never `best` — `best` must always represent genuine progress over the
+    Campaign's real, externally-declared starting point, never merely "the
+    first candidate that happened to pass constraints" (this reasoning
+    applies uniformly whether this is literally the first publish ever or
+    `working` has already moved several times without `best` ever being
+    won — the comparison is always against the same fixed baseline, never
+    against whatever `working` currently is). A candidate that fails this
+    specific check has its reason recorded as `"below-baseline"`, distinct
+    from the `"not-better-than-current-best"` reason used once `best` is
+    actually set — the two are different failure modes even though both
+    mean "did not win `best`".
 - **`delivery` eligibility** — `required-constraints-pass` *and*
   `finalSetupWns`/`finalHoldWns` both meet `policy["goal"]` *and*
   `artifact_ready` (over the campaign-root-resolved `database` ref) is the
@@ -342,9 +343,12 @@ Decisions: "Record the acceptance-record id in history"). This is also
 exactly what makes idempotent-replay's reconstruction possible: folding
 `history` in order and keeping the latest `"new"` per pointer name, up to
 and including a given `acceptanceRecordId`'s entries, reproduces that
-publish's `pointersAfter` without needing any separate log — and it is
-what lets the degraded-working gate find "the first `working` entry ever
-recorded" (guard 8) directly, without a separate anchor field.
+publish's `pointersAfter` without needing any separate log. `history` also
+lets `_state_id_already_used` (guard 2) scan for a state id already
+claimed by a different evaluation — the degraded-working gate (guard 8),
+by contrast, no longer reads `history` at all now that its anchor while
+`best` is unset is always `policy["baselineMinWns"]`, never a value
+derived from a prior `working` entry.
 
 A `refused` decision — for *any* reason, not only `"stale-base"` — writes
 nothing at all: the pointers file (if any) is left byte-identical, since
@@ -555,33 +559,29 @@ def _decision_for_history(entries):
     return "working-only"
 
 
-def _first_working_entry(history):
-    """The *first* `working` pointer value ever recorded in `history` — the
-    degraded-working anchor while `best` has never been set and at least one
-    `working` entry already exists (see module docstring's guard 8: this is
-    deliberately not the current, possibly since-moved `working`)."""
-    for entry in history:
-        if entry.get("pointer") == "working":
-            return entry.get("new")
-    return None
-
-
 def _require_baseline_min_wns(policy):
     """`policy["baselineMinWns"]` as a finite number, or raise
-    `AtcsError("invalid-policy", ...)` — required at true bootstrap (no
-    `best`, no `working` entry in `history` yet at all; see module
+    `AtcsError("invalid-policy", ...)` — required whenever `pointers["best"]`
+    is `None`, not only on a genuinely empty pointers file (see module
     docstring's guard 8)."""
     value = policy.get("baselineMinWns")
     if value is None or isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-        raise core.AtcsError("invalid-policy", "policy.baselineMinWns is required (as a finite number) for bootstrap")
+        raise core.AtcsError(
+            "invalid-policy", "policy.baselineMinWns is required (as a finite number) while best is unset"
+        )
     return value
 
 
-def _state_id_already_used(history, state_id, evaluation_id):
-    """True when some *other* evaluation (a different `evaluationId`) already
-    recorded `state_id` as a pointer's `"new"` value — a real state id must
-    never be claimed by two distinct evaluations (see module docstring's
-    guard 2's `"state-id-reused"` reason)."""
+def _state_id_already_used(history, state_id, evaluation_id, baseline_state_id=None):
+    """True when `state_id` is already spoken for by something other than
+    this evaluation: either it names the Campaign's own declared
+    `baseline_state_id` (a candidate may not claim to *be* the baseline), or
+    some *other* evaluation (a different `evaluationId`) already recorded it
+    as a pointer's `"new"` value — a real state id must never be claimed by
+    two distinct evaluations (see module docstring's guard 2's
+    `"state-id-reused"` reason)."""
+    if baseline_state_id is not None and state_id == baseline_state_id:
+        return True
     for entry in history:
         new_value = entry.get("new")
         if new_value and new_value.get("stateId") == state_id and entry.get("evaluationId") != evaluation_id:
@@ -643,8 +643,9 @@ def publish(evaluation, expected_base, pointers_path, policy):
     `"schema-mismatch"`/`"identity-mismatch"` when `evaluation` is not a
     genuine, unmodified ``atcs.evaluation/1`` artifact, and
     `"invalid-policy"` when `policy` itself is malformed (including a
-    missing/non-finite `policy["baselineStateId"]`/`policy["baselineMinWns"]`
-    reached at true bootstrap — see module docstring).
+    missing/non-finite `policy["baselineStateId"]`, required whenever
+    `working` is unset, or `policy["baselineMinWns"]`, required whenever
+    `best` is unset — see module docstring).
     """
     policy = _normalize_policy(policy)
     _validate_evaluation_identity(evaluation)
@@ -677,7 +678,7 @@ def publish(evaluation, expected_base, pointers_path, policy):
     if state_id == evaluation.get("parentStateId"):
         return _refuse("self-parent")
 
-    if _state_id_already_used(pointers["history"], state_id, evaluation_id):
+    if _state_id_already_used(pointers["history"], state_id, evaluation_id, policy.get("baselineStateId")):
         return _refuse("state-id-reused")
 
     if evaluation.get("parentStateId") != expected_base:
@@ -708,9 +709,8 @@ def publish(evaluation, expected_base, pointers_path, policy):
     if not wns["known"]:
         return _refuse("wns-unknown")
 
-    baseline_ptr = pointers["best"] or _first_working_entry(pointers["history"])
-    is_true_bootstrap = baseline_ptr is None
-    baseline_min = _require_baseline_min_wns(policy) if is_true_bootstrap else baseline_ptr.get("minWns")
+    best_ptr = pointers["best"]
+    baseline_min = best_ptr.get("minWns") if best_ptr is not None else _require_baseline_min_wns(policy)
     wns_regression = baseline_min - wns["min"]
     is_wns_degraded = wns_regression > 0
     is_constraint_degraded = constraint_failure_value > 0
@@ -732,22 +732,14 @@ def publish(evaluation, expected_base, pointers_path, policy):
     }
 
     constraints_pass = constraint_failure_value == 0
-    if pointers["best"] is not None:
-        best_eligible = constraints_pass and _is_better(new_ptr_value, pointers["best"])
-    elif is_true_bootstrap:
-        # No `best` has ever been won, and this is literally the first
-        # accepted publish for this pointers file: winning `best` requires
-        # actually clearing the campaign's declared baseline, not merely
-        # beating a nonexistent incumbent (see module docstring's guard 8
-        # and the "On bootstrap a candidate becomes best only if its minWns
-        # >= baselineMinWns" business rule).
-        best_eligible = constraints_pass and not is_wns_degraded
+    if best_ptr is not None:
+        best_eligible = constraints_pass and _is_better(new_ptr_value, best_ptr)
     else:
-        # `best` has never been won, but a prior (degraded-but-permitted)
-        # `working` entry already exists -- any constraints-passing
-        # candidate still trivially wins the first real `best`, same as the
-        # original "no current best" rule.
-        best_eligible = constraints_pass
+        # No `best` has ever been won: winning it requires actually clearing
+        # the Campaign's declared baseline, not merely beating a nonexistent
+        # incumbent (see module docstring's guard 8 and the "whenever best is
+        # None, best-eligibility requires minWns >= baselineMinWns" rule).
+        best_eligible = constraints_pass and not is_wns_degraded
 
     ready_measure = _compute_ready(database_ref, policy)
     delivery_eligible = (
@@ -771,7 +763,7 @@ def publish(evaluation, expected_base, pointers_path, policy):
     if is_wns_degraded:
         notes.append("degraded-working-within-limit")
     if constraints_pass and not best_eligible:
-        notes.append("not-better-than-current-best")
+        notes.append("below-baseline" if best_ptr is None else "not-better-than-current-best")
     if constraints_pass and wns["goalMet"] and not delivery_eligible:
         notes.append("artifact-not-ready-for-delivery")
     reason = "; ".join(notes) if notes else "accepted"

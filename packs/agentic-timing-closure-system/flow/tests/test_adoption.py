@@ -450,6 +450,16 @@ class PublishGuardTest(unittest.TestCase):
         self.assertEqual(record["reason"], "state-id-reused")
         self.assertEqual(self.path.read_bytes(), before_bytes)
 
+    def test_state_id_matching_declared_baseline_is_refused_as_reused(self):
+        # A candidate may not claim to *be* the Campaign's own declared
+        # baseline state -- even on a genuinely empty pointers file, where
+        # there is no history entry yet for it to collide with.
+        ev = _evaluation(BASELINE, core.known(0.0), core.known(0.0), parent_state_id="some-parent")
+        record = adoption.publish(ev, "some-parent", self.path, DEFAULT_POLICY)
+        self.assertEqual(record["decision"], "refused")
+        self.assertEqual(record["reason"], "state-id-reused")
+        self.assertFalse(self.path.exists())
+
     # -- Compare-and-swap: parentStateId AND working/baseline must both agree --
 
     def test_stale_base_via_working_mismatch_is_refused_and_file_byte_identical(self):
@@ -712,41 +722,41 @@ class PublishGuardTest(unittest.TestCase):
         pointers = adoption.load_pointers(self.path)
         self.assertEqual(pointers["working"]["stateId"], "state-b")  # unchanged
 
-    def test_degradation_anchor_is_first_working_entry_when_best_still_none(self):
-        # Every published candidate here has a known, nonzero
-        # constraintFailureCount, so `best` (which requires
-        # constraintFailureCount == 0) never gets set at all -- exercising
-        # the "best is None" branch of the anchor across three publishes.
-        policy = _degraded_policy(0.1, max_new_constraint_failures=1)
+    def test_anchor_stays_on_baseline_until_a_best_exists(self):
+        # Round-4 fix: whenever `best` is None the anchor is ALWAYS
+        # policy["baselineMinWns"] -- never a value derived from a prior
+        # `working` entry (that mechanism, "anchor on the first working
+        # entry", was removed: it still let cumulative drift slip through,
+        # since ds-2 below would have been measured against ds-1's -0.25
+        # (regression only 0.09, within the 0.1 limit) instead of against
+        # the fixed -0.2 baseline (regression 0.14, over the limit).
+        policy = dict(DEFAULT_POLICY, allowDegradedWorking=True, degradeLimitNs=0.1, baselineMinWns=-0.2)
 
-        ev_a = _evaluation("state-a", core.known(-0.01), core.known(-0.005), parent_state_id=BASELINE,
-                            constraint_fail=core.known(1))
-        record_a = adoption.publish(ev_a, BASELINE, self.path, policy)
-        self.assertEqual(record_a["decision"], "working-only")
+        ds1 = _evaluation("ds-1", core.known(-0.25), core.known(-0.1), parent_state_id=BASELINE)
+        record1 = adoption.publish(ds1, BASELINE, self.path, policy)
+        self.assertEqual(record1["decision"], "working-only")
+        self.assertIn("below-baseline", record1["reason"])
         pointers = adoption.load_pointers(self.path)
         self.assertIsNone(pointers["best"])
-        self.assertEqual(pointers["working"]["stateId"], "state-a")
+        self.assertEqual(pointers["working"]["stateId"], "ds-1")
 
-        ev_b = _evaluation("state-b", core.known(-0.05), core.known(-0.005), parent_state_id="state-a",
-                            constraint_fail=core.known(1))
-        record_b = adoption.publish(ev_b, "state-a", self.path, policy)
-        self.assertEqual(record_b["decision"], "working-only")
+        # 0.14 below the fixed baseline (-0.2), not 0.09 below ds-1 (-0.25).
+        ds2 = _evaluation("ds-2", core.known(-0.34), core.known(-0.1), parent_state_id="ds-1")
+        record2 = adoption.publish(ds2, "ds-1", self.path, policy)
+        self.assertEqual(record2["decision"], "refused")
+        self.assertEqual(record2["reason"], "degrade-limit-exceeded")
         pointers = adoption.load_pointers(self.path)
+        self.assertEqual(pointers["working"]["stateId"], "ds-1")  # unchanged
         self.assertIsNone(pointers["best"])
-        self.assertEqual(pointers["working"]["stateId"], "state-b")
 
-        # Regression from the CURRENT working (state-b, -0.05) to state-c
-        # (-0.15) is only 0.10 -- exactly at the limit, would pass a
-        # working-relative bound. Regression from the FIRST working entry
-        # ever recorded (state-a, -0.01) is 0.14, past the 0.1 limit.
-        ev_c = _evaluation("state-c", core.known(-0.15), core.known(-0.005), parent_state_id="state-b",
-                            constraint_fail=core.known(1))
-        record_c = adoption.publish(ev_c, "state-b", self.path, policy)
-        self.assertEqual(record_c["decision"], "refused")
-        self.assertEqual(record_c["reason"], "degrade-limit-exceeded")
+        # Above the baseline (-0.2): no degradation at all, and `best`
+        # (still unset) is finally won.
+        ds3 = _evaluation("ds-3", core.known(-0.18), core.known(-0.1), parent_state_id="ds-1")
+        record3 = adoption.publish(ds3, "ds-1", self.path, policy)
+        self.assertEqual(record3["decision"], "best")
         pointers = adoption.load_pointers(self.path)
-        self.assertEqual(pointers["working"]["stateId"], "state-b")  # unchanged
-        self.assertIsNone(pointers["best"])
+        self.assertEqual(pointers["best"]["stateId"], "ds-3")
+        self.assertEqual(pointers["working"]["stateId"], "ds-3")
 
     # -- Tie-break: fewer failing timing checks; missing lists are +inf; a full tie keeps the incumbent --
 
@@ -768,6 +778,9 @@ class PublishGuardTest(unittest.TestCase):
         ev_c = _evaluation("state-c", core.known(-0.01), core.known(-0.005), parent_state_id="state-b")
         record_c = adoption.publish(ev_c, "state-b", self.path, DEFAULT_POLICY)
         self.assertEqual(record_c["decision"], "working-only")
+        # Once `best` is actually set, failing to beat it is a different
+        # reason from failing to clear the baseline while `best` is unset.
+        self.assertIn("not-better-than-current-best", record_c["reason"])
         pointers = adoption.load_pointers(self.path)
         self.assertEqual(pointers["best"]["stateId"], "state-b")
         self.assertEqual(pointers["working"]["stateId"], "state-c")
