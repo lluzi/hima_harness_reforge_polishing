@@ -61,10 +61,7 @@ class ReimplementRefusesStaleBaseTest(cli.TwoRoundFlowTest):
         core.write_artifact(workspace / "state" / "observation.json", cli._baseline_observation(workspace, baseline))
         contract_dir = cli._analysis_contract_dir(workspace)
         self.assertEqual(cli._run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
-        drc_path, connectivity_path = workspace / "b-drc.rpt", workspace / "b-conn.rpt"
-        cli._write_text(drc_path, fixtures.drc_report([]))
-        cli._write_text(connectivity_path, fixtures.connectivity_report([]))
-        self.assertEqual(cli._run("physical", workspace, drc_path, connectivity_path, "baseline").returncode, 0)
+        self.assertEqual(cli._run_physical_baseline(workspace).returncode, 0)
 
         # Round 1: implement, evaluate and adopt a real, single-op fix -- this
         # moves `state/working-state.json` to the adopted candidate's own id.
@@ -252,10 +249,7 @@ class StaLabelsWithCandidateStateIdTest(cli.TwoRoundFlowTest):
         core.write_artifact(workspace / "state" / "observation.json", cli._baseline_observation(workspace, baseline))
         contract_dir = cli._analysis_contract_dir(workspace)
         self.assertEqual(cli._run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
-        drc_path, connectivity_path = workspace / "b-drc.rpt", workspace / "b-conn.rpt"
-        cli._write_text(drc_path, fixtures.drc_report([]))
-        cli._write_text(connectivity_path, fixtures.connectivity_report([]))
-        self.assertEqual(cli._run("physical", workspace, drc_path, connectivity_path, "baseline").returncode, 0)
+        self.assertEqual(cli._run_physical_baseline(workspace).returncode, 0)
 
         candidate_state_id = self._run_implement_round(baseline, instance="U1")
         sta = json.loads((workspace / "state" / "sta.json").read_text())
@@ -296,10 +290,7 @@ class EvaluateComparesAgainstTheCorrectGenerationTest(cli.TwoRoundFlowTest):
         core.write_artifact(workspace / "state" / "observation.json", cli._baseline_observation(workspace, baseline))
         contract_dir = cli._analysis_contract_dir(workspace)
         self.assertEqual(cli._run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
-        drc_path, connectivity_path = workspace / "b-drc.rpt", workspace / "b-conn.rpt"
-        cli._write_text(drc_path, fixtures.drc_report([]))
-        cli._write_text(connectivity_path, fixtures.connectivity_report([]))
-        self.assertEqual(cli._run("physical", workspace, drc_path, connectivity_path, "baseline").returncode, 0)
+        self.assertEqual(cli._run_physical_baseline(workspace).returncode, 0)
 
         # Round 1: a prior observation DOES exist for the baseline (written
         # above) -- the comparison must be known.

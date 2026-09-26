@@ -110,7 +110,7 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 13 | `implement` | currentDesignState(`state/working-state.json`), siteProfile | `integration.seal_batch` then `adapters.compile_innovus_eco_task` + `run_tool` (refuses `stale-base` unless the sealed merge commit's own `parentStateId` equals `currentDesignState["id"]`; refuses `write-once` if `implementations/<mergeId>/`'s own outputs already exist -- C2, final review) | `state/implement.json` |
 | 14 | `extract` | corners, siteProfile | `adapters.compile_starrc_task` + `run_tool` (per corner) | `state/extract.json` |
 | 15 | `sta` | querySpec, scenarioCorners, baseDesignState(`state/working-state.json`), siteProfile, maxPaths(`{from: strategy}`, an upper cap -- I10, final review, same rule as `observe`'s) | `_verified_state_sdc_path` (SDC from `baseDesignState`'s own recorded `sdc[0]`, sha256-verified -- no separate `sdc` argv any more, see "Fix round 2" below) + `state.design_state` (built FIRST, from the implemented outputs -- C5, final review), `adapters.compile_pt_scenario_task` + `run_tool` (per scenario), `state.capture` (each observation labeled with the candidate's OWN new state id, never `baseDesignState`'s), `refresh.record_refresh` (once, on completion) | `state/sta.json` (also archived verbatim to `implementations/<mergeId>/sta.json`, and appends `state/refresh-ledger.json`) |
-| 16 | `physical` | (candidate) mode only; (baseline) drcReport, connectivityReport, mode | (I/O packaging only; candidate mode reads+re-hashes `state/implement.json`'s `drcReport`/`connectivityReport`) | `state/baseline-physical.json` or `state/physical.json` |
+| 16 | `physical` | (candidate) mode only; (baseline) siteProfile, mode (I13: no longer two static rpt paths) | (candidate) I/O packaging only, reads+re-hashes `state/implement.json`'s `drcReport`/`connectivityReport`; (baseline) `adapters.compile_innovus_export_task` + `run_tool` against `state/baseline.json`'s own staged database, same `-limit`/`-error` values `innovus-eco.tcl` uses | `state/baseline-physical.json` or `state/physical.json` |
 | 17 | `evaluate` | policy(`state/policy.json`) | `verification.plan_checks` + `_find_prior_observation_for_state` (picks the prior observation whose own `designStateId` equals the merge commit's `parentStateId`, never just whatever `state/observation.json` currently holds -- C5, final review) + `verification.assemble` | `state/evaluation.json` |
 | 18 | `adopt` | policy(`state/policy.json`) | `adoption.publish` (`expectedBase` from `state/working-state.json`; rewrites `state/working-state.json` whenever `working` moves) | `accepted/latest.json` (envelope: `{"acceptanceRecord","refreshLedger"}` paths) |
 | 19 | `residual` | scenarioCorners(Site-fixed, same file row 4 reads), siteProfile -- see "Task 12c fix round"/"Fix round 2" below | `_residual_candidate_state` (the EVALUATED candidate's own `implementations/<mergeId>/design-state.json` once `state/evaluation.json` exists, never `state/working-state.json`, which may still be the parent for a refused candidate; the working state itself before any evaluation) + `_scenario_pt_inputs` + `adapters.compile_pt_query_task` + `run_tool` (per scenario, bounded to `RESIDUAL_QUERY_BOUND` worst checks) + `adapters.parse_path_detail` then `residual.extract` | `state/residual-cases.json` (also `queryNotes`, a side field) |
@@ -1921,7 +1921,8 @@ def _cmd_sta(workspace, args):
 
 
 def _cmd_physical(workspace, args):
-    """Baseline mode takes report paths via argv; candidate mode reads them from `state/implement.json` (G3).
+    """Baseline mode now runs Innovus itself; candidate mode reads reports from
+    `state/implement.json` (G3).
 
     There is no fixed, literal `state/candidate-verify-drc.rpt`/
     `...-connectivity.rpt` path a Harness output could ever bind (each
@@ -1929,9 +1930,24 @@ def _cmd_physical(workspace, args):
     or `apr/<stage>/<taskId>/` directory) -- `mode == "candidate"` therefore
     takes only `<mode>` and resolves+re-hashes `state/implement.json`'s own
     `drcReport`/`connectivityReport` `{"path","sha256"}` refs instead
-    (`implement`/`apr-run` both write that shape). `mode == "baseline"`
-    is unchanged: the campaign baseline's own physical export has no such
-    per-id state file to read from, so its two report paths stay argv-bound.
+    (`implement`/`apr-run` both write that shape).
+
+    I13 (final review, baseline physical reports): `mode == "baseline"` used
+    to take two Site-authored, argv-bound `.rpt` TEXT files verbatim -- an
+    administrator-composed document this Pack could never itself verify was
+    produced with the same limits/template a real candidate's own
+    `verify_drc -limit 1000000`/`verifyConnectivity ... -error 1000000` run
+    is held to (`innovus-eco.tcl`/`apr-stage.tcl`'s own convention). This Pack
+    now compiles and runs its OWN `innovus-export.tcl` task
+    (`adapters.compile_innovus_export_task`) against the Campaign baseline's
+    own staged database (`state/baseline.json` -- always the ORIGINAL
+    baseline, per `verification.assemble`'s own docstring, never
+    `state/working-state.json`, which `adopt` may since have rewritten),
+    with the identical `-limit`/`-error` values `innovus-eco.tcl` uses, so a
+    later `evaluate` compares the candidate's physical evidence against a
+    same-methodology baseline, not an externally-supplied document of
+    unknown provenance. `mode == "baseline"` now takes `<siteProfile>` in
+    place of the two rpt paths.
     """
     workspace = Path(workspace)
     if len(args) == 1:
@@ -1950,9 +1966,36 @@ def _cmd_physical(workspace, args):
         if core.file_sha256(connectivity_path) != connectivity_ref.get("sha256"):
             raise core.AtcsError("identity-mismatch", f"connectivity report sha256 mismatch at {connectivity_path}")
     else:
-        drc_path, connectivity_path, mode = args
+        site_profile_path, mode = args
         if mode != "baseline":
-            raise InputError("invalid-input", f"a three-argument physical call must be mode 'baseline', got {mode!r}")
+            raise InputError("invalid-input", f"a two-argument physical call must be mode 'baseline', got {mode!r}")
+        site_profile = _read_plain(site_profile_path)
+        baseline = _read_declared(_paths(workspace)["baseline"], "design-state")
+        current_db_path = workspace / baseline["database"]["path"]
+        if core.file_sha256(current_db_path) != baseline["database"]["sha256"]:
+            raise core.AtcsError(
+                "identity-mismatch", f"baseline database at {current_db_path} no longer matches state/baseline.json"
+            )
+        output_root = workspace / "baseline" / "physical"
+        export_task = adapters.compile_innovus_export_task(str(current_db_path), baseline["top"], str(output_root))
+        tcl_path = output_root / "innovus-export.tcl"
+        tcl_path.parent.mkdir(parents=True, exist_ok=True)
+        tcl_path.write_text(export_task["tcl"], encoding="utf-8")
+        log_path = output_root / "innovus-export.log"
+        adapters.run_tool(
+            site_profile,
+            export_task["command"] + [str(tcl_path), "-log", str(log_path), "-overwrite", "-64", "-nowin"],
+            cwd=output_root, log_path=log_path,
+        )
+        # Only the DRC/connectivity reports are consumed here (this mode's whole job);
+        # `compile_innovus_export_task` also names `def`/`netlist` outputs, but nothing
+        # this mode returns needs them, so their existence is not required.
+        for name in ("drc", "connectivity"):
+            path = export_task["outputs"][name]
+            if not Path(path).is_file():
+                raise adapters.AdapterToolError(f"expected baseline physical output missing: {name}={path}", log_path)
+        drc_path = export_task["outputs"]["drc"]
+        connectivity_path = export_task["outputs"]["connectivity"]
     drc_text = _read_text(drc_path)
     connectivity_text = _read_text(connectivity_path)
     body = {"drc": drc_text, "connectivity": connectivity_text}

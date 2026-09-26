@@ -733,7 +733,7 @@ class CliMissingInputExitCodeTest(unittest.TestCase):
         "bind-inputs": ["MISSING/manifest.json", "MISSING/site.json"],
         "baseline": ["MISSING/manifest.json"],
         "risk": ["MISSING/prior.json", "MISSING/current.json", "MISSING/recheck.json"],
-        "physical": ["MISSING/drc.rpt", "MISSING/connectivity.rpt", "baseline"],
+        "physical": ["MISSING/site.json", "baseline"],
         "evaluate": ["MISSING/policy.json"],
         "adopt": ["MISSING/policy.json"],
         "residual": ["MISSING/scenario-corners.json", "MISSING/site.json"],
@@ -748,7 +748,7 @@ class CliMissingInputExitCodeTest(unittest.TestCase):
         "presta": ["MISSING/base.json", "MISSING/corners.json", "MISSING/site.json"],
         "implement": ["MISSING/state.json", "MISSING/site.json"],
         "extract": ["MISSING/corners.json", "MISSING/site.json"],
-        "sta": ["MISSING/query.json", "MISSING/corners.json", "MISSING/base.json", "MISSING/site.json"],
+        "sta": ["MISSING/query.json", "MISSING/corners.json", "MISSING/base.json", "MISSING/site.json", "1000"],
         "observe": ["MISSING/query.json", "MISSING/site.json", "MISSING/scenario-corners.json", "1000"],
         "replay-prepare": ["MISSING/base.json", "MISSING/plan.json", "MISSING/site.json"],
     }

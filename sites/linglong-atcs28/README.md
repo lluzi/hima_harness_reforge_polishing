@@ -29,15 +29,23 @@ real documents into it. `sites/linglong-atcs28/inputs/` holds a template for eac
   subcommand refuses any static file that tries (`AtcsError("invalid-policy", ...)`).
 - `inputs/analysisContract/scenario-corners.json` — the same `{scenario: corner}` map, at the fixed
   name the `presta` and `sta` tools read directly from `${analysisContract}/scenario-corners.json`.
+- `inputs/analysisContract/corners.json` — `{"corners": {corner: templatePath}}` (I1, final review):
+  each RC corner's own Site-provided StarRC command-file template, hashed by `extract` and threaded
+  into the compiled `.cmd` it actually runs. This Site's own copy points at the same
+  `SIGNOFF/STARRC/cworst_T.cmd`/`cbest.cmd` Foundation paths the frozen `linglong-swerv28` Site
+  profile already names.
 - `inputs/siteCapabilities.json` — `edaShell`, `design`, `techLef`, `cellLefGlob`, `pgVerification:
   false` (this Site declares no PG-local-adjust capability, so `pg_local_adjust` stays inadmissible in
   every work package this Campaign plans).
 
 The full `analysisContract` directory the Pack actually reads at run time (`contract.yml`'s own
-description) also needs `query-spec.json`, `corners.json`, `sdc.json`, `scenario-inputs.json`,
-`recheck.json`, `baseline-verify-drc.rpt` and `baseline-verify-connectivity.rpt` — this task's brief
-scoped the written templates to the four documents above; the administrator composes the rest from the
-same Foundation evidence (the EDA guide's §8 "最快找到原始报告" paths) before a real Run.
+description) also needs `query-spec.json`, `recheck.json` — this task's brief scoped the written
+templates to the documents above; the administrator composes the rest from the same Foundation
+evidence (the EDA guide's §8 "最快找到原始报告" paths) before a real Run. `sdc.json` and
+`scenario-inputs.json` are gone (this Pack now reads the SDC and per-scenario PT inputs from the
+design-state itself, never a separate static copy); the Campaign baseline's own DRC/connectivity
+reports are likewise no longer a Site-authored `baseline-verify-*.rpt` document (I13, final review) --
+`physical-baseline` now runs this Pack's own Innovus export against the staged baseline database.
 
 ## Known gaps (read before using this Site for a real Run)
 

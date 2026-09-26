@@ -31,9 +31,10 @@ inputs:
       command-file template, hashed and threaded into extract -- I1, final review), recheck.json,
       policy.json (the static acceptance terms only:
       allowDegradedWorking, degradeLimitNs, maxNewConstraintFailures, scenarioCorners,
-      requiredScenarios; the policy tool refuses a file setting goal or a run-time field),
-      baseline-verify-drc.rpt and baseline-verify-connectivity.rpt (starting-state physical reports).
-      The model never writes it.
+      requiredScenarios; the policy tool refuses a file setting goal or a run-time field).
+      The starting state's own DRC/connectivity reports are no longer a Site-authored document here
+      (I13, final review): physical-baseline runs this Pack's own Innovus export against the staged
+      baseline database instead. The model never writes this directory.
   - name: siteCapabilities
     description: >-
       Site-owned JSON of qualified capabilities and bindings: edaShell (the Site's EDA launch prefix
@@ -258,16 +259,21 @@ tools:
       - ${MAX_PATHS}
 
   - id: physical-baseline
+    recommendedVersion: Innovus 23.14
     file: flow/atcs_cli.py
-    description: Package the starting state's DRC/connectivity reports for the final evaluation's comparison.
-    inputs: [WORKSPACE, ANALYSIS_CONTRACT]
+    description: >-
+      Run this Pack's own Innovus export (M6-adjacent) on the Campaign baseline's staged database to
+      produce its DRC/connectivity reports for the final evaluation's comparison, with the same
+      verify_drc/verifyConnectivity limits a candidate's own implement/apr-run is held to (I13, final
+      review: no longer a Site-authored static report of unproven provenance).
+    inputs: [WORKSPACE, SITE_CAPABILITIES]
+    licences: { innovus: 1 }
     argv:
       - python3
       - ${WORKSPACE}/flow/atcs_cli.py
       - physical
       - ${WORKSPACE}
-      - ${ANALYSIS_CONTRACT}/baseline-verify-drc.rpt
-      - ${ANALYSIS_CONTRACT}/baseline-verify-connectivity.rpt
+      - ${SITE_CAPABILITIES}
       - baseline
 
   - id: risk

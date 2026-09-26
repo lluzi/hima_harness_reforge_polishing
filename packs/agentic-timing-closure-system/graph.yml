@@ -55,7 +55,7 @@ nodes:
     parameters:
       tool: physical-baseline
       arguments:
-        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
   - id: risk-baseline
     kind: act
     parameters:

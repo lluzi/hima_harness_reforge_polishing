@@ -81,6 +81,22 @@ def _site_profile_path(root):
     return path
 
 
+def _run_physical_baseline(workspace, drc_text=None, connectivity_text=None):
+    """I13 (final review): `physical baseline` now runs `adapters.compile_innovus_export_task`
+    itself against `state/baseline.json`'s own staged database -- no real Innovus runs in
+    tests (the fake no-op wrapper), so the exact output path that task computes
+    (`baseline/physical/RPT/verify_{drc,connectivity}.rpt`) is pre-seeded here instead,
+    mirroring this suite's established fake-EDA-wrapper convention."""
+    output_root = workspace / "baseline" / "physical" / "RPT"
+    _write_text(output_root / "verify_drc.rpt", drc_text if drc_text is not None else fixtures.drc_report([]))
+    _write_text(
+        output_root / "verify_connectivity.rpt",
+        connectivity_text if connectivity_text is not None else fixtures.connectivity_report([]),
+    )
+    site_profile_path = _site_profile_path(workspace)
+    return _run("physical", workspace, site_profile_path, "baseline")
+
+
 def _run(subcommand, workspace, *args):
     result = subprocess.run(
         [sys.executable, str(CLI_PATH), subcommand, str(workspace), *[str(a) for a in args]],
@@ -305,11 +321,7 @@ class TwoRoundFlowTest(unittest.TestCase):
         self.assertEqual(policy["baselineStateId"], baseline["id"])
         self.assertAlmostEqual(policy["baselineMinWns"], 0.03)
 
-        baseline_drc_path = workspace / "baseline-verify-drc.rpt"
-        baseline_connectivity_path = workspace / "baseline-verify-connectivity.rpt"
-        _write_text(baseline_drc_path, fixtures.drc_report([]))
-        _write_text(baseline_connectivity_path, fixtures.connectivity_report([]))
-        result = _run("physical", workspace, baseline_drc_path, baseline_connectivity_path, "baseline")
+        result = _run_physical_baseline(workspace)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
         # --- Round 1 ---
@@ -387,10 +399,7 @@ class AdoptConsistencyTest(TwoRoundFlowTest):
         core.write_artifact(workspace / "state" / "observation.json", _baseline_observation(workspace, baseline))
         contract_dir = _analysis_contract_dir(workspace)
         self.assertEqual(_run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
-        drc_path, connectivity_path = workspace / "b-drc.rpt", workspace / "b-conn.rpt"
-        _write_text(drc_path, fixtures.drc_report([]))
-        _write_text(connectivity_path, fixtures.connectivity_report([]))
-        self.assertEqual(_run("physical", workspace, drc_path, connectivity_path, "baseline").returncode, 0)
+        self.assertEqual(_run_physical_baseline(workspace).returncode, 0)
 
         contribution, work_package = self._build_fix_contribution(baseline, instance="U1")
         _write_json(workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
@@ -606,10 +615,7 @@ class StaParentViolatorRecheckTest(TwoRoundFlowTest):
         core.write_artifact(workspace / "state" / "observation.json", baseline_observation)
         contract_dir = _analysis_contract_dir(workspace)
         self.assertEqual(_run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
-        drc_path, connectivity_path = workspace / "b-drc.rpt", workspace / "b-conn.rpt"
-        _write_text(drc_path, fixtures.drc_report([]))
-        _write_text(connectivity_path, fixtures.connectivity_report([]))
-        self.assertEqual(_run("physical", workspace, drc_path, connectivity_path, "baseline").returncode, 0)
+        self.assertEqual(_run_physical_baseline(workspace).returncode, 0)
 
         contribution, work_package = self._build_fix_contribution(baseline, instance="U1")
         _write_json(workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
@@ -710,10 +716,7 @@ class StaParentViolatorRecheckTest(TwoRoundFlowTest):
         core.write_artifact(workspace / "state" / "observation.json", baseline_observation)
         contract_dir = _analysis_contract_dir(workspace)
         self.assertEqual(_run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
-        drc_path, connectivity_path = workspace / "b-drc.rpt", workspace / "b-conn.rpt"
-        _write_text(drc_path, fixtures.drc_report([]))
-        _write_text(connectivity_path, fixtures.connectivity_report([]))
-        self.assertEqual(_run("physical", workspace, drc_path, connectivity_path, "baseline").returncode, 0)
+        self.assertEqual(_run_physical_baseline(workspace).returncode, 0)
 
         contribution, work_package = self._build_fix_contribution(baseline, instance="U1")
         _write_json(workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
@@ -809,13 +812,7 @@ class StaMaxPathsTest(TwoRoundFlowTest):
         contract_dir = _analysis_contract_dir(workspace)
         self.assertEqual(_run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
 
-        baseline_drc_path = workspace / "baseline-verify-drc.rpt"
-        baseline_connectivity_path = workspace / "baseline-verify-connectivity.rpt"
-        _write_text(baseline_drc_path, fixtures.drc_report([]))
-        _write_text(baseline_connectivity_path, fixtures.connectivity_report([]))
-        self.assertEqual(
-            _run("physical", workspace, baseline_drc_path, baseline_connectivity_path, "baseline").returncode, 0
-        )
+        self.assertEqual(_run_physical_baseline(workspace).returncode, 0)
 
         # query-spec.json (built inside `_run_implement_round`) requests `maxPaths: 1000`;
         # a Strategy cap of 7 must win.
@@ -924,6 +921,61 @@ class ExtractStarrcTemplateTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
         payload = json.loads(result.stderr)
         self.assertEqual(payload["code"], "invalid-input")
+
+
+class PhysicalBaselineInnovusTest(unittest.TestCase):
+    """I13 (final review): `physical baseline` runs `adapters.compile_innovus_export_task`
+    against the Campaign baseline's own staged database, with the same verify_drc/
+    verifyConnectivity limits a candidate is held to -- never a Site-authored static
+    document of unproven provenance."""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+        manifest = _make_baseline_manifest(self.workspace)
+        _write_json(self.workspace / "manifest.json", manifest)
+        result = _run("baseline", self.workspace, self.workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_baseline_physical_records_the_reports_the_export_task_actually_produced(self):
+        drc_text = fixtures.drc_report([])
+        connectivity_text = fixtures.connectivity_report([])
+        result = _run_physical_baseline(self.workspace, drc_text=drc_text, connectivity_text=connectivity_text)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        body = json.loads((self.workspace / "state" / "baseline-physical.json").read_text())
+        self.assertEqual(body["drc"], drc_text)
+        self.assertEqual(body["connectivity"], connectivity_text)
+
+    def test_the_rendered_tcl_uses_the_same_limits_the_candidate_eco_uses(self):
+        """`innovus-export.tcl` (baseline) and `innovus-eco.tcl` (candidate) must apply
+        the identical verify_drc/verifyConnectivity limits, or a baseline-vs-candidate
+        physical comparison would not be apples-to-apples."""
+        export_text = (FLOW_DIR / "templates" / "innovus-export.tcl").read_text(encoding="utf-8")
+        eco_text = (FLOW_DIR / "templates" / "innovus-eco.tcl").read_text(encoding="utf-8")
+        self.assertIn("verify_drc -limit 1000000", export_text)
+        self.assertIn("verify_drc -limit 1000000", eco_text)
+        self.assertIn("verifyConnectivity -noAntenna -error 1000000", export_text)
+        self.assertIn("verifyConnectivity -noAntenna -error 1000000", eco_text)
+
+    def test_a_tampered_staged_baseline_database_is_refused(self):
+        baseline = json.loads((self.workspace / "state" / "baseline.json").read_text())
+        (self.workspace / baseline["database"]["path"]).write_bytes(b"tampered")
+        site_profile_path = _site_profile_path(self.workspace)
+        result = _run("physical", self.workspace, site_profile_path, "baseline")
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "identity-mismatch")
+        self.assertFalse((self.workspace / "state" / "baseline-physical.json").exists())
+
+    def test_a_missing_export_output_is_a_tool_failed_exit(self):
+        # No fixture report pre-seeded at all this time -- the fake wrapper is a
+        # genuine no-op, so `compile_innovus_export_task`'s expected output never
+        # actually appears.
+        site_profile_path = _site_profile_path(self.workspace)
+        result = _run("physical", self.workspace, site_profile_path, "baseline")
+        self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "tool-failed")
 
 
 class ReconcileIgnoresRewrittenWorkPackageTest(unittest.TestCase):
@@ -1850,11 +1902,7 @@ class AprPrepareRunTest(unittest.TestCase):
         contract_dir = _analysis_contract_dir(self.workspace)
         result = _run("policy", self.workspace, contract_dir, "0.0", "0.0")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        baseline_drc_path = self.workspace / "baseline-verify-drc.rpt"
-        baseline_connectivity_path = self.workspace / "baseline-verify-connectivity.rpt"
-        _write_text(baseline_drc_path, fixtures.drc_report([]))
-        _write_text(baseline_connectivity_path, fixtures.connectivity_report([]))
-        result = _run("physical", self.workspace, baseline_drc_path, baseline_connectivity_path, "baseline")
+        result = _run_physical_baseline(self.workspace)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def _write_residual_cases(self):
@@ -2476,10 +2524,7 @@ class EvaluateUnconstrainedCoverageTest(TwoRoundFlowTest):
         core.write_artifact(workspace / "state" / "observation.json", _baseline_observation(workspace, baseline))
         contract_dir = _analysis_contract_dir(workspace)
         self.assertEqual(_run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
-        drc_path, connectivity_path = workspace / "b-drc.rpt", workspace / "b-conn.rpt"
-        _write_text(drc_path, fixtures.drc_report([]))
-        _write_text(connectivity_path, fixtures.connectivity_report([]))
-        self.assertEqual(_run("physical", workspace, drc_path, connectivity_path, "baseline").returncode, 0)
+        self.assertEqual(_run_physical_baseline(workspace).returncode, 0)
 
         contribution, work_package = self._build_fix_contribution(baseline, instance="U1")
         _write_json(workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
