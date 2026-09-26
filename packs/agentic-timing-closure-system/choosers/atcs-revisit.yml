@@ -1,0 +1,16 @@
+id: atcs-revisit
+version: "1"
+title: Take the revisit the routing Judges already chose, keeping the bounded worker slots
+# The domain route (observe, research, compose, revise, implement, earlier-apr, a corrected request)
+# is chosen by the Judge chain on tc_next_action and by which Explore node the Run reached; each
+# Explore node has exactly one revisit edge. This chooser never ends the Run: it only carries the
+# Strategy (workerSlots, bound to the three compiled slots) into the next Generation.
+parameter: { name: slots, unit: count }
+reads: {}
+decide:
+  - when: { constraint: PASS }
+    next:
+      workerSlots: slots
+  - when: { constraint: FAIL }
+    next:
+      workerSlots: slots

@@ -1,0 +1,10 @@
+id: setup-goal
+version: "1"
+title: The final worst setup slack over every required check meets the Run's setup target
+parameter: { name: target_setup_wns_ns, unit: ns }
+requires: [{ type: tc_final_setup_wns_ns, mode: setup }]
+subject: { type: tc_final_setup_wns_ns, mode: setup }
+predicate:
+  op: gte
+  threshold: { parameter: target_setup_wns_ns }
+  unit: ns

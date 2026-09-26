@@ -1,0 +1,6 @@
+id: next-action-compose
+version: "1"
+title: The admitted next decision is compose (code 3)
+requires: [{ type: tc_next_action }]
+subject: { type: tc_next_action }
+predicate: { op: eq, threshold: 3, unit: count }

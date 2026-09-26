@@ -1,0 +1,6 @@
+id: final-evidence-ready-coverage
+version: "1"
+title: Every required check and scenario has a valid final analysis
+requires: [{ type: tc_missing_required_check_count }]
+subject: { type: tc_missing_required_check_count }
+predicate: { op: eq, threshold: 0, unit: count }

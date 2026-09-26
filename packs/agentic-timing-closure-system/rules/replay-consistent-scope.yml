@@ -1,0 +1,6 @@
+id: replay-consistent-scope
+version: "1"
+title: No replayed edit landed outside its work package's edit domain
+requires: [{ type: tc_out_of_scope_edit_count }]
+subject: { type: tc_out_of_scope_edit_count }
+predicate: { op: eq, threshold: 0, unit: count }

@@ -1,0 +1,6 @@
+id: continue-or-wait
+version: "1"
+title: The next decision does not require waiting for an external input or scope change
+requires: [{ type: tc_stop_required }]
+subject: { type: tc_stop_required }
+predicate: { op: eq, threshold: 0, unit: count }

@@ -1,0 +1,562 @@
+# Reference graph (SPEC "Run contract", reference-graph behaviour 1-9).
+#
+# Harness facts this graph is shaped by (packages/harness/src/packs.ts, node-turns.ts):
+# - a Judge routes on its FIRST rule only, so every compound SPEC rule is a chain of single-rule Judges;
+# - a graph holds at most one wait node, and an unlabelled UNDETERMINED goes there;
+# - ordinary edges never cycle; every way back is one `revisit: true` edge from an Explore node, and an
+#   Explore node with a chooser has at most one outgoing edge, so each domain route has its own Explore;
+# - an Explore node weighs the last Judge of its Generation, which must list at least two rules whose
+#   verdicts all cite the Generation's latest reading (hence the two-rule routing Judges and re-reads);
+# - there is no `converge` block: SPEC disables score-based convergence; the budget ending is the Runtime's.
+id: agentic-timing-closure-system
+version: "0.1.0"
+entry: bind-inputs
+nodes:
+  # 1. Bind and verify inputs; strict scope.
+  - id: bind-inputs
+    kind: act
+    parameters:
+      tool: bind-inputs
+      arguments:
+        DESIGN_STATE_MANIFEST: { from: input, name: designStateManifest }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: read-readiness
+    kind: act
+    parameters: { observes: inputReadiness }
+  - id: check-inputs
+    kind: judge
+    parameters: { rules: [inputs-ready] }
+
+  # 2. Common baseline and initial observation.
+  - id: baseline
+    kind: act
+    parameters:
+      tool: baseline
+      arguments:
+        DESIGN_STATE_MANIFEST: { from: input, name: designStateManifest }
+  - id: observe-baseline
+    kind: act
+    parameters:
+      tool: observe-baseline
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: physical-baseline
+    kind: act
+    parameters:
+      tool: physical-baseline
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+  - id: risk-baseline
+    kind: act
+    parameters:
+      tool: risk
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+
+  # 3. Diagnose, admit the request, observe.
+  - id: diagnose
+    kind: act
+    parameters: { workshop: diagnose-and-observe }
+  - id: read-observation-request
+    kind: act
+    parameters: { observes: observationRequest }
+  - id: check-observation-request
+    kind: judge
+    parameters: { rules: [request-admissible, request-checked] }
+  - id: retry-diagnose
+    kind: explore
+    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+  - id: observe-query
+    kind: act
+    parameters:
+      tool: observe-query
+      arguments:
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: risk-query
+    kind: act
+    parameters:
+      tool: risk
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+
+  # 4. Plan, prepare three bounded slots, run them sequentially.
+  - id: plan
+    kind: act
+    parameters: { workshop: plan-campaign }
+  - id: read-campaign-plan
+    kind: act
+    parameters: { observes: campaignPlan }
+  - id: check-campaign-plan
+    kind: judge
+    parameters: { rules: [request-admissible] }
+  - id: prepare-workers
+    kind: act
+    parameters:
+      tool: prepare-workers
+      arguments:
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+
+  - id: research-worker-01
+    kind: act
+    parameters: { workshop: research-worker-01 }
+  - id: read-worker-request-01
+    kind: act
+    parameters: { observes: workerRequest01 }
+  - id: check-worker-request-01
+    kind: judge
+    parameters: { rules: [request-admissible] }
+  - id: operate-worker-01
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: w01 } }
+  - id: capture-worker-01
+    kind: act
+    parameters: { tool: capture-contribution, arguments: { SLOT: w01 } }
+  - id: read-worker-result-01
+    kind: act
+    parameters: { observes: workerResult01 }
+
+  - id: research-worker-02
+    kind: act
+    parameters: { workshop: research-worker-02 }
+  - id: read-worker-request-02
+    kind: act
+    parameters: { observes: workerRequest02 }
+  - id: check-worker-request-02
+    kind: judge
+    parameters: { rules: [request-admissible] }
+  - id: operate-worker-02
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: w02 } }
+  - id: capture-worker-02
+    kind: act
+    parameters: { tool: capture-contribution, arguments: { SLOT: w02 } }
+  - id: read-worker-result-02
+    kind: act
+    parameters: { observes: workerResult02 }
+
+  - id: research-worker-03
+    kind: act
+    parameters: { workshop: research-worker-03 }
+  - id: read-worker-request-03
+    kind: act
+    parameters: { observes: workerRequest03 }
+  - id: check-worker-request-03
+    kind: judge
+    parameters: { rules: [request-admissible] }
+  - id: operate-worker-03
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: w03 } }
+  - id: capture-worker-03
+    kind: act
+    parameters: { tool: capture-contribution, arguments: { SLOT: w03 } }
+  - id: read-worker-result-03
+    kind: act
+    parameters: { observes: workerResult03 }
+
+  # 5. Collect, compose, replay from the common base, reconcile.
+  - id: collect
+    kind: act
+    parameters: { tool: collect }
+  - id: read-contribution-index
+    kind: act
+    parameters: { observes: contributionIndex }
+  - id: compose-facts
+    kind: act
+    parameters: { tool: compose-facts }
+  - id: read-composition-facts
+    kind: act
+    parameters: { observes: compositionFacts }
+  - id: compose
+    kind: act
+    parameters: { workshop: compose-contributions }
+  - id: read-integration-plan
+    kind: act
+    parameters: { observes: integrationPlan }
+  - id: check-integration-plan
+    kind: judge
+    parameters: { rules: [request-admissible] }
+  - id: check-composition
+    kind: judge
+    parameters: { rules: [composition-ready] }
+  - id: replay-prepare
+    kind: act
+    parameters:
+      tool: replay-prepare
+      arguments:
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: reconcile
+    kind: act
+    parameters: { tool: reconcile }
+  - id: read-integration-state
+    kind: act
+    parameters: { observes: integrationState }
+  - id: check-replay-mismatch
+    kind: judge
+    parameters: { rules: [replay-consistent-mismatch] }
+  - id: check-replay-scope
+    kind: judge
+    parameters: { rules: [replay-consistent-scope] }
+
+  # 6. Cheap pre-check; an unqualified model routes to the next decision, never to an ending.
+  - id: presta
+    kind: act
+    parameters:
+      tool: presta
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: read-precheck
+    kind: act
+    parameters: { observes: precheckEvidence }
+  - id: check-presta-model
+    kind: judge
+    parameters: { rules: [presta-model-qualified] }
+
+  # 7. One joint implementation and full refresh, then evidence before Goal.
+  - id: implement
+    kind: act
+    parameters:
+      tool: implement
+      arguments:
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: extract
+    kind: act
+    parameters:
+      tool: extract
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: sta
+    kind: act
+    parameters:
+      tool: sta
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: physical-candidate
+    kind: act
+    parameters: { tool: physical-candidate }
+  - id: evaluate
+    kind: act
+    parameters:
+      tool: evaluate
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+  - id: read-final-evaluation
+    kind: act
+    parameters: { observes: finalEvaluation }
+  - id: check-final-coverage
+    kind: judge
+    parameters: { rules: [final-evidence-ready-coverage] }
+  - id: check-final-identity
+    kind: judge
+    parameters: { rules: [final-evidence-ready-identity] }
+  - id: check-constraint-failures
+    kind: judge
+    parameters: { rules: [required-constraints-pass-failures] }
+  - id: check-constraint-unknowns
+    kind: judge
+    parameters: { rules: [required-constraints-pass-unknowns] }
+  - id: check-setup-goal
+    kind: judge
+    parameters:
+      rules: [setup-goal]
+      bind: { target_setup_wns_ns: { from: goal, name: target_setup_wns_ns } }
+  - id: check-hold-goal
+    kind: judge
+    parameters:
+      rules: [hold-goal]
+      bind: { target_hold_wns_ns: { from: goal, name: target_hold_wns_ns } }
+  - id: adopt
+    kind: act
+    parameters:
+      tool: adopt
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+  - id: read-acceptance
+    kind: act
+    parameters: { observes: acceptanceRecord }
+  - id: check-artifact-ready
+    kind: judge
+    parameters: { rules: [artifact-ready] }
+
+  # 8. Residual, experience, next decision and its routing.
+  - id: residual
+    kind: act
+    parameters: { tool: residual }
+  - id: record-experience
+    kind: act
+    parameters: { tool: record-experience }
+  - id: decide-next
+    kind: act
+    parameters: { workshop: evaluate-next-investment }
+  - id: read-next-decision
+    kind: act
+    parameters: { observes: nextDecision }
+  - id: check-next-decision
+    kind: judge
+    parameters: { rules: [request-admissible, request-checked] }
+  - id: revisit-next-decision
+    kind: explore
+    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+  - id: check-continue
+    kind: judge
+    parameters: { rules: [continue-or-wait] }
+
+  - id: route-observe
+    kind: judge
+    parameters: { rules: [next-action-observe, continue-or-wait] }
+  - id: revisit-observe
+    kind: explore
+    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+  - id: route-research
+    kind: judge
+    parameters: { rules: [next-action-research, continue-or-wait] }
+  - id: revisit-research
+    kind: explore
+    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+  - id: route-compose
+    kind: judge
+    parameters: { rules: [next-action-compose, continue-or-wait] }
+  - id: revisit-compose
+    kind: explore
+    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+  - id: route-revise
+    kind: judge
+    parameters: { rules: [next-action-revise, continue-or-wait] }
+  - id: revisit-revise
+    kind: explore
+    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+  - id: route-implement
+    kind: judge
+    parameters: { rules: [next-action-implement, continue-or-wait] }
+  - id: revisit-implement
+    kind: explore
+    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+
+  # 9. Earlier APR: full-flow only, re-checked on a fresh readiness reading.
+  - id: route-earlier-apr
+    kind: judge
+    parameters: { rules: [next-action-earlier-apr, continue-or-wait] }
+  - id: reread-readiness
+    kind: act
+    parameters: { observes: inputReadiness }
+  - id: check-apr-scope
+    kind: judge
+    parameters: { rules: [lifecycle-available, inputs-ready] }
+  - id: revisit-earlier-apr
+    kind: explore
+    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+  - id: apr-prepare
+    kind: act
+    parameters: { tool: apr-prepare, arguments: { STAGE: postroute } }
+
+  # Goal met: every final rule again, over a fresh reading of the current final evaluation.
+  - id: route-goal-met
+    kind: judge
+    parameters: { rules: [next-action-goal-met, continue-or-wait] }
+  - id: reread-final-evaluation
+    kind: act
+    parameters: { observes: finalEvaluation }
+  - id: gm-coverage
+    kind: judge
+    parameters: { rules: [final-evidence-ready-coverage, final-evidence-ready-identity] }
+  - id: gm-identity
+    kind: judge
+    parameters: { rules: [final-evidence-ready-identity, final-evidence-ready-coverage] }
+  - id: gm-constraint-failures
+    kind: judge
+    parameters: { rules: [required-constraints-pass-failures, required-constraints-pass-unknowns] }
+  - id: gm-constraint-unknowns
+    kind: judge
+    parameters: { rules: [required-constraints-pass-unknowns, required-constraints-pass-failures] }
+  - id: gm-setup
+    kind: judge
+    parameters:
+      rules: [setup-goal, hold-goal]
+      bind:
+        target_setup_wns_ns: { from: goal, name: target_setup_wns_ns }
+        target_hold_wns_ns: { from: goal, name: target_hold_wns_ns }
+  - id: gm-hold
+    kind: judge
+    parameters:
+      rules: [hold-goal, setup-goal]
+      bind:
+        target_setup_wns_ns: { from: goal, name: target_setup_wns_ns }
+        target_hold_wns_ns: { from: goal, name: target_hold_wns_ns }
+  - id: gm-artifact
+    kind: judge
+    parameters: { rules: [artifact-ready, final-evidence-ready-coverage] }
+  - id: goal-met-gate
+    kind: judge
+    parameters:
+      rules:
+        - final-evidence-ready-coverage
+        - setup-goal
+        - hold-goal
+        - final-evidence-ready-identity
+        - required-constraints-pass-failures
+        - required-constraints-pass-unknowns
+        - artifact-ready
+      bind:
+        target_setup_wns_ns: { from: goal, name: target_setup_wns_ns }
+        target_hold_wns_ns: { from: goal, name: target_hold_wns_ns }
+  - id: close-on-goal
+    kind: explore
+    parameters: { chooser: atcs-goal-met, bind: { slots: 3 } }
+
+  # The one wait node: missing minimum inputs (inputs-ready FAIL), a next decision requiring an
+  # external input/scope/capability (continue-or-wait FAIL), and every UNDETERMINED verdict.
+  - id: wait-for-person
+    kind: wait
+    parameters: { blocker: scope-or-input-required }
+
+edges:
+  - { from: bind-inputs, to: read-readiness }
+  - { from: read-readiness, to: check-inputs }
+  - { from: check-inputs, to: baseline, outcome: PASS }
+  - { from: check-inputs, to: wait-for-person, outcome: FAIL }
+  - { from: baseline, to: observe-baseline }
+  - { from: observe-baseline, to: physical-baseline }
+  - { from: physical-baseline, to: risk-baseline }
+  - { from: risk-baseline, to: diagnose }
+
+  - { from: diagnose, to: read-observation-request }
+  - { from: read-observation-request, to: check-observation-request }
+  - { from: check-observation-request, to: observe-query, outcome: PASS }
+  - { from: check-observation-request, to: retry-diagnose, outcome: FAIL }
+  - { from: retry-diagnose, to: diagnose, revisit: true }
+  - { from: observe-query, to: risk-query }
+  - { from: risk-query, to: plan }
+
+  - { from: plan, to: read-campaign-plan }
+  - { from: read-campaign-plan, to: check-campaign-plan }
+  - { from: check-campaign-plan, to: prepare-workers, outcome: PASS }
+  - { from: check-campaign-plan, to: decide-next, outcome: FAIL }
+  - { from: prepare-workers, to: research-worker-01 }
+
+  - { from: research-worker-01, to: read-worker-request-01 }
+  - { from: read-worker-request-01, to: check-worker-request-01 }
+  - { from: check-worker-request-01, to: operate-worker-01, outcome: PASS }
+  - { from: check-worker-request-01, to: research-worker-02, outcome: FAIL }
+  - { from: operate-worker-01, to: capture-worker-01 }
+  - { from: capture-worker-01, to: read-worker-result-01 }
+  - { from: read-worker-result-01, to: research-worker-02 }
+
+  - { from: research-worker-02, to: read-worker-request-02 }
+  - { from: read-worker-request-02, to: check-worker-request-02 }
+  - { from: check-worker-request-02, to: operate-worker-02, outcome: PASS }
+  - { from: check-worker-request-02, to: research-worker-03, outcome: FAIL }
+  - { from: operate-worker-02, to: capture-worker-02 }
+  - { from: capture-worker-02, to: read-worker-result-02 }
+  - { from: read-worker-result-02, to: research-worker-03 }
+
+  - { from: research-worker-03, to: read-worker-request-03 }
+  - { from: read-worker-request-03, to: check-worker-request-03 }
+  - { from: check-worker-request-03, to: operate-worker-03, outcome: PASS }
+  - { from: check-worker-request-03, to: collect, outcome: FAIL }
+  - { from: operate-worker-03, to: capture-worker-03 }
+  - { from: capture-worker-03, to: read-worker-result-03 }
+  - { from: read-worker-result-03, to: collect }
+
+  - { from: collect, to: read-contribution-index }
+  - { from: read-contribution-index, to: compose-facts }
+  - { from: compose-facts, to: read-composition-facts }
+  - { from: read-composition-facts, to: compose }
+  - { from: compose, to: read-integration-plan }
+  - { from: read-integration-plan, to: check-integration-plan }
+  - { from: check-integration-plan, to: check-composition, outcome: PASS }
+  - { from: check-integration-plan, to: decide-next, outcome: FAIL }
+  - { from: check-composition, to: replay-prepare, outcome: PASS }
+  - { from: check-composition, to: decide-next, outcome: FAIL }
+  - { from: replay-prepare, to: reconcile }
+  - { from: reconcile, to: read-integration-state }
+  - { from: read-integration-state, to: check-replay-mismatch }
+  - { from: check-replay-mismatch, to: check-replay-scope, outcome: PASS }
+  - { from: check-replay-mismatch, to: decide-next, outcome: FAIL }
+  - { from: check-replay-scope, to: presta, outcome: PASS }
+  - { from: check-replay-scope, to: decide-next, outcome: FAIL }
+
+  - { from: presta, to: read-precheck }
+  - { from: read-precheck, to: check-presta-model }
+  - { from: check-presta-model, to: implement, outcome: PASS }
+  - { from: check-presta-model, to: decide-next, outcome: FAIL }
+
+  - { from: implement, to: extract }
+  - { from: extract, to: sta }
+  - { from: sta, to: physical-candidate }
+  - { from: physical-candidate, to: evaluate }
+  - { from: evaluate, to: read-final-evaluation }
+  - { from: read-final-evaluation, to: check-final-coverage }
+  - { from: check-final-coverage, to: check-final-identity, outcome: PASS }
+  - { from: check-final-coverage, to: residual, outcome: FAIL }
+  - { from: check-final-identity, to: check-constraint-failures, outcome: PASS }
+  - { from: check-final-identity, to: residual, outcome: FAIL }
+  - { from: check-constraint-failures, to: check-constraint-unknowns, outcome: PASS }
+  - { from: check-constraint-failures, to: residual, outcome: FAIL }
+  - { from: check-constraint-unknowns, to: check-setup-goal, outcome: PASS }
+  - { from: check-constraint-unknowns, to: residual, outcome: FAIL }
+  - { from: check-setup-goal, to: check-hold-goal, outcome: PASS }
+  - { from: check-setup-goal, to: adopt, outcome: FAIL }
+  - { from: check-hold-goal, to: adopt, outcome: PASS }
+  - { from: check-hold-goal, to: adopt, outcome: FAIL }
+  - { from: adopt, to: read-acceptance }
+  - { from: read-acceptance, to: check-artifact-ready }
+  - { from: check-artifact-ready, to: residual, outcome: PASS }
+  - { from: check-artifact-ready, to: residual, outcome: FAIL }
+
+  - { from: residual, to: record-experience }
+  - { from: record-experience, to: decide-next }
+  - { from: decide-next, to: read-next-decision }
+  - { from: read-next-decision, to: check-next-decision }
+  - { from: check-next-decision, to: check-continue, outcome: PASS }
+  - { from: check-next-decision, to: revisit-next-decision, outcome: FAIL }
+  - { from: revisit-next-decision, to: decide-next, revisit: true }
+  - { from: check-continue, to: route-observe, outcome: PASS }
+  - { from: check-continue, to: wait-for-person, outcome: FAIL }
+
+  - { from: route-observe, to: revisit-observe, outcome: PASS }
+  - { from: route-observe, to: route-research, outcome: FAIL }
+  - { from: revisit-observe, to: diagnose, revisit: true }
+  - { from: route-research, to: revisit-research, outcome: PASS }
+  - { from: route-research, to: route-compose, outcome: FAIL }
+  - { from: revisit-research, to: plan, revisit: true }
+  - { from: route-compose, to: revisit-compose, outcome: PASS }
+  - { from: route-compose, to: route-revise, outcome: FAIL }
+  - { from: revisit-compose, to: collect, revisit: true }
+  - { from: route-revise, to: revisit-revise, outcome: PASS }
+  - { from: route-revise, to: route-implement, outcome: FAIL }
+  - { from: revisit-revise, to: compose-facts, revisit: true }
+  - { from: route-implement, to: revisit-implement, outcome: PASS }
+  - { from: route-implement, to: route-earlier-apr, outcome: FAIL }
+  - { from: revisit-implement, to: implement, revisit: true }
+
+  - { from: route-earlier-apr, to: reread-readiness, outcome: PASS }
+  - { from: route-earlier-apr, to: route-goal-met, outcome: FAIL }
+  - { from: reread-readiness, to: check-apr-scope }
+  - { from: check-apr-scope, to: revisit-earlier-apr, outcome: PASS }
+  - { from: check-apr-scope, to: revisit-next-decision, outcome: FAIL }
+  - { from: revisit-earlier-apr, to: apr-prepare, revisit: true }
+  - { from: apr-prepare, to: decide-next }
+
+  - { from: route-goal-met, to: reread-final-evaluation, outcome: PASS }
+  - { from: route-goal-met, to: wait-for-person, outcome: FAIL }
+  - { from: reread-final-evaluation, to: gm-coverage }
+  - { from: gm-coverage, to: gm-identity, outcome: PASS }
+  - { from: gm-coverage, to: revisit-next-decision, outcome: FAIL }
+  - { from: gm-identity, to: gm-constraint-failures, outcome: PASS }
+  - { from: gm-identity, to: revisit-next-decision, outcome: FAIL }
+  - { from: gm-constraint-failures, to: gm-constraint-unknowns, outcome: PASS }
+  - { from: gm-constraint-failures, to: revisit-next-decision, outcome: FAIL }
+  - { from: gm-constraint-unknowns, to: gm-setup, outcome: PASS }
+  - { from: gm-constraint-unknowns, to: revisit-next-decision, outcome: FAIL }
+  - { from: gm-setup, to: gm-hold, outcome: PASS }
+  - { from: gm-setup, to: revisit-next-decision, outcome: FAIL }
+  - { from: gm-hold, to: gm-artifact, outcome: PASS }
+  - { from: gm-hold, to: revisit-next-decision, outcome: FAIL }
+  - { from: gm-artifact, to: goal-met-gate, outcome: PASS }
+  - { from: gm-artifact, to: revisit-next-decision, outcome: FAIL }
+  - { from: goal-met-gate, to: close-on-goal, outcome: PASS }
+  - { from: goal-met-gate, to: revisit-next-decision, outcome: FAIL }
+  - { from: close-on-goal, to: diagnose, revisit: true }

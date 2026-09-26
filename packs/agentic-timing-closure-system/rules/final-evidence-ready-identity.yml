@@ -1,0 +1,6 @@
+id: final-evidence-ready-identity
+version: "1"
+title: The final DB, netlist, SPEF and reports belong to one candidate
+requires: [{ type: tc_final_identity_error_count }]
+subject: { type: tc_final_identity_error_count }
+predicate: { op: eq, threshold: 0, unit: count }

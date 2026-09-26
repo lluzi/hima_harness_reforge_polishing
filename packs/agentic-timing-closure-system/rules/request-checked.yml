@@ -1,0 +1,6 @@
+id: request-checked
+version: "1"
+title: The typed request's legality check completed with a count
+requires: [{ type: tc_request_invalid_count }]
+subject: { type: tc_request_invalid_count }
+predicate: { op: gte, threshold: 0, unit: count }

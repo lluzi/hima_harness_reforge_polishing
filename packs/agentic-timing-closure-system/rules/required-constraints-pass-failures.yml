@@ -1,0 +1,6 @@
+id: required-constraints-pass-failures
+version: "1"
+title: No applicable required constraint failed
+requires: [{ type: tc_applicable_constraint_failure_count }]
+subject: { type: tc_applicable_constraint_failure_count }
+predicate: { op: eq, threshold: 0, unit: count }

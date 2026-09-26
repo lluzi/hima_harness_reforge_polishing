@@ -1,0 +1,6 @@
+id: next-action-revise
+version: "1"
+title: The admitted next decision is revise (code 4)
+requires: [{ type: tc_next_action }]
+subject: { type: tc_next_action }
+predicate: { op: eq, threshold: 4, unit: count }

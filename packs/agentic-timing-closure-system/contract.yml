@@ -1,0 +1,647 @@
+id: agentic-timing-closure-system
+version: "0.1.0"
+title: Agentic timing closure system
+status: development
+minimumHarnessVersion: 0.1.0
+
+ontology:
+  aliases:
+    contribution: [ECO contribution, worker contribution]
+    campaign: [closure campaign, timing closure campaign]
+    batch: [integration batch, merge batch]
+
+# SPEC "Run contract" Budget: a finite Site default the user may override; the Pack never widens it.
+# The Run's budget ending is the Runtime's own (SPEC Endings); no converge block exists anywhere.
+budget:
+  timeBoxMs: 86400000
+  closingReserveMs: 1800000
+
+inputs:
+  - name: designStateManifest
+    description: >-
+      JSON manifest of the recoverable Innovus starting state: top, stage, database (.enc and .enc.dat),
+      netlist, DEF, per-corner SPEF, SDC list, tool versions, scenarios, and the optional full-flow
+      lifecycle index. Read by bind-inputs (M1 input_readiness) and baseline (M1 design_state).
+  - name: analysisContract
+    description: >-
+      Read-only directory of the fixed analysis contract, one JSON document per concern, read by the
+      tools at fixed names: query-spec.json (final PBA/coverage query: precision, requiredScenarios,
+      maxPaths, nworst), scenario-corners.json ({scenario: RC corner}), corners.json ({"corners": [...]}),
+      sdc.json ({"sdc": [...]}), scenario-inputs.json (per-scenario PT inputs of the starting state),
+      baseline-source-refs.json (report references of the baseline observation), recheck.json,
+      policy.json (fixed comparison and acceptance policy), baseline-verify-drc.rpt and
+      baseline-verify-connectivity.rpt (starting-state physical reports). The model never writes it.
+  - name: siteCapabilities
+    description: >-
+      Site-owned JSON of qualified capabilities and bindings: edaShell (the Site's EDA launch prefix
+      every EDA-launching subcommand runs through), design, techLef, cellLefGlob (XTop session
+      inputs), pgVerification (whether PG-local edits are admissible) and the declared lifecycle
+      capability. Read as siteCapabilities, siteProfile and edaProfile by atcs_cli.py.
+  - name: workspaceRoot
+    description: Campaign-private output root the Site Permit allows; every Campaign workspace lies under it.
+
+outputs:
+  - name: inputReadiness
+    path: state/readiness.json
+    reader: atcs-readiness
+    description: M1 input-readiness (post-route minimum inputs, strict full-flow/post-route-only scope, lifecycle availability).
+  - name: baselineState
+    path: state/baseline.json
+    description: M1 design-state of the starting database; the common base every batch of this Run is replayed from.
+  - name: currentObservations
+    path: state/observation.json
+    description: M1 observation-set of the latest PT observation (baseline or query); raw reports stay under research/observe/.
+  - name: baselinePhysical
+    path: state/baseline-physical.json
+    description: Starting-state DRC/connectivity report text the final evaluation compares candidate physical checks against.
+  - name: riskAtlas
+    path: state/risk.json
+    description: M1 check-comparison of the current observation (fixed/remaining/entrant/regressed/missing-prior check keys).
+  - name: observationRequest
+    path: research/requests/observation-request.json
+    reader: atcs-observation-request
+    description: The diagnose Workshop's bounded PT query request; its shape is the observe tool's query spec.
+  - name: campaignPlan
+    path: research/requests/campaign-plan.json
+    reader: atcs-work-package
+    description: >-
+      The plan Workshop's campaign plan in the work-package read envelope (candidate = slot w01's
+      work package, plus baseState and siteCapabilities) with every slot's package and rationale.
+  - name: workerManifests
+    path: state/workers.json
+    description: M2 prepared private workspaces of the three worker slots (roots, name prefixes, session Tcl, ops logs).
+  - name: workerRequest01
+    path: research/requests/worker-request-w01.json
+    reader: atcs-worker-request-01
+    description: Slot w01's research request in the worker-request read envelope.
+  - name: workerRequest02
+    path: research/requests/worker-request-w02.json
+    reader: atcs-worker-request-02
+    description: Slot w02's research request in the worker-request read envelope.
+  - name: workerRequest03
+    path: research/requests/worker-request-w03.json
+    reader: atcs-worker-request-03
+    description: Slot w03's research request in the worker-request read envelope.
+  - name: workerResult01
+    path: state/contribution-w01.json
+    reader: atcs-worker-result-01
+    description: Slot w01's sealed M3 Contribution.
+  - name: workerResult02
+    path: state/contribution-w02.json
+    reader: atcs-worker-result-02
+    description: Slot w02's sealed M3 Contribution.
+  - name: workerResult03
+    path: state/contribution-w03.json
+    reader: atcs-worker-result-03
+    description: Slot w03's sealed M3 Contribution.
+  - name: contributionIndex
+    path: state/contributions-collected.json
+    reader: atcs-contribution-index
+    description: Every sealed Contribution plus the slots still pending; a batch does not wait for all of them.
+  - name: compositionFacts
+    path: state/composition-facts.json
+    reader: atcs-composition-facts
+    description: M4 duplicates, conflicts, interactions, stale bases and replay order of the collected Contributions.
+  - name: integrationPlan
+    path: research/requests/integration-plan-review.json
+    reader: atcs-integration-plan
+    description: The compose Workshop's integration plan in the integration-plan read envelope ({plan, facts}).
+  - name: replayRequest
+    path: state/replay-request.json
+    description: M5 replay request (batch id, common base, ordered steps with their XTop Tcl).
+  - name: integrationState
+    path: state/integration-state.json
+    reader: atcs-integration-state
+    description: M5 reconciled replay (applied, failed, pending, replay mismatches, out-of-scope edits).
+  - name: precheckEvidence
+    path: state/presta.json
+    reader: atcs-precheck-evidence
+    description: Stamped cheap pre-check evidence binding the batch's new nets to the SPEF net-name source.
+  - name: mergeCommit
+    path: state/merge-commit.json
+    description: M5 sealed batch relative to its common parent state (operations, Innovus ECO Tcl, source map).
+  - name: implementation
+    path: state/implement.json
+    description: Innovus ECO implementation receipt (database, netlist, DEF identities and report paths).
+  - name: extraction
+    path: state/extract.json
+    description: StarRC SPEF identities per corner for the implemented candidate.
+  - name: finalTiming
+    path: state/sta.json
+    description: Per-scenario PT receipts and the implemented candidate's design-state id.
+  - name: refreshLedger
+    path: state/refresh-ledger.json
+    description: atcs.refresh ledger of completed full physical refreshes (one entry per merge commit).
+  - name: physicalDelta
+    path: state/physical.json
+    description: Candidate DRC/connectivity report text the final evaluation compares against baselinePhysical.
+  - name: finalEvaluation
+    path: state/evaluation.json
+    reader: atcs-evaluation
+    description: M6 evaluation of one candidate; the model never writes its measurements.
+  - name: statePointers
+    path: state/pointers.json
+    description: M7 workingState, bestVerifiedState and deliveryState pointers with their history.
+  - name: acceptanceRecord
+    path: accepted/latest.json
+    reader: atcs-acceptance-record
+    description: Envelope naming the latest M7 acceptance record and the refresh ledger by workspace path.
+  - name: residualCases
+    path: state/residual-cases.json
+    description: Residual cases of the checks still failing (evidence, attempts, limits, suggested stage).
+  - name: aprTask
+    path: apr/postroute/task.json
+    description: The prepared single APR stage task (full-flow only); preparation only, never executed by this Pack.
+  - name: campaignExperience
+    path: state/experience.json
+    description: M8 append-only experience entries (hypothesis, action, conditions, predicted, measured, verdict).
+  - name: nextDecision
+    path: research/requests/next-decision.json
+    reader: atcs-next-decision
+    description: The next-investment Workshop's decision; tc_next_action encodes its action for the routing Judges.
+
+environment:
+  wrappers:
+    - python3
+    - /usr/bin/python3
+    - /data/eda/project/hima_harness/operator-admin/atcs-v1/atcs-xtop-operator.sh
+
+workspace:
+  source: pack
+  copy:
+    - atcs_cli.py
+    - atcs
+    - templates
+
+tools:
+  - id: bind-inputs
+    file: flow/atcs_cli.py
+    description: Bind and verify the declared inputs; decide full-flow or post-route-only (M1 input_readiness).
+    inputs: [WORKSPACE, DESIGN_STATE_MANIFEST, SITE_CAPABILITIES]
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', bind-inputs, '${WORKSPACE}', '${DESIGN_STATE_MANIFEST}', '${SITE_CAPABILITIES}']
+
+  - id: baseline
+    file: flow/atcs_cli.py
+    description: Build the starting design-state from the manifest (M1 design_state).
+    inputs: [WORKSPACE, DESIGN_STATE_MANIFEST]
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', baseline, '${WORKSPACE}', '${DESIGN_STATE_MANIFEST}']
+
+  - id: observe-baseline
+    recommendedVersion: PrimeTime X-2025.06
+    file: flow/atcs_cli.py
+    description: Run the four required PT scenarios on the starting state and capture the baseline observation.
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT, SITE_CAPABILITIES]
+    licences: { primetime: 1 }
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - observe
+      - ${WORKSPACE}
+      - ${ANALYSIS_CONTRACT}/baseline-source-refs.json
+      - ${ANALYSIS_CONTRACT}/query-spec.json
+      - ${SITE_CAPABILITIES}
+      - ${ANALYSIS_CONTRACT}/scenario-inputs.json
+
+  - id: observe-query
+    recommendedVersion: PrimeTime X-2025.06
+    file: flow/atcs_cli.py
+    description: Run the admitted observation request as PT scenario queries and capture the new observation.
+    inputs: [WORKSPACE, SITE_CAPABILITIES]
+    licences: { primetime: 1 }
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - observe
+      - ${WORKSPACE}
+      - ${WORKSPACE}/research/requests/observe-source-refs.json
+      - ${WORKSPACE}/research/requests/observation-request.json
+      - ${SITE_CAPABILITIES}
+      - ${WORKSPACE}/research/requests/observe-scenario-inputs.json
+
+  - id: physical-baseline
+    file: flow/atcs_cli.py
+    description: Package the starting state's DRC/connectivity reports for the final evaluation's comparison.
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT]
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - physical
+      - ${WORKSPACE}
+      - ${ANALYSIS_CONTRACT}/baseline-verify-drc.rpt
+      - ${ANALYSIS_CONTRACT}/baseline-verify-connectivity.rpt
+      - baseline
+
+  - id: risk
+    file: flow/atcs_cli.py
+    description: Compare the current observation's checks into the risk atlas (M1 compare_checks).
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT]
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - risk
+      - ${WORKSPACE}
+      - ${WORKSPACE}/state/observation.json
+      - ${WORKSPACE}/state/observation.json
+      - ${ANALYSIS_CONTRACT}/recheck.json
+
+  - id: prepare-workers
+    file: flow/atcs_cli.py
+    description: Validate the three slot work packages and prepare each slot's private workspace and XTop session Tcl (M2).
+    inputs: [WORKSPACE, SITE_CAPABILITIES]
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - prepare-workers
+      - ${WORKSPACE}
+      - ${WORKSPACE}/state/baseline.json
+      - ${SITE_CAPABILITIES}
+      - ${SITE_CAPABILITIES}
+      - ${WORKSPACE}/research/requests/work-package-w01.json
+      - ${WORKSPACE}/research/requests/work-package-w02.json
+      - ${WORKSPACE}/research/requests/work-package-w03.json
+
+  - id: xtop-operator
+    recommendedVersion: XTop 2025.09.tmp15
+    file: flow/templates/xtop-operator.tcl
+    description: >-
+      One worker slot's qualified XTop Operator session in its private workspace, driven only through
+      the typed atcs_* procedures; every mutation is gated by the slot's edit domain and logged to its
+      ops.jsonl. Interactive only: there is no batch path.
+    inputs: [WORKSPACE, SLOT]
+    licences: { xtop: 1 }
+    interactive:
+      mode: interactive-only
+      adapter: hima-tcl-line-v1
+      argv: [/data/eda/project/hima_harness/operator-admin/atcs-v1/atcs-xtop-operator.sh, '${WORKSPACE}', '${SLOT}']
+      commands:
+        read: [atcs_query_paths, atcs_query_cells]
+        mutate: [atcs_size_cell, atcs_insert_buffer, atcs_delete_buffer]
+        save: [atcs_dump_cells, atcs_export_changes]
+        close: [atcs_close]
+    argv: [/data/eda/project/hima_harness/operator-admin/atcs-v1/atcs-xtop-operator.sh, '${WORKSPACE}', '${SLOT}']
+
+  - id: capture-contribution
+    file: flow/atcs_cli.py
+    description: Seal one slot's actual tool work into a Contribution (M3 seal).
+    inputs: [WORKSPACE, SLOT]
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - capture-contribution
+      - ${WORKSPACE}
+      - ${SLOT}
+      - ${WORKSPACE}/research/requests/capture-${SLOT}-base-ref.json
+      - ${WORKSPACE}/research/requests/capture-${SLOT}-result-refs.json
+      - ${WORKSPACE}/research/requests/capture-${SLOT}-ops.jsonl
+
+  - id: collect
+    file: flow/atcs_cli.py
+    description: Collect every sealed Contribution so far and the slots still pending.
+    inputs: [WORKSPACE]
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', collect, '${WORKSPACE}']
+
+  - id: compose-facts
+    file: flow/atcs_cli.py
+    description: Deterministic composition facts over the collected Contributions (M4 analyze).
+    inputs: [WORKSPACE]
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - compose-facts
+      - ${WORKSPACE}
+      - ${WORKSPACE}/state/baseline.json
+      - ${WORKSPACE}/research/requests/resolutions.json
+
+  - id: replay-prepare
+    recommendedVersion: XTop 2025.09.tmp15
+    file: flow/atcs_cli.py
+    description: Validate the integration plan, prepare the replay request and replay its steps in XTop from the common base (M5).
+    inputs: [WORKSPACE, SITE_CAPABILITIES]
+    licences: { xtop: 1 }
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - replay-prepare
+      - ${WORKSPACE}
+      - ${WORKSPACE}/state/baseline.json
+      - ${WORKSPACE}/research/requests/integration-plan.json
+      - ${SITE_CAPABILITIES}
+
+  - id: reconcile
+    file: flow/atcs_cli.py
+    description: Reconcile replay receipts against expected deltas and each slot's edit domain (M5 reconcile).
+    inputs: [WORKSPACE]
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - reconcile
+      - ${WORKSPACE}
+      - ${WORKSPACE}/research/requests/work-package-w01.json
+      - ${WORKSPACE}/research/requests/work-package-w02.json
+      - ${WORKSPACE}/research/requests/work-package-w03.json
+
+  - id: presta
+    recommendedVersion: PrimeTime X-2025.06
+    file: flow/atcs_cli.py
+    description: Cheap PT pre-check of the batch and its RC-qualification evidence for new nets.
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT, SITE_CAPABILITIES]
+    licences: { primetime: 1 }
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - presta
+      - ${WORKSPACE}
+      - ${WORKSPACE}/state/baseline.json
+      - ${ANALYSIS_CONTRACT}/scenario-corners.json
+      - ${SITE_CAPABILITIES}
+
+  - id: implement
+    recommendedVersion: Innovus 23.14
+    file: flow/atcs_cli.py
+    description: Seal the merge commit and implement it once in Innovus, exporting DB, DEF and netlist.
+    inputs: [WORKSPACE, SITE_CAPABILITIES]
+    licences: { innovus: 1 }
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - implement
+      - ${WORKSPACE}
+      - ${WORKSPACE}/state/baseline.json
+      - ${SITE_CAPABILITIES}
+
+  - id: extract
+    recommendedVersion: StarRC X-2025.06-SP1
+    file: flow/atcs_cli.py
+    description: Extract every declared RC corner of the implemented DEF in a private work directory.
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT, SITE_CAPABILITIES]
+    licences: { starrc: 1 }
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - extract
+      - ${WORKSPACE}
+      - ${ANALYSIS_CONTRACT}/corners.json
+      - ${SITE_CAPABILITIES}
+
+  - id: sta
+    recommendedVersion: PrimeTime X-2025.06
+    file: flow/atcs_cli.py
+    description: Final STA of every required scenario on the new SPEF; records one completed physical refresh.
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT, SITE_CAPABILITIES]
+    licences: { primetime: 1 }
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - sta
+      - ${WORKSPACE}
+      - ${ANALYSIS_CONTRACT}/query-spec.json
+      - ${ANALYSIS_CONTRACT}/sdc.json
+      - ${ANALYSIS_CONTRACT}/scenario-corners.json
+      - ${WORKSPACE}/state/baseline.json
+      - ${SITE_CAPABILITIES}
+
+  - id: physical-candidate
+    file: flow/atcs_cli.py
+    description: Package the implemented candidate's DRC/connectivity reports for the final evaluation.
+    inputs: [WORKSPACE]
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - physical
+      - ${WORKSPACE}
+      - ${WORKSPACE}/state/candidate-verify-drc.rpt
+      - ${WORKSPACE}/state/candidate-verify-connectivity.rpt
+      - candidate
+
+  - id: evaluate
+    file: flow/atcs_cli.py
+    description: Plan the required checks and assemble the candidate's evaluation (M6).
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT]
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', evaluate, '${WORKSPACE}', '${ANALYSIS_CONTRACT}/policy.json']
+
+  - id: adopt
+    file: flow/atcs_cli.py
+    description: Publish the evaluation against the fixed policy and move the working/best/delivery pointers (M7).
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT]
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - adopt
+      - ${WORKSPACE}
+      - ${WORKSPACE}/state/baseline.json
+      - ${ANALYSIS_CONTRACT}/policy.json
+
+  - id: residual
+    file: flow/atcs_cli.py
+    description: Extract residual cases for the checks the evaluated candidate still fails.
+    inputs: [WORKSPACE]
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', residual, '${WORKSPACE}']
+
+  - id: record-experience
+    file: flow/atcs_cli.py
+    description: Append the last decision's predicted and measured outcome to the Campaign experience (M8).
+    inputs: [WORKSPACE]
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - record-experience
+      - ${WORKSPACE}
+      - ${WORKSPACE}/research/requests/experience-lineage.json
+      - ${WORKSPACE}/research/requests/experience-decision.json
+      - ${WORKSPACE}/research/requests/experience-outcome.json
+
+  - id: apr-prepare
+    file: flow/atcs_cli.py
+    description: Compile residual cases into one bounded APR stage intervention task (full-flow only; refused for post-route-only).
+    inputs: [WORKSPACE, STAGE]
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', apr-prepare, '${WORKSPACE}', '${STAGE}']
+
+rules:
+  - inputs-ready
+  - lifecycle-available
+  - request-admissible
+  - request-checked
+  - composition-ready
+  - replay-consistent-mismatch
+  - replay-consistent-scope
+  - presta-model-qualified
+  - final-evidence-ready-coverage
+  - final-evidence-ready-identity
+  - required-constraints-pass-failures
+  - required-constraints-pass-unknowns
+  - setup-goal
+  - hold-goal
+  - artifact-ready
+  - continue-or-wait
+  - next-action-observe
+  - next-action-research
+  - next-action-compose
+  - next-action-revise
+  - next-action-implement
+  - next-action-earlier-apr
+  - next-action-goal-met
+
+goal:
+  target_setup_wns_ns: { type: number, unit: ns, min: 0, max: 1, default: 0 }
+  target_hold_wns_ns: { type: number, unit: ns, min: 0, max: 1, default: 0 }
+
+strategy:
+  workerSlots: { type: number, unit: count, min: 1, max: 3, default: 3 }
+
+words:
+  target_setup_wns_ns: { label: target setup WNS, unit: ns }
+  target_hold_wns_ns: { label: target hold WNS, unit: ns }
+  workerSlots: { label: worker slots, unit: count }
+
+knowledge:
+  - file: method-and-benchmark.md
+    purpose: The confirmed business scope, the B_lazy comparison and the collaborative-merge method, so the Campaign does not collapse into a linear fix loop.
+  - file: state-and-evidence.md
+    purpose: States, coverage, precision, working/best/delivery and unknown, and which evidence may not be mixed.
+  - file: observation-strategy.md
+    purpose: GBA/PBA, path breadth and diversity, Nworst/max_paths and query cost, to decide what to observe next and when to stop.
+  - file: mechanisms-and-falsifiers.md
+    purpose: Cell, net, clock, SI and spatial root causes with their falsifiers and joint windows, for decomposition and real trials.
+  - file: xtop-capabilities.md
+    purpose: The XTop queries, attributes, manual/auto modes and the typed atcs_* procedures a worker session may use.
+  - file: contribution-and-merge.md
+    purpose: Base-relative changes, dependencies and atomic groups, rebase and recovery, for composing complementary Contributions.
+  - file: cheap-verification.md
+    purpose: When a PT pre-check is applicable, why new nets without RC are unqualified, and when a controlled physical trial is worth it.
+  - file: innovus-stage-interventions.md
+    purpose: The verified stage hooks and read-backs that turn a residual case into one bounded APR stage request.
+  - file: lifecycle-and-input-modes.md
+    purpose: The strict full-flow/post-route-only scopes, lifecycle completeness and when an earlier APR stage is justified.
+  - file: experience-transfer.md
+    purpose: Success and failure conditions, predicted versus measured, and version/region applicability of recorded experience.
+
+workshops:
+  - id: diagnose-and-observe
+    purpose: >-
+      Diagnose the current timing problem from the declared baseline state, current observation, risk
+      atlas and experience: name the competing root causes and the cheapest query that separates them.
+      Write the observation request to research/requests/observation-request.json as one JSON object
+      {designStateId, precision (gba|pba), requiredScenarios, maxPaths, nworst} naming the design-state
+      it observes. Also write the query's companion files the observe tool reads:
+      research/requests/observe-source-refs.json ({designStateId, scenarios: {<scenario>: {globalTiming,
+      setupPaths, holdPaths, checkTiming}}} naming, as absolute paths under the Campaign workspace, the
+      global_timing.rpt, setup.rpt, hold.rpt and check_timing.rpt that research/observe/<scenario>/
+      will hold) and research/requests/observe-scenario-inputs.json ({<scenario>: {design, netlist,
+      sdc, spef}} of that design-state, absolute paths). Every required scenario stays in the request; the request never
+      changes frequency, exceptions or required checks. It is a plan, not a measurement.
+    directory: research/diagnose
+    entry: entry.py
+    language: python
+    reads: [baselineState, inputReadiness, currentObservations, riskAtlas, campaignExperience, statePointers]
+    knowledge: [observation-strategy.md, mechanisms-and-falsifiers.md, state-and-evidence.md, experience-transfer.md]
+    produces: observationRequest
+    argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
+
+  - id: plan-campaign
+    purpose: >-
+      Decompose the current problem into exactly three bounded worker work packages (taskId w01, w02,
+      w03), each against the baseline design-state: problem, target check keys, edit domain, protected
+      objects, may-affect checks, admissible actions (size_cell, insert_buffer, delete_buffer, and
+      pg_local_adjust only when siteCapabilities.pgVerification is true) and budget. Write each package
+      to research/requests/work-package-w0N.json. Write the campaign plan to
+      research/requests/campaign-plan.json as {candidate: <w01 package>, baseState: <the stamped
+      baselineState>, siteCapabilities: <the Site capabilities>, workPackages: [<w01>, <w02>, <w03>],
+      rationale}. When starting a new batch, write research/requests/resolutions.json as
+      {"resolutions": []}. Do not repeat a failed trial without new evidence; a slot with nothing
+      worth researching still gets a bounded package whose diagnosis-only outcome is a valid no-fix.
+    directory: research/plan
+    entry: entry.py
+    language: python
+    reads: [baselineState, inputReadiness, currentObservations, riskAtlas, contributionIndex, campaignExperience, statePointers]
+    knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md]
+    produces: campaignPlan
+    argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
+
+  - id: research-worker-01
+    purpose: >-
+      Research worker slot w01 inside its prepared private workspace. Read the slot's prepared
+      manifest, its work package and the recorded evidence; choose the analysis, candidate-generation
+      and manual/auto strategy and the typed atcs_* procedures the Operator session will run. Write the
+      slot's request to research/requests/worker-request-w01.json as {candidate: <the w01 work
+      package, never wider than the prepared edit domain>, baseState: <the stamped baselineState>,
+      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
+      of each>}. A prediction is a hypothesis for the tool to test, never a result.
+    directory: research/worker-01
+    entry: entry.py
+    language: python
+    reads: [baselineState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult01]
+    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
+    produces: workerRequest01
+    argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
+
+  - id: research-worker-02
+    purpose: >-
+      Research worker slot w02 inside its prepared private workspace. Read the slot's prepared
+      manifest, its work package and the recorded evidence; choose the analysis, candidate-generation
+      and manual/auto strategy and the typed atcs_* procedures the Operator session will run. Write the
+      slot's request to research/requests/worker-request-w02.json as {candidate: <the w02 work
+      package, never wider than the prepared edit domain>, baseState: <the stamped baselineState>,
+      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
+      of each>}. A prediction is a hypothesis for the tool to test, never a result.
+    directory: research/worker-02
+    entry: entry.py
+    language: python
+    reads: [baselineState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult02]
+    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
+    produces: workerRequest02
+    argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
+
+  - id: research-worker-03
+    purpose: >-
+      Research worker slot w03 inside its prepared private workspace. Read the slot's prepared
+      manifest, its work package and the recorded evidence; choose the analysis, candidate-generation
+      and manual/auto strategy and the typed atcs_* procedures the Operator session will run. Write the
+      slot's request to research/requests/worker-request-w03.json as {candidate: <the w03 work
+      package, never wider than the prepared edit domain>, baseState: <the stamped baselineState>,
+      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
+      of each>}. A prediction is a hypothesis for the tool to test, never a result.
+    directory: research/worker-03
+    entry: entry.py
+    language: python
+    reads: [baselineState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult03]
+    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
+    produces: workerRequest03
+    argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
+
+  - id: compose-contributions
+    purpose: >-
+      Compose the current batch from the ready Contributions and the deterministic composition facts:
+      select, order, drop duplicates and resolve each conflict locally (keep, drop, or revise with a
+      re-sealed revisedContribution); defer what is not worth waiting for. Write the raw plan
+      {batchId, baseStateId, select, resolutions, deferred, reason} to
+      research/requests/integration-plan.json, the same resolutions to
+      research/requests/resolutions.json as {"resolutions": [...]}, and the review envelope
+      {plan: <that plan>, facts: <the stamped compositionFacts>} to
+      research/requests/integration-plan-review.json. Never split an atomic group without a record;
+      an empty select needs a stated waiting-value reason.
+    directory: research/compose
+    entry: entry.py
+    language: python
+    reads: [contributionIndex, compositionFacts, integrationState, campaignPlan, campaignExperience]
+    knowledge: [contribution-and-merge.md, cheap-verification.md, method-and-benchmark.md]
+    produces: integrationPlan
+    argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
+
+  - id: evaluate-next-investment
+    purpose: >-
+      Decide the next investment from the evidence: pre-check evidence, physical delta, final
+      evaluation, pointers, residual cases, experience and remaining budget. Write one next-decision to
+      research/requests/next-decision.json with stateRef, observationRef, budgetRef, question, action
+      (observe, research, compose, revise, implement, earlier-apr, wait or goal-met), targets, reason,
+      falsifier, costBasis and requiredArtifacts. earlier-apr is legal only when the scope is
+      full-flow; wait names the concrete external input, scope or capability required; goal-met is
+      legal only when the current final evaluation and accepted artifact support it. A temporarily
+      degraded working state must name its follow-up and falsifier. Cite new information; never retry
+      by revision alone.
+    directory: research/next
+    entry: entry.py
+    language: python
+    reads: [inputReadiness, currentObservations, riskAtlas, contributionIndex, integrationState, precheckEvidence, physicalDelta, finalEvaluation, statePointers, residualCases, campaignExperience]
+    knowledge: [method-and-benchmark.md, state-and-evidence.md, cheap-verification.md, lifecycle-and-input-modes.md, innovus-stage-interventions.md, experience-transfer.md]
+    produces: nextDecision
+    argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
