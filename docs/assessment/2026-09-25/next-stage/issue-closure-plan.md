@@ -1,5 +1,11 @@
 # HimaHarness open-Issue closure implementation plan
 
+> **2026-09-26 authority update:** Wave 4's held-out positive-PPA acceptance is superseded by
+> [Final HimaHarness component-integration acceptance](../../2026-09-26/next-stage/final-harness-integration-acceptance.md).
+> Issue #39 now uses the sealed Timing ECO Pack to verify that the upgraded Harness components work
+> together through one Claude Code Desktop Computer Use journey. QoR direction is not a PASS gate.
+> The original Wave 4 text below remains as the dated plan that governed the retained DTCO attempts.
+
 Date: 2026-09-25. Planning source: `58ac5d1e99d44f7f5b5081db8aad05fec4ea1df0`
 on `main`, with the same SHA on `origin/main` when this plan was written.
 

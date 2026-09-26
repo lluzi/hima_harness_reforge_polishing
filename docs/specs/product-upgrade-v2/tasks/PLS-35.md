@@ -1,4 +1,12 @@
-# [PLS-35] 用 aes_cipher_top 完成目标 path Matched Comparison 并发布候选
+# [PLS-35] HimaHarness 组件集成终验
+
+> **现行验收（2026-09-26）：** 本任务不再要求定制 Cell、正向 Fmax、5% 改善或 PPA/ROI
+> 证明。使用已 seal 的 `xtop-timing-closure@1.0.14` 作为稳定真实 workload，由 Claude Code
+> Desktop 仅通过 Computer Use，在 HimaGuide 指导下验证 Preparation、单 Campaign/Run/owner、
+> Live Run、Side Talk/child、typed Operator、暂停恢复、Memory、报告/Data Insight 与诚实终态能够
+> 协同工作。Timing ECO 的数值方向不是 PASS 门。完整现行标准见
+> [Final HimaHarness component-integration acceptance](../../../assessment/2026-09-26/next-stage/final-harness-integration-acceptance.md)。
+> 下文原 held-out/PPA 规格作为历史范围与 DTCO 研究证据保留，已不再控制本 Issue 关闭。
 
 状态：in-progress; first clean L5 reached only +0.193%, so the release gate is reopened for the bounded post-route feedback Campaign and 5% target
 父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
