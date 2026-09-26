@@ -893,19 +893,28 @@ class ResidualPtQueryEvidenceTest(unittest.TestCase):
 
     CHECK_KEY = "func_ssg_rcworst_m40|setup|U_FF_2/D"
 
-    # A real per-arc PT `report_timing` sample (same shape `adapters.
-    # parse_path_detail`'s own fixture test uses): cellDelay 0.08+0.04=0.12,
-    # netDelay 0.10 -- net-delay-dominated is NOT the case here so this
-    # sample is only used to prove evidence comes back *known*; a second,
-    # net-delay-dominated sample below drives the actual hook.
-    NET_DOMINATED_REPORT = """  Point                                                   Fanout     Trans      Cap        Incr       Path
-  ------------------------------------------------------------------------------------------------------------
-  clock core_clock (rise edge)                                                              0.00       0.00
-  U_FF_1/CP (DFQD1BWP)                                                                       0.00       0.00 r
-  U_FF_1/Q (DFQD1BWP)                                          4    0.02      1.50    0.08       0.08 f
-  net1 (net)                                                                                 0.10       0.18 f
-  U_FF_2/D (DFQD1BWP)                                                                        0.00       0.18 f
-  data arrival time                                                                                     0.18
+    # A real per-arc PT `report_timing -input_pins -nets -transition_time
+    # -capacitance` sample, in the grammar cross-checked against a real
+    # Foundation ROUND3 `setup.rpt` (Task 16 real-corpus preflight, same
+    # shape `adapters.parse_path_detail`'s own fixture test uses): the
+    # launching flop's CP arc is net delay (0.00, into the flop from the
+    # clock net), its Q arc is that same instance's cell delay (0.08,
+    # clock-to-Q), `net1`'s own line carries only Fanout/Cap (never a
+    # delay value), and the capturing flop's D arc is net delay again
+    # (0.10, `net1`'s actual wire delay) -- netDelay (0.10) > cellDelay
+    # (0.08), driving `residual.extract`'s own suggestedStage rule below.
+    NET_DOMINATED_REPORT = """  Point                       Fanout    Cap      Trans       Incr       Path
+  -----------------------------------------------------------------------------
+  clock core_clock (rise edge)                               0.00       0.00
+  U_FF_1/CP (DFQD1BWP)
+                              0.00       0.00 &     0.00 r
+  U_FF_1/Q (DFQD1BWP)
+                              0.02       0.08 &     0.08 f
+  net1 (net)
+                              4     1.50
+  U_FF_2/D (DFQD1BWP)
+                              0.03       0.10 &     0.18 f
+  data arrival time                                                     0.18
 """
 
     def setUp(self):

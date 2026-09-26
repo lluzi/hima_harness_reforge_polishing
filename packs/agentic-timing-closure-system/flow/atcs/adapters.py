@@ -49,19 +49,67 @@ the workspace layout decision)
   there; it never inlines that text into the compiled Tcl body itself, so
   the sourced ECO stays inspectable as its own file.
 
-Gaps (fail-closed, reported per this task's brief)
+`parse_path_detail` real-corpus grammar (Task 16)
 -----------------------------------------------------
 
 `parse_path_detail` (residual-evidence `cellDelay`/`netDelay`/`slew`/
-`fanout`/`location` extraction from a targeted `pt-query.tcl` report) is a
-best-effort parser of the standard PrimeTime ``report_timing -input_pins
--nets -transition_time -capacitance`` column layout. Unlike
-`atcs.reports`'s parsers (ported from the old Pack's own tested fixtures),
-no real report sample or upstream test fixture for this specific per-arc
-breakdown was available to this task; every field this parser cannot
-positively identify from a matching line is `unknown` with a reason, never
-guessed, and this should be re-verified against a real report before this
-Pack relies on it for a production residual case.
+`fanout`/`location` extraction from a targeted `pt-query.tcl` report) was
+originally written without a real report sample and has since been
+re-verified against a real Foundation ROUND3 ``setup.rpt``/``hold.rpt``
+corpus (``docs/assessment/2026-09-26/atcs-qualification/corpus-
+preflight.md``) — this Pack's own `pt-query.tcl`/`pt-scenario.tcl` templates
+request the exact same ``report_timing -path_type full_clock_expanded
+-input_pins -nets -transition_time -capacitance`` flags the real corpus was
+generated with, so that grammar is what production will actually feed this
+function. Three things the original best-effort regex got wrong, all fixed
+here:
+
+- A real report wraps any instance/pin name too long to share its line
+  with the value columns onto its own line, leaving the columns alone on
+  the *next* physical line with no name prefix at all — the overwhelming
+  common case for this design's deep hierarchical instance paths. The
+  original single-line regex silently skipped every such arc.
+- Every arc's Incr and Path values have a stray one-character annotation
+  token (observed: ``&``) between them that the original regex's fixed
+  "two trailing numbers only" tail did not tolerate, failing the match
+  outright (so even *unwrapped* short lines like ``clk (in) ...`` never
+  matched either).
+- A net's own line never carries Incr/Path at all — only `Fanout` and
+  (except a path's final, off-chip net) `Cap` — never the five-column
+  `Fanout`/`Trans`/`Cap`/`Incr`/`Path` shape the old regex assumed; when
+  such a two-number net line happened to slip past the old regex's anchored
+  tail, the `Fanout` integer was silently misread as an `Incr` delay value
+  in nanoseconds — a wrong *known* number, not a safe `unknown`. The
+  correct column order is also `Fanout Cap Trans Incr Path` (`Cap` before
+  `Trans`), not `Fanout Trans Cap Incr Path` as the old regex encoded it.
+
+The rewritten parser classifies each arc's numeric tail by *shape* instead
+of by a hand-guessed column layout: a lone bare integer (or an integer plus
+one decimal) is a net's `Fanout`[`+Cap`]; three decimals are a pin/port
+arc's `Trans`/`Incr`/`Path` (PT never prints `Fanout` with a decimal point
+or `Trans`/`Incr`/`Path` without one, so the two shapes never collide).
+This also makes an explicit per-name skip list unnecessary: every non-arc
+report line (headers, dividers, `Startpoint:`/`Endpoint:` lines, the
+clock-path/slack summary block) leaves behind a numeric-token shape that
+never happens to match either recognized pattern, so it is dropped without
+being named.
+
+Whether an arc's `Incr` counts as net or cell delay is decided
+structurally, not by guessing a pin's direction from its name (which is
+cell-library-specific and unknowable in general): the report's own
+recurring unit is *[net info line] -> [that net's receiving pin, net
+delay] -> [that same instance's driving pin, cell delay] -> [next net info
+line]*, so a pin arc immediately preceded by a net-info line (or by the
+very start of the path) is net delay, and a pin arc immediately preceded by
+another pin arc is cell delay. `location` is the last pin arc's own
+instance path (everything before its final `/<pin>` segment — the earlier
+version's `name.split("/")[0]` returned only the top-level block name for
+any deep hierarchical path, which is nearly useless as "a value identifying
+where on the floorplan"; the fix keeps the full instance path up to the
+leaf).
+
+Every field this parser cannot positively identify from a matching line is
+still `unknown` with a reason, never guessed.
 """
 from __future__ import annotations
 
@@ -346,16 +394,68 @@ def compile_pt_query_task(inputs, report_root, targets):
     return {"tcl": tcl, "env": env, "reportNames": report_names, "reports": reports}
 
 
-_ARC_LINE_RE = re.compile(
-    r"^(?P<name>\S+)(?:\s+\((?P<paren>[^)]*)\))?\s+"
-    r"(?:(?P<fanout>\d+)\s+(?P<trans>[\d.]+)\s+(?P<cap>[\d.]+)\s+)?"
-    r"(?P<incr>-?[\d.]+)\s+(?P<path>-?[\d.]+)\s*[rf]?\s*$"
-)
-_SKIP_NAMES = ("clock", "data", "input", "output")
+_ARC_NAME_LINE_RE = re.compile(r"^(?P<name>\S+)(?:\s+\((?P<paren>[^)]*)\))?\s*(?P<rest>.*)$")
+_INT_TOKEN_RE = re.compile(r"^\d+$")
+_FLOAT_TOKEN_RE = re.compile(r"^-?\d+\.\d+$")
+_EDGE_FLAG_RE = re.compile(r"^[rf]$")
+_HAS_WORD_CHAR_RE = re.compile(r"[A-Za-z0-9]")
+
+
+def _classify_arc_values(token_text):
+    """Classify a PT `report_timing -input_pins -nets -transition_time
+    -capacitance` arc's value-column tail as a net row (bare `fanout`,
+    optional `cap`) or a pin/port row (`trans`, `incr`, `path`) -- see
+    module docstring. Returns `None` when the surviving numeric tokens
+    match neither shape, which is how every non-arc line is safely ignored
+    without a name-based skip list.
+    """
+    tokens = token_text.split()
+    if tokens and _EDGE_FLAG_RE.match(tokens[-1]):
+        tokens = tokens[:-1]
+    numeric = [t for t in tokens if _INT_TOKEN_RE.match(t) or _FLOAT_TOKEN_RE.match(t)]
+    if len(numeric) == 1 and _INT_TOKEN_RE.match(numeric[0]):
+        return {"kind": "net", "fanout": int(numeric[0])}
+    if len(numeric) == 2 and _INT_TOKEN_RE.match(numeric[0]) and _FLOAT_TOKEN_RE.match(numeric[1]):
+        return {"kind": "net", "fanout": int(numeric[0])}
+    if len(numeric) == 3 and all(_FLOAT_TOKEN_RE.match(t) for t in numeric):
+        return {"kind": "pin", "trans": float(numeric[0]), "incr": float(numeric[1])}
+    return None
+
+
+def _iter_path_detail_arcs(text):
+    """Yield `(name, classified)` for every arc line in `text`, resolving
+    the "name wraps onto its own line, values follow on the next" shape a
+    real report uses for long instance/pin names (see module docstring).
+    """
+    pending = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if pending is not None:
+            name, _paren = pending
+            pending = None
+            classified = _classify_arc_values(line)
+            if classified is not None:
+                yield name, classified
+                continue
+            # `line` was not actually a values-continuation -- fall through
+            # and re-parse it fresh below.
+        match = _ARC_NAME_LINE_RE.match(line)
+        if not match:
+            continue
+        name, paren, rest = match.group("name"), match.group("paren"), match.group("rest")
+        if not rest:
+            if _HAS_WORD_CHAR_RE.search(name):
+                pending = (name, paren)
+            continue
+        classified = _classify_arc_values(rest)
+        if classified is not None:
+            yield name, classified
 
 
 def parse_path_detail(text):
-    """Best-effort per-arc breakdown of one targeted `report_timing` path (see module docstring "Gaps").
+    """Per-arc breakdown of one targeted `report_timing` path (see module docstring).
 
     Returns ``{"cellDelay","netDelay","slew","fanout","location"}`` Measures.
     A field this parser cannot positively identify from a matching line is
@@ -367,33 +467,30 @@ def parse_path_detail(text):
     have_net = False
     worst_trans = None
     worst_fanout = None
-    last_cell_name = None
-    for raw_line in text.splitlines():
-        match = _ARC_LINE_RE.match(raw_line.strip())
-        if not match:
+    last_location = None
+    prior_was_pin = False
+
+    for name, classified in _iter_path_detail_arcs(text):
+        if classified["kind"] == "net":
+            worst_fanout = max(worst_fanout or 0, classified["fanout"])
+            prior_was_pin = False
             continue
-        name = match.group("name")
-        if name.split("/")[0] in _SKIP_NAMES:
-            continue
-        is_net = match.group("paren") == "net"
-        incr = float(match.group("incr"))
-        if is_net:
-            net_total += incr
-            have_net = True
-        else:
-            cell_total += incr
+        worst_trans = max(worst_trans or 0.0, classified["trans"])
+        last_location = name.rsplit("/", 1)[0]
+        if prior_was_pin:
+            cell_total += classified["incr"]
             have_cell = True
-            last_cell_name = name.split("/")[0]
-        if match.group("trans"):
-            worst_trans = max(worst_trans or 0.0, float(match.group("trans")))
-        if match.group("fanout"):
-            worst_fanout = max(worst_fanout or 0, int(match.group("fanout")))
+        else:
+            net_total += classified["incr"]
+            have_net = True
+        prior_was_pin = True
+
     return {
         "cellDelay": core.known(cell_total) if have_cell else core.unknown("no cell arc parsed"),
         "netDelay": core.known(net_total) if have_net else core.unknown("no net arc parsed"),
         "slew": core.known(worst_trans) if worst_trans is not None else core.unknown("no transition column parsed"),
         "fanout": core.known(worst_fanout) if worst_fanout is not None else core.unknown("no fanout column parsed"),
-        "location": core.known(last_cell_name) if last_cell_name else core.unknown("no cell instance parsed"),
+        "location": core.known(last_location) if last_location else core.unknown("no cell instance parsed"),
     }
 
 
@@ -417,7 +514,9 @@ def compile_pt_presta_task(scenario, inputs, report_root):
     return {"tcl": tcl, "env": env, "globalTiming": str(Path(report_root) / scenario / "global_timing.rpt")}
 
 
+_SPEF_NAME_MAP_RE = re.compile(r"^\*(\d+)\s+(\S+)", re.MULTILINE)
 _SPEF_NET_RE = re.compile(r"^\*D_NET\s+(\S+)", re.MULTILINE)
+_SPEF_ALIAS_RE = re.compile(r"^\*\d+$")
 
 
 def parse_spef_net_names(text):
@@ -426,10 +525,38 @@ def parse_spef_net_names(text):
     Feeds `atcs.verification.presta_qualification`'s `spef_net_names`
     argument directly (its own `None` case: "the SPEF's net-name list
     itself could not be read").
+
+    A real SPEF (confirmed against a real Foundation ROUND3 StarRC
+    ``.spef`` sample) almost always writes each ``*D_NET`` line against a
+    ``*NAME_MAP`` index alias (``*D_NET *1424 13.6978``), never the literal
+    net name directly, per the IEEE 1481 ``*NAME_MAP`` name-compression
+    convention this Pack's own StarRC output actually uses — the alias
+    token itself carries no information about the net's real name, so
+    treating it as the name (as an earlier version of this function did)
+    silently returned the wrong set entirely: every real net name came back
+    as an opaque ``*<digits>`` alias no real `new_nets` request could ever
+    match, making `presta_qualification` mark every real net as
+    "unqualified" regardless of what the SPEF actually models. Every alias
+    token is now resolved through the ``*NAME_MAP`` block (``*<index>
+    <name>``) built from this same text first. A ``*D_NET`` line that names
+    its net literally (no index substitution in play at all) is still
+    supported directly. An alias with no matching ``*NAME_MAP`` entry is
+    dropped, never guessed — `presta_qualification` already treats an
+    absent net as fail-closed "not proven qualified", which is exactly the
+    right outcome for a name this function could not actually resolve.
     """
     if text is None:
         return None
-    return set(_SPEF_NET_RE.findall(text))
+    name_map = {f"*{index}": name for index, name in _SPEF_NAME_MAP_RE.findall(text)}
+    names = set()
+    for token in _SPEF_NET_RE.findall(text):
+        if _SPEF_ALIAS_RE.match(token):
+            resolved = name_map.get(token)
+            if resolved is not None:
+                names.add(resolved)
+        else:
+            names.add(token)
+    return names
 
 
 # ---------------------------------------------------------------------------

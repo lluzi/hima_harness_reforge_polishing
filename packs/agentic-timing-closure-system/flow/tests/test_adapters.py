@@ -31,6 +31,7 @@ sys.path.insert(0, str(TESTS_DIR))
 
 from atcs import core  # noqa: E402
 from atcs import adapters  # noqa: E402
+import fixtures  # noqa: E402
 
 CLI_PATH = FLOW_DIR / "atcs_cli.py"
 TEMPLATES_DIR = FLOW_DIR / "templates"
@@ -445,25 +446,64 @@ class DumpCellsTest(unittest.TestCase):
 
 
 class ParsePathDetailTest(unittest.TestCase):
-    def test_sums_cell_and_net_arcs_and_tracks_worst_transition_and_fanout(self):
-        text = """  Point                                                   Fanout     Trans      Cap        Incr       Path
-  ------------------------------------------------------------------------------------------------------------
-  clock core_clock (rise edge)                                                              0.00       0.00
-  U_FF_1/CP (DFQD1BWP)                                                                       0.00       0.00 r
-  U_FF_1/Q (DFQD1BWP)                                          4    0.02      1.50    0.08       0.08 f
-  net1 (net)                                                                                 0.10       0.18 f
-  U_BUF/A (BUFFD2BWP)                                          1    0.03      0.80    0.05       0.23 f
-  U_BUF/Z (BUFFD2BWP)                                                                        0.04       0.27 f
-  net2 (net)                                                                                 0.02       0.29 f
-  U_FF_2/D (DFQD1BWP)                                                                        0.00       0.29 f
-  data arrival time                                                                                     0.29
-"""
+    """Grammar cross-checked against a real Foundation ROUND3 ``setup.rpt``
+    sample (Task 16, ``docs/assessment/2026-09-26/atcs-qualification/
+    corpus-preflight.md``) via `fixtures.path_detail_report`. Every
+    cell/instance/net name is invented; the shape (wrapped long names, the
+    stray ``&`` annotation, fanout/cap-only net rows) is real.
+    """
+
+    def test_sums_cell_and_net_arcs_from_wrapped_long_names(self):
+        text = fixtures.path_detail_report(
+            [
+                (
+                    "mock_block/mock_leaf_ff_stage1/A", "mock_block/mock_leaf_ff_stage1/Z",
+                    "MOCKBUFX2", 0.02, 0.08, 0.01, 0.05, "n_mock_1", 4, 1.50,
+                ),
+                (
+                    "mock_block/mock_leaf_ff_stage2/A", "mock_block/mock_leaf_ff_stage2/Z",
+                    "MOCKINVX1", 0.03, 0.10, 0.02, 0.04, "n_mock_2", 1, 0.80,
+                ),
+            ],
+            tail_net_fanout=2,
+        )
         detail = adapters.parse_path_detail(text)
-        self.assertAlmostEqual(core.value_of(detail["cellDelay"]), 0.08 + 0.05 + 0.04, places=6)
-        self.assertAlmostEqual(core.value_of(detail["netDelay"]), 0.10 + 0.02, places=6)
+        # Each stage's *input*-pin Incr is that net's delay; its *output*-pin
+        # Incr is the cell's own delay -- see module docstring's net/cell
+        # alternation rule.
+        self.assertAlmostEqual(core.value_of(detail["netDelay"]), 0.08 + 0.10, places=6)
+        self.assertAlmostEqual(core.value_of(detail["cellDelay"]), 0.05 + 0.04, places=6)
         self.assertAlmostEqual(core.value_of(detail["slew"]), 0.03, places=6)
-        self.assertEqual(core.value_of(detail["fanout"]), 4)
-        self.assertEqual(core.value_of(detail["location"]), "U_FF_2")
+        self.assertEqual(core.value_of(detail["fanout"]), 4)  # worst fanout across every net row (stage1's, not the smaller tail net's)
+        self.assertEqual(core.value_of(detail["location"]), "mock_block/mock_leaf_ff_stage2")
+
+    def test_terminal_net_without_cap_does_not_corrupt_delay_totals(self):
+        # Regression: a fanout-only net line (the shape a path's very last,
+        # off-chip net has) must never be misread as a delay value.
+        text = fixtures.path_detail_report(
+            [("mock_a/A", "mock_a/Z", "MOCKAOI21X1", 0.01, 0.02, 0.01, 0.03, "n_mock", 5, 0.20)],
+            tail_net_fanout=9,
+        )
+        detail = adapters.parse_path_detail(text)
+        self.assertAlmostEqual(core.value_of(detail["netDelay"]), 0.02, places=6)
+        self.assertAlmostEqual(core.value_of(detail["cellDelay"]), 0.03, places=6)
+        self.assertEqual(core.value_of(detail["fanout"]), 9)
+
+    def test_short_name_and_values_sharing_one_line_with_annotation(self):
+        # A short name (e.g. a top-level port) fits its values on the same
+        # physical line; the "&" annotation between Incr and Path must not
+        # break the match.
+        text = (
+            "  Point                       Fanout    Cap      Trans       Incr       Path\n"
+            "  -----------------------------------------------------------------------------\n"
+            "  mock_clk (in)                                   0.04       0.02 &     0.02 r\n"
+            "  data arrival time                                                     0.02\n"
+        )
+        detail = adapters.parse_path_detail(text)
+        self.assertAlmostEqual(core.value_of(detail["netDelay"]), 0.02, places=6)
+        self.assertFalse(core.is_known(detail["cellDelay"]))  # only one pin arc: net-delay role, no cell arc at all
+        self.assertAlmostEqual(core.value_of(detail["slew"]), 0.04, places=6)
+        self.assertEqual(core.value_of(detail["location"]), "mock_clk")
 
     def test_unparseable_text_yields_unknown_never_zero(self):
         detail = adapters.parse_path_detail("not a timing report at all\n")
@@ -472,9 +512,25 @@ class ParsePathDetailTest(unittest.TestCase):
 
 
 class ParseSpefNetNamesTest(unittest.TestCase):
-    def test_reads_d_net_records(self):
+    """Grammar cross-checked against a real Foundation ROUND3 StarRC
+    ``.spef`` sample (Task 16, ``docs/assessment/2026-09-26/atcs-
+    qualification/corpus-preflight.md``). Every index and name is invented.
+    """
+
+    def test_resolves_name_map_index_aliases(self):
+        text = fixtures.spef_net_name_map_and_d_nets(
+            {1001: "mock_net_a", 1002: "mock_net_b[3]"},
+            [(1001, 12.34), (1002, 5.6)],
+        )
+        self.assertEqual(adapters.parse_spef_net_names(text), {"mock_net_a", "mock_net_b[3]"})
+
+    def test_literal_d_net_name_used_directly_when_not_index_aliased(self):
         text = "*D_NET n1 1.2\n...\n*D_NET n2 3.4\n"
         self.assertEqual(adapters.parse_spef_net_names(text), {"n1", "n2"})
+
+    def test_unresolvable_alias_is_dropped_not_guessed(self):
+        text = fixtures.spef_net_name_map_and_d_nets({}, [(9999, 1.0)])
+        self.assertEqual(adapters.parse_spef_net_names(text), set())
 
     def test_none_when_unreadable(self):
         self.assertIsNone(adapters.parse_spef_net_names(None))
