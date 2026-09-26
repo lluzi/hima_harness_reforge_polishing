@@ -790,6 +790,14 @@ class SealTests(unittest.TestCase):
                 )
             self.assertEqual(ctx.exception.code, "malformed-input")
 
+    def test_non_dict_result_refs_raise_missing_input(self):
+        base_ref, _prefix = make_base_ref(edit_instances=["U1"])
+        trace = ops_text({"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"})
+        for bad in (None, "x", []):
+            with self.assertRaises(core.AtcsError) as ctx:
+                contributions.seal(base_ref, bad, trace)
+            self.assertEqual(ctx.exception.code, "missing-input")
+
     def test_dependencies_with_invalid_entries_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             base_ref, _prefix = make_base_ref(edit_instances=["U1"])

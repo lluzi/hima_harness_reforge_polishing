@@ -859,12 +859,11 @@ def seal(base_ref, result_refs, operation_trace):
     revision = _require(manifest, "revision", "workspaceManifest")
     name_prefix = _require(manifest, "namePrefix", "workspaceManifest")
 
-    dependencies = _dependencies(result_refs)
-
     operations = parse_ops_log(operation_trace)
 
     before_path = _require(result_refs, "beforeDump", "result_refs")
     after_path = _require(result_refs, "afterDump", "result_refs")
+    dependencies = _dependencies(result_refs)
     before_bytes = _read_dump_bytes(before_path, "beforeDump")
     before_dump_sha256 = hashlib.sha256(before_bytes).hexdigest()
     before = parse_cell_dump(_decode_utf8(before_bytes, before_path, "beforeDump"))
