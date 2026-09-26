@@ -12,10 +12,18 @@ claim timing improvement, PPA benefit, clean signoff, ROI or labor saving.
 ## Fixed identities
 
 - App version: `0.3.0-trial.28`.
-- Existing kit: `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pilot-release-0.3.0-trial.28-fd5c08a`.
+- Prepared acceptance kit:
+  `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/final-harness-integration-trial28-issue52`.
 - App artifact digest: `754c2feb7ee7a3c3ec94e8a486c8e21db7d9d1f5e3657478d9c5cc4e38e393aa`.
 - App manifest SHA-256: `f5d65dfc8bc43447f0bab0e99ab07534f5501c98c022c0878eb66eb00eca311e`.
 - Source SHA: `fd5c08ac0bf79cd0674857c909476a5511477284`.
+- Acceptance authority main SHA: `0f615eedb1cc1457fac88fbbfebe854172e3459c`.
+- Prepared-kit receipt:
+  `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/final-harness-integration-trial28-issue52/acceptance-kit.json`,
+  SHA-256 `a6c3a2ba1bd77d6e0eb233bffcc8dde0cd1b8c43b24d082d1a81721cde932b9e`.
+- No-commercial preflight receipt:
+  `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/final-harness-integration-preflight-issue52-attempt2/evidence.json`,
+  SHA-256 `c96fc04d73ba20cd11b7a94b9915c5e430b93f6068763769e0016c02f803fc02`.
 - Pack: `xtop-timing-closure@1.0.14`.
 - Pack digest: `19207d78dc3b1e9f4fd80f6bd4c21df209f1dfffc5f83fa7afd3ac5c96fd2a92`.
 - Site: `linglong-swerv28`.
@@ -89,4 +97,3 @@ CLAUDE_HANDOFF_READY: <absolute report path>
 
 Use final verdicts `PASS`, `FAIL`, or `BLOCKED`. A valid negative timing result can still be PASS for
 this Harness component-integration acceptance.
-
