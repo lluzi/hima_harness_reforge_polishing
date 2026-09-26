@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -17,6 +17,8 @@ const designTop = 'ibex_core';
 const basePhysical = '/data/eda/project/hima_harness/issue52-dc-qualification-20260924/physical-inputs.json';
 const toolStack = '/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/tool-stack.json';
 const foundryLibrary = '/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib';
+const foundryCdl = '/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Back_End/spice/tcbn28hpcplusbwp40p140_110a/tcbn28hpcplusbwp40p140_110a.spi';
+const foundryCdlVersion = 'tsmc28-hpcplus-110a';
 
 const args = process.argv.slice(2);
 const outAt = args.indexOf('--out');
@@ -79,12 +81,32 @@ set_false_path -from [get_ports rst_ni]
 set_max_area 0
 `);
 const physical = JSON.parse(remote(`cat '${basePhysical}'`));
+const foundryCdlSha256 = remote(`sha256sum -- '${foundryCdl}'`).trim().split(/\s+/)[0];
+assert.match(foundryCdlSha256, /^[0-9a-f]{64}$/, 'foundry CDL identity is unavailable');
 physical.CLOCK_NAME = 'core_clock';
 physical.CLOCK_NS = 0.5;
 physical.GENERATED_LIBRARY_NAME = 'IBEX_WAVE4_GENERATED';
+physical.FOUNDRY_CDL = foundryCdl;
+physical.FOUNDRY_CDL_VERSION = foundryCdlVersion;
+physical.FOUNDRY_CDL_SHA256 = foundryCdlSha256;
 upload(physicalInputs, `${JSON.stringify(physical, null, 2)}\n`);
 
-const stagedHashes = remote(`sha256sum -- '${constraints}' '${physicalInputs}' '${toolStack}' '${foundryLibrary}'`).trim().split('\n');
+// Exercise the exact sealed Pack adapter against these real staged bytes before the profile can
+// authorize a Campaign. This is a licence-free input gate: no Host, model, LC, DC or Innovus.
+const bindInputsSource = path.join(repoRoot, 'packs/custom-cell-fmax-dtco/flow/bind-inputs.py');
+const bindInputsRemote = `${remoteRoot}/preflight-bind-inputs.py`;
+const bindInputsBytes = readFileSync(bindInputsSource);
+const bindInputsSha256 = sha256(bindInputsBytes);
+upload(bindInputsRemote, bindInputsBytes);
+const preflightWorkspace = `${remoteRoot}/preflight`;
+const bindInputPreflightOutput = remote(`set -eu; test ! -e '${preflightWorkspace}'; mkdir -p '${preflightWorkspace}/flow'; /usr/bin/python3 '${bindInputsRemote}' --workspace '${preflightWorkspace}' --design-root '${designRoot}' --rtl-glob '${rtlGlob}' --design-top '${designTop}' --constraints '${constraints}' --foundry-library '${foundryLibrary}' --physical-inputs '${physicalInputs}' --tool-stack '${toolStack}'`).trim();
+const remoteBindInputsSha256 = remote(`sha256sum -- '${bindInputsRemote}'`).trim().split(/\s+/)[0];
+assert.equal(remoteBindInputsSha256, bindInputsSha256, 'remote bind-inputs preflight did not execute the exact sealed Pack adapter');
+const preflightInputs = `${preflightWorkspace}/flow/inputs.json`;
+const preflightInputsSha256 = remote(`sha256sum -- '${preflightInputs}'`).trim().split(/\s+/)[0];
+assert.match(preflightInputsSha256, /^[0-9a-f]{64}$/, 'bind-inputs preflight produced no hashable inputs.json');
+
+const stagedHashes = remote(`sha256sum -- '${constraints}' '${physicalInputs}' '${toolStack}' '${foundryLibrary}' '${foundryCdl}'`).trim().split('\n');
 const profile = {
   schema: 1,
   site: {
@@ -106,7 +128,10 @@ const profile = {
     sourceInventory: inventory,
     sourceInventorySha256: inventorySha256,
   },
-  staging: { remoteRoot, environmentBefore, stagedHashes },
+  staging: { remoteRoot, environmentBefore, stagedHashes,
+    foundryCdl: { path: foundryCdl, version: foundryCdlVersion, sha256: foundryCdlSha256 },
+    bindInputPreflight: { output: bindInputPreflightOutput, scriptSha256: bindInputsSha256,
+      inputs: preflightInputs, inputsSha256: preflightInputsSha256, commercialEdaJobs: 0 } },
 };
 mkdirSync(path.dirname(out), { recursive: true, mode: 0o700 });
 writeFileSync(out, `${JSON.stringify(profile, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
