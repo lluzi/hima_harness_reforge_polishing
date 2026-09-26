@@ -415,7 +415,7 @@ tools:
     recommendedVersion: PrimeTime X-2025.06
     file: flow/atcs_cli.py
     description: Final STA of every required scenario on the new SPEF; records one completed physical refresh.
-    inputs: [WORKSPACE, ANALYSIS_CONTRACT, SITE_CAPABILITIES]
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT, SITE_CAPABILITIES, MAX_PATHS]
     licences: { primetime: 1 }
     argv:
       - python3
@@ -426,6 +426,7 @@ tools:
       - ${ANALYSIS_CONTRACT}/scenario-corners.json
       - ${WORKSPACE}/state/working-state.json
       - ${SITE_CAPABILITIES}
+      - ${MAX_PATHS}
 
   - id: physical-candidate
     file: flow/atcs_cli.py

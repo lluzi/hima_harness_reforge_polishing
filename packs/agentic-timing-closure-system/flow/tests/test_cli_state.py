@@ -186,7 +186,7 @@ class TwoRoundFlowTest(unittest.TestCase):
         self.assertTrue(contribution["admissible"], contribution.get("refusals"))
         return contribution, validated
 
-    def _run_implement_round(self, base_state, instance):
+    def _run_implement_round(self, base_state, instance, max_paths_cap="5000"):
         """Compose one real fix, replay+reconcile it directly (M4/M5, no XTop), then run
         `implement`/`extract`/`sta`/`physical`/`evaluate`/`adopt` as real subprocesses
         against a no-op EDA wrapper, pre-creating every file those tools would have
@@ -258,7 +258,7 @@ class TwoRoundFlowTest(unittest.TestCase):
         base_design_state_path = workspace / f"base-design-state-{instance}.json"
         _write_json(base_design_state_path, base_state)
         result = _run("sta", workspace, query_spec_path, scenario_corners_path,
-                       base_design_state_path, site_profile_path)
+                       base_design_state_path, site_profile_path, str(max_paths_cap))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         sta = json.loads((workspace / "state" / "sta.json").read_text())
         candidate_state_id = sta["designStateId"]
@@ -439,7 +439,7 @@ class AdoptConsistencyTest(TwoRoundFlowTest):
         _write_json(base_design_state_path, baseline)
         self.assertEqual(
             _run("sta", workspace, query_spec_path, scenario_corners_path,
-                 base_design_state_path, site_profile_path).returncode,
+                 base_design_state_path, site_profile_path, "5000").returncode,
             0,
         )
         self.assertEqual(_run("physical", workspace, "candidate").returncode, 0)
@@ -546,7 +546,7 @@ class StaIdentityByHashingAtUseTest(TwoRoundFlowTest):
         _write_json(base_design_state_path, baseline)
 
         result = _run("sta", workspace, query_spec_path, scenario_corners_path,
-                       base_design_state_path, site_profile_path)
+                       base_design_state_path, site_profile_path, "5000")
         self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
         payload = json.loads(result.stderr)
         self.assertEqual(payload["code"], "identity-mismatch")
@@ -671,7 +671,7 @@ class StaParentViolatorRecheckTest(TwoRoundFlowTest):
         _write_json(base_design_state_path, baseline)
         self.assertEqual(
             _run("sta", workspace, query_spec_path, scenario_corners_path,
-                 base_design_state_path, site_profile_path).returncode,
+                 base_design_state_path, site_profile_path, "5000").returncode,
             0,
         )
         sta = json.loads((workspace / "state" / "sta.json").read_text())
@@ -765,7 +765,7 @@ class StaParentViolatorRecheckTest(TwoRoundFlowTest):
         _write_json(base_design_state_path, baseline)
         self.assertEqual(
             _run("sta", workspace, query_spec_path, scenario_corners_path,
-                 base_design_state_path, site_profile_path).returncode,
+                 base_design_state_path, site_profile_path, "5000").returncode,
             0,
         )
         sta = json.loads((workspace / "state" / "sta.json").read_text())
@@ -781,6 +781,63 @@ class StaParentViolatorRecheckTest(TwoRoundFlowTest):
         # false "fixed" nor a false "missingPrior".
         self.assertFalse(core.is_known(evaluation["fixedCheckCount"]))
         self.assertFalse(core.is_known(evaluation["missingPriorCheckCount"]))
+
+
+class StaMaxPathsTest(TwoRoundFlowTest):
+    """I10 (final review): `sta` now takes `MAX_PATHS` from the Strategy the same way
+    `observe` does -- the Site/Workshop-authored `query-spec.json`'s own `maxPaths` is
+    an upper *request*, capped by the Run-level Strategy value, never used verbatim
+    with no bound at all."""
+
+    def test_two_round_flow_uses_adopted_state_id(self):
+        self.skipTest("inherited from TwoRoundFlowTest -- already covered there, not this class's own case")
+
+    def test_request_above_cap_is_clamped_and_recorded_per_candidate(self):
+        workspace = self.workspace
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        self.assertEqual(_run("baseline", workspace, workspace / "manifest.json").returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+
+        baseline_observation = _baseline_observation(workspace, baseline)
+        core.write_artifact(workspace / "state" / "observation.json", baseline_observation)
+        contract_dir = _analysis_contract_dir(workspace)
+        self.assertEqual(_run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
+
+        baseline_drc_path = workspace / "baseline-verify-drc.rpt"
+        baseline_connectivity_path = workspace / "baseline-verify-connectivity.rpt"
+        _write_text(baseline_drc_path, fixtures.drc_report([]))
+        _write_text(baseline_connectivity_path, fixtures.connectivity_report([]))
+        self.assertEqual(
+            _run("physical", workspace, baseline_drc_path, baseline_connectivity_path, "baseline").returncode, 0
+        )
+
+        # query-spec.json (built inside `_run_implement_round`) requests `maxPaths: 1000`;
+        # a Strategy cap of 7 must win.
+        self._run_implement_round(baseline, "U1", max_paths_cap=7)
+
+        implement = json.loads((workspace / "state" / "implement.json").read_text())
+        merge_id = implement["mergeCommitId"]
+        record = json.loads((workspace / "implementations" / merge_id / "sta-max-paths.json").read_text())
+        self.assertEqual(record, {"cap": 7, "requested": 1000, "used": 7, "clamped": True})
+
+    def test_invalid_cap_is_refused_before_any_pt_launch(self):
+        workspace = self.workspace
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        self.assertEqual(_run("baseline", workspace, workspace / "manifest.json").returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+        query_spec_path = workspace / "query-spec.json"
+        _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
+        scenario_corners_path = workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        base_design_state_path = workspace / "base-design-state.json"
+        _write_json(base_design_state_path, baseline)
+        site_profile_path = _site_profile_path(workspace)
+        result = _run("sta", workspace, query_spec_path, scenario_corners_path,
+                       base_design_state_path, site_profile_path, "not-a-number")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertFalse((workspace / "state" / "sta.json").exists())
 
 
 class ReconcileIgnoresRewrittenWorkPackageTest(unittest.TestCase):
@@ -1815,7 +1872,7 @@ class AprPrepareRunTest(unittest.TestCase):
         scenario_corners_path = self.workspace / "scenario-corners.json"
         _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
         result = _run("sta", self.workspace, query_spec_path, scenario_corners_path,
-                       self.workspace / "state" / "working-state.json", site_profile_path)
+                       self.workspace / "state" / "working-state.json", site_profile_path, "5000")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
         result = _run("physical", self.workspace, "candidate")
@@ -2397,7 +2454,7 @@ class EvaluateUnconstrainedCoverageTest(TwoRoundFlowTest):
         _write_json(base_design_state_path, baseline)
         self.assertEqual(
             _run("sta", workspace, query_spec_path, scenario_corners_path,
-                 base_design_state_path, site_profile_path).returncode,
+                 base_design_state_path, site_profile_path, "5000").returncode,
             0,
         )
         self.assertEqual(_run("physical", workspace, "candidate").returncode, 0)

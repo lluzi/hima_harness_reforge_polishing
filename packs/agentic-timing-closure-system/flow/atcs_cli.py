@@ -109,7 +109,7 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 12 | `presta` | baseState(`state/working-state.json`), scenarioCorners, siteProfile | `integration.seal_batch` (read-only re-derivation, for `newNets`) + `adapters.compile_pt_presta_task` + `run_tool`, `verification.precheck_evidence` | `state/presta.json` (the stamped `precheckEvidence` artifact) |
 | 13 | `implement` | currentDesignState(`state/working-state.json`), siteProfile | `integration.seal_batch` then `adapters.compile_innovus_eco_task` + `run_tool` (refuses `stale-base` unless the sealed merge commit's own `parentStateId` equals `currentDesignState["id"]`; refuses `write-once` if `implementations/<mergeId>/`'s own outputs already exist -- C2, final review) | `state/implement.json` |
 | 14 | `extract` | corners, siteProfile | `adapters.compile_starrc_task` + `run_tool` (per corner) | `state/extract.json` |
-| 15 | `sta` | querySpec, scenarioCorners, baseDesignState(`state/working-state.json`), siteProfile | `_verified_state_sdc_path` (SDC from `baseDesignState`'s own recorded `sdc[0]`, sha256-verified -- no separate `sdc` argv any more, see "Fix round 2" below) + `state.design_state` (built FIRST, from the implemented outputs -- C5, final review), `adapters.compile_pt_scenario_task` + `run_tool` (per scenario), `state.capture` (each observation labeled with the candidate's OWN new state id, never `baseDesignState`'s), `refresh.record_refresh` (once, on completion) | `state/sta.json` (also archived verbatim to `implementations/<mergeId>/sta.json`, and appends `state/refresh-ledger.json`) |
+| 15 | `sta` | querySpec, scenarioCorners, baseDesignState(`state/working-state.json`), siteProfile, maxPaths(`{from: strategy}`, an upper cap -- I10, final review, same rule as `observe`'s) | `_verified_state_sdc_path` (SDC from `baseDesignState`'s own recorded `sdc[0]`, sha256-verified -- no separate `sdc` argv any more, see "Fix round 2" below) + `state.design_state` (built FIRST, from the implemented outputs -- C5, final review), `adapters.compile_pt_scenario_task` + `run_tool` (per scenario), `state.capture` (each observation labeled with the candidate's OWN new state id, never `baseDesignState`'s), `refresh.record_refresh` (once, on completion) | `state/sta.json` (also archived verbatim to `implementations/<mergeId>/sta.json`, and appends `state/refresh-ledger.json`) |
 | 16 | `physical` | (candidate) mode only; (baseline) drcReport, connectivityReport, mode | (I/O packaging only; candidate mode reads+re-hashes `state/implement.json`'s `drcReport`/`connectivityReport`) | `state/baseline-physical.json` or `state/physical.json` |
 | 17 | `evaluate` | policy(`state/policy.json`) | `verification.plan_checks` + `_find_prior_observation_for_state` (picks the prior observation whose own `designStateId` equals the merge commit's `parentStateId`, never just whatever `state/observation.json` currently holds -- C5, final review) + `verification.assemble` | `state/evaluation.json` |
 | 18 | `adopt` | policy(`state/policy.json`) | `adoption.publish` (`expectedBase` from `state/working-state.json`; rewrites `state/working-state.json` whenever `working` moves) | `accepted/latest.json` (envelope: `{"acceptanceRecord","refreshLedger"}` paths) |
@@ -761,6 +761,40 @@ def _scenario_pt_inputs(workspace, working_state, scenario_corners, scenario):
     }
 
 
+def _apply_max_paths_cap(query_spec, max_paths_raw, side_path):
+    """Clamp `query_spec["maxPaths"]` to the Strategy's own upper cap (`max_paths_raw`);
+    return the mutated `query_spec`.
+
+    I10 (final review): shared by `observe` (Fix round 1 item 5's original home)
+    and `sta`, which used to take its whole `query_spec` -- including `maxPaths`
+    -- verbatim from a static `analysisContract/query-spec.json`, with no
+    Strategy-driven upper bound at all. Same rule both places: when
+    `query_spec` already names its own `maxPaths` and it is `<= cap`, that
+    value is used verbatim; when it is greater than the cap, it is clamped
+    down; when the request names none at all, the cap itself is used. The
+    clamp decision itself (`cap`, `requested`, `used`, `clamped`) is recorded,
+    verbatim, at the non-declared `side_path` -- neither `observation-set` nor
+    `state/sta.json` has a field for it. Raises `InputError("invalid-input",
+    ...)` when `max_paths_raw` is not a positive int.
+    """
+    try:
+        cap = int(max_paths_raw)
+    except (TypeError, ValueError):
+        raise InputError("invalid-input", f"maxPaths must be an integer, got {max_paths_raw!r}")
+    if isinstance(cap, bool) or cap <= 0:
+        raise InputError("invalid-input", f"maxPaths must be a positive int, got {max_paths_raw!r}")
+
+    requested = query_spec.get("maxPaths")
+    if isinstance(requested, bool) or not isinstance(requested, int) or requested <= 0:
+        requested = None
+    effective = cap if requested is None else min(requested, cap)
+    clamped = requested is not None and requested > cap
+    query_spec["maxPaths"] = effective
+
+    _canonical_write(side_path, {"cap": cap, "requested": requested, "used": effective, "clamped": clamped})
+    return query_spec
+
+
 def _cmd_observe(workspace, args):
     """Run PT for every required scenario and compose the `observation-set` from what this call itself produced.
 
@@ -811,25 +845,8 @@ def _cmd_observe(workspace, args):
     query_spec = dict(_read_plain(query_spec_path))
     site_profile = _read_plain(site_profile_path)
     scenario_corners = _read_plain(scenario_corners_path)
-    try:
-        cap = int(max_paths_raw)
-    except (TypeError, ValueError):
-        raise InputError("invalid-input", f"maxPaths must be an integer, got {max_paths_raw!r}")
-    if isinstance(cap, bool) or cap <= 0:
-        raise InputError("invalid-input", f"maxPaths must be a positive int, got {max_paths_raw!r}")
-
-    requested = query_spec.get("maxPaths")
-    if isinstance(requested, bool) or not isinstance(requested, int) or requested <= 0:
-        requested = None
-    effective = cap if requested is None else min(requested, cap)
-    clamped = requested is not None and requested > cap
-    query_spec["maxPaths"] = effective
-
     workspace = Path(workspace)
-    _canonical_write(
-        workspace / "research" / "observe" / "max-paths.json",
-        {"cap": cap, "requested": requested, "used": effective, "clamped": clamped},
-    )
+    query_spec = _apply_max_paths_cap(query_spec, max_paths_raw, workspace / "research" / "observe" / "max-paths.json")
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
 
     # I12 (final review): a fresh, write-once generation directory every call -- a
@@ -1698,16 +1715,30 @@ def _cmd_sta(workspace, args):
     `sta_receipts[...]["inputs"]` -- so `finalIdentityErrorCount` is bound to
     the netlist/SPEF STA truly read, at the moment it read them, never to an
     earlier claim about them that may since have gone stale.
+
+    I10 (final review): `maxPaths` now comes from the Strategy the same way
+    `observe`'s does (`_apply_max_paths_cap`), instead of `sta` taking its
+    whole `query_spec` verbatim from the static `analysisContract/
+    query-spec.json` with no Run-level upper bound at all -- a Site/Workshop
+    document could otherwise request an arbitrarily expensive final STA that
+    no Strategy knob could rein in. The clamp decision is recorded at
+    `implementations/<mergeId>/sta-max-paths.json` (the same non-declared
+    side-file convention `observe` uses, just under this candidate's own
+    archive directory instead of a shared `research/` path, since `sta` -
+    unlike `observe` - already has one real merge id to scope it to).
     """
-    query_spec_path, scenario_corners_path, base_design_state_path, site_profile_path = args
+    query_spec_path, scenario_corners_path, base_design_state_path, site_profile_path, max_paths_raw = args
     workspace = Path(workspace)
-    query_spec = _read_plain(query_spec_path)
+    query_spec = dict(_read_plain(query_spec_path))
     scenario_corners = _read_plain(scenario_corners_path)
     base_state = _read_declared(base_design_state_path, "design-state")
     site_profile = _read_plain(site_profile_path)
     implement = _read_plain(_paths(workspace)["implement"])
     extract = _read_plain(_paths(workspace)["extract"])
     merge_id = adapters.validate_path_segment(implement.get("mergeCommitId"), "implement.mergeCommitId")
+    query_spec = _apply_max_paths_cap(
+        query_spec, max_paths_raw, workspace / "implementations" / merge_id / "sta-max-paths.json"
+    )
 
     for scenario in adapters.REQUIRED_SCENARIOS:
         if scenario not in scenario_corners:
