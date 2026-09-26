@@ -800,7 +800,7 @@ class CliMissingInputExitCodeTest(unittest.TestCase):
         "physical": ["MISSING/site.json", "baseline"],
         "evaluate": ["MISSING/policy.json"],
         "adopt": ["MISSING/policy.json"],
-        "residual": ["MISSING/scenario-corners.json", "MISSING/site.json"],
+        "residual": ["MISSING/scenarios.json", "MISSING/site.json"],
         "apr-prepare": [],
         "apr-run": ["MISSING/site.json"],
         "policy": ["MISSING/analysis-contract-dir", "0.0", "0.0"],
@@ -809,11 +809,11 @@ class CliMissingInputExitCodeTest(unittest.TestCase):
         "prepare-workers": ["MISSING/base.json", "MISSING/site.json", "MISSING/eda.json",
                              "MISSING/campaign-plan.json"],
         "reconcile": [],
-        "presta": ["MISSING/base.json", "MISSING/corners.json", "MISSING/site.json"],
+        "presta": ["MISSING/base.json", "MISSING/scenarios.json", "MISSING/site.json"],
         "implement": ["MISSING/state.json", "MISSING/site.json"],
         "extract": ["MISSING/corners.json", "MISSING/site.json"],
-        "sta": ["MISSING/query.json", "MISSING/corners.json", "MISSING/base.json", "MISSING/site.json", "1000"],
-        "observe": ["MISSING/query.json", "MISSING/site.json", "MISSING/scenario-corners.json", "1000"],
+        "sta": ["MISSING/query.json", "MISSING/scenarios.json", "MISSING/base.json", "MISSING/site.json", "1000"],
+        "observe": ["MISSING/query.json", "MISSING/site.json", "MISSING/scenarios.json", "1000"],
         "replay-prepare": ["MISSING/base.json", "MISSING/plan.json", "MISSING/site.json"],
     }
 

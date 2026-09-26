@@ -98,7 +98,7 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 1 | `bind-inputs` | manifest, siteCapabilities | `state.input_readiness` | `state/readiness.json` |
 | 2 | `baseline` | manifest | `state.design_state` | `state/baseline.json` (also seeds `state/working-state.json`) |
 | 3 | `policy` | analysisContractDir, targetSetupNs(`{from: goal}`), targetHoldNs(`{from: goal}`) | reads `<analysisContractDir>/policy.json` + `state/baseline.json` + `state/observation.json` | `state/policy.json` (stamped) |
-| 4 | `observe` | querySpec, siteProfile, scenarioCorners(Site-fixed `analysisContract/scenario-corners.json` -- see "Task 12c fix round" below), maxPaths(`{from: strategy}`, an upper cap -- see "Fix round 1" below) | `_scenario_pt_inputs` (x4, built from `state/working-state.json`, re-verified by sha256) then `adapters.compile_pt_scenario_tasks` + `run_tool` (x4) then `state.capture` | `state/observation.json` (also `state/observation-prev.json`, `observations/<id>.json` and `research/observe/max-paths.json`) |
+| 4 | `observe` | querySpec, siteProfile, scenariosContract(Site-fixed `analysisContract/scenarios.json`, per-scenario corner + PT library identity -- C4 final review, was `scenario-corners.json`, see "Task 12c fix round" below), maxPaths(`{from: strategy}`, an upper cap -- see "Fix round 1" below) | `_scenario_pt_inputs` (x4, built from `state/working-state.json`, re-verified by sha256) then `adapters.compile_pt_scenario_tasks` + `run_tool` (x4) then `state.capture` | `state/observation.json` (also `state/observation-prev.json`, `observations/<id>.json` and `research/observe/max-paths.json`) |
 | 5 | `risk` | priorObservation(`state/observation-prev.json`), currentObservation(`state/observation.json`), recheck | `state.compare_checks` (self-compares on the campaign's first observation, when `priorObservation` does not exist yet) | `state/risk.json` |
 | 6 | `prepare-workers` | baseState(`state/working-state.json`), siteCapabilities, edaProfile, campaignPlan(the ONE admitted envelope `{"candidate":{"workPackages":{"w01"..,"w02"..,"w03"..},"reason"},"baseState":..,"siteCapabilities":..}`; reads `candidate.workPackages`, refuses `ambiguous-plan` if a top-level `workPackages` key is also present -- see "Task 12c fix round" below) | `workspaces.validate_work_package` + `workspaces.prepare` (x3) + `adapters.compile_xtop_operator_task`/`compile_xtop_analysis_manual_task` (x3, materialized into each worker's own root) | `state/workers.json` (now embeds each slot's full `workPackage`/`workspaceManifest`) |
 | 7 | `capture-contribution` | slot | `contributions.seal` (base_ref/result_refs composed from `state/workers.json[slot]` and the slot's own workspace root -- see `_cmd_capture_contribution`'s docstring for the exact `before.dump`/`after.dump`/`ops.jsonl`/`summary.json` file names) | `state/contribution-<slot>.json` (one of 3 literal names) |
@@ -106,14 +106,14 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 9 | `compose-facts` | plan(the SAME admitted integration-plan envelope row 10 reads; absent on the first pass -- see "Task 12c fix round" below) | `composition.analyze` (`baseStateId` from `state/working-state.json`; `resolutions` from the admitted plan, `[]` on the first pass) | `state/composition-facts.json` |
 | 10 | `replay-prepare` | baseState(`state/working-state.json`), plan(the admitted integration-plan envelope `{"plan":...,"facts":...}` -- see "Task 12c fix round" below), siteProfile | `integration.validate_plan` + `integration.prepare_replay` then `adapters.compile_xtop_replay_task` + `run_tool` (best-effort) | `state/replay-request.json` |
 | 11 | `reconcile` | (none -- edit domains come from `state/workers.json`, see "Task 12c fix round" below) | `integration.reconcile` | `state/integration-state.json` |
-| 12 | `presta` | baseState(`state/working-state.json`), scenarioCorners, siteProfile | `integration.seal_batch` (read-only re-derivation, for `newNets`) + `adapters.compile_pt_presta_task` + `run_tool`, `verification.precheck_evidence` | `state/presta.json` (the stamped `precheckEvidence` artifact) |
+| 12 | `presta` | baseState(`state/working-state.json`), scenariosContract, siteProfile | `integration.seal_batch` (read-only re-derivation, for `newNets`) + `adapters.compile_pt_presta_task` + `run_tool`, `verification.precheck_evidence` | `state/presta.json` (the stamped `precheckEvidence` artifact) |
 | 13 | `implement` | currentDesignState(`state/working-state.json`), siteProfile | `integration.seal_batch` then `adapters.compile_innovus_eco_task` + `run_tool` (refuses `stale-base` unless the sealed merge commit's own `parentStateId` equals `currentDesignState["id"]`; refuses `write-once` if `implementations/<mergeId>/`'s own outputs already exist -- C2, final review) | `state/implement.json` |
 | 14 | `extract` | corners, siteProfile | `adapters.compile_starrc_task` + `run_tool` (per corner) | `state/extract.json` |
-| 15 | `sta` | querySpec, scenarioCorners, baseDesignState(`state/working-state.json`), siteProfile, maxPaths(`{from: strategy}`, an upper cap -- I10, final review, same rule as `observe`'s) | `_verified_state_sdc_path` (SDC from `baseDesignState`'s own recorded `sdc[0]`, sha256-verified -- no separate `sdc` argv any more, see "Fix round 2" below) + `state.design_state` (built FIRST, from the implemented outputs -- C5, final review), `adapters.compile_pt_scenario_task` + `run_tool` (per scenario), `state.capture` (each observation labeled with the candidate's OWN new state id, never `baseDesignState`'s), `refresh.record_refresh` (once, on completion) | `state/sta.json` (also archived verbatim to `implementations/<mergeId>/sta.json`, and appends `state/refresh-ledger.json`) |
+| 15 | `sta` | querySpec, scenariosContract, baseDesignState(`state/working-state.json`), siteProfile, maxPaths(`{from: strategy}`, an upper cap -- I10, final review, same rule as `observe`'s) | `_verified_state_sdc_path` (SDC from `baseDesignState`'s own recorded `sdc[0]`, sha256-verified -- no separate `sdc` argv any more, see "Fix round 2" below) + `state.design_state` (built FIRST, from the implemented outputs -- C5, final review), `adapters.compile_pt_scenario_task` + `run_tool` (per scenario), `state.capture` (each observation labeled with the candidate's OWN new state id, never `baseDesignState`'s), `refresh.record_refresh` (once, on completion) | `state/sta.json` (also archived verbatim to `implementations/<mergeId>/sta.json`, and appends `state/refresh-ledger.json`) |
 | 16 | `physical` | (candidate) mode only; (baseline) siteProfile, mode (I13: no longer two static rpt paths) | (candidate) I/O packaging only, reads+re-hashes `state/implement.json`'s `drcReport`/`connectivityReport`; (baseline) `adapters.compile_innovus_export_task` + `run_tool` against `state/baseline.json`'s own staged database, same `-limit`/`-error` values `innovus-eco.tcl` uses | `state/baseline-physical.json` or `state/physical.json` |
 | 17 | `evaluate` | policy(`state/policy.json`) | `verification.plan_checks` + `_find_prior_observation_for_state` (picks the prior observation whose own `designStateId` equals the merge commit's `parentStateId`, never just whatever `state/observation.json` currently holds -- C5, final review) + `verification.assemble` | `state/evaluation.json` |
 | 18 | `adopt` | policy(`state/policy.json`) | `adoption.publish` (`expectedBase` from `state/working-state.json`; rewrites `state/working-state.json` whenever `working` moves) | `accepted/latest.json` (envelope: `{"acceptanceRecord","refreshLedger"}` paths) |
-| 19 | `residual` | scenarioCorners(Site-fixed, same file row 4 reads), siteProfile -- see "Task 12c fix round"/"Fix round 2" below | `_residual_candidate_state` (the EVALUATED candidate's own `implementations/<mergeId>/design-state.json` once `state/evaluation.json` exists, never `state/working-state.json`, which may still be the parent for a refused candidate; the working state itself before any evaluation) + `_scenario_pt_inputs` + `adapters.compile_pt_query_task` + `run_tool` (per scenario, bounded to `RESIDUAL_QUERY_BOUND` worst checks) + `adapters.parse_path_detail` then `residual.extract` | `state/residual-cases.json` (also `queryNotes`, a side field) |
+| 19 | `residual` | scenariosContract(Site-fixed, same file row 4 reads), siteProfile -- see "Task 12c fix round"/"Fix round 2" below | `_residual_candidate_state` (the EVALUATED candidate's own `implementations/<mergeId>/design-state.json` once `state/evaluation.json` exists, never `state/working-state.json`, which may still be the parent for a refused candidate; the working state itself before any evaluation) + `_scenario_pt_inputs` + `adapters.compile_pt_query_task` + `run_tool` (per scenario, bounded to `RESIDUAL_QUERY_BOUND` worst checks) + `adapters.parse_path_detail` then `residual.extract` | `state/residual-cases.json` (also `queryNotes`, a side field) |
 | 20 | `apr-prepare` | (none -- see "Fix round 1" below) | reads `research/requests/next-decision.json` then `lifecycle.compile_intervention` + `lifecycle.stage_task` | `state/apr-task.json` (one fixed literal path for every stage; carries `taskId` and `stage`) |
 | 21 | `apr-run` | siteProfile | reads `state/apr-task.json` then `run_tool` (stage batch) + `adapters.compile_innovus_export_task` + `run_tool` (export batch) | `state/implement.json` (same shape `implement` writes) |
 | 22 | `record-experience` | reasonSource(the SAME admitted integration-plan envelope row 10 reads -- only actually read when `_merge_commit_provenance` says `"merge"`; see "Task 12c fix round" below) | `experience.record` (lineage/decision/outcome composed from `state/working-state.json`, `state/implement.json`, `state/evaluation.json`, `state/contributions-collected.json`, `state/merge-commit.json`/`state/apr-task.json` (provenance), `state/sta.json`, `state/policy.json`/`state/pointers.json`) | `state/experience.json` |
@@ -717,8 +717,62 @@ def _verified_state_sdc_path(workspace, design_state):
     return sdc_path
 
 
-def _scenario_pt_inputs(workspace, working_state, scenario_corners, scenario):
-    """One scenario's `{"design","netlist","sdc","spef"}` PT inputs, built from the *working*
+_SCENARIOS_CONTRACT_FIELDS = {"name", "corner", "libGlob", "driverLibrary", "originalDriverLibrary"}
+
+
+def _load_scenarios_contract(scenarios_path):
+    """`{scenario: {"corner","libGlob","driverLibrary","originalDriverLibrary"}}` from
+    `analysisContract/scenarios.json` (C4, final review, per-scenario library identity).
+
+    `scenarios.json` is `[{name, corner, libGlob, driverLibrary,
+    originalDriverLibrary}]` -- the single Site-provided source of both a
+    scenario's RC corner AND its PT library identity (previously two
+    independent documents, `scenario-corners.json` for the corner and
+    nothing at all for the library, which `_scenario_pt_inputs` never
+    filled). Raises `InputError("invalid-input", ...)` when the document is
+    not a list, an entry's fields are not exactly the five above (each a
+    non-empty string), a scenario name repeats, or the set of names is not
+    *exactly* `adapters.REQUIRED_SCENARIOS` -- this Pack never observes,
+    times or pre-checks a subset (or an unrecognized superset) of the four
+    required scenarios silently.
+    """
+    raw = _read_plain(scenarios_path)
+    if not isinstance(raw, list) or not raw:
+        raise InputError("invalid-input", "scenarios.json must be a non-empty list")
+    scenarios = {}
+    for entry in raw:
+        if not isinstance(entry, dict) or set(entry) != _SCENARIOS_CONTRACT_FIELDS:
+            raise InputError(
+                "invalid-input",
+                f"each scenarios.json entry must have exactly {sorted(_SCENARIOS_CONTRACT_FIELDS)}",
+            )
+        for key in _SCENARIOS_CONTRACT_FIELDS:
+            if not isinstance(entry[key], str) or not entry[key]:
+                raise InputError("invalid-input", f"scenarios.json entry field {key!r} must be a non-empty string")
+        name = entry["name"]
+        if name in scenarios:
+            raise InputError("invalid-input", f"duplicate scenario name in scenarios.json: {name!r}")
+        scenarios[name] = entry
+    missing = [scenario for scenario in adapters.REQUIRED_SCENARIOS if scenario not in scenarios]
+    if missing:
+        raise InputError("invalid-input", f"scenarios.json is missing required scenario(s): {missing}")
+    extra = sorted(set(scenarios) - set(adapters.REQUIRED_SCENARIOS))
+    if extra:
+        raise InputError("invalid-input", f"scenarios.json names unrecognized scenario(s): {extra}")
+    return scenarios
+
+
+def _derive_scenario_corners(scenarios_contract):
+    """`{scenario: corner}`, derived from `scenarios.json` -- the single source C4 makes
+    `policy`'s own `scenarioCorners` and every PT-launching subcommand's corner lookup
+    agree with, instead of two independently-authored Site documents that could
+    silently diverge."""
+    return {scenario: entry["corner"] for scenario, entry in scenarios_contract.items()}
+
+
+def _scenario_pt_inputs(workspace, working_state, scenarios_contract, scenario):
+    """One scenario's `{"design","netlist","sdc","spef","libGlob","driverLibrary",
+    "originalDriverLibrary","libraryFiles"}` PT inputs, built from the *working*
     design-state's own recorded files -- never a model-supplied path (Task 12c item 3).
 
     `working_state` is an already schema/id-verified `design-state` artifact
@@ -726,20 +780,24 @@ def _scenario_pt_inputs(workspace, working_state, scenario_corners, scenario):
     that the netlist/SDC/SPEF files it is about to hand to PT still match
     the bytes that `design_state` recorded -- the same defense-in-depth
     `tools/read-atcs.py`'s `_verify_design_state_refs` applies on the Reader
-    side. `scenario_corners` is the Site-fixed `{scenario: corner}` map
-    (`analysisContract/scenario-corners.json` -- the *same* fixed document
-    `sta`/`presta` already read; never `state/policy.json`, which does not
-    exist yet at `observe-baseline` time -- see this function's callers'
-    own docstrings and this task's report for why). Raises
-    `InputError("invalid-input", ...)` for a scenario missing from
-    `scenario_corners`, `AtcsError("missing-input", ...)` for a working
-    state missing the named corner's SPEF or any SDC entry, and
+    side. `scenarios_contract` is `_load_scenarios_contract`'s own
+    `{scenario: {...}}` map (C4, final review) -- the single Site-provided
+    source of both this scenario's RC corner and its PT library identity
+    (`libGlob`/`driverLibrary`/`originalDriverLibrary`), never a bare
+    `{scenario: corner}` map with no library information at all. `libGlob`'s
+    matched `.db` files are hashed fresh, right here, via
+    `adapters.hash_library_glob` -- fail-closed (`AtcsError("missing-input",
+    ...)`) when the Site's own configured glob matches nothing, before PT
+    ever launches. Raises `InputError("invalid-input", ...)` for a scenario
+    missing from `scenarios_contract`, `AtcsError("missing-input", ...)` for
+    a working state missing the named corner's SPEF or any SDC entry, and
     `AtcsError("identity-mismatch", ...)` when a referenced file's current
     sha256 no longer matches the working state's own recorded one.
     """
-    corner = scenario_corners.get(scenario)
-    if not corner:
-        raise InputError("invalid-input", f"scenario corners is missing {scenario!r}")
+    entry = scenarios_contract.get(scenario)
+    if not entry:
+        raise InputError("invalid-input", f"scenarios contract is missing {scenario!r}")
+    corner = entry["corner"]
     netlist_ref = working_state.get("netlist") or {}
     spef_ref = (working_state.get("spef") or {}).get(corner)
     if not netlist_ref.get("path"):
@@ -755,9 +813,13 @@ def _scenario_pt_inputs(workspace, working_state, scenario_corners, scenario):
     if core.file_sha256(spef_path) != spef_ref.get("sha256"):
         raise core.AtcsError("identity-mismatch", f"working state spef sha256 mismatch at {spef_path}")
 
+    library_files = adapters.hash_library_glob(entry["libGlob"], label=f"{scenario} libGlob")
+
     return {
         "design": working_state["top"], "netlist": str(netlist_path),
         "sdc": str(sdc_path), "spef": str(spef_path),
+        "libGlob": entry["libGlob"], "driverLibrary": entry["driverLibrary"],
+        "originalDriverLibrary": entry["originalDriverLibrary"], "libraryFiles": library_files,
     }
 
 
@@ -816,13 +878,15 @@ def _cmd_observe(workspace, args):
     arbitrary path with no admission at all. This call now builds every
     scenario's inputs itself, from `state/working-state.json`'s own recorded
     files (`_scenario_pt_inputs`, re-verified by sha256) plus the *Site-fixed*
-    `scenario_corners` map (`analysisContract/scenario-corners.json` -- the
-    model never writes it, and it is already available before `observe-
-    baseline` runs, unlike `state/policy.json`, which this call cannot use
-    for the corner map since `policy` itself runs immediately *after*
-    `observe-baseline` in `graph.yml`). The model's own observation request
-    (`query_spec`) only ever chose *what* to query (precision, required
-    scenarios, path breadth); it never supplied a file path.
+    scenarios contract (C4, final review: `analysisContract/scenarios.json`,
+    `_load_scenarios_contract` -- was `scenario-corners.json`, a bare corner
+    map with no library identity at all; the model never writes it, and it
+    is already available before `observe-baseline` runs, unlike `state/
+    policy.json`, which this call cannot use for the corner map since
+    `policy` itself runs immediately *after* `observe-baseline` in
+    `graph.yml`). The model's own observation request (`query_spec`) only
+    ever chose *what* to query (precision, required scenarios, path
+    breadth); it never supplied a file path.
 
     G19: before overwriting the declared `state/observation.json`, the
     *previous* current observation (if any) is preserved verbatim at
@@ -841,10 +905,10 @@ def _cmd_observe(workspace, args):
     non-declared side file, `research/observe/max-paths.json`, since
     `atcs.state.capture`'s own `observation-set` shape has no field for it.
     """
-    query_spec_path, site_profile_path, scenario_corners_path, max_paths_raw = args
+    query_spec_path, site_profile_path, scenarios_path, max_paths_raw = args
     query_spec = dict(_read_plain(query_spec_path))
     site_profile = _read_plain(site_profile_path)
-    scenario_corners = _read_plain(scenario_corners_path)
+    scenarios_contract = _load_scenarios_contract(scenarios_path)
     workspace = Path(workspace)
     query_spec = _apply_max_paths_cap(query_spec, max_paths_raw, workspace / "research" / "observe" / "max-paths.json")
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
@@ -855,7 +919,7 @@ def _cmd_observe(workspace, args):
     # scenario-named path.
     report_root = _next_evidence_generation_dir(workspace / "research" / "observe")
     scenario_inputs = {
-        scenario: _scenario_pt_inputs(workspace, working_state, scenario_corners, scenario)
+        scenario: _scenario_pt_inputs(workspace, working_state, scenarios_contract, scenario)
         for scenario in adapters.REQUIRED_SCENARIOS
     }
     tasks = adapters.compile_pt_scenario_tasks(query_spec, scenario_inputs, str(report_root))
@@ -1323,10 +1387,10 @@ def _cmd_presta(workspace, args):
     spef_net_names_path)` -- which only hashes it, never parses or embeds
     its content, so the Reader independently re-parses and re-hashes it.
     """
-    base_state_path, scenario_corners_path, site_profile_path = args
+    base_state_path, scenarios_path, site_profile_path = args
     workspace = Path(workspace)
     base_state = _read_declared(base_state_path, "design-state")
-    scenario_corners = _read_plain(scenario_corners_path)
+    scenarios_contract = _load_scenarios_contract(scenarios_path)
     site_profile = _read_plain(site_profile_path)
     request = _read_declared(_paths(workspace)["replay_request"], "replay-request")
     integration_state = _read_declared(_paths(workspace)["integration_state"], "integration-state")
@@ -1335,18 +1399,23 @@ def _cmd_presta(workspace, args):
     merge_commit = integration.seal_batch(integration_state, request, facts, collected["contributions"])
 
     scenario = adapters.REQUIRED_SCENARIOS[0]
-    corner = scenario_corners.get(scenario)
-    if not corner:
-        raise InputError("invalid-input", f"scenario corners is missing {scenario!r}")
+    scenario_entry = scenarios_contract[scenario]
+    corner = scenario_entry["corner"]
     spef_ref = base_state.get("spef", {}).get(corner)
     if not spef_ref:
         raise core.AtcsError("missing-input", f"base state has no SPEF for corner {corner!r}")
 
+    # C4 (final review): the same optional library triple `_scenario_pt_inputs`
+    # fills for observe/residual, threaded here too -- `pt-presta.tcl` now
+    # actually links a cell library instead of failing `link_design` with none.
     inputs = {
         "design": base_state["top"], "netlist": str(workspace / base_state["netlist"]["path"]),
         "sdc": str(workspace / base_state["sdc"][0]["path"]) if base_state.get("sdc") else "",
         "spef": str(workspace / spef_ref["path"]),
+        "libGlob": scenario_entry["libGlob"], "driverLibrary": scenario_entry["driverLibrary"],
+        "originalDriverLibrary": scenario_entry["originalDriverLibrary"],
     }
+    adapters.hash_library_glob(scenario_entry["libGlob"], label=f"{scenario} libGlob")
     batch_id = adapters.validate_path_segment(request.get("batchId"), "replay-request.batchId")
     report_root = workspace / "integrations" / batch_id / "presta"
     task = adapters.compile_pt_presta_task(scenario, inputs, str(report_root))
@@ -1763,11 +1832,24 @@ def _cmd_sta(workspace, args):
     side-file convention `observe` uses, just under this candidate's own
     archive directory instead of a shared `research/` path, since `sta` -
     unlike `observe` - already has one real merge id to scope it to).
+
+    C4 (final review, per-scenario library identity): reads `analysisContract/
+    scenarios.json` (`_load_scenarios_contract`) in place of the old bare
+    `scenario-corners.json`, so PT actually links each scenario's own
+    qualified corner library (`libGlob`/`driverLibrary`/`originalDriverLibrary`,
+    filled the same way `_scenario_pt_inputs` fills them for `observe`/
+    `residual`) instead of running with none at all. Each scenario's fresh
+    library-file hashes (`adapters.hash_library_glob`, computed right before
+    that scenario's PT task launches) are recorded in
+    `sta_receipts[scenario]["inputs"]["libraries"]` -- a library-identity leg
+    `verification.assemble` now requires present (alongside netlist/SPEF)
+    before `finalIdentityErrorCount` can be a known count.
     """
-    query_spec_path, scenario_corners_path, base_design_state_path, site_profile_path, max_paths_raw = args
+    query_spec_path, scenarios_path, base_design_state_path, site_profile_path, max_paths_raw = args
     workspace = Path(workspace)
     query_spec = dict(_read_plain(query_spec_path))
-    scenario_corners = _read_plain(scenario_corners_path)
+    scenarios_contract = _load_scenarios_contract(scenarios_path)
+    scenario_corners = _derive_scenario_corners(scenarios_contract)
     base_state = _read_declared(base_design_state_path, "design-state")
     site_profile = _read_plain(site_profile_path)
     implement = _read_plain(_paths(workspace)["implement"])
@@ -1776,10 +1858,6 @@ def _cmd_sta(workspace, args):
     query_spec = _apply_max_paths_cap(
         query_spec, max_paths_raw, workspace / "implementations" / merge_id / "sta-max-paths.json"
     )
-
-    for scenario in adapters.REQUIRED_SCENARIOS:
-        if scenario not in scenario_corners:
-            raise InputError("invalid-input", f"scenario corners is missing {scenario!r}")
 
     sdc_path = _verified_state_sdc_path(workspace, base_state)
     sdc_list = [entry["path"] for entry in (base_state.get("sdc") or [])]
@@ -1844,10 +1922,17 @@ def _cmd_sta(workspace, args):
             )
         spef_sha256 = fresh_spef_entry["sha256"]
         sta_sources[scenario] = {"path": spef_ref["path"], "sha256": spef_sha256}
+        scenario_entry = scenarios_contract[scenario]
         inputs = {
             "design": implement["design"], "netlist": str(workspace / implement["netlist"]["path"]),
             "sdc": str(sdc_path), "spef": str(workspace / spef_ref["path"]),
+            "libGlob": scenario_entry["libGlob"], "driverLibrary": scenario_entry["driverLibrary"],
+            "originalDriverLibrary": scenario_entry["originalDriverLibrary"],
         }
+        # C4 (final review): hashed fresh, right here, right before this scenario's
+        # PT task launches -- the same "identity by hashing at use" discipline I4
+        # applies to netlist/SPEF, now extended to the library set.
+        library_files = adapters.hash_library_glob(scenario_entry["libGlob"], label=f"{scenario} libGlob")
         scenario_inputs_by_scenario[scenario] = inputs
         task = adapters.compile_pt_scenario_task(scenario, inputs, str(report_root), query_spec)
         scenario_dir = report_root / scenario
@@ -1874,8 +1959,13 @@ def _cmd_sta(workspace, args):
         sta_receipts[scenario] = {
             "corner": corner,
             # I4: the fresh, at-use hashes, not implement.json's/extract.json's
-            # own recorded copies (verified equal to them just above).
-            "inputs": {"netlistSha256": netlist_sha256, "spefSha256": spef_sha256},
+            # own recorded copies (verified equal to them just above). C4:
+            # "libraries" is this scenario's own fresh library-file identity
+            # (never present before this fix, since no library was ever hashed
+            # or threaded through PT at all).
+            "inputs": {
+                "netlistSha256": netlist_sha256, "spefSha256": spef_sha256, "libraries": library_files,
+            },
             "observation": observation,
         }
 
@@ -2236,7 +2326,7 @@ def _bounded_remaining_checks(observation, remaining_keys, limit):
     return [key for _, key in scored[:limit]]
 
 
-def _collect_residual_evidence(workspace, working_state, scenario_corners, site_profile, observation, remaining_keys):
+def _collect_residual_evidence(workspace, working_state, scenarios_contract, site_profile, observation, remaining_keys):
     """Populate `observation["checkDetails"]` for up to `RESIDUAL_QUERY_BOUND` remaining
     failing checks (Task 12c item 1a) -- the earlier-APR route needs
     `residual-case.evidence` to actually be populated, or
@@ -2296,7 +2386,7 @@ def _collect_residual_evidence(workspace, working_state, scenario_corners, site_
 
     for scenario, targets in sorted(by_scenario.items()):
         try:
-            inputs = _scenario_pt_inputs(workspace, working_state, scenario_corners, scenario)
+            inputs = _scenario_pt_inputs(workspace, working_state, scenarios_contract, scenario)
             report_root = residual_generation_root / scenario
             task = adapters.compile_pt_query_task(inputs, str(report_root), targets)
         except (InputError, core.AtcsError) as exc:
@@ -2413,9 +2503,9 @@ def _cmd_residual(workspace, args):
     still raises `AtcsError("no-intervention")` (exit 3) -- this subcommand
     never manufactures a setting to avoid that refusal.
     """
-    scenario_corners_path, site_profile_path = args
+    scenarios_path, site_profile_path = args
     workspace = Path(workspace)
-    scenario_corners = _read_plain(scenario_corners_path)
+    scenarios_contract = _load_scenarios_contract(scenarios_path)
     site_profile = _read_plain(site_profile_path)
     readiness = _read_declared(_paths(workspace)["readiness"], "input-readiness")
     exp = _read_json_or_default(_paths(workspace)["experience"], {"schema": "atcs.experience/1", "entries": []})
@@ -2449,7 +2539,7 @@ def _cmd_residual(workspace, args):
 
     if pt_state is not None:
         check_details, notes = _collect_residual_evidence(
-            workspace, pt_state, scenario_corners, site_profile, base_observation, remaining_keys,
+            workspace, pt_state, scenarios_contract, site_profile, base_observation, remaining_keys,
         )
     else:
         bounded_keys = _bounded_remaining_checks(base_observation, remaining_keys, RESIDUAL_QUERY_BOUND)
@@ -2763,29 +2853,56 @@ def _cmd_policy(workspace, args):
 
     `<analysisContractDir>` is a fixed Site-bound directory; only its
     `policy.json`'s static fields (`allowDegradedWorking`, `degradeLimitNs`,
-    `maxNewConstraintFailures`, `scenarioCorners`, `requiredScenarios`) are
-    copied through -- a static Site document refusing to set any run-time or
-    Goal field (`goal`, `baselineStateId`, `baselineMinWns`, `campaignRoot`)
-    is `AtcsError("invalid-policy", ...)`, since letting it set its own
-    acceptance bar/permissions is exactly what the SPEC forbids (M7's own
-    guard order already refuses a `publish` whose policy tries to relax a
-    check; this refuses the attempt at the source instead). `<targetSetupNs>`/
-    `<targetHoldNs>` are this Pack's two Goal parameters (`{from: goal}`),
-    forming `goal = {"setup", "hold"}`. `baselineStateId`/`baselineMinWns`
-    are read back from the *original* `state/baseline.json` and its own
-    baseline `state/observation.json` (never `state/working-state.json`,
-    which `adopt` may since have rewritten) -- exactly the fixed anchor
-    `adoption.publish`'s degraded-working gate needs for the whole campaign.
-    `evaluate`/`adopt` read the result at the fixed path `state/policy.json`.
+    `maxNewConstraintFailures`) are copied through -- a static Site document
+    refusing to set any run-time or Goal field (`goal`, `baselineStateId`,
+    `baselineMinWns`, `campaignRoot`) is `AtcsError("invalid-policy", ...)`,
+    since letting it set its own acceptance bar/permissions is exactly what
+    the SPEC forbids (M7's own guard order already refuses a `publish` whose
+    policy tries to relax a check; this refuses the attempt at the source
+    instead). `<targetSetupNs>`/`<targetHoldNs>` are this Pack's two Goal
+    parameters (`{from: goal}`), forming `goal = {"setup", "hold"}`.
+    `baselineStateId`/`baselineMinWns` are read back from the *original*
+    `state/baseline.json` and its own baseline `state/observation.json`
+    (never `state/working-state.json`, which `adopt` may since have
+    rewritten) -- exactly the fixed anchor `adoption.publish`'s
+    degraded-working gate needs for the whole campaign. `evaluate`/`adopt`
+    read the result at the fixed path `state/policy.json`.
+
+    C4 (final review, per-scenario library identity): `scenarioCorners`/
+    `requiredScenarios` are now DERIVED from `<analysisContractDir>/
+    scenarios.json` (`_load_scenarios_contract`/`_derive_scenario_corners`)
+    -- the single source every PT-launching subcommand's corner lookup also
+    reads -- instead of the static `policy.json`'s own independent copy,
+    which could silently diverge from it. A static `policy.json` MAY still
+    carry `scenarioCorners`/`requiredScenarios` for documentation purposes,
+    but if it does, either must exactly agree with the derived value or this
+    call refuses (`AtcsError("invalid-policy", ...)`) -- never silently
+    prefers one over the other.
     """
     analysis_contract_dir, target_setup_raw, target_hold_raw = args
     workspace = Path(workspace)
-    static_policy = _read_plain(Path(analysis_contract_dir) / "policy.json")
+    contract_dir = Path(analysis_contract_dir)
+    static_policy = _read_plain(contract_dir / "policy.json")
 
     run_time_keys = ("goal", "baselineStateId", "baselineMinWns", "campaignRoot")
     forbidden = sorted(key for key in run_time_keys if key in static_policy)
     if forbidden:
         raise core.AtcsError("invalid-policy", f"static policy file may not set {forbidden}")
+
+    scenarios_contract = _load_scenarios_contract(contract_dir / "scenarios.json")
+    scenario_corners = _derive_scenario_corners(scenarios_contract)
+    required_scenarios = list(adapters.REQUIRED_SCENARIOS)
+    if "scenarioCorners" in static_policy and static_policy["scenarioCorners"] != scenario_corners:
+        raise core.AtcsError(
+            "invalid-policy",
+            "static policy.json's scenarioCorners disagrees with the one derived from scenarios.json",
+        )
+    if ("requiredScenarios" in static_policy
+            and sorted(static_policy["requiredScenarios"]) != sorted(required_scenarios)):
+        raise core.AtcsError(
+            "invalid-policy",
+            "static policy.json's requiredScenarios disagrees with the one derived from scenarios.json",
+        )
 
     try:
         target_setup = float(target_setup_raw)
@@ -2807,8 +2924,8 @@ def _cmd_policy(workspace, args):
         "allowDegradedWorking": bool(static_policy.get("allowDegradedWorking", False)),
         "degradeLimitNs": static_policy.get("degradeLimitNs", 0.0),
         "maxNewConstraintFailures": static_policy.get("maxNewConstraintFailures", 0),
-        "scenarioCorners": static_policy.get("scenarioCorners", {}),
-        "requiredScenarios": static_policy.get("requiredScenarios", list(adapters.REQUIRED_SCENARIOS)),
+        "scenarioCorners": scenario_corners,
+        "requiredScenarios": required_scenarios,
         "goal": {"setup": target_setup, "hold": target_hold},
         "baselineStateId": baseline["id"],
         "baselineMinWns": baseline_min_wns,

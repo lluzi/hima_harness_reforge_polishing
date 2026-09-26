@@ -401,7 +401,16 @@ def compile_pt_scenario_tasks(query_spec, scenario_inputs, report_root):
 
 
 def compile_pt_query_task(inputs, report_root, targets):
-    """One `pt-query.tcl` task querying every `{"checkKey","startpoint","endpoint"}` in `targets`."""
+    """One `pt-query.tcl` task querying every `{"checkKey","startpoint","endpoint"}` in `targets`.
+
+    C4 (final review): `inputs` gains the same optional
+    `libGlob`/`driverLibrary`/`originalDriverLibrary` triple
+    `compile_pt_scenario_task`/`compile_pt_presta_task` accept -- confirmed by
+    reading `pt-query.tcl`'s pre-fix body directly, it never set
+    `target_library`/`link_path` either, so its own `link_design` (used by
+    both `residual` and `sta`'s bounded parent-violator recheck) had no cell
+    library to resolve references against for a real netlist.
+    """
     for key in ("design", "netlist", "sdc", "spef"):
         if not inputs.get(key):
             raise core.AtcsError("missing-input", f"pt-query inputs are missing {key!r}")
@@ -424,6 +433,11 @@ def compile_pt_query_task(inputs, report_root, targets):
         "DESIGN": inputs["design"], "NETLIST": inputs["netlist"], "INPUT_SDC": inputs["sdc"],
         "SPEF": inputs["spef"], "REPORT_ROOT": str(report_root),
     }
+    if inputs.get("libGlob"):
+        env["LIB_GLOB"] = inputs["libGlob"]
+    if inputs.get("driverLibrary") and inputs.get("originalDriverLibrary"):
+        env["DRIVER_LIBRARY"] = inputs["driverLibrary"]
+        env["ORIGINAL_DRIVER_LIBRARY"] = inputs["originalDriverLibrary"]
     extra_preamble = "set ::ATCS_QUERY_TARGETS {" + " ".join(tcl_targets) + "}\n"
     tcl = compile_task("pt-query.tcl", env=env, extra_preamble=extra_preamble)
     reports = {key: str(Path(report_root) / f"{name}.rpt") for key, name in report_names.items()}

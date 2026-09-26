@@ -26,12 +26,16 @@ inputs:
     description: >-
       Read-only directory of the fixed analysis contract, one JSON document per concern, read by the
       tools at fixed names: query-spec.json (final PBA/coverage query: precision, requiredScenarios,
-      nworst; maxPaths comes from the Strategy), scenario-corners.json ({scenario: RC corner}),
-      corners.json ({"corners": {corner: templatePath}}, each corner's own Site-provided StarRC
-      command-file template, hashed and threaded into extract -- I1, final review), recheck.json,
-      policy.json (the static acceptance terms only:
-      allowDegradedWorking, degradeLimitNs, maxNewConstraintFailures, scenarioCorners,
-      requiredScenarios; the policy tool refuses a file setting goal or a run-time field).
+      nworst; maxPaths comes from the Strategy), scenarios.json (C4, final review:
+      `[{name, corner, libGlob, driverLibrary, originalDriverLibrary}]`, the single source of both a
+      scenario's RC corner and its PT library identity -- was scenario-corners.json, a bare
+      `{scenario: corner}` map with no library information at all; observe/sta/residual/presta all
+      read it, and policy derives its own scenarioCorners/requiredScenarios from it), corners.json
+      ({"corners": {corner: templatePath}}, each corner's own Site-provided StarRC command-file
+      template, hashed and threaded into extract -- I1, final review), recheck.json, policy.json (the
+      static acceptance terms only: allowDegradedWorking, degradeLimitNs, maxNewConstraintFailures;
+      the policy tool refuses a file setting goal or a run-time field, or a scenarioCorners/
+      requiredScenarios that disagrees with the one derived from scenarios.json).
       The starting state's own DRC/connectivity reports are no longer a Site-authored document here
       (I13, final review): physical-baseline runs this Pack's own Innovus export against the staged
       baseline database instead. The model never writes this directory.
@@ -224,7 +228,7 @@ tools:
       - ${WORKSPACE}
       - ${ANALYSIS_CONTRACT}/query-spec.json
       - ${SITE_CAPABILITIES}
-      - ${ANALYSIS_CONTRACT}/scenario-corners.json
+      - ${ANALYSIS_CONTRACT}/scenarios.json
       - ${MAX_PATHS}
 
   - id: policy
@@ -255,7 +259,7 @@ tools:
       - ${WORKSPACE}
       - ${WORKSPACE}/research/requests/observation-request.json
       - ${SITE_CAPABILITIES}
-      - ${ANALYSIS_CONTRACT}/scenario-corners.json
+      - ${ANALYSIS_CONTRACT}/scenarios.json
       - ${MAX_PATHS}
 
   - id: physical-baseline
@@ -388,7 +392,7 @@ tools:
       - presta
       - ${WORKSPACE}
       - ${WORKSPACE}/state/working-state.json
-      - ${ANALYSIS_CONTRACT}/scenario-corners.json
+      - ${ANALYSIS_CONTRACT}/scenarios.json
       - ${SITE_CAPABILITIES}
 
   - id: implement
@@ -431,7 +435,7 @@ tools:
       - sta
       - ${WORKSPACE}
       - ${ANALYSIS_CONTRACT}/query-spec.json
-      - ${ANALYSIS_CONTRACT}/scenario-corners.json
+      - ${ANALYSIS_CONTRACT}/scenarios.json
       - ${WORKSPACE}/state/working-state.json
       - ${SITE_CAPABILITIES}
       - ${MAX_PATHS}
@@ -470,7 +474,7 @@ tools:
       - ${WORKSPACE}/flow/atcs_cli.py
       - residual
       - ${WORKSPACE}
-      - ${ANALYSIS_CONTRACT}/scenario-corners.json
+      - ${ANALYSIS_CONTRACT}/scenarios.json
       - ${SITE_CAPABILITIES}
 
   - id: record-experience

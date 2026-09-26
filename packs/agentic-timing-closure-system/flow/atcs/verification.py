@@ -282,7 +282,11 @@ Builds the final `evaluation` artifact. Order of operations:
    `receipts["database"]["datDigest"]` or `receipts["netlist"]["sha256"]`
    absent, `receipts["def"]` is `None`
    (or its `sha256` absent), any
-   `receipts["spef"][corner]` lacks `inputDefSha256`, or `plan["scenarioCorners"]`
+   `receipts["spef"][corner]` lacks `inputDefSha256`, any present
+   `receipts["sta"][scenario]` lacks a non-empty `inputs.libraries` list (C4,
+   final review: a scenario's own PT library-file identity is now a real leg
+   of this chain, the same as its netlist/SPEF hashes), or
+   `plan["scenarioCorners"]`
    is absent/empty or lacks an entry for one of `plan["requiredScenarios"]`
    — the whole count is `unknown`, naming every missing leg (never a
    partial known count computed only over the legs that happened to be
@@ -623,6 +627,16 @@ def _missing_identity_legs(plan, receipts):
     for corner, entry in receipts.get("spef", {}).items():
         if not entry.get("inputDefSha256"):
             missing.append(f"spef {corner} missing inputDefSha256")
+
+    # C4 (final review, per-scenario library identity): a scenario's own PT
+    # library set is now a real leg of this chain, the same way its netlist/SPEF
+    # hashes already are -- a scenario STA ran without ever recording which
+    # library files it actually linked against must not silently certify a
+    # known (even a clean, `0`) identity-error count.
+    for scenario, entry in receipts.get("sta", {}).items():
+        libraries = (entry.get("inputs") or {}).get("libraries")
+        if not libraries:
+            missing.append(f"sta {scenario} missing library identity")
 
     scenario_corners = plan.get("scenarioCorners") or {}
     if not scenario_corners:

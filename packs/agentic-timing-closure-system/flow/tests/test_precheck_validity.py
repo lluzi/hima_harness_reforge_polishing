@@ -79,7 +79,13 @@ def _base_receipts():
     for scenario, (setup_wns, hold_wns) in SCENARIO_WNS.items():
         sta[scenario] = {
             "corner": BASE_CORNER,
-            "inputs": {"netlistSha256": NETLIST_SHA, "spefSha256": SPEF_A_SHA},
+            # C4 (final review): "libraries" is a real leg of the identity chain now --
+            # a non-empty fixture value here, never omitted, keeps every existing
+            # "identity errors is a known 0" assertion in this file meaningful.
+            "inputs": {
+                "netlistSha256": NETLIST_SHA, "spefSha256": SPEF_A_SHA,
+                "libraries": [{"path": "lib.db", "sha256": "l" * 64}],
+            },
             "observation": _observation(scenario, core.known(setup_wns), core.known(hold_wns)),
         }
     return {
@@ -528,7 +534,10 @@ def _sta_with_corners(receipt_corner_by_scenario):
         setup_wns, hold_wns = SCENARIO_WNS[scenario]
         sta[scenario] = {
             "corner": corner,
-            "inputs": {"netlistSha256": NETLIST_SHA, "spefSha256": f"sha-{corner}"},
+            "inputs": {
+                "netlistSha256": NETLIST_SHA, "spefSha256": f"sha-{corner}",
+                "libraries": [{"path": "lib.db", "sha256": "l" * 64}],
+            },
             "observation": _observation(scenario, core.known(setup_wns), core.known(hold_wns)),
         }
     return sta

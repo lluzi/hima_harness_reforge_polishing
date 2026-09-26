@@ -97,6 +97,31 @@ def _run_physical_baseline(workspace, drc_text=None, connectivity_text=None):
     return _run("physical", workspace, site_profile_path, "baseline")
 
 
+def _scenarios_contract_path(workspace, corner=None, filename="scenarios.json"):
+    """A real `analysisContract/scenarios.json` fixture (C4, final review): every
+    required scenario shares one `corner` and one real, on-disk `.db` library file
+    this call creates -- `adapters.hash_library_glob` globs the actual filesystem, so
+    a fixture (unlike the old bare `{scenario: corner}` map) must name a glob that
+    genuinely matches something, or every PT-launching subcommand refuses before
+    ever compiling a task."""
+    corner = corner if corner is not None else CORNER
+    lib_dir = workspace / "libs"
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    lib_file = lib_dir / "lib.db"
+    if not lib_file.is_file():
+        lib_file.write_bytes(b"fake-lib-cell\n")
+    scenarios = [
+        {
+            "name": scenario, "corner": corner, "libGlob": str(lib_dir / "*.db"),
+            "driverLibrary": "driver_lib", "originalDriverLibrary": "driver_lib",
+        }
+        for scenario in REQUIRED_SCENARIOS
+    ]
+    path = workspace / filename
+    _write_json(path, scenarios)
+    return path
+
+
 def _run(subcommand, workspace, *args):
     result = subprocess.run(
         [sys.executable, str(CLI_PATH), subcommand, str(workspace), *[str(a) for a in args]],
@@ -157,20 +182,96 @@ def _baseline_observation(workspace, base_state):
 
 
 def _analysis_contract_dir(root, **policy_overrides):
+    """C4 (final review): `scenarioCorners`/`requiredScenarios` are no longer part of
+    the static `policy.json` fixture at all -- `policy` now derives both from
+    `scenarios.json` (`_scenarios_contract_path`, written into this same directory),
+    the single source every PT-launching subcommand's own corner lookup also reads."""
     directory = root / "analysis-contract"
-    policy = {
-        "allowDegradedWorking": False, "degradeLimitNs": 0.0, "maxNewConstraintFailures": 0,
-        "scenarioCorners": {scenario: CORNER for scenario in REQUIRED_SCENARIOS},
-        "requiredScenarios": list(REQUIRED_SCENARIOS),
-    }
+    policy = {"allowDegradedWorking": False, "degradeLimitNs": 0.0, "maxNewConstraintFailures": 0}
     policy.update(policy_overrides)
     _write_json(directory / "policy.json", policy)
+    _scenarios_contract_path(directory)
     return directory
 
 
 def _sha256_matching_empty_directory(path):
     path.mkdir(parents=True, exist_ok=True)
     (path / "placeholder.txt").write_text("placeholder\n", encoding="utf-8")
+
+
+def _valid_scenario_entry(name, **overrides):
+    entry = {
+        "name": name, "corner": CORNER, "libGlob": "/tmp/unused-*.db",
+        "driverLibrary": "driver_lib", "originalDriverLibrary": "driver_lib",
+    }
+    entry.update(overrides)
+    return entry
+
+
+class LoadScenariosContractTest(unittest.TestCase):
+    """C4 (final review): `atcs_cli._load_scenarios_contract` -- the single admission
+    point for `analysisContract/scenarios.json`, the new per-scenario corner + PT
+    library identity source that replaces the old bare `scenario-corners.json`."""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+
+    def _write(self, obj):
+        path = self.workspace / "scenarios.json"
+        _write_json(path, obj)
+        return path
+
+    def test_valid_document_returns_a_name_keyed_map(self):
+        doc = [_valid_scenario_entry(name) for name in REQUIRED_SCENARIOS]
+        result = atcs_cli._load_scenarios_contract(self._write(doc))
+        self.assertEqual(set(result), set(REQUIRED_SCENARIOS))
+        self.assertEqual(result["func_ssg_rcworst_m40"]["corner"], CORNER)
+
+    def test_not_a_list_is_refused(self):
+        with self.assertRaises(atcs_cli.InputError) as ctx:
+            atcs_cli._load_scenarios_contract(self._write({"not": "a list"}))
+        self.assertEqual(ctx.exception.code, "invalid-input")
+
+    def test_missing_required_scenario_is_refused(self):
+        doc = [_valid_scenario_entry(name) for name in REQUIRED_SCENARIOS[:-1]]
+        with self.assertRaises(atcs_cli.InputError) as ctx:
+            atcs_cli._load_scenarios_contract(self._write(doc))
+        self.assertEqual(ctx.exception.code, "invalid-input")
+
+    def test_unrecognized_extra_scenario_is_refused(self):
+        doc = [_valid_scenario_entry(name) for name in REQUIRED_SCENARIOS] + [_valid_scenario_entry("bogus")]
+        with self.assertRaises(atcs_cli.InputError) as ctx:
+            atcs_cli._load_scenarios_contract(self._write(doc))
+        self.assertEqual(ctx.exception.code, "invalid-input")
+
+    def test_duplicate_scenario_name_is_refused(self):
+        doc = [_valid_scenario_entry(name) for name in REQUIRED_SCENARIOS] + [
+            _valid_scenario_entry(REQUIRED_SCENARIOS[0])
+        ]
+        with self.assertRaises(atcs_cli.InputError) as ctx:
+            atcs_cli._load_scenarios_contract(self._write(doc))
+        self.assertEqual(ctx.exception.code, "invalid-input")
+
+    def test_entry_missing_a_field_is_refused(self):
+        doc = [_valid_scenario_entry(name) for name in REQUIRED_SCENARIOS]
+        del doc[0]["libGlob"]
+        with self.assertRaises(atcs_cli.InputError) as ctx:
+            atcs_cli._load_scenarios_contract(self._write(doc))
+        self.assertEqual(ctx.exception.code, "invalid-input")
+
+    def test_empty_field_value_is_refused(self):
+        doc = [_valid_scenario_entry(name) for name in REQUIRED_SCENARIOS]
+        doc[0]["driverLibrary"] = ""
+        with self.assertRaises(atcs_cli.InputError) as ctx:
+            atcs_cli._load_scenarios_contract(self._write(doc))
+        self.assertEqual(ctx.exception.code, "invalid-input")
+
+    def test_derive_scenario_corners_maps_each_scenario_to_its_own_corner(self):
+        doc = [_valid_scenario_entry(name, corner=f"corner-{name}") for name in REQUIRED_SCENARIOS]
+        contract = atcs_cli._load_scenarios_contract(self._write(doc))
+        corners = atcs_cli._derive_scenario_corners(contract)
+        self.assertEqual(corners, {name: f"corner-{name}" for name in REQUIRED_SCENARIOS})
 
 
 class TwoRoundFlowTest(unittest.TestCase):
@@ -274,8 +375,7 @@ class TwoRoundFlowTest(unittest.TestCase):
         _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
         # Fix round 2 item 2: SDC comes from base_design_state's own recorded sdc[0]
         # (sha256-verified), never a separate analysisContract/sdc.json copy.
-        scenario_corners_path = workspace / f"scenario-corners-{instance}.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(workspace)
         base_design_state_path = workspace / f"base-design-state-{instance}.json"
         _write_json(base_design_state_path, base_state)
         result = _run("sta", workspace, query_spec_path, scenario_corners_path,
@@ -447,8 +547,7 @@ class AdoptConsistencyTest(TwoRoundFlowTest):
             _write_report_set(impl_root / "sta" / scenario, _clean_reports())
         query_spec_path = workspace / "query-spec.json"
         _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
-        scenario_corners_path = workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(workspace)
         base_design_state_path = workspace / "base-design-state.json"
         _write_json(base_design_state_path, baseline)
         self.assertEqual(
@@ -554,8 +653,7 @@ class StaIdentityByHashingAtUseTest(TwoRoundFlowTest):
             _write_report_set(impl_root / "sta" / scenario, _clean_reports())
         query_spec_path = workspace / "query-spec.json"
         _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
-        scenario_corners_path = workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(workspace)
         base_design_state_path = workspace / "base-design-state.json"
         _write_json(base_design_state_path, baseline)
 
@@ -676,8 +774,7 @@ class StaParentViolatorRecheckTest(TwoRoundFlowTest):
 
         query_spec_path = workspace / "query-spec.json"
         _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
-        scenario_corners_path = workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(workspace)
         base_design_state_path = workspace / "base-design-state.json"
         _write_json(base_design_state_path, baseline)
         self.assertEqual(
@@ -767,8 +864,7 @@ class StaParentViolatorRecheckTest(TwoRoundFlowTest):
 
         query_spec_path = workspace / "query-spec.json"
         _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
-        scenario_corners_path = workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(workspace)
         base_design_state_path = workspace / "base-design-state.json"
         _write_json(base_design_state_path, baseline)
         self.assertEqual(
@@ -789,6 +885,63 @@ class StaParentViolatorRecheckTest(TwoRoundFlowTest):
         # false "fixed" nor a false "missingPrior".
         self.assertFalse(core.is_known(evaluation["fixedCheckCount"]))
         self.assertFalse(core.is_known(evaluation["missingPriorCheckCount"]))
+
+
+class StaLibraryIdentityTest(TwoRoundFlowTest):
+    """C4 (final review): `sta` hashes each scenario's own PT library-file set fresh,
+    right before that scenario's PT task launches, and records it in
+    `sta_receipts[scenario]["inputs"]["libraries"]` -- a real leg of the identity
+    chain `verification.assemble` now requires present."""
+
+    def test_two_round_flow_uses_adopted_state_id(self):
+        self.skipTest("inherited from TwoRoundFlowTest -- already covered there, not this class's own case")
+
+    def test_sta_json_carries_each_scenarios_own_library_hashes(self):
+        workspace = self.workspace
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        self.assertEqual(_run("baseline", workspace, workspace / "manifest.json").returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+        baseline_observation = _baseline_observation(workspace, baseline)
+        core.write_artifact(workspace / "state" / "observation.json", baseline_observation)
+        contract_dir = _analysis_contract_dir(workspace)
+        self.assertEqual(_run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
+        self.assertEqual(_run_physical_baseline(workspace).returncode, 0)
+
+        self._run_implement_round(baseline, "U1")
+
+        sta = json.loads((workspace / "state" / "sta.json").read_text())
+        expected_lib = core.file_sha256(workspace / "libs" / "lib.db")
+        for scenario in REQUIRED_SCENARIOS:
+            libraries = sta["sta"][scenario]["inputs"]["libraries"]
+            self.assertEqual(len(libraries), 1, libraries)
+            self.assertEqual(libraries[0]["sha256"], expected_lib)
+
+    def test_an_unmatched_libglob_refuses_before_any_pt_launch(self):
+        workspace = self.workspace
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        self.assertEqual(_run("baseline", workspace, workspace / "manifest.json").returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+        query_spec_path = workspace / "query-spec.json"
+        _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
+        scenarios_path = workspace / "scenarios.json"
+        _write_json(scenarios_path, [
+            {
+                "name": scenario, "corner": CORNER, "libGlob": str(workspace / "no-such-dir" / "*.db"),
+                "driverLibrary": "driver_lib", "originalDriverLibrary": "driver_lib",
+            }
+            for scenario in REQUIRED_SCENARIOS
+        ])
+        base_design_state_path = workspace / "base-design-state.json"
+        _write_json(base_design_state_path, baseline)
+        site_profile_path = _site_profile_path(workspace)
+        # No implement/extract has even run -- this must fail on the library glob
+        # before it ever gets that far (or on a declared input read first, both
+        # equally acceptable exit-2/3 refusals, never exit 0).
+        result = _run("sta", workspace, query_spec_path, scenarios_path, base_design_state_path,
+                       site_profile_path, "1000")
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class StaMaxPathsTest(TwoRoundFlowTest):
@@ -831,8 +984,7 @@ class StaMaxPathsTest(TwoRoundFlowTest):
         baseline = json.loads((workspace / "state" / "baseline.json").read_text())
         query_spec_path = workspace / "query-spec.json"
         _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
-        scenario_corners_path = workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(workspace)
         base_design_state_path = workspace / "base-design-state.json"
         _write_json(base_design_state_path, baseline)
         site_profile_path = _site_profile_path(workspace)
@@ -1273,6 +1425,32 @@ class PolicyTest(unittest.TestCase):
         self.assertEqual(policy["goal"], {"setup": 0.0, "hold": 0.0})
         self.assertAlmostEqual(policy["baselineMinWns"], 0.03)
 
+    def test_scenario_corners_and_required_scenarios_are_derived_from_scenarios_json(self):
+        """C4 (final review): the single source is scenarios.json -- a static
+        policy.json that names neither field at all still gets a real, derived
+        scenarioCorners/requiredScenarios in the composed policy."""
+        contract_dir = _analysis_contract_dir(self.workspace)
+        self.assertEqual(_run("policy", self.workspace, contract_dir, "0.0", "0.0").returncode, 0)
+        policy = json.loads((self.workspace / "state" / "policy.json").read_text())
+        self.assertEqual(policy["scenarioCorners"], {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        self.assertEqual(sorted(policy["requiredScenarios"]), sorted(REQUIRED_SCENARIOS))
+
+    def test_a_static_scenario_corners_disagreeing_with_scenarios_json_is_refused(self):
+        contract_dir = _analysis_contract_dir(
+            self.workspace, scenarioCorners={scenario: "wrong-corner" for scenario in REQUIRED_SCENARIOS}
+        )
+        result = _run("policy", self.workspace, contract_dir, "0.0", "0.0")
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "invalid-policy")
+
+    def test_a_static_scenario_corners_agreeing_with_scenarios_json_is_accepted(self):
+        contract_dir = _analysis_contract_dir(
+            self.workspace, scenarioCorners={scenario: CORNER for scenario in REQUIRED_SCENARIOS}
+        )
+        result = _run("policy", self.workspace, contract_dir, "0.0", "0.0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
 class IdentityMismatchTest(unittest.TestCase):
     """Every entry-file reference with a changed sha256 -> exit 3 (identity-mismatch), no output."""
@@ -1378,8 +1556,7 @@ class ObserveMaxPathsTest(unittest.TestCase):
         # Task 12c item 3: `observe` builds scenario inputs itself from
         # `state/working-state.json` (already seeded by `baseline` in
         # `setUp`) -- only the Site-fixed corner map is still an argv input.
-        scenario_corners_path = self.workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(self.workspace)
         site_profile_path = _site_profile_path(self.workspace)
         for scenario in REQUIRED_SCENARIOS:
             _write_report_set(self.workspace / "research" / "observe" / "g1" / scenario, _clean_reports())
@@ -1424,8 +1601,7 @@ class ObserveInputsFromWorkingStateTest(unittest.TestCase):
     def _run_observe(self):
         query_spec_path = self.workspace / "query-spec.json"
         _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
-        scenario_corners_path = self.workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(self.workspace)
         site_profile_path = _site_profile_path(self.workspace)
         for scenario in REQUIRED_SCENARIOS:
             _write_report_set(self.workspace / "research" / "observe" / "g1" / scenario, _clean_reports())
@@ -1625,8 +1801,7 @@ class ResidualPtQueryEvidenceTest(unittest.TestCase):
         _write_json(self.workspace / "state" / "evaluation.json", evaluation)
 
     def _run_residual(self, report_text):
-        scenario_corners_path = self.workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(self.workspace)
         site_profile_path = _site_profile_path(self.workspace)
 
         # The fake wrapper never actually launches PT -- pre-write the report
@@ -1660,8 +1835,7 @@ class ResidualPtQueryEvidenceTest(unittest.TestCase):
         """No report was ever produced (fake wrapper is a no-op with nothing pre-written):
         evidence is honestly unknown, never guessed, and apr-prepare then has no
         intervention to compile."""
-        scenario_corners_path = self.workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(self.workspace)
         site_profile_path = _site_profile_path(self.workspace)
         result = _run("residual", self.workspace, scenario_corners_path, site_profile_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -1762,8 +1936,7 @@ class ResidualQueriesTheEvaluatedCandidateStateTest(unittest.TestCase):
             json.loads((workspace / "state" / "working-state.json").read_text())["id"], parent_state["id"],
         )
 
-        scenario_corners_path = workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(workspace)
         site_profile_path = _site_profile_path(workspace)
         result = _run("residual", workspace, scenario_corners_path, site_profile_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -1822,8 +1995,7 @@ class ResidualQueriesTheEvaluatedCandidateStateTest(unittest.TestCase):
         }
         _write_json(workspace / "state" / "sta.json", sta)
 
-        scenario_corners_path = workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(workspace)
         site_profile_path = _site_profile_path(workspace)
         result = _run("residual", workspace, scenario_corners_path, site_profile_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -1864,8 +2036,7 @@ class ResidualBaselineOnlyTest(unittest.TestCase):
         core.write_artifact(workspace / "state" / "observation.json", observation)
         self.assertFalse((workspace / "state" / "evaluation.json").exists())
 
-        scenario_corners_path = workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(workspace)
         site_profile_path = _site_profile_path(workspace)
 
         result = _run("residual", workspace, scenario_corners_path, site_profile_path)
@@ -2003,8 +2174,7 @@ class AprPrepareRunTest(unittest.TestCase):
         query_spec_path = self.workspace / "query-spec.json"
         _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
         # Fix round 2 item 2: SDC comes from working-state's own recorded sdc[0].
-        scenario_corners_path = self.workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(self.workspace)
         result = _run("sta", self.workspace, query_spec_path, scenario_corners_path,
                        self.workspace / "state" / "working-state.json", site_profile_path, "5000")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -2579,8 +2749,7 @@ class EvaluateUnconstrainedCoverageTest(TwoRoundFlowTest):
             _write_report_set(impl_root / "sta" / scenario, reports)
         query_spec_path = workspace / "query-spec.json"
         _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
-        scenario_corners_path = workspace / "scenario-corners.json"
-        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        scenario_corners_path = _scenarios_contract_path(workspace)
         base_design_state_path = workspace / "base-design-state.json"
         _write_json(base_design_state_path, baseline)
         self.assertEqual(

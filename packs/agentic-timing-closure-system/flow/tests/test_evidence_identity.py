@@ -216,8 +216,7 @@ class BaselineExternalRootTest(unittest.TestCase):
         cli._write_json(query_spec_path, {
             "precision": "gba", "requiredScenarios": list(cli.REQUIRED_SCENARIOS), "maxPaths": 1000,
         })
-        scenario_corners_path = self.workspace / "scenario-corners.json"
-        cli._write_json(scenario_corners_path, {scenario: cli.CORNER for scenario in cli.REQUIRED_SCENARIOS})
+        scenario_corners_path = cli._scenarios_contract_path(self.workspace)
         site_profile_path = cli._site_profile_path(self.workspace)
         for scenario in cli.REQUIRED_SCENARIOS:
             cli._write_report_set(self.workspace / "research" / "observe" / "g1" / scenario, cli._clean_reports())
@@ -338,8 +337,7 @@ class EvidenceGenerationWriteOnceTest(unittest.TestCase):
         cli._write_json(
             query_spec_path, {"precision": "gba", "requiredScenarios": list(cli.REQUIRED_SCENARIOS), "maxPaths": 1000},
         )
-        scenario_corners_path = self.workspace / "scenario-corners.json"
-        cli._write_json(scenario_corners_path, {scenario: cli.CORNER for scenario in cli.REQUIRED_SCENARIOS})
+        scenario_corners_path = cli._scenarios_contract_path(self.workspace)
         site_profile_path = cli._site_profile_path(self.workspace)
 
         # First generation, at the exact deterministic path the dispatcher's own
