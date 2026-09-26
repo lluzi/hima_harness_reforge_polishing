@@ -20,6 +20,7 @@ sys.path.insert(0, str(FLOW))
 
 from ai_research_runner import (  # noqa: E402
     BUILDABLE_ROUTES,
+    RESIDUAL_CANDIDATE_POOL_BYTES,
     RESIDUAL_CONTEXT_BYTES,
     RESIDUAL_CONTEXT_SCHEMA,
     RESIDUAL_DOCUMENT_BYTES,
@@ -947,6 +948,100 @@ class ResidualResearchContextTests(unittest.TestCase):
             len(json.dumps(context, sort_keys=True).encode()),
             512 * 1024,
         )
+
+    def test_attempt9_scale_candidate_pool_is_compacted_without_truncation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            workspace = Path(folder)
+            root = workspace / "flow" / "library-richness"
+            root.mkdir(parents=True)
+            request = _request(root)
+            pool = _candidate_pool()
+            template = pool["generation_requests"][0]
+            pool["generation_requests"] = []
+            for index in range(116):
+                candidate = copy.deepcopy(template)
+                candidate["candidate_id"] = "CAND_ATTEMPT9_%04d" % index
+                candidate["generator_contract"]["target_library_profile"][
+                    "process_family"
+                ] = "attempt9_process_%04d" % index
+                pool["generation_requests"].append(candidate)
+            payload = json.dumps(pool, sort_keys=True).encode()
+            observed_bytes = 13_353_534
+            self.assertLess(len(payload), observed_bytes)
+            payload += b" " * (observed_bytes - len(payload))
+            path = root / "candidate-pool-attempt9-scale.json"
+            path.write_bytes(payload)
+            request["candidate_pool"] = {
+                "path": path.name,
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+            (root / "research-context.json").write_text(
+                json.dumps(request, indent=2, sort_keys=True) + "\n")
+
+            context = load_residual_research_context(request, evidence_root=root)
+            registry = load_candidate_pool_registry(workspace)
+
+        self.assertEqual(context["candidate_pool"]["count"], 116)
+        self.assertEqual(context["evidence"]["candidate_pool"]["bytes"], observed_bytes)
+        proposal_keys = [
+            row["proposal_key"] for row in context["candidate_pool"]["proposals"]
+        ]
+        self.assertEqual(len(proposal_keys), len(set(proposal_keys)))
+        self.assertEqual(set(proposal_keys), set(registry))
+        self.assertNotIn("candidate_id", json.dumps(context["candidate_pool"]))
+        self.assertLessEqual(
+            len(json.dumps(context, sort_keys=True).encode()),
+            RESIDUAL_CONTEXT_BYTES,
+        )
+
+    def test_candidate_pool_still_rejects_above_its_dedicated_byte_limit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            request = _request(root)
+            payload = b"{" + b" " * RESIDUAL_CANDIDATE_POOL_BYTES + b"}\n"
+            path = root / "candidate-pool-oversized.json"
+            path.write_bytes(payload)
+            request["candidate_pool"] = {
+                "path": path.name,
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+
+            with self.assertRaisesRegex(ValueError, "evidence file byte limit"):
+                load_residual_research_context(request, evidence_root=root)
+
+    def test_hash_bound_evidence_rejects_an_internal_file_symlink(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            request = _request(root)
+            target = root / request["manifest"]["path"]
+            link = root / "manifest-link.json"
+            link.symlink_to(target.name)
+            request["manifest"] = {
+                "path": link.name,
+                "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+            }
+
+            with self.assertRaisesRegex(ValueError, "outside the residual evidence root"):
+                load_residual_research_context(request, evidence_root=root)
+
+    def test_hash_bound_evidence_rejects_an_internal_directory_symlink(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            request = _request(root)
+            source = root / request["manifest"]["path"]
+            target_dir = root / "held"
+            target_dir.mkdir()
+            target = target_dir / source.name
+            target.write_bytes(source.read_bytes())
+            link_dir = root / "inside-link"
+            link_dir.symlink_to(target_dir.name, target_is_directory=True)
+            request["manifest"] = {
+                "path": str(Path(link_dir.name) / target.name),
+                "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+            }
+
+            with self.assertRaisesRegex(ValueError, "outside the residual evidence root"):
+                load_residual_research_context(request, evidence_root=root)
 
     def test_candidate_program_malformed_output_is_rejected(self):
         with tempfile.TemporaryDirectory() as folder:

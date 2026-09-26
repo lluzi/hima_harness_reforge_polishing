@@ -42,7 +42,10 @@ RESIDUAL_FILE_BYTES = 1024 * 1024
 RESIDUAL_OUTPUT_BYTES = 256 * 1024
 RESIDUAL_STDERR_BYTES = 16 * 1024
 RESIDUAL_CONTEXT_BYTES = 512 * 1024
-RESIDUAL_CANDIDATE_POOL_BYTES = 8 * 1024 * 1024
+# The producer has a separately bounded 128-entry static pool.  Keep its full,
+# hash-bound generation requests outside the model context, but admit the
+# observed real-design scale before projecting them into the 512 KiB context.
+RESIDUAL_CANDIDATE_POOL_BYTES = 16 * 1024 * 1024
 # The final document reattaches runner-owned, hash-bound generation requests.
 # A 50-Cell real-design portfolio can legitimately exceed 1 MiB even though
 # the model context and executable proposal envelope remain tightly bounded.
@@ -108,8 +111,16 @@ def _bound_json_reference(base, reference, name, maximum_bytes=RESIDUAL_CONTEXT_
     if relative.is_absolute() or ".." in relative.parts or not SHA256.fullmatch(digest):
         raise ValueError("%s path or sha256 is invalid" % name)
     root = Path(base).resolve()
-    path = (root / relative).resolve()
-    if (not path.is_relative_to(root) or not path.is_file() or path.is_symlink()):
+    unresolved = root / relative
+    path = unresolved.resolve()
+    traversed = root
+    has_symlink = False
+    for part in relative.parts:
+        traversed = traversed / part
+        if traversed.is_symlink():
+            has_symlink = True
+            break
+    if (has_symlink or not path.is_relative_to(root) or not path.is_file()):
         raise ValueError("%s is outside the residual evidence root" % name)
     size = path.stat().st_size
     if size > maximum_bytes:

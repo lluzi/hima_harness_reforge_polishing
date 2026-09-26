@@ -82,7 +82,7 @@ const snapshot = (status: 'in-progress' | 'failed' | 'passed', extra: Record<str
   writeFileSync(path.join(out, 'evidence.json'), `${JSON.stringify({
     schema: 'hima.wave3-dtco-lfr-test-release/1',
     recordedAt: new Date().toISOString(), status, sourceSha,
-    pack: { id: packId, version: '5.2.21', digest, runnerSha256 },
+    pack: { id: packId, version: '5.2.23', digest, runnerSha256 },
     site: { destination, remoteRoot, foundryLib, physicalInputs, toolStack, foundryCdlSha256 },
     environmentBefore: before, runId, ownerId, workspace, progress,
     ...(run ? { run } : {}), ...(records ? { records } : {}),
@@ -160,7 +160,7 @@ try {
   const prompt = [
     `Continue only existing Pack test Run ${runId}; do not create or hand off another Run.`,
     'You are its sole visible Campaign owner. Use only hima_context and hima_execute for business work.',
-    'This is the current custom-cell-fmax-dtco@5.2.21 negative calibration qualification, not a PPA search.',
+    'This is the current custom-cell-fmax-dtco@5.2.23 negative calibration qualification, not a PPA search.',
     'Execute bind-inputs, the real license-free Yosys/ABC baseline, all six miners/readers, their join, function-local evaluation and Judge exactly as the current graph declares.',
     'At research-candidates, read the current declared inputs and all three Pack knowledge files. Author a fresh data-dependent candidate_program from the current candidate_pool; never embed a proposal_key or candidate id. Rank current rows from their actual evidence and select exactly one best available proposal.',
     'For that one proposal declare required_delay_ns=0.000001 and a real target_endpoints value read from current evidence. This intentionally strict Cell Demand is the negative test stimulus. Keep the intervention evidence-appropriate and state that this is a guard-case qualification, not an expected implementation result.',
@@ -192,12 +192,34 @@ try {
     if (unchanged >= 4) throw new Error(`real owner stalled without progress: ${state}`);
     progress.push({ turn: turn + 1, node: current.run.currentNode, available: current.available, at: new Date().toISOString() });
     snapshot('in-progress');
-    await sayAsUser(owner, turn === 0 ? prompt : [
+    const calibrationExecution = current.run.currentNode === 'calibration-research'
+      ? current.executions.find((entry) => entry.nodeId === 'calibration-research' && entry.phase === 'ready')
+      : undefined;
+    let continuation = [
       `Continue the same Pack test Run ${runId} from current facts.`,
       'Use hima_context; complete only ready work and preserve the strict one-Demand negative calibration scope.',
       'Do not create another Run and do not launch compile, DC, Innovus or P&R. If a Job is still working, end this response and await its notification.',
       'After calibration FAIL, apply the Pack recommendation so generationLimit=1 records the terminal ending.',
-    ].join('\n'));
+    ].join('\n');
+    if (calibrationExecution) {
+      const currentRecords = host.ctx.hima.ledger.records({ runId });
+      const calibrationFail = [...currentRecords].reverse().find((record) => record.type === 'verdict'
+        && record.ruleId === 'mock-liberty-calibration-accepted' && record.outcome === 'FAIL');
+      const feedbackPass = [...currentRecords].reverse().find((record) => record.type === 'verdict'
+        && record.ruleId === 'cell-demand-feedback-available' && record.outcome === 'PASS');
+      const observationId = calibrationFail && 'cites' in calibrationFail
+        && Array.isArray(calibrationFail.cites) ? calibrationFail.cites[0] : undefined;
+      const currentStrategy = current.run.strategy;
+      assert.ok(calibrationFail && feedbackPass && observationId && currentStrategy,
+        'calibration Explore is ready without its required current observation/verdict identities');
+      continuation = [
+        `Complete the existing calibration-research Explore for Run ${runId} now; do not reply with prose only.`,
+        'Call hima_context once to obtain the current owner epoch and control revision.',
+        `Then call hima_execute action=complete on executionId ${calibrationExecution.id}, decision=next-strategy, strategy=${JSON.stringify({ ...currentStrategy, algorithmRevision: Number(currentStrategy.algorithmRevision) + 1 })}, cites=${JSON.stringify([observationId, calibrationFail.id, feedbackPass.id])}, and a concise rationale that this is the intentional strict one-Demand calibration miss and the Pack recommendation advances algorithmRevision by one.`,
+        'Use a fresh requestId. Do not begin another node, do not launch commercial EDA, and do not merely summarize the recommendation.',
+      ].join('\n');
+    }
+    await sayAsUser(owner, turn === 0 ? prompt : continuation);
   }
   await owner.whenIdle();
   const terminal = host.ctx.hima.ledger.run(runId);
