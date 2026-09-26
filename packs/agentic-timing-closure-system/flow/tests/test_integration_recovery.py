@@ -414,6 +414,113 @@ class ValidatePlanTests(unittest.TestCase):
         plan = make_plan("b1", select=[["a", "list", "is", "unhashable"]], deferred=[{"also": "unhashable"}])
         self.assertGreaterEqual(integration.plan_invalid_count(plan, facts), 1)
 
+    def test_contradictory_decisions_for_one_id_across_different_conflict_keys_is_invalid(self):
+        # c1b conflicts with c2b (same-instance-different-master); c1b also shares a
+        # load pin with c3b (same-load-pin) — two *different* conflictKeys, both
+        # naming c1b, given contradictory decisions across them.
+        c1b = make_contribution(
+            "c1b", operations=[size_op("U1", "A", "B"), insert_op("N1", "buf1", "net1", "BUFX2", load_pins=["P1"])]
+        )
+        c2b = make_contribution("c2b", operations=[size_op("U1", "A", "C")])
+        c3b = make_contribution("c3b", operations=[insert_op("N2", "buf3", "net3", "BUFX2", load_pins=["P1", "P2"])])
+        facts = composition.analyze(BASE_STATE_ID, [c1b, c2b, c3b], [])
+        master_conflict = find_conflict(facts, "same-instance-different-master")
+        pin_conflict = find_conflict(facts, "same-load-pin")
+        self.assertNotEqual(master_conflict["key"], pin_conflict["key"])
+
+        plan = make_plan(
+            "b1",
+            select=["c1b", "c2b", "c3b"],
+            resolutions=[
+                {"conflictKey": master_conflict["key"], "decision": "keep:c1b"},
+                {"conflictKey": pin_conflict["key"], "decision": "drop:c1b"},
+            ],
+        )
+        with self.assertRaises(core.AtcsError):
+            integration.validate_plan(plan, facts)
+
+    def test_revised_contribution_also_directly_selected_is_invalid(self):
+        c1b = make_contribution("c1b", operations=[size_op("U1", "A", "B")])
+        c2b = make_contribution("c2b", operations=[size_op("U1", "A", "C")])
+        c1br = make_contribution("c1br", operations=[size_op("U2", "X", "Y")])
+        facts = composition.analyze(BASE_STATE_ID, [c1b, c2b, c1br], [])
+        conflict = find_conflict(facts, "same-instance-different-master")
+
+        plan = make_plan(
+            "b1",
+            select=["c1b", "c1br"],  # c1br is BOTH directly selected AND the revise substitute
+            resolutions=[
+                {"conflictKey": conflict["key"], "decision": "revise:c1b", "revisedContribution": "c1br"}
+            ],
+        )
+        self.assertGreaterEqual(integration.plan_invalid_count(plan, facts), 1)
+        with self.assertRaises(core.AtcsError):
+            integration.validate_plan(plan, facts)
+
+    def test_revised_contribution_also_deferred_is_invalid(self):
+        c1 = make_contribution("c1", operations=[size_op("U1", "A", "B")])
+        c2 = make_contribution("c2", operations=[size_op("U1", "A", "C")])
+        c1r = make_contribution("c1r", operations=[size_op("U2", "X", "Y")])
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2, c1r], [])
+        conflict = find_conflict(facts, "same-instance-different-master")
+
+        plan = make_plan(
+            "b1",
+            select=["c1"],
+            deferred=["c1r"],
+            resolutions=[{"conflictKey": conflict["key"], "decision": "revise:c1", "revisedContribution": "c1r"}],
+        )
+        with self.assertRaises(core.AtcsError):
+            integration.validate_plan(plan, facts)
+
+    def test_revised_contribution_also_a_drop_target_is_invalid(self):
+        c1 = make_contribution("c1", operations=[size_op("U1", "A", "B")])
+        c2 = make_contribution("c2", operations=[size_op("U1", "A", "C")])
+        # c1r has its own, separate conflict with c3 (on U2) — so "drop:c1r" is a
+        # clean decision on its own conflict, isolating this test to exactly
+        # "revisedContribution also a drop target" rather than also tripping the
+        # separate "target must be a member of its named conflict" check.
+        c1r = make_contribution("c1r", operations=[size_op("U2", "X", "Y")])
+        c3 = make_contribution("c3", operations=[size_op("U2", "X", "Z")])
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2, c1r, c3], [])
+        conflicts = facts["conflicts"]
+        conflict_a = next(c for c in conflicts if set(c["contributions"]) == {"c1", "c2"})
+        conflict_b = next(c for c in conflicts if set(c["contributions"]) == {"c1r", "c3"})
+
+        plan = make_plan(
+            "b1",
+            select=["c1", "c3"],
+            resolutions=[
+                {"conflictKey": conflict_a["key"], "decision": "revise:c1", "revisedContribution": "c1r"},
+                {"conflictKey": conflict_b["key"], "decision": "drop:c1r"},
+            ],
+        )
+        with self.assertRaises(core.AtcsError):
+            integration.validate_plan(plan, facts)
+
+    def test_revised_contribution_targeted_by_two_different_revises_is_invalid(self):
+        c1 = make_contribution("c1", operations=[size_op("U1", "A", "B")])
+        c2 = make_contribution("c2", operations=[size_op("U1", "A", "C")])
+        c3 = make_contribution("c3", operations=[size_op("U2", "P", "Q")])
+        c4 = make_contribution("c4", operations=[size_op("U2", "P", "R")])
+        shared_revision = make_contribution("shared-rev", operations=[size_op("U3", "X", "Y")])
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2, c3, c4, shared_revision], [])
+        conflict_a = find_conflict(facts, "same-instance-different-master")
+        conflicts = facts["conflicts"]
+        conflict_b = next(c for c in conflicts if c["key"] != conflict_a["key"])
+
+        plan = make_plan(
+            "b1",
+            select=["c1", "c3"],
+            resolutions=[
+                {"conflictKey": conflict_a["key"], "decision": "revise:c1", "revisedContribution": "shared-rev"},
+                {"conflictKey": conflict_b["key"], "decision": "revise:c3", "revisedContribution": "shared-rev"},
+            ],
+        )
+        self.assertGreaterEqual(integration.plan_invalid_count(plan, facts), 1)
+        with self.assertRaises(core.AtcsError):
+            integration.validate_plan(plan, facts)
+
 
 class PrepareReplayTests(unittest.TestCase):
     def test_steps_follow_facts_order_with_expected_step_ids(self):
@@ -498,6 +605,56 @@ class PrepareReplayTests(unittest.TestCase):
         self.assertEqual(request["steps"][0]["contributionId"], "c1-rev")
         self.assertEqual(request["steps"][0]["op"], size_op("U2", "X", "Y"))
 
+    def test_revise_does_not_hide_a_conflict_the_revised_contribution_is_in(self):
+        # Critical fix: conflicts [c1, c2] (on X) and [c1r, c3] (on Y). Plan selects
+        # [c1, c3] and revises c1 -> c1r, but never addresses the SECOND conflict at
+        # all. Before the fix, `_check_no_unresolved_conflict` only ever looked at
+        # the raw selected ids (c1, c3) — since "c1r" never appears in `plan.select`
+        # itself, the [c1r, c3] conflict was invisible to it. After the fix, `select`
+        # is mapped through `revise_map` before the check, so the effective set
+        # {c1r, c3} correctly still trips this conflict.
+        c1 = make_contribution("c1", operations=[size_op("X", "A", "B")])
+        c2 = make_contribution("c2", operations=[size_op("X", "A", "C")])
+        c1r = make_contribution("c1r", operations=[size_op("Y", "P", "Q")])
+        c3 = make_contribution("c3", operations=[size_op("Y", "P", "R")])
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2, c1r, c3], [])
+        conflicts = facts["conflicts"]
+        conflict_x = next(c for c in conflicts if set(c["contributions"]) == {"c1", "c2"})
+        conflict_y = next(c for c in conflicts if set(c["contributions"]) == {"c1r", "c3"})
+        self.assertNotEqual(conflict_x["key"], conflict_y["key"])
+
+        plan = make_plan(
+            "b1",
+            select=["c1", "c3"],
+            resolutions=[{"conflictKey": conflict_x["key"], "decision": "revise:c1", "revisedContribution": "c1r"}],
+        )
+
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.prepare_replay(plan, facts, [c1, c2, c1r, c3])
+        self.assertEqual(ctx.exception.code, "unresolved-conflict")
+
+    def test_prepare_replay_refuses_duplicate_steps_as_its_own_defense(self):
+        # `validate_plan` would reject this plan (the same revisedContribution
+        # targeted by two different revises) — this test bypasses it on purpose to
+        # exercise `prepare_replay`'s own redundant defense directly, the same way
+        # `test_stale_base_without_revise_raises` bypasses it for that check.
+        c1 = make_contribution("c1", operations=[size_op("U1", "A", "B")])
+        c2 = make_contribution("c2", operations=[size_op("U2", "A", "B")])
+        shared_revision = make_contribution("shared-rev", operations=[size_op("U3", "X", "Y")])
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2, shared_revision], [])
+        plan = make_plan(
+            "b1",
+            select=["c1", "c2"],
+            resolutions=[
+                {"conflictKey": "irrelevant-1", "decision": "revise:c1", "revisedContribution": "shared-rev"},
+                {"conflictKey": "irrelevant-2", "decision": "revise:c2", "revisedContribution": "shared-rev"},
+            ],
+        )
+
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.prepare_replay(plan, facts, [c1, c2, shared_revision])
+        self.assertEqual(ctx.exception.code, "duplicate-step")
+
     def test_pg_local_adjust_selected_raises_unsupported_op(self):
         c1 = make_contribution("c1", operations=[pg_op()])
         facts = composition.analyze(BASE_STATE_ID, [c1], [])
@@ -556,7 +713,19 @@ class PrepareReplayTests(unittest.TestCase):
         plan = make_plan("b1", select=["c1"], deferred=["c2"])
 
         request = integration.prepare_replay(plan, facts, [c1, c2])
-        self.assertEqual(request["droppedOrDeferredIds"], ["c2"])
+        self.assertEqual(request["excludedFromCreditIds"], ["c2"])
+
+    def test_keep_excluded_id_is_also_recorded_as_excluded_from_credit(self):
+        c1 = make_contribution("c1", operations=[size_op("U1", "A", "B")])
+        c2 = make_contribution("c2", operations=[size_op("U1", "A", "C")])
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        conflict = find_conflict(facts, "same-instance-different-master")
+        plan = make_plan(
+            "b1", select=["c1", "c2"], resolutions=[{"conflictKey": conflict["key"], "decision": "keep:c1"}]
+        )
+
+        request = integration.prepare_replay(plan, facts, [c1, c2])
+        self.assertIn("c2", request["excludedFromCreditIds"])
 
 
 class PendingStepsTests(unittest.TestCase):
@@ -669,6 +838,43 @@ class ReconcileTests(unittest.TestCase):
         self.assertEqual(state["replayMismatch"], ["s0"])
         self.assertEqual(state["applied"], {})
 
+    def test_whole_domain_grants_scope_beyond_targeted_instances(self):
+        op = size_op("U1", "A", "B")
+        request = self._request_with_one_step(op)
+        observed_with_extra_declared_instance = {
+            "mastersChanged": {"U1": ["A", "B"], "U2": ["P", "Q"]},
+            "added": {},
+            "removed": {},
+        }
+        receipts = [{"stepId": "s0", "status": "ok", "observedDelta": observed_with_extra_declared_instance}]
+
+        # U2 was never targeted by any op, but it IS part of c1's whole declared
+        # editDomain.instances — item 3's fix: the scope union is the whole
+        # declared domain of each replayed contribution, not only the instances
+        # an op happened to name.
+        state = integration.reconcile(request, receipts, edit_domains={"c1": {"instances": ["U1", "U2"]}})
+        self.assertEqual(state["outOfScope"], [])
+        # Still a replay mismatch (the op itself only declared U1) — the two
+        # checks are independent, per the module docstring.
+        self.assertEqual(state["replayMismatch"], ["s0"])
+
+    def test_malformed_receipts_are_counted_in_unknown_receipts_without_raising(self):
+        op = size_op("U1", "A", "B")
+        request = self._request_with_one_step(op)
+        good = {"mastersChanged": {"U1": ["A", "B"]}, "added": {}, "removed": {}}
+        receipts = [
+            {"stepId": "s0", "status": "ok", "observedDelta": good},
+            "not-a-dict",
+            {"status": "ok", "observedDelta": {}},  # missing stepId
+            {"stepId": 42, "status": "ok", "observedDelta": {}},  # non-string stepId
+            {"stepId": ["unhashable"], "status": "ok", "observedDelta": {}},  # unhashable stepId
+        ]
+
+        state = integration.reconcile(request, receipts, edit_domains={"c1": {"instances": ["U1"]}})
+
+        self.assertEqual(list(state["applied"].keys()), ["s0"])
+        self.assertEqual(len(state["unknownReceipts"]), 4)
+
     def test_insert_buffer_new_instance_in_scope_by_its_net(self):
         op = insert_op("N1", "buf0", "net0", "BUFX2")
         request = self._request_with_one_step(op)
@@ -759,7 +965,7 @@ class SealBatchTests(unittest.TestCase):
         plan = make_plan("b1", select=["c1"], deferred=["c2"])
 
         request = integration.prepare_replay(plan, facts, [c1, c2])
-        self.assertEqual(request["droppedOrDeferredIds"], ["c2"])
+        self.assertEqual(request["excludedFromCreditIds"], ["c2"])
 
         op = shared_ops[0]
         receipt_delta = {"mastersChanged": {"U1": ["A", "B"]}, "added": {}, "removed": {}}
@@ -771,6 +977,35 @@ class SealBatchTests(unittest.TestCase):
         op_key = core.digest({"op": op})
         self.assertEqual(merge_commit["sourceMap"][op_key], ["c1", "c2"])  # both sources credited in sourceMap
         self.assertEqual(merge_commit["contributions"], [{"id": "c1", "revision": 1}])  # c2 excluded (deferred)
+
+    def test_keep_excluded_duplicate_source_is_not_credited_either(self):
+        # Item 2: a duplicate member excluded via a `keep` decision (rather than
+        # `drop`/`deferred`) must be treated the same way for credit purposes —
+        # sourceMap still widens to the whole group (historical fact), but
+        # `contributions[]` excludes the keep-losing id.
+        shared_ops = [size_op("U1", "A", "B")]
+        c1 = make_contribution("c1", revision=1, operations=shared_ops)
+        c2 = make_contribution("c2", revision=2, operations=shared_ops)
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        conflict = find_conflict(facts, "shared-instance-edit")
+        plan = make_plan(
+            "b1", select=["c1", "c2"], resolutions=[{"conflictKey": conflict["key"], "decision": "keep:c1"}]
+        )
+
+        request = integration.prepare_replay(plan, facts, [c1, c2])
+        self.assertIn("c2", request["excludedFromCreditIds"])
+        self.assertEqual([step["contributionId"] for step in request["steps"]], ["c1"])
+
+        op = shared_ops[0]
+        receipt_delta = {"mastersChanged": {"U1": ["A", "B"]}, "added": {}, "removed": {}}
+        receipts = [{"stepId": request["steps"][0]["stepId"], "status": "ok", "observedDelta": receipt_delta}]
+        state = integration.reconcile(request, receipts, edit_domains={"c1": {"instances": ["U1"]}})
+
+        merge_commit = integration.seal_batch(state, request, facts, [c1, c2])
+
+        op_key = core.digest({"op": op})
+        self.assertEqual(merge_commit["sourceMap"][op_key], ["c1", "c2"])
+        self.assertEqual(merge_commit["contributions"], [{"id": "c1", "revision": 1}])
 
     def test_buffer_insertion_names_and_lists_new_nets(self):
         op = insert_op("N1", "atcs_w01_r1_buf0", "atcs_w01_r1_net0", "BUFX2")

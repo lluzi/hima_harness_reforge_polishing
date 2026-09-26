@@ -81,25 +81,41 @@ of contribution ids and conflict membership:
 `validate_plan` additionally rejects a `keep`/`drop`/`revise` decision
 whose target id is not itself a member of that resolution's own
 `conflictKey`'s `contributions`. It also rejects genuinely contradictory
-resolutions: two different decision kinds for the *same* (`conflictKey`,
-target id) pair, or two different `keep` targets under the same
-`conflictKey` (each `keep` implicitly excludes every other member, so two
-different `keep` targets for one conflict can never both hold). Two
-resolutions naming *different* targets under the same `conflictKey` (e.g.
-`"revise:a"` alongside `"drop:b"` for a three-member conflict) are not
-contradictory — they are the normal way a multi-member conflict gets
-resolved piece by piece.
+resolutions: the **same contribution id** receiving two different decision
+kinds anywhere in the plan — whether under the same `conflictKey` or two
+different ones (e.g. `"keep:c1"` under one conflict and `"drop:c1"` under
+another is exactly as contradictory as both under the same key) — or two
+different `keep` targets under the same `conflictKey` (each `keep`
+implicitly excludes every other member, so two different `keep` targets
+for one conflict can never both hold). Two resolutions naming *different*
+targets under the same `conflictKey` (e.g. `"revise:a"` alongside
+`"drop:b"` for a three-member conflict) are not contradictory — they are
+the normal way a multi-member conflict gets resolved piece by piece.
+`validate_plan` also rejects a `revisedContribution` that is itself
+directly `select`ed, `deferred`, the target of a `drop`, or the substitute
+for more than one `revise` target — any of those would let the same
+considered contribution's operations enter the replay under two different
+identities or positions (see `prepare_replay`'s `"duplicate-step"` defense
+below, which catches the same problem at replay time as a last resort).
 
 `prepare_replay` raises `AtcsError("unresolved-conflict", ...)` when, after
 applying only `drop`/`keep` exclusion and `deferred` removal (never
-`revise` substitution) to `plan.select`, any conflict in `facts.conflicts`
-still has two or more of its own `contributions` remaining in the selected
-set — regardless of that conflict's `kind`, and regardless of whether some
-`conflictKey` in `plan.resolutions` merely *mentions* it (M4's own
-`unresolvedCount`, per `atcs.composition`'s docstring, only checks that a
-resolution mentions the key, not that it actually clears the collision;
-this module re-derives the real answer from id membership instead of
-trusting that count).
+`revise`'s own *exclusion* effect — see below) to `plan.select`, any
+conflict in `facts.conflicts` still has two or more of its own
+`contributions` remaining in the selected set — regardless of that
+conflict's `kind`, and regardless of whether some `conflictKey` in
+`plan.resolutions` merely *mentions* it (M4's own `unresolvedCount`, per
+`atcs.composition`'s docstring, only checks that a resolution mentions the
+key, not that it actually clears the collision; this module re-derives
+the real answer from id membership instead of trusting that count).
+**Critically**, membership is checked against each surviving id's
+*effective* identity — `revise_map.get(id, id)` — not the raw selected id:
+a `revise:<id>` substitution changes what actually replays in that slot,
+so if the *revised* contribution is itself a member of some other,
+unaddressed conflict (one M4 found between it and a third contribution
+that was never revised, dropped or kept-against), that conflict must still
+block the batch even though the revised id was never itself listed in
+`plan.select` — checking only the raw selected ids would silently miss it.
 
 Revising (controller decision A)
 ------------------------------------
@@ -195,25 +211,29 @@ all (any receipt — `ok` or `error` — means it was attempted and is not
 re-inserted, per §8.4). `reconcile` keeps the *first* receipt seen for a
 given `stepId`; a **second, non-identical** receipt for the same step is
 not silently accepted as a re-delivery — that step is unreliable and goes
-straight to `replayMismatch`. A receipt naming a `stepId` this request
-never issued is collected (sorted) into `unknownReceipts` rather than
-silently ignored. `observedDelta` is normalized (missing
-`mastersChanged`/`added`/`removed` keys filled with `{}`) before any
-comparison. For every step with a single, known receipt:
+straight to `replayMismatch`. A receipt that is not a JSON object, lacks a
+`stepId`, or whose `stepId` is not a string (so it could never be one this
+request actually issued) is counted into `unknownReceipts` by its own
+`repr()`, never raised over; a receipt with a well-formed but unrecognized
+`stepId` is counted there by that plain string instead. `observedDelta` is
+normalized (missing `mastersChanged`/`added`/`removed` keys filled with
+`{}`) before any comparison. For every step with a single, known receipt:
 
 1. `status != "ok"` -> `failed`.
 2. Every instance the (normalized) observed delta touches is checked
    against the union, over every step in the request, of that step's own
-   `contributionId`'s ``edit_domains`` entry applying M3's scope rule
-   (`size_cell`/`delete_buffer`: instance is a member of that work
-   package's `editDomain.instances`; `insert_buffer`: the new instance is
-   in scope when the buffered `net` is a member of `editDomain.nets` — a
-   trace-created instance inherits its own op's scope verdict, exactly as
-   `atcs.contributions._scope_check` decides it at seal time). Any observed
-   instance outside that union -> `outOfScope`. This check runs **before**
-   the equality check below and independently of it, so an observed delta
-   that is "the expected change plus one extra instance" is flagged as
-   *both* `outOfScope` and `replayMismatch`.
+   `contributionId`'s ``edit_domains`` entry: the *whole* declared
+   `editDomain.instances` of every replayed contribution, plus every
+   trace-created (`insert_buffer`) instance whose own op is in scope by
+   its net being a member of `editDomain.nets` — the same rule
+   `atcs.contributions._scope_check` applies at seal time, but read as a
+   whole-domain grant rather than only the specific instances an op
+   happened to name, since `editDomain` is a work package's *authorized*
+   scope, not a log of what it touched. Any observed instance outside
+   that union -> `outOfScope`. This check runs **before** the equality
+   check below and independently of it, so an observed delta that is "the
+   expected change plus one extra instance" is flagged as *both*
+   `outOfScope` and `replayMismatch`.
 3. The normalized observed delta does not equal the op's own expected
    delta (the `delta`-shape restricted to that one op) -> `replayMismatch`.
 4. Only when neither of the above fired -> `applied[stepId] = observedDelta`.
@@ -243,13 +263,15 @@ are different Python dict instances) to the sorted set of every
 contributing id — the applied representative's own id, widened to that
 whole duplicate group's `sources` when it was a kept duplicate.
 `contributions` lists `{id, revision}` for every id that appears somewhere
-in `sourceMap`, **except** an id the plan itself `drop`ped or `deferred`
-(`request.droppedOrDeferredIds`, recorded by `prepare_replay`) — a
-duplicate source the workshop explicitly excluded from this batch is not
-credited as part of it merely because a *different* group member happened
-to carry an identical op. `newNets` is every `insert_buffer` op's
-`newNet`, in first-seen order. `parentStateId` is `facts.baseStateId` per
-the state-id decision above.
+in `sourceMap`, **except** an id the plan itself `drop`ped, `deferred`, or
+excluded as the *losing* side of a `keep` decision
+(`request.excludedFromCreditIds`, recorded by `prepare_replay` as the union
+of `drop` targets, `keep`-losers and `deferred` ids) — a duplicate source
+the workshop explicitly excluded from this batch, whichever mechanism did
+the excluding, is not credited as part of it merely because a *different*
+group member happened to carry an identical op. `newNets` is every
+`insert_buffer` op's `newNet`, in first-seen order. `parentStateId` is
+`facts.baseStateId` per the state-id decision above.
 """
 from __future__ import annotations
 
@@ -490,15 +512,28 @@ def _domain_allows(domain, op):
 
 
 def _union_scoped_instances(request, edit_domains):
-    """Every instance some step in `request` is legitimately allowed to touch.
+    """Every instance legitimately in scope for `request`: the *whole* declared
+    `editDomain.instances` of each replayed contribution, unioned with every
+    trace-created (`insert_buffer`) instance whose own op is in scope by net.
 
-    Per contributing step's own `contributionId`'s `edit_domains` entry —
-    never a blanket union of every domain's raw `instances` list, since an
-    `insert_buffer`'s new instance is legitimate by its *net*, not by
-    already being a listed instance (see module docstring).
+    This is deliberately broader than "only the instances some op happened to
+    target": `edit_domains[contributionId]` is that contribution's whole work
+    package's authorized scope, not a log of what it touched, so an
+    unexpected-but-still-authorized side effect (e.g. a legalization move
+    landing on a different pre-existing instance the same work package was
+    allowed to touch) is in scope too. A trace-created instance is the one
+    exception — it never appears in a pre-existing `editDomain.instances`
+    list by definition, so it can only earn scope through its own op's net
+    membership (`atcs.contributions._scope_check`'s rule, mirrored here).
     """
     edit_domains = edit_domains or {}
     allowed = set()
+
+    contribution_ids = {step.get("contributionId") for step in request.get("steps") or []}
+    for contribution_id in contribution_ids:
+        domain = edit_domains.get(contribution_id) or {}
+        allowed.update(domain.get("instances") or [])
+
     for step in request.get("steps") or []:
         op = step.get("op") or {}
         domain = edit_domains.get(step.get("contributionId"))
@@ -506,6 +541,7 @@ def _union_scoped_instances(request, edit_domains):
             target = _op_target_instance(op)
             if target is not None:
                 allowed.add(target)
+
     return allowed
 
 
@@ -556,6 +592,7 @@ def _collect_plan_problems(obj, facts):
     for contribution_id in select:
         if not _hashable(contribution_id) or contribution_id not in considered:
             problems.append(f"select id {contribution_id!r} is not in facts.considered")
+    select_set = {contribution_id for contribution_id in select if _hashable(contribution_id)}
 
     deferred = obj.get("deferred")
     if not isinstance(deferred, list):
@@ -564,22 +601,18 @@ def _collect_plan_problems(obj, facts):
     for contribution_id in deferred:
         if not _hashable(contribution_id) or contribution_id not in considered:
             problems.append(f"deferred id {contribution_id!r} is not in facts.considered")
+    deferred_set = {contribution_id for contribution_id in deferred if _hashable(contribution_id)}
 
     resolutions = obj.get("resolutions")
     if not isinstance(resolutions, list):
         problems.append(f"resolutions must be a list, got {resolutions!r}")
         resolutions = []
 
-    # Contradiction bookkeeping: two decisions naming DIFFERENT targets under the
-    # same conflictKey are normal (a multi-member conflict is often resolved by
-    # several complementary decisions, e.g. "revise:a" + "drop:b"). What is
-    # contradictory is two *different kinds* for the *same* (conflictKey, target)
-    # pair, or two different "keep" targets under the same conflictKey (each
-    # "keep" implicitly excludes every other member, so two different "keep"
-    # targets for one conflict cannot both hold).
-    kinds_by_key_target = {}
-    keep_targets_by_key = {}
-
+    # First pass: per-resolution structural checks, plus collect (conflictKey, kind,
+    # targetId, resolution) tuples for the cross-resolution checks below — those need
+    # every `drop` target gathered first, so they cannot run inline in this loop.
+    parsed = []
+    drop_targets = set()
     for resolution in resolutions:
         if not isinstance(resolution, dict):
             problems.append(f"resolution must be an object, got {resolution!r}")
@@ -602,23 +635,64 @@ def _collect_plan_problems(obj, facts):
         if conflict is not None and target_id not in (conflict.get("contributions") or []):
             problems.append(f"resolution target {target_id!r} is not a member of conflict {conflict_key!r}")
 
-        if kind == "revise":
-            revised_id = resolution.get("revisedContribution")
-            if not _hashable(revised_id) or revised_id not in considered:
-                problems.append(
-                    f"revise:{target_id} revisedContribution {revised_id!r} is not in facts.considered"
-                )
+        if kind == "drop" and _hashable(target_id):
+            drop_targets.add(target_id)
 
-        if _hashable(conflict_key) and _hashable(target_id):
-            kinds_by_key_target.setdefault((conflict_key, target_id), set()).add(kind)
-            if kind == "keep":
+        parsed.append((conflict_key, kind, target_id, resolution))
+
+    # Second pass: `revise`-specific checks. A `revisedContribution` must be a
+    # considered id that is not itself part of this same batch any other way
+    # (directly selected, deferred, or dropped) and not the substitute for more
+    # than one target — any of those would let the same considered contribution's
+    # operations enter the replay under two different identities/positions,
+    # which is exactly what `prepare_replay`'s "duplicate-step" defense also
+    # guards against at replay time.
+    revise_target_counts = {}
+    for conflict_key, kind, target_id, resolution in parsed:
+        if kind != "revise":
+            continue
+        revised_id = resolution.get("revisedContribution")
+        if not _hashable(revised_id) or revised_id not in considered:
+            problems.append(f"revise:{target_id} revisedContribution {revised_id!r} is not in facts.considered")
+            continue
+        if revised_id in select_set:
+            problems.append(
+                f"revisedContribution {revised_id!r} (revise:{target_id}) must not also be directly selected"
+            )
+        if revised_id in deferred_set:
+            problems.append(f"revisedContribution {revised_id!r} (revise:{target_id}) must not also be deferred")
+        if revised_id in drop_targets:
+            problems.append(
+                f"revisedContribution {revised_id!r} (revise:{target_id}) must not also be a drop target"
+            )
+        revise_target_counts[revised_id] = revise_target_counts.get(revised_id, 0) + 1
+
+    for revised_id, count in revise_target_counts.items():
+        if count > 1:
+            problems.append(f"revisedContribution {revised_id!r} is the target of {count} revise resolutions")
+
+    # Third pass: contradiction checks.
+    # - `kinds_by_target` is deliberately keyed by target id *alone* (not by
+    #   (conflictKey, target)): the same contribution id getting a `keep` under
+    #   one conflictKey and a `drop` under a different one is exactly as
+    #   contradictory as getting both under the same key.
+    # - `keep_targets_by_key` stays scoped to one conflictKey: two different
+    #   `keep` targets under the *same* conflict cannot both hold (each `keep`
+    #   implicitly excludes every other member of that conflict), but two
+    #   different targets each with their own *different* decision under the
+    #   same conflictKey (e.g. `"revise:a"` + `"drop:b"`) is the normal way a
+    #   multi-member conflict is resolved piece by piece, not a contradiction.
+    kinds_by_target = {}
+    keep_targets_by_key = {}
+    for conflict_key, kind, target_id, resolution in parsed:
+        if _hashable(target_id):
+            kinds_by_target.setdefault(target_id, set()).add(kind)
+            if kind == "keep" and _hashable(conflict_key):
                 keep_targets_by_key.setdefault(conflict_key, set()).add(target_id)
 
-    for (conflict_key, target_id), kinds in kinds_by_key_target.items():
+    for target_id, kinds in kinds_by_target.items():
         if len(kinds) > 1:
-            problems.append(
-                f"conflictKey {conflict_key!r} has contradictory resolutions for {target_id!r}: {sorted(kinds)}"
-            )
+            problems.append(f"contribution {target_id!r} has contradictory decisions: {sorted(kinds)}")
 
     for conflict_key, keep_targets in keep_targets_by_key.items():
         if len(keep_targets) > 1:
@@ -679,11 +753,24 @@ def _resolution_effects(plan, facts):
     return drop_ids, revise_map, keep_exclusions
 
 
-def _check_no_unresolved_conflict(select_ids, excluded_ids, facts):
-    """Raise `AtcsError("unresolved-conflict", ...)` per the module docstring's rule."""
-    remaining_selected = {cid for cid in select_ids if cid not in excluded_ids}
+def _check_no_unresolved_conflict(select_ids, excluded_ids, revise_map, facts):
+    """Raise `AtcsError("unresolved-conflict", ...)` per the module docstring's rule.
+
+    Critical fix: membership is checked against the *effective* identity of
+    each surviving selected id — `revise_map.get(cid, cid)` — not the raw
+    selected id. A `revise:<id>` substitution changes what actually gets
+    replayed in that slot, so a conflict the *revised* contribution is a
+    member of (even one M4 discovered between the revised id and some other
+    contribution that was never itself revised or excluded) must still block
+    an unresolved batch — the original `revise:<id>` target's own conflicts
+    are, conversely, no longer relevant once its slot no longer replays its
+    own operations.
+    """
+    effective_selected = {revise_map.get(cid, cid) for cid in select_ids if cid not in excluded_ids}
     for conflict in facts.get("conflicts") or []:
-        members_remaining = sorted(cid for cid in conflict.get("contributions") or [] if cid in remaining_selected)
+        members_remaining = sorted(
+            cid for cid in conflict.get("contributions") or [] if cid in effective_selected
+        )
         if len(members_remaining) >= 2:
             raise core.AtcsError(
                 "unresolved-conflict", f"conflict {conflict.get('key')} still selects {members_remaining}"
@@ -706,6 +793,9 @@ def prepare_replay(plan, facts, contributions):
     - ``"unsupported-op"`` — a selected op is `pg_local_adjust`.
     - ``"selected-without-steps"`` — a selected, non-excluded, non-deferred
       `fix`-kind contribution ends up credited with zero steps.
+    - ``"duplicate-step"`` — the same `stepId` would be generated twice (a
+      defensive check `validate_plan`'s own `revisedContribution`-uniqueness
+      rule is meant to prevent upstream; this is the belt to that suspender).
     - whatever `xtop_tcl` raises (`"unsafe-name"`, `"malformed-input"`,
       `"unknown-op"`) for any op it renders.
 
@@ -724,7 +814,7 @@ def prepare_replay(plan, facts, contributions):
     excluded_ids = drop_ids | keep_exclusions | deferred_ids
 
     select_ids = list(dict.fromkeys(plan.get("select") or []))
-    _check_no_unresolved_conflict(select_ids, excluded_ids, facts)
+    _check_no_unresolved_conflict(select_ids, excluded_ids, revise_map, facts)
 
     selected_set = set(select_ids)
 
@@ -771,6 +861,7 @@ def prepare_replay(plan, facts, contributions):
     included_deltas = []
     represented_ids = set()
     processed_group_ids = set()
+    seen_step_ids = set()
 
     for contribution_id in replay_order:
         if contribution_id in excluded_ids:
@@ -804,6 +895,13 @@ def prepare_replay(plan, facts, contributions):
             if op.get("op") == "pg_local_adjust":
                 raise core.AtcsError("unsupported-op", "pg_local_adjust is not replayed by XTop in M5")
             step_id = core.digest({"contributionId": effective_id, "opIndex": op_index})
+            if step_id in seen_step_ids:
+                raise core.AtcsError(
+                    "duplicate-step",
+                    f"stepId {step_id!r} (contributionId {effective_id!r}, opIndex {op_index}) "
+                    f"was generated more than once",
+                )
+            seen_step_ids.add(step_id)
             steps.append(
                 {
                     "stepId": step_id,
@@ -831,7 +929,7 @@ def prepare_replay(plan, facts, contributions):
         "baseStateId": base_state_id,
         "steps": steps,
         "expectedDelta": _merge_deltas(included_deltas),
-        "droppedOrDeferredIds": sorted(drop_ids | deferred_ids),
+        "excludedFromCreditIds": sorted(drop_ids | keep_exclusions | deferred_ids),
     }
     return core.stamp("replay-request", body)
 
@@ -857,10 +955,19 @@ def reconcile(request, receipts, edit_domains):
     conflicting_step_ids = set()
     unknown_receipts = []
     for receipt in receipts or []:
-        step_id = receipt.get("stepId") if isinstance(receipt, dict) else None
+        if not isinstance(receipt, dict):
+            unknown_receipts.append(repr(receipt))
+            continue
+        step_id = receipt.get("stepId")
+        if not isinstance(step_id, str):
+            # Missing `stepId`, or one that is not a string (e.g. an int, or an
+            # unhashable value like a list) — never a real `stepId` this request
+            # could have issued, so it is counted by the whole receipt's repr
+            # rather than risking an unhashable dict/set lookup on `step_id` itself.
+            unknown_receipts.append(repr(receipt))
+            continue
         if step_id not in steps_by_id:
-            if step_id is not None:
-                unknown_receipts.append(step_id)
+            unknown_receipts.append(step_id)
             continue
         existing = receipts_by_step.get(step_id)
         if existing is None:
@@ -912,7 +1019,7 @@ def reconcile(request, receipts, edit_domains):
         "pending": sorted(pending),
         "replayMismatch": sorted(set(replay_mismatch)),
         "outOfScope": sorted(out_of_scope),
-        "unknownReceipts": sorted(set(unknown_receipts), key=str),
+        "unknownReceipts": sorted(set(unknown_receipts)),
         "delta": _merge_deltas(applied_deltas),
     }
     return core.stamp("integration-state", body)
@@ -962,7 +1069,7 @@ def seal_batch(state, request, facts, contributions):
         for source_id in group.get("sources") or []:
             duplicate_group_by_source[source_id] = group
 
-    not_credited = set(request.get("droppedOrDeferredIds") or [])
+    not_credited = set(request.get("excludedFromCreditIds") or [])
 
     ordered_steps = [step for step in request.get("steps") or [] if step["stepId"] in applied]
 
