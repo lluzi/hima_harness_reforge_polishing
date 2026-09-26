@@ -189,6 +189,17 @@ Known gaps carried from earlier tasks:
 - G24 (Task 15) `checkPack` is fit against `linglong-atcs28` and the local Site; against the frozen
   `linglong-swerv28` it is unfit only on Site facts (unbound inputs, `python3` and the ATCS wrapper not
   permitted, `innovus`/`primetime`/`starrc`/`xtop` licences undeclared), which is expected.
+- G25 (final review, Minor) `contract.yml`'s `target_setup_wns_ns`/`target_hold_wns_ns` Goal knobs
+  are declared `min: 0, max: 0` -- the Global Constraint already fixes both at `0.0`, and this Pack's
+  own evidence cannot honestly support any other value: `setup-goal`/`hold-goal` require `tc_final_
+  setup_wns_ns`/`tc_final_hold_wns_ns >= target`, but `atcs.reports.parse_global_timing` can only ever
+  report a *known* WNS for a clean mode as exactly `known(0.0)` (PT's own "No setup/hold violations
+  found." line carries no positive-margin figure) -- a genuinely positive final WNS is not a value
+  this Pack's report parsing can produce at all, known or otherwise. A Run configured with a knob
+  above `0.0` could therefore never pass its Goal even with every violation fixed, which is a
+  configuration this Pack itself is guaranteed to make un-satisfiable, not a Campaign that could
+  plausibly still succeed. `min == max == 0` makes the schema itself refuse that configuration rather
+  than admitting a Run this Pack cannot ever complete.
 
 ## Reviews
 

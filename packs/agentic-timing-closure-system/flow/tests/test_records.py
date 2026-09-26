@@ -378,6 +378,18 @@ class FabricRecordTest(unittest.TestCase):
 class CompiledMethodCrossCheckTest(unittest.TestCase):
     """Cheap Python mirror of the references `loadPack`/`checkPack` resolve (no Node needed)."""
 
+    def test_goal_knobs_are_fixed_at_zero(self):
+        """Minor (final review): `target_setup_wns_ns`/`target_hold_wns_ns` name a REQUIRED
+        margin this Pack's own evidence can never prove positive (a clean mode's WNS can only
+        ever be reported as `known(0.0)`, never a genuine positive slack) -- `min == max == 0`
+        makes the schema itself refuse any other configured value (see FABRIC.md G25)."""
+        contract_text = CONTRACT_PATH.read_text(encoding="utf-8")
+        for name in ("target_setup_wns_ns", "target_hold_wns_ns"):
+            match = re.search(rf"^  {name}: \{{([^}}]*)\}}", contract_text, re.M)
+            self.assertIsNotNone(match, f"goal knob {name} not found in contract.yml")
+            self.assertRegex(match.group(1), r"\bmin:\s*0\b", f"{name} min is not 0")
+            self.assertRegex(match.group(1), r"\bmax:\s*0\b", f"{name} max is not 0")
+
     def test_every_graph_rule_has_a_rule_file(self):
         graph_rules = {rule for rules in yaml_key_lists(GRAPH_PATH.read_text(encoding="utf-8"), "rules") for rule in rules}
         self.assertTrue(graph_rules, "graph.yml names no rules at all; the parser found nothing")

@@ -523,8 +523,21 @@ rules:
   - next-action-goal-met
 
 goal:
-  target_setup_wns_ns: { type: number, unit: ns, min: 0, max: 1, default: 0 }
-  target_hold_wns_ns: { type: number, unit: ns, min: 0, max: 1, default: 0 }
+  # Minor (final review): max is 0, not 1. `target_setup_wns_ns`/`target_hold_wns_ns`
+  # name a REQUIRED margin (setup-goal/hold-goal's own `predicate: { op: gte,
+  # threshold: { parameter: ... } }`), but this Pack's own evidence can never PROVE a
+  # positive one: PT's `report_global_timing` only ever reports a real WNS for a mode
+  # that actually has violations ("NUM>0"); a clean mode instead prints "No violations
+  # found", which `atcs.reports.parse_global_timing` can only parse as `known(0.0)`,
+  # never a genuine positive slack margin (PT does not report how much positive margin
+  # a clean design has this way). A Run configured with, say, `target_setup_wns_ns =
+  # 0.2` could therefore never pass `setup-goal` even once every real violation was
+  # fixed -- the only value this evidence can ever honestly certify is the Global
+  # Constraint's own `0.0` ("no violations"), so `max: 0` makes that the only value a
+  # Run can be configured with, instead of silently accepting a knob this Pack's own
+  # evidence can never satisfy. See FABRIC.md's Gaps for the SPEC-consistent framing.
+  target_setup_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }
+  target_hold_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }
 
 strategy:
   maxPaths: { type: number, unit: paths, min: 100, max: 5000, default: 1000 }
