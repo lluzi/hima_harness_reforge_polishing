@@ -2,7 +2,10 @@
 
 This module owns the four M6 producers named in this Pack's task brief
 (``.superpowers/sdd/task-8-brief.md``) and the ``check-plan``/``evaluation``
-rows of ``.superpowers/sdd/global-context.md``'s "Shared data model" table:
+rows of ``.superpowers/sdd/global-context.md``'s "Shared data model" table,
+plus one Task-13-review producer, ``precheck_evidence``, for the
+``precheck-evidence`` Reader (`packs/agentic-timing-closure-system/tools/
+read-atcs.py`):
 
 - `plan_checks(merge_commit, policy)` -> ``check-plan`` — which checks a
   merge commit's candidate must carry before it can be evaluated.
@@ -11,6 +14,21 @@ rows of ``.superpowers/sdd/global-context.md``'s "Shared data model" table:
   parasitics, per ``knowledge/cheap-verification.md``'s rule that a PT
   pre-check over nets without valid RC modeling is `unknown`, never a
   silent pass.
+- `precheck_evidence(merge_commit, spef_net_names_path)` -> stamped
+  ``atcs.precheck-evidence/1`` — binds a merge commit's declared `newNets`
+  to the identity (never the parsed content) of the SPEF net-name source a
+  later `presta_qualification` call must be re-derived against. This
+  producer never calls `presta_qualification` itself and never reads
+  `spef_net_names_path` for anything but its hash: the whole point of
+  recording a `{"path", "sha256"}` reference instead of an embedded net-name
+  list or a pre-computed count is that the Reader re-hashes the source and
+  re-parses it independently before it will trust any qualification result
+  — a producer that embedded its own already-computed `unqualified`/`count`
+  here would be exactly the "trust the producer's own number" shape this
+  Pack's Readers refuse to accept. Raises `AtcsError("missing-input", ...)`
+  when `merge_commit` has no `id`/`newNets`, or when `spef_net_names_path`
+  cannot be read at all (a source that cannot even be hashed once, at
+  authoring time, is never recorded as if it existed).
 - `parse_drc_summary(text)` / `parse_connectivity_summary(text)` — fail-closed
   parsers for Innovus ``verify_drc``/``verifyConnectivity`` report text, in
   the grammar cross-checked against the frozen old Pack's reader
@@ -415,6 +433,33 @@ def presta_qualification(new_nets, spef_net_names):
     available = set(spef_net_names)
     unqualified = sorted(net for net in new_nets if net not in available)
     return {"unqualified": unqualified, "count": core.known(len(unqualified))}
+
+
+def precheck_evidence(merge_commit, spef_net_names_path):
+    """Stamp a ``precheck-evidence`` artifact binding `merge_commit`'s
+    `newNets` to the SPEF net-name source's identity (see module docstring).
+
+    Never parses or embeds `spef_net_names_path`'s content, and never calls
+    `presta_qualification` itself — that recomputation is the Reader's job,
+    against a source it re-hashes on its own.
+    """
+    merge_commit_id = merge_commit.get("id") if isinstance(merge_commit, dict) else None
+    if not merge_commit_id:
+        raise core.AtcsError("missing-input", "merge_commit.id")
+    new_nets = merge_commit.get("newNets") if isinstance(merge_commit, dict) else None
+    if not isinstance(new_nets, list) or not all(isinstance(net, str) and net for net in new_nets):
+        raise core.AtcsError("missing-input", "merge_commit.newNets must be a list of non-empty strings")
+    try:
+        source_sha256 = core.file_sha256(spef_net_names_path)
+    except OSError as exc:
+        raise core.AtcsError("missing-input", f"cannot read spef_net_names_path: {exc}") from exc
+
+    body = {
+        "mergeCommitId": merge_commit_id,
+        "newNets": sorted(new_nets),
+        "spefNetNames": {"path": str(spef_net_names_path), "sha256": source_sha256},
+    }
+    return core.stamp("precheck-evidence", body)
 
 
 def parse_drc_summary(text):

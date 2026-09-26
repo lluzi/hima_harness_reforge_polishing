@@ -2,7 +2,7 @@ id: atcs-acceptance-record
 version: "1"
 file: tools/read-atcs.py
 argv: [/usr/bin/python3, '${READER}', 'acceptance-record', '${REPORT}', '${OUT}', '${WORKSPACE}']
-reportKind: atcs-acceptance-record/1
+reportKind: atcs-acceptance-record-review/1
 emits:
   - tc_accepted_artifact_ready
   - tc_refresh_count

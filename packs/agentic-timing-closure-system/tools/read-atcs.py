@@ -49,22 +49,24 @@ mismatch. Any exception raised by any handler aborts `main()` before the
 `<out>` file is ever written — a fail-closed reader never leaves a stale or
 partial reading behind (see `main()`).
 
-Cross-artifact references this Pack's request-shaped artifacts carry
+Cross-artifact references some of this Pack's artifacts carry
 (`work-package.baseStateId`, `integration-plan` against its `composition-
-facts`) are not resolved by scanning the workspace for a same-content file:
-this script instead defines a small **read envelope** for exactly those
-kinds — a JSON document (still itself schema/id-checked where it embeds a
-stamped companion artifact) that bundles the candidate object together with
-the companion artifact(s) `atcs.workspaces.request_invalid_count`/
-`atcs.integration.plan_invalid_count` need. Whichever Tool/Workshop this
-Pack's `contract.yml` (T14) ultimately binds to each such reader's output
-must write its `REPORT` in that envelope shape; see each handler's own
-docstring below for the exact shape, and this task's report
-(`.superpowers/sdd/task-13-report.md`) for the full table. `next-decision`
-is the one request-shaped kind resolved by workspace scan instead
-(`_resolve_id_in_workspace`) because SPEC.md's Semantics section explicitly
-describes checking that its `stateRef`/`observationRef` are themselves
-resolvable inside the Campaign, not against one specific companion.
+facts`, `acceptance-record` against its `refresh-ledger`) are not resolved
+by scanning the workspace for a same-content file: this script instead
+defines a small **read envelope** for exactly those kinds — see the "Read
+envelopes" comment block immediately below for the exact required keys of
+every one, and each handler's own docstring for the reasoning. Whichever
+Tool/Workshop this Pack's `contract.yml` (T14) ultimately binds to each such
+reader's output must write its `REPORT` in that envelope shape; see this
+task's report (`.superpowers/sdd/task-13-report.md`) for the full table.
+`next-decision` is the one request-shaped kind resolved by workspace scan
+instead (`_resolve_id_in_workspace`) because SPEC.md's Semantics section
+explicitly describes checking that its `stateRef`/`observationRef` are
+themselves resolvable inside the Campaign, not against one specific
+companion. `precheck-evidence` needs **no** envelope at all as of this
+task's review round: `atcs.verification.precheck_evidence` now stamps it as
+a real artifact this script reads and identity-checks directly, exactly
+like `evaluation` or `composition-facts`.
 """
 from __future__ import annotations
 
@@ -75,6 +77,53 @@ import os
 import re
 import sys
 from pathlib import Path
+
+
+# ---------------------------------------------------------------------------
+# Read envelopes — the exact REPORT shape each envelope-based kind expects
+# ---------------------------------------------------------------------------
+#
+# Most kinds below read one stamped `atcs.<kind>/1` artifact directly (no
+# envelope at all): `readiness`, `composition-facts`, `integration-state`,
+# `evaluation`, `worker-result`, and, as of this task's review round,
+# `precheck-evidence` (now a real stamped artifact produced by
+# `atcs.verification.precheck_evidence` — see its handler below). The kinds
+# below still need a companion artifact/path this script has no Harness
+# placeholder to fetch on its own (only `READER`/`REPORT`/`OUT`/`WORKSPACE`
+# exist), so this script defines a small envelope JSON shape for each; the
+# `contract.yml` (T14) Tool/Workshop that produces that kind's REPORT file
+# must write exactly this shape. Every embedded/referenced companion artifact
+# is itself schema/id- and, where applicable, source-verified before use.
+#
+#   observation-request   — no envelope: the raw candidate document itself
+#                            (self-contained structural check only).
+#
+#   work-package           {"candidate": {...unstamped work-package fields...},
+#   worker-request          "baseState": {...a stamped "design-state" artifact...},
+#                            "siteCapabilities": {"pgVerification": bool, ...}}
+#
+#   contribution-index     {"contributions": [<full stamped "contribution" artifact>, ...],
+#                            "pending": [<opaque pending-research id>, ...]}
+#
+#   integration-plan        {"plan": {...unstamped or stamped "integration-plan" fields...},
+#                            "facts": {...a stamped "composition-facts" artifact...}}
+#
+#   acceptance-record       {"acceptanceRecord": "<workspace-relative path to a stamped
+#                             'acceptance-record' artifact>",
+#                            "refreshLedger": "<workspace-relative path to a stamped
+#                             'refresh-ledger' artifact (atcs.refresh)>"}
+#                           Both are paths, not embedded objects (controller decision,
+#                           Task 13 review round 1) — `acceptanceRecord` must resolve;
+#                           `refreshLedger` may legitimately not exist yet (no physical
+#                           refresh has completed), in which case `tc_refresh_count` is
+#                           `unknown`, never a guessed `0`.
+#
+#   next-decision           no envelope: the raw candidate document itself.
+#                           `stateRef`/`observationRef` are instead resolved by a
+#                           bounded workspace scan (`_resolve_id_in_workspace`) —
+#                           SPEC.md's Semantics section frames these as references
+#                           this Reader checks generically, not against one fixed
+#                           companion artifact.
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +149,7 @@ def _load_json(path):
 
 _ATCS_MODULE_NAMES = (
     "core", "state", "workspaces", "contributions", "composition",
-    "integration", "verification", "adoption", "experience", "residual",
+    "integration", "verification", "adoption", "experience", "residual", "refresh",
 )
 _atcs_cache = None
 
@@ -516,27 +565,42 @@ def _read_integration_state(report, workspace, extra, mods):
 
 
 def _read_precheck_evidence(report, workspace, extra, mods):
-    """Pre-check (PT "presta") RC qualification over a candidate's new nets.
+    """A stamped `atcs.precheck-evidence/1` artifact
+    (`atcs.verification.precheck_evidence(merge_commit, spef_net_names_path)`):
+    `{"mergeCommitId", "newNets": [...], "spefNetNames": {"path", "sha256"}}`.
+    No envelope — this is a real stamped artifact as of this task's review
+    round, schema/id-checked like any other.
 
-    Envelope (no existing `atcs.*` "precheck-evidence" kind — this wraps
-    `atcs.verification.presta_qualification`'s own two inputs directly, so
-    this handler recomputes the qualification itself rather than trusting an
-    embedded count)::
-
-        {"newNets": ["<net>", ...], "spefNetNames": ["<net>", ...] | null}
+    The SPEF net-name source is re-hashed here and re-parsed independently;
+    a *present-but-changed* source is a hard failure (never silently treated
+    as "unreadable" — that would let a tampered source quietly relax the
+    qualification it was supposed to prove). A genuinely *missing* source
+    file is `presta_qualification`'s own "the net-name list could not be
+    read" case (`spef_net_names=None`, an `unknown` count) — a materially
+    different fact from a present file whose hash no longer matches.
     """
+    core = mods["core"]
     verification_mod = mods["verification"]
-    envelope = _load_json(report)
-    if not isinstance(envelope, dict):
-        raise ValueError("precheck-evidence must be a JSON object")
-    new_nets = envelope.get("newNets")
+    obj = _load_json(report)
+    _verify_identity(obj, "precheck-evidence", core)
+
+    new_nets = obj.get("newNets")
     if not isinstance(new_nets, list) or not all(isinstance(net, str) for net in new_nets):
         raise ValueError("precheck-evidence.newNets must be a list of strings")
-    spef_net_names = envelope.get("spefNetNames", None)
-    if spef_net_names is not None and (
-        not isinstance(spef_net_names, list) or not all(isinstance(net, str) for net in spef_net_names)
-    ):
-        raise ValueError("precheck-evidence.spefNetNames must be a list of strings, or null")
+
+    source = obj.get("spefNetNames")
+    if not _has_keys(source, ("path", "sha256")):
+        raise ValueError("precheck-evidence.spefNetNames must be {path, sha256}")
+
+    resolved = _safe_join(workspace, source["path"], "precheck-evidence.spefNetNames")
+    if resolved.is_symlink() or not resolved.is_file():
+        spef_net_names = None  # presta_qualification's own "could not be read" case
+    else:
+        if core.file_sha256(resolved) != source["sha256"]:
+            raise ValueError("precheck-evidence.spefNetNames source sha256 mismatch")
+        spef_net_names = [
+            line.strip() for line in resolved.read_text(encoding="utf-8").splitlines() if line.strip()
+        ]
 
     result = verification_mod.presta_qualification(new_nets, spef_net_names)
     return [_emit("tc_unqualified_rc_net_count", "count", result["count"])]
@@ -566,18 +630,51 @@ def _read_evaluation(report, workspace, extra, mods):
 
 
 def _read_acceptance_record(report, workspace, extra, mods):
+    """Envelope: `{"acceptanceRecord": "<workspace-relative path>",
+    "refreshLedger": "<workspace-relative path>"}` (controller decision,
+    Task 13 review round 1 — both are paths, not embedded objects, and
+    `tc_refresh_count` is read from `atcs.refresh`'s own ledger, never from
+    `atcs.adoption`'s pointers `history`, which counts accepted publishes,
+    not completed physical refreshes; see `atcs/refresh.py`'s module
+    docstring).
+
+    `acceptanceRecord` must resolve to a real, identity-verified
+    `acceptance-record` artifact — this reader has nothing to report
+    without it. `refreshLedger` may legitimately not exist yet (no physical
+    refresh has completed for this Campaign), in which case
+    `tc_refresh_count` is `unknown`; when it does exist it is identity-
+    verified and `tc_refresh_count` is `known(0)` only for a verified,
+    genuinely empty ledger.
+    """
     core = mods["core"]
-    obj = _load_json(report)
+    envelope = _load_json(report)
+    if not isinstance(envelope, dict):
+        raise ValueError("acceptance-record envelope must be a JSON object")
+
+    acceptance_rel = envelope.get("acceptanceRecord")
+    ledger_rel = envelope.get("refreshLedger")
+    if not isinstance(acceptance_rel, str) or not acceptance_rel:
+        raise ValueError("envelope.acceptanceRecord must be a non-empty workspace-relative path")
+    if not isinstance(ledger_rel, str) or not ledger_rel:
+        raise ValueError("envelope.refreshLedger must be a non-empty workspace-relative path")
+
+    acceptance_path = _safe_join(workspace, acceptance_rel, "envelope.acceptanceRecord")
+    obj = _load_json(acceptance_path)
     _verify_identity(obj, "acceptance-record", core)
     ready = obj.get("acceptedArtifactReady", core.unknown("missing from acceptance-record artifact"))
 
-    pointers_after = obj.get("pointersAfter")
-    if isinstance(pointers_after, dict) and isinstance(pointers_after.get("history"), list):
-        refresh = _emit_count("tc_refresh_count", len(pointers_after["history"]))
+    ledger_path = _safe_join(workspace, ledger_rel, "envelope.refreshLedger")
+    if ledger_path.is_symlink() or not ledger_path.is_file():
+        refresh_value = _emit("tc_refresh_count", "count", core.unknown("refresh ledger not found in workspace"))
     else:
-        refresh = _emit("tc_refresh_count", "count", core.unknown("acceptance-record has no pointersAfter.history"))
+        ledger = _load_json(ledger_path)
+        _verify_identity(ledger, "refresh-ledger", core)
+        entries = ledger.get("entries")
+        if not isinstance(entries, list):
+            raise ValueError("refresh-ledger.entries must be a list")
+        refresh_value = _emit_count("tc_refresh_count", len(entries))
 
-    return [_emit("tc_accepted_artifact_ready", "count", ready), refresh]
+    return [_emit("tc_accepted_artifact_ready", "count", ready), refresh_value]
 
 
 _ACTION_CODES = {

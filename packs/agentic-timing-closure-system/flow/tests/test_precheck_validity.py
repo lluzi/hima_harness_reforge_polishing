@@ -10,7 +10,9 @@ Runnable via discovery:
 """
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -167,6 +169,62 @@ class PrestaQualificationTest(unittest.TestCase):
     def test_no_new_nets_is_known_zero_even_if_spef_unreadable(self):
         result = verification.presta_qualification([], None)
         self.assertEqual(result["count"], core.known(0))
+
+
+class PrecheckEvidenceProducerTest(unittest.TestCase):
+    """`atcs.verification.precheck_evidence` — Task-13-review producer for the
+    `precheck-evidence` Reader. Binds a merge commit's `newNets` to the SPEF
+    net-name source's *identity* only; never embeds parsed content or a
+    pre-computed qualification result (see module docstring)."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.spef_path = Path(self.temp.name) / "spef-net-names.txt"
+        self.spef_path.write_text("n1\nn2\nn3\n", encoding="utf-8")
+        self.merge_commit = core.stamp("merge-commit", {
+            "parentStateId": "a" * 20, "contributions": [], "operations": [],
+            "innovusEcoTcl": "", "sourceMap": {}, "newNets": ["n9", "n1"],
+        })
+
+    def test_stamps_id_carries_new_nets_sorted_and_hashes_source(self):
+        evidence = verification.precheck_evidence(self.merge_commit, self.spef_path)
+        self.assertEqual(evidence["schema"], "atcs.precheck-evidence/1")
+        self.assertEqual(evidence["mergeCommitId"], self.merge_commit["id"])
+        self.assertEqual(evidence["newNets"], ["n1", "n9"])
+        self.assertEqual(evidence["spefNetNames"], {
+            "path": str(self.spef_path), "sha256": core.file_sha256(self.spef_path),
+        })
+        without_id = dict(evidence)
+        without_id.pop("id")
+        self.assertEqual(evidence["id"], core.digest(without_id))
+
+    def test_content_of_spef_source_is_never_embedded(self):
+        evidence = verification.precheck_evidence(self.merge_commit, self.spef_path)
+        self.assertNotIn("n1", json.dumps(evidence["spefNetNames"]))
+
+    def test_never_calls_presta_qualification_itself(self):
+        evidence = verification.precheck_evidence(self.merge_commit, self.spef_path)
+        self.assertNotIn("unqualified", evidence)
+        self.assertNotIn("count", evidence)
+
+    def test_missing_merge_commit_id_is_refused(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            verification.precheck_evidence({"newNets": ["n1"]}, self.spef_path)
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_missing_new_nets_is_refused(self):
+        bad = core.stamp("merge-commit", {
+            "parentStateId": "a" * 20, "contributions": [], "operations": [],
+            "innovusEcoTcl": "", "sourceMap": {},
+        })
+        with self.assertRaises(core.AtcsError):
+            verification.precheck_evidence(bad, self.spef_path)
+
+    def test_unreadable_source_path_is_refused(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            verification.precheck_evidence(self.merge_commit, Path(self.temp.name) / "does-not-exist.txt")
+        self.assertEqual(ctx.exception.code, "missing-input")
 
 
 class DrcConnectivitySummaryParseTest(unittest.TestCase):

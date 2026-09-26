@@ -37,6 +37,9 @@ from atcs import core  # noqa: E402
 from atcs import state  # noqa: E402
 from atcs import workspaces  # noqa: E402
 from atcs import integration  # noqa: E402
+from atcs import verification  # noqa: E402
+from atcs import adoption  # noqa: E402
+from atcs import refresh  # noqa: E402
 
 READ_ATCS_PATH = PACK_DIR / "tools" / "read-atcs.py"
 
@@ -472,31 +475,72 @@ class IntegrationStateReaderTest(unittest.TestCase):
 
 
 class PrecheckEvidenceReaderTest(unittest.TestCase):
+    """Reads a real `atcs.verification.precheck_evidence(...)` artifact — no
+    envelope, as of this task's review round (Controller decision 2)."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.workspace = _make_workspace(self.tmp.name)
 
-    def _report(self, envelope):
+    def _merge_commit(self, new_nets):
+        return core.stamp("merge-commit", {
+            "parentStateId": "a" * 20, "contributions": [], "operations": [],
+            "innovusEcoTcl": "", "sourceMap": {}, "newNets": new_nets,
+        })
+
+    def _write_evidence(self, new_nets, spef_lines):
+        spef_path = self.workspace / "inputs" / "spef-net-names.txt"
+        _write(spef_path, "\n".join(spef_lines) + ("\n" if spef_lines else ""))
+        evidence = verification.precheck_evidence(self._merge_commit(new_nets), spef_path)
+        # Rewrite the recorded source path to be workspace-relative (the
+        # producer just records whatever path it was given; the caller --
+        # here, this fixture, standing in for T12 -- is responsible for
+        # passing a workspace-relative one, then re-stamp so `id` reflects it).
+        rel = str(spef_path.relative_to(self.workspace))
+        evidence = core.stamp("precheck-evidence", {
+            **{k: v for k, v in evidence.items() if k not in ("schema", "id")},
+            "spefNetNames": {"path": rel, "sha256": evidence["spefNetNames"]["sha256"]},
+        })
         report = self.workspace / "flow" / "records" / "precheck.json"
-        _write(report, json.dumps(envelope))
-        return report
+        core.write_artifact(report, evidence)
+        return report, spef_path
 
     def test_all_nets_qualified(self):
-        report = self._report({"newNets": ["n1", "n2"], "spefNetNames": ["n1", "n2", "n3"]})
+        report, _spef = self._write_evidence(["n1", "n2"], ["n1", "n2", "n3"])
         values = read_atcs.read("precheck-evidence", report, self.workspace)
         self.assertEqual(values, [{"type": "tc_unqualified_rc_net_count", "unit": "count", "value": 0}])
 
-    def test_unreadable_spef_net_list_is_unknown_not_zero(self):
-        report = self._report({"newNets": ["n1"], "spefNetNames": None})
+    def test_some_nets_unqualified(self):
+        report, _spef = self._write_evidence(["n1", "n2"], ["n1"])
+        values = read_atcs.read("precheck-evidence", report, self.workspace)
+        self.assertEqual(values[0]["value"], 1)
+
+    def test_missing_spef_source_file_is_unknown_not_zero(self):
+        report, spef_path = self._write_evidence(["n1"], ["n1"])
+        spef_path.unlink()
         values = read_atcs.read("precheck-evidence", report, self.workspace)
         self.assertIsNone(values[0]["value"])
         self.assertTrue(values[0]["unknownReason"])
 
     def test_no_new_nets_is_known_zero(self):
-        report = self._report({"newNets": [], "spefNetNames": None})
+        report, _spef = self._write_evidence([], [])
         values = read_atcs.read("precheck-evidence", report, self.workspace)
         self.assertEqual(values[0]["value"], 0)
+
+    def test_changed_spef_source_is_a_hard_failure(self):
+        report, spef_path = self._write_evidence(["n1"], ["n1"])
+        spef_path.write_text("n1\nn2\ntampered\n", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            read_atcs.read("precheck-evidence", report, self.workspace)
+
+    def test_tampered_artifact_id_is_refused(self):
+        report, _spef = self._write_evidence(["n1"], ["n1"])
+        tampered = json.loads(report.read_text())
+        tampered["newNets"] = ["n1", "n9"]
+        report.write_text(json.dumps(tampered))
+        with self.assertRaises(ValueError):
+            read_atcs.read("precheck-evidence", report, self.workspace)
 
 
 class EvaluationReaderTest(unittest.TestCase):
@@ -541,33 +585,156 @@ class EvaluationReaderTest(unittest.TestCase):
         self.assertIsNone(by_type["tc_final_identity_error_count"]["value"])
 
 
+_ACCEPTANCE_BASELINE = "baseline-" + "0" * 12
+_ACCEPTANCE_POLICY = {
+    "allowDegradedWorking": False,
+    "degradeLimitNs": 0.0,
+    "goal": {"setup": 0.0, "hold": 0.0},
+    "baselineStateId": _ACCEPTANCE_BASELINE,
+    "baselineMinWns": -1.0,
+}
+_COMPLETE_EMPTY_COMPARISON = {"remaining": [], "entrant": [], "regressed": []}
+
+
+def _real_evaluation(state_id):
+    """A real, `adoption.publish`-acceptable `evaluation` artifact (mirrors
+    `test_adoption.py`'s own `_evaluation` fixture, kept local here so this
+    file does not depend on another test module's internals)."""
+    return core.stamp("evaluation", {
+        "candidateId": state_id, "stateId": state_id, "parentStateId": _ACCEPTANCE_BASELINE,
+        "finalSetupWns": core.known(-0.02), "finalHoldWns": core.known(-0.01),
+        "missingRequiredCheckCount": core.known(0), "finalIdentityErrorCount": core.known(0),
+        "constraintFailureCount": core.known(0), "constraintUnknownCount": core.known(0),
+        "comparison": dict(_COMPLETE_EMPTY_COMPARISON),
+    })
+
+
 class AcceptanceRecordReaderTest(unittest.TestCase):
+    """Envelope `{"acceptanceRecord": <path>, "refreshLedger": <path>}`
+    (Controller decision, Task 13 review round 1) — built through the real
+    `atcs.adoption.publish` and `atcs.refresh.record_refresh` producers, not
+    hand-stamped fictional shapes."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.workspace = _make_workspace(self.tmp.name)
 
-    def test_ready_and_refresh_count(self):
-        obj = core.stamp("acceptance-record", {
-            "decision": "best", "pointersBefore": {"history": []},
-            "pointersAfter": {"history": [{"acceptanceRecordId": "r1"}, {"acceptanceRecordId": "r2"}]},
-            "acceptedArtifactReady": core.known(1), "reason": "ok",
+    def _write_envelope(self, acceptance_rel, ledger_rel):
+        envelope = {"acceptanceRecord": acceptance_rel, "refreshLedger": ledger_rel}
+        report = self.workspace / "flow" / "records" / "acceptance-review.json"
+        _write(report, json.dumps(envelope))
+        return report
+
+    def test_ready_and_refresh_count_from_real_producers(self):
+        evaluation = _real_evaluation("state-a")
+        acceptance_record = adoption.publish(evaluation, _ACCEPTANCE_BASELINE,
+                                              self.workspace / "flow" / "state" / "pointers.json",
+                                              _ACCEPTANCE_POLICY)
+        self.assertEqual(acceptance_record["decision"], "best")
+        acceptance_path = self.workspace / "flow" / "records" / "acceptance-record.json"
+        core.write_artifact(acceptance_path, acceptance_record)
+
+        ledger_path = self.workspace / "flow" / "state" / "refresh-ledger.json"
+        refresh.record_refresh(ledger_path, "candidate-mc-1", "state-a", {
+            scenario: {"path": f"flow/records/sta/{scenario}.rpt", "sha256": f"{i:064x}"}
+            for i, scenario in enumerate(verification.REQUIRED_SCENARIOS)
         })
-        report = self.workspace / "flow" / "records" / "acceptance.json"
-        core.write_artifact(report, obj)
+
+        report = self._write_envelope(
+            str(acceptance_path.relative_to(self.workspace)),
+            str(ledger_path.relative_to(self.workspace)),
+        )
         values = read_atcs.read("acceptance-record", report, self.workspace)
         by_type = {v["type"]: v for v in values}
-        self.assertEqual(by_type["tc_accepted_artifact_ready"]["value"], 1)
-        self.assertEqual(by_type["tc_refresh_count"]["value"], 2)
+        # No `database` ref on this fixture's evaluation -> `publish` itself
+        # reports `acceptedArtifactReady` unknown ("missing-database-ref");
+        # this reader's job is to pass that Measure through faithfully, not
+        # to guess a value `publish` never established.
+        self.assertFalse(core.is_known(acceptance_record["acceptedArtifactReady"]))
+        self.assertIsNone(by_type["tc_accepted_artifact_ready"]["value"])
+        self.assertTrue(by_type["tc_accepted_artifact_ready"]["unknownReason"])
+        self.assertEqual(by_type["tc_refresh_count"]["value"], 1)
+
+    def test_verified_empty_ledger_is_known_zero(self):
+        evaluation = _real_evaluation("state-b")
+        acceptance_record = adoption.publish(evaluation, _ACCEPTANCE_BASELINE,
+                                              self.workspace / "flow" / "state" / "pointers.json",
+                                              _ACCEPTANCE_POLICY)
+        acceptance_path = self.workspace / "flow" / "records" / "acceptance-record.json"
+        core.write_artifact(acceptance_path, acceptance_record)
+
+        ledger_path = self.workspace / "flow" / "state" / "refresh-ledger.json"
+        core.write_artifact(ledger_path, refresh.load_ledger(ledger_path))  # verified, genuinely empty
+
+        report = self._write_envelope(
+            str(acceptance_path.relative_to(self.workspace)),
+            str(ledger_path.relative_to(self.workspace)),
+        )
+        values = read_atcs.read("acceptance-record", report, self.workspace)
+        by_type = {v["type"]: v for v in values}
+        self.assertEqual(by_type["tc_refresh_count"]["value"], 0)
+
+    def test_missing_ledger_is_unknown_not_zero(self):
+        evaluation = _real_evaluation("state-c")
+        acceptance_record = adoption.publish(evaluation, _ACCEPTANCE_BASELINE,
+                                              self.workspace / "flow" / "state" / "pointers.json",
+                                              _ACCEPTANCE_POLICY)
+        acceptance_path = self.workspace / "flow" / "records" / "acceptance-record.json"
+        core.write_artifact(acceptance_path, acceptance_record)
+
+        report = self._write_envelope(
+            str(acceptance_path.relative_to(self.workspace)),
+            "flow/state/never-written-ledger.json",
+        )
+        values = read_atcs.read("acceptance-record", report, self.workspace)
+        by_type = {v["type"]: v for v in values}
+        self.assertIsNone(by_type["tc_refresh_count"]["value"])
+        self.assertTrue(by_type["tc_refresh_count"]["unknownReason"])
+
+    def test_tampered_ledger_identity_is_refused(self):
+        evaluation = _real_evaluation("state-d")
+        acceptance_record = adoption.publish(evaluation, _ACCEPTANCE_BASELINE,
+                                              self.workspace / "flow" / "state" / "pointers.json",
+                                              _ACCEPTANCE_POLICY)
+        acceptance_path = self.workspace / "flow" / "records" / "acceptance-record.json"
+        core.write_artifact(acceptance_path, acceptance_record)
+
+        ledger_path = self.workspace / "flow" / "state" / "refresh-ledger.json"
+        refresh.record_refresh(ledger_path, "candidate-mc-1", "state-d", {
+            scenario: {"path": f"flow/records/sta/{scenario}.rpt", "sha256": f"{i:064x}"}
+            for i, scenario in enumerate(verification.REQUIRED_SCENARIOS)
+        })
+        tampered = json.loads(ledger_path.read_text())
+        tampered["entries"] = []
+        ledger_path.write_text(json.dumps(tampered))
+
+        report = self._write_envelope(
+            str(acceptance_path.relative_to(self.workspace)),
+            str(ledger_path.relative_to(self.workspace)),
+        )
+        with self.assertRaises(ValueError):
+            read_atcs.read("acceptance-record", report, self.workspace)
 
     def test_refused_decision_never_reports_ready_as_zero_by_default(self):
-        obj = core.stamp("acceptance-record", {
-            "decision": "refused", "pointersBefore": {"history": []},
-            "pointersAfter": {"history": []},
-            "acceptedArtifactReady": core.unknown("no database ref"), "reason": "not clean",
+        evaluation = _real_evaluation("state-e")
+        evaluation = core.stamp("evaluation", {
+            **{k: v for k, v in evaluation.items() if k not in ("schema", "id")},
+            "constraintFailureCount": core.unknown("not measured"),
         })
-        report = self.workspace / "flow" / "records" / "acceptance.json"
-        core.write_artifact(report, obj)
+        acceptance_record = adoption.publish(evaluation, _ACCEPTANCE_BASELINE,
+                                              self.workspace / "flow" / "state" / "pointers.json",
+                                              _ACCEPTANCE_POLICY)
+        self.assertEqual(acceptance_record["decision"], "refused")
+        acceptance_path = self.workspace / "flow" / "records" / "acceptance-record.json"
+        core.write_artifact(acceptance_path, acceptance_record)
+        ledger_path = self.workspace / "flow" / "state" / "refresh-ledger.json"
+        core.write_artifact(ledger_path, refresh.load_ledger(ledger_path))
+
+        report = self._write_envelope(
+            str(acceptance_path.relative_to(self.workspace)),
+            str(ledger_path.relative_to(self.workspace)),
+        )
         values = read_atcs.read("acceptance-record", report, self.workspace)
         by_type = {v["type"]: v for v in values}
         self.assertIsNone(by_type["tc_accepted_artifact_ready"]["value"])
