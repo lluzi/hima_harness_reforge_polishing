@@ -62,6 +62,16 @@ nodes:
       tool: risk
       arguments:
         ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+  # The owner's first decision is taken on the baseline itself (SPEC behaviour 2 and Constraint 3):
+  # residual works from the baseline observation, so earlier APR, observe, research or wait are all
+  # choosable before any local ECO.
+  - id: residual-baseline
+    kind: act
+    parameters:
+      tool: residual
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
 
   # 3. Diagnose, admit the request, observe.
   - id: diagnose
@@ -81,6 +91,7 @@ nodes:
     parameters:
       tool: observe-query
       arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
         SITE_CAPABILITIES: { from: input, name: siteCapabilities }
         MAX_PATHS: { from: strategy, name: maxPaths }
   - id: risk-query
@@ -186,6 +197,12 @@ nodes:
   - id: check-integration-plan
     kind: judge
     parameters: { rules: [request-admissible] }
+  - id: compose-facts-admitted
+    kind: act
+    parameters: { tool: compose-facts }
+  - id: read-composition-facts-admitted
+    kind: act
+    parameters: { observes: compositionFacts }
   - id: check-composition
     kind: judge
     parameters: { rules: [composition-ready] }
@@ -294,7 +311,11 @@ nodes:
   # 8. Residual, experience, next decision and its routing.
   - id: residual
     kind: act
-    parameters: { tool: residual }
+    parameters:
+      tool: residual
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
   - id: record-experience
     kind: act
     parameters: { tool: record-experience }
@@ -370,10 +391,14 @@ nodes:
       arguments:
         SITE_CAPABILITIES: { from: input, name: siteCapabilities }
 
-  # Goal met: every final rule again, over a fresh reading of the current final evaluation.
+  # Goal met: every final rule again, over fresh readings of the current acceptance record and final
+  # evaluation, so the gate cites this Generation's readings even after a revisit.
   - id: route-goal-met
     kind: judge
     parameters: { rules: [next-action-goal-met, continue-or-wait] }
+  - id: reread-acceptance
+    kind: act
+    parameters: { observes: acceptanceRecord }
   - id: reread-final-evaluation
     kind: act
     parameters: { observes: finalEvaluation }
@@ -439,7 +464,8 @@ edges:
   - { from: observe-baseline, to: policy }
   - { from: policy, to: physical-baseline }
   - { from: physical-baseline, to: risk-baseline }
-  - { from: risk-baseline, to: diagnose }
+  - { from: risk-baseline, to: residual-baseline }
+  - { from: residual-baseline, to: decide-next }
 
   - { from: diagnose, to: read-observation-request }
   - { from: read-observation-request, to: check-observation-request }
@@ -485,8 +511,10 @@ edges:
   - { from: read-composition-facts, to: compose }
   - { from: compose, to: read-integration-plan }
   - { from: read-integration-plan, to: check-integration-plan }
-  - { from: check-integration-plan, to: check-composition, outcome: PASS }
+  - { from: check-integration-plan, to: compose-facts-admitted, outcome: PASS }
   - { from: check-integration-plan, to: decide-next, outcome: FAIL }
+  - { from: compose-facts-admitted, to: read-composition-facts-admitted }
+  - { from: read-composition-facts-admitted, to: check-composition }
   - { from: check-composition, to: replay-prepare, outcome: PASS }
   - { from: check-composition, to: decide-next, outcome: FAIL }
   - { from: replay-prepare, to: reconcile }
@@ -513,7 +541,7 @@ edges:
   - { from: check-final-identity, to: check-constraint-failures, outcome: PASS }
   - { from: check-final-identity, to: residual, outcome: FAIL }
   - { from: check-constraint-failures, to: check-constraint-unknowns, outcome: PASS }
-  - { from: check-constraint-failures, to: residual, outcome: FAIL }
+  - { from: check-constraint-failures, to: adopt, outcome: FAIL }
   - { from: check-constraint-unknowns, to: check-setup-goal, outcome: PASS }
   - { from: check-constraint-unknowns, to: residual, outcome: FAIL }
   - { from: check-setup-goal, to: check-hold-goal, outcome: PASS }
@@ -560,7 +588,8 @@ edges:
   - { from: apr-prepare, to: apr-run }
   - { from: apr-run, to: extract }
 
-  - { from: route-goal-met, to: reread-final-evaluation, outcome: PASS }
+  - { from: route-goal-met, to: reread-acceptance, outcome: PASS }
+  - { from: reread-acceptance, to: reread-final-evaluation }
   - { from: route-goal-met, to: wait-for-person, outcome: FAIL }
   - { from: reread-final-evaluation, to: gm-coverage }
   - { from: gm-coverage, to: gm-identity, outcome: PASS }

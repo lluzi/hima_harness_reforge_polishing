@@ -269,6 +269,100 @@ def contract_outputs(text):
     return [tuple(entry) for entry in outputs]
 
 
+def graph_nodes_and_edges(text):
+    """`({id: (kind, [rules])}, [(from, to, outcome or None)])` from graph.yml's own spellings."""
+    nodes = {}
+    current = None
+    block = []
+    for line in text.splitlines() + ["  - id: __end__"]:
+        start = re.match(r"^  - id: (\S+)$", line)
+        if start:
+            if current is not None:
+                body = "\n".join(block)
+                kind = re.search(r"kind: (\w+)", body).group(1)
+                lists = yaml_key_lists(body, "rules")
+                nodes[current] = (kind, lists[0] if lists else [])
+            current, block = start.group(1), []
+            continue
+        if line.startswith("edges:"):
+            if current is not None:
+                body = "\n".join(block)
+                kind = re.search(r"kind: (\w+)", body).group(1)
+                lists = yaml_key_lists(body, "rules")
+                nodes[current] = (kind, lists[0] if lists else [])
+            current, block = None, []
+            continue
+        if current is not None:
+            block.append(line)
+    edges = []
+    for match in re.finditer(r"^  - \{ from: ([a-z0-9-]+), to: ([a-z0-9-]+)(?:, outcome: ([A-Z]+))?(?:, revisit: true)? \}$", text, re.M):
+        edges.append((match.group(1), match.group(2), match.group(3)))
+    return nodes, edges
+
+
+def contract_tool_argvs(text):
+    """`{tool id: argv list}` for contract.yml's top-level `tools:` block (inline or block argv)."""
+    lines = text.splitlines()
+    start = lines.index("tools:")
+    tools, current, collecting = {}, None, False
+    for line in lines[start + 1:]:
+        if line and not line.startswith(" "):
+            break
+        tool = re.match(r"^  - id: (\S+)$", line)
+        if tool:
+            current, collecting = tool.group(1), False
+            continue
+        inline = re.match(r"^    argv: \[(.*)\]$", line)
+        if inline and current:
+            tools[current] = [word.strip().strip("'\"") for word in inline.group(1).split(",")]
+            continue
+        if re.match(r"^    argv:$", line) and current:
+            tools[current], collecting = [], True
+            continue
+        item = re.match(r"^      - (.*)$", line)
+        if collecting and item:
+            tools[current].append(item.group(1).strip().strip("'\""))
+            continue
+        if not line.startswith("      "):
+            collecting = False
+    return tools
+
+
+def cli_documented_arities(docstring):
+    """`{subcommand: {arity, ...}}` from atcs_cli.py's module-docstring subcommand table ("Extra args").
+
+    The column lists positional args after `<workspace>`, comma-separated; parenthesised notes and
+    backticked examples may themselves hold commas, so only top-level commas split. A column
+    beginning `(none` is zero args; `physical` states one arity per mode separated by `;`.
+    """
+    arities = {}
+    for match in re.finditer(r"^\| \d+ \| `([a-z-]+)` \| (.*?) \| ", docstring, re.M):
+        name, column = match.group(1), match.group(2).strip()
+        found = set()
+        for part in column.split(";"):
+            part = re.sub(r"^\s*\((?:candidate|baseline)\)\s*", "", part).strip()
+            if part.startswith("(none"):
+                found.add(0)
+                continue
+            depth, in_tick, items, word = 0, False, [], ""
+            for char in part:
+                if char == "`":
+                    in_tick = not in_tick
+                elif not in_tick and char in "({[":
+                    depth += 1
+                elif not in_tick and char in ")}]":
+                    depth -= 1
+                if char == "," and depth == 0 and not in_tick:
+                    items.append(word)
+                    word = ""
+                else:
+                    word += char
+            items.append(word)
+            found.add(len([item for item in items if item.strip()]))
+        arities[name] = found
+    return arities
+
+
 class FabricRecordTest(unittest.TestCase):
     def test_headings_exact_and_ordered(self):
         text = FABRIC_PATH.read_text(encoding="utf-8")
@@ -355,6 +449,62 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
         self.assertIsNotNone(reader_stages)
         self.assertEqual(ast.literal_eval(reader_stages.group(1)), ast.literal_eval(cli_stages.group(1)))
         self.assertNotIn("STAGE", GRAPH_PATH.read_text(encoding="utf-8"), "graph.yml must not fix an APR stage")
+
+    def test_compound_rule_chains_run_in_spec_order(self):
+        """SPEC "Judge rules": each split rule's parts, and evidence before Goal, chained by PASS edges."""
+        nodes, edges = graph_nodes_and_edges(GRAPH_PATH.read_text(encoding="utf-8"))
+        first = {node: rules[0] for node, (kind, rules) in nodes.items() if kind == "judge" and rules}
+        pass_to = {src: dst for src, dst, outcome in edges if outcome == "PASS"}
+        chains = [
+            ["replay-consistent-mismatch", "replay-consistent-scope"],
+            ["final-evidence-ready-coverage", "final-evidence-ready-identity",
+             "required-constraints-pass-failures", "required-constraints-pass-unknowns",
+             "setup-goal", "hold-goal"],
+        ]
+        for chain in chains:
+            # A gate that re-judges every part of the chain at once (goal-met-gate) is not a chain start.
+            starts = [node for node, rule in first.items()
+                      if rule == chain[0] and not set(chain) <= set(nodes[node][1])]
+            self.assertTrue(starts, f"no judge starts the chain {chain}")
+            for start in starts:
+                seen, node = [first[start]], start
+                while len(seen) < len(chain):
+                    node = pass_to.get(node)
+                    if node not in first:
+                        break
+                    seen.append(first[node])
+                self.assertEqual(seen, chain, f"judge chain from {start} is out of SPEC order")
+
+    def test_every_explore_is_entered_from_a_judge_with_two_rules(self):
+        """node-turns.ts exploreEvidence needs the last Judge's first two verdicts (constraint, goal)."""
+        nodes, edges = graph_nodes_and_edges(GRAPH_PATH.read_text(encoding="utf-8"))
+        explores = {node for node, (kind, _) in nodes.items() if kind == "explore"}
+        self.assertTrue(explores)
+        for src, dst, _ in edges:
+            if dst not in explores:
+                continue
+            kind, rules = nodes[src]
+            self.assertEqual(kind, "judge", f"explore {dst} is entered from {kind} {src}")
+            self.assertGreaterEqual(len(rules), 2, f"explore {dst} is entered from judge {src} with {rules}")
+
+    def test_every_tool_argv_arity_matches_the_cli_table(self):
+        import ast
+
+        tree = ast.parse((PACK_ROOT / "flow" / "atcs_cli.py").read_text(encoding="utf-8"))
+        arities = cli_documented_arities(ast.get_docstring(tree))
+        self.assertGreaterEqual(len(arities), 20, "the CLI table parser found too few rows")
+        tools = contract_tool_argvs(CONTRACT_PATH.read_text(encoding="utf-8"))
+        checked = 0
+        for tool, argv in tools.items():
+            if argv[0] != "python3":
+                continue
+            self.assertEqual(argv[1], "${WORKSPACE}/flow/atcs_cli.py", tool)
+            self.assertEqual(argv[3], "${WORKSPACE}", tool)
+            subcommand = argv[2]
+            self.assertIn(subcommand, arities, f"{tool} runs undocumented subcommand {subcommand}")
+            self.assertIn(len(argv) - 4, arities[subcommand], f"{tool}: {len(argv) - 4} args, CLI documents {arities[subcommand]}")
+            checked += 1
+        self.assertGreaterEqual(checked, 20)
 
     def test_parser_reads_both_list_spellings(self):
         sample = "a:\n  rules: [x, y]\n  rules:\n    - z\n    - w\nb: { rules: [v] }\n"

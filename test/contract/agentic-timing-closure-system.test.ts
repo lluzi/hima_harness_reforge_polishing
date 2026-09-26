@@ -29,8 +29,8 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   const packDir = path.join(repoRoot, 'packs', packId);
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
   assert.equal(packStage(packDir).stage, 'compiled');
-  assert.equal(pack.graph.nodes.length, 102);
-  assert.equal(pack.graph.edges.length, 137);
+  assert.equal(pack.graph.nodes.length, 106);
+  assert.equal(pack.graph.edges.length, 141);
 
   const localCheck = checkPack(pack, loadSite(local.sitesDir, local.name));
   assert.equal(localCheck.fit, true, localCheck.errors.join('\n'));

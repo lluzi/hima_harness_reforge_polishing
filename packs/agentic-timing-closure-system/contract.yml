@@ -27,8 +27,7 @@ inputs:
       Read-only directory of the fixed analysis contract, one JSON document per concern, read by the
       tools at fixed names: query-spec.json (final PBA/coverage query: precision, requiredScenarios,
       nworst; maxPaths comes from the Strategy), scenario-corners.json ({scenario: RC corner}),
-      corners.json ({"corners": [...]}), sdc.json ({"sdc": [...]}), scenario-inputs.json (per-scenario
-      PT inputs of the starting state), recheck.json, policy.json (the static acceptance terms only:
+      corners.json ({"corners": [...]}), sdc.json ({"sdc": [...]}), recheck.json, policy.json (the static acceptance terms only:
       allowDegradedWorking, degradeLimitNs, maxNewConstraintFailures, scenarioCorners,
       requiredScenarios; the policy tool refuses a file setting goal or a run-time field),
       baseline-verify-drc.rpt and baseline-verify-connectivity.rpt (starting-state physical reports).
@@ -75,10 +74,10 @@ outputs:
     description: The diagnose Workshop's bounded PT query request; its shape is the observe tool's query spec.
   - name: campaignPlan
     path: research/requests/campaign-plan.json
-    reader: atcs-work-package
+    reader: atcs-campaign-plan
     description: >-
-      The plan Workshop's campaign plan in the work-package read envelope (candidate = slot w01's
-      work package, plus baseState and siteCapabilities) with every slot's package and rationale.
+      The plan Workshop's one campaign-plan document holding all three slot work packages; the
+      campaign-plan Reader admits it and prepare-workers prepares the slots from the same file.
   - name: workerManifests
     path: state/workers.json
     description: M2 prepared private workspaces of the three worker slots (roots, name prefixes, session Tcl, ops logs).
@@ -115,9 +114,11 @@ outputs:
     reader: atcs-composition-facts
     description: M4 duplicates, conflicts, interactions, stale bases and replay order of the collected Contributions.
   - name: integrationPlan
-    path: research/requests/integration-plan-review.json
+    path: research/requests/integration-plan.json
     reader: atcs-integration-plan
-    description: The compose Workshop's integration plan in the integration-plan read envelope ({plan, facts}).
+    description: >-
+      The compose Workshop's integration plan in the integration-plan read envelope ({plan, facts});
+      compose-facts (second pass), replay-prepare and record-experience read this same file.
   - name: replayRequest
     path: state/replay-request.json
     description: M5 replay request (batch id, common base, ordered steps with their XTop Tcl).
@@ -162,7 +163,9 @@ outputs:
     description: Envelope naming the latest M7 acceptance record and the refresh ledger by workspace path.
   - name: residualCases
     path: state/residual-cases.json
-    description: Residual cases of the checks still failing (evidence, attempts, limits, suggested stage).
+    description: >-
+      Residual cases of the checks still failing (PT path-detail evidence, attempts, limits, suggested
+      stage), from the current evaluation or, before any, from the current observation.
   - name: aprTask
     path: state/apr-task.json
     description: >-
@@ -215,7 +218,7 @@ tools:
       - ${WORKSPACE}
       - ${ANALYSIS_CONTRACT}/query-spec.json
       - ${SITE_CAPABILITIES}
-      - ${ANALYSIS_CONTRACT}/scenario-inputs.json
+      - ${ANALYSIS_CONTRACT}/scenario-corners.json
       - ${MAX_PATHS}
 
   - id: policy
@@ -237,7 +240,7 @@ tools:
     recommendedVersion: PrimeTime X-2025.06
     file: flow/atcs_cli.py
     description: Run the admitted observation request as PT scenario queries and capture the new observation.
-    inputs: [WORKSPACE, SITE_CAPABILITIES, MAX_PATHS]
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT, SITE_CAPABILITIES, MAX_PATHS]
     licences: { primetime: 1 }
     argv:
       - python3
@@ -246,7 +249,7 @@ tools:
       - ${WORKSPACE}
       - ${WORKSPACE}/research/requests/observation-request.json
       - ${SITE_CAPABILITIES}
-      - ${WORKSPACE}/research/requests/observe-scenario-inputs.json
+      - ${ANALYSIS_CONTRACT}/scenario-corners.json
       - ${MAX_PATHS}
 
   - id: physical-baseline
@@ -289,9 +292,7 @@ tools:
       - ${WORKSPACE}/state/working-state.json
       - ${SITE_CAPABILITIES}
       - ${SITE_CAPABILITIES}
-      - ${WORKSPACE}/research/requests/work-package-w01.json
-      - ${WORKSPACE}/research/requests/work-package-w02.json
-      - ${WORKSPACE}/research/requests/work-package-w03.json
+      - ${WORKSPACE}/research/requests/campaign-plan.json
 
   - id: xtop-operator
     recommendedVersion: XTop 2025.09.tmp15
@@ -329,14 +330,17 @@ tools:
 
   - id: compose-facts
     file: flow/atcs_cli.py
-    description: Deterministic composition facts over the collected Contributions (M4 analyze).
+    description: >-
+      Deterministic composition facts over the collected Contributions (M4 analyze): with no
+      resolutions before the compose Workshop, and with the admitted integration plan's resolutions
+      on the second pass.
     inputs: [WORKSPACE]
     argv:
       - python3
       - ${WORKSPACE}/flow/atcs_cli.py
       - compose-facts
       - ${WORKSPACE}
-      - ${WORKSPACE}/research/requests/resolutions.json
+      - ${WORKSPACE}/research/requests/integration-plan.json
 
   - id: replay-prepare
     recommendedVersion: XTop 2025.09.tmp15
@@ -355,16 +359,11 @@ tools:
 
   - id: reconcile
     file: flow/atcs_cli.py
-    description: Reconcile replay receipts against expected deltas and each slot's edit domain (M5 reconcile).
+    description: >-
+      Reconcile replay receipts against expected deltas and each slot's admitted edit domain from
+      state/workers.json (M5 reconcile).
     inputs: [WORKSPACE]
-    argv:
-      - python3
-      - ${WORKSPACE}/flow/atcs_cli.py
-      - reconcile
-      - ${WORKSPACE}
-      - ${WORKSPACE}/research/requests/work-package-w01.json
-      - ${WORKSPACE}/research/requests/work-package-w02.json
-      - ${WORKSPACE}/research/requests/work-package-w03.json
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', reconcile, '${WORKSPACE}']
 
   - id: presta
     recommendedVersion: PrimeTime X-2025.06
@@ -450,9 +449,18 @@ tools:
 
   - id: residual
     file: flow/atcs_cli.py
-    description: Extract residual cases for the checks the evaluated candidate still fails.
-    inputs: [WORKSPACE]
-    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', residual, '${WORKSPACE}']
+    description: >-
+      Extract residual cases for the checks still failing (the evaluated candidate's, or the current
+      observation's before any evaluation), with bounded PT path-detail queries on the working state.
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT, SITE_CAPABILITIES]
+    licences: { primetime: 1 }
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - residual
+      - ${WORKSPACE}
+      - ${ANALYSIS_CONTRACT}/scenario-corners.json
+      - ${SITE_CAPABILITIES}
 
   - id: record-experience
     file: flow/atcs_cli.py
@@ -554,8 +562,7 @@ workshops:
       Write the observation request to research/requests/observation-request.json as one JSON object
       {designStateId, precision (gba|pba), requiredScenarios, maxPaths, nworst} naming the working
       design-state it observes; the Run's maxPaths Strategy knob caps the value the observe tool
-      uses. Also write research/requests/observe-scenario-inputs.json ({<scenario>:
-      {design, netlist, sdc, spef}} of that design-state, absolute paths), which the observe tool reads. Every required scenario stays in the request; the request never
+      uses; the tool builds every scenario's PT inputs from the working state itself. Every required scenario stays in the request; the request never
       changes frequency, exceptions or required checks. It is a plan, not a measurement.
     directory: research/diagnose
     entry: entry.py
@@ -571,12 +578,11 @@ workshops:
       w03), each against the baseline design-state: problem, target check keys, edit domain, protected
       objects, may-affect checks, admissible actions (size_cell, insert_buffer, delete_buffer, and
       pg_local_adjust only when siteCapabilities.pgVerification is true) and budget, all against the
-      working design-state (workingState). Write each package
-      to research/requests/work-package-w0N.json. Write the campaign plan to
-      research/requests/campaign-plan.json as {candidate: <w01 package>, baseState: <the stamped
-      workingState>, siteCapabilities: <the Site capabilities>, workPackages: [<w01>, <w02>, <w03>],
-      rationale}. When starting a new batch, write research/requests/resolutions.json as
-      {"resolutions": []}. Do not repeat a failed trial without new evidence; a slot with nothing
+      working design-state (workingState). Write one document, research/requests/campaign-plan.json:
+      {workPackages: {w01, w02, w03}, reason, candidate: {workPackages: <the same three packages>,
+      reason: <the same reason>}, baseState: <the stamped workingState>, siteCapabilities: <the Site
+      capabilities>}. The Reader admits candidate; prepare-workers prepares the top-level
+      workPackages, so the two copies must be identical. Do not repeat a failed trial without new evidence; a slot with nothing
       worth researching still gets a bounded package whose diagnosis-only outcome is a valid no-fix.
     directory: research/plan
     entry: entry.py
@@ -647,12 +653,9 @@ workshops:
     purpose: >-
       Compose the current batch from the ready Contributions and the deterministic composition facts:
       select, order, drop duplicates and resolve each conflict locally (keep, drop, or revise with a
-      re-sealed revisedContribution); defer what is not worth waiting for. Write the raw plan
-      {batchId, baseStateId, select, resolutions, deferred, reason} to
-      research/requests/integration-plan.json, the same resolutions to
-      research/requests/resolutions.json as {"resolutions": [...]}, and the review envelope
-      {plan: <that plan>, facts: <the stamped compositionFacts>} to
-      research/requests/integration-plan-review.json. Never split an atomic group without a record;
+      re-sealed revisedContribution); defer what is not worth waiting for. Write one file,
+      research/requests/integration-plan.json, as {plan: {batchId, baseStateId, select, resolutions,
+      deferred, reason}, facts: <the stamped compositionFacts>}. Never split an atomic group without a record;
       an empty select needs a stated waiting-value reason.
     directory: research/compose
     entry: entry.py

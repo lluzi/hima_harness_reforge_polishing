@@ -1,0 +1,7 @@
+id: atcs-campaign-plan
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'campaign-plan', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-campaign-plan-request/1
+emits:
+  - tc_request_invalid_count
