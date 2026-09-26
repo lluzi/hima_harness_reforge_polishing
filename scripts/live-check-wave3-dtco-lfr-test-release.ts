@@ -82,7 +82,7 @@ const snapshot = (status: 'in-progress' | 'failed' | 'passed', extra: Record<str
   writeFileSync(path.join(out, 'evidence.json'), `${JSON.stringify({
     schema: 'hima.wave3-dtco-lfr-test-release/1',
     recordedAt: new Date().toISOString(), status, sourceSha,
-    pack: { id: packId, version: '5.2.20', digest, runnerSha256 },
+    pack: { id: packId, version: '5.2.21', digest, runnerSha256 },
     site: { destination, remoteRoot, foundryLib, physicalInputs, toolStack, foundryCdlSha256 },
     environmentBefore: before, runId, ownerId, workspace, progress,
     ...(run ? { run } : {}), ...(records ? { records } : {}),
@@ -160,7 +160,7 @@ try {
   const prompt = [
     `Continue only existing Pack test Run ${runId}; do not create or hand off another Run.`,
     'You are its sole visible Campaign owner. Use only hima_context and hima_execute for business work.',
-    'This is the current custom-cell-fmax-dtco@5.2.20 negative calibration qualification, not a PPA search.',
+    'This is the current custom-cell-fmax-dtco@5.2.21 negative calibration qualification, not a PPA search.',
     'Execute bind-inputs, the real license-free Yosys/ABC baseline, all six miners/readers, their join, function-local evaluation and Judge exactly as the current graph declares.',
     'At research-candidates, read the current declared inputs and all three Pack knowledge files. Author a fresh data-dependent candidate_program from the current candidate_pool; never embed a proposal_key or candidate id. Rank current rows from their actual evidence and select exactly one best available proposal.',
     'For that one proposal declare required_delay_ns=0.000001 and a real target_endpoints value read from current evidence. This intentionally strict Cell Demand is the negative test stimulus. Keep the intervention evidence-appropriate and state that this is a guard-case qualification, not an expected implementation result.',

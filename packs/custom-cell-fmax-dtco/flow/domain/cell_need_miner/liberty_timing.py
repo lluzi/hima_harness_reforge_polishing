@@ -1348,7 +1348,71 @@ def analyze_mapped_netlist_reg2reg(model, verilog_text, top, *, clock_period,
         }
         for instance in sorted(sequential, key=lambda item: item.name)
     ]
+    ff_clock_group_counts = {}
+    for binding in ff_clock_bindings:
+        key = (
+            binding["cell_type"],
+            binding["observed_clock"],
+            binding["polarity"],
+            binding["root_clock"],
+        )
+        ff_clock_group_counts[key] = ff_clock_group_counts.get(key, 0) + 1
+    ff_clock_groups = [
+        {
+            "cell_type": key[0],
+            "count": count,
+            "observed_clock": key[1],
+            "polarity": key[2],
+            "root_clock": key[3],
+        }
+        for key, count in sorted(ff_clock_group_counts.items())
+    ]
+    generated_clock_identity = [
+        {
+            "control_input_pin": row["control_input_pin"],
+            "gate_cell": row["gate_cell"],
+            "gate_output_pin": row["gate_output_pin"],
+            "generated_clock": row["generated_clock"],
+            "latch_cell": row["latch_cell"],
+            "latch_output_pin": row["latch_output_pin"],
+            "root_clock": row["root_clock"],
+            "root_input_pin": row["root_input_pin"],
+        }
+        for row in sorted(
+            generated_clock_edges,
+            key=lambda row: (
+                row["generated_clock"], row["latch_instance"], row["gate_instance"]
+            ),
+        )
+    ]
+    excluded_group_counts = {}
+    for row in excluded_clock_gate_latch_details:
+        key = (
+            row["cell_type"],
+            tuple(row["generated_clocks"]),
+            row["reason"],
+            row["root_clock"],
+        )
+        excluded_group_counts[key] = excluded_group_counts.get(key, 0) + 1
+    excluded_clock_gate_latch_groups = [
+        {
+            "cell_type": key[0],
+            "count": count,
+            "generated_clocks": list(key[1]),
+            "reason": key[2],
+            "root_clock": key[3],
+        }
+        for key, count in sorted(excluded_group_counts.items())
+    ]
     clock_identity = {
+        "excluded_clock_gate_latch_groups": excluded_clock_gate_latch_groups,
+        "ff_clock_groups": ff_clock_groups,
+        "generated_clock_edges": generated_clock_identity,
+        "observed_clock_nets": dict(sorted(observed_clock_counts.items())),
+        "observed_to_root_clock": clock_root_map,
+        "root_clock": root_clock_nets[0],
+    }
+    clock_diagnostics = {
         "excluded_clock_gate_latches": sorted(
             excluded_clock_gate_latch_details,
             key=lambda row: row["instance"],
@@ -1360,9 +1424,6 @@ def analyze_mapped_netlist_reg2reg(model, verilog_text, top, *, clock_period,
                 row["generated_clock"], row["latch_instance"], row["gate_instance"]
             ),
         ),
-        "observed_clock_nets": dict(sorted(observed_clock_counts.items())),
-        "observed_to_root_clock": clock_root_map,
-        "root_clock": root_clock_nets[0],
     }
     return {
         "scope": "reg2reg",
@@ -1371,6 +1432,7 @@ def analyze_mapped_netlist_reg2reg(model, verilog_text, top, *, clock_period,
         "clock_net": root_clock_nets[0],
         "clock_polarity": polarities[0],
         "clock_root_map": clock_root_map,
+        "clock_diagnostics": clock_diagnostics,
         "clock_identity": clock_identity,
         "observed_clock_nets": dict(sorted(observed_clock_counts.items())),
         "excluded_clock_gate_latches": sorted(excluded_clock_gate_latches),

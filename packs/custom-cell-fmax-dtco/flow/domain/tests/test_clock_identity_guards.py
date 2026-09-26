@@ -115,6 +115,74 @@ class ClockIdentityGuardTests(unittest.TestCase):
                     {"reference": {}, "augmented": {}},
                 )
 
+    def test_paired_round_ignores_mapper_instance_renaming(self):
+        identity = {
+            "root_clock": "clk",
+            "observed_clock_nets": {"clk": 2},
+            "observed_to_root_clock": {"clk": "clk"},
+            "ff_clock_groups": [{
+                "cell_type": "DFF", "count": 2, "observed_clock": "clk",
+                "polarity": "positive", "root_clock": "clk",
+            }],
+            "generated_clock_edges": [],
+            "excluded_clock_gate_latch_groups": [],
+        }
+        analyzer_results = (
+            {"clock_identity": identity, "clock_diagnostics": {
+                "ff_clock_bindings": [{"instance": "_100_"}],
+            }},
+            {"clock_identity": identity, "clock_diagnostics": {
+                "ff_clock_bindings": [{"instance": "_900_"}],
+            }},
+        )
+        metrics = {
+            "F0": {"candidate_adoption_fraction": 0.0}, "F1": {}, "F2": {},
+            "F3": {
+                "path_families": ["capture/D"],
+                "worst_path": {
+                    "endpoint": "capture/D", "endpoint_family": "capture/D",
+                    "launchpoint": "launch/Q", "stage_cells": ["BUF"],
+                },
+            },
+        }
+        models = {
+            "top": "top",
+            "reference": SimpleNamespace(time_unit="1ns"),
+            "augmented": SimpleNamespace(time_unit="1ns"),
+        }
+        with mock.patch.object(
+            lfr,
+            "analyze_mapped_netlist_reg2reg",
+            side_effect=analyzer_results,
+        ), mock.patch.object(
+            lfr,
+            "_layered_metrics",
+            side_effect=(metrics, metrics),
+        ):
+            result = lfr._scenario_evaluation(
+                "nominal",
+                {
+                    "unsupported_assumptions": [],
+                    "initial_slew_ps": 1.0,
+                    "wire_capacitance_in_library_units": 0.0,
+                },
+                {"clock_period_ps": 1000.0, "uncertainty_ps": 0.0},
+                models,
+                {"reference": "reference", "augmented": "augmented"},
+                {"reference": {}, "augmented": {}},
+                [],
+                {
+                    "required_metrics": ["F0.candidate_adoption_fraction"],
+                    "objectives": [{
+                        "metric": "F0.candidate_adoption_fraction",
+                        "direction": "maximize",
+                    }],
+                },
+                {"reference": {}, "augmented": {}},
+            )
+        self.assertEqual(result["status"], "succeeded")
+        self.assertEqual(result["pairwise_relation"]["relation"], "equal")
+
 
 if __name__ == "__main__":
     unittest.main()
