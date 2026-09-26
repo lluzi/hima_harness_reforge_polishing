@@ -17,6 +17,42 @@ export interface CommandOutcome {
   readonly text: string;
   /** The run the answer names, when it names one. */
   readonly runId: string | undefined;
+  /** Durable lifecycle id pairing command/run with command/done. */
+  readonly commandId?: string;
+  /** Authoritative event published by a successful command, when one exists. */
+  readonly sourceEventSeq?: number;
+  /** Closed compaction bracket diagnostic for `/compact`, never inferred from display text. */
+  readonly compactionError?: string;
+}
+
+export type ModelCompactionDisposition = 'compacted' | 'retryable' | 'failed';
+
+/**
+ * A real compaction publishes its summary event. A closed summary-stage failure leaves the
+ * conversation unchanged and may be retried once by a caller; it is never accepted as compaction.
+ */
+export function modelCompactionDisposition(outcome: CommandOutcome): ModelCompactionDisposition {
+  if (outcome.kind === 'success' && outcome.sourceEventSeq !== undefined
+      && /^Compacted [1-9]\d* history items/.test(outcome.text)) return 'compacted';
+  if (outcome.kind === 'error'
+      && /Compaction could not produce a useful summary[\s\S]*conversation is unchanged/i.test(outcome.text)
+      && outcome.commandId !== undefined && outcome.compactionError !== undefined) {
+    return 'retryable';
+  }
+  return 'failed';
+}
+
+/** Run one model-backed compaction and repeat only one closed summary-stage failure. */
+export async function modelCompactionWithOneRetry(
+  run: () => Promise<CommandOutcome>,
+): Promise<{ attempts: CommandOutcome[]; disposition: ModelCompactionDisposition }> {
+  const attempts = [await run()];
+  let disposition = modelCompactionDisposition(attempts[0]!);
+  if (disposition === 'retryable') {
+    attempts.push(await run());
+    disposition = modelCompactionDisposition(attempts[1]!);
+  }
+  return { attempts, disposition };
 }
 
 /** How long one command may take. A local read is quick; a probe on a real Site is not. */
@@ -42,7 +78,20 @@ export async function himaCommand(host: InProcessHost, workspace: string, line: 
   const exec = await host.ctx.commands.execute(agent, line, [], AbortSignal.timeout(timeoutMs));
   if (!exec) return { kind: 'error', text: `the command runtime did not resolve "${line}" at all`, runId: undefined };
   const text = exec.result.text ?? '';
+  const commandId = String(exec.commandId);
+  const compactionEnd = (agent.session.snapshotEvents() as readonly {
+    type: string;
+    data: { sourceCommandId?: unknown; error?: unknown };
+  }[]).findLast(event => event.type === 'compaction/end'
+    && String(event.data.sourceCommandId) === commandId);
+  const compactionError = typeof compactionEnd?.data.error === 'string' ? compactionEnd.data.error : undefined;
   // A record id starts with its run id (`run-…#000001`), so this one pattern finds the run in every
   // answer that names either.
-  return { kind: exec.result.kind === 'success' ? 'success' : 'error', text, runId: /run-[0-9a-f-]+/.exec(text)?.[0] };
+  return {
+    kind: exec.result.kind === 'success' ? 'success' : 'error', text,
+    runId: /run-[0-9a-f-]+/.exec(text)?.[0], commandId,
+    ...('sourceEventSeq' in exec.result && exec.result.sourceEventSeq !== undefined
+      ? { sourceEventSeq: Number(exec.result.sourceEventSeq) } : {}),
+    ...(compactionError === undefined ? {} : { compactionError }),
+  };
 }

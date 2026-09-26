@@ -35,7 +35,11 @@ import {
   toolCalls,
   type InProcessHost,
 } from '../test/contract/support/boot-inprocess.ts';
-import { himaCommand, modelCommandTimeoutMs } from '../test/contract/support/command.ts';
+import {
+  himaCommand,
+  modelCommandTimeoutMs,
+  modelCompactionWithOneRetry,
+} from '../test/contract/support/command.ts';
 import { createHimaHome, repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { packsDirOf } from '../test/contract/support/pack.ts';
 import { guardInstalled, runLive, sha256, type LiveCheck } from './live-check-workshop.ts';
@@ -589,7 +593,13 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   check.require('the owner saved a native-session work-memory checkpoint before compaction',
     savedSessionMemory.kind === 'current' && savedSessionMemory.summary?.modelGenerated === false,
     savedSessionMemory);
-  const compact = await himaCommand(host, home.workspace, '/compact', modelCommandTimeoutMs, owner);
+  const compactionRecovery = await modelCompactionWithOneRetry(
+    () => himaCommand(
+      host, home.workspace, '/compact', modelCommandTimeoutMs, owner,
+    ),
+  );
+  const { attempts: compactionAttempts, disposition: compactionDisposition } = compactionRecovery;
+  const compact = compactionAttempts.at(-1)!;
   const preservedPrefix = await nativeSessionMemoryEvidence(host.ctx, {
     sessionId: ownerId,
     workspaceRef: home.workspace,
@@ -597,12 +607,14 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   });
   const compactedOwnerContext = await readNativeSessionContext(host.ctx, { sessionId: ownerId, targetSessionId: ownerId });
   const staleSessionMemory = await host.ctx.hima.workMemory(ownerId, { action: 'read' }) as any;
-  check.require('owner compaction preserves its transcript prefix and makes the old summary stale',
-    compact.kind === 'success'
+  const publishedCompaction = /compacted-summary/.test(JSON.stringify(compactedOwnerContext.context));
+  check.require('owner compaction publishes a summary after at most one closed summary-stage retry and preserves recovery authority',
+    compactionDisposition === 'compacted'
       && preservedPrefix.transcriptIdentity === nativeBeforeCompact.transcriptIdentity
-      && /compacted-summary/.test(JSON.stringify(compactedOwnerContext.context))
-      && staleSessionMemory.kind === 'stale',
-    { compact, prefixIdentity: preservedPrefix.transcriptIdentity, context: compactedOwnerContext.context, staleSessionMemory });
+      && staleSessionMemory.kind === 'stale'
+      && publishedCompaction,
+    { compact, compactionAttempts, compactionDisposition, prefixIdentity: preservedPrefix.transcriptIdentity,
+      context: compactedOwnerContext.context, staleSessionMemory });
 
   const campaignMemorySources = await host.ctx.hima.workMemory(ownerId, { action: 'sources', runId: confirmed.run.id }) as any;
   const savedCampaignMemory = await host.ctx.hima.workMemory(ownerId, { action: 'save', runId: confirmed.run.id, summary: {
@@ -747,7 +759,8 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   check.observed.collaboration = { research, researchResult, researchRecordId: researchRecord.id,
     reviewer, reviewerResult, reviewerRecordId: reviewerRecord.id, adoption, team, allocatedChildBudgetMs,
     parentBudgetMs: confirmed.run.budget?.timeBoxMs, retainedChildTranscripts };
-  check.observed.workMemory = { savedSessionMemory, compact, staleSessionMemory, savedCampaignMemory,
+  check.observed.workMemory = { savedSessionMemory, compact, compactionAttempts, compactionDisposition,
+    staleSessionMemory, savedCampaignMemory,
     staleCampaignMemory, pause: recoveryPause.receipt, continue: recoveryContinue.receipt };
   await check.say(guide, `Inspect current Run ${confirmed.run.id} and its adopted child result. Explain the held-out source identity, distinct owner, current control state, unknown value result, and next admitted action. Do not execute, delegate, change ownership, or start another task.`);
   check.require('the independent Guide remains responsive and uses sourced read-only Hima context after team adoption',
@@ -1010,18 +1023,23 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   });
   check.trackResumed(ownerResume.agent);
   const resumedOwnerContext = await readNativeSessionContext(host.ctx, { sessionId: ownerId, targetSessionId: ownerId });
+  const resumedOwnerPrefix = await nativeSessionMemoryEvidence(host.ctx, {
+    sessionId: ownerId, workspaceRef: home.workspace, throughSeq: nativeBeforeCompact.capturedThroughSeq,
+  });
   const restartedCampaignMemory = await host.ctx.hima.workMemory(ownerId, { action: 'read', runId: firstId }) as any;
   const restartedChildTranscripts = await Promise.all(team.map(row => readNativeSessionContext(host.ctx, {
     sessionId: ownerId, targetSessionId: row.childSessionId, parentSessionId: ownerId,
   }, host.ctx.hima.ledger)));
   check.require('reopened owner and child transcripts retain compaction while Work Memory re-reads terminal Run authority',
     /compacted-summary/.test(JSON.stringify(resumedOwnerContext.context))
+      && resumedOwnerPrefix.transcriptIdentity === nativeBeforeCompact.transcriptIdentity
       && restartedCampaignMemory.kind === 'stale'
       && restartedCampaignMemory.authority?.[0]?.status === firstRun.status
       && restartedChildTranscripts.every(view => view.events.length > 0),
-    { resumedOwnerContext: resumedOwnerContext.context, restartedCampaignMemory, restartedChildTranscripts });
+    { compactionDisposition, resumedOwnerPrefix: resumedOwnerPrefix.transcriptIdentity,
+      resumedOwnerContext: resumedOwnerContext.context, restartedCampaignMemory, restartedChildTranscripts });
   check.observed.recovery = { resumedOwner: ownerId, resumedOwnerContext: resumedOwnerContext.context,
-    restartedCampaignMemory, restartedChildTranscripts };
+    resumedOwnerPrefix, compactionDisposition, restartedCampaignMemory, restartedChildTranscripts };
   const restartedFirst = host.ctx.hima.ledger.run(firstId);
   const restartedFirstRecords = host.ctx.hima.ledger.records({ runId: firstId });
   const restartedFirstArchive = await readRunAssets(experienceDeps(host, home), firstId);

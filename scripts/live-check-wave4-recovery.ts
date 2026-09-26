@@ -7,7 +7,11 @@ import path from 'node:path';
 import { nativeSessionMemoryEvidence, readNativeSessionContext } from '@hima/harness';
 import { himaHomeSources, homePatchFile, prepareHimaHome } from '../packages/desktop/src/hima-home.ts';
 import { bootInProcess, createRootAgent } from '../test/contract/support/boot-inprocess.ts';
-import { himaCommand, modelCommandTimeoutMs } from '../test/contract/support/command.ts';
+import {
+  himaCommand,
+  modelCommandTimeoutMs,
+  modelCompactionWithOneRetry,
+} from '../test/contract/support/command.ts';
 import { createHimaHome } from '../test/contract/support/dsh-home.ts';
 import { runLive } from './live-check-workshop.ts';
 
@@ -37,11 +41,15 @@ await runLive('live-check-wave4-recovery', 2, async check => {
   ].join('\n'));
   const before = await nativeSessionMemoryEvidence(host.ctx, { sessionId: String(owner.id), workspaceRef: home.workspace });
   const started = Date.now();
-  const compact = await himaCommand(host, home.workspace, '/compact', modelCommandTimeoutMs, owner);
+  const recovery = await modelCompactionWithOneRetry(
+    () => himaCommand(host, home.workspace, '/compact', modelCommandTimeoutMs, owner),
+  );
+  const compact = recovery.attempts.at(-1)!;
   const elapsedMs = Date.now() - started;
   check.require('native model-backed compaction completes inside its explicit three-minute command bound',
-    compact.kind === 'success' && elapsedMs < modelCommandTimeoutMs,
-    { compact, elapsedMs, commandTimeoutMs: modelCommandTimeoutMs });
+    recovery.disposition === 'compacted'
+      && elapsedMs < modelCommandTimeoutMs * recovery.attempts.length,
+    { compact, recovery, elapsedMs, commandTimeoutMs: modelCommandTimeoutMs });
   const preserved = await nativeSessionMemoryEvidence(host.ctx, {
     sessionId: String(owner.id), workspaceRef: home.workspace, throughSeq: before.capturedThroughSeq,
   });

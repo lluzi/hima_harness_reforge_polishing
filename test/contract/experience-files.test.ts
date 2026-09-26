@@ -14,7 +14,12 @@ import { installPack, packsDirOf, timingProbePackId } from './support/pack.ts';
 import { readMaterial, applyPackTransfer, exportPackMethod, installPackMethod, packDigestOf, packTransferReceiptFile, previewPackTransfer, readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, listRunKnowledge, recordExperienceAdoption, nativeSessionMemoryEvidence, readNativeSessionContext } from '@hima/harness';
 import type { ExperienceJson, ExperienceAnswer, RunAssetManifest, RunView } from '@hima/harness';
 import { writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
-import { himaCommand } from './support/command.ts';
+import {
+  himaCommand,
+  modelCompactionDisposition,
+  modelCompactionWithOneRetry,
+  type CommandOutcome,
+} from './support/command.ts';
 
 const hash = (bytes: string) => createHash('sha256').update(bytes).digest('hex');
 async function fixture() {
@@ -162,6 +167,7 @@ test('a replayed native session keeps a complete source identity across Host reo
     const compact = await himaCommand(first, h.workspace, '/compact', undefined, agent);
     assert.equal(compact.kind, 'error', compact.text);
     assert.match(compact.text, /Compaction could not produce a useful summary/);
+    assert.equal(modelCompactionDisposition(compact), 'retryable');
     const preservedPrefix = await nativeSessionMemoryEvidence(first.ctx, { sessionId: String(agent.id), workspaceRef: h.workspace, throughSeq: evidence.capturedThroughSeq });
     assert.equal(preservedPrefix.transcriptIdentity, evidence.transcriptIdentity, 'the public compact command cannot rewrite the recorded source prefix');
     await first.dispose(); first = undefined;
@@ -187,6 +193,7 @@ test('successful native compaction keeps retained memory evidence and reopens it
     const source=await nativeSessionMemoryEvidence(host.ctx,{sessionId:String(agent.id),workspaceRef:h.workspace});
     const compact=await himaCommand(host,h.workspace,'/compact',undefined,agent);
     assert.equal(compact.kind,'success',compact.text);assert.match(compact.text,/Compacted [1-9]/);
+    assert.equal(modelCompactionDisposition(compact),'compacted');
     const preserved=await nativeSessionMemoryEvidence(host.ctx,{sessionId:String(agent.id),workspaceRef:h.workspace,throughSeq:source.capturedThroughSeq});
     assert.equal(preserved.transcriptIdentity,source.transcriptIdentity);
     const visible=await readNativeSessionContext(host.ctx,{sessionId:String(agent.id),targetSessionId:String(agent.id)});
@@ -199,6 +206,52 @@ test('successful native compaction keeps retained memory evidence and reopens it
     try { assert.match(JSON.stringify(resumed.agent.session.deriveMessages()),/compacted-summary/,'the restarted native Agent derives the retained compact checkpoint'); }
     finally { await resumed.dispose(); }
   } finally {await host.dispose();await h.dispose();}
+});
+
+test('model compaction disposition distinguishes a closed summary failure from a real command failure', () => {
+  assert.equal(modelCompactionDisposition({ kind: 'error', text: 'provider unavailable', runId: undefined }), 'failed');
+  assert.equal(modelCompactionDisposition({
+    kind: 'error',
+    text: 'Compaction could not produce a useful summary. The conversation is unchanged; the attempt is recorded in the session log.',
+    runId: undefined,
+    commandId: 'compact-test',
+    compactionError: 'DeepSeek API request failed',
+  }), 'retryable');
+  assert.equal(modelCompactionDisposition({
+    kind: 'success', text: 'No compactable history yet.', runId: undefined,
+    commandId: 'compact-empty',
+  }), 'failed');
+});
+
+test('model compaction retries one closed summary failure exactly once without weakening the final disposition', async () => {
+  const retryable = {
+    kind: 'error' as const,
+    text: 'Compaction could not produce a useful summary. The conversation is unchanged; the attempt is recorded in the session log.',
+    runId: undefined,
+    commandId: 'compact-first',
+    compactionError: 'DeepSeek API request failed',
+  };
+  const compacted = {
+    kind: 'success' as const,
+    text: 'Compacted 3 history items (~4648 tokens).',
+    runId: undefined,
+    commandId: 'compact-second',
+    sourceEventSeq: 21,
+  };
+  let responses: CommandOutcome[] = [retryable, compacted];
+  const recovered = await modelCompactionWithOneRetry(async () => responses.shift()!);
+  assert.equal(recovered.disposition, 'compacted');
+  assert.deepEqual(recovered.attempts, [retryable, compacted]);
+
+  responses = [retryable, retryable];
+  const stopped = await modelCompactionWithOneRetry(async () => responses.shift()!);
+  assert.equal(stopped.disposition, 'retryable');
+  assert.equal(stopped.attempts.length, 2);
+
+  responses = [{ kind: 'error', text: 'busy', runId: undefined }];
+  const refused = await modelCompactionWithOneRetry(async () => responses.shift()!);
+  assert.equal(refused.disposition, 'failed');
+  assert.equal(refused.attempts.length, 1);
 });
 
 test('experience adoption is append-only, request-idempotent, and requires new re-adoption evidence', async () => {
