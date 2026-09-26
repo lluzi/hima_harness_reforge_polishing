@@ -45,8 +45,8 @@ do not read one arm's numbers as if they belonged to the other.
   connectivity) figures of its own** — see the control arm below for the only physical figures
   `result.json` reports for this comparison.
 
-**Control arm (`.controlArm`, workspace `qualification-v109-20260924-1535` — the human/manual
-comparison arm, not B_lazy; kept here only because the "what this Run lacks" section below needs it
+**Control arm (`.controlArm`, workspace `qualification-v109-20260924-1535` — a human-orchestrated
+invocation of the same retained Pack adapter (`charter.md:23`), not the frozen Hima-arm Run; kept here only because the "what this Run lacks" section below needs it
 and because it is the source of the physical totals that must not be misattributed to B_lazy):**
 
 - Before: setup WNS `-0.04 ns` / `12` violations; hold WNS `-0.16 ns` / `221` violations;
