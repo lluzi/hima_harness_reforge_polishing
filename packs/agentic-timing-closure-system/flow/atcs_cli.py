@@ -25,6 +25,12 @@ Exit codes (Phase B contract; no output file is written on any non-zero exit)
   ``ERROR``/``Fatal`` line in its captured log). ``{"code":"tool-failed",
   "detail","log"}`` JSON on stderr, naming the captured log path.
 
+Minor (final review): `main()` additionally maps a bare `OSError`/`KeyError`/
+`TypeError`/`ValueError` escaping a handler to exit ``2`` with
+``{"code":"malformed-input","detail"}`` on stderr -- a handler that lets one
+of these four escape unwrapped is still a malformed/unreadable declared
+input, never a raw traceback and never a bare exit ``1``.
+
 Workspace layout (architecture Sec.13.4; binding, do not rename)
 --------------------------------------------------------------------
 
@@ -91,11 +97,11 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 10 | `replay-prepare` | baseState(`state/working-state.json`), plan(the admitted integration-plan envelope `{"plan":...,"facts":...}` -- see "Task 12c fix round" below), siteProfile | `integration.validate_plan` + `integration.prepare_replay` then `adapters.compile_xtop_replay_task` + `run_tool` (best-effort) | `state/replay-request.json` |
 | 11 | `reconcile` | (none -- edit domains come from `state/workers.json`, see "Task 12c fix round" below) | `integration.reconcile` | `state/integration-state.json` |
 | 12 | `presta` | baseState(`state/working-state.json`), scenarioCorners, siteProfile | `integration.seal_batch` (read-only re-derivation, for `newNets`) + `adapters.compile_pt_presta_task` + `run_tool`, `verification.precheck_evidence` | `state/presta.json` (the stamped `precheckEvidence` artifact) |
-| 13 | `implement` | currentDesignState(`state/working-state.json`), siteProfile | `integration.seal_batch` then `adapters.compile_innovus_eco_task` + `run_tool` | `state/implement.json` |
+| 13 | `implement` | currentDesignState(`state/working-state.json`), siteProfile | `integration.seal_batch` then `adapters.compile_innovus_eco_task` + `run_tool` (refuses `stale-base` unless the sealed merge commit's own `parentStateId` equals `currentDesignState["id"]`; refuses `write-once` if `implementations/<mergeId>/`'s own outputs already exist -- C2, final review) | `state/implement.json` |
 | 14 | `extract` | corners, siteProfile | `adapters.compile_starrc_task` + `run_tool` (per corner) | `state/extract.json` |
-| 15 | `sta` | querySpec, scenarioCorners, baseDesignState(`state/working-state.json`), siteProfile | `_verified_state_sdc_path` (SDC from `baseDesignState`'s own recorded `sdc[0]`, sha256-verified -- no separate `sdc` argv any more, see "Fix round 2" below) + `adapters.compile_pt_scenario_task` + `run_tool` (per scenario), `state.design_state`, `state.capture`, `refresh.record_refresh` (once, on completion) | `state/sta.json` (also appends `state/refresh-ledger.json`) |
+| 15 | `sta` | querySpec, scenarioCorners, baseDesignState(`state/working-state.json`), siteProfile | `_verified_state_sdc_path` (SDC from `baseDesignState`'s own recorded `sdc[0]`, sha256-verified -- no separate `sdc` argv any more, see "Fix round 2" below) + `state.design_state` (built FIRST, from the implemented outputs -- C5, final review), `adapters.compile_pt_scenario_task` + `run_tool` (per scenario), `state.capture` (each observation labeled with the candidate's OWN new state id, never `baseDesignState`'s), `refresh.record_refresh` (once, on completion) | `state/sta.json` (also archived verbatim to `implementations/<mergeId>/sta.json`, and appends `state/refresh-ledger.json`) |
 | 16 | `physical` | (candidate) mode only; (baseline) drcReport, connectivityReport, mode | (I/O packaging only; candidate mode reads+re-hashes `state/implement.json`'s `drcReport`/`connectivityReport`) | `state/baseline-physical.json` or `state/physical.json` |
-| 17 | `evaluate` | policy(`state/policy.json`) | `verification.plan_checks` + `verification.assemble` | `state/evaluation.json` |
+| 17 | `evaluate` | policy(`state/policy.json`) | `verification.plan_checks` + `_find_prior_observation_for_state` (picks the prior observation whose own `designStateId` equals the merge commit's `parentStateId`, never just whatever `state/observation.json` currently holds -- C5, final review) + `verification.assemble` | `state/evaluation.json` |
 | 18 | `adopt` | policy(`state/policy.json`) | `adoption.publish` (`expectedBase` from `state/working-state.json`; rewrites `state/working-state.json` whenever `working` moves) | `accepted/latest.json` (envelope: `{"acceptanceRecord","refreshLedger"}` paths) |
 | 19 | `residual` | scenarioCorners(Site-fixed, same file row 4 reads), siteProfile -- see "Task 12c fix round"/"Fix round 2" below | `_residual_candidate_state` (the EVALUATED candidate's own `implementations/<mergeId>/design-state.json` once `state/evaluation.json` exists, never `state/working-state.json`, which may still be the parent for a refused candidate; the working state itself before any evaluation) + `_scenario_pt_inputs` + `adapters.compile_pt_query_task` + `run_tool` (per scenario, bounded to `RESIDUAL_QUERY_BOUND` worst checks) + `adapters.parse_path_detail` then `residual.extract` | `state/residual-cases.json` (also `queryNotes`, a side field) |
 | 20 | `apr-prepare` | (none -- see "Fix round 1" below) | reads `research/requests/next-decision.json` then `lifecycle.compile_intervention` + `lifecycle.stage_task` | `state/apr-task.json` (one fixed literal path for every stage; carries `taskId` and `stage`) |
@@ -350,6 +356,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -508,6 +515,113 @@ def _cmd_bind_inputs(workspace, args):
     return _paths(workspace)["readiness"], body
 
 
+def _stage_baseline_inputs(workspace, manifest):
+    """Copy `manifest`'s referenced source files into `<workspace>/baseline/` and return a
+    new manifest whose `root` is `workspace` itself (C3, final review: wrong file root).
+
+    Controller decision: stage the baseline into the Campaign workspace like
+    the qualified old Pack does (`packs/xtop-timing-closure/flow/closure.py`
+    ~225-249, read-only reference, never imported: it stages the Foundation's
+    own `.enc`/`.enc.dat` and related trees under the workspace before ever
+    computing an identity over them). `manifest["root"]` (and every path
+    entry that is not already absolute) may name an arbitrary EXTERNAL
+    directory the Campaign workspace never sees again (a Site-supplied
+    staging area, for instance) -- every later subcommand, though
+    (`workspaces.prepare`'s `_base_sources`, `_scenario_pt_inputs`,
+    `_cmd_implement`, ...), resolves a design-state's own recorded `path`
+    fields as `workspace / ref["path"]`. Building the baseline `design-state`
+    directly against `manifest`'s own (possibly external) root would silently
+    bind every one of those `path` fields to a root no other subcommand ever
+    joins against again -- `workspace / ref["path"]` would then resolve to a
+    nonexistent or, worse, a coincidentally-existing but wrong file.
+
+    This function copies each of `database.enc`, `database.encDat` (a
+    directory), `netlist`, `def` (when present), each `spef` corner and each
+    `sdc` entry into a fixed, category-named subtree under
+    `<workspace>/baseline/` (by basename, not by the original manifest's own
+    relative structure, which may not even be relative at all — an absolute
+    manifest path joined onto another path is not what Python's `pathlib`
+    does), and returns a new manifest with `root = str(workspace)` and every
+    one of those keys rewritten to its new `baseline/...`-relative location.
+    `atcs.state.design_state` then hashes the COPIES, so the resulting
+    design-state's own identity is bound to bytes that actually live inside
+    the Campaign workspace, at paths every later subcommand can resolve the
+    same way. `libraries`/`scenarios`/`tools`/`parentId`/`top`/`stage` are
+    passed through unchanged (`design_state` never reads `libraries`, and
+    the rest are not paths).
+
+    Raises `AtcsError("missing-input", ...)` when a referenced source file or
+    directory cannot actually be copied (does not exist, or an `OSError`
+    reading it) -- a baseline this Pack cannot honestly stage is never
+    silently skipped.
+    """
+    workspace = Path(workspace)
+    baseline_dir = workspace / "baseline"
+    root = manifest.get("root")
+
+    def _resolve_source(rel_path):
+        if root and not os.path.isabs(rel_path):
+            return str(Path(root) / rel_path)
+        return str(rel_path)
+
+    def _copy_file(rel_path, dest_rel):
+        """`dest_rel` is relative to `baseline_dir` (i.e. it does NOT itself start
+        with `baseline/`); returns the manifest-relative path (relative to
+        `workspace`, i.e. WITH the `baseline/` prefix) `state.design_state` should
+        record."""
+        source = _resolve_source(rel_path)
+        destination = baseline_dir / dest_rel
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copy2(source, destination)
+        except OSError as exc:
+            raise core.AtcsError("missing-input", f"cannot stage baseline file {rel_path!r}: {exc}") from exc
+        return f"baseline/{dest_rel}"
+
+    def _copy_tree(rel_path, dest_rel):
+        """Directory counterpart of `_copy_file` -- same `dest_rel`/return convention."""
+        source = _resolve_source(rel_path)
+        destination = baseline_dir / dest_rel
+        if destination.exists():
+            shutil.rmtree(destination)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copytree(source, destination, symlinks=True)
+        except OSError as exc:
+            raise core.AtcsError("missing-input", f"cannot stage baseline directory {rel_path!r}: {exc}") from exc
+        return f"baseline/{dest_rel}"
+
+    staged = dict(manifest)
+    staged["root"] = str(workspace)
+
+    database = dict(manifest.get("database") or {})
+    if database.get("enc"):
+        database["enc"] = _copy_file(database["enc"], f"database/{Path(database['enc']).name}")
+    if database.get("encDat"):
+        database["encDat"] = _copy_tree(database["encDat"], f"database/{Path(database['encDat']).name}")
+    staged["database"] = database
+
+    if manifest.get("netlist"):
+        staged["netlist"] = _copy_file(manifest["netlist"], f"netlist/{Path(manifest['netlist']).name}")
+
+    if manifest.get("def") is not None:
+        staged["def"] = _copy_file(manifest["def"], f"def/{Path(manifest['def']).name}")
+
+    if manifest.get("spef"):
+        staged["spef"] = {
+            corner: _copy_file(rel_path, f"spef/{corner}/{Path(rel_path).name}")
+            for corner, rel_path in manifest["spef"].items()
+        }
+
+    if manifest.get("sdc"):
+        staged["sdc"] = [
+            _copy_file(rel_path, f"sdc/{index}/{Path(rel_path).name}")
+            for index, rel_path in enumerate(manifest["sdc"])
+        ]
+
+    return staged
+
+
 def _cmd_baseline(workspace, args):
     """Build the baseline `design-state` and seed `state/working-state.json` from it verbatim.
 
@@ -518,10 +632,18 @@ def _cmd_baseline(workspace, args):
     with the adopted candidate's own design-state whenever the `working`
     pointer moves (see `_cmd_adopt`), so a second implementation round
     re-bases on the *adopted* state, never the original baseline again.
+
+    C3 (final review, wrong file root): the manifest's referenced source
+    files are staged into `<workspace>/baseline/` first
+    (`_stage_baseline_inputs`), and `state.design_state` is called against
+    the STAGED manifest (`root = workspace`), never the caller-supplied
+    manifest's own (possibly external) root -- see `_stage_baseline_inputs`'s
+    own docstring for why every later subcommand depends on this.
     """
     (manifest_path,) = args
     manifest = _read_plain(manifest_path)
-    body = state.design_state(manifest)
+    staged_manifest = _stage_baseline_inputs(workspace, manifest)
+    body = state.design_state(staged_manifest)
     _canonical_write(_paths(workspace)["working_state"], body)
     return _paths(workspace)["baseline"], body
 
@@ -1181,6 +1303,33 @@ def _cmd_presta(workspace, args):
 
 
 def _cmd_implement(workspace, args):
+    """C2 (final review, stale re-implement overwrites adopted DB): two independent
+    refusals guard against silently overwriting an already-implemented (and possibly
+    already-adopted) candidate's own on-disk database.
+
+    1. **`stale-base`** — the sealed merge commit's own recorded
+       `parentStateId` must equal the CURRENT `state/working-state.json`'s
+       `id` (`current_state`, this call's own first argv arg). `adopt`
+       rewrites `state/working-state.json` every time it accepts a
+       candidate, but `state/integration-state.json`/`composition-facts.json`/
+       `replay-request.json` (what `integration.seal_batch` reseals from) are
+       only ever refreshed by a fresh compose/replay round; calling
+       `implement` again with no fresh round in between reseals the exact
+       same merge commit (a pure function of those unchanged inputs),
+       including its stale `parentStateId` -- naming a batch built against a
+       state the campaign has already moved past.
+    2. **`write-once`** — `implementations/<mergeId>/merge-commit.json` (the
+       completion marker only a prior, successful `implement` call for this
+       EXACT merge commit id ever writes) must not already exist. Even a
+       merge commit whose `parentStateId` legitimately still matches the
+       current working state (a plain retry) must never re-run the ECO into
+       a directory another generation may already be relying on as
+       immutable evidence.
+
+    Both checks run, and both refusal paths leave `state/merge-commit.json`/
+    `implementations/<mergeId>/merge-commit.json` untouched -- refusing
+    `implement` must never leave partial or misleading bookkeeping behind.
+    """
     current_state_path, site_profile_path = args
     workspace = Path(workspace)
     current_state = _read_declared(current_state_path, "design-state")
@@ -1191,14 +1340,31 @@ def _cmd_implement(workspace, args):
     collected = _read_plain(_paths(workspace)["contributions_collected"])
 
     merge_commit = integration.seal_batch(integration_state, request, facts, collected["contributions"])
+
+    if merge_commit.get("parentStateId") != current_state.get("id"):
+        raise core.AtcsError(
+            "stale-base",
+            f"merge commit parentStateId {merge_commit.get('parentStateId')!r} does not match the "
+            f"current working state {current_state.get('id')!r} -- compose/replay a fresh batch "
+            "against the current working state before implementing again",
+        )
+
     merge_id = adapters.validate_path_segment(merge_commit["id"], "merge-commit.id")
-    _canonical_write(_paths(workspace)["merge_commit"], merge_commit)
-    _canonical_write(workspace / "implementations" / merge_id / "merge-commit.json", merge_commit)
+    output_root = workspace / "implementations" / merge_id
+    merge_commit_marker = output_root / "merge-commit.json"
+    if merge_commit_marker.is_file():
+        raise core.AtcsError(
+            "write-once",
+            f"implementations/{merge_id}/ has already been implemented ({merge_commit_marker} exists) "
+            "-- a merge commit's implementation output is never overwritten",
+        )
 
     design = current_state["top"]
     current_db = workspace / current_state["database"]["path"]
-    output_root = workspace / "implementations" / merge_id
     task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root))
+
+    _canonical_write(_paths(workspace)["merge_commit"], merge_commit)
+    _canonical_write(merge_commit_marker, merge_commit)
 
     eco_path = Path(task["ecoPath"])
     eco_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1235,6 +1401,13 @@ def _cmd_implement(workspace, args):
 
 
 def _cmd_extract(workspace, args):
+    """I4 (final review, identity by hashing at use): `inputDefSha256` is the hash of the
+    DEF file this call actually reads (right here, right now), verified equal to
+    `implement.json`'s own recorded `def.sha256` -- never that recorded value copied
+    through unchecked. A DEF that changed on disk between `implement` and `extract`
+    (however unlikely in the normal flow) must be caught here, at the moment StarRC is
+    about to read it, not left for a downstream consumer to trust blindly.
+    """
     corners_path, site_profile_path = args
     workspace = Path(workspace)
     corners_doc = _read_plain(corners_path)
@@ -1248,6 +1421,12 @@ def _cmd_extract(workspace, args):
     merge_id = adapters.validate_path_segment(implement.get("mergeCommitId"), "implement.mergeCommitId")
 
     def_path = workspace / implement["def"]["path"]
+    def_sha256 = core.file_sha256(def_path)
+    if def_sha256 != implement["def"]["sha256"]:
+        raise core.AtcsError(
+            "identity-mismatch", f"DEF at {def_path} no longer matches implement.json's recorded sha256",
+        )
+
     output_root = workspace / "implementations" / merge_id
     spef_out = {}
     for corner in corners:
@@ -1263,7 +1442,7 @@ def _cmd_extract(workspace, args):
             raise adapters.AdapterToolError(f"StarRC produced no SPEF for corner {corner!r}", log_path)
         spef_out[corner] = {
             "path": _relpath(spef_path, workspace), "sha256": core.file_sha256(spef_path),
-            "inputDefSha256": implement["def"]["sha256"], "estimated": False,
+            "inputDefSha256": def_sha256, "estimated": False,
         }
     return _paths(workspace)["extract"], {"spef": spef_out}
 
@@ -1345,6 +1524,34 @@ def _cmd_sta(workspace, args):
     `analysisContract/sdc.json` copy that could silently diverge from the SDC the state
     itself was built from -- the `sdc` argv arg is gone; `observe`/`residual` already read
     SDC this same way (`_scenario_pt_inputs`).
+
+    C5 (final review, wrong-generation comparison): the candidate's own
+    `design-state` (built from the just-implemented database/netlist/DEF and
+    this call's own fresh extraction, `parentId = base_state["id"]`) is now
+    built *before* the per-scenario STA loop runs, and every scenario's
+    `state.capture` call labels its `observation-set` with that candidate's
+    own stamped id (`design_state["id"]`) -- never `base_state["id"]` (the
+    *parent* state's id), which is what this call used to (incorrectly)
+    stamp every observation with. Labeling STA's own fresh observations with
+    the wrong generation's id is exactly what let `evaluate` believe it was
+    comparing a candidate against its own immediate prior evidence when the
+    ids never actually distinguished the two generations at all. This call's
+    own declared output (`state/sta.json`) is additionally archived
+    verbatim to `implementations/<mergeId>/sta.json`, so a later `evaluate`
+    (or any other consumer) can always recover exactly the STA receipts a
+    given candidate was evaluated against, independent of whatever
+    `state/sta.json` currently holds for a *later* generation.
+
+    I4 (final review, identity by hashing at use): the candidate's own
+    `design-state` re-hashes the database/netlist/every scenario's SPEF
+    fresh, from the exact files this call is about to hand PT (`state.
+    design_state`'s own `core.file_sha256` calls) -- this call verifies
+    those fresh hashes still agree with `implement.json`'s/`extract.json`'s
+    own recorded identities (`AtcsError("identity-mismatch", ...)` otherwise)
+    and uses the FRESH values, not the recorded ones, in every scenario's own
+    `sta_receipts[...]["inputs"]` -- so `finalIdentityErrorCount` is bound to
+    the netlist/SPEF STA truly read, at the moment it read them, never to an
+    earlier claim about them that may since have gone stale.
     """
     query_spec_path, scenario_corners_path, base_design_state_path, site_profile_path = args
     workspace = Path(workspace)
@@ -1363,6 +1570,45 @@ def _cmd_sta(workspace, args):
     sdc_path = _verified_state_sdc_path(workspace, base_state)
     sdc_list = [entry["path"] for entry in (base_state.get("sdc") or [])]
 
+    # Built BEFORE the STA loop (C5): every scenario's `state.capture` call
+    # below labels its observation with this candidate's own id, never the
+    # parent `base_state`'s.
+    manifest = adapters.build_design_state_manifest(
+        top=implement["design"], stage="postroute",
+        database_enc=implement["database"]["path"], database_dat=implement["database"]["path"] + ".dat",
+        netlist=implement["netlist"]["path"], def_path=implement["def"]["path"],
+        spef_by_corner={corner: ref["path"] for corner, ref in extract["spef"].items()},
+        sdc_list=sdc_list, scenario_corners=scenario_corners, tools=base_state.get("tools"),
+        parent_id=base_state["id"], root=str(workspace),
+    )
+    design_state = state.design_state(manifest)
+    # I4 (final review, identity by hashing at use): `state.design_state` just
+    # re-hashed the netlist at the exact path this call is about to hand PT,
+    # fresh, right now -- not copied from `implement.json`'s own recorded
+    # value (computed back when `implement` finished). Verifying the two
+    # agree, once, here, and then using the FRESH value below for every
+    # scenario's own STA receipt is what actually binds `finalIdentityErrorCount`
+    # to the netlist STA truly read, rather than to a stale claim about it.
+    netlist_sha256 = design_state["netlist"]["sha256"]
+    if netlist_sha256 != implement["netlist"]["sha256"]:
+        raise core.AtcsError(
+            "identity-mismatch",
+            f"netlist at {workspace / implement['netlist']['path']} no longer matches "
+            "implement.json's recorded sha256",
+        )
+    # I4: the candidate's OWN design-state (`sta` just built it, above) is
+    # what `evaluate` will later compare its receipts against -- verify here
+    # that its own database identity (also hashed fresh, by `state.design_state`,
+    # from the exact `.enc`/`.enc.dat` bytes `implement` produced) still
+    # agrees with `implement.json`'s own recorded database identity.
+    if (design_state["database"]["sha256"] != implement["database"]["sha256"]
+            or design_state["database"]["datDigest"] != implement["database"]["datDigest"]):
+        raise core.AtcsError(
+            "identity-mismatch",
+            f"database at {workspace / implement['database']['path']} no longer matches "
+            "implement.json's recorded identity",
+        )
+
     report_root = workspace / "implementations" / merge_id / "sta"
     sta_receipts = {}
     sta_sources = {}
@@ -1371,7 +1617,18 @@ def _cmd_sta(workspace, args):
         spef_ref = extract["spef"].get(corner)
         if not spef_ref:
             raise InputError("invalid-input", f"extract has no SPEF for corner {corner!r}")
-        sta_sources[scenario] = {"path": spef_ref["path"], "sha256": spef_ref["sha256"]}
+        # I4: same defense-in-depth for this scenario's own SPEF -- `design_state`
+        # already re-hashed it fresh, from the exact file this scenario's PT
+        # task is about to read.
+        fresh_spef_entry = design_state["spef"].get(corner)
+        if not fresh_spef_entry or fresh_spef_entry["sha256"] != spef_ref["sha256"]:
+            raise core.AtcsError(
+                "identity-mismatch",
+                f"spef for corner {corner!r} at {workspace / spef_ref['path']} no longer matches "
+                "extract.json's recorded sha256",
+            )
+        spef_sha256 = fresh_spef_entry["sha256"]
+        sta_sources[scenario] = {"path": spef_ref["path"], "sha256": spef_sha256}
         inputs = {
             "design": implement["design"], "netlist": str(workspace / implement["netlist"]["path"]),
             "sdc": str(sdc_path), "spef": str(workspace / spef_ref["path"]),
@@ -1388,7 +1645,8 @@ def _cmd_sta(workspace, args):
                 raise adapters.AdapterToolError(f"expected PT report missing: {report_path}", log_path)
 
         source_refs = {
-            "designStateId": base_state["id"],
+            # C5: the candidate's OWN state id, never base_state["id"] (the parent).
+            "designStateId": design_state["id"],
             "scenarios": {scenario: {
                 "globalTiming": task["reports"]["global_timing.rpt"], "setupPaths": task["reports"]["setup.rpt"],
                 "holdPaths": task["reports"]["hold.rpt"], "checkTiming": task["reports"]["check_timing.rpt"],
@@ -1399,19 +1657,12 @@ def _cmd_sta(workspace, args):
         observation = state.capture(source_refs, one_scenario_query_spec)
         sta_receipts[scenario] = {
             "corner": corner,
-            "inputs": {"netlistSha256": implement["netlist"]["sha256"], "spefSha256": spef_ref["sha256"]},
+            # I4: the fresh, at-use hashes, not implement.json's/extract.json's
+            # own recorded copies (verified equal to them just above).
+            "inputs": {"netlistSha256": netlist_sha256, "spefSha256": spef_sha256},
             "observation": observation,
         }
 
-    manifest = adapters.build_design_state_manifest(
-        top=implement["design"], stage="postroute",
-        database_enc=implement["database"]["path"], database_dat=implement["database"]["path"] + ".dat",
-        netlist=implement["netlist"]["path"], def_path=implement["def"]["path"],
-        spef_by_corner={corner: ref["path"] for corner, ref in extract["spef"].items()},
-        sdc_list=sdc_list, scenario_corners=scenario_corners, tools=base_state.get("tools"),
-        parent_id=base_state["id"], root=str(workspace),
-    )
-    design_state = state.design_state(manifest)
     _canonical_write(workspace / "implementations" / merge_id / "design-state.json", design_state)
 
     # Called exactly once here: extraction (`extract.json`, already read
@@ -1427,6 +1678,12 @@ def _cmd_sta(workspace, args):
     body = {
         "designStateId": design_state["id"], "database": design_state["database"], "sta": sta_receipts,
     }
+    # C5: archive this exact sta.json body under the candidate's own
+    # implementations/<mergeId>/ directory, so a later evaluate (or any
+    # other consumer) can always recover the STA receipts a given
+    # candidate was evaluated against, independent of state/sta.json's
+    # current (possibly later-generation) contents.
+    _canonical_write(workspace / "implementations" / merge_id / "sta.json", body)
     return _paths(workspace)["sta"], body
 
 
@@ -1470,8 +1727,56 @@ def _cmd_physical(workspace, args):
     return _paths(workspace)[key], body
 
 
+def _find_prior_observation_for_state(workspace, target_state_id):
+    """The persisted `observation-set` whose own `designStateId` equals `target_state_id`,
+    or `None` when nothing on disk was ever captured for that exact state id (C5, final
+    review: `evaluate` must never diff a candidate's STA against a differently-labeled
+    generation's observation just because it happens to be the current `state/
+    observation.json`).
+
+    Checked in order: the current `state/observation.json`, then `state/
+    observation-prev.json` (G19's one-step-back copy), then every immutable
+    original `observe` itself wrote at `observations/<id>.json` (also G19) --
+    whichever exists and actually carries this exact `designStateId`. A
+    document that fails schema/id verification is skipped (never raises):
+    an unrelated or corrupt file under `observations/` must not abort
+    `evaluate`, only fail to count as a match.
+    """
+    if not target_state_id:
+        return None
+    workspace = Path(workspace)
+    candidates = []
+    for key in ("observation", "observation_prev"):
+        path = _paths(workspace)[key]
+        if path.is_file():
+            candidates.append(path)
+    observations_dir = workspace / "observations"
+    if observations_dir.is_dir():
+        candidates.extend(sorted(observations_dir.glob("*.json")))
+    for path in candidates:
+        try:
+            doc = _read_declared(path, "observation-set")
+        except InputError:
+            continue
+        if doc.get("designStateId") == target_state_id:
+            return doc
+    return None
+
+
 def _cmd_evaluate(workspace, args):
-    """`policy` is now the stamped `state/policy.json` `_cmd_policy` writes (G4)."""
+    """`policy` is now the stamped `state/policy.json` `_cmd_policy` writes (G4).
+
+    C5 (final review): the prior observation `verification.assemble` diffs
+    the candidate's fresh STA against is looked up by id
+    (`_find_prior_observation_for_state`, keyed on the merge commit's own
+    `parentStateId`) rather than blindly reading whatever `state/
+    observation.json` currently holds -- which, after a second
+    implementation round with no fresh `observe` in between, may still be
+    labeled with an *earlier* generation's state id, not this candidate's
+    actual parent. When no persisted observation actually matches, `None`
+    is passed through to `assemble`, which reports the comparison as
+    `unknown` rather than silently diffing against the wrong generation.
+    """
     (policy_path,) = args
     workspace = Path(workspace)
     policy = _read_declared(policy_path, "policy")
@@ -1481,9 +1786,9 @@ def _cmd_evaluate(workspace, args):
     extract = _read_plain(_paths(workspace)["extract"])
     physical = _read_plain(_paths(workspace)["physical"])
     baseline_physical = _read_plain(_paths(workspace)["baseline_physical"])
-    prior_observation = _read_declared(_paths(workspace)["observation"], "observation-set")
 
     plan = verification.plan_checks(merge_commit, policy)
+    prior_observation = _find_prior_observation_for_state(workspace, plan.get("parentStateId"))
     receipts = {
         "designStateId": sta["designStateId"], "database": sta["database"],
         "netlist": implement["netlist"], "def": implement["def"], "spef": extract["spef"],
@@ -1512,6 +1817,17 @@ def _cmd_adopt(workspace, args):
     is rewritten with the adopted candidate's own design-state, copied
     verbatim from the immutable `implementations/<candidateId>/design-state.json`
     `sta` already wrote, and re-verified (schema + digest) on the way in.
+
+    I9 (final review, adopt consistency): when the working pointer moved but
+    that copy cannot actually be completed -- `pointersAfter.working` names
+    no `candidateId` at all, or `implementations/<candidateId>/design-state.json`
+    does not exist -- this raises `AtcsError("adopt-inconsistent", ...)`
+    (exit 3) rather than silently leaving `state/working-state.json` behind
+    the pointers document it is supposed to mirror. `adoption.publish` has,
+    by this point, already durably recorded the pointer move (`pointers.json`
+    and this call's own `accepted/<id>.json`); this refusal at least surfaces
+    the resulting inconsistency loudly instead of letting every later
+    subcommand silently re-base on a stale `working-state.json`.
     """
     (policy_path,) = args
     workspace = Path(workspace)
@@ -1525,12 +1841,22 @@ def _cmd_adopt(workspace, args):
     if record.get("decision") != "refused":
         working_pointer = (record.get("pointersAfter") or {}).get("working") or {}
         candidate_id = working_pointer.get("candidateId")
-        if candidate_id:
-            candidate_id = adapters.validate_path_segment(candidate_id, "pointersAfter.working.candidateId")
-            candidate_state_path = workspace / "implementations" / candidate_id / "design-state.json"
-            if candidate_state_path.is_file():
-                candidate_design_state = _read_declared(candidate_state_path, "design-state")
-                _canonical_write(_paths(workspace)["working_state"], candidate_design_state)
+        if not candidate_id:
+            raise core.AtcsError(
+                "adopt-inconsistent",
+                "the working pointer moved but pointersAfter.working names no candidateId -- "
+                "state/working-state.json cannot be advanced to match",
+            )
+        candidate_id = adapters.validate_path_segment(candidate_id, "pointersAfter.working.candidateId")
+        candidate_state_path = workspace / "implementations" / candidate_id / "design-state.json"
+        if not candidate_state_path.is_file():
+            raise core.AtcsError(
+                "adopt-inconsistent",
+                f"the working pointer moved to candidate {candidate_id!r} but {candidate_state_path} "
+                "does not exist -- state/working-state.json cannot be advanced to match",
+            )
+        candidate_design_state = _read_declared(candidate_state_path, "design-state")
+        _canonical_write(_paths(workspace)["working_state"], candidate_design_state)
 
     envelope = {
         "acceptanceRecord": _relpath(acceptance_record_path, workspace),
@@ -1823,18 +2149,25 @@ def _cmd_apr_prepare(workspace, args):
     (exit 2) -- a malformed/mismatched declared input, not a module refusal.
 
     Adds a `taskId` field (recomputed identically to `lifecycle.stage_task`'s
-    own internal digest -- `core.digest({"stage","hookTcl","readbackTcl"})`,
-    the same value baked into `task["outputs"]`' own `apr/<stage>/<id>/`
-    paths) and the resolved `stage` itself onto the returned body:
-    `apr-run` (G24) needs both -- the stable id to build the output
-    directory it will run the stage task in and stamp as the resulting
-    candidate's own `mergeCommitId`, and `stage` because it no longer takes
-    that as an argv value either -- `lifecycle.stage_task` itself returns
-    only `{"tcl","inputs","outputs"}` (M11's own module docstring: neither
-    shape is a stamped artifact), so both are computed/carried here rather
-    than by changing that module's public return shape. Declared output is
-    now the single fixed `state/apr-task.json` (never `apr/<stage>/task.json`,
-    which cannot be one fixed literal path across four possible stages).
+    own internal digest via the shared `lifecycle.task_id_for` helper -- the
+    same value baked into `task["outputs"]`' own `apr/<stage>/<id>/` paths)
+    and the resolved `stage` itself onto the returned body: `apr-run` (G24)
+    needs both -- the stable id to build the output directory it will run
+    the stage task in and stamp as the resulting candidate's own
+    `mergeCommitId`, and `stage` because it no longer takes that as an argv
+    value either -- `lifecycle.stage_task` itself returns only
+    `{"tcl","inputs","outputs"}` (M11's own module docstring: neither shape
+    is a stamped artifact), so both are computed/carried here rather than by
+    changing that module's public return shape. Declared output is now the
+    single fixed `state/apr-task.json` (never `apr/<stage>/task.json`, which
+    cannot be one fixed literal path across four possible stages).
+
+    C2 (final review): `parent_state_id` (`state/working-state.json`'s own
+    current `id`) is threaded into both `lifecycle.stage_task` and this
+    call's own `taskId` recomputation, so a stage compiled against one
+    working state can never collide (on id, hence on output directory) with
+    the same intervention compiled again later against a DIFFERENT working
+    state -- see `lifecycle.task_id_for`'s own docstring.
     """
     del args
     workspace = Path(workspace)
@@ -1851,9 +2184,12 @@ def _cmd_apr_prepare(workspace, args):
 
     residual_doc = _read_plain(_paths(workspace)["residual_cases"])
     readiness = _read_declared(_paths(workspace)["readiness"], "input-readiness")
+    working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
     intervention = lifecycle.compile_intervention(residual_doc.get("cases", []), stage, readiness)
-    task = lifecycle.stage_task(stage, readiness, intervention, ".")
-    task_id = core.digest({"stage": stage, "hookTcl": intervention["hookTcl"], "readbackTcl": intervention["readbackTcl"]})
+    task = lifecycle.stage_task(stage, readiness, intervention, ".", parent_state_id=working_state["id"])
+    task_id = lifecycle.task_id_for(
+        stage, intervention["hookTcl"], intervention["readbackTcl"], parent_state_id=working_state["id"],
+    )
     body = dict(task)
     body["taskId"] = task_id
     body["stage"] = stage
@@ -2174,6 +2510,12 @@ def _cmd_apr_run(workspace, args):
     `extract`/`sta`/`physical`(candidate)/`evaluate`/`adopt`/
     `record-experience` all follow unchanged (`evaluate`/`sta` read the
     missing `state/merge-commit.json` back via `_load_merge_commit_like`).
+
+    C2 (final review, write-once): `apr/<stage>/<taskId>/` is write-once,
+    guarded by a completion marker (`apr-run-complete.json`) this function
+    itself writes only after a full, successful run -- refuses
+    `AtcsError("write-once", ...)` (exit 3) rather than ever re-running the
+    stage/export batches into a directory a prior run already completed.
     """
     (site_profile_path,) = args
     workspace = Path(workspace)
@@ -2189,6 +2531,20 @@ def _cmd_apr_run(workspace, args):
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
 
     output_root = workspace / "apr" / stage / task_id
+    # C2 (final review, write-once): `apr-run-complete.json` is a completion
+    # marker only THIS function writes, at the very end of a successful run
+    # -- checking it here (never the raw stage/export outputs, which this
+    # Pack's own tests legitimately pre-seed to fake a no-op EDA wrapper's
+    # effect) is what actually distinguishes "this exact APR task id was
+    # already run" from "the tool is about to produce these files for the
+    # first time".
+    apr_run_marker = output_root / "apr-run-complete.json"
+    if apr_run_marker.is_file():
+        raise core.AtcsError(
+            "write-once",
+            f"apr/{stage}/{task_id}/ has already been run ({apr_run_marker} exists) -- an APR stage "
+            "task's implementation output is never overwritten",
+        )
     output_root.mkdir(parents=True, exist_ok=True)
     stage_tcl_path = output_root / "apr-stage.tcl"
     stage_tcl_path.write_text(task["tcl"], encoding="utf-8")
@@ -2241,6 +2597,7 @@ def _cmd_apr_run(workspace, args):
             "sha256": core.file_sha256(export_task["outputs"]["connectivity"]),
         },
     }
+    _canonical_write(apr_run_marker, {"stage": stage, "taskId": task_id, "parentStateId": working_state["id"]})
     return _paths(workspace)["implement"], body
 
 
@@ -2295,6 +2652,16 @@ def main(argv=None):
         return _fail(exc.code, exc.detail, 3)
     except adapters.AdapterToolError as exc:
         return _fail("tool-failed", exc.detail, 4, extra={"log": exc.log_path})
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        # Minor (final review): a handler that lets one of these four escape
+        # (an unreadable file it did not already wrap as `InputError`, or a
+        # declared input whose shape it assumed but did not actually
+        # validate) is still a malformed/unreadable DECLARED INPUT, never a
+        # module refusal and never a raw traceback on stderr at exit 1 --
+        # this Pack's own fail-closed rule for Site/Workshop-supplied
+        # evidence applies here too, at the dispatcher's own outermost
+        # boundary.
+        return _fail("malformed-input", f"{type(exc).__name__}: {exc}", 2)
 
     core.write_artifact(output_path, body)
     return 0

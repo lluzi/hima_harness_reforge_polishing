@@ -794,6 +794,86 @@ _ID_SHAPE_RE = re.compile(r"^[0-9a-f]{20}$")
 _APR_STAGES = ("place", "cts", "route", "postroute")
 
 
+def _implement_batch_ready(workspace, mods):
+    """True when a reconciled, unimplemented batch based on the CURRENT working state
+    exists in `workspace`'s own state files (C2, final review): choosing `action ==
+    "implement"` is only a real, actionable request when there is something left for
+    `implement` to actually do.
+
+    "Exists" is defined entirely from state files already on disk, mirroring
+    the exact computation `atcs_cli._cmd_implement` itself performs before
+    sealing a candidate:
+
+    - `state/working-state.json`, `state/integration-state.json`, `state/
+      replay-request.json`, `state/composition-facts.json` and `state/
+      contributions-collected.json` must all exist and parse.
+    - `composition-facts.json`'s and `replay-request.json`'s own
+      `baseStateId` must both equal `working-state.json`'s own current `id`
+      -- a reconciled batch built against an EARLIER working state (the
+      campaign has since moved on, e.g. via `adopt`) is not a batch
+      `implement` can honestly act on now.
+    - The batch's own merge commit is re-derived, read-only, via
+      `integration.seal_batch` (the exact pure computation `implement`
+      itself performs) over those same files; any failure to do so (a
+      malformed/inconsistent reconciliation) means no ready batch exists.
+    - That merge commit must not already be the one recorded in `state/
+      implement.json` (compared by id) -- a batch that was already
+      implemented is not "unimplemented" any more, even though every file
+      above still exists.
+
+    Returns `False` (never raises) for any missing file, parse failure, or
+    re-derivation failure -- this function only ever answers "is there
+    real, current, unimplemented work for `implement`", never partial
+    credit for a batch this Reader cannot fully verify.
+    """
+    workspace = Path(workspace)
+    paths = {
+        "working_state": workspace / "state" / "working-state.json",
+        "integration_state": workspace / "state" / "integration-state.json",
+        "replay_request": workspace / "state" / "replay-request.json",
+        "facts": workspace / "state" / "composition-facts.json",
+        "collected": workspace / "state" / "contributions-collected.json",
+    }
+    if not all(path.is_file() for path in paths.values()):
+        return False
+    try:
+        working_state = _load_json(paths["working_state"])
+        integration_state = _load_json(paths["integration_state"])
+        replay_request = _load_json(paths["replay_request"])
+        facts = _load_json(paths["facts"])
+        collected = _load_json(paths["collected"])
+    except ValueError:
+        return False
+
+    working_state_id = working_state.get("id") if isinstance(working_state, dict) else None
+    if not working_state_id:
+        return False
+    if not isinstance(facts, dict) or facts.get("baseStateId") != working_state_id:
+        return False
+    if not isinstance(replay_request, dict) or replay_request.get("baseStateId") != working_state_id:
+        return False
+
+    contributions = collected.get("contributions") if isinstance(collected, dict) else None
+    if not isinstance(contributions, list):
+        return False
+
+    try:
+        merge_commit = mods["integration"].seal_batch(integration_state, replay_request, facts, contributions)
+    except Exception:  # noqa: BLE001 -- any re-derivation failure means "no ready batch", fail-closed
+        return False
+
+    implement_path = workspace / "state" / "implement.json"
+    if implement_path.is_file():
+        try:
+            implement = _load_json(implement_path)
+        except ValueError:
+            implement = {}
+        if isinstance(implement, dict) and implement.get("mergeCommitId") == merge_commit.get("id"):
+            return False  # already implemented -- not "unimplemented" any more
+
+    return True
+
+
 def _collect_next_decision_problems(obj, workspace):
     problems = []
     if not isinstance(obj, dict):
@@ -811,6 +891,11 @@ def _collect_next_decision_problems(obj, workspace):
         stage = obj.get("stage")
         if stage not in _APR_STAGES:
             problems.append(f"stage must be one of {list(_APR_STAGES)} when action is 'earlier-apr', got {stage!r}")
+    if action == "implement" and not _implement_batch_ready(workspace, _atcs_modules(workspace)):
+        problems.append(
+            "action is 'implement' but no reconciled, unimplemented batch based on the current "
+            "working state exists in workspace state files"
+        )
 
     for ref_key in ("stateRef", "observationRef"):
         if ref_key not in obj:

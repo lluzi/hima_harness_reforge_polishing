@@ -13,8 +13,12 @@ This module owns the two producers named in this Pack's task brief
   kind's `writeFPlanScript` dump. `stage_task` uses this list directly
   (prefixing each entry with the workspace root and output directory) —
   it never re-derives these paths by scanning `readbackTcl` text.
-- `stage_task(stage, readiness, intervention, workspace_root)` -> a single
-  APR stage Harness task: ``{"tcl", "inputs[]", "outputs[]"}``.
+- `stage_task(stage, readiness, intervention, workspace_root, parent_state_id=None)`
+  -> a single APR stage Harness task: ``{"tcl", "inputs[]", "outputs[]"}``.
+  Its own internal task id (`task_id_for`, also exposed for callers that
+  need the same value independently) folds in `parent_state_id` when given
+  (C2, final review) so the same compiled intervention against two distinct
+  working states can never collide on one `apr/<stage>/<id>/` directory.
 
 Neither return shape is a row of ``.superpowers/sdd/global-context.md``'s
 "Shared data model" table (that table has no `apr-intervention`/`apr-stage-
@@ -222,6 +226,23 @@ def _check_stage(stage):
         raise core.AtcsError("unsupported-stage", str(stage))
 
 
+def task_id_for(stage, hook_tcl, readback_tcl, parent_state_id=None):
+    """The stable APR task id `stage_task` bakes into its own `apr/<stage>/<id>/`
+    output path -- exposed so a caller (the CLI's `_cmd_apr_prepare`) that needs
+    to know this id before/without re-running `stage_task` computes the exact
+    same value, never a second, independently-maintained digest formula that
+    could silently drift from this one (C2, final review).
+
+    `parent_state_id`, when given, is folded in alongside `stage`/`hookTcl`/
+    `readbackTcl` so two compilations of the byte-identical intervention
+    against two different working states can never collide on one id.
+    """
+    fields = {"stage": stage, "hookTcl": hook_tcl, "readbackTcl": readback_tcl}
+    if parent_state_id is not None:
+        fields["parentStateId"] = parent_state_id
+    return core.digest(fields)
+
+
 def _detect_path_group(check_key, evidence):
     net_delay = evidence["netDelay"]
     cell_delay = evidence["cellDelay"]
@@ -337,10 +358,23 @@ def compile_intervention(residual_cases, stage, readiness):
     }
 
 
-def stage_task(stage, readiness, intervention, workspace_root):
+def stage_task(stage, readiness, intervention, workspace_root, parent_state_id=None):
     """Build a single APR stage task that restores `stage`'s predecessor checkpoint.
 
     See module docstring "Restore/run/readback mechanics".
+
+    C2 (final review): `parent_state_id` (the design-state id this stage is
+    actually restoring/running against -- `state/working-state.json`'s own
+    `id`, at the CLI layer) is folded into the task's own id whenever given,
+    so a stage compiled against one working state can never collide with a
+    later, distinct compilation of the exact same intervention against a
+    DIFFERENT working state -- two campaigns' (or two generations') worth of
+    otherwise-identical hook/readback text must never land in the same
+    `apr/<stage>/<id>/` output directory just because their generated Tcl
+    happens to be byte-identical. Defaults to `None` (task id unchanged from
+    before, `{"stage","hookTcl","readbackTcl"}` only) for a caller that
+    genuinely has no state id to offer; the CLI wrapper (`_cmd_apr_prepare`)
+    always supplies one.
     """
     _check_scope(readiness)
     _check_stage(stage)
@@ -360,7 +394,7 @@ def stage_task(stage, readiness, intervention, workspace_root):
     prev_stage = STAGE_ORDER[STAGE_ORDER.index(stage) - 1]
     checkpoint = _validate_token(f"./DBS/{prev_stage}.enc.dat")
 
-    task_id = core.digest({"stage": stage, "hookTcl": hook_tcl, "readbackTcl": readback_tcl})
+    task_id = task_id_for(stage, hook_tcl, readback_tcl, parent_state_id)
     output_rel = _validate_token(f"apr/{stage}/{task_id}")
     stage_command = _validate_token(STAGE_COMMANDS[stage])
 

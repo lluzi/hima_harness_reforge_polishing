@@ -330,6 +330,22 @@ Builds the final `evaluation` artifact. Order of operations:
    `fixedCheckCount`/`missingPriorCheckCount` are `known(len(...))` of its
    `fixed`/`missingPrior` lists.
 
+   C5 (final review, wrong-generation comparison): `prior_observation` may
+   also be `None` — the caller's own signal that it could not locate any
+   persisted `observation-set` whose own `designStateId` actually equals
+   this plan's `parentStateId` (see `atcs_cli._cmd_evaluate`'s own
+   docstring: it looks this up by id, never assumes "whatever `state/
+   observation.json` currently holds" is the right generation). `assemble`
+   never substitutes a different generation's observation for a missing
+   one: when `prior_observation is None`, `comparison` is a structurally
+   complete but empty `check-comparison` (every list `[]`, plus a
+   documentary `"reason"` field — never a value another Reader would infer
+   as "confirmed zero fixed/missing checks") and both
+   `fixedCheckCount`/`missingPriorCheckCount` are `unknown`, naming that
+   same reason — a comparison this Pack cannot actually anchor to the
+   correct parent generation must never be reported as a known count of
+   anything, `0` included.
+
 `candidateId` and `parentStateId` are `plan.get("candidateId")` and
 `plan.get("parentStateId")` respectively (see `plan_checks` above) —
 `assemble` never re-derives either id from `receipts` itself, since
@@ -692,7 +708,21 @@ def assemble(plan, receipts, prior_observation, baseline_physical):
         unknown_count += unknowns
 
     current_observation = _combine_sta_observations(receipts.get("sta", {}))
-    comparison = state.compare_checks(prior_observation, current_observation, {})
+    if prior_observation is None:
+        # C5: never diff against a different generation's observation just
+        # because one happens to be lying around -- the caller found no
+        # persisted observation whose own designStateId matches this plan's
+        # parentStateId, so the comparison itself is unknown, not "zero".
+        reason = f"no prior observation recorded for parentStateId {plan.get('parentStateId')!r}"
+        comparison = {
+            "fixed": [], "remaining": [], "entrant": [], "regressed": [], "missingPrior": [], "reason": reason,
+        }
+        fixed_check_count = core.unknown(reason)
+        missing_prior_check_count = core.unknown(reason)
+    else:
+        comparison = state.compare_checks(prior_observation, current_observation, {})
+        fixed_check_count = core.known(len(comparison["fixed"]))
+        missing_prior_check_count = core.known(len(comparison["missingPrior"]))
 
     body = {
         "candidateId": plan.get("candidateId"),
@@ -705,8 +735,8 @@ def assemble(plan, receipts, prior_observation, baseline_physical):
         "finalIdentityErrorCount": final_identity_error_count,
         "constraintFailureCount": core.known(failure_count),
         "constraintUnknownCount": core.known(unknown_count),
-        "fixedCheckCount": core.known(len(comparison["fixed"])),
-        "missingPriorCheckCount": core.known(len(comparison["missingPrior"])),
+        "fixedCheckCount": fixed_check_count,
+        "missingPriorCheckCount": missing_prior_check_count,
         "comparison": comparison,
         "physical": physical_out,
     }

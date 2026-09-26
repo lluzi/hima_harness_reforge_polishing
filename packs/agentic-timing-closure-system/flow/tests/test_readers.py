@@ -36,6 +36,7 @@ sys.path.insert(0, str(FLOW_DIR))
 from atcs import core  # noqa: E402
 from atcs import state  # noqa: E402
 from atcs import workspaces  # noqa: E402
+from atcs import composition  # noqa: E402
 from atcs import integration  # noqa: E402
 from atcs import verification  # noqa: E402
 from atcs import adoption  # noqa: E402
@@ -867,7 +868,30 @@ class NextDecisionReaderTest(unittest.TestCase):
         _write(report, json.dumps(decision))
         return report
 
+    def _write_ready_implement_batch(self):
+        """A minimal but real, fully-reconciled, unimplemented (empty) batch
+        based on a fresh `state/working-state.json` -- everything C2's
+        `_implement_batch_ready` requires for `action == "implement"` to be
+        counted as a real, actionable request (see that function's own
+        docstring for exactly which state files and which `baseStateId`
+        agreement it checks)."""
+        working_state = _build_design_state(self.workspace, name="implement-ready")
+        _write(self.workspace / "state" / "working-state.json", json.dumps(working_state))
+        facts = composition.analyze(working_state["id"], [], [])
+        _write(self.workspace / "state" / "composition-facts.json", json.dumps(facts))
+        plan = integration.validate_plan(
+            {"batchId": "b1", "baseStateId": working_state["id"], "select": [], "resolutions": [],
+             "deferred": [], "reason": "empty batch, ready to implement"},
+            facts,
+        )
+        request = integration.prepare_replay(plan, facts, [])
+        _write(self.workspace / "state" / "replay-request.json", json.dumps(request))
+        integration_state = integration.reconcile(request, [], {})
+        _write(self.workspace / "state" / "integration-state.json", json.dumps(integration_state))
+        _write(self.workspace / "state" / "contributions-collected.json", json.dumps({"contributions": []}))
+
     def test_each_of_the_eight_actions_encodes_and_matches_stop_required(self):
+        self._write_ready_implement_batch()
         codes = {
             "observe": 1, "research": 2, "compose": 3, "revise": 4,
             "implement": 5, "earlier-apr": 6, "wait": 7, "goal-met": 8,
@@ -894,7 +918,10 @@ class NextDecisionReaderTest(unittest.TestCase):
             self.assertIsNone(by_type["tc_next_action"]["value"], bad)
 
     def test_stage_is_not_required_for_other_actions(self):
-        report = self._write_decision(self._decision(action="implement"))
+        # "revise" (not "implement" -- that action now also has its own,
+        # unrelated C2 batch-readiness requirement, covered separately below)
+        # never requires a `stage` field.
+        report = self._write_decision(self._decision(action="revise"))
         by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
         self.assertEqual(by_type["tc_request_invalid_count"]["value"], 0)
 
@@ -920,6 +947,101 @@ class NextDecisionReaderTest(unittest.TestCase):
         report = self._write_decision(self._decision(stateRef="f" * 20))
         values = read_atcs.read("next-decision", report, self.workspace)
         by_type = {v["type"]: v for v in values}
+        self.assertGreaterEqual(by_type["tc_request_invalid_count"]["value"], 1)
+        self.assertIsNone(by_type["tc_next_action"]["value"])
+
+
+class NextDecisionImplementBatchReadinessTest(unittest.TestCase):
+    """C2 (final review): `action == "implement"` is only counted as a valid,
+    actionable request when a reconciled, unimplemented batch based on the
+    CURRENT working state actually exists in workspace state files -- never
+    just because the eight-action vocabulary itself accepts the string
+    "implement". Converted from the controller's own `probe_reimplement.py`
+    scenario (stale re-implement overwrote an already-adopted database)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.workspace = _make_workspace(self.tmp.name)
+        self.state_ref = core.digest({"marker": "state"})
+        self.observation_ref = core.digest({"marker": "observation"})
+        _write(self.workspace / "flow" / "records" / "state.json",
+               json.dumps({"schema": "atcs.design-state/1", "id": self.state_ref, "marker": "state"}))
+        _write(self.workspace / "flow" / "records" / "observation.json",
+               json.dumps({"schema": "atcs.observation-set/1", "id": self.observation_ref, "marker": "observation"}))
+
+    def _decision(self, **overrides):
+        decision = {
+            "stateRef": self.state_ref, "observationRef": self.observation_ref, "budgetRef": "budget-1",
+            "question": "should we implement the reconciled batch?", "action": "implement", "targets": [],
+            "reason": "batch reconciled cleanly", "falsifier": "if implement fails, escalate",
+            "costBasis": {"queries": 1}, "requiredArtifacts": [],
+        }
+        decision.update(overrides)
+        return decision
+
+    def _write_decision(self, decision):
+        report = self.workspace / "flow" / "records" / "next-decision.json"
+        _write(report, json.dumps(decision))
+        return report
+
+    def _ready_batch(self, base_state_id):
+        facts = composition.analyze(base_state_id, [], [])
+        _write(self.workspace / "state" / "composition-facts.json", json.dumps(facts))
+        plan = integration.validate_plan(
+            {"batchId": "b1", "baseStateId": base_state_id, "select": [], "resolutions": [],
+             "deferred": [], "reason": "empty batch, ready to implement"},
+            facts,
+        )
+        request = integration.prepare_replay(plan, facts, [])
+        _write(self.workspace / "state" / "replay-request.json", json.dumps(request))
+        integration_state = integration.reconcile(request, [], {})
+        _write(self.workspace / "state" / "integration-state.json", json.dumps(integration_state))
+        _write(self.workspace / "state" / "contributions-collected.json", json.dumps({"contributions": []}))
+        return integration.seal_batch(integration_state, request, facts, [])
+
+    def test_implement_with_no_state_files_at_all_is_invalid(self):
+        report = self._write_decision(self._decision())
+        by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
+        self.assertGreaterEqual(by_type["tc_request_invalid_count"]["value"], 1)
+        self.assertIsNone(by_type["tc_next_action"]["value"])
+
+    def test_implement_with_a_ready_reconciled_batch_is_valid(self):
+        working_state = _build_design_state(self.workspace, name="ready")
+        _write(self.workspace / "state" / "working-state.json", json.dumps(working_state))
+        self._ready_batch(working_state["id"])
+
+        report = self._write_decision(self._decision())
+        by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
+        self.assertEqual(by_type["tc_request_invalid_count"]["value"], 0)
+        self.assertEqual(by_type["tc_next_action"]["value"], 5)
+
+    def test_implement_for_a_batch_already_recorded_in_implement_json_is_invalid(self):
+        """probe_reimplement.py: after `adopt` moves the working pointer, the SAME stale
+        batch (never recomposed against the new working state) is not a real "implement"
+        request any more -- it was already implemented."""
+        working_state = _build_design_state(self.workspace, name="ready")
+        _write(self.workspace / "state" / "working-state.json", json.dumps(working_state))
+        merge_commit = self._ready_batch(working_state["id"])
+        _write(self.workspace / "state" / "implement.json", json.dumps({
+            "mergeCommitId": merge_commit["id"], "parentStateId": working_state["id"],
+        }))
+
+        report = self._write_decision(self._decision())
+        by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
+        self.assertGreaterEqual(by_type["tc_request_invalid_count"]["value"], 1)
+        self.assertIsNone(by_type["tc_next_action"]["value"])
+
+    def test_implement_for_a_batch_based_on_a_stale_working_state_is_invalid(self):
+        """The reconciled batch's own baseStateId no longer matches the CURRENT
+        working state (e.g. `adopt` moved it since compose/replay ran) -- stale,
+        never a real "implement" request for the campaign's current generation."""
+        working_state = _build_design_state(self.workspace, name="ready")
+        _write(self.workspace / "state" / "working-state.json", json.dumps(working_state))
+        self._ready_batch("some-other-stale-state-id")
+
+        report = self._write_decision(self._decision())
+        by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
         self.assertGreaterEqual(by_type["tc_request_invalid_count"]["value"], 1)
         self.assertIsNone(by_type["tc_next_action"]["value"])
 

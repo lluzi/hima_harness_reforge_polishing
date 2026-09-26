@@ -363,6 +363,196 @@ class TwoRoundFlowTest(unittest.TestCase):
         self.assertEqual(working_state_after_round2["id"], round2_state_id)
 
 
+class AdoptConsistencyTest(TwoRoundFlowTest):
+    """I9 (final review, adopt consistency): `adopt` must never silently leave
+    `state/working-state.json` behind a pointers document it is supposed to mirror --
+    if the working pointer moved but the adopted candidate's own design-state cannot
+    actually be copied into `state/working-state.json`, `adopt` refuses outright."""
+
+    def test_two_round_flow_uses_adopted_state_id(self):
+        self.skipTest("inherited from TwoRoundFlowTest -- already covered there, not this class's own case")
+
+    def test_missing_candidate_design_state_file_refuses_adopt_inconsistent(self):
+        workspace = self.workspace
+        manifest = _make_baseline_manifest(workspace)
+        manifest_path = workspace / "manifest.json"
+        _write_json(manifest_path, manifest)
+        self.assertEqual(_run("baseline", workspace, manifest_path).returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+        core.write_artifact(workspace / "state" / "observation.json", _baseline_observation(workspace, baseline))
+        contract_dir = _analysis_contract_dir(workspace)
+        self.assertEqual(_run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
+        drc_path, connectivity_path = workspace / "b-drc.rpt", workspace / "b-conn.rpt"
+        _write_text(drc_path, fixtures.drc_report([]))
+        _write_text(connectivity_path, fixtures.connectivity_report([]))
+        self.assertEqual(_run("physical", workspace, drc_path, connectivity_path, "baseline").returncode, 0)
+
+        contribution, work_package = self._build_fix_contribution(baseline, instance="U1")
+        _write_json(workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
+        facts = composition.analyze(baseline["id"], [contribution], [])
+        plan_raw = {
+            "batchId": "batch-U1", "baseStateId": baseline["id"], "select": [contribution["id"]],
+            "resolutions": [], "deferred": [], "reason": "single fix",
+        }
+        plan = integration.validate_plan(plan_raw, facts)
+        request = integration.prepare_replay(plan, facts, [contribution])
+        step = request["steps"][0]
+        receipt = {
+            "stepId": step["stepId"], "status": "ok",
+            "observedDelta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        }
+        edit_domains = {contribution["id"]: work_package["editDomain"]}
+        integration_state = integration.reconcile(request, [receipt], edit_domains)
+        core.write_artifact(workspace / "state" / "composition-facts.json", facts)
+        core.write_artifact(workspace / "state" / "replay-request.json", request)
+        core.write_artifact(workspace / "state" / "integration-state.json", integration_state)
+
+        merge_commit = integration.seal_batch(integration_state, request, facts, [contribution])
+        merge_id = merge_commit["id"]
+        impl_root = workspace / "implementations" / merge_id
+        (impl_root / "DBS").mkdir(parents=True, exist_ok=True)
+        (impl_root / "DBS" / "top.enc").write_bytes(f"database for {merge_id}".encode("utf-8"))
+        _sha256_matching_empty_directory(impl_root / "DBS" / "top.enc.dat")
+        _write_text(impl_root / "EXPORT" / "design.def", "DEF placeholder\n")
+        _write_text(impl_root / "EXPORT" / "design.v", "module top(); endmodule\n")
+        _write_text(impl_root / "RPT" / "verify_drc.rpt", fixtures.drc_report([]))
+        _write_text(impl_root / "RPT" / "verify_connectivity.rpt", fixtures.connectivity_report([]))
+
+        site_profile_path = _site_profile_path(workspace)
+        current_state_path = workspace / "current-state.json"
+        _write_json(current_state_path, baseline)
+        self.assertEqual(_run("implement", workspace, current_state_path, site_profile_path).returncode, 0)
+
+        for corner in (CORNER,):
+            _write_text(impl_root / "starrc" / corner / f"top.{corner}.spef", "*SPEF IEEE 1481-1999\n")
+        corners_path = workspace / "corners.json"
+        _write_json(corners_path, {"corners": [CORNER]})
+        self.assertEqual(_run("extract", workspace, corners_path, site_profile_path).returncode, 0)
+
+        for scenario in REQUIRED_SCENARIOS:
+            _write_report_set(impl_root / "sta" / scenario, _clean_reports())
+        query_spec_path = workspace / "query-spec.json"
+        _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
+        scenario_corners_path = workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        base_design_state_path = workspace / "base-design-state.json"
+        _write_json(base_design_state_path, baseline)
+        self.assertEqual(
+            _run("sta", workspace, query_spec_path, scenario_corners_path,
+                 base_design_state_path, site_profile_path).returncode,
+            0,
+        )
+        self.assertEqual(_run("physical", workspace, "candidate").returncode, 0)
+        self.assertEqual(_run("evaluate", workspace, workspace / "state" / "policy.json").returncode, 0)
+        evaluation = json.loads((workspace / "state" / "evaluation.json").read_text())
+        self.assertEqual(core.value_of(evaluation["missingRequiredCheckCount"]), 0)
+        self.assertEqual(core.value_of(evaluation["finalIdentityErrorCount"]), 0)
+
+        # Simulate the design-state archive `sta` should have written having
+        # never actually landed (a crash/partial write between `sta` and
+        # `adopt`, or a hand-edited/rsynced workspace missing that one file).
+        (impl_root / "design-state.json").unlink()
+
+        result = _run("adopt", workspace, workspace / "state" / "policy.json")
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "adopt-inconsistent")
+        # The pointers document may already have moved (adoption.publish's own
+        # write happens before this consistency check) but working-state.json
+        # itself must be left exactly as it was -- never silently advanced
+        # past a copy that could not actually be completed.
+        working_state_after = json.loads((workspace / "state" / "working-state.json").read_text())
+        self.assertEqual(working_state_after["id"], baseline["id"])
+
+
+class StaIdentityByHashingAtUseTest(TwoRoundFlowTest):
+    """I4 (final review, identity by hashing at use): `sta` hashes the netlist file it
+    actually passes to PT, right here, rather than copying implement.json's own
+    (possibly stale) recorded sha256 through unchecked."""
+
+    def test_two_round_flow_uses_adopted_state_id(self):
+        self.skipTest("inherited from TwoRoundFlowTest -- already covered there, not this class's own case")
+
+    def test_sta_refuses_when_the_netlist_it_actually_reads_no_longer_matches_implements_recorded_sha256(self):
+        workspace = self.workspace
+        manifest = _make_baseline_manifest(workspace)
+        manifest_path = workspace / "manifest.json"
+        _write_json(manifest_path, manifest)
+        self.assertEqual(_run("baseline", workspace, manifest_path).returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+        core.write_artifact(workspace / "state" / "observation.json", _baseline_observation(workspace, baseline))
+        contract_dir = _analysis_contract_dir(workspace)
+        self.assertEqual(_run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
+
+        contribution, work_package = self._build_fix_contribution(baseline, instance="U1")
+        _write_json(workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
+        facts = composition.analyze(baseline["id"], [contribution], [])
+        plan_raw = {
+            "batchId": "batch-U1", "baseStateId": baseline["id"], "select": [contribution["id"]],
+            "resolutions": [], "deferred": [], "reason": "single fix",
+        }
+        plan = integration.validate_plan(plan_raw, facts)
+        request = integration.prepare_replay(plan, facts, [contribution])
+        step = request["steps"][0]
+        receipt = {
+            "stepId": step["stepId"], "status": "ok",
+            "observedDelta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        }
+        edit_domains = {contribution["id"]: work_package["editDomain"]}
+        integration_state = integration.reconcile(request, [receipt], edit_domains)
+        core.write_artifact(workspace / "state" / "composition-facts.json", facts)
+        core.write_artifact(workspace / "state" / "replay-request.json", request)
+        core.write_artifact(workspace / "state" / "integration-state.json", integration_state)
+
+        merge_commit = integration.seal_batch(integration_state, request, facts, [contribution])
+        merge_id = merge_commit["id"]
+        impl_root = workspace / "implementations" / merge_id
+        (impl_root / "DBS").mkdir(parents=True, exist_ok=True)
+        (impl_root / "DBS" / "top.enc").write_bytes(f"database for {merge_id}".encode("utf-8"))
+        _sha256_matching_empty_directory(impl_root / "DBS" / "top.enc.dat")
+        _write_text(impl_root / "EXPORT" / "design.def", "DEF placeholder\n")
+        _write_text(impl_root / "EXPORT" / "design.v", "module top(); endmodule\n")
+        _write_text(impl_root / "RPT" / "verify_drc.rpt", fixtures.drc_report([]))
+        _write_text(impl_root / "RPT" / "verify_connectivity.rpt", fixtures.connectivity_report([]))
+
+        site_profile_path = _site_profile_path(workspace)
+        current_state_path = workspace / "current-state.json"
+        _write_json(current_state_path, baseline)
+        self.assertEqual(_run("implement", workspace, current_state_path, site_profile_path).returncode, 0)
+
+        for corner in (CORNER,):
+            _write_text(impl_root / "starrc" / corner / f"top.{corner}.spef", "*SPEF IEEE 1481-1999\n")
+        corners_path = workspace / "corners.json"
+        _write_json(corners_path, {"corners": [CORNER]})
+        self.assertEqual(_run("extract", workspace, corners_path, site_profile_path).returncode, 0)
+
+        # The implemented netlist changed on disk after `implement` recorded
+        # its identity (a hand-edited/rsynced workspace, or a stale copy) --
+        # `sta` must catch this itself, at the moment it is about to hand
+        # this exact file to PT, not blindly trust implement.json's own
+        # recorded sha256.
+        implement = json.loads((workspace / "state" / "implement.json").read_text())
+        (workspace / implement["netlist"]["path"]).write_text(
+            "module top(); // tampered\nendmodule\n", encoding="utf-8",
+        )
+
+        for scenario in REQUIRED_SCENARIOS:
+            _write_report_set(impl_root / "sta" / scenario, _clean_reports())
+        query_spec_path = workspace / "query-spec.json"
+        _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
+        scenario_corners_path = workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        base_design_state_path = workspace / "base-design-state.json"
+        _write_json(base_design_state_path, baseline)
+
+        result = _run("sta", workspace, query_spec_path, scenario_corners_path,
+                       base_design_state_path, site_profile_path)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "identity-mismatch")
+        self.assertFalse((workspace / "state" / "sta.json").exists())
+
+
 class ReconcileIgnoresRewrittenWorkPackageTest(unittest.TestCase):
     """Task 12c item 2: `reconcile` takes each contribution's edit domain from
     `state/workers.json[slot]["workPackage"]["editDomain"]`, never from a
@@ -716,6 +906,32 @@ class IdentityMismatchTest(unittest.TestCase):
         self.assertEqual(payload["code"], "identity-mismatch")
         self.assertFalse((self.workspace / "state" / "physical.json").exists())
 
+    def test_extract_refuses_when_the_def_it_actually_reads_no_longer_matches_implements_recorded_sha256(self):
+        """I4 (final review, identity by hashing at use): `extract` hashes the DEF it actually
+        reads, right here, not implement.json's own (possibly stale) recorded copy."""
+        def_path = self.workspace / "EXPORT" / "design.def"
+        def_path.parent.mkdir(parents=True, exist_ok=True)
+        def_path.write_text("DEF placeholder\n", encoding="utf-8")
+        implement = {
+            "mergeCommitId": "m1", "design": "top", "parentStateId": "base1",
+            "database": {"path": "DBS/top.enc", "sha256": "a" * 64, "datDigest": "b" * 64},
+            "netlist": {"path": "EXPORT/design.v", "sha256": "c" * 64},
+            "def": {"path": "EXPORT/design.def", "sha256": core.file_sha256(def_path)},
+        }
+        _write_json(self.workspace / "state" / "implement.json", implement)
+
+        # The DEF changed on disk after `implement` recorded its identity.
+        def_path.write_text("DEF placeholder -- tampered\n", encoding="utf-8")
+
+        corners_path = self.workspace / "corners.json"
+        _write_json(corners_path, {"corners": [CORNER]})
+        site_profile_path = _site_profile_path(self.workspace)
+        result = _run("extract", self.workspace, corners_path, site_profile_path)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "identity-mismatch")
+        self.assertFalse((self.workspace / "state" / "extract.json").exists())
+
 
 class ObserveMaxPathsTest(unittest.TestCase):
     """Item 5: the Strategy's `maxPaths` argv value is an upper cap, not a blind override."""
@@ -798,8 +1014,18 @@ class ObserveInputsFromWorkingStateTest(unittest.TestCase):
         self.assertEqual(observation["designStateId"], working_state["id"])
 
     def test_refuses_when_the_working_states_spef_sha_changed(self):
-        """A tampered/rotated SPEF file (never a model-supplied path) is caught by identity, not trusted."""
-        (self.workspace / f"{CORNER}.spef").write_text("*SPEF IEEE 1481-1999 -- tampered\n", encoding="utf-8")
+        """A tampered/rotated SPEF file (never a model-supplied path) is caught by identity, not trusted.
+
+        C3 (final review): `baseline` now stages its own immutable copy of
+        every source file under `workspace/baseline/` (the campaign's own
+        frozen snapshot), so `state/working-state.json`'s own recorded
+        `spef` path names that STAGED copy, not the original external
+        source `_make_baseline_manifest` wrote -- tampering must therefore
+        target the staged copy `working-state.json` itself points at.
+        """
+        working_state = json.loads((self.workspace / "state" / "working-state.json").read_text())
+        staged_spef_path = self.workspace / working_state["spef"][CORNER]["path"]
+        staged_spef_path.write_text("*SPEF IEEE 1481-1999 -- tampered\n", encoding="utf-8")
         result = self._run_observe()
         self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
         payload = json.loads(result.stderr)
@@ -1749,6 +1975,50 @@ class RecordExperienceProvenanceTest(unittest.TestCase):
         experience = json.loads((workspace / "state" / "experience.json").read_text())
         entry = experience["entries"][-1]
         self.assertEqual(entry["hypothesis"], "earlier APR route chosen for this candidate")
+
+
+class MainErrorMappingTest(unittest.TestCase):
+    """Minor (final review): `main()` never lets an `OSError`/`KeyError`/`TypeError`/
+    `ValueError` escaping a handler surface as a raw traceback at exit 1 -- each is
+    mapped to a `{"code","detail"}` JSON payload on stderr at exit 2, the same
+    "malformed/unreadable declared input" contract as `InputError`."""
+
+    def setUp(self):
+        self.addCleanup(atcs_cli.SUBCOMMANDS.pop, "test-raise", None)
+
+    def _run_with_raising_handler(self, exc):
+        def handler(workspace, args):
+            raise exc
+
+        atcs_cli.SUBCOMMANDS["test-raise"] = handler
+        import contextlib
+        import io
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            exit_code = atcs_cli.main(["test-raise", "unused-workspace"])
+        return exit_code, stderr.getvalue()
+
+    def test_key_error_is_mapped_not_a_raw_traceback(self):
+        exit_code, stderr = self._run_with_raising_handler(KeyError("missingField"))
+        self.assertEqual(exit_code, 2)
+        payload = json.loads(stderr)
+        self.assertEqual(payload["code"], "malformed-input")
+        self.assertIn("KeyError", payload["detail"])
+
+    def test_type_error_is_mapped_not_a_raw_traceback(self):
+        exit_code, stderr = self._run_with_raising_handler(TypeError("not subscriptable"))
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(json.loads(stderr)["code"], "malformed-input")
+
+    def test_value_error_is_mapped_not_a_raw_traceback(self):
+        exit_code, stderr = self._run_with_raising_handler(ValueError("invalid literal"))
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(json.loads(stderr)["code"], "malformed-input")
+
+    def test_os_error_is_mapped_not_a_raw_traceback(self):
+        exit_code, stderr = self._run_with_raising_handler(OSError("disk gone"))
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(json.loads(stderr)["code"], "malformed-input")
 
 
 if __name__ == "__main__":
