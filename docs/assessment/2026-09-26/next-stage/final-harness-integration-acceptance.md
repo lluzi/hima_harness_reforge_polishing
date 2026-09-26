@@ -1,7 +1,7 @@
 # Final HimaHarness component-integration acceptance
 
-Date: 2026-09-26. This decision supersedes the positive-PPA closure requirement previously attached
-to Issue #39 and the Wave 4 held-out DTCO L5 acceptance.
+Date: 2026-09-26. This is the final acceptance for **Issue #52**. It supersedes the Wave 4 held-out
+DTCO/PPA closure path. Issue #39 is historical and is not a dependency of this acceptance.
 
 ## Objective
 
@@ -23,7 +23,7 @@ product must display truthfully, not an acceptance threshold.
 
 ## Scope correction
 
-Issue #39 now owns this component-integration acceptance. It no longer requires:
+Issue #52 owns this component-integration acceptance. It does not require:
 
 - a positive Fmax or PPA delta;
 - a 5% improvement;
@@ -37,7 +37,8 @@ method ran correctly, the evidence is complete for the reached boundary, and Him
 the result and limitation accurately.
 
 The DTCO attempts remain immutable research and defect evidence. They are no longer the closure path
-for #39, #30 or #52. Future DTCO value research requires a separate objective and budget.
+for #52. Issue #39 closes SUPERSEDED; future DTCO value research requires a separate objective and
+budget.
 
 ## Preconditions owned by the integrator
 
@@ -152,9 +153,9 @@ Harness acceptance failure.
 
 ## Closure
 
-- Close #39 on one independently reviewed PASS receipt for this matrix.
-- Then close parent #30 with the recorded scope: product component integration, no PPA/value claim.
-- Close parent #52 after confirming every prior child is terminal and linking this final acceptance.
+- Close #52 on one independently reviewed PASS receipt for this matrix after confirming every prior
+  #52 child is terminal.
+- Close #39 SUPERSEDED as a legacy DTCO/PPA task; it does not own this acceptance.
+- Keep #30 and #62 on their own authority; neither blocks #52.
 - Track Attempt 12's Site/Permit UI defect separately; it does not prevent this fixed-environment
   integration acceptance.
-
