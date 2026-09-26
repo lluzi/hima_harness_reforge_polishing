@@ -274,6 +274,62 @@ class LoadScenariosContractTest(unittest.TestCase):
         self.assertEqual(corners, {name: f"corner-{name}" for name in REQUIRED_SCENARIOS})
 
 
+class BaselineStagesLifecycleCheckpointsTest(unittest.TestCase):
+    """I2 (final review): `atcs.lifecycle.stage_task` has always restored
+    `./DBS/<prevStage>.enc.dat`, workspace-relative -- but nothing ever staged a
+    checkpoint there before this fix. `baseline` now does, whenever the manifest
+    declares a `lifecycle` block."""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+
+    def _manifest_with_lifecycle(self, stages=state.REQUIRED_LIFECYCLE_STAGES):
+        manifest = _make_baseline_manifest(self.workspace)
+        lifecycle_stages = {}
+        for stage in stages:
+            (self.workspace / f"{stage}.enc").write_bytes(f"restore script for {stage}".encode("utf-8"))
+            data_dir = self.workspace / f"{stage}.enc.dat"
+            data_dir.mkdir(parents=True, exist_ok=True)
+            (data_dir / "session.txt").write_text(f"{stage} session\n", encoding="utf-8")
+            lifecycle_stages[stage] = {"checkpoint": f"{stage}.enc.dat", "script": f"{stage}.enc"}
+        manifest["lifecycle"] = {"stages": lifecycle_stages, "flowConfig": ["FF/vars.tcl"]}
+        return manifest
+
+    def test_every_declared_stage_is_staged_at_the_fixed_dbs_path(self):
+        manifest = self._manifest_with_lifecycle()
+        _write_json(self.workspace / "manifest.json", manifest)
+        result = _run("baseline", self.workspace, self.workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for stage in state.REQUIRED_LIFECYCLE_STAGES:
+            script = self.workspace / "DBS" / f"{stage}.enc"
+            data = self.workspace / "DBS" / f"{stage}.enc.dat"
+            self.assertTrue(script.is_file(), script)
+            self.assertTrue(data.is_dir(), data)
+            self.assertEqual(script.read_bytes(), f"restore script for {stage}".encode("utf-8"))
+            self.assertTrue((data / "session.txt").is_file())
+
+    def test_no_lifecycle_block_stages_nothing_and_still_succeeds(self):
+        manifest = _make_baseline_manifest(self.workspace)
+        _write_json(self.workspace / "manifest.json", manifest)
+        result = _run("baseline", self.workspace, self.workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.workspace / "DBS").exists())
+
+    def test_a_declared_stage_missing_its_checkpoint_file_is_refused(self):
+        manifest = self._manifest_with_lifecycle()
+        # A declared checkpoint the manifest claims exists, but does not -- unlike
+        # "stage absent from lifecycle.stages entirely" (silently skipped), a stage
+        # that IS declared must actually be stageable, or this must fail loudly.
+        shutil.rmtree(self.workspace / "place.enc.dat")
+        _write_json(self.workspace / "manifest.json", manifest)
+        result = _run("baseline", self.workspace, self.workspace / "manifest.json")
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "missing-input")
+        self.assertFalse((self.workspace / "state" / "baseline.json").exists())
+
+
 class TwoRoundFlowTest(unittest.TestCase):
     """G1/G7: `state/working-state.json` propagates the adopted candidate's id
     across a second round, never re-basing on the original baseline."""

@@ -96,7 +96,7 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | # | Subcommand | Extra args | Calls | Declared output |
 |---|---|---|---|---|
 | 1 | `bind-inputs` | manifest, siteCapabilities | `state.input_readiness` | `state/readiness.json` |
-| 2 | `baseline` | manifest | `state.design_state` | `state/baseline.json` (also seeds `state/working-state.json`) |
+| 2 | `baseline` | manifest | `_stage_lifecycle_checkpoints` (I2, final review, when the manifest declares one) then `state.design_state` | `state/baseline.json` (also seeds `state/working-state.json`, and `DBS/<stage>.enc(.dat)` per declared lifecycle stage) |
 | 3 | `policy` | analysisContractDir, targetSetupNs(`{from: goal}`), targetHoldNs(`{from: goal}`) | reads `<analysisContractDir>/policy.json` + `state/baseline.json` + `state/observation.json` | `state/policy.json` (stamped) |
 | 4 | `observe` | querySpec, siteProfile, scenariosContract(Site-fixed `analysisContract/scenarios.json`, per-scenario corner + PT library identity -- C4 final review, was `scenario-corners.json`, see "Task 12c fix round" below), maxPaths(`{from: strategy}`, an upper cap -- see "Fix round 1" below) | `_scenario_pt_inputs` (x4, built from `state/working-state.json`, re-verified by sha256) then `adapters.compile_pt_scenario_tasks` + `run_tool` (x4) then `state.capture` | `state/observation.json` (also `state/observation-prev.json`, `observations/<id>.json` and `research/observe/max-paths.json`) |
 | 5 | `risk` | priorObservation(`state/observation-prev.json`), currentObservation(`state/observation.json`), recheck | `state.compare_checks` (self-compares on the campaign's first observation, when `priorObservation` does not exist yet) | `state/risk.json` |
@@ -670,6 +670,62 @@ def _stage_baseline_inputs(workspace, manifest):
     return staged
 
 
+def _stage_lifecycle_checkpoints(workspace, manifest):
+    """Copy each full-flow lifecycle stage's own checkpoint (`.enc` script + `.enc.dat`
+    directory) into `<workspace>/DBS/<stage>.enc(.dat)` (I2, final review: staged
+    lifecycle checkpoint).
+
+    `atcs.lifecycle.stage_task` has always restored `./DBS/<prevStage>.enc.dat`
+    (workspace-relative to the Campaign root `apr/<stage>/<taskId>/`'s own
+    parent) -- confirmed by reading `stage_task` directly, nothing in this
+    dispatcher ever copied a stage checkpoint to that exact location. A
+    full-flow campaign's `apr-run` for any stage past the very first would
+    therefore restore a checkpoint that was never staged at all. Mirrors
+    `_stage_baseline_inputs`'s own copy convention (by basename, resolved
+    against `manifest["root"]` when the source path is relative) rather than
+    reusing it directly, since the source shape here (`lifecycle.stages.
+    <stage>.{checkpoint,script}`, `atcs.state`'s own manifest schema) is
+    unrelated to a `design-state`'s `database.enc`/`encDat` pair.
+
+    Never raises when `manifest` carries no `lifecycle` block at all (a
+    post-route-only campaign has none to stage) or when a given stage is
+    simply absent from `lifecycle.stages` (`state.input_readiness` is the
+    authority on whether the *declared* set is actually complete; this
+    function stages whatever is honestly present, never invents a stage).
+    Raises `AtcsError("missing-input", ...)` when a declared stage's own
+    checkpoint/script cannot actually be copied.
+    """
+    lifecycle = manifest.get("lifecycle")
+    if not lifecycle:
+        return
+    root = manifest.get("root")
+    stages = lifecycle.get("stages") or {}
+    dbs_dir = Path(workspace) / "DBS"
+
+    def _resolve_source(rel_path):
+        if root and not os.path.isabs(rel_path):
+            return str(Path(root) / rel_path)
+        return str(rel_path)
+
+    for stage in state.REQUIRED_LIFECYCLE_STAGES:
+        entry = stages.get(stage)
+        if not isinstance(entry, dict):
+            continue
+        script_ref, checkpoint_ref = entry.get("script"), entry.get("checkpoint")
+        if not script_ref or not checkpoint_ref:
+            continue
+        script_dest = dbs_dir / f"{stage}.enc"
+        data_dest = dbs_dir / f"{stage}.enc.dat"
+        try:
+            script_dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(_resolve_source(script_ref), script_dest)
+            if data_dest.exists():
+                shutil.rmtree(data_dest)
+            shutil.copytree(_resolve_source(checkpoint_ref), data_dest, symlinks=True)
+        except OSError as exc:
+            raise core.AtcsError("missing-input", f"cannot stage {stage} lifecycle checkpoint: {exc}") from exc
+
+
 def _cmd_baseline(workspace, args):
     """Build the baseline `design-state` and seed `state/working-state.json` from it verbatim.
 
@@ -687,10 +743,18 @@ def _cmd_baseline(workspace, args):
     the STAGED manifest (`root = workspace`), never the caller-supplied
     manifest's own (possibly external) root -- see `_stage_baseline_inputs`'s
     own docstring for why every later subcommand depends on this.
+
+    I2 (final review, staged lifecycle checkpoint): when the manifest also
+    declares a `lifecycle` block, every stage's own checkpoint is
+    additionally staged into `<workspace>/DBS/<stage>.enc(.dat)`
+    (`_stage_lifecycle_checkpoints`) -- the exact workspace-relative location
+    `atcs.lifecycle.stage_task` has always restored from but that nothing
+    ever populated before this fix.
     """
     (manifest_path,) = args
     manifest = _read_plain(manifest_path)
     staged_manifest = _stage_baseline_inputs(workspace, manifest)
+    _stage_lifecycle_checkpoints(workspace, manifest)
     body = state.design_state(staged_manifest)
     _canonical_write(_paths(workspace)["working_state"], body)
     return _paths(workspace)["baseline"], body
