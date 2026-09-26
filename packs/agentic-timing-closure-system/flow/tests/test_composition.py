@@ -105,6 +105,10 @@ def delete_op(instance, master):
     return {"op": "delete_buffer", "instance": instance, "master": master}
 
 
+def pg_op(region, action="strap", detail="widen"):
+    return {"op": "pg_local_adjust", "region": list(region), "action": action, "detail": detail}
+
+
 class ConflictKeyTests(unittest.TestCase):
     def test_stable_regardless_of_input_order(self):
         key1 = composition.conflict_key("name-collision", ["b", "a"], ["y", "x"])
@@ -134,7 +138,7 @@ class DisjointFixesTests(unittest.TestCase):
         )
         facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
         self.assertEqual(facts["conflicts"], [])
-        self.assertEqual(set(facts["order"]), {c1["id"], c2["id"]})
+        self.assertEqual(facts["order"], sorted([c1["id"], c2["id"]]))
         self.assertEqual(sorted(facts["considered"]), sorted([c1["id"], c2["id"]]))
         self.assertEqual(facts["unresolvedCount"], 0)
 
@@ -197,6 +201,310 @@ class DeleteVsModifyTests(unittest.TestCase):
         conflict = next(c for c in facts["conflicts"] if c["kind"] == "delete-vs-modify")
         self.assertEqual(sorted(conflict["contributions"]), sorted([c1["id"], c2["id"]]))
         self.assertEqual(conflict["objects"], ["U1"])
+
+
+class SharedInstanceEditTests(unittest.TestCase):
+    """`shared-instance-edit`: any pre-existing instance edited by two
+    contributions in a way `same-instance-different-master`/
+    `delete-vs-modify` don't already cover more specifically — a
+    converging same-master resize, or two independent deletes."""
+
+    def test_same_instance_same_target_master_still_conflicts(self):
+        c1 = make_contribution(
+            task_id="w01",
+            operations=[size_op("U1", "BUFX1", "BUFX2")],
+            delta={"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        )
+        c2 = make_contribution(
+            task_id="w02",
+            operations=[size_op("U1", "BUFX1", "BUFX2")],
+            delta={"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        )
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        kinds = [conflict["kind"] for conflict in facts["conflicts"]]
+        self.assertIn("shared-instance-edit", kinds)
+        self.assertNotIn("same-instance-different-master", kinds)
+        conflict = next(c for c in facts["conflicts"] if c["kind"] == "shared-instance-edit")
+        self.assertEqual(sorted(conflict["contributions"]), sorted([c1["id"], c2["id"]]))
+        self.assertEqual(conflict["objects"], ["U1"])
+
+    def test_same_instance_both_deleted_conflicts(self):
+        c1 = make_contribution(
+            task_id="w01",
+            operations=[delete_op("U1", "BUFX1")],
+            delta={"mastersChanged": {}, "added": {}, "removed": {"U1": "BUFX1"}},
+        )
+        c2 = make_contribution(
+            task_id="w02",
+            operations=[delete_op("U1", "BUFX1")],
+            delta={"mastersChanged": {}, "added": {}, "removed": {"U1": "BUFX1"}},
+        )
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        kinds = [conflict["kind"] for conflict in facts["conflicts"]]
+        self.assertIn("shared-instance-edit", kinds)
+
+    def test_different_master_precedence_suppresses_shared_instance_edit(self):
+        c1 = make_contribution(
+            task_id="w01",
+            operations=[size_op("U1", "BUFX1", "BUFX2")],
+            delta={"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        )
+        c2 = make_contribution(
+            task_id="w02",
+            operations=[size_op("U1", "BUFX1", "BUFX4")],
+            delta={"mastersChanged": {"U1": ["BUFX1", "BUFX4"]}, "added": {}, "removed": {}},
+        )
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        kinds = [conflict["kind"] for conflict in facts["conflicts"]]
+        self.assertIn("same-instance-different-master", kinds)
+        self.assertNotIn("shared-instance-edit", kinds)
+
+    def test_delete_vs_modify_precedence_suppresses_shared_instance_edit(self):
+        c1 = make_contribution(
+            task_id="w01",
+            operations=[delete_op("U1", "BUFX1")],
+            delta={"mastersChanged": {}, "added": {}, "removed": {"U1": "BUFX1"}},
+        )
+        c2 = make_contribution(
+            task_id="w02",
+            operations=[size_op("U1", "BUFX1", "BUFX4")],
+            delta={"mastersChanged": {"U1": ["BUFX1", "BUFX4"]}, "added": {}, "removed": {}},
+        )
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        kinds = [conflict["kind"] for conflict in facts["conflicts"]]
+        self.assertIn("delete-vs-modify", kinds)
+        self.assertNotIn("shared-instance-edit", kinds)
+
+
+class SameLoadPinTests(unittest.TestCase):
+    def test_shared_load_pin_conflicts_with_prefixed_distinct_names_and_null_location(self):
+        # namePrefix (`atcs_<taskId>_r<rev>_`) makes name-collision and
+        # identical-op duplicates impossible across workers; same-load-pin
+        # is the cross-worker conflict that still catches two independent
+        # insertions fighting over the same load pin's connectivity.
+        c1 = make_contribution(
+            task_id="w01",
+            operations=[
+                insert_op(
+                    "N1", "atcs_w01_r1_BUF1", "atcs_w01_r1_N1_buf", "BUFX1", location=None, load_pins=["U9/A"]
+                )
+            ],
+            delta={"mastersChanged": {}, "added": {"atcs_w01_r1_BUF1": "BUFX1"}, "removed": {}},
+        )
+        c2 = make_contribution(
+            task_id="w02",
+            operations=[
+                insert_op(
+                    "N2", "atcs_w02_r1_BUF7", "atcs_w02_r1_N2_buf", "BUFX1", location=None, load_pins=["U9/A"]
+                )
+            ],
+            delta={"mastersChanged": {}, "added": {"atcs_w02_r1_BUF7": "BUFX1"}, "removed": {}},
+        )
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        self.assertEqual(facts["duplicates"], [])
+        kinds = [conflict["kind"] for conflict in facts["conflicts"]]
+        self.assertNotIn("name-collision", kinds)
+        self.assertIn("same-load-pin", kinds)
+        conflict = next(c for c in facts["conflicts"] if c["kind"] == "same-load-pin")
+        self.assertEqual(conflict["objects"], ["U9/A"])
+        self.assertEqual(sorted(conflict["contributions"]), sorted([c1["id"], c2["id"]]))
+
+    def test_shared_load_pin_suppresses_shared_net_interaction(self):
+        c1 = make_contribution(
+            task_id="w01",
+            operations=[insert_op("N1", "atcs_w01_r1_BUF1", "atcs_w01_r1_N1b", "BUFX1", location=None, load_pins=["U9/A"])],
+            delta={"mastersChanged": {}, "added": {"atcs_w01_r1_BUF1": "BUFX1"}, "removed": {}},
+            touches={"instances": [], "nets": ["N1"], "regions": [], "checks": [], "cones": []},
+        )
+        c2 = make_contribution(
+            task_id="w02",
+            operations=[insert_op("N1", "atcs_w02_r1_BUF2", "atcs_w02_r1_N1c", "BUFX1", location=None, load_pins=["U9/A"])],
+            delta={"mastersChanged": {}, "added": {"atcs_w02_r1_BUF2": "BUFX1"}, "removed": {}},
+            touches={"instances": [], "nets": ["N1"], "regions": [], "checks": [], "cones": []},
+        )
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        self.assertIn("same-load-pin", [c["kind"] for c in facts["conflicts"]])
+        self.assertNotIn("shared-net", [i["kind"] for i in facts["interactions"]])
+
+
+class SharedNetTests(unittest.TestCase):
+    def test_overlapping_nets_without_shared_load_pin_interact(self):
+        c1 = make_contribution(
+            task_id="w01",
+            operations=[insert_op("N1", "atcs_w01_r1_BUF1", "atcs_w01_r1_N1b", "BUFX1", location=None, load_pins=["U1/A"])],
+            delta={"mastersChanged": {}, "added": {"atcs_w01_r1_BUF1": "BUFX1"}, "removed": {}},
+            touches={"instances": [], "nets": ["N1"], "regions": [], "checks": [], "cones": []},
+        )
+        c2 = make_contribution(
+            task_id="w02",
+            operations=[insert_op("N1", "atcs_w02_r1_BUF2", "atcs_w02_r1_N1c", "BUFX1", location=None, load_pins=["U2/A"])],
+            delta={"mastersChanged": {}, "added": {"atcs_w02_r1_BUF2": "BUFX1"}, "removed": {}},
+            touches={"instances": [], "nets": ["N1"], "regions": [], "checks": [], "cones": []},
+        )
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        self.assertNotIn("same-load-pin", [c["kind"] for c in facts["conflicts"]])
+        self.assertIn("shared-net", [i["kind"] for i in facts["interactions"]])
+        interaction = next(i for i in facts["interactions"] if i["kind"] == "shared-net")
+        self.assertEqual(sorted(interaction["contributions"]), sorted([c1["id"], c2["id"]]))
+        self.assertEqual(interaction["evidence"]["sharedNets"], ["N1"])
+
+
+class PgLocalAdjustSharedSpaceTests(unittest.TestCase):
+    def test_overlapping_pg_local_adjust_regions_interact(self):
+        c1 = make_contribution(
+            task_id="w01",
+            operations=[pg_op([0.0, 0.0, 2.0, 2.0])],
+            delta={"mastersChanged": {}, "added": {}, "removed": {}},
+            touches={"instances": [], "nets": [], "regions": [[0.0, 0.0, 2.0, 2.0]], "checks": [], "cones": []},
+        )
+        c2 = make_contribution(
+            task_id="w02",
+            operations=[pg_op([3.0, 0.0, 5.0, 2.0])],
+            delta={"mastersChanged": {}, "added": {}, "removed": {}},
+            touches={"instances": [], "nets": [], "regions": [[3.0, 0.0, 5.0, 2.0]], "checks": [], "cones": []},
+        )
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        kinds = [i["kind"] for i in facts["interactions"]]
+        self.assertIn("shared-space", kinds)
+
+    def test_pg_local_adjust_and_insertion_can_interact(self):
+        c1 = make_contribution(
+            task_id="w01",
+            operations=[pg_op([0.0, 0.0, 1.0, 1.0])],
+            delta={"mastersChanged": {}, "added": {}, "removed": {}},
+        )
+        c2 = make_contribution(
+            task_id="w02",
+            operations=[insert_op("N1", "atcs_w02_r1_BUF1", "atcs_w02_r1_N1b", "BUFX1", location=[1.5, 0.5])],
+            delta={"mastersChanged": {}, "added": {"atcs_w02_r1_BUF1": "BUFX1"}, "removed": {}},
+        )
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        kinds = [i["kind"] for i in facts["interactions"]]
+        self.assertIn("shared-space", kinds)
+
+
+class OrderTieBreakTests(unittest.TestCase):
+    def test_dependency_edge_overrides_alphabetical_tie_break(self):
+        # "a" sorts before "z", but "a" depends on "z", so "z" must be
+        # placed first regardless of the plain alphabetical tie-break.
+        a = make_contribution(
+            task_id="w01",
+            operations=[size_op("U1", "BUFX1", "BUFX2")],
+            delta={"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+            dependencies=["z"],
+        )
+        z = make_contribution(
+            task_id="w02",
+            operations=[size_op("U2", "BUFX1", "BUFX2")],
+            delta={"mastersChanged": {"U2": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        )
+        a = dict(a, id="a")
+        z = dict(z, id="z")
+        facts = composition.analyze(BASE_STATE_ID, [a, z], [])
+        self.assertEqual(facts["order"], ["z", "a"])
+
+    def test_three_independent_ids_tie_break_alphabetically(self):
+        ids = ["b0", "a0", "c0"]
+        contributions = []
+        for index, cid in enumerate(ids):
+            contribution = make_contribution(
+                task_id=f"w{index:02d}",
+                operations=[size_op(f"U{index}", "BUFX1", "BUFX2")],
+                delta={"mastersChanged": {f"U{index}": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+            )
+            contributions.append(dict(contribution, id=cid))
+        facts = composition.analyze(BASE_STATE_ID, contributions, [])
+        self.assertEqual(facts["order"], sorted(ids))
+
+
+class BaseDumpMismatchTests(unittest.TestCase):
+    def test_three_fixes_one_differing_hash_yields_one_conflict_with_exact_key(self):
+        c1 = make_contribution(
+            task_id="w01",
+            operations=[size_op("U1", "BUFX1", "BUFX2")],
+            delta={"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+            before_dump_sha256="a" * 64,
+        )
+        c2 = make_contribution(
+            task_id="w02",
+            operations=[size_op("U2", "BUFX1", "BUFX2")],
+            delta={"mastersChanged": {"U2": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+            before_dump_sha256="a" * 64,
+        )
+        c3 = make_contribution(
+            task_id="w03",
+            operations=[size_op("U3", "BUFX1", "BUFX2")],
+            delta={"mastersChanged": {"U3": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+            before_dump_sha256="b" * 64,
+        )
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2, c3], [])
+        mismatches = [c for c in facts["conflicts"] if c["kind"] == "base-dump-mismatch"]
+        self.assertEqual(len(mismatches), 1)
+        conflict = mismatches[0]
+        # Only the minority (c3, hash "b"*64) is named — c1/c2 agree with
+        # the majority and are never swept into the conflict's identity.
+        self.assertEqual(conflict["contributions"], [c3["id"]])
+        self.assertEqual(conflict["objects"], ["b" * 64])
+        self.assertEqual(
+            conflict["key"], composition.conflict_key("base-dump-mismatch", [c3["id"]], ["b" * 64])
+        )
+
+    def test_majority_tie_breaks_to_lexicographically_smallest_hash(self):
+        c1 = make_contribution(task_id="w01", before_dump_sha256="b" * 64)
+        c2 = make_contribution(task_id="w02", before_dump_sha256="a" * 64)
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        conflict = next(c for c in facts["conflicts"] if c["kind"] == "base-dump-mismatch")
+        # Both groups have size 1, so the lexicographically smallest hash
+        # ("a"*64) is the majority and only c1 (hash "b"*64) is named.
+        self.assertEqual(conflict["contributions"], [c1["id"]])
+        self.assertEqual(conflict["objects"], ["b" * 64])
+
+
+class DeterminismTests(unittest.TestCase):
+    def test_analyze_is_independent_of_input_order(self):
+        p = make_contribution(
+            task_id="w01",
+            operations=[insert_op("N1", "atcs_w01_r1_BUF1", "atcs_w01_r1_N1b", "BUFX1", location=[10.0, 10.0])],
+            delta={"mastersChanged": {}, "added": {"atcs_w01_r1_BUF1": "BUFX1"}, "removed": {}},
+            touches={"instances": [], "nets": ["N1"], "regions": [], "checks": ["c1"], "cones": []},
+        )
+        q = make_contribution(
+            task_id="w02",
+            operations=[insert_op("N1", "atcs_w02_r1_BUF2", "atcs_w02_r1_N1c", "BUFX1", location=[11.0, 10.0])],
+            delta={"mastersChanged": {}, "added": {"atcs_w02_r1_BUF2": "BUFX1"}, "removed": {}},
+            touches={"instances": [], "nets": ["N1"], "regions": [], "checks": ["c1"], "cones": []},
+        )
+        facts_pq = composition.analyze(BASE_STATE_ID, [p, q], [])
+        facts_qp = composition.analyze(BASE_STATE_ID, [q, p], [])
+        self.assertEqual(facts_pq, facts_qp)
+
+
+class ValidationErrorTests(unittest.TestCase):
+    def test_duplicate_contribution_id_raises(self):
+        c1 = make_contribution(task_id="w01")
+        c2 = dict(make_contribution(task_id="w02"), id=c1["id"])
+        with self.assertRaises(core.AtcsError) as ctx:
+            composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        self.assertEqual(ctx.exception.code, "duplicate-contribution")
+
+    def test_missing_contribution_id_raises_missing_input(self):
+        c1 = dict(make_contribution(task_id="w01"))
+        c1.pop("id")
+        with self.assertRaises(core.AtcsError) as ctx:
+            composition.analyze(BASE_STATE_ID, [c1], [])
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_non_string_conflict_key_in_resolution_raises_missing_input(self):
+        c1 = make_contribution(task_id="w01")
+        with self.assertRaises(core.AtcsError) as ctx:
+            composition.analyze(BASE_STATE_ID, [c1], [{"conflictKey": 42, "decision": "keep:x"}])
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_resolution_missing_conflict_key_raises_missing_input(self):
+        c1 = make_contribution(task_id="w01")
+        with self.assertRaises(core.AtcsError) as ctx:
+            composition.analyze(BASE_STATE_ID, [c1], [{"decision": "keep:x"}])
+        self.assertEqual(ctx.exception.code, "missing-input")
 
 
 class SharedTimingWindowTests(unittest.TestCase):

@@ -25,6 +25,33 @@ never drops a contribution and never invents a fix. It only produces the
 facts (§7.3's conflict/interaction graph) that the Workshop's AI judgment
 turns into an `integration-plan`, which M5 then replays.
 
+`analyze` is deterministic **with respect to which facts are found**, but
+also with respect to input list order: `analyze(base_state_id,
+[p, q], resolutions)` and `analyze(base_state_id, [q, p], resolutions)`
+always return identical facts, including `id` — every list this module
+builds is either sorted at the point of construction or built from a
+per-pair id-sorted canonical form before anything order-sensitive (like an
+evidence dict's labels) is derived from it. See "Determinism" below.
+
+Fail-closed input validation
+------------------------------
+
+This module trusts sealed `contribution` artifacts for their *content*
+(every field access below uses `.get()` defensively), but two shapes are
+never silently tolerated because a caller wiring bug here would otherwise
+surface as a raw `KeyError`/`TypeError` deep inside comparison logic
+instead of a clear refusal:
+
+- Every entry in `contributions` must carry a non-empty string `id`, and no
+  two entries may share the same `id` — `AtcsError("missing-input", ...)`
+  for the former, `AtcsError("duplicate-contribution", ...)` for the
+  latter. Both are checked before any filtering, so they apply even to an
+  inadmissible or stale-base contribution.
+- Every entry in `resolutions` that is a dict must carry its `conflictKey`
+  as a non-empty string when the key is present at all — anything else
+  (missing dict, missing key, non-string value) is
+  `AtcsError("missing-input", ...)`.
+
 Admission into ``considered``
 ------------------------------
 
@@ -54,17 +81,40 @@ Conflict detection
 Built from each considered `fix` contribution's `delta` (the real
 object-level before/after diff, never the raw operation trace — see
 `atcs.contributions`'s "Delta and replay validation" section for why the
-two can disagree and `delta` is always the trustworthy one):
+two can disagree and `delta` is always the trustworthy one) and, for the
+two cross-worker kinds below, from `operations` directly:
 
 - ``same-instance-different-master`` — the same pre-existing instance is
   resized (``delta.mastersChanged``) by two or more contributions to
-  different target masters. Contributions resizing it to the *same* target
-  are not a conflict (converging edits) — the difference is what matters.
+  different target masters.
 - ``delete-vs-modify`` — the same pre-existing instance is deleted
   (``delta.removed``) by one contribution and resized by another.
+- ``shared-instance-edit`` — the same pre-existing instance is resized or
+  deleted by two or more contributions in a way that is *not* already
+  covered by the two more specific kinds above — most notably, two
+  contributions resizing it to the **same** target master (a converging
+  edit is still a conflict: the second op's own `fromMaster` precondition
+  cannot hold once the first has already replayed, per this task's
+  controller decision), or two contributions independently deleting it.
+  **Precedence**: `same-instance-different-master` and `delete-vs-modify`
+  are strictly more specific and always take that instance's conflict
+  instead — at most one of these three kinds ever fires per instance, so
+  a pair of contributions is never labelled with two different kinds for
+  the same object.
 - ``name-collision`` — two or more contributions independently create a
   new instance (``delta.added``, i.e. an `insert_buffer`'s ``newInstance``)
-  under the same name.
+  under the same name. In practice this cannot happen *across* workers
+  (`atcs.contributions`'s workspace `namePrefix` makes every worker's new
+  names disjoint by construction) but remains possible across revisions of
+  the same worker/task, so it is still checked.
+- ``same-load-pin`` — `insert_buffer` operations in two different
+  contributions share at least one `loadPins` entry. Because `namePrefix`
+  already rules out `name-collision` and identical-operation `duplicates`
+  across workers, this is the cross-worker conflict that actually catches
+  two workers independently deciding to buffer load pins on the same
+  driver/net from different insertion points — a real write conflict on
+  the same load pin's connectivity that object-name comparison alone
+  would miss. ``objects`` is the sorted set of shared pin names.
 - ``missing-dependency`` — a `fix` contribution's ``dependencies`` names an
   id that is not itself in ``considered`` (wrong id, inadmissible, or
   stale-base): the atomic group or state it needs was never actually
@@ -80,9 +130,15 @@ two can disagree and `delta` is always the trustworthy one):
 - ``base-dump-mismatch`` — considered `fix` contributions declare the same
   ``baseStateId`` but disagree on ``beforeDumpSha256``: they did not
   actually start from the same native state, even though they claim the
-  same base id. One entry (if triggered) spans every considered `fix`
-  contribution, since the whole point is that they should all agree;
-  ``objects`` is the sorted set of distinct hashes seen.
+  same base id. Contributions are grouped by their hash; the **majority**
+  hash (most contributions; a tie broken by the lexicographically smallest
+  hash) is treated as the reference, and one entry (if any hash disagrees
+  at all) names only the **minority** contributions — the ones whose hash
+  differs from the majority — as ``contributions``, with the sorted set of
+  their distinct hashes as ``objects``. This keeps the key from churning
+  every time an unrelated, agreeing fix joins the batch: adding another
+  contribution that matches the existing majority never changes who is
+  named in the conflict.
 
 ``missing-dependency`` and ``dependency-cycle`` are evaluated only over
 `fix` contributions' own ``dependencies`` — a `no-fix` produces no
@@ -100,23 +156,42 @@ should look at *together*, without saying either has to yield:
   touches an object the other does** (§7.3: "时序窗口竞争" is one of the
   things three-way object comparison alone cannot see — a shared check or
   cone is a real interaction even across disjoint objects).
-- ``shared-space`` — two considered `fix` contributions each inserting a
-  buffer whose declared ``location`` lies close enough to interact. Per
-  this task's shared-space rule: expand each insertion's location into a
-  1.0-unit box on every side (so a bare point becomes a 2x2 box) and flag
-  an interaction when any such expanded box from one contribution
-  intersects any expanded box from the other — equivalent to two
-  insertion points within 2.0 of each other on either axis. `location`
-  coordinates are DEF-derived and therefore in µm, per this Pack's design
-  state units; this module assumes but does not re-verify that unit for
-  every contribution it is handed. Only `insert_buffer` locations are
-  compared this way — a contribution's ``touches.regions`` also carries
-  its whole work package's ``editDomain`` regions (appended by
-  `atcs.contributions._touches`), which would falsely "interact" any two
-  contributions sharing a work package if it were used here instead.
+- ``shared-space`` — two considered `fix` contributions each placing an
+  `insert_buffer` (by its declared ``location``) or a `pg_local_adjust`
+  (by its declared ``region``) close enough to interact. Per this task's
+  shared-space rule: expand every such box by 1.0 on every side (so a bare
+  insertion point becomes a 2x2 box) and flag an interaction when any
+  expanded box from one contribution intersects any expanded box from the
+  other — equivalent to a 2.0 threshold on either axis. `location`/
+  `region` coordinates are DEF-derived and therefore in µm, per this
+  Pack's design state units; this module assumes but does not re-verify
+  that unit for every contribution it is handed. Only these two
+  *op-level* geometries are compared — a contribution's ``touches.regions``
+  also carries its whole work package's ``editDomain`` regions (appended
+  by `atcs.contributions._touches`), which would falsely "interact" any
+  two contributions sharing a work package if it were used here instead.
+- ``shared-net`` — two considered `fix` contributions' ``touches.nets``
+  intersect, and they do **not** already conflict on `same-load-pin`. A
+  shared load pin is the sharper, write-conflict-shaped fact; a shared net
+  without a shared load pin is merely something worth a joint look (e.g.
+  two insertions on the same net feeding different loads).
 
 Like conflicts, interactions are never evaluated for a `no-fix`
 contribution.
+
+Determinism
+-----------
+
+Every fact list is either globally sorted by a content-derived key once
+built (``duplicates`` by `keep`, ``conflicts`` by `key`, ``interactions``
+by `(kind, contributions)`), or built directly in sorted order
+(``considered``, ``staleBase``, ``order``) — so none of them depend on the
+order `contributions` arrives in. The one place order could otherwise leak
+through is an interaction's *evidence* for a specific unordered pair (e.g.
+`shared-space`'s per-box `{"a", "b"}` labels): every pairwise comparison
+first canonicalizes the pair by sorting the two contributions by `id`, so
+`"a"`/`"b"` always name the lower/higher id's own object regardless of
+which one `analyze` happened to visit first.
 
 Ordering
 --------
@@ -131,9 +206,9 @@ first, whether the id is a `no-fix` (a `no-fix` never blocks a `fix` from
 going first — see the module docstring for §17.1's "appear in `order`
 last"); second, the id itself, lexicographically. A cycle (or anything
 depending on a cycle member) can never become "ready" under this rule;
-those ids are appended afterward, sorted by id alone, so `order` stays
-total and deterministic even though `dependency-cycle` also flags them as
-a conflict.
+those ids are appended afterward using that same `(is-no-fix, id)`
+ordering, so `order` stays total and deterministic even though
+`dependency-cycle` also flags them as a conflict.
 
 `resolutions` and `unresolvedCount`
 -------------------------------------
@@ -153,8 +228,13 @@ drops.
 from __future__ import annotations
 
 import heapq
+import itertools
 
 from . import core
+
+
+def _is_nonempty_string(value):
+    return isinstance(value, str) and value != ""
 
 
 def conflict_key(kind, ids, objects):
@@ -174,6 +254,33 @@ def _make_conflict(kind, ids, objects):
     return {"key": conflict_key(kind, ids, objects), "kind": kind, "contributions": ids, "objects": objects}
 
 
+def _validate_contributions(contributions):
+    """Raise `AtcsError` for a missing/duplicate `id` — see module docstring."""
+    seen = set()
+    for contribution in contributions:
+        contribution_id = contribution.get("id") if isinstance(contribution, dict) else None
+        if not _is_nonempty_string(contribution_id):
+            raise core.AtcsError("missing-input", f"contribution.id must be a non-empty string, got {contribution_id!r}")
+        if contribution_id in seen:
+            raise core.AtcsError("duplicate-contribution", f"duplicate contribution id {contribution_id!r}")
+        seen.add(contribution_id)
+
+
+def _resolution_keys(resolutions):
+    """`{conflictKey, ...}` from `resolutions`; raises `AtcsError` for a bad shape."""
+    keys = set()
+    for resolution in resolutions:
+        if not isinstance(resolution, dict) or "conflictKey" not in resolution:
+            raise core.AtcsError("missing-input", f"resolutions[].conflictKey is required, got {resolution!r}")
+        conflict_key_value = resolution["conflictKey"]
+        if not _is_nonempty_string(conflict_key_value):
+            raise core.AtcsError(
+                "missing-input", f"resolutions[].conflictKey must be a non-empty string, got {conflict_key_value!r}"
+            )
+        keys.add(conflict_key_value)
+    return keys
+
+
 def _instance_outcomes(contribution):
     """`{instance: ("size"|"delete"|"insert", master_or_None)}` from `delta`."""
     delta = contribution.get("delta") or {}
@@ -188,7 +295,7 @@ def _instance_outcomes(contribution):
 
 
 def _object_conflicts(fix_contributions):
-    """`same-instance-different-master` / `delete-vs-modify` / `name-collision`."""
+    """`same-instance-different-master` / `delete-vs-modify` / `shared-instance-edit` / `name-collision`."""
     touchers = {}
     for contribution in fix_contributions:
         for instance, (kind, master) in _instance_outcomes(contribution).items():
@@ -196,32 +303,55 @@ def _object_conflicts(fix_contributions):
 
     conflicts = []
     for instance, entries in touchers.items():
-        if len(entries) < 2:
-            continue
-        size_entries = [(cid, master) for cid, kind, master in entries if kind == "size"]
-        delete_ids = [cid for cid, kind, _ in entries if kind == "delete"]
+        edit_entries = [(cid, kind, master) for cid, kind, master in entries if kind in ("size", "delete")]
         insert_ids = [cid for cid, kind, _ in entries if kind == "insert"]
 
+        size_entries = [(cid, master) for cid, kind, master in edit_entries if kind == "size"]
+        delete_ids = [cid for cid, kind, _ in edit_entries if kind == "delete"]
+
+        specific_fired = False
         if len({master for _, master in size_entries}) > 1:
             conflicts.append(
                 _make_conflict("same-instance-different-master", [cid for cid, _ in size_entries], [instance])
             )
+            specific_fired = True
         if size_entries and delete_ids:
             ids = [cid for cid, _ in size_entries] + delete_ids
             conflicts.append(_make_conflict("delete-vs-modify", ids, [instance]))
+            specific_fired = True
+        if not specific_fired and len(edit_entries) >= 2:
+            ids = sorted({cid for cid, _, _ in edit_entries})
+            if len(ids) >= 2:
+                conflicts.append(_make_conflict("shared-instance-edit", ids, [instance]))
+
         if len(set(insert_ids)) > 1:
             conflicts.append(_make_conflict("name-collision", insert_ids, [instance]))
     return conflicts
 
 
 def _base_dump_mismatch(fix_contributions):
+    """`base-dump-mismatch`, naming only the minority hash group(s) — see module docstring."""
     if len(fix_contributions) < 2:
         return []
-    shas = {contribution["id"]: contribution.get("beforeDumpSha256") for contribution in fix_contributions}
-    distinct = sorted({sha for sha in shas.values()})
-    if len(distinct) <= 1:
+    sha_by_id = {contribution["id"]: contribution.get("beforeDumpSha256") for contribution in fix_contributions}
+    counts = {}
+    for sha in sha_by_id.values():
+        counts[sha] = counts.get(sha, 0) + 1
+    if len(counts) <= 1:
         return []
-    return [_make_conflict("base-dump-mismatch", list(shas.keys()), distinct)]
+    max_count = max(counts.values())
+    majority_sha = min(sha for sha, count in counts.items() if count == max_count)
+    minority_ids = sorted(cid for cid, sha in sha_by_id.items() if sha != majority_sha)
+    minority_hashes = sorted({sha_by_id[cid] for cid in minority_ids})
+    return [_make_conflict("base-dump-mismatch", minority_ids, minority_hashes)]
+
+
+def _load_pins(contribution):
+    pins = set()
+    for op in contribution.get("operations") or []:
+        if op.get("op") == "insert_buffer":
+            pins.update(op.get("loadPins") or [])
+    return pins
 
 
 def _dependency_conflicts(fix_contributions, considered_ids):
@@ -290,8 +420,8 @@ def _order(considered_ids, kind_by_id, dependency_graph):
     """A dependency-respecting topological order; ties broken by (is-no-fix, id).
 
     Cycle members (or anything depending on one) can never reach in-degree
-    zero and are appended afterward, sorted by id alone, per this module's
-    docstring.
+    zero and are appended afterward using that same `(is-no-fix, id)` key,
+    per this module's docstring.
     """
     in_degree = {contribution_id: 0 for contribution_id in considered_ids}
     dependents = {contribution_id: [] for contribution_id in considered_ids}
@@ -318,12 +448,12 @@ def _order(considered_ids, kind_by_id, dependency_graph):
             if in_degree[dependent] == 0:
                 heapq.heappush(heap, priority(dependent))
 
-    remaining = sorted(cid for cid in considered_ids if cid not in placed_set)
+    remaining = sorted((cid for cid in considered_ids if cid not in placed_set), key=priority)
     return placed + remaining
 
 
 def _insertion_boxes(contribution):
-    """`[(newInstance, [x0, y0, x1, y1]), ...]` for each located `insert_buffer` op.
+    """`[(label, [x0, y0, x1, y1]), ...]` for each located `insert_buffer` op.
 
     Each box is the insertion point expanded by 1.0 on every side, per
     this task's shared-space rule.
@@ -340,43 +470,83 @@ def _insertion_boxes(contribution):
     return boxes
 
 
+def _pg_adjust_boxes(contribution):
+    """`[(label, [x0, y0, x1, y1]), ...]` for each `pg_local_adjust` op's own `region`.
+
+    Each box is that op-level region expanded by 1.0 on every side, the
+    same shared-space rule as `_insertion_boxes` — never the work
+    package's `editDomain` regions (see module docstring).
+    """
+    boxes = []
+    for op in contribution.get("operations") or []:
+        if op.get("op") != "pg_local_adjust":
+            continue
+        region = op.get("region")
+        if region is None:
+            continue
+        x1, y1, x2, y2 = region
+        boxes.append((f"region:{[x1, y1, x2, y2]}", [x1 - 1.0, y1 - 1.0, x2 + 1.0, y2 + 1.0]))
+    return boxes
+
+
 def _boxes_intersect(box_a, box_b):
     ax1, ay1, ax2, ay2 = box_a
     bx1, by1, bx2, by2 = box_b
     return ax1 <= bx2 and bx1 <= ax2 and ay1 <= by2 and by1 <= ay2
 
 
-def _interactions(fix_contributions):
+def _pairwise(fix_contributions):
+    """`(conflicts, interactions)` from every unordered pair of `fix_contributions`.
+
+    Covers `same-load-pin` (conflict), `shared-timing-window`,
+    `shared-space` and `shared-net` (interactions) — see module docstring
+    for each. Every pair is canonicalized (lower id first) before any
+    order-sensitive evidence is built, so the result never depends on
+    `fix_contributions`' own order (see module docstring's "Determinism").
+    """
+    conflicts = []
     interactions = []
-    for i in range(len(fix_contributions)):
-        for j in range(i + 1, len(fix_contributions)):
-            left, right = fix_contributions[i], fix_contributions[j]
-            ids = sorted([left["id"], right["id"]])
 
-            left_touches, right_touches = left.get("touches") or {}, right.get("touches") or {}
-            shared_checks = sorted(set(left_touches.get("checks") or []) & set(right_touches.get("checks") or []))
-            shared_cones = sorted(set(left_touches.get("cones") or []) & set(right_touches.get("cones") or []))
-            if shared_checks or shared_cones:
+    for left, right in itertools.combinations(fix_contributions, 2):
+        first, second = sorted((left, right), key=lambda contribution: contribution["id"])
+        ids = [first["id"], second["id"]]
+
+        first_touches, second_touches = first.get("touches") or {}, second.get("touches") or {}
+        shared_checks = sorted(set(first_touches.get("checks") or []) & set(second_touches.get("checks") or []))
+        shared_cones = sorted(set(first_touches.get("cones") or []) & set(second_touches.get("cones") or []))
+        if shared_checks or shared_cones:
+            interactions.append(
+                {
+                    "kind": "shared-timing-window",
+                    "contributions": ids,
+                    "evidence": {"sharedChecks": shared_checks, "sharedCones": shared_cones},
+                }
+            )
+
+        first_boxes = _insertion_boxes(first) + _pg_adjust_boxes(first)
+        second_boxes = _insertion_boxes(second) + _pg_adjust_boxes(second)
+        overlaps = []
+        for first_label, first_box in first_boxes:
+            for second_label, second_box in second_boxes:
+                if _boxes_intersect(first_box, second_box):
+                    overlaps.append({"a": first_label, "b": second_label})
+        if overlaps:
+            overlaps.sort(key=lambda entry: (entry["a"], entry["b"]))
+            interactions.append({"kind": "shared-space", "contributions": ids, "evidence": {"overlaps": overlaps}})
+
+        shared_pins = sorted(_load_pins(first) & _load_pins(second))
+        if shared_pins:
+            conflicts.append(_make_conflict("same-load-pin", ids, shared_pins))
+        else:
+            shared_nets = sorted(set(first_touches.get("nets") or []) & set(second_touches.get("nets") or []))
+            if shared_nets:
                 interactions.append(
-                    {
-                        "kind": "shared-timing-window",
-                        "contributions": ids,
-                        "evidence": {"sharedChecks": shared_checks, "sharedCones": shared_cones},
-                    }
+                    {"kind": "shared-net", "contributions": ids, "evidence": {"sharedNets": shared_nets}}
                 )
 
-            overlaps = []
-            for left_instance, left_box in _insertion_boxes(left):
-                for right_instance, right_box in _insertion_boxes(right):
-                    if _boxes_intersect(left_box, right_box):
-                        overlaps.append({"a": left_instance, "b": right_instance})
-            if overlaps:
-                interactions.append(
-                    {"kind": "shared-space", "contributions": ids, "evidence": {"overlaps": overlaps}}
-                )
-
+    conflicts.sort(key=lambda conflict: conflict["key"])
     interactions.sort(key=lambda entry: (entry["kind"], entry["contributions"]))
-    return interactions
+    return conflicts, interactions
 
 
 def _duplicates(fix_contributions):
@@ -399,13 +569,20 @@ def analyze(base_state_id, contributions, resolutions):
     """Deterministic three-way composition facts over `contributions` on `base_state_id`.
 
     `contributions` is a list of sealed `contribution` artifacts (see the
-    module docstring for the admission rule). `resolutions` is an
+    module docstring for the admission rule and the fail-closed shape
+    checks run on it up front). `resolutions` is an
     `integration-plan.resolutions` list, or an empty list/`None` if none
-    exists yet. Returns a stamped `composition-facts` artifact; never
-    raises for well-formed contributions — this module only observes and
-    reports, it never refuses a contribution on its own authority.
+    exists yet. Returns a stamped `composition-facts` artifact; raises
+    `AtcsError` only for the malformed-shape cases documented at the top
+    of this module — every other problem with a contribution's *content*
+    (a real conflict, interaction, or stale base) is reported as data,
+    never raised, since this module only observes, it never refuses a
+    contribution on its own authority.
     """
     resolutions = resolutions or []
+
+    _validate_contributions(contributions)
+    resolution_keys = _resolution_keys(resolutions)
 
     admissible = [contribution for contribution in contributions if contribution.get("admissible")]
     stale_base = sorted(
@@ -428,17 +605,12 @@ def analyze(base_state_id, contributions, resolutions):
     conflicts.extend(_base_dump_mismatch(fix_contributions))
     dependency_conflicts, dependency_graph = _dependency_conflicts(fix_contributions, considered_ids)
     conflicts.extend(dependency_conflicts)
+    pairwise_conflicts, interactions = _pairwise(fix_contributions)
+    conflicts.extend(pairwise_conflicts)
     conflicts.sort(key=lambda conflict: conflict["key"])
-
-    interactions = _interactions(fix_contributions)
 
     order = _order(considered_ids, kind_by_id, dependency_graph)
 
-    resolution_keys = {
-        resolution["conflictKey"]
-        for resolution in resolutions
-        if isinstance(resolution, dict) and "conflictKey" in resolution
-    }
     conflict_keys = {conflict["key"] for conflict in conflicts}
     unresolved_count = sum(1 for conflict in conflicts if conflict["key"] not in resolution_keys)
     unknown_resolutions = sorted(resolution_keys - conflict_keys)
