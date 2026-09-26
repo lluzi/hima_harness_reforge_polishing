@@ -54,6 +54,20 @@ class NoDesignZooReferenceTest(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             self.assertNotIn("/data/eda/project/design_zoo", text, f"{path} references design_zoo")
 
+    def test_no_template_uses_the_undocumented_get_object_name(self):
+        # Confirmed absent from both the XTop man tree and command_surface.tsv
+        # (Task 12 fix round item 2) -- get_cells + foreach_in_collection +
+        # get_attribute full_name/ref_name replace it. See
+        # knowledge/xtop-capabilities.md for the citation. Only *code* lines
+        # are checked -- a comment is allowed to name the banned command
+        # while explaining why it must not be used (as this Pack's own
+        # templates do).
+        for path in sorted(TEMPLATES_DIR.glob("*.tcl")):
+            code_lines = [line for line in path.read_text(encoding="utf-8").splitlines()
+                          if not line.strip().startswith("#")]
+            self.assertNotIn("get_object_name", "\n".join(code_lines),
+                              f"{path} uses undocumented get_object_name")
+
 
 # ---------------------------------------------------------------------------
 # Step 1 requirement: PT scenario task compiles all four scenario names,
@@ -124,15 +138,15 @@ class PtScenarioTaskTest(unittest.TestCase):
 
 class StarrcTaskTest(unittest.TestCase):
     def test_work_dir_is_new_and_private_not_the_input_directory(self):
-        task = adapters.compile_starrc_task("top", "rcworst_m40", "/campaign/implementations/current/EXPORT/design.def",
-                                             "/campaign/implementations/current")
+        task = adapters.compile_starrc_task("top", "rcworst_m40", "/campaign/implementations/m1a2b3c4d5e6f7a8b9c0/EXPORT/design.def",
+                                             "/campaign/implementations/m1a2b3c4d5e6f7a8b9c0")
         work_dir = Path(task["workDir"])
-        def_dir = Path("/campaign/implementations/current/EXPORT")
+        def_dir = Path("/campaign/implementations/m1a2b3c4d5e6f7a8b9c0/EXPORT")
         self.assertNotEqual(work_dir, def_dir)
         self.assertNotEqual(work_dir.resolve(), def_dir.resolve())
-        self.assertTrue(str(work_dir).startswith("/campaign/implementations/current/starrc/rcworst_m40"))
+        self.assertTrue(str(work_dir).startswith("/campaign/implementations/m1a2b3c4d5e6f7a8b9c0/starrc/rcworst_m40"))
         self.assertIn("STAR_DIRECTORY: " + str(work_dir), task["cmdText"])
-        self.assertIn("TOP_DEF_FILE: /campaign/implementations/current/EXPORT/design.def", task["cmdText"])
+        self.assertIn("TOP_DEF_FILE: /campaign/implementations/m1a2b3c4d5e6f7a8b9c0/EXPORT/design.def", task["cmdText"])
 
     def test_refuses_when_work_dir_would_equal_def_directory(self):
         # A pathological base template whose own work dir happens to fall in the DEF's directory.
@@ -146,6 +160,81 @@ class StarrcTaskTest(unittest.TestCase):
         tasks = adapters.compile_starrc_tasks("top", ["rcworst_m40", "cbest_125"], "/ws/EXPORT/design.def", "/ws")
         self.assertEqual(set(tasks), {"rcworst_m40", "cbest_125"})
         self.assertNotEqual(tasks["rcworst_m40"]["workDir"], tasks["cbest_125"]["workDir"])
+
+    def test_refuses_a_corner_that_would_escape_output_root(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_starrc_task("top", "../x", "/ws/EXPORT/design.def", "/ws")
+        self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+    def test_refuses_a_corner_containing_a_newline(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_starrc_task("top", "a\nb", "/ws/EXPORT/design.def", "/ws")
+        self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+    def test_refuses_a_design_that_would_escape_output_root(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_starrc_task("../x", "corner", "/ws/EXPORT/design.def", "/ws")
+        self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+    def test_refuses_work_dir_nested_several_levels_inside_the_def_directory(self):
+        # `output_root` itself lands under the DEF's own directory, so the
+        # computed work dir is nested (not just equal) inside it -- the
+        # containment check must catch this, not only exact-path equality.
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_starrc_task(
+                "top", "corner", "/ws/EXPORT/design.def", "/ws/EXPORT/nested/deeper",
+            )
+        self.assertEqual(ctx.exception.code, "invalid-workspace")
+
+    def test_accepts_a_work_dir_genuinely_inside_output_root_and_outside_def_dir(self):
+        task = adapters.compile_starrc_task("top", "corner", "/ws/EXPORT/design.def", "/ws/implementations/m1")
+        self.assertTrue(Path(task["workDir"]).is_relative_to(Path("/ws/implementations/m1")))
+
+
+class NoMutableCurrentDirectoryTest(unittest.TestCase):
+    """Architecture Sec.13.4 (Task 12 fix round item 3): no implementation or
+    integration artifact may live under a mutable directory named `current`
+    -- every one lives under its own real `implementations/<mergeId>/` or
+    `integrations/<batchId>/`."""
+
+    def test_dispatcher_never_builds_a_current_directory_path(self):
+        text = (FLOW_DIR / "atcs_cli.py").read_text(encoding="utf-8")
+        code_lines = [line for line in text.splitlines() if not line.strip().startswith("#")]
+        code_text = "\n".join(code_lines)
+        self.assertNotIn('"implementations" / "current"', code_text)
+        self.assertNotIn('"integrations" / "current"', code_text)
+        self.assertNotIn("implementations/current", code_text)
+        self.assertNotIn("integrations/current", code_text)
+
+
+class PathSegmentValidatorTest(unittest.TestCase):
+    def test_accepts_ordinary_identifiers(self):
+        for value in ("rcworst_m40", "func_ssg_rcworst_m40", "top-design", "m1a2b3c4d5e6f7a8b9c0", "place"):
+            self.assertEqual(adapters.validate_path_segment(value, "x"), value)
+
+    def test_refuses_empty_or_non_string(self):
+        for value in ("", None, 123, [], {}):
+            with self.assertRaises(core.AtcsError) as ctx:
+                adapters.validate_path_segment(value, "x")
+            self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+    def test_refuses_dot_and_dotdot(self):
+        for value in (".", ".."):
+            with self.assertRaises(core.AtcsError) as ctx:
+                adapters.validate_path_segment(value, "x")
+            self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+    def test_refuses_path_traversal(self):
+        for value in ("../x", "a/../b", "/etc/passwd", "a/b"):
+            with self.assertRaises(core.AtcsError) as ctx:
+                adapters.validate_path_segment(value, "x")
+            self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+    def test_refuses_newline_and_other_unsafe_characters(self):
+        for value in ("a\nb", "a;b", "a$b", "a b"):
+            with self.assertRaises(core.AtcsError) as ctx:
+                adapters.validate_path_segment(value, "x")
+            self.assertEqual(ctx.exception.code, "invalid-path-segment")
 
 
 # ---------------------------------------------------------------------------
@@ -217,12 +306,27 @@ proc create_design_definition {args} {}
 proc import_designs {args} {}
 proc read_timing_data {args} {}
 proc save_workspace {args} {}
-proc get_attribute {inst attr} { return "MASTERX" }
+proc get_attribute {obj attr} {
+    if {$attr eq "full_name"} { return $obj }
+    return "MASTERX"
+}
 proc size_cell {insts master} { set ::ATCS_TEST_LAST_CALL [list size_cell $insts $master] }
 proc insert_buffer {args} { set ::ATCS_TEST_LAST_CALL [linsert $args 0 insert_buffer] }
 proc remove_buffer {insts} { set ::ATCS_TEST_LAST_CALL [list remove_buffer $insts] }
-proc get_object_name {objs} { return $objs }
-proc get_cells {args} { return {U_IN_DOMAIN U_OUT_DOMAIN} }
+# Documented XTop commands only (knowledge/xtop-capabilities.md): get_cells
+# -hierarchical enumerates every cell; foreach_in_collection iterates; there
+# is no get_object_name. "get_cells $i" (a single, already-known name) just
+# re-wraps that name, matching get_attribute.1's own worked example.
+proc get_cells {args} {
+    if {[llength $args] == 1 && [lindex $args 0] eq "-hierarchical"} {
+        return {U_IN_DOMAIN U_OUT_DOMAIN}
+    }
+    return [lindex $args 0]
+}
+proc foreach_in_collection {iter_var collection body} {
+    upvar 1 $iter_var i
+    foreach i $collection { uplevel 1 $body }
+}
 """
 
 
@@ -496,6 +600,34 @@ class CliBindInputsIntegrationTest(unittest.TestCase):
         self.assertTrue(output_path.is_file())
         body = json.loads(output_path.read_text())
         self.assertEqual(body["schema"], "atcs.input-readiness/1")
+
+
+class CliExtractPathSegmentTest(unittest.TestCase):
+    """`extract` validates every `corners` entry via `validate_path_segment`
+    before touching the filesystem (Task 12 fix round item 1)."""
+
+    def _run(self, corner):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        corners_path = workspace / "in" / "corners.json"
+        _write_json(corners_path, {"corners": [corner]})
+        result = subprocess.run(
+            [sys.executable, str(CLI_PATH), "extract", str(workspace), str(corners_path), "MISSING/site.json"],
+            capture_output=True, text=True,
+        )
+        return result
+
+    def test_path_traversal_corner_is_refused(self):
+        result = self._run("../x")
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "invalid-path-segment")
+
+    def test_newline_containing_corner_is_refused(self):
+        result = self._run("a\nb")
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "invalid-path-segment")
 
 
 class CliCollectContributionIndexTest(unittest.TestCase):

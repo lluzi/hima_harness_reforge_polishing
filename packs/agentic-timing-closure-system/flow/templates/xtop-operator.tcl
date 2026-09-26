@@ -82,9 +82,18 @@ proc atcs_delete_buffer {instance} {
     atcs_log_op "{\"op\":\"delete_buffer\",\"instance\":\"[atcs_json_escape $instance]\",\"master\":\"[atcs_json_escape $from_master]\"}"
 }
 proc atcs_dump_cells {path} {
+    # `get_cells -hierarchical` (documented, get_cells.1) plus
+    # `foreach_in_collection` (documented, foreach_in_collection.1) is the
+    # confirmed way to iterate every cell; `full_name`/`ref_name` are
+    # queried the same way get_attribute.1's own worked example does
+    # (`get_attribute [get_cells U43] ref_name`) -- see
+    # knowledge/xtop-capabilities.md for the full citation. There is no
+    # documented `get_object_name`; do not reintroduce it.
     set fh [open $path w]
-    foreach inst [get_object_name [get_cells -hierarchical *]] {
-        puts $fh "$inst [get_attribute $inst ref_name]"
+    foreach_in_collection i [get_cells -hierarchical] {
+        set inst [get_attribute [get_cells $i] full_name]
+        set master [get_attribute [get_cells $i] ref_name]
+        puts $fh "$inst $master"
     }
     close $fh
 }

@@ -16,9 +16,14 @@ if {![file readable $env(STEPS_TCL)]} { error "STEPS_TCL is not readable: $env(S
 file mkdir $env(DUMP_DIR)
 
 proc atcs_dump_cells {path} {
+    # Same documented get_cells/foreach_in_collection/get_attribute pattern
+    # as xtop-operator.tcl's own atcs_dump_cells -- see
+    # knowledge/xtop-capabilities.md. No documented get_object_name exists.
     set fh [open $path w]
-    foreach inst [get_object_name [get_cells -hierarchical *]] {
-        puts $fh "$inst [get_attribute $inst ref_name]"
+    foreach_in_collection i [get_cells -hierarchical] {
+        set inst [get_attribute [get_cells $i] full_name]
+        set master [get_attribute [get_cells $i] ref_name]
+        puts $fh "$inst $master"
     }
     close $fh
 }

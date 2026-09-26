@@ -7,7 +7,15 @@
   `/data/eda/software/eda_tools/empyrean/xtop-2025.09.tmp15/share/doc/man/man1/`:
   `get_paths.1`, `get_attribute.1`, `size_cell.1`, `insert_buffer.1`, `remove_buffer.1`,
   `write_design_changes.1`, `save_workspace.1`, `open_workspace.1`, `undo.1`,
-  `report_eco_actions.1`.
+  `report_eco_actions.1`. T12 fix-round addition (same root, same read-only
+  `ssh luzi@192.168.50.41`, `sed`/`grep`/`cat` only): `get_cells.1`,
+  `foreach_in_collection.1`, `filter_collection.1` — added while verifying the
+  commands `atcs_dump_cells` (`flow/templates/xtop-operator.tcl`/
+  `xtop-replay.tcl`) actually uses. There is **no** `get_object_name.1` in this
+  man tree, and no `get_object_name` row anywhere in `command_surface.tsv`
+  (grepped directly) — an earlier draft of `atcs_dump_cells` used it; that was
+  wrong and has been replaced (see the `get_cells`/`foreach_in_collection` rows
+  below).
 - `/data/eda/software/eda_tools/empyrean/xtop-2025.09.tmp15/utilities/post_verification/refine_xtop_eco_commands.tcl`
   (295 lines, read on `192.168.50.41`): `refine_xtop_eco_commands`/`revert_xtop_eco_commands`
   procedures for PT-format sizing ECO scripts.
@@ -43,6 +51,9 @@ still treat their real-world effect as unverified until a `contribution`'s
 |---|---|---|
 | Path query | `get_paths` | `-start_points`, `-end_points`, `-through_points`, `-scenario`, `-group`, `-delay_type {all\|min\|max}`, `-path_type`, `-lower_bound`, `-upper_bound`, `-filter` |
 | Per-instance attribute query | `get_attribute` | `object_spec attr_name [-class {design\|pin\|cell\|port\|net\|lib_cell\|lib_pin\|lib\|timing_path}] [-scenario sce]` |
+| Whole-design cell enumeration (`atcs_dump_cells`) | `get_cells` | `[-hierarchical] [-quiet] [-regex \| -exact] [-nocase] [patterns \| -of_objects objects] [-filter expression]`; `command_surface.tsv` row 123, `documentation_status = man+completion` |
+| Iterate a collection (`atcs_dump_cells`) | `foreach_in_collection` | `iter_var collection body`; `command_surface.tsv` row 120, `documentation_status = man-only`. `get_attribute.1`'s own worked example re-wraps the loop variable (`foreach_in_collection i [get_dont_touch_cells] {set_dont_touch [get_cells $i] 0}`) rather than treating it as an already-typed cell object — `atcs_dump_cells` follows the identical `[get_cells $i]` re-wrap before every `get_attribute` call on it. |
+| Instance name / library-cell (master) name of one cell (`atcs_dump_cells`) | `get_attribute ... full_name` / `get_attribute ... ref_name` | `ref_name` is `get_attribute.1`'s own worked example verbatim (`get_attribute [get_cells U43] ref_name` → `AN4XD1BWP12T`). `full_name` has no `get_attribute`-specific worked example, but is confirmed as a real, queryable cell attribute in the *same* man-page corpus by `filter_collection.1`'s own worked example (`filter_collection [get_cells -hierarchical] "full_name =~ U\e[0-9\e]+" -regexp`) — `get_attribute`'s own DESCRIPTION ("gets the value of an attribute on an object... attr_name — the attribute name to get") places no restriction on which attribute name may be queried this way, so this is documented-by-cross-reference, not invented. There is no `get_object_name` command in either the man tree or `command_surface.tsv`; do not use it. |
 | Sizing | `size_cell` | `cell_list lib_cell [-design design_name] [-location coord]` |
 | Buffer insertion | `insert_buffer` | `pin_list lib_cells [-design design_name] [-inverter_pair] [-new_cell_names names] [-new_net_names names] [-locations coord] [-force]` |
 | Buffer deletion | `remove_buffer` | `cell_list [-design design_name]` |

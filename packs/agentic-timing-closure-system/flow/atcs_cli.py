@@ -45,12 +45,25 @@ Reader-facing file T14 lists in `contract.yml`) is instead a small, fixed
 the full canonical, content-addressed artifact into the architecture's own
 dynamic-path store when one is named above, purely for cross-subcommand and
 provenance lookups -- that canonical copy is never itself "the declared
-output" a Reader watches. This Pack processes one integration batch and one
-implementation candidate at a time (single-writer, Sec. Global Constraints:
-"Bounded worker slots... one Campaign Run keeps one owner"), so
-`integrations/current/` and `implementations/current/` are reused across a
-Run rather than a fresh `<batchId>`/`<mergeId>` directory appearing in every
-declared path.
+output" a Reader watches -- **never** a mutable directory named `current`:
+the architecture requires every implementation/integration artifact to live
+under its own real, content-addressed `implementations/<mergeId>/` /
+`integrations/<batchId>/` (a controller decision explicit about this: a
+mutable `current` directory would make history un-interpretable -- two
+generations' raw evidence could otherwise silently overwrite each other at
+the same path, and a failed EDA run's partial output could get mistaken for
+a different generation's). `<mergeId>` is `merge_commit["id"]`
+(`integration.seal_batch`'s own stamped id -- `implement` computes it before
+choosing any output path, and `presta`/`extract`/`sta` all read it back off
+an already-written declared output rather than recomputing it, except
+`presta`, which calls `seal_batch` itself, read-only, before one exists for
+real). `<batchId>` is `replay-request["batchId"]` (`prepare_replay`'s own
+`plan.batchId` passthrough). Both are validated via
+`adapters.validate_path_segment` before use (see Global Constraints below).
+A failed EDA run therefore only ever leaves partial files under that one
+real id's own directory -- never under a shared, generation-ambiguous path,
+and never as a declared output (exit 4 leaves no output file at all, per
+the exit-code contract above).
 
 Subcommand table (path column is workspace-relative; "in" lists positional
 args after `<workspace>`, in order; a name in *italics-by-convention*
@@ -101,6 +114,21 @@ Gaps (reported per this task's brief; see also `adapters.py`'s own "Gaps")
   (`verification.presta_qualification`'s whole point), rather than
   fabricating a more precise predicted value this Pack cannot yet obtain
   without a full StarRC extraction.
+- Direct consequence of the above (controller-flagged, for T14's
+  `FABRIC.md` Gaps, not a code fix): because `presta` always compares a
+  batch's `newNets` against the **base** SPEF's own net names, and the base
+  SPEF by definition never models a net that batch itself is about to
+  create, `tc_unqualified_rc_net_count` is >0 for **every** batch that
+  contains an `insert_buffer` op, with no exception. Whatever Judge rule
+  this Pack wires on top of `precheck-evidence` (a "presta-model-qualified"
+  gate) will therefore always route an insertion-containing batch to its
+  next-decision/escalation path rather than ever accepting presta's own
+  predicted WNS for such a batch, until a real in-session RC source (a
+  live XTop incremental extraction, or a genuine post-implement StarRC
+  refresh) exists for T12 to point `precheck_evidence` at instead of the
+  base SPEF. This is a real, structural limitation of what evidence this
+  Pack's current artifact set makes available at `presta` time, not a bug
+  in the qualification check itself.
 
 `atcs.refresh` / `verification.precheck_evidence` wiring (Task 13 fix round)
 --------------------------------------------------------------------------------
@@ -117,7 +145,7 @@ Gaps (reported per this task's brief; see also `adapters.py`'s own "Gaps")
   side-effect-free re-derivation over the already-reconciled
   `integration-state`) purely to obtain `merge_commit["newNets"]` before
   `implement` has sealed one for real; writes the base SPEF's net names to
-  `integrations/current/presta/spef-net-names.txt`, **one name per line**
+  `integrations/<batchId>/presta/spef-net-names.txt`, **one name per line**
   (matching `tools/read-atcs.py`'s `precheck-evidence` reader, which parses
   that source as plain text, never JSON), and calls
   `verification.precheck_evidence(merge_commit, spef_net_names_path)` for
@@ -421,7 +449,8 @@ def _cmd_replay_prepare(workspace, args):
     validated_plan = integration.validate_plan(plan_raw, facts)
     request = integration.prepare_replay(validated_plan, facts, collected["contributions"])
 
-    output_root = workspace / "integrations" / "current"
+    batch_id = adapters.validate_path_segment(request.get("batchId"), "replay-request.batchId")
+    output_root = workspace / "integrations" / batch_id
     current_db = workspace / base_state["database"]["path"]
     task = adapters.compile_xtop_replay_task(str(current_db), base_state["top"], request.get("steps", []), output_root)
     Path(task["stepsPath"]).parent.mkdir(parents=True, exist_ok=True)
@@ -471,16 +500,17 @@ def _cmd_presta(workspace, args):
     `newNets` -- the same computation `implement` performs and persists for
     real; `presta` never writes `state/merge-commit.json` itself, so a
     second, real `seal_batch` call in `implement` is not a duplicate write,
-    only a duplicate (pure, side-effect-free) computation.
+    only a duplicate (pure, side-effect-free) computation. Its own id is
+    used as the `integrations/<batchId>/presta/` directory name (never a
+    mutable `current` directory, per architecture Sec.13.4).
 
-    T13 fix-round interface (`verification.precheck_evidence(merge_commit,
-    spef_net_names_path)`, per the controller's message -- not yet landed
-    at the time this call site was written; see this task's report "Call
-    sites pending reconciliation"). This subcommand writes the base SPEF's
-    net names to `integrations/current/presta/spef-net-names.json` (a JSON
-    array of strings) and passes *that path* as `spef_net_names_path`,
-    since the presumed contract is a plain, pre-extracted list file rather
-    than `precheck_evidence` itself parsing raw SPEF grammar.
+    Writes the base SPEF's net names to
+    `integrations/<batchId>/presta/spef-net-names.txt`, **plain text, one
+    name per line** (matching `tools/read-atcs.py`'s `precheck-evidence`
+    reader, which parses that source with `.splitlines()`, never JSON), and
+    passes that path to `verification.precheck_evidence(merge_commit,
+    spef_net_names_path)` -- which only hashes it, never parses or embeds
+    its content, so the Reader independently re-parses and re-hashes it.
     """
     base_state_path, scenario_corners_path, site_profile_path = args
     workspace = Path(workspace)
@@ -506,7 +536,8 @@ def _cmd_presta(workspace, args):
         "sdc": str(workspace / base_state["sdc"][0]["path"]) if base_state.get("sdc") else "",
         "spef": str(workspace / spef_ref["path"]),
     }
-    report_root = workspace / "integrations" / "current" / "presta"
+    batch_id = adapters.validate_path_segment(request.get("batchId"), "replay-request.batchId")
+    report_root = workspace / "integrations" / batch_id / "presta"
     task = adapters.compile_pt_presta_task(scenario, inputs, str(report_root))
     tcl_path = report_root / scenario / "pt-presta.tcl"
     tcl_path.parent.mkdir(parents=True, exist_ok=True)
@@ -554,12 +585,13 @@ def _cmd_implement(workspace, args):
     collected = _read_plain(_paths(workspace)["contributions_collected"])
 
     merge_commit = integration.seal_batch(integration_state, request, facts, collected["contributions"])
+    merge_id = adapters.validate_path_segment(merge_commit["id"], "merge-commit.id")
     _canonical_write(_paths(workspace)["merge_commit"], merge_commit)
-    _canonical_write(workspace / "implementations" / "current" / "merge-commit.json", merge_commit)
+    _canonical_write(workspace / "implementations" / merge_id / "merge-commit.json", merge_commit)
 
     design = current_state["top"]
     current_db = workspace / current_state["database"]["path"]
-    output_root = workspace / "implementations" / "current"
+    output_root = workspace / "implementations" / merge_id
     task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root))
 
     eco_path = Path(task["ecoPath"])
@@ -601,11 +633,14 @@ def _cmd_extract(workspace, args):
     corners = corners_doc.get("corners", [])
     if not corners:
         raise InputError("invalid-input", "corners must name at least one StarRC corner")
+    for corner in corners:
+        adapters.validate_path_segment(corner, "corners entry")
     site_profile = _read_plain(site_profile_path)
     implement = _read_plain(_paths(workspace)["implement"])
+    merge_id = adapters.validate_path_segment(implement.get("mergeCommitId"), "implement.mergeCommitId")
 
     def_path = workspace / implement["def"]["path"]
-    output_root = workspace / "implementations" / "current"
+    output_root = workspace / "implementations" / merge_id
     spef_out = {}
     for corner in corners:
         task = adapters.compile_starrc_task(implement["design"], corner, str(def_path), str(output_root))
@@ -635,12 +670,13 @@ def _cmd_sta(workspace, args):
     site_profile = _read_plain(site_profile_path)
     implement = _read_plain(_paths(workspace)["implement"])
     extract = _read_plain(_paths(workspace)["extract"])
+    merge_id = adapters.validate_path_segment(implement.get("mergeCommitId"), "implement.mergeCommitId")
 
     for scenario in adapters.REQUIRED_SCENARIOS:
         if scenario not in scenario_corners:
             raise InputError("invalid-input", f"scenario corners is missing {scenario!r}")
 
-    report_root = workspace / "implementations" / "current" / "sta"
+    report_root = workspace / "implementations" / merge_id / "sta"
     sta_receipts = {}
     sta_sources = {}
     for scenario in adapters.REQUIRED_SCENARIOS:
@@ -689,7 +725,7 @@ def _cmd_sta(workspace, args):
         parent_id=base_state["id"], root=str(workspace),
     )
     design_state = state.design_state(manifest)
-    _canonical_write(workspace / "implementations" / "current" / "design-state.json", design_state)
+    _canonical_write(workspace / "implementations" / merge_id / "design-state.json", design_state)
 
     # Called exactly once here: extraction (`extract.json`, already read
     # above) and all `REQUIRED_SCENARIOS`' STA (the loop above) have both
@@ -795,6 +831,7 @@ def _cmd_apr_prepare(workspace, args):
     (stage,) = args
     if stage not in APR_STAGES:
         raise InputError("invalid-input", f"stage must be one of {APR_STAGES}, got {stage!r}")
+    adapters.validate_path_segment(stage, "stage")  # whitelisted above; validated too, for defense in depth
     workspace = Path(workspace)
     residual_doc = _read_plain(_paths(workspace)["residual_cases"])
     readiness = _read_declared(_paths(workspace)["readiness"], "input-readiness")

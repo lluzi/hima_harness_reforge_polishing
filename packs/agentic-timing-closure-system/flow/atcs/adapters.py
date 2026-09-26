@@ -124,6 +124,34 @@ def tcl_safe(value, label):
     return value
 
 
+_PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def validate_path_segment(value, label):
+    """Return `value` unchanged, or raise `AtcsError("invalid-path-segment", ...)`.
+
+    Every artifact-derived value this module or `atcs_cli.py` turns into a
+    filesystem path *component* -- a corner, design, scenario or stage
+    name, a merge/batch id -- passes through here first: non-empty,
+    ``^[A-Za-z0-9_.-]+$``, and never exactly ``"."`` or ``".."`` (which
+    `Path.__truediv__`/`os.path.join` would otherwise silently honor as
+    "this directory"/"parent directory", letting a malformed or malicious
+    value climb outside the intended output root, or a newline/`;`/etc.
+    corrupt a generated Tcl/StarRC command file that later embeds the same
+    path). These values are Site/tool/Workshop output this module does not
+    otherwise trust -- fail-closed here, never sanitized-by-substitution.
+    """
+    if not isinstance(value, str) or value == "":
+        raise core.AtcsError("invalid-path-segment", f"{label} must be a non-empty string, got {value!r}")
+    if value in (".", ".."):
+        raise core.AtcsError("invalid-path-segment", f"{label} must not be '.' or '..', got {value!r}")
+    if not _PATH_SEGMENT_RE.match(value):
+        raise core.AtcsError(
+            "invalid-path-segment", f"{label} contains a character outside [A-Za-z0-9_.-]: {value!r}"
+        )
+    return value
+
+
 def tcl_quote(value):
     """Escape `value` for embedding inside a double-quoted Tcl string literal."""
     text = str(value)
@@ -232,9 +260,11 @@ def compile_pt_scenario_task(scenario, inputs, report_root, query_spec):
     `PBA_MODE` env vars exactly, never defaulted silently except `nworst`,
     which falls back to `DEFAULT_NWORST` when `query_spec` omits it.
     """
+    validate_path_segment(scenario, "scenario")
     for key in ("design", "netlist", "sdc", "spef"):
         if not inputs.get(key):
             raise core.AtcsError("missing-input", f"pt-scenario inputs for {scenario!r} are missing {key!r}")
+    validate_path_segment(inputs["design"], "design")
     max_paths = query_spec.get("maxPaths")
     if isinstance(max_paths, bool) or not isinstance(max_paths, int) or max_paths <= 0:
         raise core.AtcsError("missing-input", "query_spec.maxPaths must be a positive int")
@@ -374,9 +404,11 @@ def parse_path_detail(text):
 
 def compile_pt_presta_task(scenario, inputs, report_root):
     """One `pt-presta.tcl` task -- see module docstring and `pt-presta.tcl` for scope."""
+    validate_path_segment(scenario, "scenario")
     for key in ("design", "netlist", "sdc", "spef"):
         if not inputs.get(key):
             raise core.AtcsError("missing-input", f"presta inputs for {scenario!r} are missing {key!r}")
+    validate_path_segment(inputs["design"], "design")
     env = {
         "DESIGN": inputs["design"], "NETLIST": inputs["netlist"], "INPUT_SDC": inputs["sdc"],
         "SPEF": inputs["spef"], "SCENARIO": scenario, "REPORT_ROOT": str(report_root),
@@ -405,24 +437,50 @@ def parse_spef_net_names(text):
 # ---------------------------------------------------------------------------
 
 
+def _is_within(path, root):
+    """True when `path` (already resolved) is `root` itself or nested under it."""
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
 def compile_starrc_task(design, corner, def_path, output_root, template_text=None):
     """One StarXtract command-file task for `corner`.
 
     Always allocates a fresh, private `STAR_DIRECTORY`
     (``<output_root>/starrc/<corner>/work``) -- raises
-    `AtcsError("invalid-workspace", ...)` if that would coincide with the
-    input DEF's own directory, so a StarRC run can never write into a
-    read-only input's directory. `template_text` is the Site-supplied base
+    `AtcsError("invalid-workspace", ...)` unless the *resolved* work
+    directory is inside `output_root` and is not itself the input DEF's own
+    directory or nested inside it, so a StarRC run can never write into a
+    read-only input's directory (checked by actual containment, not just
+    exact-path equality, so a work dir a few levels under the DEF's own
+    directory is caught too). `template_text` is the Site-supplied base
     command file for this corner (see `starrc.cmd`'s own docstring); the
     Pack's shipped `starrc.cmd` is used as a fallback when omitted.
+
+    `design` and `corner` are validated via `validate_path_segment` before
+    either is used to build a filesystem path or a StarXtract output
+    filename below.
     """
+    validate_path_segment(design, "design")
+    validate_path_segment(corner, "corner")
     output_root = Path(output_root)
     work_dir = output_root / "starrc" / corner / "work"
     cmd_path = output_root / "starrc" / corner / f"{corner}.cmd"
     spef_path = output_root / "starrc" / corner / f"{design}.{corner}.spef"
     def_path_obj = Path(def_path)
-    if def_path_obj.parent.resolve() == work_dir.resolve():
-        raise core.AtcsError("invalid-workspace", "StarRC work dir may not be the input DEF's own directory")
+
+    output_root_resolved = output_root.resolve()
+    work_dir_resolved = work_dir.resolve()
+    def_dir_resolved = def_path_obj.parent.resolve()
+    if not _is_within(work_dir_resolved, output_root_resolved):
+        raise core.AtcsError("invalid-workspace", f"StarRC work dir must be inside output_root: {work_dir_resolved}")
+    if _is_within(work_dir_resolved, def_dir_resolved):
+        raise core.AtcsError(
+            "invalid-workspace", "StarRC work dir may not be the input DEF's own directory, or nested inside it"
+        )
 
     text = template_text if template_text is not None else load_template("starrc.cmd")
     changes = {
@@ -455,6 +513,7 @@ def compile_starrc_tasks(design, corners, def_path, output_root, templates=None)
 
 def compile_innovus_export_task(current_db_path, design, output_root):
     """One `innovus-export.tcl` task: restore `current_db_path`, no ECO, export + physical evidence."""
+    validate_path_segment(design, "design")
     output_root = Path(output_root)
     env = {"CURRENT_DB": str(current_db_path), "DESIGN": design, "OUTPUT_ROOT": str(output_root)}
     tcl = compile_task("innovus-export.tcl", env=env)
@@ -475,6 +534,7 @@ def compile_innovus_eco_task(merge_commit, current_db_path, design, output_root)
     ``implementations/<mergeId>/`` (architecture Sec.13.4) -- every output
     path this function returns is computed under it, never elsewhere.
     """
+    validate_path_segment(design, "design")
     eco_text = merge_commit.get("innovusEcoTcl")
     if not eco_text:
         raise core.AtcsError("missing-input", "merge commit has no innovusEcoTcl")
@@ -511,6 +571,7 @@ def compile_xtop_operator_task(workspace_manifest, design, tech_lef, cell_lef_gl
     Step-1 requirement) so the Site's PTY wrapper can bind the launched
     session to the worker slot it belongs to.
     """
+    validate_path_segment(design, "design")
     name_prefix = workspace_manifest.get("namePrefix")
     if not name_prefix:
         raise core.AtcsError("missing-input", "workspace manifest has no namePrefix")
@@ -558,6 +619,7 @@ def compile_xtop_replay_task(current_db_path, design, steps, output_root):
     `receipts.jsonl` + cell dumps into the `[{"stepId","status",
     "observedDelta"}]` shape `atcs.integration.reconcile` expects.
     """
+    validate_path_segment(design, "design")
     output_root = Path(output_root)
     dump_dir = output_root / "dumps"
     receipts_log = output_root / "receipts.jsonl"
