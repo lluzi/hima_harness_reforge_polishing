@@ -26,12 +26,14 @@ contributions, M5 replays them), so it must be refused — but still
 returned, never raised away — when the declared operation trace, the
 actual delta and the declared scope disagree. Fail-closed applies only to
 genuinely *unusable* inputs: `seal` raises `AtcsError` for an unreadable
-dump/script file, a malformed operations log, or a `base_ref` whose three
-parts (`stateId`, `workspaceManifest`, `workPackage`) do not agree with
-each other. Everything else that can go wrong with the *content* of an
-otherwise-readable trace (trace/delta mismatch, out-of-scope edits, a
-buffer name missing its workspace prefix, a `no-fix` with no diagnosis) is
-recorded as a sealed-but-inadmissible contribution (`admissible: False`,
+dump/script file, a malformed operations log, a script path that resolves
+outside its own workspace root, or a `base_ref` whose three parts
+(`stateId`, `workspaceManifest`, `workPackage`) do not agree with each
+other. Everything else that can go wrong with the *content* of an
+otherwise-readable trace (trace/delta mismatch, a precondition the
+replayed state does not actually hold, out-of-scope edits, a buffer name
+missing its workspace prefix, a `no-fix` with no diagnosis) is recorded as
+a sealed-but-inadmissible contribution (`admissible: False`,
 `refusals[]`), so a Reader can still count it (``tc_ready_contribution_count``
 per `SPEC.md` reads `admissible`).
 
@@ -49,7 +51,14 @@ One JSON object per ``ops.jsonl`` line, one of::
 
 Any op may also carry an optional integer ``"group"`` field (see
 "Atomic groups" below); unrecognized extra fields are otherwise passed
-through untouched, never stripped.
+through untouched, never stripped. Every string-shaped field above
+(`instance`, `fromMaster`, `toMaster`, `net`, `newInstance`, `newNet`,
+`master`, each `loadPins` entry, `action`, `detail`) must be a non-empty
+string; `location` must be JSON `null` or exactly two finite numbers;
+`region` must be exactly four finite numbers; `group`, when present, must
+be a plain `int` (not `bool`, not a `float`). `parse_ops_log` rejects any
+violation as `AtcsError("malformed-ops-log", ...)` — a shape a downstream
+consumer could not safely use is never silently passed through.
 
 ``base_ref`` shape (binding for `seal`)
 ------------------------------------------
@@ -84,6 +93,7 @@ is never merely recorded as a refusal.
         },  # optional; any/all keys may be absent
         "diagnosis": "<str>" | None,
         "cones": [...],  # optional, default []
+        "dependencies": ["<contribution id>", ...],  # optional, default []
     }
 
 `beforeDump`/`afterDump` are file paths because `seal` must read the
@@ -91,6 +101,25 @@ is never merely recorded as a refusal.
 `knowledge/contribution-and-merge.md`: "结构化操作描述负责比较和前置
 条件；源脚本与原生状态负责核实，不能让模型摘要替代真实 diff." An
 unreadable dump or script file is `AtcsError("missing-input", ...)`.
+`beforeDump`'s own bytes are also hashed into `beforeDumpSha256` on the
+sealed contribution, so M4 can check that two contributions claiming the
+same `baseStateId` actually started from the same native state, not just
+the same declared id.
+
+`script`, when given, is stored on the contribution with its `path`
+rewritten to be **campaign-relative** — everything from
+`workspaceManifest["root"]` onward in its resolved filesystem path — so
+`contribution["id"]` never depends on where the campaign happens to be
+checked out on disk. A script path that does not resolve to somewhere
+under its own workspace root is `AtcsError("missing-input", ...)`: a
+script from outside the workspace the manifest describes is not evidence
+this contribution can stand on.
+
+`dependencies` (optional) is copied straight onto the sealed contribution
+as a sorted, de-duplicated list of `str` ids — the *revisions this one
+builds on*, supplied by the caller (e.g. a resubmission after M4/M5 asked
+for a revised contribution). `seal` never infers dependencies on its own;
+cross-contribution dependency *detection* is M4's `analyze` job.
 
 ``operation_trace`` is the raw ``ops.jsonl`` text (not a path) — `seal`
 parses it itself via `parse_ops_log`, so a malformed trace surfaces as
@@ -103,12 +132,19 @@ An operation's touched instance is in scope when it is a member of the
 work package's ``editDomain.instances``; for `insert_buffer` there is no
 existing instance to check, so scope instead asks whether the buffered
 `net` is a member of ``editDomain.nets``, and the newly-created instance
-inherits that op's scope verdict. `pg_local_adjust` has neither an
-`instance` nor a `net` field and is deliberately not scope-checked here —
-its objects are regions, not cell-dump entries, and this task's brief does
-not specify a region-based scope rule for it. Every out-of-scope object
-found is collected into `outOfScope` and also turns into one
-`"out-of-scope"` refusal (so `admissible` is `False`).
+inherits that op's scope verdict. A `pg_local_adjust`'s `region` is in
+scope when it is fully contained (all four coordinates) inside at least
+one of `editDomain.regions`' boxes — a region only partially overlapping,
+or outside all of them, is out of scope. Independently of all of the
+above, **every** op's own kind must be a member of `workPackage.actions`
+— this is the same gate M2's `validate_work_package` applies to the whole
+package (e.g. `pg_local_adjust` needing `siteCapabilities.pgVerification`
+to even be a declared action), re-checked here per-op because a specific
+trace can still emit an op kind the *package* never declared. Every
+out-of-scope object found (an instance, a `pg_local_adjust` region, or an
+op whose kind is not a declared action) is collected into `outOfScope`
+and also turns into one `"out-of-scope"` refusal (so `admissible` is
+`False`).
 
 Atomic groups
 -------------
@@ -118,14 +154,28 @@ Two independent ways an atomic group is recorded, per
 task's Decisions:
 
 1. **Explicit**: any ops carrying the same integer ``"group"`` field form
-   one atomic group, regardless of position in the trace.
-2. **Implicit**: an `insert_buffer` operation immediately followed (next
-   line in the trace) by a `size_cell` operation on that same
-   `insert_buffer`'s own `newInstance` — i.e. sizing the buffer you just
-   inserted, its new driver role for the net it now drives — is one
-   atomic group. This detection only applies to a pair where *neither* op
-   already carries an explicit `"group"` field (an explicit annotation
-   always wins over the inferred pattern).
+   one atomic group, regardless of position in the trace. Explicit
+   grouping always wins: an op with a `"group"` field is never also
+   folded into an implicit group below.
+2. **Implicit**: every `size_cell`/`delete_buffer` operation that targets
+   an instance created earlier in the *same trace* by an `insert_buffer`
+   joins one atomic group together with that creating `insert_buffer` —
+   regardless of how far apart they are in the trace, and regardless of
+   how many such later operations there are (they all join the same
+   group as the one creating op). This is "sizing/deleting the buffer you
+   just inserted"; it is unaffected by adjacency because a worker's trace
+   may interleave unrelated operations between creating an object and
+   later touching it.
+
+Grouping an *upstream driver* with an insertion — e.g. resizing the
+pre-existing gate that used to drive a net, once a buffer now sits
+between it and its loads — is a different relationship: the operation
+schema has no `driver` field connecting a `size_cell` on a pre-existing
+instance to a particular `insert_buffer` on the net it drives, so this
+module has no way to infer that relationship from the trace alone. That
+kind of atomic grouping can only be expressed by both ops carrying the
+same explicit `"group"` value; this is a controller decision, not an
+oversight.
 
 Each group is `[opIndex, ...]`, indices into the sealed `operations` list.
 
@@ -136,28 +186,48 @@ A precondition records what the *base* state (not any intermediate,
 in-trace state) must show for the whole trace to still validly apply:
 `{"instance": "<inst>", "master": "<master the base dump must show>"}`.
 Only the *first* time an instance is referenced by `size_cell.fromMaster`
-or `delete_buffer.master` contributes a precondition — a later op on the
-same instance depends on this trace's own earlier effect, not on the base
-dump, so it is not a fresh precondition (that dependency is captured by
-`implied_delta` replaying the trace in order instead).
+or `delete_buffer.master` contributes a precondition, and an instance
+*created* by this trace's own `insert_buffer` never contributes one at
+all (even on a later `size_cell`/`delete_buffer`) — it does not exist in
+the base dump, so there is nothing there to precondition on. A later op
+on an instance already seen (whether from an earlier op in this trace or
+from this trace's own `insert_buffer`) depends on this trace's own
+earlier effect, not on the base dump; that dependency is what
+`implied_delta`'s in-order replay (and its precondition-mismatch check
+below) captures instead.
 
-Delta
------
+Delta and replay validation
+----------------------------
 
 `delta` is always `actual_delta(before, after)` — the real object-level
 diff of the two dumps, exactly as `AGENTIC_TIMING_CLOSURE_SYSTEM_ARCHITECTURE.zh-CN.md`
 §5.2 requires: bounded by the common base, never inferred from log length.
-`implied_delta(operations, before)` independently replays the trace
-in order against `before` (`size_cell` overwrites the target's master,
+`implied_delta(operations, before)` independently replays the trace in
+order against `before` (`size_cell` overwrites the target's master,
 `insert_buffer` adds `newInstance` with `master`, `delete_buffer` removes
 `instance`; `pg_local_adjust` has no cell-master effect) and diffs the
 resulting state against `before` the same way. When the two deltas
 disagree, the trace does not actually explain the real change, so `seal`
-records a `"trace-mismatch"` refusal.
+records a `"trace-mismatch"` refusal — its detail text serializes both
+deltas via `core.canonical` (sorted keys) so that two dumps whose lines
+were merely written in a different order still produce the *same*
+refusal text, and therefore the same contribution `id`.
+
+The same in-order replay also validates each op against the state it
+actually finds, not just the state it declares: a `size_cell` whose
+`instance` is absent from the running state, or present with a master
+other than that op's own `fromMaster`; a `delete_buffer` the same way
+against `master`; or an `insert_buffer` whose `newInstance` is *already*
+present in the running state. Each such disagreement adds one
+`"precondition-mismatch"` refusal — the op's own declared effect is still
+applied to the replayed state regardless (so `implied_delta` stays
+comparable to the actual delta even for a trace with a stale
+precondition), but the contribution is inadmissible.
 """
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 from . import core
@@ -170,21 +240,92 @@ OPERATION_FIELDS = {
     "pg_local_adjust": ("region", "action", "detail"),
 }
 
+STRING_FIELDS = {
+    "size_cell": ("instance", "fromMaster", "toMaster"),
+    "insert_buffer": ("net", "newInstance", "newNet", "master"),
+    "delete_buffer": ("instance", "master"),
+    "pg_local_adjust": ("action", "detail"),
+}
+
 PREDICTED_KEYS = ("xtopSetupWns", "xtopHoldWns", "prestaSetupWns", "prestaHoldWns")
+
+
+def _is_nonempty_string(value):
+    return isinstance(value, str) and value != ""
+
+
+def _is_finite_number(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return not (math.isnan(value) or math.isinf(value))
+
+
+def _is_plain_int(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_operation_shape(record, op_kind, line_number):
+    """Type-check `record`'s fields for `op_kind`; raise `AtcsError("malformed-ops-log", ...)`."""
+    for field in STRING_FIELDS.get(op_kind, ()):
+        if not _is_nonempty_string(record[field]):
+            raise core.AtcsError(
+                "malformed-ops-log",
+                f"line {line_number}: {op_kind}.{field} must be a non-empty string, got {record[field]!r}",
+            )
+
+    if op_kind == "insert_buffer":
+        load_pins = record["loadPins"]
+        if not isinstance(load_pins, list) or not all(_is_nonempty_string(pin) for pin in load_pins):
+            raise core.AtcsError(
+                "malformed-ops-log",
+                f"line {line_number}: insert_buffer.loadPins must be a list of non-empty strings, "
+                f"got {load_pins!r}",
+            )
+        location = record["location"]
+        if location is not None:
+            if (
+                not isinstance(location, (list, tuple))
+                or len(location) != 2
+                or not all(_is_finite_number(coord) for coord in location)
+            ):
+                raise core.AtcsError(
+                    "malformed-ops-log",
+                    f"line {line_number}: insert_buffer.location must be null or [x, y] finite "
+                    f"numbers, got {location!r}",
+                )
+
+    if op_kind == "pg_local_adjust":
+        region = record["region"]
+        if (
+            not isinstance(region, (list, tuple))
+            or len(region) != 4
+            or not all(_is_finite_number(coord) for coord in region)
+        ):
+            raise core.AtcsError(
+                "malformed-ops-log",
+                f"line {line_number}: pg_local_adjust.region must be 4 finite numbers, got {region!r}",
+            )
+
+    if "group" in record and not _is_plain_int(record["group"]):
+        raise core.AtcsError(
+            "malformed-ops-log", f"line {line_number}: group must be an int, got {record['group']!r}"
+        )
 
 
 def parse_ops_log(text):
     """Parse ``ops.jsonl`` text into a list of operation dicts.
 
     Each non-blank line must be a JSON object whose ``"op"`` is one of
-    `OPERATION_FIELDS` and which carries every field that op kind requires
+    `OPERATION_FIELDS`, which carries every field that op kind requires
     (``"location"`` may be JSON ``null`` for `insert_buffer` — it only has
-    to be *present*, not non-null). Extra fields (e.g. an optional
-    ``"group"`` int) are passed through untouched.
+    to be *present*, not non-null), and whose fields pass
+    `_validate_operation_shape` (see module docstring for the exact
+    shape rules). Extra fields (e.g. an optional ``"group"`` int) are
+    passed through untouched.
 
     Raises `AtcsError`:
-    - ``"malformed-ops-log"`` — a line is not valid JSON, or not a JSON
-      object.
+    - ``"malformed-ops-log"`` — a line is not valid JSON, not a JSON
+      object, or fails a field's shape/type check.
     - ``"unknown-op"`` — a line's ``"op"`` is not one of `OPERATION_FIELDS`.
     - ``"missing-input"`` — a line is missing one of its op kind's
       required fields.
@@ -214,6 +355,8 @@ def parse_ops_log(text):
             raise core.AtcsError(
                 "missing-input", f"line {line_number}: {op_kind} missing field(s) {missing}"
             )
+
+        _validate_operation_shape(record, op_kind, line_number)
 
         if op_kind == "insert_buffer":
             new_instance = record["newInstance"]
@@ -274,24 +417,74 @@ def actual_delta(before, after):
     return {"mastersChanged": masters_changed, "added": added, "removed": removed}
 
 
-def _apply_operations(operations, before):
-    """Replay `operations` in order against `before`; return the implied final state."""
+def _replay_operations(operations, before):
+    """Replay `operations` in order against `before`.
+
+    Returns `(state, precondition_mismatches)`. `state` is the implied
+    final instance->master mapping, built *optimistically*: even when a
+    precondition below does not hold, the op's own declared effect is
+    still applied, so `implied_delta` stays comparable to the actual
+    delta even for a mismatched trace. `precondition_mismatches` is a
+    list of `{"opIndex", "instance", "detail"}` dicts — see the module
+    docstring's "Delta and replay validation" section for the exact rule
+    per op kind.
+    """
     state = dict(before)
-    for op in operations:
+    mismatches = []
+    for index, op in enumerate(operations):
         op_kind = op.get("op")
         if op_kind == "size_cell":
-            state[op["instance"]] = op["toMaster"]
+            instance = op["instance"]
+            current = state.get(instance)
+            if instance not in state or current != op["fromMaster"]:
+                mismatches.append(
+                    {
+                        "opIndex": index,
+                        "instance": instance,
+                        "detail": (
+                            f"size_cell op {index}: instance {instance!r} expected prior master "
+                            f"{op['fromMaster']!r}, replayed state has {current!r}"
+                        ),
+                    }
+                )
+            state[instance] = op["toMaster"]
         elif op_kind == "insert_buffer":
-            state[op["newInstance"]] = op["master"]
+            new_instance = op["newInstance"]
+            if new_instance in state:
+                mismatches.append(
+                    {
+                        "opIndex": index,
+                        "instance": new_instance,
+                        "detail": (
+                            f"insert_buffer op {index}: newInstance {new_instance!r} is already "
+                            f"present in the replayed state"
+                        ),
+                    }
+                )
+            state[new_instance] = op["master"]
         elif op_kind == "delete_buffer":
-            state.pop(op["instance"], None)
-        # pg_local_adjust has no cell-master effect.
-    return state
+            instance = op["instance"]
+            current = state.get(instance)
+            if instance not in state or current != op["master"]:
+                mismatches.append(
+                    {
+                        "opIndex": index,
+                        "instance": instance,
+                        "detail": (
+                            f"delete_buffer op {index}: instance {instance!r} expected prior master "
+                            f"{op['master']!r}, replayed state has {current!r}"
+                        ),
+                    }
+                )
+            state.pop(instance, None)
+        # pg_local_adjust has no cell-master effect and nothing to validate here.
+    return state, mismatches
 
 
 def implied_delta(operations, before):
     """The `delta` the operation trace *says* should happen, replayed from `before`."""
-    return actual_delta(before, _apply_operations(operations, before))
+    state, _mismatches = _replay_operations(operations, before)
+    return actual_delta(before, state)
 
 
 def _require(mapping, key, label):
@@ -307,15 +500,23 @@ def _read_text(path, label):
         raise core.AtcsError("missing-input", f"cannot read {label} at {path}: {exc}") from exc
 
 
+def _normalize_measure(measure):
+    """A Measure with exactly one key and (if `value`) a finite number; `unknown` otherwise."""
+    if not isinstance(measure, dict) or len(measure) != 1:
+        return core.unknown("not-predicted")
+    if "unknown" in measure:
+        return measure
+    if "value" in measure:
+        value = measure["value"]
+        if _is_finite_number(value):
+            return measure
+        return core.unknown(f"non-finite-value: {value!r}")
+    return core.unknown("not-predicted")
+
+
 def _predicted_measures(predicted_in):
     predicted_in = predicted_in if isinstance(predicted_in, dict) else {}
-    predicted = {}
-    for key in PREDICTED_KEYS:
-        measure = predicted_in.get(key)
-        if isinstance(measure, dict) and ("value" in measure or "unknown" in measure):
-            predicted[key] = measure
-        else:
-            predicted[key] = core.unknown("not-predicted")
+    predicted = {key: _normalize_measure(predicted_in.get(key)) for key in PREDICTED_KEYS}
 
     has_presta = any(core.is_known(predicted[key]) for key in ("prestaSetupWns", "prestaHoldWns"))
     has_xtop = any(core.is_known(predicted[key]) for key in ("xtopSetupWns", "xtopHoldWns"))
@@ -328,8 +529,15 @@ def _predicted_measures(predicted_in):
     return predicted, validation_level
 
 
+def _dependencies(result_refs):
+    raw = result_refs.get("dependencies")
+    raw = raw if isinstance(raw, list) else []
+    return sorted({str(dependency) for dependency in raw})
+
+
 def _atomic_groups(operations):
-    """Explicit ``"group"``-tagged ops, plus implicit insert+size-its-driver pairs."""
+    """Explicit ``"group"``-tagged ops, plus every op on a trace-created instance
+    joined with that instance's creating `insert_buffer` (see module docstring)."""
     explicit_by_group = {}
     explicit_order = []
     for index, op in enumerate(operations):
@@ -344,17 +552,24 @@ def _atomic_groups(operations):
     explicit_indices = {index for indices in explicit_by_group.values() for index in indices}
     atomic_groups = [sorted(explicit_by_group[group_id]) for group_id in explicit_order]
 
-    for index in range(len(operations) - 1):
-        if index in explicit_indices or (index + 1) in explicit_indices:
+    creator_index_by_instance = {}
+    for index, op in enumerate(operations):
+        if op.get("op") == "insert_buffer" and index not in explicit_indices:
+            creator_index_by_instance[op["newInstance"]] = index
+
+    implicit_members_by_creator = {}
+    for index, op in enumerate(operations):
+        if index in explicit_indices:
             continue
-        current_op = operations[index]
-        next_op = operations[index + 1]
-        if (
-            current_op.get("op") == "insert_buffer"
-            and next_op.get("op") == "size_cell"
-            and next_op.get("instance") == current_op.get("newInstance")
-        ):
-            atomic_groups.append([index, index + 1])
+        if op.get("op") not in ("size_cell", "delete_buffer"):
+            continue
+        creator_index = creator_index_by_instance.get(op.get("instance"))
+        if creator_index is None or creator_index == index:
+            continue
+        implicit_members_by_creator.setdefault(creator_index, {creator_index}).add(index)
+
+    for creator_index in sorted(implicit_members_by_creator):
+        atomic_groups.append(sorted(implicit_members_by_creator[creator_index]))
 
     return atomic_groups
 
@@ -364,12 +579,18 @@ def _preconditions(operations):
     seen = set()
     for op in operations:
         op_kind = op.get("op")
-        if op_kind == "size_cell" and op["instance"] not in seen:
-            preconditions.append({"instance": op["instance"], "master": op["fromMaster"]})
+        if op_kind == "size_cell":
+            if op["instance"] not in seen:
+                preconditions.append({"instance": op["instance"], "master": op["fromMaster"]})
             seen.add(op["instance"])
-        elif op_kind == "delete_buffer" and op["instance"] not in seen:
-            preconditions.append({"instance": op["instance"], "master": op["master"]})
+        elif op_kind == "delete_buffer":
+            if op["instance"] not in seen:
+                preconditions.append({"instance": op["instance"], "master": op["master"]})
             seen.add(op["instance"])
+        elif op_kind == "insert_buffer":
+            # A trace-created instance is never preconditioned on the base
+            # dump — mark it seen so a later op on it adds no precondition.
+            seen.add(op["newInstance"])
     return preconditions
 
 
@@ -389,41 +610,63 @@ def _touches(operations, work_package, result_refs):
             if location is not None:
                 x, y = location
                 regions.append([x, y, x, y])
+        elif op_kind == "pg_local_adjust":
+            regions.append(list(op["region"]))
 
     edit_domain = work_package.get("editDomain") or {}
     regions.extend(edit_domain.get("regions") or [])
+
+    checks = set(work_package.get("targets") or []) | set(work_package.get("mayAffect") or [])
 
     return {
         "instances": sorted(instances),
         "nets": sorted(nets),
         "regions": regions,
-        "checks": list(work_package.get("targets") or []),
+        "checks": sorted(checks),
         "cones": list(result_refs.get("cones") or []),
     }
 
 
-def _scope_check(operations, work_package, name_prefix):
-    """Return `(out_of_scope, refusals)` for `operations` against `work_package.editDomain`.
+def _region_contained(region, container):
+    x1, y1, x2, y2 = region
+    cx1, cy1, cx2, cy2 = container
+    return cx1 <= x1 and cy1 <= y1 and x2 <= cx2 and y2 <= cy2
 
-    Two passes: the first records, for every `insert_buffer`, whether its
-    new instance is in scope (its `net` is in `editDomain.nets`) — this is
-    "a new instance is in scope when its op is in scope" from the module
-    docstring's Scope rule. The second pass checks `size_cell`/
-    `delete_buffer` targets: an instance created earlier in *this same
-    trace* is judged by that recorded verdict, never by
-    `editDomain.instances` membership (a freshly-inserted buffer was never
-    going to be enumerated there — it did not exist in the base design).
-    Any other `size_cell`/`delete_buffer` target must be in
-    `editDomain.instances` directly.
+
+def _op_identifier(op):
+    """A stable, human-readable label for the object an op touches (for `outOfScope`)."""
+    op_kind = op.get("op")
+    if op_kind in ("size_cell", "delete_buffer"):
+        return op.get("instance")
+    if op_kind == "insert_buffer":
+        return op.get("newInstance")
+    if op_kind == "pg_local_adjust":
+        return f"region:{list(op.get('region') or [])}"
+    return f"op:{op_kind}"
+
+
+def _scope_check(operations, work_package, name_prefix):
+    """Return `(out_of_scope, refusals)` for `operations` against `work_package`.
+
+    See the module docstring's "Scope rule" section for the full contract:
+    editDomain instance/net membership, `pg_local_adjust` region
+    containment, and the independent "op kind must be a declared action"
+    gate.
     """
     edit_domain = work_package.get("editDomain") or {}
     edit_instances = set(edit_domain.get("instances") or [])
     edit_nets = set(edit_domain.get("nets") or [])
+    edit_regions = edit_domain.get("regions") or []
+    allowed_actions = set(work_package.get("actions") or [])
 
     out_of_scope = []
     refusals = []
-    new_instance_in_scope = {}
 
+    for op in operations:
+        if op.get("op") not in allowed_actions:
+            out_of_scope.append(_op_identifier(op))
+
+    new_instance_in_scope = {}
     for op in operations:
         if op.get("op") != "insert_buffer":
             continue
@@ -442,15 +685,17 @@ def _scope_check(operations, work_package, name_prefix):
 
     for op in operations:
         op_kind = op.get("op")
-        if op_kind not in ("size_cell", "delete_buffer"):
-            continue
-        instance = op["instance"]
-        if instance in new_instance_in_scope:
-            if not new_instance_in_scope[instance]:
+        if op_kind in ("size_cell", "delete_buffer"):
+            instance = op["instance"]
+            if instance in new_instance_in_scope:
+                if not new_instance_in_scope[instance]:
+                    out_of_scope.append(instance)
+            elif instance not in edit_instances:
                 out_of_scope.append(instance)
-        elif instance not in edit_instances:
-            out_of_scope.append(instance)
-        # pg_local_adjust: not scope-checked (see module docstring).
+        elif op_kind == "pg_local_adjust":
+            region = op["region"]
+            if not any(_region_contained(region, container) for container in edit_regions):
+                out_of_scope.append(_op_identifier(op))
 
     if out_of_scope:
         refusals.append(
@@ -460,16 +705,32 @@ def _scope_check(operations, work_package, name_prefix):
     return sorted(set(out_of_scope)), refusals
 
 
+def _campaign_relative_path(path, manifest):
+    """Rewrite `path`'s resolved form to start at `manifest["root"]`; refuse if it never does."""
+    root = (manifest.get("root") or "").strip("/")
+    if not root:
+        raise core.AtcsError("missing-input", "workspaceManifest.root")
+    root_parts = Path(root).parts
+    resolved_parts = Path(path).resolve().parts
+    window = len(root_parts)
+    for start in range(len(resolved_parts) - window, -1, -1):
+        if resolved_parts[start : start + window] == root_parts:
+            return "/".join(resolved_parts[start:])
+    raise core.AtcsError("missing-input", f"script path {path} is outside workspace root {root}")
+
+
 def seal(base_ref, result_refs, operation_trace):
     """Seal a worker's real tool work into a ``contribution`` artifact.
 
     Raises `AtcsError` only for unusable inputs: an unreadable dump or
-    script file, a malformed `operation_trace`, or a `base_ref` whose
-    three parts disagree with each other. Every other problem (trace vs.
-    actual delta mismatch, out-of-scope edits, a buffer name missing its
-    workspace prefix, a `no-fix` with no diagnosis) is recorded on the
-    returned, still-stamped contribution as `admissible: False` plus
-    `refusals[]` — see the module docstring for the full contract.
+    script file, a script path outside its own workspace root, a
+    malformed `operation_trace`, or a `base_ref` whose three parts
+    disagree with each other. Every other problem (trace vs. actual delta
+    mismatch, a stale precondition, out-of-scope edits, a buffer name
+    missing its workspace prefix, a `no-fix` with no diagnosis) is
+    recorded on the returned, still-stamped contribution as
+    `admissible: False` plus `refusals[]` — see the module docstring for
+    the full contract.
     """
     manifest = _require(base_ref, "workspaceManifest", "base_ref")
     work_package = _require(base_ref, "workPackage", "base_ref")
@@ -501,25 +762,39 @@ def seal(base_ref, result_refs, operation_trace):
     after_path = _require(result_refs, "afterDump", "result_refs")
     before = parse_cell_dump(_read_text(before_path, "beforeDump"))
     after = parse_cell_dump(_read_text(after_path, "afterDump"))
+    before_dump_sha256 = _dump_sha256(before_path, "beforeDump")
 
     script_path = result_refs.get("script")
     script = None
     if script_path is not None:
-        script = {"path": str(script_path), "sha256": _script_sha256(script_path)}
+        script = {
+            "path": _campaign_relative_path(script_path, manifest),
+            "sha256": _script_sha256(script_path),
+        }
 
     kind = "fix" if operations else "no-fix"
 
     out_of_scope, refusals = _scope_check(operations, work_package, name_prefix)
 
     delta = actual_delta(before, after)
-    implied = implied_delta(operations, before)
+    implied_state, precondition_mismatches = _replay_operations(operations, before)
+    implied = actual_delta(before, implied_state)
+    for mismatch in precondition_mismatches:
+        refusals.append({"code": "precondition-mismatch", "detail": mismatch["detail"]})
     if delta != implied:
         refusals.append(
-            {"code": "trace-mismatch", "detail": f"implied delta {implied} != actual delta {delta}"}
+            {
+                "code": "trace-mismatch",
+                "detail": (
+                    f"implied delta {core.canonical(implied).decode('utf-8')} != "
+                    f"actual delta {core.canonical(delta).decode('utf-8')}"
+                ),
+            }
         )
 
     diagnosis = result_refs.get("diagnosis")
-    if kind == "no-fix" and not diagnosis:
+    diagnosis_text = diagnosis.strip() if isinstance(diagnosis, str) else ""
+    if kind == "no-fix" and not diagnosis_text:
         refusals.append({"code": "no-diagnosis", "detail": "a no-fix contribution requires a diagnosis"})
 
     predicted, validation_level = _predicted_measures(result_refs.get("predicted"))
@@ -531,10 +806,11 @@ def seal(base_ref, result_refs, operation_trace):
         "kind": kind,
         "operations": operations,
         "script": script,
+        "beforeDumpSha256": before_dump_sha256,
         "delta": delta,
         "touches": _touches(operations, work_package, result_refs),
         "preconditions": _preconditions(operations),
-        "dependencies": [],
+        "dependencies": _dependencies(result_refs),
         "atomicGroups": _atomic_groups(operations),
         "predicted": predicted,
         "validationLevel": validation_level,
@@ -544,6 +820,13 @@ def seal(base_ref, result_refs, operation_trace):
         "outOfScope": out_of_scope,
     }
     return core.stamp("contribution", body)
+
+
+def _dump_sha256(path, label):
+    try:
+        return core.file_sha256(path)
+    except OSError as exc:
+        raise core.AtcsError("missing-input", f"cannot read {label} at {path}: {exc}") from exc
 
 
 def _script_sha256(path):
