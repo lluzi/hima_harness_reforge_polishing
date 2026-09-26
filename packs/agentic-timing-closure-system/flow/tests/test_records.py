@@ -343,15 +343,18 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
         self.assertTrue(tool_written)
         self.assertEqual(sorted(set(tool_written) - written), [], "contract.yml declares tool outputs atcs_cli.py never writes")
 
-    def test_graph_apr_stage_is_one_the_next_decision_reader_admits(self):
-        """apr-prepare/apr-run take the stage as a literal; the Reader must refuse any other stage."""
-        stages = set(re.findall(r"STAGE: ([a-z]+)", GRAPH_PATH.read_text(encoding="utf-8")))
-        self.assertTrue(stages, "graph.yml binds no APR stage")
+    def test_next_decision_reader_admits_exactly_the_cli_apr_stages(self):
+        """apr-prepare reads the stage from the admitted next-decision, so the two lists must agree."""
+        import ast
+
+        cli = (PACK_ROOT / "flow" / "atcs_cli.py").read_text(encoding="utf-8")
         reader = (PACK_ROOT / "tools" / "read-atcs.py").read_text(encoding="utf-8")
-        executable = re.search(r"^_EXECUTABLE_APR_STAGES = \(([^)]*)\)", reader, re.M)
-        self.assertIsNotNone(executable)
-        admitted = set(re.findall(r'"([a-z]+)"', executable.group(1)))
-        self.assertEqual(stages, admitted)
+        cli_stages = re.search(r"^APR_STAGES = (\([^)]*\))", cli, re.M)
+        reader_stages = re.search(r"^_APR_STAGES = (\([^)]*\))", reader, re.M)
+        self.assertIsNotNone(cli_stages)
+        self.assertIsNotNone(reader_stages)
+        self.assertEqual(ast.literal_eval(reader_stages.group(1)), ast.literal_eval(cli_stages.group(1)))
+        self.assertNotIn("STAGE", GRAPH_PATH.read_text(encoding="utf-8"), "graph.yml must not fix an APR stage")
 
     def test_parser_reads_both_list_spellings(self):
         sample = "a:\n  rules: [x, y]\n  rules:\n    - z\n    - w\nb: { rules: [v] }\n"

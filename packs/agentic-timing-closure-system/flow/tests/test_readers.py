@@ -783,23 +783,16 @@ class NextDecisionReaderTest(unittest.TestCase):
             self.assertEqual(by_type["tc_request_invalid_count"]["value"], 0, action)
 
     def test_earlier_apr_requires_a_declared_stage(self):
-        report = self._write_decision(self._decision(action="earlier-apr", stage="postroute"))
-        by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
-        self.assertEqual(by_type["tc_request_invalid_count"]["value"], 0)
-        self.assertEqual(by_type["tc_next_action"]["value"], 6)
+        for stage in ("place", "cts", "route", "postroute"):
+            report = self._write_decision(self._decision(action="earlier-apr", stage=stage))
+            by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
+            self.assertEqual(by_type["tc_request_invalid_count"]["value"], 0, stage)
+            self.assertEqual(by_type["tc_next_action"]["value"], 6, stage)
         for bad in ({}, {"stage": "floorplan"}, {"stage": None}):
             report = self._write_decision(self._decision(action="earlier-apr", **bad))
             by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
             self.assertEqual(by_type["tc_request_invalid_count"]["value"], 1, bad)
             self.assertIsNone(by_type["tc_next_action"]["value"], bad)
-
-    def test_earlier_apr_stage_the_graph_cannot_run_is_refused_not_rerouted(self):
-        # graph.yml binds apr-prepare/apr-run to postroute; any other known stage is inadmissible.
-        for stage in ("place", "cts", "route"):
-            report = self._write_decision(self._decision(action="earlier-apr", stage=stage))
-            by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
-            self.assertEqual(by_type["tc_request_invalid_count"]["value"], 1, stage)
-            self.assertIsNone(by_type["tc_next_action"]["value"], stage)
 
     def test_stage_is_not_required_for_other_actions(self):
         report = self._write_decision(self._decision(action="implement"))

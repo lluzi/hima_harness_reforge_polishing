@@ -164,8 +164,10 @@ outputs:
     path: state/residual-cases.json
     description: Residual cases of the checks still failing (evidence, attempts, limits, suggested stage).
   - name: aprTask
-    path: apr/postroute/task.json
-    description: The prepared single APR stage task (full-flow only) that apr-run executes.
+    path: state/apr-task.json
+    description: >-
+      The prepared single APR stage task (full-flow only) for the stage the admitted next-decision
+      names; apr-run executes it.
   - name: campaignExperience
     path: state/experience.json
     description: M8 append-only experience entries (hypothesis, action, conditions, predicted, measured, verdict).
@@ -455,8 +457,10 @@ tools:
   - id: record-experience
     file: flow/atcs_cli.py
     description: >-
-      Append the evaluated candidate's predicted and measured outcome to the Campaign experience (M8),
-      composed from state files; the hypothesis is the integration plan's reason.
+      Append the evaluated candidate's predicted and measured change against its parent state to the
+      Campaign experience (M8), composed from state files; the hypothesis is the reason of whatever
+      produced state/implement.json (the integration plan for a batch, the next-decision for an
+      apr-run candidate).
     inputs: [WORKSPACE]
     argv:
       - python3
@@ -467,9 +471,11 @@ tools:
 
   - id: apr-prepare
     file: flow/atcs_cli.py
-    description: Compile residual cases into one bounded APR stage intervention task (full-flow only; refused for post-route-only).
-    inputs: [WORKSPACE, STAGE]
-    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', apr-prepare, '${WORKSPACE}', '${STAGE}']
+    description: >-
+      Compile residual cases into one bounded APR stage intervention task for the stage named by the
+      admitted earlier-apr next-decision (full-flow only; refused for post-route-only).
+    inputs: [WORKSPACE]
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', apr-prepare, '${WORKSPACE}']
 
   - id: apr-run
     recommendedVersion: Innovus 23.14
@@ -477,9 +483,9 @@ tools:
     description: >-
       Run the prepared APR stage task in Innovus, export the stage's database, DEF, netlist and physical
       reports, and write the same implementation receipt implement writes.
-    inputs: [WORKSPACE, STAGE, SITE_CAPABILITIES]
+    inputs: [WORKSPACE, SITE_CAPABILITIES]
     licences: { innovus: 1 }
-    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', apr-run, '${WORKSPACE}', '${STAGE}', '${SITE_CAPABILITIES}']
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', apr-run, '${WORKSPACE}', '${SITE_CAPABILITIES}']
 
 rules:
   - inputs-ready
@@ -547,8 +553,8 @@ workshops:
       atlas and experience: name the competing root causes and the cheapest query that separates them.
       Write the observation request to research/requests/observation-request.json as one JSON object
       {designStateId, precision (gba|pba), requiredScenarios, maxPaths, nworst} naming the working
-      design-state it observes; the Run's maxPaths Strategy knob is what the observe tool applies, so
-      state that value. Also write research/requests/observe-scenario-inputs.json ({<scenario>:
+      design-state it observes; the Run's maxPaths Strategy knob caps the value the observe tool
+      uses. Also write research/requests/observe-scenario-inputs.json ({<scenario>:
       {design, netlist, sdc, spef}} of that design-state, absolute paths), which the observe tool reads. Every required scenario stays in the request; the request never
       changes frequency, exceptions or required checks. It is a plan, not a measurement.
     directory: research/diagnose
@@ -663,8 +669,8 @@ workshops:
       research/requests/next-decision.json with stateRef, observationRef, budgetRef, question, action
       (observe, research, compose, revise, implement, earlier-apr, wait or goal-met), targets, reason,
       falsifier, costBasis and requiredArtifacts. earlier-apr is legal only when the scope is
-      full-flow and must name a stage (this compiled graph executes postroute only; another stage is
-      refused as inadmissible); wait names the concrete external input, scope or capability required;
+      full-flow and must name the stage (place, cts, route or postroute) the APR task prepares and
+      runs; wait names the concrete external input, scope or capability required;
       goal-met is
       legal only when the current final evaluation and accepted artifact support it. A temporarily
       degraded working state must name its follow-up and falsifier. Cite new information; never retry

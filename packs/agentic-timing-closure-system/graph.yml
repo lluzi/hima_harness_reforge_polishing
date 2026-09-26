@@ -345,8 +345,9 @@ nodes:
     kind: explore
     parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
 
-  # 9. Earlier APR: full-flow only, re-checked on a fresh readiness reading; the stage run joins the
-  #    implement chain at extract (same refresh, evaluation, judges and adoption).
+  # 9. Earlier APR: full-flow only, re-checked on a fresh readiness reading; apr-prepare takes the
+  #    stage from the admitted next-decision, and the stage run joins the implement chain at extract
+  #    (same refresh, evaluation, judges and adoption).
   - id: route-earlier-apr
     kind: judge
     parameters: { rules: [next-action-earlier-apr, continue-or-wait] }
@@ -361,13 +362,12 @@ nodes:
     parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
   - id: apr-prepare
     kind: act
-    parameters: { tool: apr-prepare, arguments: { STAGE: postroute } }
+    parameters: { tool: apr-prepare }
   - id: apr-run
     kind: act
     parameters:
       tool: apr-run
       arguments:
-        STAGE: postroute
         SITE_CAPABILITIES: { from: input, name: siteCapabilities }
 
   # Goal met: every final rule again, over a fresh reading of the current final evaluation.
