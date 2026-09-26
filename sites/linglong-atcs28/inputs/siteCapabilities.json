@@ -1,0 +1,7 @@
+{
+  "edaShell": ["/usr/local/bin/edarun", "bash", "-lc"],
+  "design": "swerv_wrapper",
+  "techLef": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lef/tsmcn28_10lm5X2Y2ZUTRDL.tlef",
+  "cellLefGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lef/*.lef",
+  "pgVerification": false
+}

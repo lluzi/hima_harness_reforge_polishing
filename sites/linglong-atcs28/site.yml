@@ -1,0 +1,22 @@
+name: linglong-atcs28
+kind: ssh
+workspaceRoot: /data/eda/project/hima_harness/atcs-runs
+permit: ./permit.yml
+bindings:
+  designStateManifest: /data/eda/project/hima_harness/atcs-inputs/designStateManifest.json
+  analysisContract: /data/eda/project/hima_harness/atcs-inputs/analysisContract
+  siteCapabilities: /data/eda/project/hima_harness/atcs-inputs/siteCapabilities.json
+  workspaceRoot: /data/eda/project/hima_harness/atcs-runs
+ssh:
+  destination: luzi@192.168.50.41
+  jumps: []
+  controlPersistSeconds: 60
+capacity:
+  cores: 16
+  memoryGiB: 64
+  parallelJobs: 1
+  licences:
+    innovus: 1
+    primetime: 1
+    starrc: 1
+    xtop: 1

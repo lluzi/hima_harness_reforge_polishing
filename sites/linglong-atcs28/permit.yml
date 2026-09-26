@@ -1,0 +1,21 @@
+allowedReadRoots:
+  - /data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation
+  - /data/eda/project/techlib/tsmc28
+  - /data/eda/project/hima_harness/atcs-inputs
+  - /data/eda/project/hima_harness/atcs-runs
+allowedWriteRoots:
+  - /data/eda/project/hima_harness/atcs-runs
+allowedWrappers:
+  - python3
+  - /usr/bin/python3
+  - /data/eda/project/hima_harness/operator-admin/atcs-v1/atcs-xtop-operator.sh
+forbidden:
+  - services
+  - licence-servers
+  - network-settings
+  - dns
+  - proxy
+  - tailscale
+  - deletions
+  - moves-of-run-directories
+  - repository-downloads

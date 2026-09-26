@@ -1,0 +1,37 @@
+{
+  "top": "swerv_wrapper",
+  "stage": "postroute",
+  "root": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation",
+  "database": {
+    "enc": "DBS/xtop_round2_eco_route.enc",
+    "encDat": "DBS/xtop_round2_eco_route.enc.dat"
+  },
+  "netlist": "EXPORT/swerv_wrapper.xtop_round2_eco_route.v",
+  "def": "EXPORT/swerv_wrapper.xtop_round2_eco_route.def",
+  "spef": {
+    "cworst_T": "SIGNOFF/ROUND3/STARRC/swerv_wrapper.cworst_T.spef",
+    "cbest": "SIGNOFF/ROUND3/STARRC/swerv_wrapper.cbest.spef"
+  },
+  "sdc": [
+    "EXPORT/swerv_wrapper.input.sdc"
+  ],
+  "libraries": [
+    "SIGNOFF/PT/libdb/ssg_m40c/tcbn28hpcplusbwp35p140lvtssg0p81vm40c.db",
+    "SIGNOFF/PT/libdb/ssg_125c/tcbn28hpcplusbwp35p140lvtssg0p81v125c.db",
+    "SIGNOFF/PT/libdb/ffg_m40c/tcbn28hpcplusbwp35p140lvtffg0p99vm40c.db",
+    "SIGNOFF/PT/libdb/ffg_125c/tcbn28hpcplusbwp35p140lvtffg0p99v125c.db"
+  ],
+  "scenarios": [
+    { "name": "func_ssg_rcworst_m40", "corner": "cworst_T" },
+    { "name": "func_ssg_rcworst_125", "corner": "cworst_T" },
+    { "name": "func_ffg_cbest_m40", "corner": "cbest" },
+    { "name": "func_ffg_cbest_125", "corner": "cbest" }
+  ],
+  "tools": {
+    "innovus": "23.14",
+    "primetime": "PrimeTime X-2025.06",
+    "starrc": "StarRC X-2025.06-SP1",
+    "xtop": "XTop 2025.09.tmp15"
+  },
+  "parentId": null
+}
