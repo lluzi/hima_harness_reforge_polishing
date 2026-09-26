@@ -101,6 +101,27 @@ report a candidate is diffed against (see
 candidate's physical evidence and its baseline must come from comparable,
 un-truncated reports, never a different denominator silently substituted).
 
+Critically, `baseline_physical` **must always be the Campaign baseline
+state's own DRC/connectivity reports — never the candidate's immediate
+parent's**. `constraintFailureCount`'s whole purpose is "new identities
+beyond baseline" (see step 5 below); if `assemble` were ever handed the
+*parent*'s physical reports instead of the Campaign's actual starting
+point, a violation the parent itself already carried (inherited across
+several intermediate merge commits, none of which introduced it but none
+of which fixed it either) would silently disappear from every subsequent
+candidate's count the moment it becomes "the baseline" for the next diff —
+this Pack must count everything not present at the true Campaign baseline,
+so an old, uncorrected violation is never laundered into invisibility by
+one candidate's parent inheriting it from another. `atcs.adapters` (T12)
+is the producer that must supply the Campaign baseline's reports here,
+never a per-candidate parent snapshot; `atcs.adoption`/T14 own deciding
+*which* design-state is the Campaign's declared baseline in the first
+place (see `atcs.adoption`'s module docstring, `policy["baselineStateId"]`/
+`policy["baselineMinWns"]`) — `assemble` itself has no way to tell a
+baseline report from a parent report by content alone, so this is a
+producer-contract requirement, not something `assemble` can verify or
+enforce.
+
 ``receipts["spef"][corner]["estimated"] == True`` means that corner's SPEF
 is a non-final, estimated extraction (e.g. a pre-route/pre-ECO placeholder).
 `assemble` refuses to build a final evaluation from estimated RC at all:

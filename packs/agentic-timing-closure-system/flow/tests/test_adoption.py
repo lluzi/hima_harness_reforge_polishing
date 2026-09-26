@@ -90,11 +90,17 @@ def _evaluation_raw(candidate_id, setup, hold, parent_state_id=None, **overrides
 
 
 BASELINE = "baseline-0"
+# Permissive enough that none of the pre-existing "first publish becomes
+# best" scenarios below (all with minWns >= -0.05) are ever treated as a
+# degradation against it; tests that actually exercise the baselineMinWns
+# threshold override it explicitly.
+DEFAULT_BASELINE_MIN_WNS = -1.0
 DEFAULT_POLICY = {
     "allowDegradedWorking": False,
     "degradeLimitNs": 0.0,
     "goal": {"setup": 0.0, "hold": 0.0},
     "baselineStateId": BASELINE,
+    "baselineMinWns": DEFAULT_BASELINE_MIN_WNS,
 }
 
 
@@ -262,6 +268,21 @@ class PolicyValidationTest(unittest.TestCase):
             adoption.publish(self.ev, BASELINE, self.path, policy)
         self.assertEqual(ctx.exception.code, "invalid-policy")
 
+    def test_missing_baseline_min_wns_raises_invalid_policy_at_bootstrap(self):
+        policy = {
+            "allowDegradedWorking": False, "degradeLimitNs": 0.0,
+            "goal": {"setup": 0.0, "hold": 0.0}, "baselineStateId": BASELINE,
+        }  # baselineStateId present, but baselineMinWns is not
+        with self.assertRaises(core.AtcsError) as ctx:
+            adoption.publish(self.ev, BASELINE, self.path, policy)
+        self.assertEqual(ctx.exception.code, "invalid-policy")
+
+    def test_non_finite_baseline_min_wns_raises_invalid_policy_at_bootstrap(self):
+        policy = dict(DEFAULT_POLICY, baselineMinWns=float("nan"))
+        with self.assertRaises(core.AtcsError) as ctx:
+            adoption.publish(self.ev, BASELINE, self.path, policy)
+        self.assertEqual(ctx.exception.code, "invalid-policy")
+
 
 class EvaluationIdentityValidationTest(unittest.TestCase):
     def setUp(self):
@@ -306,6 +327,43 @@ class PublishGuardTest(unittest.TestCase):
         self.assertEqual(record["decision"], "refused")
         self.assertEqual(record["reason"], "stale-base")
         self.assertFalse(self.path.exists())
+
+    def test_bootstrap_with_parent_state_id_matching_expected_base_but_not_declared_baseline_is_refused(self):
+        # Isolates the SECOND half of bootstrap CAS: the evaluation's own
+        # parentStateId agrees with expected_base (so guard 3's first half
+        # passes), but neither names the declared policy.baselineStateId.
+        ev = _evaluation("state-y", core.known(0.0), core.known(0.0), parent_state_id="other")
+        record = adoption.publish(ev, "other", self.path, DEFAULT_POLICY)  # BASELINE is "baseline-0", not "other"
+        self.assertEqual(record["decision"], "refused")
+        self.assertEqual(record["reason"], "stale-base")
+        self.assertFalse(self.path.exists())
+
+    # -- Bootstrap degradation anchor: policy.baselineMinWns --
+
+    def test_bootstrap_far_below_baseline_min_wns_is_refused_without_degrade_permission(self):
+        ev = _evaluation("state-z1", core.known(-7.5), core.known(-0.05), parent_state_id=BASELINE)
+        policy = dict(DEFAULT_POLICY, baselineMinWns=-0.2)
+        record = adoption.publish(ev, BASELINE, self.path, policy)
+        self.assertEqual(record["decision"], "refused")
+        self.assertEqual(record["reason"], "degraded-working-not-allowed")
+        self.assertFalse(self.path.exists())
+
+    def test_bootstrap_far_below_baseline_min_wns_is_refused_even_within_a_small_degrade_limit(self):
+        ev = _evaluation("state-z2", core.known(-7.5), core.known(-0.05), parent_state_id=BASELINE)
+        policy = dict(DEFAULT_POLICY, baselineMinWns=-0.2, allowDegradedWorking=True, degradeLimitNs=0.1)
+        record = adoption.publish(ev, BASELINE, self.path, policy)
+        self.assertEqual(record["decision"], "refused")
+        self.assertEqual(record["reason"], "degrade-limit-exceeded")
+        self.assertFalse(self.path.exists())
+
+    def test_bootstrap_above_baseline_min_wns_becomes_best(self):
+        ev = _evaluation("state-z3", core.known(-0.1), core.known(-0.05), parent_state_id=BASELINE)
+        policy = dict(DEFAULT_POLICY, baselineMinWns=-0.2)
+        record = adoption.publish(ev, BASELINE, self.path, policy)
+        self.assertEqual(record["decision"], "best")
+        pointers = adoption.load_pointers(self.path)
+        self.assertEqual(pointers["best"]["stateId"], "state-z3")
+        self.assertEqual(pointers["working"]["stateId"], "state-z3")
 
     def test_first_publish_becomes_best_with_no_prior_best(self):
         ev = _evaluation("state-a", core.known(-0.05), core.known(-0.02), parent_state_id=BASELINE)
@@ -364,6 +422,32 @@ class PublishGuardTest(unittest.TestCase):
 
         self.assertEqual(record["decision"], "refused")
         self.assertEqual(record["reason"], "missing-identity")
+        self.assertEqual(self.path.read_bytes(), before_bytes)
+
+    # -- Identity sanity: a state can't be its own parent, and a real state id
+    # can never be claimed by two distinct evaluations --
+
+    def test_self_parent_is_refused(self):
+        ev = _evaluation("state-a", core.known(0.0), core.known(0.0), parent_state_id="state-a")
+        record = adoption.publish(ev, "state-a", self.path, DEFAULT_POLICY)
+        self.assertEqual(record["decision"], "refused")
+        self.assertEqual(record["reason"], "self-parent")
+        self.assertFalse(self.path.exists())
+
+    def test_reused_state_id_across_different_evaluations_is_refused(self):
+        ev_a = _evaluation("state-a", core.known(-0.05), core.known(-0.02), parent_state_id=BASELINE)
+        adoption.publish(ev_a, BASELINE, self.path, DEFAULT_POLICY)
+        before_bytes = self.path.read_bytes()
+
+        # A different evaluation (different candidateId/parent/tag -> a
+        # different evaluationId) that claims the SAME stateId state-a
+        # already used.
+        ev_reuse = _evaluation("state-a-again", core.known(0.0), core.known(0.0),
+                                parent_state_id="some-other-parent", state_id="state-a", tag="reuse")
+        record = adoption.publish(ev_reuse, "some-other-parent", self.path, DEFAULT_POLICY)
+
+        self.assertEqual(record["decision"], "refused")
+        self.assertEqual(record["reason"], "state-id-reused")
         self.assertEqual(self.path.read_bytes(), before_bytes)
 
     # -- Compare-and-swap: parentStateId AND working/baseline must both agree --
