@@ -286,7 +286,7 @@ assert.equal(changedProductInputs, '', 'Wave 4 App product inputs changed after 
 const packSource = path.join(appRoot, 'packs', PACK_ID);
 const sourcePack = loadPack(path.join(appRoot, 'packs'), PACK_ID);
 const sourceDigest = packDigestOf(packSource);
-assert.equal(sourcePack.contract.version, '5.2.16', 'Wave 4 requires the Wave 3 sealed portable Pack');
+assert.equal(sourcePack.contract.version, '5.2.17', 'Wave 4 requires the repaired sealed portable Pack');
 assert.equal(sourcePack.contract.status, 'development', 'PLS-35 must preserve the Pack author-declared status');
 assert.deepEqual(appManifest.runtimeInputs?.trialPack,
   { id: PACK_ID, version: sourcePack.contract.version, methodDigest: sourceDigest,

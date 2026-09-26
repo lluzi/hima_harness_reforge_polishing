@@ -374,6 +374,36 @@ class LibertyTimingTests(unittest.TestCase):
         with self.assertRaisesRegex(LibertyTimingError, "latch time borrowing"):
             analyze_mapped_netlist_reg2reg(model, netlist, "top", clock_period=1.0)
 
+    def test_sequential_pin_accepts_one_grouped_inversion_and_rejects_complex_forms(self):
+        for expression in ("!CK", "CK'", "(!CK)", "(CK')", "!(CK)", "(CK)'"):
+            with self.subTest(expression=expression):
+                grouped_inversion = sequential_cell("LATN", "latch").replace(
+                    'enable : "CK"', 'enable : "%s"' % expression
+                )
+                latch = self.parse(library(grouped_inversion), {"LATN"}).cell("LATN")
+                self.assertEqual((latch.clock_pin, latch.clock_polarity), ("CK", "negative"))
+
+        for expression in (
+            "CK | D", "!!CK", "((CK))", "!CK'", "!(CK)'", "(!CK')", "(CK", "CK)",
+        ):
+            with self.subTest(expression=expression):
+                malformed = sequential_cell("BAD", "latch").replace(
+                    'enable : "CK"', 'enable : "%s"' % expression
+                )
+                with self.assertRaisesRegex(
+                    LibertyTimingError,
+                    "must identify exactly one pin",
+                ):
+                    self.parse(library(malformed), {"BAD"})
+
+        joined_identifier = sequential_cell("JOINED", "latch").replace(
+            'enable : "CK"', 'enable : "CK D"'
+        ).replace(
+            'pin (CK)', 'pin (CKD) { direction : input; capacitance : 0.01; }\n      pin (CK)'
+        )
+        with self.assertRaisesRegex(LibertyTimingError, "must identify exactly one pin"):
+            self.parse(library(joined_identifier), {"JOINED"})
+
     def test_missing_arc_and_multi_clock_path_fail_closed(self):
         model = self.parse(library(cell()), {"BUF"})
         with self.assertRaisesRegex(LibertyTimingError, "no timing arc"):

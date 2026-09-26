@@ -27,6 +27,12 @@ mkdirSync(out, { recursive: true });
 
 const packId = 'custom-cell-fmax-dtco';
 const packDir = path.join(repoRoot, 'packs', packId);
+for (const sideEffect of ['.hima-method-history', 'hima', 'run-assets']) {
+  assert.equal(
+    existsSync(path.join(packDir, sideEffect)), false,
+    `source Pack contains local test side effect ${sideEffect}; archive it before qualification`,
+  );
+}
 const runner = path.join(packDir, 'flow/ai_research_runner.py');
 const sha256 = (bytes: string | Buffer): string => createHash('sha256').update(bytes).digest('hex');
 const destination = 'luzi@192.168.50.41';
@@ -76,7 +82,7 @@ const snapshot = (status: 'in-progress' | 'failed' | 'passed', extra: Record<str
   writeFileSync(path.join(out, 'evidence.json'), `${JSON.stringify({
     schema: 'hima.wave3-dtco-lfr-test-release/1',
     recordedAt: new Date().toISOString(), status, sourceSha,
-    pack: { id: packId, version: '5.2.16', digest, runnerSha256 },
+    pack: { id: packId, version: '5.2.17', digest, runnerSha256 },
     site: { destination, remoteRoot, foundryLib, physicalInputs, toolStack, foundryCdlSha256 },
     environmentBefore: before, runId, ownerId, workspace, progress,
     ...(run ? { run } : {}), ...(records ? { records } : {}),
@@ -154,13 +160,14 @@ try {
   const prompt = [
     `Continue only existing Pack test Run ${runId}; do not create or hand off another Run.`,
     'You are its sole visible Campaign owner. Use only hima_context and hima_execute for business work.',
-    'This is the current custom-cell-fmax-dtco@5.2.16 negative calibration qualification, not a PPA search.',
+    'This is the current custom-cell-fmax-dtco@5.2.17 negative calibration qualification, not a PPA search.',
     'Execute bind-inputs, the real license-free Yosys/ABC baseline, all six miners/readers, their join, function-local evaluation and Judge exactly as the current graph declares.',
     'At research-candidates, read the current declared inputs and all three Pack knowledge files. Author a fresh data-dependent candidate_program from the current candidate_pool; never embed a proposal_key or candidate id. Rank current rows from their actual evidence and select exactly one best available proposal.',
     'For that one proposal declare required_delay_ns=0.000001 and a real target_endpoints value read from current evidence. This intentionally strict Cell Demand is the negative test stimulus. Keep the intervention evidence-appropriate and state that this is a guard-case qualification, not an expected implementation result.',
     'Run the exact authored bytes through the Workshop. Continue through merge, generate, layout, characterize, Reader and calibration Judge. Preserve every refusal/failure and do not reinterpret missing evidence as zero.',
     'Expected valid outcome: no physical drive can meet the 0.000001 ns Demand, the calibration Judge reports FAIL with typed feedback, then calibration-research uses the Pack recommendation. With generationLimit=1 the revisit must end ended-budget-exhausted by generation-limit.',
     'Do not begin compile, Design Compiler, Innovus, P&R or compare. If the calibration unexpectedly passes or the graph offers the commercial tail, stop and report the unexpected result without launching it.',
+    'Do not write notes, history, run-assets or any other file into the source Pack folder; research code and evidence belong only to this Run private workspace. TEST.md is finalized separately after the Run ends.',
     'When the Run is terminal, do not edit TEST.md yet. Report the terminal status, CodeRecord hash, calibration observation/verdict ids, ending meter and limits.',
   ].join('\n');
 
@@ -211,16 +218,25 @@ try {
     'Write TEST.md from hima_status and the actual current ledger records, with exactly the required seven sections and exact standalone run/status lines.',
     'Include every CodeRecord SHA and every refusal id, or the exact word none when there were none.',
     'State that this was a real Site/current-method negative calibration test: Yosys/ABC baseline and mining ran, the strict one-Demand guard failed closed, generation-limit ended the Run, and no commercial EDA/PPA claim is made.',
+    'Keep the portable TEST record free of specific design top names and absolute process/path strings, including aes_cipher_top and tsmc28; describe them generically as the Site-bound design and foundry inputs while retaining the hash-bound Run evidence.',
     `Preserve method digest ${digest} and all method bytes. After writing TEST.md call hima_pack_check for ${packId}. Do not release yet.`,
   ].join('\n'));
   await owner.whenIdle();
   assert.equal(packStage(packDir).stage, 'tested', JSON.stringify(packStage(packDir)));
+  assert.equal(packDigestOf(packDir), digest, 'the test must not mutate method bytes before release');
+  assert.equal(existsSync(path.join(packDir, 'hima')), false, 'the test must not write source-Pack notes');
+  assert.doesNotMatch(
+    readFileSync(path.join(packDir, 'TEST.md'), 'utf8'),
+    /aes_cipher_top|\/[^\s"']*tsmc28/i,
+    'the portable TEST record must not bind the method to the qualification design or process path',
+  );
 
-  await sayAsUser(owner, [
-    `/hima-release Release ${packId} through the native hima_pack_release tool from the just-verified TEST.md and Run ${runId}.`,
-    'Do not handwrite VERSION.yml, do not change method files, and preserve the negative result and claim limits.',
-  ].join('\n'));
-  await owner.whenIdle();
+  const release = await host.ctx.tools.execute({
+    name: 'hima_pack_release', arguments: { pack: packId }, agent: owner,
+    callId: 'wave3-dtco-native-release' as never,
+    signal: AbortSignal.timeout(30_000),
+  });
+  assert.equal(release.isError, false, JSON.stringify(release));
   assert.equal(packStage(packDir).stage, 'released', JSON.stringify(packStage(packDir)));
   const version = readFileSync(path.join(packDir, 'VERSION.yml'));
   const test = readFileSync(path.join(packDir, 'TEST.md'));
@@ -238,7 +254,7 @@ try {
     terminalRun: terminal,
     codeRecords: codes,
     testSha256: sha256(test), versionSha256: sha256(version),
-    releaseStage: packStage(packDir),
+    releaseStage: packStage(packDir), nativeRelease: release,
     claims: {
       currentMethodTest: 'PASS',
       businessVerdict: 'TERMINAL_NEGATIVE candidate subject to retained residual-frontier assessment',

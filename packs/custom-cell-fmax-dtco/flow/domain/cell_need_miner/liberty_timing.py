@@ -434,15 +434,34 @@ def _parse_table(node, templates, context):
 
 def _sequential_pin(expression, label):
     """Read one pin and its polarity from a simple ff/latch expression."""
-    compact = re.sub(r"\s+", "", expression or "")
-    match = re.fullmatch(r"(!)?\(?([A-Za-z_][A-Za-z0-9_$]*)\)?(')?", compact)
-    if not match:
+    simple = (expression or "").strip()
+    inversions = 0
+
+    if simple.startswith("!"):
+        inversions += 1
+        simple = simple[1:].strip()
+    if simple.endswith("'"):
+        inversions += 1
+        simple = simple[:-1].strip()
+
+    grouped = re.fullmatch(r"\(\s*(.*?)\s*\)", simple, re.DOTALL)
+    if grouped:
+        simple = grouped.group(1)
+
+    if simple.startswith("!"):
+        inversions += 1
+        simple = simple[1:].strip()
+    if simple.endswith("'"):
+        inversions += 1
+        simple = simple[:-1].strip()
+
+    match = re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", simple)
+    if not match or inversions > 1:
         raise LibertyTimingError(
             "%s must identify exactly one pin; complex sequential expressions are unsupported"
             % label
         )
-    inverted = bool(match.group(1) or match.group(3))
-    return match.group(2), ("negative" if inverted else "positive")
+    return match.group(0), ("negative" if inversions else "positive")
 
 
 _BOOLEAN_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[()!'^+|*&]|[01]")
