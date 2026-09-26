@@ -1483,6 +1483,35 @@ def _cmd_implement(workspace, args):
     return _paths(workspace)["implement"], body
 
 
+def _load_starrc_corner_templates(corners_path):
+    """`{corner: {"path": <templatePath>, "text": <content>, "sha256": <hash>}}` from
+    `corners.json`'s `{"corners": {corner: templatePath}}` (I1, final review).
+
+    Each `templatePath` is a Site-provided, read-only StarRC command-file template
+    (the same per-corner file the old `xtop-timing-closure` Pack's Site profile
+    names as `starrc[].template`, e.g. `SIGNOFF/STARRC/cworst_T.cmd`) -- this Pack
+    never ships or assumes one fixed shared template for every corner. Raises
+    `InputError("invalid-input", ...)` when `corners` is missing, empty or not a
+    `{corner: path}` mapping, and `InputError("missing-input", ...)` when a named
+    template file cannot actually be read.
+    """
+    corners_doc = _read_plain(corners_path)
+    corners = corners_doc.get("corners")
+    if not isinstance(corners, dict) or not corners:
+        raise InputError("invalid-input", "corners must map at least one StarRC corner to a template path")
+    templates = {}
+    for corner, template_path in corners.items():
+        adapters.validate_path_segment(corner, "corners entry")
+        if not isinstance(template_path, str) or not template_path:
+            raise InputError("invalid-input", f"corners[{corner!r}] must be a non-empty template path")
+        try:
+            text = Path(template_path).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise InputError("missing-input", f"cannot read StarRC template for corner {corner!r}: {exc}") from exc
+        templates[corner] = {"path": template_path, "text": text, "sha256": core.file_sha256(Path(template_path))}
+    return templates
+
+
 def _cmd_extract(workspace, args):
     """I4 (final review, identity by hashing at use): `inputDefSha256` is the hash of the
     DEF file this call actually reads (right here, right now), verified equal to
@@ -1490,15 +1519,20 @@ def _cmd_extract(workspace, args):
     through unchecked. A DEF that changed on disk between `implement` and `extract`
     (however unlikely in the normal flow) must be caught here, at the moment StarRC is
     about to read it, not left for a downstream consumer to trust blindly.
+
+    I1 (final review, StarRC templates): `corners` used to be a bare list of corner
+    NAMES, compiled against this Pack's own single shipped fallback `starrc.cmd`
+    template regardless of corner -- real Foundation StarRC corners (e.g.
+    `cworst_T`/`cbest`) each need their own qualified command-file template
+    (`STAR_MODE`, layer stack, etc. genuinely differ per corner). `corners.json` now
+    maps `{corner: templatePath}` (`_load_starrc_corner_templates`, hashed); each
+    corner's own template text is threaded into `adapters.compile_starrc_task` as
+    `template_text`, and the template's own identity is recorded in this call's
+    declared output (`spef_out[corner]["template"]`) for provenance.
     """
     corners_path, site_profile_path = args
     workspace = Path(workspace)
-    corners_doc = _read_plain(corners_path)
-    corners = corners_doc.get("corners", [])
-    if not corners:
-        raise InputError("invalid-input", "corners must name at least one StarRC corner")
-    for corner in corners:
-        adapters.validate_path_segment(corner, "corners entry")
+    templates = _load_starrc_corner_templates(corners_path)
     site_profile = _read_plain(site_profile_path)
     implement = _read_plain(_paths(workspace)["implement"])
     merge_id = adapters.validate_path_segment(implement.get("mergeCommitId"), "implement.mergeCommitId")
@@ -1512,8 +1546,10 @@ def _cmd_extract(workspace, args):
 
     output_root = workspace / "implementations" / merge_id
     spef_out = {}
-    for corner in corners:
-        task = adapters.compile_starrc_task(implement["design"], corner, str(def_path), str(output_root))
+    for corner, template in templates.items():
+        task = adapters.compile_starrc_task(
+            implement["design"], corner, str(def_path), str(output_root), template_text=template["text"]
+        )
         cmd_path = Path(task["cmdPath"])
         cmd_path.parent.mkdir(parents=True, exist_ok=True)
         cmd_path.write_text(task["cmdText"], encoding="utf-8")
@@ -1526,6 +1562,7 @@ def _cmd_extract(workspace, args):
         spef_out[corner] = {
             "path": _relpath(spef_path, workspace), "sha256": core.file_sha256(spef_path),
             "inputDefSha256": def_sha256, "estimated": False,
+            "template": {"path": template["path"], "sha256": template["sha256"]},
         }
     return _paths(workspace)["extract"], {"spef": spef_out}
 

@@ -45,6 +45,11 @@ CLI_PATH = FLOW_DIR / "atcs_cli.py"
 NEXT_DECISION_REL_PATH = atcs_cli.NEXT_DECISION_REL_PATH
 REQUIRED_SCENARIOS = ("func_ssg_rcworst_m40", "func_ssg_rcworst_125", "func_ffg_cbest_m40", "func_ffg_cbest_125")
 CORNER = "corner1"
+# I1 (final review): `corners.json` now maps {corner: templatePath} -- every test that
+# used to write a bare corner-name list points its corner(s) at this Pack's own
+# real, shipped fallback template instead (a genuine file StarRC's `patch`-style
+# substitution can act on), never a synthetic string.
+STARRC_TEMPLATE_PATH = FLOW_DIR / "templates" / "starrc.cmd"
 
 
 def _tmp():
@@ -243,7 +248,7 @@ class TwoRoundFlowTest(unittest.TestCase):
             spef_path = impl_root / "starrc" / corner / f"top.{corner}.spef"
             _write_text(spef_path, "*SPEF IEEE 1481-1999\n")
         corners_path = workspace / f"corners-{instance}.json"
-        _write_json(corners_path, {"corners": [CORNER]})
+        _write_json(corners_path, {"corners": {CORNER: str(STARRC_TEMPLATE_PATH)}})
         result = _run("extract", workspace, corners_path, site_profile_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -426,7 +431,7 @@ class AdoptConsistencyTest(TwoRoundFlowTest):
         for corner in (CORNER,):
             _write_text(impl_root / "starrc" / corner / f"top.{corner}.spef", "*SPEF IEEE 1481-1999\n")
         corners_path = workspace / "corners.json"
-        _write_json(corners_path, {"corners": [CORNER]})
+        _write_json(corners_path, {"corners": {CORNER: str(STARRC_TEMPLATE_PATH)}})
         self.assertEqual(_run("extract", workspace, corners_path, site_profile_path).returncode, 0)
 
         for scenario in REQUIRED_SCENARIOS:
@@ -523,7 +528,7 @@ class StaIdentityByHashingAtUseTest(TwoRoundFlowTest):
         for corner in (CORNER,):
             _write_text(impl_root / "starrc" / corner / f"top.{corner}.spef", "*SPEF IEEE 1481-1999\n")
         corners_path = workspace / "corners.json"
-        _write_json(corners_path, {"corners": [CORNER]})
+        _write_json(corners_path, {"corners": {CORNER: str(STARRC_TEMPLATE_PATH)}})
         self.assertEqual(_run("extract", workspace, corners_path, site_profile_path).returncode, 0)
 
         # The implemented netlist changed on disk after `implement` recorded
@@ -645,7 +650,7 @@ class StaParentViolatorRecheckTest(TwoRoundFlowTest):
         for corner in (CORNER,):
             _write_text(impl_root / "starrc" / corner / f"top.{corner}.spef", "*SPEF IEEE 1481-1999\n")
         corners_path = workspace / "corners.json"
-        _write_json(corners_path, {"corners": [CORNER]})
+        _write_json(corners_path, {"corners": {CORNER: str(STARRC_TEMPLATE_PATH)}})
         self.assertEqual(_run("extract", workspace, corners_path, site_profile_path).returncode, 0)
 
         # The candidate's own full STA is entirely clean -- the fixed check is no
@@ -749,7 +754,7 @@ class StaParentViolatorRecheckTest(TwoRoundFlowTest):
         for corner in (CORNER,):
             _write_text(impl_root / "starrc" / corner / f"top.{corner}.spef", "*SPEF IEEE 1481-1999\n")
         corners_path = workspace / "corners.json"
-        _write_json(corners_path, {"corners": [CORNER]})
+        _write_json(corners_path, {"corners": {CORNER: str(STARRC_TEMPLATE_PATH)}})
         self.assertEqual(_run("extract", workspace, corners_path, site_profile_path).returncode, 0)
 
         for scenario in REQUIRED_SCENARIOS:
@@ -838,6 +843,87 @@ class StaMaxPathsTest(TwoRoundFlowTest):
                        base_design_state_path, site_profile_path, "not-a-number")
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
         self.assertFalse((workspace / "state" / "sta.json").exists())
+
+
+class ExtractStarrcTemplateTest(unittest.TestCase):
+    """I1 (final review): `corners.json` maps `{corner: templatePath}` -- each corner's
+    own StarRC command-file template (read, hashed, and threaded into
+    `adapters.compile_starrc_task`), never one shared shipped fallback regardless of
+    corner."""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+
+    def test_two_corners_each_use_their_own_template_and_record_its_identity(self):
+        workspace = self.workspace
+        merge_id = "m" + "1" * 19
+        def_path = workspace / "def" / "design.def"
+        _write_text(def_path, "DEF placeholder\n")
+        def_sha256 = core.file_sha256(def_path)
+        _write_json(workspace / "state" / "implement.json", {
+            "mergeCommitId": merge_id, "design": "top",
+            "def": {"path": "def/design.def", "sha256": def_sha256},
+        })
+
+        impl_root = workspace / "implementations" / merge_id
+        template_a = workspace / "templates" / "cworst_T.cmd"
+        template_b = workspace / "templates" / "cbest.cmd"
+        _write_text(template_a, "STAR_MODE: RC_WORST\nTOP_DEF_FILE: x\nSTAR_DIRECTORY: x\nNETLIST_FILE: x\n")
+        _write_text(template_b, "STAR_MODE: RC_BEST\nTOP_DEF_FILE: x\nSTAR_DIRECTORY: x\nNETLIST_FILE: x\n")
+        corners_path = workspace / "corners.json"
+        _write_json(corners_path, {"corners": {"cworst_T": str(template_a), "cbest": str(template_b)}})
+
+        # No real StarXtract runs in tests (fake no-op wrapper) -- pre-create the exact
+        # SPEF path `compile_starrc_task` will look for, per corner.
+        for corner in ("cworst_T", "cbest"):
+            _write_text(impl_root / "starrc" / corner / f"top.{corner}.spef", "*SPEF IEEE 1481-1999\n")
+
+        site_profile_path = _site_profile_path(workspace)
+        result = _run("extract", workspace, corners_path, site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        extract = json.loads((workspace / "state" / "extract.json").read_text())
+        self.assertEqual(set(extract["spef"]), {"cworst_T", "cbest"})
+        self.assertEqual(extract["spef"]["cworst_T"]["template"]["sha256"], core.file_sha256(template_a))
+        self.assertEqual(extract["spef"]["cbest"]["template"]["sha256"], core.file_sha256(template_b))
+        self.assertNotEqual(
+            extract["spef"]["cworst_T"]["template"]["sha256"], extract["spef"]["cbest"]["template"]["sha256"]
+        )
+
+        cworst_cmd = (impl_root / "starrc" / "cworst_T" / "cworst_T.cmd").read_text(encoding="utf-8")
+        cbest_cmd = (impl_root / "starrc" / "cbest" / "cbest.cmd").read_text(encoding="utf-8")
+        self.assertIn("STAR_MODE: RC_WORST", cworst_cmd)
+        self.assertIn("STAR_MODE: RC_BEST", cbest_cmd)
+
+    def test_a_corner_naming_no_readable_template_file_is_refused(self):
+        workspace = self.workspace
+        def_path = workspace / "def" / "design.def"
+        _write_text(def_path, "DEF placeholder\n")
+        _write_json(workspace / "state" / "implement.json", {
+            "mergeCommitId": "m" + "2" * 19, "design": "top",
+            "def": {"path": "def/design.def", "sha256": core.file_sha256(def_path)},
+        })
+        corners_path = workspace / "corners.json"
+        _write_json(corners_path, {"corners": {"cworst_T": str(workspace / "no-such-template.cmd")}})
+        site_profile_path = _site_profile_path(workspace)
+        result = _run("extract", workspace, corners_path, site_profile_path)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "missing-input")
+        self.assertFalse((workspace / "state" / "extract.json").exists())
+
+    def test_corners_as_a_bare_list_is_now_refused_not_silently_accepted(self):
+        """The old shape (`{"corners": [names...]}`) is gone -- `corners.json` must now
+        map each corner to its own template path."""
+        workspace = self.workspace
+        corners_path = workspace / "corners.json"
+        _write_json(corners_path, {"corners": ["cworst_T"]})
+        site_profile_path = _site_profile_path(workspace)
+        result = _run("extract", workspace, corners_path, site_profile_path)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "invalid-input")
 
 
 class ReconcileIgnoresRewrittenWorkPackageTest(unittest.TestCase):
@@ -1211,7 +1297,7 @@ class IdentityMismatchTest(unittest.TestCase):
         def_path.write_text("DEF placeholder -- tampered\n", encoding="utf-8")
 
         corners_path = self.workspace / "corners.json"
-        _write_json(corners_path, {"corners": [CORNER]})
+        _write_json(corners_path, {"corners": {CORNER: str(STARRC_TEMPLATE_PATH)}})
         site_profile_path = _site_profile_path(self.workspace)
         result = _run("extract", self.workspace, corners_path, site_profile_path)
         self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
@@ -1844,7 +1930,7 @@ class AprPrepareRunTest(unittest.TestCase):
         implement, site_profile_path = self._prepare_and_run_apr("place")
 
         corners_path = self.workspace / "corners.json"
-        _write_json(corners_path, {"corners": [CORNER]})
+        _write_json(corners_path, {"corners": {CORNER: str(STARRC_TEMPLATE_PATH)}})
         extract_output_root = self.workspace / "implementations" / implement["mergeCommitId"]
         _write_text(extract_output_root / "starrc" / CORNER / f"{self.working_state['top']}.{CORNER}.spef",
                      "*SPEF IEEE 1481-1999\n")
@@ -1857,7 +1943,7 @@ class AprPrepareRunTest(unittest.TestCase):
         merge_id = implement["mergeCommitId"]
 
         corners_path = self.workspace / "corners.json"
-        _write_json(corners_path, {"corners": [CORNER]})
+        _write_json(corners_path, {"corners": {CORNER: str(STARRC_TEMPLATE_PATH)}})
         impl_root = self.workspace / "implementations" / merge_id
         _write_text(impl_root / "starrc" / CORNER / f"{self.working_state['top']}.{CORNER}.spef",
                      "*SPEF IEEE 1481-1999\n")
@@ -2434,7 +2520,7 @@ class EvaluateUnconstrainedCoverageTest(TwoRoundFlowTest):
         for corner in (CORNER,):
             _write_text(impl_root / "starrc" / corner / f"top.{corner}.spef", "*SPEF IEEE 1481-1999\n")
         corners_path = workspace / "corners.json"
-        _write_json(corners_path, {"corners": [CORNER]})
+        _write_json(corners_path, {"corners": {CORNER: str(STARRC_TEMPLATE_PATH)}})
         self.assertEqual(_run("extract", workspace, corners_path, site_profile_path).returncode, 0)
 
         # Candidate: every scenario is otherwise clean, EXCEPT the first required

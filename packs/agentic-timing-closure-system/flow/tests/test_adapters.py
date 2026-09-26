@@ -218,6 +218,43 @@ class StarrcTaskTest(unittest.TestCase):
         task = adapters.compile_starrc_task("top", "corner", "/ws/EXPORT/design.def", "/ws/implementations/m1")
         self.assertTrue(Path(task["workDir"]).is_relative_to(Path("/ws/implementations/m1")))
 
+    def test_a_custom_per_corner_template_text_is_used_instead_of_the_shipped_fallback(self):
+        """I1 (final review): a Site-provided StarRC command-file template
+        (`corners.json`'s own per-corner `templatePath`) must actually be the text
+        StarXtract runs against -- not this Pack's own single shipped `starrc.cmd`
+        fallback, which real Foundation corners each need their own qualified
+        version of (different STAR_MODE/layer-stack settings per corner)."""
+        custom_template = (
+            "STAR_MODE: RC_EXTRACT\n"
+            "TOP_DEF_FILE: placeholder\n"
+            "STAR_DIRECTORY: placeholder\n"
+            "NETLIST_FILE: placeholder\n"
+        )
+        task = adapters.compile_starrc_task(
+            "top", "cworst_T", "/ws/EXPORT/design.def", "/ws/implementations/m1", template_text=custom_template,
+        )
+        self.assertIn("STAR_MODE: RC_EXTRACT", task["cmdText"])
+        self.assertIn("TOP_DEF_FILE: /ws/EXPORT/design.def", task["cmdText"])
+
+    def test_omitting_template_text_falls_back_to_the_shipped_starrc_cmd(self):
+        task = adapters.compile_starrc_task("top", "corner", "/ws/EXPORT/design.def", "/ws/implementations/m1")
+        shipped = adapters.load_template("starrc.cmd")
+        self.assertNotIn("STAR_MODE: RC_EXTRACT", shipped)
+
+    def test_multiple_corners_each_use_their_own_template(self):
+        """`compile_starrc_tasks`'s `templates` param maps corner -> base text -- two
+        corners with genuinely different templates must render genuinely different
+        command text, not both silently fall back to the one shipped default."""
+        templates = {
+            "cworst_T": "STAR_MODE: RC_WORST\nTOP_DEF_FILE: x\nSTAR_DIRECTORY: x\nNETLIST_FILE: x\n",
+            "cbest": "STAR_MODE: RC_BEST\nTOP_DEF_FILE: x\nSTAR_DIRECTORY: x\nNETLIST_FILE: x\n",
+        }
+        tasks = adapters.compile_starrc_tasks(
+            "top", ["cworst_T", "cbest"], "/ws/EXPORT/design.def", "/ws", templates=templates,
+        )
+        self.assertIn("STAR_MODE: RC_WORST", tasks["cworst_T"]["cmdText"])
+        self.assertIn("STAR_MODE: RC_BEST", tasks["cbest"]["cmdText"])
+
 
 class NoMutableCurrentDirectoryTest(unittest.TestCase):
     """Architecture Sec.13.4 (Task 12 fix round item 3): no implementation or
@@ -795,7 +832,7 @@ class CliExtractPathSegmentTest(unittest.TestCase):
         workspace = _tmp()
         self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
         corners_path = workspace / "in" / "corners.json"
-        _write_json(corners_path, {"corners": [corner]})
+        _write_json(corners_path, {"corners": {corner: "unused/template.cmd"}})
         result = subprocess.run(
             [sys.executable, str(CLI_PATH), "extract", str(workspace), str(corners_path), "MISSING/site.json"],
             capture_output=True, text=True,
