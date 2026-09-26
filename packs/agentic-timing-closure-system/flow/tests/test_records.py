@@ -337,10 +337,10 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
         root = Path("/campaign")
         written = {str(path.relative_to(root)) for path in cli._paths(root).values()}
         written |= {str(cli._contribution_path(root, slot).relative_to(root)) for slot in ("w01", "w02", "w03")}
-        written |= {str(cli._apr_task_path(root, stage).relative_to(root)) for stage in cli.APR_STAGES}
         declared = re.findall(r"^    path: (\S+)$", CONTRACT_PATH.read_text(encoding="utf-8"), re.M)
         tool_written = [path for path in declared if path.split("/")[0] in ("state", "accepted", "apr")]
         self.assertTrue(tool_written)
+        self.assertIn("state/apr-task.json", tool_written, "the one APR task output is state/apr-task.json")
         self.assertEqual(sorted(set(tool_written) - written), [], "contract.yml declares tool outputs atcs_cli.py never writes")
 
     def test_next_decision_reader_admits_exactly_the_cli_apr_stages(self):

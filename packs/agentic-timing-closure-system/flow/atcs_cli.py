@@ -398,10 +398,6 @@ def _contribution_path(workspace, slot):
     return Path(workspace) / "state" / f"contribution-{slot}.json"
 
 
-def _apr_task_path(workspace, stage):
-    return Path(workspace) / "apr" / stage / "task.json"
-
-
 # ---------------------------------------------------------------------------
 # Subcommand handlers -- each returns (output_path, body_to_write)
 # ---------------------------------------------------------------------------
