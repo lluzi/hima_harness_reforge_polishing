@@ -82,7 +82,7 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 1 | `bind-inputs` | manifest, siteCapabilities | `state.input_readiness` | `state/readiness.json` |
 | 2 | `baseline` | manifest | `state.design_state` | `state/baseline.json` (also seeds `state/working-state.json`) |
 | 3 | `policy` | analysisContractDir, targetSetupNs(`{from: goal}`), targetHoldNs(`{from: goal}`) | reads `<analysisContractDir>/policy.json` + `state/baseline.json` + `state/observation.json` | `state/policy.json` (stamped) |
-| 4 | `observe` | querySpec, siteProfile, scenarioInputs, maxPaths(`{from: strategy}`) | `adapters.compile_pt_scenario_tasks` + `run_tool` (x4) then `state.capture` | `state/observation.json` (also `state/observation-prev.json` and `observations/<id>.json`) |
+| 4 | `observe` | querySpec, siteProfile, scenarioInputs, maxPaths(`{from: strategy}`, an upper cap -- see "Fix round 1" below) | `adapters.compile_pt_scenario_tasks` + `run_tool` (x4) then `state.capture` | `state/observation.json` (also `state/observation-prev.json`, `observations/<id>.json` and `research/observe/max-paths.json`) |
 | 5 | `risk` | priorObservation(`state/observation-prev.json`), currentObservation(`state/observation.json`), recheck | `state.compare_checks` (self-compares on the campaign's first observation, when `priorObservation` does not exist yet) | `state/risk.json` |
 | 6 | `prepare-workers` | baseState(`state/working-state.json`), siteCapabilities, edaProfile, wp01, wp02, wp03 | `workspaces.validate_work_package` + `workspaces.prepare` (x3) + `adapters.compile_xtop_operator_task`/`compile_xtop_analysis_manual_task` (x3, materialized into each worker's own root) | `state/workers.json` (now embeds each slot's full `workPackage`/`workspaceManifest`) |
 | 7 | `capture-contribution` | slot | `contributions.seal` (base_ref/result_refs composed from `state/workers.json[slot]` and the slot's own workspace root -- see `_cmd_capture_contribution`'s docstring for the exact `before.dump`/`after.dump`/`ops.jsonl`/`summary.json` file names) | `state/contribution-<slot>.json` (one of 3 literal names) |
@@ -98,9 +98,9 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 17 | `evaluate` | policy(`state/policy.json`) | `verification.plan_checks` + `verification.assemble` | `state/evaluation.json` |
 | 18 | `adopt` | policy(`state/policy.json`) | `adoption.publish` (`expectedBase` from `state/working-state.json`; rewrites `state/working-state.json` whenever `working` moves) | `accepted/latest.json` (envelope: `{"acceptanceRecord","refreshLedger"}` paths) |
 | 19 | `residual` | (none) | `residual.extract` | `state/residual-cases.json` |
-| 20 | `apr-prepare` | stage(`place`\|`cts`\|`route`\|`postroute`) | `lifecycle.compile_intervention` + `lifecycle.stage_task` | `apr/<stage>/task.json` (4 literal paths; now also carries `taskId`) |
-| 21 | `apr-run` | stage(`place`\|`cts`\|`route`\|`postroute`), siteProfile | reads `apr/<stage>/task.json` then `run_tool` (stage batch) + `adapters.compile_innovus_export_task` + `run_tool` (export batch) | `state/implement.json` (same shape `implement` writes) |
-| 22 | `record-experience` | reasonSource(an `integration-plan` or `next-decision`, for its `.reason` field) | `experience.record` (lineage/decision/outcome composed from `state/working-state.json`, `state/implement.json`, `state/evaluation.json`, `state/contributions-collected.json`, `state/sta.json`) | `state/experience.json` |
+| 20 | `apr-prepare` | (none -- see "Fix round 1" below) | reads `research/requests/next-decision.json` then `lifecycle.compile_intervention` + `lifecycle.stage_task` | `state/apr-task.json` (one fixed literal path for every stage; carries `taskId` and `stage`) |
+| 21 | `apr-run` | siteProfile | reads `state/apr-task.json` then `run_tool` (stage batch) + `adapters.compile_innovus_export_task` + `run_tool` (export batch) | `state/implement.json` (same shape `implement` writes) |
+| 22 | `record-experience` | reasonSource(an `integration-plan` -- only actually read for a merge-commit candidate; see "Fix round 1" below) | `experience.record` (lineage/decision/outcome composed from `state/working-state.json`, `state/implement.json`, `state/evaluation.json`, `state/contributions-collected.json`, `state/merge-commit.json`, `state/sta.json`, `state/policy.json`/`state/pointers.json`) | `state/experience.json` |
 
 Gaps closed by Task 12b (G1-G7, G11, G19, G24 per `FABRIC.md`)
 -------------------------------------------------------------------
@@ -143,6 +143,49 @@ Gaps closed by Task 12b (G1-G7, G11, G19, G24 per `FABRIC.md`)
   executes the prepared stage task and writes an `implement`-shaped
   candidate (`_cmd_apr_run`), so `extract`/`sta`/`physical`/`evaluate`/
   `adopt`/`record-experience` all follow unchanged.
+
+Fix round 1 (controller review of Task 12b + two more CLI seams from Task 14's re-wire)
+-----------------------------------------------------------------------------------------------
+
+- `record-experience` refuses (`InputError("missing-input", ...)`, exit 2)
+  a reason source whose `.reason` is missing or blank, and refuses the same
+  way when no scenario in `state/sta.json` carries a `precision` -- neither
+  is ever silently written as `""`/`null` (item 1).
+- `record-experience`'s `predicted`/`measured` are now **deltas against the
+  parent state's own `min(setup, hold)` WNS** (`_parent_min_wns`, looked up
+  from `state/policy.json`'s `baselineMinWns` or `state/pointers.json`'s own
+  pointer values by state id), not the candidate's raw absolute WNS --
+  a controller decision on the risk that an absolute pair cannot itself
+  express "helped"/"hurt"/"neutral" the way `experience._verdict`
+  interprets `measured`'s sign. `conditions` also gains `predictionModel`
+  (`_selected_predicted_min_wns`'s own "xtop"/"presta"/"unknown"). **Known
+  limitation, out of this fix round's file scope (`atcs_cli.py` only):**
+  `atcs.experience.record`'s own `_read_conditions` rebuilds `conditions`
+  from a hardcoded `CONDITION_KEYS = ("stage","scenario","precision","toolVersion")`
+  tuple, so `predictionModel` is computed and passed through correctly here
+  but is currently *dropped*, never actually persisted into
+  `state/experience.json`, until that M8 tuple itself gains a fifth entry
+  -- a controller call on whether to include that one-line change (item 2).
+- `apr-prepare` no longer takes `stage` on argv -- it reads `research/requests/next-decision.json`
+  (a fixed, Pack-wide-known Workshop path, `NEXT_DECISION_REL_PATH`),
+  requires `action == "earlier-apr"` and a `stage` in `APR_STAGES`, and
+  records both `taskId` and `stage` in its new single fixed declared output,
+  `state/apr-task.json` (replacing the old, four-stage `apr/<stage>/task.json`,
+  which cannot be one fixed literal path across four possible stages).
+  `apr-run` now takes only `<siteProfile>` and reads everything else back
+  from `state/apr-task.json` (item 3).
+- `record-experience` picks its reason source from `state/implement.json`'s
+  own provenance: when `state/merge-commit.json` exists (a real batch was
+  composed), it reads the given `<reasonSource>` argv path (the compose
+  Workshop's `integration-plan`) as before; otherwise (an `apr-run`
+  candidate, which never composes one) it reads `research/requests/next-decision.json`
+  directly instead, never the nonexistent integration plan (item 4).
+- `observe`'s argv `maxPaths` is now an upper **cap**, not a value that
+  blindly overwrites the request: when `query_spec` already names its own
+  `maxPaths` at or below the cap, that value is used; above the cap, it is
+  clamped down; absent, the cap itself is used. The decision
+  (`cap`/`requested`/`used`/`clamped`) is recorded at the non-declared side
+  path `research/observe/max-paths.json` (item 5).
 
 Known gaps still open (see also `adapters.py`'s own "Gaps")
 -------------------------------------------------------------------------------
@@ -232,6 +275,15 @@ from atcs import adapters  # noqa: E402
 
 
 APR_STAGES = ("place", "cts", "route", "postroute")
+
+# Fix round 1 (G1/G2): the next-investment Workshop's own `next-decision` --
+# a fixed, Pack-wide-known path (`contract.yml`'s `nextDecision` output),
+# never per-run/per-id -- is read directly by convention, the same way
+# every other fixed Site/Workshop path already is; `apr-prepare` reads its
+# `stage` from here (it is no longer an argv value), and `record-experience`
+# falls back to it for an `apr-run` candidate's own reason (no integration
+# plan was ever composed for one).
+NEXT_DECISION_REL_PATH = "research/requests/next-decision.json"
 
 
 class InputError(Exception):
@@ -337,6 +389,7 @@ def _paths(workspace):
         "evaluation": state_dir / "evaluation.json",
         "residual_cases": state_dir / "residual-cases.json",
         "refresh_ledger": state_dir / "refresh-ledger.json",
+        "apr_task": state_dir / "apr-task.json",
         "accepted": workspace / "accepted" / "latest.json",
     }
 
@@ -398,20 +451,42 @@ def _cmd_observe(workspace, args):
     *previous* current observation (if any) is preserved verbatim at
     `state/observation-prev.json`, and this call's own new observation is
     also stored, immutably, at `observations/<id>.json`.
+
+    Fix round 1 (item 5): the argv `maxPaths` value is the Strategy's own
+    upper *cap*, not a value to blindly overwrite the request with. When
+    `query_spec` (the Workshop/Site-authored request) already names its own
+    `maxPaths` and it is `<= cap`, that request value is used verbatim; when
+    it is greater than the cap, it is clamped down to the cap; when the
+    request names none at all, the cap itself is used. Either way the
+    effective value actually used is what is compiled into the PT task
+    (`state.capture`'s own completeness check is keyed off it); the clamp
+    decision itself (`cap`, `requested`, `used`, `clamped`) is recorded as a
+    non-declared side file, `research/observe/max-paths.json`, since
+    `atcs.state.capture`'s own `observation-set` shape has no field for it.
     """
     query_spec_path, site_profile_path, scenario_inputs_path, max_paths_raw = args
     query_spec = dict(_read_plain(query_spec_path))
     site_profile = _read_plain(site_profile_path)
     scenario_inputs = _read_plain(scenario_inputs_path)
     try:
-        max_paths = int(max_paths_raw)
+        cap = int(max_paths_raw)
     except (TypeError, ValueError):
         raise InputError("invalid-input", f"maxPaths must be an integer, got {max_paths_raw!r}")
-    if isinstance(max_paths, bool) or max_paths <= 0:
+    if isinstance(cap, bool) or cap <= 0:
         raise InputError("invalid-input", f"maxPaths must be a positive int, got {max_paths_raw!r}")
-    query_spec["maxPaths"] = max_paths
+
+    requested = query_spec.get("maxPaths")
+    if isinstance(requested, bool) or not isinstance(requested, int) or requested <= 0:
+        requested = None
+    effective = cap if requested is None else min(requested, cap)
+    clamped = requested is not None and requested > cap
+    query_spec["maxPaths"] = effective
 
     workspace = Path(workspace)
+    _canonical_write(
+        workspace / "research" / "observe" / "max-paths.json",
+        {"cap": cap, "requested": requested, "used": effective, "clamped": clamped},
+    )
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
 
     report_root = workspace / "research" / "observe"
@@ -1094,21 +1169,47 @@ def _cmd_residual(workspace, args):
 def _cmd_apr_prepare(workspace, args):
     """Compile a bounded APR stage intervention/task (full-flow only, via `lifecycle`).
 
+    Fix round 1 (Task 14 G1): `stage` is no longer an argv value -- it comes
+    from `state/apr-task.json`'s own producer, the next-investment
+    Workshop's `next-decision` document, at its fixed contract path
+    (`NEXT_DECISION_REL_PATH`). `next-decision` is a Workshop-authored
+    request, never a `core.stamp`-ed artifact (see
+    `.superpowers/sdd/global-context.md`'s "Shared data model" row for it,
+    and `tools/read-atcs.py`'s own `_read_next_decision`, which likewise
+    never digest-checks it, only structurally validates it) -- this
+    dispatcher applies the same two structural checks the Reader's own
+    `_collect_next_decision_problems` would report as a Judge-visible
+    problem count: `action` must be `"earlier-apr"` and `stage` must be one
+    of `APR_STAGES`. Either failing is `InputError("invalid-input", ...)`
+    (exit 2) -- a malformed/mismatched declared input, not a module refusal.
+
     Adds a `taskId` field (recomputed identically to `lifecycle.stage_task`'s
     own internal digest -- `core.digest({"stage","hookTcl","readbackTcl"})`,
     the same value baked into `task["outputs"]`' own `apr/<stage>/<id>/`
-    paths) onto the returned body: `apr-run` (G24) needs this stable id to
-    build the output directory it will run the stage task in and to stamp
-    as the resulting candidate's own `mergeCommitId` -- `lifecycle.stage_task`
-    itself returns only `{"tcl","inputs","outputs"}` (M11's own module
-    docstring: neither shape is a stamped artifact), so this is computed
-    here rather than by changing that module's public return shape.
+    paths) and the resolved `stage` itself onto the returned body:
+    `apr-run` (G24) needs both -- the stable id to build the output
+    directory it will run the stage task in and stamp as the resulting
+    candidate's own `mergeCommitId`, and `stage` because it no longer takes
+    that as an argv value either -- `lifecycle.stage_task` itself returns
+    only `{"tcl","inputs","outputs"}` (M11's own module docstring: neither
+    shape is a stamped artifact), so both are computed/carried here rather
+    than by changing that module's public return shape. Declared output is
+    now the single fixed `state/apr-task.json` (never `apr/<stage>/task.json`,
+    which cannot be one fixed literal path across four possible stages).
     """
-    (stage,) = args
-    if stage not in APR_STAGES:
-        raise InputError("invalid-input", f"stage must be one of {APR_STAGES}, got {stage!r}")
-    adapters.validate_path_segment(stage, "stage")  # whitelisted above; validated too, for defense in depth
+    del args
     workspace = Path(workspace)
+    next_decision = _read_plain(workspace / NEXT_DECISION_REL_PATH)
+    action = next_decision.get("action")
+    if action != "earlier-apr":
+        raise InputError(
+            "invalid-input", f"next-decision action must be 'earlier-apr' for apr-prepare, got {action!r}"
+        )
+    stage = next_decision.get("stage")
+    if stage not in APR_STAGES:
+        raise InputError("invalid-input", f"next-decision stage must be one of {APR_STAGES}, got {stage!r}")
+    adapters.validate_path_segment(stage, "stage")  # whitelisted above; validated too, for defense in depth
+
     residual_doc = _read_plain(_paths(workspace)["residual_cases"])
     readiness = _read_declared(_paths(workspace)["readiness"], "input-readiness")
     intervention = lifecycle.compile_intervention(residual_doc.get("cases", []), stage, readiness)
@@ -1116,76 +1217,190 @@ def _cmd_apr_prepare(workspace, args):
     task_id = core.digest({"stage": stage, "hookTcl": intervention["hookTcl"], "readbackTcl": intervention["readbackTcl"]})
     body = dict(task)
     body["taskId"] = task_id
-    return _apr_task_path(workspace, stage), body
+    body["stage"] = stage
+    return _paths(workspace)["apr_task"], body
+
+
+def _parent_min_wns(workspace, state_id):
+    """`min(setup, hold)` WNS recorded for design-state `state_id`, or `unknown`.
+
+    Fix round 1 (item 2): `predicted`/`measured` are deltas against the
+    *parent* state's own min WNS, so that parent's own generation must be
+    looked up by id -- this Pack keeps no per-generation observation
+    archive, so the lookup is against whichever fixed state file actually
+    recorded that id's min WNS at the moment it became significant:
+    `state/policy.json`'s own `baselineStateId`/`baselineMinWns` (verified
+    via `_read_declared`) when `state_id` is the Campaign's declared
+    baseline, else `state/pointers.json`'s own pointer values (`working`/
+    `best`/`delivery`, current or historical via `history`'s `previous`/
+    `new` entries -- `adoption.publish` stamps every one of these with
+    `minWns` at accept time; `pointers.json` itself is verified via
+    `_read_declared`). Absent from both, or `state_id` falsy, -> `unknown`
+    with a reason naming why -- never fabricated.
+    """
+    if not state_id:
+        return core.unknown("no parent state id recorded")
+    policy_path = _paths(workspace)["policy"]
+    if policy_path.is_file():
+        policy = _read_declared(policy_path, "policy")
+        if policy.get("baselineStateId") == state_id:
+            value = policy.get("baselineMinWns")
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return core.known(value)
+    pointers_path = _paths(workspace)["pointers"]
+    if pointers_path.is_file():
+        pointers = _read_declared(pointers_path, "pointers")
+        candidates = [pointers.get(key) for key in ("working", "best", "delivery")]
+        for entry in pointers.get("history") or []:
+            candidates.append(entry.get("previous"))
+            candidates.append(entry.get("new"))
+        for value in candidates:
+            if isinstance(value, dict) and value.get("stateId") == state_id:
+                min_wns = value.get("minWns")
+                if isinstance(min_wns, (int, float)) and not isinstance(min_wns, bool):
+                    return core.known(min_wns)
+    return core.unknown(f"no recorded min WNS for parent state {state_id!r}")
+
+
+def _selected_predicted_min_wns(collected, merge_commit):
+    """Best known predicted `min(setup, hold)` WNS among the candidate's own
+    *selected* contributions (`merge_commit["contributions"]` -- absent/empty
+    for an `apr-run` candidate, which has none, per `_load_merge_commit_like`),
+    plus which validation level ("xtop"/"presta") it came from ("unknown" if
+    mixed across contributions, or absent).
+
+    Each contribution's own already-computed `validationLevel`
+    (`contributions._predicted_measures`'s own presta-over-xtop precedence)
+    decides which pair of predicted keys that one contribution contributes
+    from -- this function never re-derives that precedence itself.
+    """
+    selected_ids = {entry.get("id") for entry in (merge_commit.get("contributions") or [])}
+    contributions_by_id = {c.get("id"): c for c in collected.get("contributions", [])}
+    per_contribution = []
+    for contribution_id in selected_ids:
+        contribution = contributions_by_id.get(contribution_id)
+        if not contribution or contribution.get("kind") != "fix" or not contribution.get("admissible"):
+            continue
+        validation_level = contribution.get("validationLevel")
+        if validation_level == "presta":
+            keys = ("prestaSetupWns", "prestaHoldWns")
+        elif validation_level == "xtop":
+            keys = ("xtopSetupWns", "xtopHoldWns")
+        else:
+            continue
+        predicted = contribution.get("predicted", {})
+        values = [core.value_of(predicted[key]) for key in keys if core.is_known(predicted.get(key))]
+        if values:
+            per_contribution.append((min(values), validation_level))
+    if not per_contribution:
+        return core.unknown("no selected contribution reported a predicted WNS"), "unknown"
+    best_value = min(value for value, _ in per_contribution)
+    models = {model for _, model in per_contribution}
+    return core.known(best_value), (models.pop() if len(models) == 1 else "unknown")
 
 
 def _cmd_record_experience(workspace, args):
     """Compose lineage/decision/outcome from state files -- no `research/requests/experience-*` inputs (G5).
 
-    `<reasonSource>` is the one Workshop-authored document naming *why*
-    this candidate was pursued -- either the compose Workshop's own
-    `integration-plan` (a composed batch) or the next-investment Workshop's
-    `next-decision` (an `implement`/`earlier-apr` decision that never went
-    through composition); both schemas carry a `reason` field (see
-    `.superpowers/sdd/global-context.md`'s "Shared data model"), and this
-    dispatcher never needs to know which one it was handed, only `.reason`.
+    Fix round 1 (item 4, Task 14 G2): `<reasonSource>` is read only when
+    `state/merge-commit.json` exists (a real Integration Fix Session batch
+    was composed) -- otherwise (an `apr-run` candidate, which never composes
+    one, see `_cmd_apr_run`/`_load_merge_commit_like`) the reason comes
+    instead from the next-investment Workshop's own `next-decision`, at its
+    fixed contract path (`NEXT_DECISION_REL_PATH`), never the
+    (nonexistent) integration plan. Either way the reason document's own
+    `reason` field must be a non-empty string, or this refuses
+    (`InputError("missing-input", ...)`, exit 2) rather than ever writing a
+    blank hypothesis (item 1).
 
     `decisionId` is the accepted candidate's own resulting design-state id
     (`evaluation["stateId"]`) -- unique per accepted candidate, so a replay
     of the same accepted evaluation can never silently re-record. `action`
     is `state/implement.json`'s own `mergeCommitId` (the merge commit, or
-    the APR task id for an `apr-run` candidate -- see `_cmd_apr_run`).
-    `predicted`/`measured` are both `min(setup, hold)` WNS Measures:
-    `predicted` is the best known xtop/presta prediction among this batch's
-    own admissible `fix` contributions (`state/contributions-collected.json`);
-    `measured` is `state/evaluation.json`'s own final WNS. Neither producer
-    defines a "delta" shape for a whole merged batch, so this is a
-    documented, deterministic, state-derived judgment call -- see this
-    task's report.
+    the APR task id for an `apr-run` candidate). `conditions.precision`
+    comes from any scenario in `state/sta.json`; if none carries one, this
+    refuses (`InputError("missing-input", ...)`, exit 2) rather than ever
+    recording `null` (item 1). `conditions.predictionModel` is
+    `_selected_predicted_min_wns`'s own model ("xtop"/"presta"/"unknown").
+
+    `predicted`/`measured` are now **deltas against the parent state's own
+    min(setup, hold) WNS** (`_parent_min_wns`, item 2 -- a controller
+    decision on the risk that an absolute WNS pair cannot itself express
+    "helped"/"hurt"/"neutral" the way `experience._verdict` interprets
+    `measured`'s sign): `measured` = the candidate's own final
+    `min(finalSetupWns, finalHoldWns)` minus the parent's min WNS;
+    `predicted` = `_selected_predicted_min_wns`'s own best known value minus
+    that *same* parent min WNS. Any missing input on either side of either
+    subtraction -> that whole Measure `unknown`, naming every contributing
+    reason -- never a delta computed from a partially-known pair.
     """
     (reason_source_path,) = args
     workspace = Path(workspace)
-    reason_doc = _read_plain(reason_source_path)
-    hypothesis = reason_doc.get("reason", "")
+    merge_commit_path = _paths(workspace)["merge_commit"]
+    if merge_commit_path.is_file():
+        reason_doc = _read_plain(reason_source_path)
+    else:
+        # No Integration Fix Session batch was ever composed for this
+        # candidate (an apr-run candidate) -- the "why" lives in the
+        # next-investment Workshop's own next-decision instead.
+        reason_doc = _read_plain(workspace / NEXT_DECISION_REL_PATH)
+    reason = reason_doc.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        raise InputError("missing-input", "reason source has no non-empty 'reason' string")
+    hypothesis = reason
 
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
     implement = _read_plain(_paths(workspace)["implement"])
     evaluation = _read_declared(_paths(workspace)["evaluation"], "evaluation")
     collected = _read_json_or_default(_paths(workspace)["contributions_collected"], {"contributions": []})
     sta = _read_json_or_default(_paths(workspace)["sta"], {})
+    merge_commit = _load_merge_commit_like(workspace, implement)
 
     precision = None
     for entry in sta.get("sta", {}).values():
-        precision = entry.get("observation", {}).get("precision")
-        if precision is not None:
+        candidate_precision = entry.get("observation", {}).get("precision")
+        if candidate_precision is not None:
+            precision = candidate_precision
             break
+    if precision is None:
+        raise InputError("missing-input", "no scenario in state/sta.json carries a precision")
 
-    predicted_values = []
-    for contribution in collected.get("contributions", []):
-        if contribution.get("kind") != "fix" or not contribution.get("admissible"):
-            continue
-        predicted = contribution.get("predicted", {})
-        for key in ("prestaSetupWns", "prestaHoldWns", "xtopSetupWns", "xtopHoldWns"):
-            measure = predicted.get(key)
-            if core.is_known(measure):
-                predicted_values.append(core.value_of(measure))
-    predicted_measure = (
-        core.known(min(predicted_values)) if predicted_values
-        else core.unknown("no admissible contribution reported a predicted WNS")
-    )
+    parent_min = _parent_min_wns(workspace, implement.get("parentStateId"))
 
     setup_wns = evaluation.get("finalSetupWns")
     hold_wns = evaluation.get("finalHoldWns")
     if core.is_known(setup_wns) and core.is_known(hold_wns):
-        measured_measure = core.known(min(core.value_of(setup_wns), core.value_of(hold_wns)))
+        candidate_min = core.known(min(core.value_of(setup_wns), core.value_of(hold_wns)))
     else:
-        measured_measure = core.unknown("evaluation final WNS not fully known")
+        candidate_min = core.unknown("evaluation final WNS not fully known")
+
+    if core.is_known(candidate_min) and core.is_known(parent_min):
+        measured_measure = core.known(core.value_of(candidate_min) - core.value_of(parent_min))
+    else:
+        reasons = []
+        if not core.is_known(candidate_min):
+            reasons.append(candidate_min["unknown"])
+        if not core.is_known(parent_min):
+            reasons.append(parent_min["unknown"])
+        measured_measure = core.unknown("; ".join(reasons))
+
+    predicted_min, prediction_model = _selected_predicted_min_wns(collected, merge_commit)
+    if core.is_known(predicted_min) and core.is_known(parent_min):
+        predicted_measure = core.known(core.value_of(predicted_min) - core.value_of(parent_min))
+    else:
+        reasons = []
+        if not core.is_known(predicted_min):
+            reasons.append(predicted_min["unknown"])
+        if not core.is_known(parent_min):
+            reasons.append(parent_min["unknown"])
+        predicted_measure = core.unknown("; ".join(reasons))
 
     lineage = {
         "decisionId": evaluation.get("stateId") or working_state["id"],
         "conditions": {
             "stage": working_state.get("stage"), "scenario": "*", "precision": precision,
             "toolVersion": core.canonical(working_state.get("tools", {})).decode("utf-8"),
+            "predictionModel": prediction_model,
         },
     }
     decision = {"hypothesis": hypothesis, "action": implement.get("mergeCommitId"), "predicted": predicted_measure}
@@ -1284,8 +1499,10 @@ def _cmd_policy(workspace, args):
 def _cmd_apr_run(workspace, args):
     """Run a prepared APR stage task through the Innovus wrapper and seal an `implement`-shaped candidate (G24).
 
-    Reads the fixed `apr/<stage>/task.json` `apr-prepare` already wrote
-    (including the `taskId` field it stamps). Runs `task["tcl"]` -- which
+    Fix round 1 (Task 14 G1): `stage` is no longer an argv value here either
+    -- everything needed comes from the fixed `state/apr-task.json`
+    `apr-prepare` already wrote (including the `taskId` it stamps and the
+    `stage` it resolved from `next-decision`). Runs `task["tcl"]` -- which
     only restores the predecessor checkpoint, applies the compiled
     intervention, runs the stage command and saves `./DBS/<stage>.enc`
     under `apr/<stage>/<taskId>/` (see `flow/templates/apr-stage.tcl`,
@@ -1305,15 +1522,16 @@ def _cmd_apr_run(workspace, args):
     `record-experience` all follow unchanged (`evaluate`/`sta` read the
     missing `state/merge-commit.json` back via `_load_merge_commit_like`).
     """
-    stage, site_profile_path = args
-    if stage not in APR_STAGES:
-        raise InputError("invalid-input", f"stage must be one of {APR_STAGES}, got {stage!r}")
+    (site_profile_path,) = args
     workspace = Path(workspace)
     site_profile = _read_plain(site_profile_path)
-    task = _read_plain(_apr_task_path(workspace, stage))
-    for key in ("tcl", "taskId"):
+    task = _read_plain(_paths(workspace)["apr_task"])
+    for key in ("tcl", "taskId", "stage"):
         if not task.get(key):
             raise InputError("invalid-input", f"apr task is missing {key!r}")
+    stage = task["stage"]
+    if stage not in APR_STAGES:
+        raise InputError("invalid-input", f"apr task stage must be one of {APR_STAGES}, got {stage!r}")
     task_id = adapters.validate_path_segment(task["taskId"], "apr task.taskId")
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
 

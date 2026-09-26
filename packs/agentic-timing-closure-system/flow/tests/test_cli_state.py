@@ -39,8 +39,10 @@ from atcs import contributions  # noqa: E402
 from atcs import composition  # noqa: E402
 from atcs import integration  # noqa: E402
 import fixtures  # noqa: E402
+import atcs_cli  # noqa: E402
 
 CLI_PATH = FLOW_DIR / "atcs_cli.py"
+NEXT_DECISION_REL_PATH = atcs_cli.NEXT_DECISION_REL_PATH
 REQUIRED_SCENARIOS = ("func_ssg_rcworst_m40", "func_ssg_rcworst_125", "func_ffg_cbest_m40", "func_ffg_cbest_125")
 CORNER = "corner1"
 
@@ -427,6 +429,38 @@ class CaptureContributionComposedTest(unittest.TestCase):
         payload = json.loads(result.stderr)
         self.assertEqual(payload["code"], "missing-input")
 
+    def test_composes_an_admissible_no_fix_contribution_with_a_diagnosis(self):
+        """Item 6: a no-fix contribution (empty ops.jsonl) is admissible only
+        with a diagnosis -- `contributions.seal`'s own `no-diagnosis` refusal."""
+        manifest = self._seed_workers()
+        root = self.workspace / manifest["root"]
+        (root / "before.dump").write_text("U1 BUFX1\n", encoding="utf-8")
+        (root / "after.dump").write_text("U1 BUFX1\n", encoding="utf-8")  # unchanged: no-fix
+        (root / "ops.jsonl").write_text("", encoding="utf-8")
+        _write_json(root / "summary.json", {"diagnosis": "no admissible fix found within budget"})
+
+        result = _run("capture-contribution", self.workspace, "w01")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        contribution = json.loads((self.workspace / "state" / "contribution-w01.json").read_text())
+        self.assertEqual(contribution["kind"], "no-fix")
+        self.assertTrue(contribution["admissible"], contribution.get("refusals"))
+        self.assertEqual(contribution["diagnosis"], "no admissible fix found within budget")
+
+    def test_no_fix_contribution_without_a_diagnosis_is_inadmissible(self):
+        manifest = self._seed_workers()
+        root = self.workspace / manifest["root"]
+        (root / "before.dump").write_text("U1 BUFX1\n", encoding="utf-8")
+        (root / "after.dump").write_text("U1 BUFX1\n", encoding="utf-8")
+        (root / "ops.jsonl").write_text("", encoding="utf-8")
+        # No summary.json at all -- no diagnosis.
+
+        result = _run("capture-contribution", self.workspace, "w01")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        contribution = json.loads((self.workspace / "state" / "contribution-w01.json").read_text())
+        self.assertEqual(contribution["kind"], "no-fix")
+        self.assertFalse(contribution["admissible"])
+        self.assertTrue(any(r["code"] == "no-diagnosis" for r in contribution["refusals"]))
+
 
 class PolicyTest(unittest.TestCase):
     """G4: `policy` composes the run-time acceptance policy and refuses a static
@@ -525,6 +559,59 @@ class IdentityMismatchTest(unittest.TestCase):
         self.assertFalse((self.workspace / "state" / "physical.json").exists())
 
 
+class ObserveMaxPathsTest(unittest.TestCase):
+    """Item 5: the Strategy's `maxPaths` argv value is an upper cap, not a blind override."""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+        manifest = _make_baseline_manifest(self.workspace)
+        _write_json(self.workspace / "manifest.json", manifest)
+        result = _run("baseline", self.workspace, self.workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def _run_observe(self, requested_max_paths, cap):
+        query_spec = {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS)}
+        if requested_max_paths is not None:
+            query_spec["maxPaths"] = requested_max_paths
+        query_spec_path = self.workspace / "query-spec.json"
+        _write_json(query_spec_path, query_spec)
+        scenario_inputs = {
+            scenario: {
+                "design": "top", "netlist": str(self.workspace / "netlist.v"),
+                "sdc": str(self.workspace / "constraints.sdc"), "spef": str(self.workspace / f"{CORNER}.spef"),
+            }
+            for scenario in REQUIRED_SCENARIOS
+        }
+        scenario_inputs_path = self.workspace / "scenario-inputs.json"
+        _write_json(scenario_inputs_path, scenario_inputs)
+        site_profile_path = _site_profile_path(self.workspace)
+        for scenario in REQUIRED_SCENARIOS:
+            _write_report_set(self.workspace / "research" / "observe" / scenario, _clean_reports())
+        return _run("observe", self.workspace, query_spec_path, site_profile_path, scenario_inputs_path, str(cap))
+
+    def _clamp_record(self):
+        return json.loads((self.workspace / "research" / "observe" / "max-paths.json").read_text())
+
+    def test_request_within_cap_uses_the_requests_own_value(self):
+        result = self._run_observe(requested_max_paths=500, cap=2000)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        record = self._clamp_record()
+        self.assertEqual(record, {"cap": 2000, "requested": 500, "used": 500, "clamped": False})
+
+    def test_request_above_cap_is_clamped(self):
+        result = self._run_observe(requested_max_paths=5000, cap=500)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        record = self._clamp_record()
+        self.assertEqual(record, {"cap": 500, "requested": 5000, "used": 500, "clamped": True})
+
+    def test_no_requested_value_uses_the_cap(self):
+        result = self._run_observe(requested_max_paths=None, cap=800)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        record = self._clamp_record()
+        self.assertEqual(record, {"cap": 800, "requested": None, "used": 800, "clamped": False})
+
+
 class RiskFirstObservationTest(unittest.TestCase):
     """G19: `risk` self-compares on the campaign's first observation (no `state/observation-prev.json` yet)."""
 
@@ -569,10 +656,25 @@ def _post_route_only_readiness(manifest):
     return state.input_readiness(manifest, {"pgVerification": False})
 
 
+def _write_next_decision(workspace, stage, reason="residual evidence points at an earlier restart"):
+    next_decision = {
+        "stateRef": "0" * 20, "observationRef": "1" * 20, "budgetRef": "budget-1",
+        "question": "would an earlier APR restart close the remaining residual cases?",
+        "action": "earlier-apr", "targets": [], "reason": reason,
+        "falsifier": "the stage intervention does not improve the targeted checks",
+        "costBasis": "one bounded APR stage cycle", "requiredArtifacts": [], "stage": stage,
+    }
+    _write_json(workspace / NEXT_DECISION_REL_PATH, next_decision)
+    return next_decision
+
+
 class AprPrepareRunTest(unittest.TestCase):
-    """G24: `apr-prepare` refuses under post-route-only scope; `apr-run` actually
-    executes the prepared stage task and writes an `implement`-shaped candidate
-    `extract` accepts."""
+    """G24 + fix round 1 (Task 14 G1): `apr-prepare` reads `stage` from
+    `research/requests/next-decision.json` (never argv) and refuses under
+    post-route-only scope; `apr-run` reads everything from
+    `state/apr-task.json` and actually executes the prepared stage task,
+    writing an `implement`-shaped candidate `extract` (and, further, `sta`/
+    `evaluate`/`adopt`) accept unchanged."""
 
     def setUp(self):
         self.workspace = _tmp()
@@ -582,6 +684,17 @@ class AprPrepareRunTest(unittest.TestCase):
         result = _run("baseline", self.workspace, self.workspace / "manifest.json")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.working_state = json.loads((self.workspace / "state" / "working-state.json").read_text())
+        baseline_observation = _baseline_observation(self.workspace, self.working_state)
+        core.write_artifact(self.workspace / "state" / "observation.json", baseline_observation)
+        contract_dir = _analysis_contract_dir(self.workspace)
+        result = _run("policy", self.workspace, contract_dir, "0.0", "0.0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        baseline_drc_path = self.workspace / "baseline-verify-drc.rpt"
+        baseline_connectivity_path = self.workspace / "baseline-verify-connectivity.rpt"
+        _write_text(baseline_drc_path, fixtures.drc_report([]))
+        _write_text(baseline_connectivity_path, fixtures.connectivity_report([]))
+        result = _run("physical", self.workspace, baseline_drc_path, baseline_connectivity_path, "baseline")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def _write_residual_cases(self):
         residual_case = {
@@ -595,29 +708,43 @@ class AprPrepareRunTest(unittest.TestCase):
         }
         _write_json(self.workspace / "state" / "residual-cases.json", {"cases": [residual_case]})
 
+    def test_apr_prepare_requires_earlier_apr_action(self):
+        readiness = _full_flow_readiness(self.workspace, self.manifest)
+        core.write_artifact(self.workspace / "state" / "readiness.json", readiness)
+        self._write_residual_cases()
+        _write_json(self.workspace / NEXT_DECISION_REL_PATH, {"action": "observe", "stage": "place"})
+
+        result = _run("apr-prepare", self.workspace)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "invalid-input")
+        self.assertFalse((self.workspace / "state" / "apr-task.json").exists())
+
     def test_apr_prepare_refuses_under_post_route_only(self):
         readiness = _post_route_only_readiness(self.manifest)
         self.assertEqual(readiness["scope"], "post-route-only")
         core.write_artifact(self.workspace / "state" / "readiness.json", readiness)
         self._write_residual_cases()
+        _write_next_decision(self.workspace, "place")
 
-        result = _run("apr-prepare", self.workspace, "place")
+        result = _run("apr-prepare", self.workspace)
         self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
         payload = json.loads(result.stderr)
         self.assertEqual(payload["code"], "lifecycle-unavailable")
-        self.assertFalse((self.workspace / "apr" / "place" / "task.json").exists())
+        self.assertFalse((self.workspace / "state" / "apr-task.json").exists())
 
-    def test_apr_run_writes_an_implement_shaped_candidate_extract_accepts(self):
+    def _prepare_and_run_apr(self, stage):
         readiness = _full_flow_readiness(self.workspace, self.manifest)
         self.assertEqual(readiness["scope"], "full-flow")
         core.write_artifact(self.workspace / "state" / "readiness.json", readiness)
         self._write_residual_cases()
+        _write_next_decision(self.workspace, stage)
 
-        stage = "place"
-        result = _run("apr-prepare", self.workspace, stage)
+        result = _run("apr-prepare", self.workspace)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        task = json.loads((self.workspace / "apr" / stage / "task.json").read_text())
+        task = json.loads((self.workspace / "state" / "apr-task.json").read_text())
         self.assertIn("taskId", task)
+        self.assertEqual(task["stage"], stage)
 
         output_root = self.workspace / "apr" / stage / task["taskId"]
         (output_root / "DBS").mkdir(parents=True, exist_ok=True)
@@ -629,13 +756,17 @@ class AprPrepareRunTest(unittest.TestCase):
         _write_text(output_root / "RPT" / "verify_connectivity.rpt", fixtures.connectivity_report([]))
 
         site_profile_path = _site_profile_path(self.workspace)
-        result = _run("apr-run", self.workspace, stage, site_profile_path)
+        result = _run("apr-run", self.workspace, site_profile_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         implement = json.loads((self.workspace / "state" / "implement.json").read_text())
         self.assertEqual(implement["mergeCommitId"], task["taskId"])
         self.assertEqual(implement["parentStateId"], self.working_state["id"])
         self.assertEqual(implement["design"], self.working_state["top"])
         self.assertIn("sha256", implement["drcReport"])
+        return implement, site_profile_path
+
+    def test_apr_run_writes_an_implement_shaped_candidate_extract_accepts(self):
+        implement, site_profile_path = self._prepare_and_run_apr("place")
 
         corners_path = self.workspace / "corners.json"
         _write_json(corners_path, {"corners": [CORNER]})
@@ -645,11 +776,63 @@ class AprPrepareRunTest(unittest.TestCase):
         result = _run("extract", self.workspace, corners_path, site_profile_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_apr_run_candidate_flows_through_sta_evaluate_adopt(self):
+        """Item 6: an apr-run candidate, driven all the way through sta -> evaluate -> adopt."""
+        implement, site_profile_path = self._prepare_and_run_apr("route")
+        merge_id = implement["mergeCommitId"]
+
+        corners_path = self.workspace / "corners.json"
+        _write_json(corners_path, {"corners": [CORNER]})
+        impl_root = self.workspace / "implementations" / merge_id
+        _write_text(impl_root / "starrc" / CORNER / f"{self.working_state['top']}.{CORNER}.spef",
+                     "*SPEF IEEE 1481-1999\n")
+        result = _run("extract", self.workspace, corners_path, site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        for scenario in REQUIRED_SCENARIOS:
+            _write_report_set(impl_root / "sta" / scenario, _clean_reports())
+        query_spec_path = self.workspace / "query-spec.json"
+        _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
+        sdc_path = self.workspace / "sdc.json"
+        _write_json(sdc_path, {"sdc": ["constraints.sdc"]})
+        scenario_corners_path = self.workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        result = _run("sta", self.workspace, query_spec_path, sdc_path, scenario_corners_path,
+                       self.workspace / "state" / "working-state.json", site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        result = _run("physical", self.workspace, "candidate")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        result = _run("evaluate", self.workspace, self.workspace / "state" / "policy.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        evaluation = json.loads((self.workspace / "state" / "evaluation.json").read_text())
+        self.assertEqual(core.value_of(evaluation["missingRequiredCheckCount"]), 0)
+        self.assertEqual(core.value_of(evaluation["finalIdentityErrorCount"]), 0)
+
+        result = _run("adopt", self.workspace, self.workspace / "state" / "policy.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        envelope = json.loads((self.workspace / "accepted" / "latest.json").read_text())
+        acceptance_record = json.loads((self.workspace / envelope["acceptanceRecord"]).read_text())
+        self.assertNotEqual(acceptance_record["decision"], "refused")
+        working_state_after = json.loads((self.workspace / "state" / "working-state.json").read_text())
+        self.assertNotEqual(working_state_after["id"], self.working_state["id"])
+
+        # No merge-commit.json was ever written for this candidate (no Integration
+        # Fix Session batch was composed) -- record-experience must still work,
+        # falling back to the next-decision's own reason (item 4).
+        result = _run("record-experience", self.workspace, self.workspace / "research" / "requests" / "integration-plan.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        experience = json.loads((self.workspace / "state" / "experience.json").read_text())
+        entry = experience["entries"][-1]
+        self.assertEqual(entry["hypothesis"], "residual evidence points at an earlier restart")
+
 
 class RecordExperienceComposedTest(unittest.TestCase):
-    """G5: `record-experience` composes lineage/decision/outcome from state files --
-    predicted/measured come from the evaluation and contributions, never from a
-    `research/requests/experience-*` file."""
+    """G5 + fix round 1 (items 1, 2): `record-experience` composes lineage/decision/
+    outcome from state files, never a `research/requests/experience-*` file;
+    `predicted`/`measured` are deltas against the parent state's own min WNS;
+    a blank reason or a missing precision refuses rather than writing `null`."""
 
     def setUp(self):
         self.workspace = _tmp()
@@ -659,10 +842,42 @@ class RecordExperienceComposedTest(unittest.TestCase):
         result = _run("baseline", self.workspace, self.workspace / "manifest.json")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.working_state = json.loads((self.workspace / "state" / "working-state.json").read_text())
+        self.decision_id_seed = 0
+
+    def _write_candidate(self, parent_min_wns, candidate_setup_wns, candidate_hold_wns,
+                          predicted_setup=0.02, predicted_hold=0.05, validation_level="xtop",
+                          parent_known=True, precision="gba"):
+        self.decision_id_seed += 1
+        merge_id = f"merge-{self.decision_id_seed}"
+        state_id = f"candidate-state-{self.decision_id_seed}"
+
+        if parent_known:
+            policy = core.stamp("policy", {
+                "allowDegradedWorking": True, "degradeLimitNs": 1.0, "maxNewConstraintFailures": 0,
+                "scenarioCorners": {}, "requiredScenarios": list(REQUIRED_SCENARIOS),
+                "goal": {"setup": 0.0, "hold": 0.0}, "baselineStateId": self.working_state["id"],
+                "baselineMinWns": parent_min_wns, "campaignRoot": str(self.workspace),
+            })
+            _write_json(self.workspace / "state" / "policy.json", policy)
+        else:
+            (self.workspace / "state" / "policy.json").unlink(missing_ok=True)
 
         _write_json(self.workspace / "state" / "implement.json", {
-            "mergeCommitId": "merge-1", "design": "top", "parentStateId": self.working_state["id"],
+            "mergeCommitId": merge_id, "design": "top", "parentStateId": self.working_state["id"],
         })
+        merge_commit = core.stamp("merge-commit", {
+            "parentStateId": self.working_state["id"],
+            "contributions": [{"id": "contrib-1", "revision": 1}],
+            "operations": [{"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"}],
+            "innovusEcoTcl": "ecoChangeCell -inst {U1} -cell BUFX2", "sourceMap": {}, "newNets": [],
+        })
+        _write_json(self.workspace / "state" / "merge-commit.json", merge_commit)
+
+        predicted = {}
+        if validation_level == "xtop":
+            predicted = {"xtopSetupWns": core.known(predicted_setup), "xtopHoldWns": core.known(predicted_hold)}
+        elif validation_level == "presta":
+            predicted = {"prestaSetupWns": core.known(predicted_setup), "prestaHoldWns": core.known(predicted_hold)}
         contribution = core.stamp("contribution", {
             "taskId": "w01", "revision": 1, "baseStateId": self.working_state["id"], "kind": "fix",
             "operations": [{"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"}],
@@ -670,13 +885,15 @@ class RecordExperienceComposedTest(unittest.TestCase):
             "delta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
             "touches": {"instances": ["U1"], "nets": [], "regions": [], "checks": [], "cones": []},
             "preconditions": [], "dependencies": [], "atomicGroups": [],
-            "predicted": {"xtopSetupWns": core.known(0.02), "xtopHoldWns": core.known(0.05)},
-            "validationLevel": "xtop", "diagnosis": None, "admissible": True, "refusals": [], "outOfScope": [],
+            "predicted": predicted, "validationLevel": validation_level, "diagnosis": None,
+            "admissible": True, "refusals": [], "outOfScope": [],
         })
+        contribution["id"] = "contrib-1"
         _write_json(self.workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
+
         evaluation = core.stamp("evaluation", {
-            "candidateId": "merge-1", "parentStateId": self.working_state["id"], "stateId": "candidate-state-1",
-            "finalSetupWns": core.known(0.07), "finalHoldWns": core.known(0.04),
+            "candidateId": merge_id, "parentStateId": self.working_state["id"], "stateId": state_id,
+            "finalSetupWns": core.known(candidate_setup_wns), "finalHoldWns": core.known(candidate_hold_wns),
             "missingRequiredCheckCount": core.known(0), "finalIdentityErrorCount": core.known(0),
             "constraintFailureCount": core.known(0), "constraintUnknownCount": core.known(0),
             "fixedCheckCount": core.known(1), "missingPriorCheckCount": core.known(0),
@@ -685,21 +902,100 @@ class RecordExperienceComposedTest(unittest.TestCase):
         })
         _write_json(self.workspace / "state" / "evaluation.json", evaluation)
 
-    def test_composes_predicted_and_measured_from_state_without_a_research_requests_file(self):
-        reason_path = self.workspace / "next-decision.json"
+        if precision is not None:
+            sta = {
+                "designStateId": state_id, "database": {},
+                "sta": {"func_ssg_rcworst_m40": {"corner": CORNER, "inputs": {}, "observation": {"precision": precision}}},
+            }
+        else:
+            sta = {"designStateId": state_id, "database": {}, "sta": {}}
+        _write_json(self.workspace / "state" / "sta.json", sta)
+
+        reason_path = self.workspace / f"reason-{self.decision_id_seed}.json"
+        return reason_path
+
+    def test_measured_positive_delta_is_helped(self):
+        reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
         _write_json(reason_path, {"reason": "candidate closed the remaining setup violation on U1"})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        experience = json.loads((self.workspace / "state" / "experience.json").read_text())
-        entry = experience["entries"][-1]
+        entry = json.loads((self.workspace / "state" / "experience.json").read_text())["entries"][-1]
         self.assertEqual(entry["hypothesis"], "candidate closed the remaining setup violation on U1")
-        self.assertEqual(entry["action"], "merge-1")
-        # predicted: best known xtop prediction among admissible fix contributions (min(0.02, 0.05))
-        self.assertEqual(core.value_of(entry["predicted"]), 0.02)
-        # measured: evaluation's own min(finalSetupWns, finalHoldWns)
-        self.assertEqual(core.value_of(entry["measured"]), 0.04)
-        # No `research/requests/experience-*` file was ever read or created (G5).
+        self.assertAlmostEqual(core.value_of(entry["measured"]), 0.04)  # 0.04 - 0.0
+        self.assertAlmostEqual(core.value_of(entry["predicted"]), 0.02)  # min(0.02, 0.05) - 0.0
+        self.assertEqual(entry["verdict"], "helped")
+
+    def test_measured_negative_delta_is_hurt(self):
+        reason_path = self._write_candidate(parent_min_wns=0.05, candidate_setup_wns=0.01, candidate_hold_wns=0.01)
+        _write_json(reason_path, {"reason": "candidate regressed relative to the parent"})
+
+        result = _run("record-experience", self.workspace, reason_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        entry = json.loads((self.workspace / "state" / "experience.json").read_text())["entries"][-1]
+        self.assertAlmostEqual(core.value_of(entry["measured"]), -0.04)  # 0.01 - 0.05
+        self.assertEqual(entry["verdict"], "hurt")
+
+    def test_measured_zero_delta_is_neutral(self):
+        reason_path = self._write_candidate(parent_min_wns=0.04, candidate_setup_wns=0.04, candidate_hold_wns=0.09)
+        _write_json(reason_path, {"reason": "candidate matched the parent exactly"})
+
+        result = _run("record-experience", self.workspace, reason_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        entry = json.loads((self.workspace / "state" / "experience.json").read_text())["entries"][-1]
+        self.assertEqual(core.value_of(entry["measured"]), 0.0)
+        self.assertEqual(entry["verdict"], "neutral")
+
+    def test_unknown_parent_min_wns_makes_measured_and_predicted_unknown(self):
+        reason_path = self._write_candidate(
+            parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04, parent_known=False,
+        )
+        _write_json(reason_path, {"reason": "no recorded parent min WNS for this state"})
+
+        result = _run("record-experience", self.workspace, reason_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        entry = json.loads((self.workspace / "state" / "experience.json").read_text())["entries"][-1]
+        self.assertNotIn("value", entry["measured"])
+        self.assertIn("unknown", entry["measured"])
+        self.assertNotIn("value", entry["predicted"])
+        self.assertEqual(entry["verdict"], "unknown")
+
+    def test_blank_reason_is_refused(self):
+        reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
+        _write_json(reason_path, {"reason": "   "})
+
+        result = _run("record-experience", self.workspace, reason_path)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "missing-input")
+        self.assertFalse((self.workspace / "state" / "experience.json").exists())
+
+    def test_missing_reason_field_is_refused(self):
+        reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
+        _write_json(reason_path, {"question": "no reason field at all"})
+
+        result = _run("record-experience", self.workspace, reason_path)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "missing-input")
+
+    def test_no_scenario_carrying_a_precision_is_refused(self):
+        reason_path = self._write_candidate(
+            parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04, precision=None,
+        )
+        _write_json(reason_path, {"reason": "a real reason, but sta has no precision anywhere"})
+
+        result = _run("record-experience", self.workspace, reason_path)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "missing-input")
+        self.assertFalse((self.workspace / "state" / "experience.json").exists())
+
+    def test_no_research_requests_experience_file_is_ever_read_or_written(self):
+        reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
+        _write_json(reason_path, {"reason": "candidate closed the remaining setup violation on U1"})
+        result = _run("record-experience", self.workspace, reason_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse((self.workspace / "research").exists())
 
 
