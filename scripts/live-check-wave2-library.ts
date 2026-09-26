@@ -15,7 +15,7 @@ import {
 } from '@hima/harness';
 import { homePatchFile } from '../packages/desktop/src/hima-home.ts';
 import { bootInProcess, createRootAgent, resumeTestAgent, saidByModel, sayAsUser, toolCalls } from '../test/contract/support/boot-inprocess.ts';
-import { himaCommand } from '../test/contract/support/command.ts';
+import { himaCommand, modelCommandTimeoutMs } from '../test/contract/support/command.ts';
 import { createHimaHome, repoRoot } from '../test/contract/support/dsh-home.ts';
 import { waitUntil } from '../test/contract/support/fabric.ts';
 import { packsDirOf } from '../test/contract/support/pack.ts';
@@ -150,7 +150,7 @@ try {
     todo: ['Re-read current authority before action.'], references: [], sources: [], nativeSources: sessionSources.nativeSources,
   } }) as any;
   assert.equal(savedSession.kind, 'current'); assert.equal(savedSession.summary.modelGenerated, false);
-  const compact = await himaCommand(host, home.workspace, '/compact', undefined, owner);
+  const compact = await himaCommand(host, home.workspace, '/compact', modelCommandTimeoutMs, owner);
   assert.equal(compact.kind, 'success', compact.text);
   const preservedPrefix = await nativeSessionMemoryEvidence(host.ctx, { sessionId: ownerId, workspaceRef: home.workspace,
     throughSeq: nativeBeforeCompact.capturedThroughSeq });

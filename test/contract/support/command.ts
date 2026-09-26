@@ -22,6 +22,8 @@ export interface CommandOutcome {
 /** How long one command may take. A local read is quick; a probe on a real Site is not. */
 export const localCommandTimeoutMs = 10_000;
 export const siteCommandTimeoutMs = 60_000;
+/** Native model-backed commands such as /compact may legitimately outlive local file operations. */
+export const modelCommandTimeoutMs = 180_000;
 
 /**
  * Execute one command line on a booted in-process host.

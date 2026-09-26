@@ -35,7 +35,7 @@ import {
   toolCalls,
   type InProcessHost,
 } from '../test/contract/support/boot-inprocess.ts';
-import { himaCommand } from '../test/contract/support/command.ts';
+import { himaCommand, modelCommandTimeoutMs } from '../test/contract/support/command.ts';
 import { createHimaHome, repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { packsDirOf } from '../test/contract/support/pack.ts';
 import { guardInstalled, runLive, sha256, type LiveCheck } from './live-check-workshop.ts';
@@ -589,7 +589,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   check.require('the owner saved a native-session work-memory checkpoint before compaction',
     savedSessionMemory.kind === 'current' && savedSessionMemory.summary?.modelGenerated === false,
     savedSessionMemory);
-  const compact = await himaCommand(host, home.workspace, '/compact', undefined, owner);
+  const compact = await himaCommand(host, home.workspace, '/compact', modelCommandTimeoutMs, owner);
   const preservedPrefix = await nativeSessionMemoryEvidence(host.ctx, {
     sessionId: ownerId,
     workspaceRef: home.workspace,
