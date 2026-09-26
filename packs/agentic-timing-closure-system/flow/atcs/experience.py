@@ -129,6 +129,8 @@ from . import core
 
 
 CONDITION_KEYS = ("stage", "scenario", "precision", "toolVersion")
+# Recorded when present (which model produced the prediction); not a match key.
+OPTIONAL_CONDITION_KEYS = ("predictionModel",)
 
 
 def _require(mapping, key, label):
@@ -140,7 +142,11 @@ def _require(mapping, key, label):
 
 def _read_conditions(mapping, label):
     conditions_in = _require(mapping, "conditions", label)
-    return {key: _require(conditions_in, key, f"{label}.conditions") for key in CONDITION_KEYS}
+    conditions = {key: _require(conditions_in, key, f"{label}.conditions") for key in CONDITION_KEYS}
+    for key in OPTIONAL_CONDITION_KEYS:
+        if key in conditions_in:
+            conditions[key] = conditions_in[key]
+    return conditions
 
 
 def _load_entries(path):

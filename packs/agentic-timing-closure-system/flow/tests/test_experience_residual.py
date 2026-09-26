@@ -65,6 +65,13 @@ class ExperienceRecordTest(unittest.TestCase):
         # so a later Chooser can read the prediction/measurement difference.
         self.assertNotEqual(entry["predicted"], entry["measured"])
 
+    def test_prediction_model_condition_is_kept_when_present(self):
+        lineage = _lineage("d-pm")
+        lineage["conditions"]["predictionModel"] = "xtop"
+        decision = {"hypothesis": "h", "action": "size_cell", "predicted": core.known(0.02)}
+        exp = experience.record(self.path, lineage, decision, {"measured": core.known(0.01)})
+        self.assertEqual(exp["entries"][0]["conditions"]["predictionModel"], "xtop")
+
     def test_record_appends_a_second_entry_without_disturbing_the_first(self):
         decision = {"hypothesis": "h1", "action": "size_cell", "predicted": core.known(0.02)}
         outcome = {"measured": core.known(0.02)}
