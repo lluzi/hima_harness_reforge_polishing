@@ -121,6 +121,15 @@ class CompileInterventionMappingTest(unittest.TestCase):
         self.assertIn("get_ccopt_property", result["readbackTcl"])
         self.assertIn("writeFPlanScript", result["readbackTcl"])
 
+    def test_outputs_key_present_and_empty_when_no_kind_writes_an_extra_file(self):
+        result = lifecycle.compile_intervention([ROUTE_DOMINATED], "route", FULL_FLOW)
+        self.assertEqual(result["outputs"], [])
+
+    def test_outputs_key_carries_the_blockage_kinds_fplan_path(self):
+        result = lifecycle.compile_intervention([FANOUT_AT_LOCATION], "place", FULL_FLOW)
+        self.assertEqual(len(result["outputs"]), 1)
+        self.assertIn("fplan_", result["outputs"][0])
+
     def test_rejects_evidence_that_would_inject_tcl_syntax(self):
         with self.assertRaises(core.AtcsError) as ctx:
             lifecycle.compile_intervention([INJECTION_LOCATION], "place", FULL_FLOW)
@@ -131,10 +140,11 @@ class StageTaskTest(unittest.TestCase):
     def setUp(self):
         self.intervention = lifecycle.compile_intervention([ROUTE_DOMINATED], "route", FULL_FLOW)
 
-    def test_refuses_post_route_only_for_any_stage(self):
-        with self.assertRaises(core.AtcsError) as ctx:
-            lifecycle.stage_task("route", POST_ROUTE_ONLY, self.intervention, "workspaces/w01/r1")
-        self.assertEqual(ctx.exception.code, "lifecycle-unavailable")
+    def test_refuses_post_route_only_for_every_stage(self):
+        for stage in ("place", "cts", "route", "postroute", "init", "bogus"):
+            with self.assertRaises(core.AtcsError) as ctx:
+                lifecycle.stage_task(stage, POST_ROUTE_ONLY, self.intervention, "workspaces/w01/r1")
+            self.assertEqual(ctx.exception.code, "lifecycle-unavailable")
 
     def test_refuses_unsupported_stage(self):
         with self.assertRaises(core.AtcsError) as ctx:
@@ -152,6 +162,33 @@ class StageTaskTest(unittest.TestCase):
         self.assertIn("restoreDesign", task["tcl"])
         self.assertIn("cts.enc.dat", task["tcl"])
         self.assertNotIn("route.enc.dat", task["tcl"].split("restoreDesign", 1)[1].split("\n", 1)[0])
+
+    def test_restores_init_checkpoint_for_place(self):
+        place_intervention = lifecycle.compile_intervention([FANOUT_AT_LOCATION], "place", FULL_FLOW)
+        task = lifecycle.stage_task("place", FULL_FLOW, place_intervention, "workspaces/w02/r1")
+        restore_line = task["tcl"].split("restoreDesign", 1)[1].split("\n", 1)[0]
+        self.assertIn("init.enc.dat", restore_line)
+
+    def test_restores_route_checkpoint_for_postroute(self):
+        postroute_intervention = lifecycle.compile_intervention([ROUTE_DOMINATED], "postroute", FULL_FLOW)
+        task = lifecycle.stage_task("postroute", FULL_FLOW, postroute_intervention, "workspaces/w02/r1")
+        restore_line = task["tcl"].split("restoreDesign", 1)[1].split("\n", 1)[0]
+        self.assertIn("route.enc.dat", restore_line)
+        self.assertNotIn("postroute.enc.dat", restore_line)
+
+    def test_refuses_stage_mismatch_between_intervention_and_requested_stage(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            lifecycle.stage_task("cts", FULL_FLOW, self.intervention, "workspaces/w01/r1")
+        self.assertEqual(ctx.exception.code, "stage-mismatch")
+
+    def test_blockage_output_path_is_carried_into_stage_task_outputs(self):
+        blockage_intervention = lifecycle.compile_intervention([FANOUT_AT_LOCATION], "place", FULL_FLOW)
+        self.assertTrue(blockage_intervention["outputs"], "expected compile_intervention to declare an output")
+        task = lifecycle.stage_task("place", FULL_FLOW, blockage_intervention, "workspaces/w03/r1")
+        fplan_outputs = [path for path in task["outputs"] if "fplan_" in path]
+        self.assertTrue(fplan_outputs, task["outputs"])
+        for path in fplan_outputs:
+            self.assertTrue(path.startswith("workspaces/w03/r1/apr/place/"), path)
 
     def test_stage_command_matches_the_requested_stage(self):
         place_intervention = lifecycle.compile_intervention([FANOUT_AT_LOCATION], "place", FULL_FLOW)

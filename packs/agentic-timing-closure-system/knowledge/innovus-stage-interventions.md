@@ -7,7 +7,12 @@
   (read-only on `192.168.50.41`): `setPathGroupOptions.html`, `setAttribute.html`,
   `setUsefulSkewMode.html`, `set_ccopt_property.html`, `specifyCellPad.html`,
   `createPlaceBlockage.html`, `setPlaceMode.html`, `ecoChangeCell.html`,
-  `ecoAddRepeater.html`, `ecoDeleteRepeater.html`.
+  `ecoAddRepeater.html`, `ecoDeleteRepeater.html`. T11 `lifecycle.py` additionally
+  verified, on the same install root: `place_opt_design.html`, `clock_opt_design.html`,
+  `routeDesign.html`, `optDesign.html` (the four stage-running commands), and
+  `reportPathGroupOptions.html`, `getUsefulSkewMode.html`, `get_ccopt_property.html`,
+  `writeFPlanScript.html` (the readback commands that confirm a compiled hook's
+  settings actually applied).
 - `/Users/lluzi/Documents/linglong setup/agentic_closure_campaign/OPERATOR_EXECUTION_AND_APR_PLAYBOOK.zh-CN.md`
   （2026-09-26 快照）§8「重新 APR：选择最近的有效起点，并改变产生问题的机制」及其
   「当前 Foundation Flow 的真实接入点」表、「在安装目录核对到的接口」表。
@@ -20,8 +25,10 @@
 
 ## Applies when
 
-- T11 `apr_intervention.py` compiles a `residual-case` into a stage-specific hook Tcl
-  (`choose_intervention_stage` → `compile_innovus_intervention`).
+- T11 `lifecycle.py` compiles a `residual-case` into a stage-specific hook Tcl
+  (`compile_intervention`) and a single APR stage task that restores the matching
+  earlier checkpoint, runs the stage, and reads back every setting the hook set
+  (`stage_task`).
 - T7/T12 apply a merged ECO through `ecoChangeCell`/`ecoAddRepeater`/`ecoDeleteRepeater`
   and need to know which flags are safe defaults versus which must be set explicitly.
 - Any decision to change net weight, path-group priority, useful-skew borrow limits,
@@ -49,6 +56,37 @@ PG-touching actions, it does not block the rest of this table.
 | Clock-tree property (skew/latency target) | `set_ccopt_property` | `name value [-skew_group name \| -clock_tree name \| -clock_tree_source_group name] [-early \| -late] [-rise \| -fall]` |
 | Local placement padding | `specifyCellPad` | `leaf_cellName {padding \| [-right p] [-left p] [-top p] [-bottom p]}` |
 | Local placement blockage/density | `createPlaceBlockage` | `{-box {x1 y1 x2 y2} \| -inst inst_name} [-type {hard\|soft\|partial\|macroOnly}] [-density value] [-excludeFlops]` |
+
+### Stage-running and readback commands (T11 `lifecycle.py`)
+
+`lifecycle.py`'s `stage_task` also needs two command families this Pack had not
+previously verified: the one command per stage that actually runs the stage
+(confirmed against the real Foundation Flow scripts, `FF/INNOVUS/run_{place,cts,
+route}.tcl`, and this table's own vendor pages), and, for each of the three
+intervention kinds above, the read-only command that lets a compiled hook's
+readback confirm the setting actually applied — this table previously had no
+readback column because none of the three intervention-kind sources above is
+itself a report/getter page. Both families are **documented** in the same sense
+as the table above: confirmed present with these exact flags, not run against a
+real design in this task.
+
+| Purpose | Command (documented) | Flags relevant to this Pack |
+|---|---|---|
+| Run placement + pre-CTS optimization | `place_opt_design` | `[-out_dir outputDirectory] [-prefix outputFileName] [-expanded_views]` |
+| Run clock concurrent optimization (CTS) | `clock_opt_design` | `[-out_dir dirname] [-prefix fileNamePrefix] [-expandedViews]` |
+| Run global + detail routing | `routeDesign` | no arguments needed — the vendor page states that, run bare, it performs global and detailed routing |
+| Post-route timing optimization | `optDesign` | `-postRoute -setup -hold` |
+| Read back path-group settings | `reportPathGroupOptions` | no arguments — reports `pathgroupName`, `effortLevel`, `slackAdjustment` and `targetSlack` for every existing path group (its own example output names Innovus's default `reg2reg` group) |
+| Read back a useful-skew mode parameter | `getUsefulSkewMode` | `[parameter_name ...]` — e.g. `-opt_skew_max_allowed_delay`; returns the current `setUsefulSkewMode` setting for the named parameter(s) |
+| Read back a CCOpt property | `get_ccopt_property` | `name [-cell ...] [-clock_tree ...] [-skew_group ...] ...` — e.g. `target_skew` for a global property |
+| Dump floorplan sections, including placement blockages | `writeFPlanScript` | `-fileName fileName [-sections {... placeBlockages ...}]` |
+
+Note the two per-stage flag-name casings are **not** interchangeable and were
+each re-checked against its own page rather than assumed from the other:
+`place_opt_design` takes `-expanded_views` (underscored), while `clock_opt_design`
+and `optDesign` both take `-expandedViews` (camelCase) — a compiler that copies
+one stage's flag spelling onto another stage's command would silently pass an
+unrecognized option.
 
 Boundaries confirmed directly in the vendor pages, not inferred from names:
 

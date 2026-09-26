@@ -5,7 +5,14 @@ This module owns the two producers named in this Pack's task brief
 
 - `compile_intervention(residual_cases, stage, readiness)` -> a bounded
   Innovus stage intervention: ``{"stage", "hookTcl", "readbackTcl",
-  "expected"}``.
+  "expected", "outputs"}``. `outputs` lists every workspace-relative path
+  (relative to the eventual `apr/<stage>/<id>/` output directory, e.g.
+  ``"./RPT/fplan_<name>.tcl"``) that the compiled hook/readback itself
+  writes beyond the two `stage_task` always declares (the new checkpoint
+  and the shared `readback.rpt`) — currently only the placement-blockage
+  kind's `writeFPlanScript` dump. `stage_task` uses this list directly
+  (prefixing each entry with the workspace root and output directory) —
+  it never re-derives these paths by scanning `readbackTcl` text.
 - `stage_task(stage, readiness, intervention, workspace_root)` -> a single
   APR stage Harness task: ``{"tcl", "inputs[]", "outputs[]"}``.
 
@@ -104,6 +111,16 @@ rejects a newline, `;`, `[`, `]`, or an empty string with
 output this module does not otherwise trust, so an instance name that
 happens to look like `"U_DRV; exec rm -rf /"` is refused outright rather
 than spliced into a generated command.
+
+This module's *own* authored constants — `PATH_GROUP_NAME`,
+`PATH_GROUP_EFFORT`, `BLOCKAGE_TYPE`, the entries of `STAGE_COMMANDS` —
+are literal Python string constants this module defines, not data read
+from a `residual-case` or any other external input, so they are not passed
+through `_validate_token`: there is no untrusted value there to validate,
+only source code a reviewer can already read. `_validate_token` exists
+specifically to gate values that arrived from outside this module's own
+source (evidence fields, `stage`/`workspace_root` parameters, and the
+derived paths built from them).
 
 The two *composed* multi-line blocks this module builds from those already
 -validated leaves — `hookTcl` and `readbackTcl` — are true multi-statement
@@ -275,7 +292,7 @@ def _detect_blockage(check_key, evidence, stage):
         f"{BLOCKAGE_TYPE} placement blockage named {name}; expect eased local "
         f"placement/routing resource around this instance"
     )
-    return {"hook": hook, "readback": readback, "expected": expected, "fplanPath": fplan_path}
+    return {"hook": hook, "readback": readback, "expected": expected, "output": fplan_path}
 
 
 def compile_intervention(residual_cases, stage, readiness):
@@ -309,8 +326,15 @@ def compile_intervention(residual_cases, stage, readiness):
     hook_tcl = "\n".join(setting["hook"] for setting in settings) + "\n"
     readback_tcl = "\n".join(setting["readback"] for setting in settings) + "\n"
     expected = [setting["expected"] for setting in settings]
+    outputs = [setting["output"] for setting in settings if setting.get("output")]
 
-    return {"stage": stage, "hookTcl": hook_tcl, "readbackTcl": readback_tcl, "expected": expected}
+    return {
+        "stage": stage,
+        "hookTcl": hook_tcl,
+        "readbackTcl": readback_tcl,
+        "expected": expected,
+        "outputs": outputs,
+    }
 
 
 def stage_task(stage, readiness, intervention, workspace_root):
@@ -326,6 +350,7 @@ def stage_task(stage, readiness, intervention, workspace_root):
         raise core.AtcsError("stage-mismatch", f"intervention is for {intervention_stage!r}, task is for {stage!r}")
     hook_tcl = _require(intervention, "hookTcl", "intervention")
     readback_tcl = _require(intervention, "readbackTcl", "intervention")
+    declared_outputs = _require(intervention, "outputs", "intervention")
 
     workspace_root = str(workspace_root)
     if not workspace_root or workspace_root.startswith("/"):
@@ -355,13 +380,8 @@ def stage_task(stage, readiness, intervention, workspace_root):
         f"{workspace_root}/{output_rel}/DBS/{stage}.enc.dat",
         f"{workspace_root}/{output_rel}/RPT/readback.rpt",
     ]
-    for line in readback_tcl.splitlines():
-        marker = "-fileName "
-        if marker not in line:
-            continue
-        after = line.split(marker, 1)[1]
-        fplan_rel = after.split(" ", 1)[0].strip()
-        fplan_rel = fplan_rel[2:] if fplan_rel.startswith("./") else fplan_rel
-        outputs.append(f"{workspace_root}/{output_rel}/{fplan_rel}")
+    for declared in declared_outputs:
+        rel = declared[2:] if declared.startswith("./") else declared
+        outputs.append(f"{workspace_root}/{output_rel}/{rel}")
 
     return {"tcl": tcl, "inputs": inputs, "outputs": outputs}
