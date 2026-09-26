@@ -290,7 +290,7 @@ assert.equal(sourcePack.contract.version, '5.2.17', 'Wave 4 requires the repaire
 assert.equal(sourcePack.contract.status, 'development', 'PLS-35 must preserve the Pack author-declared status');
 assert.deepEqual(appManifest.runtimeInputs?.trialPack,
   { id: PACK_ID, version: sourcePack.contract.version, methodDigest: sourceDigest,
-    testRun: 'run-a148dd0c-2d2d-42b0-8c32-5179d40ad254' },
+    testRun: 'run-a8024034-bbf5-4288-b6c2-9e2068b57421' },
   'Wave 4 App manifest differs from its bundled sealed Pack');
 
 const declared = {
