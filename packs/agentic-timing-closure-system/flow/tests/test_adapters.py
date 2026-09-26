@@ -117,6 +117,33 @@ class PtScenarioTaskTest(unittest.TestCase):
             for task in tasks.values():
                 self.assertEqual(task["env"]["PBA_MODE"], expected)
 
+    def test_pba_precision_actually_runs_pba_mode_in_the_rendered_tcl(self):
+        """Minor (final review): a `precision: pba` request must make
+        report_timing/report_global_timing actually pass PT's own `-pba_mode` flag
+        (verified read-only against the PT X-2025.06 man page: report_timing(2)/
+        report_global_timing(2) both accept `-pba_mode none|path|exhaustive|
+        ml_exhaustive`, default `none` == GBA) -- setting `PBA_MODE=1` in the
+        environment alone (previously only consumed by the optional icexplorer
+        STA_DATA export block) never actually ran PBA for the reports this Pack's own
+        `state.capture` labels "precision: pba", which would have been a mismatched
+        label. The template computes its own `-pba_mode` argument from `$env
+        (PBA_MODE)` at Tcl runtime (`pba_mode_arg`), so the rendered Tcl text is the
+        same either way -- this checks that computed argument is actually threaded
+        into all three report calls, never silently dropped."""
+        task = adapters.compile_pt_scenario_task(
+            adapters.REQUIRED_SCENARIOS[0],
+            _scenario_inputs()[adapters.REQUIRED_SCENARIOS[0]],
+            "/ws/reports",
+            {"precision": "pba", "requiredScenarios": [], "maxPaths": 100},
+        )
+        tcl = task["tcl"]
+        self.assertIn("set pba_mode_arg none", tcl)
+        self.assertIn("if {$env(PBA_MODE) == 1} { set pba_mode_arg path }", tcl)
+        self.assertIn("report_global_timing -significant_digits 4 -pba_mode $pba_mode_arg", tcl)
+        self.assertEqual(
+            tcl.count("-pba_mode $pba_mode_arg"), 3, "setup.rpt/hold.rpt/global_timing.rpt each need it",
+        )
+
     def test_missing_required_scenario_is_refused(self):
         query_spec = {"precision": "gba", "requiredScenarios": [], "maxPaths": 100}
         inputs = _scenario_inputs()

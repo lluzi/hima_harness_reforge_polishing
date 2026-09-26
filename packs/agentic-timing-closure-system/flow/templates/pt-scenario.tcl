@@ -46,6 +46,21 @@ if {[sizeof_collection [all_clocks]] == 0} { error "no clocks were created" }
 read_parasitics -format spef $env(SPEF)
 set_propagated_clock [all_clocks]
 update_timing -full
+# Minor (final review): a `query_spec.precision == "pba"` request must make
+# report_timing/report_global_timing actually RUN path-based analysis, or the
+# observation-set this scenario produces would be stamped "precision: pba"
+# while every report underneath it was really computed graph-based -- a
+# mismatched label this Pack's own evidence never actually earned. Verified
+# read-only against the PT X-2025.06 man page on
+# luzi@192.168.50.41 (report_timing(2)/report_global_timing(2): both accept
+# "-pba_mode none | path | exhaustive | ml_exhaustive", default "none" (GBA)).
+# "path" reruns PBA only over the worst GBA-violating paths already found --
+# the same worst-path scope this scenario's own -nworst/-max_paths breadth
+# already bounds -- never the exhaustive (every path) mode, which this Pack's
+# per-scenario query cost model (knowledge/observation-strategy.md) does not
+# budget for.
+set pba_mode_arg none
+if {$env(PBA_MODE) == 1} { set pba_mode_arg path }
 redirect $report_dir/check_timing.rpt { check_timing -verbose }
 # -significant_digits 4 here too (report_global_timing(2) man page, PT
 # X-2025.06, read-only verified: "Allowed values are 0-13 ... the default
@@ -57,7 +72,7 @@ redirect $report_dir/check_timing.rpt { check_timing -verbose }
 # atcs.reports.parse_global_timing's own NUM-vs-WNS cross-check is the
 # actual fail-closed backstop either way; this flag only narrows how often
 # a fresh report falls into that boundary in the first place.
-redirect $report_dir/global_timing.rpt { report_global_timing -significant_digits 4 }
+redirect $report_dir/global_timing.rpt { report_global_timing -significant_digits 4 -pba_mode $pba_mode_arg }
 # -significant_digits 4 (default is 2, per PT's own man page --
 # report_timing(2), "-significant_digits digits ... the default is
 # determined by the report_default_significant_digits variable, which is 2
@@ -71,12 +86,14 @@ redirect $report_dir/global_timing.rpt { report_global_timing -significant_digit
 redirect $report_dir/setup.rpt {
     report_timing -delay_type max -path_type full_clock_expanded \
         -max_paths $env(MAX_PATHS) -nworst $env(NWORST) -slack_lesser_than 0.0 \
-        -input_pins -nets -transition_time -capacitance -significant_digits 4
+        -input_pins -nets -transition_time -capacitance -significant_digits 4 \
+        -pba_mode $pba_mode_arg
 }
 redirect $report_dir/hold.rpt {
     report_timing -delay_type min -path_type full_clock_expanded \
         -max_paths $env(MAX_PATHS) -nworst $env(NWORST) -slack_lesser_than 0.0 \
-        -input_pins -nets -transition_time -capacitance -significant_digits 4
+        -input_pins -nets -transition_time -capacitance -significant_digits 4 \
+        -pba_mode $pba_mode_arg
 }
 if {$env(PBA_MODE) == 1 && [info exists env(STA_DATA)]} {
     file mkdir $env(STA_DATA)

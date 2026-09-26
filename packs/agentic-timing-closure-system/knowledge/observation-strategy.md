@@ -76,6 +76,19 @@
   同样降级为 `unknown`——加宽精度只是减少落入边界的概率，真正的兜底始终是这条
   跨字段一致性检查，不是显示精度本身。
 
+- **`precision: pba` 必须真的跑 PBA，否则标签本身就是假的。** `report_timing(2)`/
+  `report_global_timing(2)` man page（`X-2025.06`，`luzi@192.168.50.41`，只读读取核实）：
+  两者都接受 `-pba_mode none | path | exhaustive | ml_exhaustive`，默认 `none`（即
+  GBA）。此前 `pt-scenario.tcl` 只用 `PBA_MODE` 环境变量控制可选的 icexplorer STA_DATA
+  导出，`report_timing`/`report_global_timing` 本身从未加上该 flag——`query_spec.
+  precision == "pba"` 的请求会让 `atcs.state.capture` 把整份 observation-set 标成
+  `"precision": "pba"`，而底下的报告其实全是 GBA 算出来的，是一个这份证据从未真正
+  取得的标签。现在 `pt-scenario.tcl` 用 `$env(PBA_MODE)` 计算 `pba_mode_arg`
+  （`1` → `path`，否则 `none`），并把它传给 `check_timing`/`setup.rpt`/`hold.rpt`/
+  `global_timing.rpt` 各自的 `report_timing`/`report_global_timing` 调用；用 `path`
+  （只在 GBA 已发现的最差 path 上重跑 PBA）而非 `exhaustive`（对所有 path 重跑），
+  与本文档已有的按 nworst/max_paths 有界查询代价模型一致。
+
 ## Counterexample
 
 OPERATOR §4 给出的反例：routing 改动需要新的 RC 才显现效果，用旧 RC 的 PT 预演无法评估
