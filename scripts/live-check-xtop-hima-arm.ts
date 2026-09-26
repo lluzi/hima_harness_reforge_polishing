@@ -37,7 +37,7 @@ const PACK_ID = 'xtop-timing-closure';
 const SITE_NAME = 'linglong-swerv28';
 const EXPECTED_PROVIDER = 'deepseek-official';
 const EXPECTED_MODEL = 'deepseek-flash';
-const EXPECTED_VERSION = '1.0.14';
+const EXPECTED_VERSION = '1.0.15';
 const TIME_BOX_MINUTES = 120;
 const sourcePackDirectory = path.join(repoRoot, 'packs', PACK_ID);
 const sourceSiteDirectory = path.join(repoRoot, 'sites', SITE_NAME);
@@ -213,9 +213,7 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
     `Continue only the already confirmed Run ${runId}. You are its sole Campaign owner; never create another Run or another Agent.`,
     'Use hima_context and hima_execute for every graph action. Begin, work and complete only current authorized nodes; asynchronous commercial Jobs must settle from native facts before completion. Preserve every failure and do not use shell, raw terminal, replay or another method.',
     'At plan-fix, use the Pack workshop: read the current closure state, history and declared knowledge, then author and execute the exact fix-plan entry through controlled Hima workshop operations. For this one-generation qualified Operator surface, choose exactly one high-effort hold-buffer action with finite targets/margins only if the measured baseline supports it; do not copy a plan from another Run.',
-    delegateOperatorOnly
-      ? 'At run-xtop-fix, begin the node with hima_execute and end your response immediately. Do not call hima_interactive or work/complete this node; a separately retained qualified Operator child will own the typed interactive sequence.'
-      : 'At run-xtop-fix, begin the node with hima_execute, then use hima_interactive on that exact execution. Open the qualified session; issue typed hima_operator_identity; typed hima_summary setup and hold; read the owner-authored fix plan; issue exactly one typed hima_fix_hold using its effort, hold target and setup margin; issue typed hima_save_candidate; issue typed hima_close; then close/observe the protocol and complete the node only after the process exited and the Pack finalizer produced the XTop stage evidence. Never send raw Tcl.',
+    'At run-xtop-fix, begin the node with hima_execute and end your response immediately. Do not call hima_interactive or work/complete this node; a separately retained qualified Operator child will own the typed interactive sequence and you will continue only after adopting its retained result.',
     delegateOperatorOnly
       ? 'Stop after the qualified Operator child result is adopted and read-xtop accepts the XTop stage. This bounded acceptance does not rerun downstream Innovus/StarRC/PrimeTime; the already closed J3 chain owns that evidence.'
       : 'Continue through Innovus apply, fresh two-corner StarRC, four-scenario PrimeTime, summarize, compare-and-retain and the evidence gate. The fixed Goal is setup and hold WNS >= 0. If timing remains open, follow the graph to blocked and stop truthfully; one generation is the complete authorized study budget. XTop exit or internal estimates are not the business verdict.',
@@ -237,7 +235,7 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
         && later.phase === 'completed'));
     if (failed.length > 0) throw new Error(`the Hima arm retained a failed/uncertain execution: ${JSON.stringify(failed)}`);
     const begunOperator = context.executions.find((execution) => execution.nodeId === 'run-xtop-fix' && execution.phase === 'begun');
-    if (delegateOperatorOnly && begunOperator && operatorAcceptance === undefined) {
+    if (begunOperator && operatorAcceptance === undefined) {
       const delegate = async (body: Record<string, unknown>) => {
         const control = host.ctx.hima.executionContext(runId).run.control!;
         return host.ctx.hima.delegate({ runId, actor: ownerId, expectedEpoch: control.epoch,
@@ -248,7 +246,7 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
         allowedTools: ['hima_interactive', 'terminal_open', 'bash'], dependencyIds: [],
         budgetShare: { maxElapsedMs: 20 * 60_000, maxFollowups: 1, maxTokensPerTurn: 5000 },
         recipient: { kind: 'run-owner', sessionId: ownerId },
-        task: `Operate only exact Run ${runId}, node run-xtop-fix, execution ${begunOperator.id}. Use only hima_interactive. For request identity fields, supply this exact Run/node/execution; the Host refreshes delegated epoch/revision authority. Execute in order: open; input hima_operator_identity with args {"arguments":[]}; input hima_summary with args {"arguments":["setup"]}; input hima_summary with args {"arguments":["hold"]}; input hima_fix_hold with args {"arguments":["high",0,0.02]}; input hima_save_candidate with args {"arguments":[]}; input hima_close with args {"arguments":[]}; close the exact toolSessionId. Use unique requestId and commandId values, wait up to 60000 ms for each input, and observe a sent command before continuing. Report only typed receipts and limitations; this is candidate output until the owner adopts it.`,
+        task: `Operate only exact Run ${runId}, node run-xtop-fix, execution ${begunOperator.id}. Use only hima_interactive. For request identity fields, supply this exact Run/node/execution; the Host refreshes delegated epoch/revision authority. Read the Host-provided typed command catalog in this task context and execute in order: open; hima_operator_identity; hima_summary for setup; hima_summary for hold; one hima_fix_hold at high effort, target 0 and margin 0.02; hima_save_candidate; hima_close; close the exact toolSessionId. Supply the catalog's named command.args keys exactly. Use unique requestId and commandId values, wait up to 60000 ms for each input, and observe a sent command before continuing. Report only typed receipts and limitations; this is candidate output until the owner adopts it.`,
       } });
       check.require('production binding minted one real Operator child with no raw terminal', created.status === 'created'
         && created.effectiveContract?.operator?.testOnly === false
@@ -293,9 +291,14 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
       const readerExecutionId = await finishRead();
       const transcript = await readNativeSessionContext(host.ctx, { sessionId: ownerId, targetSessionId: operatorId, parentSessionId: ownerId }, host.ctx.hima.ledger);
       const rows = runDelegations((host.ctx.hima as unknown as { deps(): any }).deps(), runId);
-      const stopped = await host.ctx.hima.cancelRun(runId);
-      operatorAcceptance = { created, result, adopted, readerExecutionId, transcript, rows, stopped };
-      break;
+      operatorAcceptance = { created, result, adopted, readerExecutionId, transcript, rows };
+      if (delegateOperatorOnly) {
+        const stopped = await host.ctx.hima.cancelRun(runId);
+        operatorAcceptance = { ...operatorAcceptance, stopped };
+        break;
+      }
+      await check.say(owner, `The qualified Operator result is adopted and read-xtop completed for Run ${runId}. Continue only this Run through downstream Innovus, fresh StarRC and PrimeTime, comparison, evidence gate and the declared one-generation ending.`);
+      continue;
     }
     const working = context.executions.find((execution) => execution.phase === 'working');
     if (working) {
@@ -369,7 +372,7 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
   const interactiveJobs = launched.filter((record) => record.nodeId === 'run-xtop-fix');
   const interactive = records.filter((record) => record.type === 'interactive');
   check.require('one qualified interactive Job retained typed command and normal-close receipts',
-    interactiveJobs.length === 1
+    operatorAcceptance !== undefined && interactiveJobs.length === 1
       && interactive.some((record) => record.event === 'opened')
       && interactive.filter((record) => record.event.includes('command')).length >= 5
       && interactive.some((record) => record.event.includes('closed') || record.event.includes('close')),
