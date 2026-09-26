@@ -172,13 +172,18 @@ def spef_net_name_map_and_d_nets(name_map, d_nets):
     against a real Foundation ROUND3 StarRC ``.spef`` sample; every index
     and name below is invented.
 
-    ``name_map`` is ``{index: name}``; ``d_nets`` is ``[(index_or_literal,
+    ``name_map`` is ``{index: name}``, or a ``[(index, name), ...]`` list of
+    pairs when the same index must appear more than once (a plain `dict`
+    cannot hold a duplicate key) -- e.g. to reproduce a repeated
+    ``*NAME_MAP`` line, harmless when identical or a genuine conflict when
+    the two repeats disagree on name. ``d_nets`` is ``[(index_or_literal,
     total_cap), ...]`` -- pass an `int` to reference a `name_map` index via
     alias, or a plain string to instead cover a ``*D_NET`` line that names
     its net literally (no index substitution at all).
     """
     lines = ["*NAME_MAP"]
-    for index, name in name_map.items():
+    pairs = name_map.items() if isinstance(name_map, dict) else name_map
+    for index, name in pairs:
         lines.append(f"*{index} {name}")
     for token, cap in d_nets:
         ref = f"*{token}" if isinstance(token, int) else token

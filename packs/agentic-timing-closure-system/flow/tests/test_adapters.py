@@ -248,7 +248,7 @@ class InnovusEcoTaskTest(unittest.TestCase):
     def test_sources_merge_commit_eco_tcl_and_exports_under_merge_id_root(self):
         merge_commit = core.stamp("merge-commit", {
             "parentStateId": "base123", "contributions": [], "operations": [],
-            "innovusEcoTcl": "ecoChangeCell -inst {U1} -cell BUFFD4BWP\n", "sourceMap": {}, "newNets": [],
+            "innovusEcoTcl": "ecoChangeCell -inst {U1} -cell MOCKBUFX4\n", "sourceMap": {}, "newNets": [],
         })
         output_root = f"/campaign/implementations/{merge_commit['id']}"
         task = adapters.compile_innovus_eco_task(merge_commit, "/campaign/state/current.enc", "top", output_root)
@@ -364,7 +364,7 @@ class TypedProcedureEditDomainTest(unittest.TestCase):
         return subprocess.run([TCLSH, str(combined)], capture_output=True, text=True)
 
     def test_rejects_size_cell_on_out_of_domain_instance(self):
-        result = self._run_tcl('atcs_size_cell U_OUT_DOMAIN BUFFD4BWP\n')
+        result = self._run_tcl('atcs_size_cell U_OUT_DOMAIN MOCKBUFX4\n')
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("out-of-scope", result.stdout + result.stderr)
         self.assertFalse(self.ops_log.exists() and self.ops_log.read_text().strip(),
@@ -376,21 +376,21 @@ class TypedProcedureEditDomainTest(unittest.TestCase):
         self.assertIn("out-of-scope", result.stdout + result.stderr)
 
     def test_rejects_insert_buffer_on_out_of_domain_net(self):
-        result = self._run_tcl('atcs_insert_buffer N_OUT_DOMAIN {P1 P2} U_NEW N_NEW BUFFD2BWP\n')
+        result = self._run_tcl('atcs_insert_buffer N_OUT_DOMAIN {P1 P2} U_NEW N_NEW MOCKBUFX2\n')
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("out-of-scope", result.stdout + result.stderr)
 
     def test_accepts_size_cell_on_in_domain_instance_and_logs_one_operation(self):
-        result = self._run_tcl('atcs_size_cell U_IN_DOMAIN BUFFD4BWP\nputs "TCL-OK"\n')
+        result = self._run_tcl('atcs_size_cell U_IN_DOMAIN MOCKBUFX4\nputs "TCL-OK"\n')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("TCL-OK", result.stdout)
         lines = [line for line in self.ops_log.read_text(encoding="utf-8").splitlines() if line.strip()]
         self.assertEqual(len(lines), 1)
         op = json.loads(lines[0])
-        self.assertEqual(op, {"op": "size_cell", "instance": "U_IN_DOMAIN", "fromMaster": "MASTERX", "toMaster": "BUFFD4BWP"})
+        self.assertEqual(op, {"op": "size_cell", "instance": "U_IN_DOMAIN", "fromMaster": "MASTERX", "toMaster": "MOCKBUFX4"})
 
     def test_accepts_insert_buffer_on_in_domain_net_and_logs_one_operation(self):
-        result = self._run_tcl('atcs_insert_buffer N_IN_DOMAIN {P1 P2} U_NEW N_NEW BUFFD2BWP\nputs "TCL-OK"\n')
+        result = self._run_tcl('atcs_insert_buffer N_IN_DOMAIN {P1 P2} U_NEW N_NEW MOCKBUFX2\nputs "TCL-OK"\n')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         lines = [line for line in self.ops_log.read_text(encoding="utf-8").splitlines() if line.strip()]
         self.assertEqual(len(lines), 1)
@@ -400,7 +400,7 @@ class TypedProcedureEditDomainTest(unittest.TestCase):
         self.assertEqual(op["loadPins"], ["P1", "P2"])
         self.assertEqual(op["newInstance"], "U_NEW")
         self.assertEqual(op["newNet"], "N_NEW")
-        self.assertEqual(op["master"], "BUFFD2BWP")
+        self.assertEqual(op["master"], "MOCKBUFX2")
         self.assertIsNone(op["location"])
 
 
@@ -534,6 +534,49 @@ class ParseSpefNetNamesTest(unittest.TestCase):
 
     def test_none_when_unreadable(self):
         self.assertIsNone(adapters.parse_spef_net_names(None))
+
+    def test_ports_section_direction_line_never_collides_with_name_map(self):
+        # Fix round 1 (Task 16 review, Important #3): confirmed against a
+        # real, unfiltered SPEF prefix that a real *PORTS section reuses
+        # the identical "*<index> <token>" line shape as *NAME_MAP, for an
+        # entirely different purpose (port direction I/O/B, not a name).
+        # Real *NAME_MAP index *98784 named "clk"; the real file's *PORTS
+        # section separately has "*98784 I" (an unrelated input-direction
+        # marker for the same index) -- this must resolve to "clk", not
+        # raise a spurious conflict against "I".
+        text = (
+            "*NAME_MAP\n"
+            "*98784 mock_clk\n"
+            "*98785 mock_rst\n"
+            "\n"
+            "*PORTS\n"
+            "\n"
+            "*98784 I\n"
+            "*98785 B\n"
+            "\n"
+            "*D_NET *98784 1.0\n"
+        )
+        self.assertEqual(adapters.parse_spef_net_names(text), {"mock_clk"})
+
+    def test_identical_duplicate_name_map_line_is_tolerated(self):
+        # Fix round 1 (Task 16 review, Minor): a harmless, redundant repeat
+        # of the same index/name pair is not an identity conflict.
+        text = fixtures.spef_net_name_map_and_d_nets(
+            [(1001, "mock_net_a"), (1001, "mock_net_a")],
+            [(1001, 12.34)],
+        )
+        self.assertEqual(adapters.parse_spef_net_names(text), {"mock_net_a"})
+
+    def test_conflicting_duplicate_name_map_line_raises(self):
+        # The same index naming two different nets is a real identity
+        # conflict -- fail closed rather than silently picking one.
+        text = fixtures.spef_net_name_map_and_d_nets(
+            [(1001, "mock_net_a"), (1001, "mock_net_b")],
+            [(1001, 12.34)],
+        )
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.parse_spef_net_names(text)
+        self.assertEqual(ctx.exception.code, "spef-name-map-conflict")
 
 
 # ---------------------------------------------------------------------------

@@ -116,12 +116,34 @@ def remote_identity(remote_path):
 
 
 def fetch_bounded_spef_net_lines(remote_path):
-    """Only the `*NAME_MAP`/`*D_NET` header lines of a (potentially tens-of-MB)
-    SPEF, via a server-side `grep` -- never the full parasitic body."""
-    return ssh(
-        f"grep -E '^\\*[0-9]+ |^\\*D_NET ' {shlex.quote(remote_path)}",
+    """Only the `*NAME_MAP` section and every `*D_NET` header line of a
+    (potentially tens-of-MB) SPEF, via bounded server-side `sed`/`grep` --
+    never the full parasitic body.
+
+    Fix round 1 (Task 16 review, Important #3): the section is fetched
+    *verbatim*, from the literal `*NAME_MAP` line up to (and including) the
+    first `*D_NET` line, rather than just grepping every `^\*[0-9]+ ` line
+    -- a real SPEF's `*PORTS` section (confirmed against a real Foundation
+    SPEF) reuses that identical line shape for port directions, not names,
+    and `atcs.adapters.parse_spef_net_names` now depends on seeing the real
+    `*NAME_MAP`/`*PORTS` section headers themselves to bound where the name
+    map actually ends; grepping only the digit-led lines (as an earlier
+    version of this function did) silently dropped those headers and made
+    every alias unresolvable. The stretch from `*NAME_MAP` to the first
+    `*D_NET` is still bounded (~196k lines / ~10 MB here, out of an ~83 MB
+    file) since it ends the moment the first real net begins; every other
+    `*D_NET` line across the whole file is fetched separately (one short
+    header line per net, never its `*CONN`/`*CAP`/`*RES` body).
+    """
+    name_map_region = ssh(
+        f"sed -n '/^\\*NAME_MAP$/,/^\\*D_NET /p' {shlex.quote(remote_path)}",
         timeout=300,
     )
+    all_d_net_lines = ssh(
+        f"grep -E '^\\*D_NET ' {shlex.quote(remote_path)}",
+        timeout=300,
+    )
+    return name_map_region + "\n" + all_d_net_lines
 
 
 # ---------------------------------------------------------------------------

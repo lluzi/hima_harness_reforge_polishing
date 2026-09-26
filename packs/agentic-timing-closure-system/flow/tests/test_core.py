@@ -164,7 +164,8 @@ class ParsePathReportTest(unittest.TestCase):
         self.assertEqual(result["paths"][0]["endpoint"], "epA")
         self.assertEqual(result["paths"][0]["startpoint"], "U_START_0")
         self.assertEqual(result["paths"][0]["pathGroup"], "core_clock")
-        self.assertEqual(result["paths"][0]["slack"], -0.1)
+        self.assertEqual(core.value_of(result["paths"][0]["slack"]), -0.1)
+        self.assertIs(result["paths"][0]["violated"], True)
 
     def test_incomplete_when_count_equals_max_paths(self):
         rows = [(f"ep{i}", -0.1) for i in range(5)]
@@ -195,7 +196,7 @@ class ParsePathReportTest(unittest.TestCase):
         result = reports.parse_path_report(text, "setup", max_paths=10)
         self.assertEqual(len(result["paths"]), 1)
         self.assertEqual(result["paths"][0]["endpoint"], "epA")
-        self.assertEqual(result["paths"][0]["slack"], -0.3)
+        self.assertEqual(core.value_of(result["paths"][0]["slack"]), -0.3)
 
     def test_duplicate_endpoint_different_group_raises(self):
         # Two rows for the same endpoint that disagree on path group are
@@ -223,7 +224,11 @@ class ParsePathReportTest(unittest.TestCase):
         # Real PT reports append an annotation to the slack line's own
         # parenthetical whenever a violation rounds to a displayed -0.00
         # (confirmed against the real Foundation/B_lazy corpus) -- this
-        # must still parse as a violated path, not fail as malformed.
+        # must still parse as a violated path, not fail as malformed. The
+        # annotated row's own slack Measure is `unknown` (the displayed
+        # number is not trustworthy at this precision), but `violated`
+        # stays a known `True`, sourced from PT's own classification, not
+        # the numeric sign (`float("-0.0") < 0` is `False`).
         text = fixtures.path_report(
             [("epA", -0.0), ("epB", -0.2)],
             "setup",
@@ -231,7 +236,11 @@ class ParsePathReportTest(unittest.TestCase):
         )
         result = reports.parse_path_report(text, "setup", max_paths=10)
         self.assertEqual(len(result["paths"]), 2)
-        self.assertEqual({p["endpoint"]: p["slack"] for p in result["paths"]}, {"epA": -0.0, "epB": -0.2})
+        by_endpoint = {p["endpoint"]: p for p in result["paths"]}
+        self.assertFalse(core.is_known(by_endpoint["epA"]["slack"]))
+        self.assertIs(by_endpoint["epA"]["violated"], True)
+        self.assertEqual(core.value_of(by_endpoint["epB"]["slack"]), -0.2)
+        self.assertIs(by_endpoint["epB"]["violated"], True)
 
     def test_path_type_mismatch_raises_identity_mismatch(self):
         # A hold report (Path Type: min) fed in as mode="setup".

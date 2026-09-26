@@ -11,6 +11,17 @@
 - XTop `get_paths`、`get_attribute` man pages（安装快照 2025.09.tmp15，man page 页脚日期
   `12/15/2025`，路径见 `xtop-capabilities.md` Source）：`-lower_bound`/`-upper_bound`、
   `-scenario`、`-delay_type` 等参数决定一次查询能看到多宽的 path 集合。
+- PrimeTime `report_timing(2)` man page（`X-2025.06`，`/data/eda/software/eda_tools/
+  synopsys/prime/X-2025.06/doc/pt/man/cat2/report_timing.2`，只读读取核实）：
+  `-significant_digits digits` 「Specifies the number of digits after the decimal
+  point displayed for time values ... the default is determined by the
+  report_default_significant_digits variable, which is 2 by default. ... This
+  option controls only the number of digits displayed, not the precision used
+  internally for analysis.」——即默认 2 位小数只影响显示，不影响 PT 内部判定；一条
+  真实违例仍可能显示为 `-0.00`，此时 PT 自己在该行追加
+  `(VIOLATED: increase significant digits)`（Task 16 真实 corpus 核实：Foundation/
+  B_lazy 语料中出现的每一条该注记行，其显示值都恰好是 `-0.00`，且没有一条未加注记
+  的 `(VIOLATED)` 行显示为 `-0.00`/`0.00`）。
 
 ## Applies when
 
@@ -40,6 +51,15 @@
 - **同一读取前提上重复的根因报告不产生新信息。** 若某项可选检查持续不改变行动且没有
   发现预期失败，应降低频率或移除；共享缓存受输入/工具/配置身份约束，不能跨身份复用
   （OPERATOR §3）。
+- **判定一条 path 是否违例，用 PT 自己的分类结论，不用显示出来的 slack 数值本身。**
+  显示精度默认只有 2 位小数，一条真实、非零的负 slack 完全可能被四舍五入显示成
+  `-0.00`；Python 的 `-0.0 < 0` 为 `False`，若只看数值符号会把一条 PT 明确判定为
+  `VIOLATED` 的 path 错误地当作「未违例」。`atcs.reports.parse_path_report` 因此记录
+  PT 自己的 `VIOLATED`/`MET` 分类为一个独立事实（`violated`），精度受限的行
+  （`(VIOLATED: increase significant digits)`）其 slack 数值本身记为 `unknown`——
+  该行确定违例，只是具体数值不可信，两者不能混为一谈。这条 Pack 自己的
+  `pt-scenario.tcl` 也把 `-significant_digits` 从默认的 2 提高到 4，减少（但不能
+  消除，PT 内部仍可能存在更小的真实违例）今后新鲜报告落入这个边界的概率。
 
 ## Counterexample
 

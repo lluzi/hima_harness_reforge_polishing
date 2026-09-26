@@ -906,13 +906,13 @@ class ResidualPtQueryEvidenceTest(unittest.TestCase):
     NET_DOMINATED_REPORT = """  Point                       Fanout    Cap      Trans       Incr       Path
   -----------------------------------------------------------------------------
   clock core_clock (rise edge)                               0.00       0.00
-  U_FF_1/CP (DFQD1BWP)
+  U_FF_1/CP (MOCKDFFX1)
                               0.00       0.00 &     0.00 r
-  U_FF_1/Q (DFQD1BWP)
+  U_FF_1/Q (MOCKDFFX1)
                               0.02       0.08 &     0.08 f
   net1 (net)
                               4     1.50
-  U_FF_2/D (DFQD1BWP)
+  U_FF_2/D (MOCKDFFX1)
                               0.03       0.10 &     0.18 f
   data arrival time                                                     0.18
 """

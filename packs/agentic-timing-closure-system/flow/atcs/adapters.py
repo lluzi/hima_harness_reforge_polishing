@@ -514,7 +514,8 @@ def compile_pt_presta_task(scenario, inputs, report_root):
     return {"tcl": tcl, "env": env, "globalTiming": str(Path(report_root) / scenario / "global_timing.rpt")}
 
 
-_SPEF_NAME_MAP_RE = re.compile(r"^\*(\d+)\s+(\S+)", re.MULTILINE)
+_SPEF_NAME_MAP_SECTION_RE = re.compile(r"(?ms)^\*NAME_MAP\s*\n(.*?)(?=^\*[A-Za-z_]|\Z)")
+_SPEF_NAME_MAP_ENTRY_RE = re.compile(r"^\*(\d+)\s+(\S+)", re.MULTILINE)
 _SPEF_NET_RE = re.compile(r"^\*D_NET\s+(\S+)", re.MULTILINE)
 _SPEF_ALIAS_RE = re.compile(r"^\*\d+$")
 
@@ -544,10 +545,43 @@ def parse_spef_net_names(text):
     dropped, never guessed — `presta_qualification` already treats an
     absent net as fail-closed "not proven qualified", which is exactly the
     right outcome for a name this function could not actually resolve.
+
+    Entries are read only from inside the actual ``*NAME_MAP`` section (up
+    to the next top-level, letter-led ``*SECTION`` header, e.g. ``*PORTS``
+    or ``*D_NET``), never from the whole file — a real SPEF's ``*PORTS``
+    section reuses the identical ``*<index> <token>`` line shape for a
+    completely different purpose (``*<index> I``/``O``/``B`` for a port's
+    direction, not a name), confirmed by streaming a real, *unfiltered*
+    ~200,000-line prefix of a real Foundation SPEF directly into an earlier,
+    whole-file version of this parser: it collided a `*NAME_MAP` entry
+    (``*98784 clk``) with a same-indexed ``*PORTS`` direction line
+    (``*98784 I``) as though they were the same declaration
+    (``docs/assessment/2026-09-26/atcs-qualification/corpus-preflight.md``
+    records this real-corpus find). Scoping the scan to the bounded
+    ``*NAME_MAP`` section is what makes the conflict check below sound —
+    without it, every real SPEF's own `*PORTS` section would spuriously
+    "conflict" with `*NAME_MAP` for every port.
+
+    Two ``*NAME_MAP`` lines (within that bounded section) for the *same*
+    index that name two *different* nets are a genuine identity conflict
+    (the alias no longer refers to one net) and raise
+    ``AtcsError("spef-name-map-conflict", ...)`` — never silently resolved
+    by "last one wins". The same index repeated with the *identical* name
+    (a harmless, redundant line) is tolerated.
     """
     if text is None:
         return None
-    name_map = {f"*{index}": name for index, name in _SPEF_NAME_MAP_RE.findall(text)}
+    name_map = {}
+    for section_match in _SPEF_NAME_MAP_SECTION_RE.finditer(text):
+        for index, name in _SPEF_NAME_MAP_ENTRY_RE.findall(section_match.group(1)):
+            key = f"*{index}"
+            existing = name_map.get(key)
+            if existing is not None and existing != name:
+                raise core.AtcsError(
+                    "spef-name-map-conflict",
+                    f"NAME_MAP index {key} maps to both {existing!r} and {name!r}",
+                )
+            name_map[key] = name
     names = set()
     for token in _SPEF_NET_RE.findall(text):
         if _SPEF_ALIAS_RE.match(token):

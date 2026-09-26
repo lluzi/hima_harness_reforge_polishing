@@ -168,13 +168,28 @@ report file actually read, each hash-bound via `core.file_sha256`.
 that take priority over "absent from `current`" when both are available;
 pass `{}` when no supplemental data was gathered.
 
-For every check key known to `prior` (skipping any whose prior slack is
-itself `unknown` — there is nothing to compare against): if `current` (or,
-failing that, `recheck`) has a known slack for the same key, the pair of
-signs (negative counts as "in violation") decides `fixed` (was negative,
-now not), `remaining` (negative, still negative), `regressed` (was not
-negative, now negative), or no bucket at all (was not negative, still not
-negative — not interesting).
+Whether a check counts as "in violation" is decided by its own `violated`
+fact (`atcs.reports.parse_path_report`'s own PT-classification boolean,
+carried through a check entry) when that entry has one, and only falls
+back to the slack Measure's sign (known, unannotated slacks only) when it
+does not — see `_violation_status`. This is not an equivalent, weaker
+restatement of "slack < 0": a precision-limited row (PT's own
+`(VIOLATED: increase significant digits)` annotation) has a `violated` of
+`True` but a `slack` of `unknown` (the displayed number rounds to a
+misleading `-0.00`), so reading the sign alone would silently call it
+clean. `recheck` carries no `violated` fact of its own (its own contract
+is a plain `{checkKey: Measure}`), so a `recheck` resolution always falls
+back to slack sign.
+
+For every check key known to `prior` (skipping any whose violation status
+cannot be resolved at all — neither a `violated` fact nor a known,
+unannotated slack): if `current` (or, failing that, `recheck`) resolves a
+violation status for the same key, the pair (prior status, current status)
+decides `fixed` (was violating, now not), `remaining` (violating, still
+violating), `regressed` (was not violating, now violating), or no bucket
+at all (not violating in either — not interesting). A check whose current
+status resolves to "violating" — whether from a known negative slack or
+from `violated` alone — can therefore never land in `fixed`.
 
 When neither `current` nor `recheck` can resolve the key (it is simply
 absent from both), what happens depends on the check's *prior* sign and on
@@ -197,10 +212,11 @@ check key's own `"<scenario>|<mode>|<endpoint>"` — a scenario absent from
   reporting a check that was never violating means it did not become a
   violator, which is not comparison-worthy on its own.
 
-Every key present in `current` but absent from `prior` with a known
-negative slack is a `entrant` (newly-observed violation); a new key with a
-known non-negative slack is not reported anywhere (not a violation, not
-interesting to the comparison).
+Every key present in `current` but absent from `prior` whose violation
+status resolves to violating (via `violated` or a known negative slack) is
+an `entrant` (newly-observed violation); a new key that resolves to
+not-violating is not reported anywhere, and one whose status cannot be
+resolved at all is likewise not reported (nothing to compare against).
 """
 from __future__ import annotations
 
@@ -443,16 +459,18 @@ def capture(source_refs, query_spec):
         for row in setup_result["paths"]:
             key = core.check_key(name, "setup", row["endpoint"])
             checks_out[key] = {
-                "slack": core.known(row["slack"]),
+                "slack": row["slack"],
                 "startpoint": row["startpoint"],
                 "pathGroup": row["pathGroup"],
+                "violated": row["violated"],
             }
         for row in hold_result["paths"]:
             key = core.check_key(name, "hold", row["endpoint"])
             checks_out[key] = {
-                "slack": core.known(row["slack"]),
+                "slack": row["slack"],
                 "startpoint": row["startpoint"],
                 "pathGroup": row["pathGroup"],
+                "violated": row["violated"],
             }
 
         scenarios_out[name] = {
@@ -484,11 +502,38 @@ def capture(source_refs, query_spec):
     })
 
 
-def _resolved_slack(key, current_checks, recheck):
-    if key in current_checks and core.is_known(current_checks[key]["slack"]):
-        return core.value_of(current_checks[key]["slack"])
+def _violation_status(entry):
+    """`True`/`False`/`None` (unresolved) for one check entry.
+
+    PT's own `violated` classification fact (when the entry carries one --
+    `atcs.reports.parse_path_report` always sets it) takes priority over
+    the slack Measure's sign; the sign is used only as a fallback, and only
+    when it is itself known -- an entry with no `violated` fact and an
+    `unknown` slack truly cannot be classified either way. This is the
+    reason `violated` exists at all: a precision-limited row's slack is
+    `unknown`, but its `violated` is still a known `True`, and this
+    function must return `True` for it, not `None`.
+    """
+    violated = entry.get("violated")
+    if violated is not None:
+        return bool(violated)
+    slack_measure = entry.get("slack")
+    if core.is_known(slack_measure):
+        return core.value_of(slack_measure) < 0
+    return None
+
+
+def _resolved_violation_status(key, current_checks, recheck):
+    """`_violation_status` for `key`, preferring `current_checks` (which may
+    carry its own `violated` fact) and falling back to `recheck` (a plain
+    `{checkKey: Measure}` mapping with no `violated` fact of its own, so
+    only its slack sign is ever used)."""
+    if key in current_checks:
+        status = _violation_status(current_checks[key])
+        if status is not None:
+            return status
     if recheck and key in recheck and core.is_known(recheck[key]):
-        return core.value_of(recheck[key])
+        return core.value_of(recheck[key]) < 0
     return None
 
 
@@ -513,14 +558,13 @@ def compare_checks(prior, current, recheck):
     fixed, remaining, regressed, missing_prior = [], [], [], []
 
     for key, prior_entry in prior_checks.items():
-        prior_slack_measure = prior_entry["slack"]
-        if not core.is_known(prior_slack_measure):
+        prior_violating = _violation_status(prior_entry)
+        if prior_violating is None:
             continue
-        prior_negative = core.value_of(prior_slack_measure) < 0
 
-        resolved = _resolved_slack(key, current_checks, recheck)
+        resolved = _resolved_violation_status(key, current_checks, recheck)
         if resolved is None:
-            if prior_negative:
+            if prior_violating:
                 # A real violation that can no longer be located is never
                 # silently dropped, whatever current's coverage looks like.
                 missing_prior.append(key)
@@ -535,21 +579,20 @@ def compare_checks(prior, current, recheck):
                     missing_prior.append(key)
             continue
 
-        current_negative = resolved < 0
-        if prior_negative and not current_negative:
+        current_violating = resolved
+        if prior_violating and not current_violating:
             fixed.append(key)
-        elif prior_negative and current_negative:
+        elif prior_violating and current_violating:
             remaining.append(key)
-        elif not prior_negative and current_negative:
+        elif not prior_violating and current_violating:
             regressed.append(key)
-        # else: non-negative in both — not tracked in any bucket.
+        # else: not violating in either — not tracked in any bucket.
 
     entrant = []
     for key, current_entry in current_checks.items():
         if key in prior_checks:
             continue
-        slack_measure = current_entry["slack"]
-        if core.is_known(slack_measure) and core.value_of(slack_measure) < 0:
+        if _violation_status(current_entry):
             entrant.append(key)
 
     return {

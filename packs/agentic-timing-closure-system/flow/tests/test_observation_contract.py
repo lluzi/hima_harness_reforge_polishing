@@ -306,10 +306,28 @@ class CaptureTest(unittest.TestCase):
         setup_key = core.check_key("func_ssg_rcworst_m40", "setup", "epA")
         self.assertEqual(result["checks"][setup_key]["slack"], {"value": -0.5})
         self.assertEqual(result["checks"][setup_key]["startpoint"], "U_START_0")
+        self.assertIs(result["checks"][setup_key]["violated"], True)
         hold_key = core.check_key("func_ssg_rcworst_m40", "hold", "epC")
         self.assertEqual(result["checks"][hold_key]["slack"], {"value": -0.1})
+        self.assertIs(result["checks"][hold_key]["violated"], True)
         self.assertEqual(result["designStateId"], "ds-0001")
         self.assertEqual(result["precision"], "pba")
+
+    def test_precision_limited_row_carries_violated_true_and_unknown_slack(self):
+        # Fix round 1 (Task 16 review, Critical): PT's own
+        # "(VIOLATED: increase significant digits)" annotation must survive
+        # through `capture` as `violated: True` with an `unknown` slack, not
+        # a `known(-0.0)` a downstream sign check would misread as clean.
+        (self.scenario_dir / "setup.rpt").write_text(
+            fixtures.path_report([("epA", -0.0), ("epF", -0.3)], "setup", slack_annotations=[": increase significant digits", ""])
+        )
+        query_spec = {"precision": "pba", "requiredScenarios": ["func_ssg_rcworst_m40"], "maxPaths": 50}
+
+        result = state.capture(self.source_refs(), query_spec)
+
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epA")
+        self.assertFalse(core.is_known(result["checks"][key]["slack"]))
+        self.assertIs(result["checks"][key]["violated"], True)
 
 
 class CompareChecksTest(unittest.TestCase):
@@ -400,6 +418,90 @@ class CompareChecksTest(unittest.TestCase):
         result = state.compare_checks(prior, current, {})
 
         self.assertEqual(result["missingPrior"], [key])
+
+
+class CompareChecksViolatedFactTest(unittest.TestCase):
+    """Fix round 1 (Task 16 review, Critical): PT's own VIOLATED/MET verdict
+    (`violated`) must be used ahead of the slack Measure's sign, since a
+    precision-limited row's slack is `unknown` (a real violation that
+    rounds to a displayed `-0.00`) while `violated` is still a known
+    `True`. `atcs.reports.path_report` fixture rows always carry
+    `violated: True`; these tests build check entries directly to exercise
+    every combination `compare_checks` must handle.
+    """
+
+    def _entry(self, slack_measure, violated):
+        return {"slack": slack_measure, "startpoint": "s", "pathGroup": "g", "violated": violated}
+
+    def test_precision_limited_row_remains_a_violation_never_fixed(self):
+        # Prior: a real, known-negative violation. Current: the same check,
+        # now precision-limited (slack unknown, e.g. it rounds to -0.00),
+        # but PT's own verdict still says VIOLATED. This must be "remaining"
+        # -- the sign of an unknown Measure cannot be read as "fixed".
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epA")
+        prior = {"checks": {key: self._entry(core.known(-0.05), True)}}
+        current = {"checks": {key: self._entry(
+            core.unknown("precision-limited: re-query with more significant digits"), True,
+        )}}
+
+        result = state.compare_checks(prior, current, {})
+
+        self.assertEqual(result["remaining"], [key])
+        self.assertNotIn(key, result["fixed"])
+        self.assertNotIn(key, result["missingPrior"])
+
+    def test_precision_limited_entrant_is_still_counted_as_a_violation(self):
+        # A newly-observed check whose slack is unknown but whose violated
+        # fact is True is a real entrant, not silently dropped because its
+        # Measure alone is unknown.
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epNew")
+        prior = {"checks": {}}
+        current = {"checks": {key: self._entry(
+            core.unknown("precision-limited: re-query with more significant digits"), True,
+        )}}
+
+        result = state.compare_checks(prior, current, {})
+
+        self.assertEqual(result["entrant"], [key])
+
+    def test_precision_limited_prior_still_counts_as_a_prior_violation(self):
+        # A prior check whose own slack was unknown-but-violated, now
+        # resolved clean in current: this is a real fix, not skipped just
+        # because the prior Measure itself was unknown.
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epB")
+        prior = {"checks": {key: self._entry(
+            core.unknown("precision-limited: re-query with more significant digits"), True,
+        )}}
+        current = {"checks": {key: self._entry(core.known(0.01), False)}}
+
+        result = state.compare_checks(prior, current, {})
+
+        self.assertEqual(result["fixed"], [key])
+
+    def test_violated_fact_overrides_a_stale_or_contradictory_slack_sign(self):
+        # Defensive: even if some future producer set both fields, a
+        # violated=True fact takes priority over an inconsistent
+        # non-negative slack Measure -- verdict beats magnitude.
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epC")
+        prior = {"checks": {key: self._entry(core.known(-0.02), True)}}
+        current = {"checks": {key: self._entry(core.known(0.0), True)}}
+
+        result = state.compare_checks(prior, current, {})
+
+        self.assertEqual(result["remaining"], [key])
+        self.assertNotIn(key, result["fixed"])
+
+    def test_entries_without_a_violated_fact_fall_back_to_slack_sign(self):
+        # Backward-compatible fallback: an entry with no `violated` key at
+        # all (e.g. hand-built observation-set data) is still classified by
+        # its slack Measure's sign, exactly as before this fix.
+        key = core.check_key("func_ssg_rcworst_m40", "setup", "epD")
+        prior = {"checks": {key: {"slack": core.known(-0.4), "startpoint": "s", "pathGroup": "g"}}}
+        current = {"checks": {key: {"slack": core.known(0.1), "startpoint": "s", "pathGroup": "g"}}}
+
+        result = state.compare_checks(prior, current, {})
+
+        self.assertEqual(result["fixed"], [key])
 
 
 if __name__ == "__main__":

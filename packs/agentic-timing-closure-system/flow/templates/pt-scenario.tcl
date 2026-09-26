@@ -48,15 +48,25 @@ set_propagated_clock [all_clocks]
 update_timing -full
 redirect $report_dir/check_timing.rpt { check_timing -verbose }
 redirect $report_dir/global_timing.rpt { report_global_timing }
+# -significant_digits 4 (default is 2, per PT's own man page --
+# report_timing(2), "-significant_digits digits ... the default is
+# determined by the report_default_significant_digits variable, which is 2
+# by default") widens the displayed precision so a genuinely violating but
+# tiny slack does not round to a bare "-0.00" that reads as clean; PT still
+# marks such a row "(VIOLATED: increase significant digits)" whenever its
+# own internal, full-precision value would otherwise display as zero at
+# the requested digit count, so atcs.reports.parse_path_report's own
+# VIOLATED-classification fact (never the displayed number alone) remains
+# this Pack's actual source of truth either way.
 redirect $report_dir/setup.rpt {
     report_timing -delay_type max -path_type full_clock_expanded \
         -max_paths $env(MAX_PATHS) -nworst $env(NWORST) -slack_lesser_than 0.0 \
-        -input_pins -nets -transition_time -capacitance
+        -input_pins -nets -transition_time -capacitance -significant_digits 4
 }
 redirect $report_dir/hold.rpt {
     report_timing -delay_type min -path_type full_clock_expanded \
         -max_paths $env(MAX_PATHS) -nworst $env(NWORST) -slack_lesser_than 0.0 \
-        -input_pins -nets -transition_time -capacitance
+        -input_pins -nets -transition_time -capacitance -significant_digits 4
 }
 if {$env(PBA_MODE) == 1 && [info exists env(STA_DATA)]} {
     file mkdir $env(STA_DATA)
