@@ -544,6 +544,38 @@ def _missing_required_scenarios(plan, receipts):
     return [scenario for scenario in plan["requiredScenarios"] if _scenario_observation(receipts, scenario) is None]
 
 
+def _unconstrained_regressions(plan, receipts, baseline_unconstrained):
+    """I6 (final review): required scenarios whose own `check_timing`-derived
+    `unconstrained`-endpoint count increased versus the Campaign baseline's, or where
+    either side's own count is not known -- a silent loss of required timing
+    constraints is exactly as much a coverage gap as a scenario whose STA never ran
+    at all (`_missing_required_scenarios` above), so it is folded into the same
+    `missingRequiredCheckCount`, never a separately-unreported field.
+
+    `baseline_unconstrained` is `None` when the caller has no baseline comparison to
+    offer at all (every pre-I6 call site keeps its exact old behaviour: no regression
+    is ever counted this way). A caller that *does* have one but could not locate the
+    baseline's own scenario counts passes `{}` instead -- an empty dict is not the
+    same as "no comparison to offer": every required scenario then fails closed
+    (`baseline_measure is None` -> unknown -> missing), the honest reading of
+    "the baseline this evidence must be judged against could not be found", per the
+    fail-closed rule (`atcs.core`'s own module docstring).
+    """
+    if baseline_unconstrained is None:
+        return []
+    gaps = []
+    for scenario in plan["requiredScenarios"]:
+        scenario_obs = _scenario_observation(receipts, scenario)
+        candidate_measure = (scenario_obs or {}).get("unconstrained")
+        baseline_measure = baseline_unconstrained.get(scenario)
+        if not core.is_known(candidate_measure) or not core.is_known(baseline_measure):
+            gaps.append(scenario)
+            continue
+        if core.value_of(candidate_measure) > core.value_of(baseline_measure):
+            gaps.append(scenario)
+    return gaps
+
+
 def _final_wns(plan, receipts, mode):
     values = []
     problems = []
@@ -679,13 +711,20 @@ def _physical_comparison(kind, parse_fn, receipts, baseline_physical):
     return candidate["total"], core.known(len(new_identities)), len(new_identities), 0
 
 
-def assemble(plan, receipts, prior_observation, baseline_physical):
-    """Assemble the final ``evaluation`` for `plan`'s candidate (see module docstring)."""
+def assemble(plan, receipts, prior_observation, baseline_physical, baseline_unconstrained=None):
+    """Assemble the final ``evaluation`` for `plan`'s candidate (see module docstring).
+
+    `baseline_unconstrained` (I6, final review) is an optional ``{scenario: Measure}``
+    map of the Campaign baseline's own `check_timing`-derived unconstrained-endpoint
+    counts, one entry per required scenario; see `_unconstrained_regressions`'s own
+    docstring for the exact coverage rule and for `None` vs. `{}`'s different meanings.
+    """
     for corner, entry in receipts.get("spef", {}).items():
         if entry.get("estimated") is True:
             raise core.AtcsError("estimated-rc", corner)
 
-    missing_scenarios = _missing_required_scenarios(plan, receipts)
+    missing_scenarios = set(_missing_required_scenarios(plan, receipts))
+    missing_scenarios.update(_unconstrained_regressions(plan, receipts, baseline_unconstrained))
     missing_required_check_count = core.known(len(missing_scenarios))
 
     final_setup_wns = _final_wns(plan, receipts, "setup")

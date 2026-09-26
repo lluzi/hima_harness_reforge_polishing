@@ -1763,6 +1763,40 @@ def _find_prior_observation_for_state(workspace, target_state_id):
     return None
 
 
+def _baseline_unconstrained_counts(workspace):
+    """I6 (final review, unconstrained coverage): each required scenario's own
+    `unconstrained`-endpoint Measure from the Campaign BASELINE's own observation --
+    never an intermediate parent's, so a candidate several generations deep is always
+    judged against the true Campaign starting point, the same "never a per-candidate
+    parent snapshot" rule `verification`'s own module docstring already states for
+    `baseline_physical`.
+
+    `state/baseline.json` is written exactly once, by `_cmd_baseline`, and is never
+    rewritten by `adopt` (unlike `state/working-state.json`) -- its own `id` therefore
+    always names the Campaign's real starting design-state. Returns `{}` (never
+    `None`) when that baseline state or its own observation cannot be located, so
+    `verification.assemble` fails closed on every required scenario's own comparison
+    rather than silently skipping the check the way passing `None` itself would (see
+    `verification._unconstrained_regressions`'s own docstring for that distinction).
+    """
+    baseline_path = _paths(workspace)["baseline"]
+    if not baseline_path.is_file():
+        return {}
+    try:
+        baseline_state = _read_declared(baseline_path, "design-state")
+    except InputError:
+        return {}
+    baseline_observation = _find_prior_observation_for_state(workspace, baseline_state.get("id"))
+    if baseline_observation is None:
+        return {}
+    scenarios = baseline_observation.get("scenarios", {}) or {}
+    return {
+        scenario: entry.get("unconstrained")
+        for scenario, entry in scenarios.items()
+        if isinstance(entry, dict) and "unconstrained" in entry
+    }
+
+
 def _cmd_evaluate(workspace, args):
     """`policy` is now the stamped `state/policy.json` `_cmd_policy` writes (G4).
 
@@ -1794,7 +1828,11 @@ def _cmd_evaluate(workspace, args):
         "netlist": implement["netlist"], "def": implement["def"], "spef": extract["spef"],
         "sta": sta["sta"], "physical": physical,
     }
-    body = verification.assemble(plan, receipts, prior_observation, baseline_physical)
+    # I6 (final review): the baseline's own check_timing-derived unconstrained-endpoint
+    # counts, already captured by observe-baseline -- never a fresh query this call
+    # would have to launch itself.
+    baseline_unconstrained = _baseline_unconstrained_counts(workspace)
+    body = verification.assemble(plan, receipts, prior_observation, baseline_physical, baseline_unconstrained)
     return _paths(workspace)["evaluation"], body
 
 

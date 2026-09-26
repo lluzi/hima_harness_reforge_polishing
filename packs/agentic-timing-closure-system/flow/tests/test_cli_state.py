@@ -2021,5 +2021,102 @@ class MainErrorMappingTest(unittest.TestCase):
         self.assertEqual(json.loads(stderr)["code"], "malformed-input")
 
 
+class EvaluateUnconstrainedCoverageTest(TwoRoundFlowTest):
+    """I6 (final review): `evaluate` must count a candidate whose own `check_timing`
+    unconstrained-endpoint count went UP versus the Campaign baseline as a missing
+    required check -- CLI-level wiring for `atcs_cli._baseline_unconstrained_counts`
+    + `verification.assemble`'s own coverage rule."""
+
+    def test_two_round_flow_uses_adopted_state_id(self):
+        self.skipTest("inherited from TwoRoundFlowTest -- already covered there, not this class's own case")
+
+    def test_candidate_scenario_with_more_unconstrained_endpoints_than_baseline_is_missing(self):
+        workspace = self.workspace
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        self.assertEqual(_run("baseline", workspace, workspace / "manifest.json").returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+        # Baseline: every scenario reports zero unconstrained endpoints (_clean_reports's default).
+        core.write_artifact(workspace / "state" / "observation.json", _baseline_observation(workspace, baseline))
+        contract_dir = _analysis_contract_dir(workspace)
+        self.assertEqual(_run("policy", workspace, contract_dir, "0.0", "0.0").returncode, 0)
+        drc_path, connectivity_path = workspace / "b-drc.rpt", workspace / "b-conn.rpt"
+        _write_text(drc_path, fixtures.drc_report([]))
+        _write_text(connectivity_path, fixtures.connectivity_report([]))
+        self.assertEqual(_run("physical", workspace, drc_path, connectivity_path, "baseline").returncode, 0)
+
+        contribution, work_package = self._build_fix_contribution(baseline, instance="U1")
+        _write_json(workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
+        facts = composition.analyze(baseline["id"], [contribution], [])
+        plan_raw = {
+            "batchId": "batch-U1", "baseStateId": baseline["id"], "select": [contribution["id"]],
+            "resolutions": [], "deferred": [], "reason": "single fix",
+        }
+        plan = integration.validate_plan(plan_raw, facts)
+        request = integration.prepare_replay(plan, facts, [contribution])
+        step = request["steps"][0]
+        receipt = {
+            "stepId": step["stepId"], "status": "ok",
+            "observedDelta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        }
+        edit_domains = {contribution["id"]: work_package["editDomain"]}
+        integration_state = integration.reconcile(request, [receipt], edit_domains)
+        core.write_artifact(workspace / "state" / "composition-facts.json", facts)
+        core.write_artifact(workspace / "state" / "replay-request.json", request)
+        core.write_artifact(workspace / "state" / "integration-state.json", integration_state)
+
+        merge_commit = integration.seal_batch(integration_state, request, facts, [contribution])
+        merge_id = merge_commit["id"]
+        impl_root = workspace / "implementations" / merge_id
+        (impl_root / "DBS").mkdir(parents=True, exist_ok=True)
+        (impl_root / "DBS" / "top.enc").write_bytes(f"database for {merge_id}".encode("utf-8"))
+        _sha256_matching_empty_directory(impl_root / "DBS" / "top.enc.dat")
+        _write_text(impl_root / "EXPORT" / "design.def", "DEF placeholder\n")
+        _write_text(impl_root / "EXPORT" / "design.v", "module top(); endmodule\n")
+        _write_text(impl_root / "RPT" / "verify_drc.rpt", fixtures.drc_report([]))
+        _write_text(impl_root / "RPT" / "verify_connectivity.rpt", fixtures.connectivity_report([]))
+
+        site_profile_path = _site_profile_path(workspace)
+        current_state_path = workspace / "current-state.json"
+        _write_json(current_state_path, baseline)
+        self.assertEqual(_run("implement", workspace, current_state_path, site_profile_path).returncode, 0)
+
+        for corner in (CORNER,):
+            _write_text(impl_root / "starrc" / corner / f"top.{corner}.spef", "*SPEF IEEE 1481-1999\n")
+        corners_path = workspace / "corners.json"
+        _write_json(corners_path, {"corners": [CORNER]})
+        self.assertEqual(_run("extract", workspace, corners_path, site_profile_path).returncode, 0)
+
+        # Candidate: every scenario is otherwise clean, EXCEPT the first required
+        # scenario now reports 3 unconstrained endpoints -- a real regression
+        # versus the baseline's own 0, even though every WNS/identity leg is fine.
+        regressed_scenario = REQUIRED_SCENARIOS[0]
+        for scenario in REQUIRED_SCENARIOS:
+            reports = _clean_reports()
+            if scenario == regressed_scenario:
+                reports["check_timing.rpt"] = fixtures.check_timing_report(3)
+            _write_report_set(impl_root / "sta" / scenario, reports)
+        query_spec_path = workspace / "query-spec.json"
+        _write_json(query_spec_path, {"precision": "gba", "requiredScenarios": list(REQUIRED_SCENARIOS), "maxPaths": 1000})
+        scenario_corners_path = workspace / "scenario-corners.json"
+        _write_json(scenario_corners_path, {scenario: CORNER for scenario in REQUIRED_SCENARIOS})
+        base_design_state_path = workspace / "base-design-state.json"
+        _write_json(base_design_state_path, baseline)
+        self.assertEqual(
+            _run("sta", workspace, query_spec_path, scenario_corners_path,
+                 base_design_state_path, site_profile_path).returncode,
+            0,
+        )
+        self.assertEqual(_run("physical", workspace, "candidate").returncode, 0)
+
+        result = _run("evaluate", workspace, workspace / "state" / "policy.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        evaluation = json.loads((workspace / "state" / "evaluation.json").read_text())
+        # Everything else about this candidate is clean -- the ONLY reason it is
+        # missing a required check is the unconstrained-endpoint regression.
+        self.assertEqual(core.value_of(evaluation["finalIdentityErrorCount"]), 0)
+        self.assertEqual(core.value_of(evaluation["missingRequiredCheckCount"]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

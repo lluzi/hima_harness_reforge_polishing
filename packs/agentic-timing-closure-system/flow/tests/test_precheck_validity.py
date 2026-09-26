@@ -368,6 +368,90 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(evaluation["missingPriorCheckCount"], core.known(0))
         self.assertEqual(evaluation["comparison"]["fixed"], [core.check_key("func_ssg_rcworst_m40", "setup", "EP1")])
 
+    def test_no_baseline_unconstrained_data_never_changes_coverage(self):
+        """I6 (final review): omitting `baseline_unconstrained` (the default, `None`) is a
+        caller that has no comparison to offer at all -- never the same thing as a caller
+        that looked and found nothing, which is `{}` (see the next several tests). Every
+        existing call site that predates this parameter keeps behaving exactly as before."""
+        receipts = _base_receipts()
+        evaluation = verification.assemble(self.plan, receipts, self.prior_observation, self.baseline_physical)
+        self.assertEqual(evaluation["missingRequiredCheckCount"], core.known(0))
+
+    def test_unconstrained_count_matching_baseline_is_not_a_coverage_gap(self):
+        receipts = _base_receipts()
+        baseline_unconstrained = {scenario: core.known(0) for scenario in SCENARIO_WNS}  # matches _observation's default
+        evaluation = verification.assemble(
+            self.plan, receipts, self.prior_observation, self.baseline_physical, baseline_unconstrained,
+        )
+        self.assertEqual(evaluation["missingRequiredCheckCount"], core.known(0))
+
+    def test_unconstrained_increase_beyond_baseline_counts_as_missing(self):
+        """I6: `check_timing`'s own unconstrained-endpoint count going UP versus the Campaign
+        baseline means this candidate silently dropped required timing constraints -- exactly
+        as much a coverage gap as a scenario whose STA never ran at all, so it is folded into
+        the same `missingRequiredCheckCount`, never a separately-unreported field."""
+        receipts = _base_receipts()
+        regressed_scenario = "func_ssg_rcworst_m40"
+        receipts["sta"][regressed_scenario]["observation"]["scenarios"][regressed_scenario]["unconstrained"] = (
+            core.known(3)
+        )
+        baseline_unconstrained = {scenario: core.known(0) for scenario in SCENARIO_WNS}
+
+        evaluation = verification.assemble(
+            self.plan, receipts, self.prior_observation, self.baseline_physical, baseline_unconstrained,
+        )
+
+        self.assertEqual(evaluation["missingRequiredCheckCount"], core.known(1))
+
+    def test_unconstrained_decrease_versus_baseline_is_not_a_coverage_gap(self):
+        """Fewer unconstrained endpoints than the baseline is an improvement, not a regression."""
+        receipts = _base_receipts()
+        improved_scenario = "func_ssg_rcworst_m40"
+        receipts["sta"][improved_scenario]["observation"]["scenarios"][improved_scenario]["unconstrained"] = (
+            core.known(0)
+        )
+        baseline_unconstrained = {scenario: core.known(5) for scenario in SCENARIO_WNS}
+
+        evaluation = verification.assemble(
+            self.plan, receipts, self.prior_observation, self.baseline_physical, baseline_unconstrained,
+        )
+
+        self.assertEqual(evaluation["missingRequiredCheckCount"], core.known(0))
+
+    def test_unknown_unconstrained_count_on_either_side_counts_as_missing(self):
+        """I6: unknown counts as missing -- neither side being un-decidable can be silently
+        treated as "no regression"."""
+        receipts = _base_receipts()
+        scenario = "func_ssg_rcworst_m40"
+        receipts["sta"][scenario]["observation"]["scenarios"][scenario]["unconstrained"] = (
+            core.unknown("missing-unconstrained-line")
+        )
+        baseline_unconstrained = {s: core.known(0) for s in SCENARIO_WNS}
+
+        evaluation = verification.assemble(
+            self.plan, receipts, self.prior_observation, self.baseline_physical, baseline_unconstrained,
+        )
+        self.assertEqual(evaluation["missingRequiredCheckCount"], core.known(1))
+
+        # And the reverse: the baseline's own count for that scenario is unknown/absent.
+        receipts2 = _base_receipts()
+        baseline_unconstrained_missing_one = {s: core.known(0) for s in SCENARIO_WNS if s != scenario}
+        evaluation2 = verification.assemble(
+            self.plan, receipts2, self.prior_observation, self.baseline_physical, baseline_unconstrained_missing_one,
+        )
+        self.assertEqual(evaluation2["missingRequiredCheckCount"], core.known(1))
+
+    def test_unconstrained_regression_on_an_already_missing_scenario_does_not_double_count(self):
+        receipts = _base_receipts()
+        del receipts["sta"]["func_ffg_cbest_125"]
+        baseline_unconstrained = {scenario: core.known(0) for scenario in SCENARIO_WNS}
+
+        evaluation = verification.assemble(
+            self.plan, receipts, self.prior_observation, self.baseline_physical, baseline_unconstrained,
+        )
+
+        self.assertEqual(evaluation["missingRequiredCheckCount"], core.known(1))
+
 
 # A realistic corner-per-scenario mapping: ssg scenarios need the worst-case RC
 # ("rcworst") SPEF, ffg scenarios need the best-case RC ("cbest") SPEF, each at
