@@ -46,7 +46,12 @@ ESCAPED_SELECTED_NET_REF_RE = re.compile(
 )
 ESCAPED_SCALAR_NET_REF_RE = re.compile(r"(?P<base>\\[^\s]+)\s+\Z")
 NET_SELECT_RE = re.compile(r"\[\s*([0-9]+)\s*(?::\s*([0-9]+)\s*)?\]\Z")
+SIZED_CONSTANT_RE = re.compile(
+    r"(?P<width>[1-9][0-9]*)'(?P<base>[bBoOdDhH])"
+    r"(?P<digits>[0-9A-Fa-f]+(?:_[0-9A-Fa-f]+)*)\Z"
+)
 MAX_ALIAS_RANGE_WIDTH = 65536
+CONSTANT_NETS = {0: "1'b0", 1: "1'b1"}
 
 # Verilog primitive gates in the technology-independent input. Output pin first.
 PRIMITIVE_GATES = ("and", "or", "nand", "nor", "xor", "xnor", "not", "buf")
@@ -127,6 +132,9 @@ def _canonical_connection_net(text):
     """Keep the escaped-identifier terminator when a connection is a net ref."""
     reference = _simple_net_reference(text)
     if reference is None:
+        constant = _sized_constant_bits(text.strip())
+        if constant is not None and len(constant) == 1:
+            return CONSTANT_NETS[constant[0]]
         return re.sub(r"\s+", "", text)
     base, bits = reference
     if bits is None:
@@ -250,20 +258,47 @@ def _format_net_bit(base, bit):
     return "%s[%d]" % (base, bit)
 
 
+def _sized_constant_bits(text):
+    """Return one bounded, known 0/1 vector in Verilog left-to-right bit order."""
+    match = SIZED_CONSTANT_RE.fullmatch(text.strip())
+    if match is None:
+        return None
+    width = int(match.group("width"))
+    if width > MAX_ALIAS_RANGE_WIDTH:
+        return None
+    radix = {"b": 2, "o": 8, "d": 10, "h": 16}[match.group("base").lower()]
+    try:
+        value = int(match.group("digits").replace("_", ""), radix)
+    except ValueError:
+        return None
+    if value >= 1 << width:
+        return None
+    return tuple((value >> bit) & 1 for bit in range(width - 1, -1, -1))
+
+
 def _simple_assign_aliases(lhs_text, rhs_text):
-    """Expand one whole-net or equal-width bit/range alias into scalar pairs."""
+    """Expand one net alias or known sized-literal tie-off into scalar pairs."""
     lhs = _simple_net_reference(lhs_text)
     rhs = _simple_net_reference(rhs_text)
-    if lhs is None or rhs is None:
+    if lhs is None:
         return None
     lhs_base, lhs_bits = lhs
-    rhs_base, rhs_bits = rhs
     lhs_nets = ((lhs_base,) if lhs_bits is None else tuple(
         _format_net_bit(lhs_base, bit) for bit in lhs_bits
     ))
-    rhs_nets = ((rhs_base,) if rhs_bits is None else tuple(
-        _format_net_bit(rhs_base, bit) for bit in rhs_bits
-    ))
+    if rhs is None:
+        constant_bits = _sized_constant_bits(rhs_text)
+        # A bare LHS may be a scalar or a declared vector; this lightweight
+        # structural reader does not own declaration-width parsing. Require an
+        # explicit bit/range so literal width is proven locally.
+        if constant_bits is None or lhs_bits is None:
+            return None
+        rhs_nets = tuple(CONSTANT_NETS[bit] for bit in constant_bits)
+    else:
+        rhs_base, rhs_bits = rhs
+        rhs_nets = ((rhs_base,) if rhs_bits is None else tuple(
+            _format_net_bit(rhs_base, bit) for bit in rhs_bits
+        ))
     if len(lhs_nets) != len(rhs_nets):
         return None
     return tuple(zip(lhs_nets, rhs_nets))
@@ -274,9 +309,9 @@ def top_assign_aliases(text: str, top: str):
 
     The proxy models only zero-delay whole-net aliases and scalarizable bit/range
     aliases. Equal-width ranges expand positionally into scalar pairs. Every
-    continuous ``assign`` is inspected; expressions, constants, width mismatches,
-    delays, strengths, malformed statements and repeated left-hand drivers fail
-    closed.
+    continuous ``assign`` is inspected; expressions, unsized/unknown/overflowing
+    constants, width mismatches, delays, strengths, malformed statements and
+    repeated left-hand drivers fail closed.
     """
     bodies = {}
     for match in MODULE_RE.finditer(text):

@@ -366,7 +366,7 @@ class LibertyTimingTests(unittest.TestCase):
         )
         for replacement in (
             r"assign {\alias.path [31], \alias.path [30]} = \source.path [31:30];",
-            r"assign \alias.path [31:30] = 2'b0;",
+            r"assign \alias.path [31:30] = 2'b0x;",
             r"assign \alias.path [31:30] = \source.path [31];",
             r"assign \alias.path[31:30]= \source.path [31:30];",
             r"assign \alias.path [31:30] = \source.path[31:30];",

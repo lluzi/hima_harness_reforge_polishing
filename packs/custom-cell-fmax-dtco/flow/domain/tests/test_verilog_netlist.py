@@ -13,6 +13,7 @@ from verilog_netlist import (  # noqa: E402
     generic_arity_census,
     parse_modules,
     top_assign_aliases,
+    VerilogNetlistError,
 )
 
 
@@ -52,6 +53,88 @@ endmodule
             graph.instances["g0"].conns["Y"],
             graph.instances["g1"].conns["A0"],
         )
+
+    def test_escaped_vector_tieoff_expands_to_bounded_constant_sources(self):
+        text = r'''module top(output y);
+  assign \register.file [31:0] = 32'd0;
+  buf g0(y, \register.file [0]);
+endmodule
+'''
+        modules = parse_modules(text)
+        aliases = top_assign_aliases(text, "top")
+        self.assertEqual(len(aliases), 32)
+        self.assertEqual(aliases[0], (r"\register.file [31]", "1'b0"))
+        self.assertEqual(aliases[-1], (r"\register.file [0]", "1'b0"))
+        graph = build_named_net_graph(modules["top"], {
+            "GEN_buf1": {"A0": "input", "Y": "output"},
+        }, aliases)
+        self.assertEqual(graph.instances["g0"].conns["A0"], "1'b0")
+        primitive = parse_modules("""module primitive(input a, output y);
+  and g0(y, 1'b0, a);
+endmodule
+""")["primitive"][0]
+        self.assertEqual(primitive.conns["A0"], "1'b0")
+
+        pattern = text.replace(
+            r"\register.file [31:0] = 32'd0",
+            r"\register.file [3:0] = 4'hA",
+        )
+        self.assertEqual(top_assign_aliases(pattern, "top"), (
+            (r"\register.file [3]", "1'b1"),
+            (r"\register.file [2]", "1'b0"),
+            (r"\register.file [1]", "1'b1"),
+            (r"\register.file [0]", "1'b0"),
+        ))
+
+        ascending = pattern.replace(
+            r"\register.file [3:0] = 4'hA",
+            r"\register.file [0:3] = 4'b1010",
+        )
+        self.assertEqual(top_assign_aliases(ascending, "top"), (
+            (r"\register.file [0]", "1'b1"),
+            (r"\register.file [1]", "1'b0"),
+            (r"\register.file [2]", "1'b1"),
+            (r"\register.file [3]", "1'b0"),
+        ))
+
+        direct_driver = text.replace(
+            r"buf g0(y, \register.file [0]);",
+            r"buf g0(\register.file [0], y);",
+        )
+        with self.assertRaisesRegex(
+            VerilogNetlistError, "continuous assign nets also have direct cell drivers"
+        ):
+            build_named_net_graph(
+                parse_modules(direct_driver)["top"],
+                {"GEN_buf1": {"A0": "input", "Y": "output"}},
+                top_assign_aliases(direct_driver, "top"),
+            )
+
+        overlap = text.replace(
+            "endmodule",
+            r"assign \register.file [1:0] = 2'd0;" + "\nendmodule",
+        )
+        with self.assertRaisesRegex(
+            VerilogNetlistError, "multiple assign drivers"
+        ):
+            top_assign_aliases(overlap, "top")
+
+        for statement in (
+            r"assign \register.file [3:0] = 3'd0;",
+            r"assign \register.file [3:0] = 4'd16;",
+            r"assign \register.file [3:0] = 4'b00x0;",
+            r"assign \register.file [3:0] = 0;",
+            r"assign \register.file [3:0] = 4'sd0;",
+            r"assign register_file = 1'b0;",
+        ):
+            with self.subTest(statement=statement):
+                rejected = text.replace(
+                    r"assign \register.file [31:0] = 32'd0;", statement
+                )
+                with self.assertRaisesRegex(
+                    VerilogNetlistError, "unsupported continuous assign"
+                ):
+                    top_assign_aliases(rejected, "top")
 
 
 if __name__ == "__main__":

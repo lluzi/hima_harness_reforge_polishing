@@ -290,11 +290,11 @@ assert.equal(changedProductInputs, '', 'Wave 4 App product inputs changed after 
 const packSource = path.join(appRoot, 'packs', PACK_ID);
 const sourcePack = loadPack(path.join(appRoot, 'packs'), PACK_ID);
 const sourceDigest = packDigestOf(packSource);
-assert.equal(sourcePack.contract.version, '5.2.18', 'Wave 4 requires the repaired sealed portable Pack');
+assert.equal(sourcePack.contract.version, '5.2.19', 'Wave 4 requires the repaired sealed portable Pack');
 assert.equal(sourcePack.contract.status, 'development', 'PLS-35 must preserve the Pack author-declared status');
 assert.deepEqual(appManifest.runtimeInputs?.trialPack,
   { id: PACK_ID, version: sourcePack.contract.version, methodDigest: sourceDigest,
-    testRun: 'run-fc207e67-a295-4824-8da8-19a0cfb4e386' },
+    testRun: 'run-24da49fc-8447-46e8-aed0-9896b819305b' },
   'Wave 4 App manifest differs from its bundled sealed Pack');
 
 const declared = {
