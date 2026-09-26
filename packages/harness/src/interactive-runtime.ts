@@ -93,6 +93,8 @@ export interface InteractiveRuntimeDeps {
 
 export interface InteractiveSessionView {
   readonly runId: string; readonly executionId: string; readonly nodeId: string; readonly toolSessionId: string;
+  /** Authenticated child that opened this session; production follow-up operations stay bound to it. */
+  readonly operatorSessionId: string;
   readonly status: 'intent' | 'starting' | 'ready' | 'uncertain' | 'closed';
   readonly job?: InteractiveJobIdentity; readonly qualification?: InteractiveQualification;
   readonly transcriptPath?: string; readonly exitPath?: string; readonly sessionDeadlineAt?: string;
@@ -282,7 +284,7 @@ function reconstructSessions(ledger: Ledger, runId: string): InteractiveSessionV
     const previous = sessions.get(record.toolSessionId);
     if (record.event === 'open-intent') {
       sessions.set(record.toolSessionId, { runId, executionId: record.executionId, nodeId: record.nodeId,
-        toolSessionId: record.toolSessionId, status: 'intent', transcriptPath: record.transcriptPath,
+        toolSessionId: record.toolSessionId, operatorSessionId: record.actor, status: 'intent', transcriptPath: record.transcriptPath,
         exitPath: record.exitPath, sessionDeadlineAt: record.sessionDeadlineAt });
       continue;
     }
@@ -556,6 +558,9 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
   const view = sessionFor(deps.fabric.ledger, request);
   const session = view && nativeSession(view);
   if (!view || !session) return { status: 'refused', reason: 'interactive session is absent, incomplete or not owned by this execution' };
+  if (!facts.qualification.testOnly && view.operatorSessionId !== request.actor) {
+    return { status: 'refused', reason: 'This production interactive session belongs to its recorded Operator child; the Run owner may inspect and adopt the child result but cannot take over typed operations.' };
+  }
   const on: InteractiveChannel = channelFor(loadSite(deps.fabric.sitesDir, facts.run.siteId));
   if (request.action === 'read') {
     const refused = validateControl(facts.run, request, 'input', 'read');

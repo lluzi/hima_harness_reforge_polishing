@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFile, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
 import { parse, stringify } from 'yaml';
@@ -31,26 +31,44 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
   await writePackVariant(path.join(h.home, 'hima/packs'), packId, [], [], timingProbePackId);
   const contractFile = path.join(h.home, 'hima/packs', packId, 'contract.yml');
   const contract = parse(await readFile(contractFile, 'utf8')) as Record<string, any>;
-  contract.environment.wrappers = ['/usr/bin/tclsh'];
+  const wrapper = await realpath('/usr/bin/tclsh');
+  contract.environment.wrappers = [wrapper];
   contract.workspace.copy.push('interactive-repl.tcl');
   const tool = contract.tools.find((candidate: { id: string }) => candidate.id === 'synth');
   tool.licences = {};
-  tool.argv = ['/usr/bin/tclsh', '${WORKSPACE}/flow/interactive-repl.tcl'];
-  tool.interactive = { mode: 'interactive-only', adapter: 'hima-tcl-line-v1', commands: {
+  tool.argv = [wrapper, '${WORKSPACE}/flow/interactive-repl.tcl'];
+  tool.interactive = { mode: 'interactive-only', adapter: 'hima-tcl-line-v1', argv: [wrapper, '${WORKSPACE}/flow/interactive-repl.tcl'], commands: {
     read: ['get_value'], mutate: ['set_value', 'fail_command'], save: ['save_state', 'close_session'],
   } };
   await writeFile(contractFile, stringify(contract));
-  await copyFile(path.join(repoRoot, 'test/fixtures/interactive-job/repl.tcl'), path.join(flow.root, 'interactive-repl.tcl'));
+  const sourceTemplate = path.join(h.home, 'hima/packs', packId, 'interactive-repl.tcl');
+  await copyFile(path.join(repoRoot, 'test/fixtures/interactive-job/repl.tcl'), sourceTemplate);
+  await copyFile(sourceTemplate, path.join(flow.root, 'interactive-repl.tcl'));
   const installedPack = loadPack(path.join(h.home, 'hima/packs'), packId);
   const packDigest = installedPack.folder.digest(packDigestExcludes);
   const declaredTool = installedPack.contract.tools.find((candidate) => candidate.id === 'synth')!;
 
-  const site = await writeLocalSite(h, { allowedReadRoots: [h.workspace, flow.root], allowedWriteRoots: [h.workspace],
-    allowedWrappers: ['/usr/bin/tclsh'], bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot: h.workspace },
+  const site = await writeLocalSite(h, { allowedReadRoots: [h.workspace, flow.root, path.dirname(wrapper)], allowedWriteRoots: [h.workspace],
+    allowedWrappers: [wrapper], bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot: h.workspace },
     licences: {}, parallelJobs: 1 });
   const adminDir = path.join(h.home, 'admin'); await mkdir(adminDir);
   const environmentFile = path.join(adminDir, 'tcl-environment.json');
-  const environmentBytes = '{"tool":"/usr/bin/tclsh","version":"fixture","confinement":"isolated-test-home"}\n';
+  const sourceBytes = await readFile(sourceTemplate);
+  const wrapperBytes = await readFile(wrapper);
+  const environmentBytes = `${JSON.stringify({
+    schema: 'hima-interactive-environment/1', site: 'local', toolId: 'synth',
+    pack: { id: packId, digest: packDigest },
+    adapter: { id: 'hima-tcl-line-v1', digest: BUILTIN_TCL_ADAPTER_DIGEST },
+    commandsDigest: interactiveCommandsDigest(declaredTool),
+    wrapper: { path: wrapper, sha256: createHash('sha256').update(wrapperBytes).digest('hex') },
+    image: { reference: 'local/interactive-test', digest: `sha256:${'0'.repeat(64)}` },
+    sourceTemplate: { path: 'interactive-repl.tcl', sha256: createHash('sha256').update(sourceBytes).digest('hex') },
+    confinement: { rootFilesystem: 'read-only', dataRoot: '/', dataMount: 'read-only',
+      privateWriteRoot: h.workspace, network: 'host-localhost-licence-only', capabilities: 'dropped-all', noNewPrivileges: true },
+    qualification: { status: 'passed', transcriptSha256: '1'.repeat(64), logicalEcoSha256: '2'.repeat(64),
+      physicalEcoSha256: '3'.repeat(64), xtopReady: true, identityQuery: true, mutation: true, save: true,
+      sourceWriteDenied: true, execWriteDenied: true, normalExit: true },
+  }, null, 2)}\n`;
   await writeFile(environmentFile, environmentBytes);
   const environmentDigest = createHash('sha256').update(environmentBytes).digest('hex');
   const bindingsFile = path.join(adminDir, 'interactive-bindings.json');
@@ -108,20 +126,28 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     assert.equal(host.ctx.hima.ledger.records({ runId, type: 'job' }).length, 0, 'bad admin evidence starts no Job');
 
     await writeBindings(environmentDigest);
+    delete process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
+    const directOwner = await request({ action: 'open', requestId: 'interactive-owner-open' });
+    if (directOwner.status === 'opened' && typeof directOwner.session?.toolSessionId === 'string') {
+      sessions.push(directOwner.session.toolSessionId);
+    }
+    assert.equal(directOwner.status, 'refused', JSON.stringify(directOwner));
+    assert.match(directOwner.reason, /production-qualified.*Operator child|Operator child.*production-qualified/i);
     const control = host.ctx.hima.ledger.run(runId)!.control!;
     const delegated = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
       requestId: 'delegate-operator', expectedEpoch: control.epoch, expectedRevision: control.revision,
       contract: { delegationId: 'operator', role: 'operator', task: 'Use only the qualified interactive fixture and report typed receipts.',
         inputRefs: [], nodeRef: nodeId, allowedTools: ['hima_interactive', 'terminal_open', 'bash'],
-        budgetShare: { maxElapsedMs: 30_000, maxFollowups: 0, maxTokensPerTurn: 512 }, dependencyIds: [],
+        budgetShare: { maxElapsedMs: 30_000, maxFollowups: 1, maxTokensPerTurn: 512 }, dependencyIds: [],
         recipient: { kind: 'run-owner', sessionId: String(owner.id) } } } as never) as Record<string, any>;
     assert.equal(delegated.status, 'created', delegated.reason); const operatorId = delegated.receipt?.childSessionId as string; assert.ok(operatorId);
     assert.deepEqual(delegated.effectiveContract.tools, ['hima_interactive']);
     assert.equal(delegated.effectiveContract.operator.executionId, executionId);
     assert.equal(host.ctx.hima.ledger.run(runId)!.control!.owner, String(owner.id), 'Operator delegation never changes the Run owner');
+    process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = 'local-tcl-fixture';
     const opened = await request({ action: 'open', requestId: 'interactive-open' });
     assert.equal(opened.status, 'opened', opened.reason); assert.equal(opened.readiness, 'ready');
-    assert.equal(opened.session?.qualification?.testOnly, true, 'synthetic positive qualification is labelled test-only');
+    assert.equal(opened.session?.qualification?.testOnly, true, 'trusted continuation of the same fixture remains owner-drivable for typed protocol coverage');
     const toolSessionId = opened.session?.toolSessionId as string; assert.ok(toolSessionId); sessions.push(toolSessionId);
     const launched = host.ctx.hima.ledger.records({ runId, type: 'job' })
       .filter((record): record is JobRecord => record.type === 'job' && record.event === 'launched');

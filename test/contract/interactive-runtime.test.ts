@@ -228,6 +228,36 @@ test('interactive runtime derives authority from Run/Ledger, preserves single-wr
     if (exitedOpenDuplicate.status === 'duplicate' && 'readiness' in exitedOpenDuplicate) assert.equal(exitedOpenDuplicate.readiness, 'ready', 'duplicate preserves the original open readiness after close');
     else assert.fail(`open duplicate lost its original receipt: ${JSON.stringify(exitedOpenDuplicate)}`);
 
+    const productionRun = await makeRun('interactive-production-operator', 'execution-production');
+    const productionBinding: InteractiveBinding = { ...binding, id: 'production-binding',
+      source: { kind: 'admin-file', path: '/trusted/admin/production-binding.json', sha256: digest('e') } };
+    const productionDeps: InteractiveRuntimeDeps = { ...deps, trustedTestQualification: undefined,
+      resolveOperation: async () => ({ ...derived, binding: productionBinding }),
+      verifyAdminBinding: async () => ({ bindingFileRealpath: '/trusted/admin/production-binding.json',
+        bindingFileSha256: digest('e'), environmentDigest: productionBinding.environment.digest,
+        confinement: 'enforced', writableRoot: path.dirname(home.workspace) }) };
+    const productionOwner = { runId: productionRun.id, executionId: 'execution-production', nodeId: 'manual',
+      actor: String(parent.id), ownerEpoch: 1, controlRevision: 0 };
+    const productionGrant = await interactiveDelegationGrant(productionDeps, productionOwner);
+    assert.equal('reason' in productionGrant, false, 'production binding grants only an exact Operator delegation');
+    if ('reason' in productionGrant) return;
+    const productionOperator = { ...productionOwner, actor: 'production-operator-child', authorityOwner: String(parent.id),
+      expectedBindingDigest: productionGrant.bindingDigest };
+    const productionOpen = await operateInteractive(productionDeps, { ...productionOperator, action: 'open', requestId: 'production-open' });
+    assert.equal(productionOpen.status, 'opened', 'reason' in productionOpen ? productionOpen.reason : undefined);
+    if (productionOpen.status !== 'opened') return;
+    const productionSession = productionOpen.session.toolSessionId; sessions.push(productionSession);
+    const ownerTakeover = await operateInteractive(productionDeps, { ...productionOwner, action: 'input', requestId: 'production-owner-takeover',
+      toolSessionId: productionSession, commandId: 'owner-set', command: { name: 'set', args: { key: 'owner', value: true } } });
+    assert.equal(ownerTakeover.status, 'refused');
+    assert.match(ownerTakeover.reason!, /recorded Operator child|cannot take over/i);
+    const operatorSet = await operateInteractive(productionDeps, { ...productionOperator, action: 'input', requestId: 'production-operator-set',
+      toolSessionId: productionSession, commandId: 'operator-set', command: { name: 'set', args: { key: 'operator', value: true } }, waitMs: 1_000 });
+    assert.equal(operatorSet.status, 'completed');
+    const productionClose = await operateInteractive(productionDeps, { ...productionOperator, action: 'close',
+      requestId: 'production-close', toolSessionId: productionSession });
+    assert.equal(productionClose.status, 'closed');
+
     const uncertainRun = await makeRun('interactive-open-uncertain', 'execution-open-uncertain');
     const uncertainRequest = { runId: uncertainRun.id, executionId: 'execution-open-uncertain', nodeId: 'manual',
       actor: String(parent.id), ownerEpoch: 1, controlRevision: 0, action: 'open' as const, requestId: 'open-uncertain' };

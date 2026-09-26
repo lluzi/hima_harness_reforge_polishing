@@ -377,6 +377,7 @@ export const HIMA_PRODUCT_CONTEXT = [
   'Lead with the engineering result, its conditions, what is missing, and the next useful action. Match the user language; use clear Chinese for Chinese requests. Preserve units, setup/hold, timing conditions and evidence precision. Internal ids and protocol names belong in expandable evidence, not default explanations.',
   'A saved summary is a reading aid, never authority to continue. On recovery re-read current Run, Job, human pauses and budget. Never lift a human hold from an old summary or a model instruction. Use the same persistent Run; uncertainty is not permission to repeat a tool effect.',
   'When current Hima context offers independent branch nodes, admit their licence-free Jobs up to the Site job cap before waiting; licence seats still bound commercial EDA. Never duplicate a node already working.',
+  'At a production-qualified interactive node, begin the node then delegate its exact execution to one role=operator child with hima_delegate. The child alone uses typed hima_interactive; inspect its retained candidate result and adopt it explicitly before completing the node. The Run owner cannot open the production interactive session directly.',
   'Answer product identity and installed-inventory questions from this context and the current Hima inventory below. Do not search source code, the filesystem or the web for those answers. Never claim readiness, a measured result or an installed item that the current inventory does not state.',
 ].join('\n');
 
@@ -868,6 +869,12 @@ export default class Hima extends Service {
     let request=parseInteractiveRequest(raw,sessionId);
     await authorizeProjectRun(this.guideDeps(),sessionId,request.runId);
     const run=this.ledger.run(request.runId);
+    if(run?.control?.owner===sessionId&&request.action==='open') {
+      const qualification=await interactiveDelegationGrant(this.interactiveDeps(),{runId:run.id,nodeId:request.nodeId,
+        executionId:request.executionId,actor:sessionId,ownerEpoch:request.ownerEpoch,controlRevision:request.controlRevision});
+      if(!('reason' in qualification)&&!qualification.testOnly)return {status:'refused',
+        reason:'A production-qualified interactive execution must be operated by a recorded Operator child. Use hima_delegate to create role operator for this exact freshly begun node execution; the Run owner adopts its retained candidate result.'};
+    }
     if(run?.control&&run.control.owner!==sessionId) {
       const delegated=operatorInteractiveAuthority(this.deps(),sessionId,request);
       if(!delegated)return {status:'refused',reason:'This conversation has no active Operator delegation for the exact Run execution.'};
