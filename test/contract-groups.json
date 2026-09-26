@@ -54,6 +54,7 @@
     "test/contract/ledger-import.test.ts",
     "test/contract/library-intelligence-pack.test.ts",
     "test/contract/library-insight.test.ts",
+    "test/contract/live-check-continuation.test.ts",
     "test/contract/lfr-cumulative-library.test.ts",
     "test/contract/lfr-proxy-mapping.test.ts",
     "test/contract/lfr-proxy-sta.test.ts",

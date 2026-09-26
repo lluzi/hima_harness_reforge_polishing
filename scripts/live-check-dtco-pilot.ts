@@ -43,6 +43,7 @@ import {
 import { createHimaHome, repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { packsDirOf } from '../test/contract/support/pack.ts';
 import { guardInstalled, runLive, sha256, type LiveCheck } from './live-check-workshop.ts';
+import { settledExecutionCompletionPrompt } from './live-check-continuation.ts';
 
 const PACK_ID = 'custom-cell-fmax-dtco';
 const EXPECTED_MODEL = 'deepseek-flash';
@@ -393,7 +394,9 @@ async function continueUntilTerminal(
       check.checkpoint();
       throw new Error(`Run ${runId} reached Pack wait node ${run.currentNode}; stop without repeating model continuations that cannot supply human clearance`);
     }
-    await check.say(owner, prompt);
+    await check.say(owner, settledExecutionCompletionPrompt(
+      runId, run.currentNode, current.executions,
+    ) ?? prompt);
   }
   throw new Error(`continuation budget exhausted before Run ${runId} reached a terminal state`);
 }
