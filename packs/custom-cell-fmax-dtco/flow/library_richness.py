@@ -111,6 +111,10 @@ class RoundRequestError(ValueError):
     """The round request is incomplete, unbound, or internally inconsistent."""
 
 
+class IncomparableClockIdentity(LibertyTimingError):
+    """The two mapped arms do not share one proven sequential clock identity."""
+
+
 def _canonical_json(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
 
@@ -956,7 +960,7 @@ def _scenario_evaluation(
             ),
         }
 
-    summaries: dict[str, dict[str, object]] = {}
+    timing_results: dict[str, Mapping[str, Any]] = {}
     for arm in ("reference", "augmented"):
         model = models[arm]
         unit_ps = _time_unit_ps(model.time_unit)  # type: ignore[attr-defined]
@@ -969,11 +973,22 @@ def _scenario_evaluation(
             initial_slew=float(assumptions["initial_slew_ps"]) / unit_ps,
             wire_capacitance=float(assumptions["wire_capacitance_in_library_units"]),
         )
+        timing_results[arm] = raw
+    if timing_results["reference"]["clock_identity"] != timing_results["augmented"][
+        "clock_identity"
+    ]:
+        raise IncomparableClockIdentity(
+            "reference and augmented mapped netlists have different clock identities"
+        )
+    summaries: dict[str, dict[str, object]] = {}
+    for arm in ("reference", "augmented"):
+        model = models[arm]
+        unit_ps = _time_unit_ps(model.time_unit)  # type: ignore[attr-defined]
         summaries[arm] = _layered_metrics(
             model,
             netlists[arm],
             _string(models["top"], "top"),
-            raw,
+            timing_results[arm],
             unit_ps,
             adoptions[arm],
             candidates,
@@ -2204,6 +2219,18 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
             "pairwise_relation": pairwise,
             "e0_library_validation_candidate": e0_candidate,
             "mapping": mapping_result,
+        }
+        result["evaluation_payload_sha256"] = _sha256_bytes(_canonical_json(result))
+        return result
+    except IncomparableClockIdentity as error:
+        result = {
+            "schema": RESULT_SCHEMA,
+            "status": "failed",
+            "stage": "proxy-sta",
+            "request_sha256": request_sha256,
+            "mapping": mapping_result,
+            "error": {"code": "incomparable-clock-identity", "message": str(error)},
+            "evidence_class": "license-free-evaluation-agent",
         }
         result["evaluation_payload_sha256"] = _sha256_bytes(_canonical_json(result))
         return result

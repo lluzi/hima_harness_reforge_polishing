@@ -114,6 +114,7 @@ class TimingArc:
 class TimingCell:
     name: str
     pin_directions: dict[str, str]
+    output_functions: dict[str, str]
     pin_capacitance: dict[str, float]
     arcs: tuple[TimingArc, ...]
     sequential: bool
@@ -727,19 +728,23 @@ def parse_liberty_timing(path, required_cells=None):
                 % (name, ", ".join(unknown_related))
             )
         cells[name] = TimingCell(
-            name,
-            dict(sorted(pin_directions.items())),
-            dict(sorted(capacitance.items())),
-            tuple(sorted(
+            name=name,
+            pin_directions=dict(sorted(pin_directions.items())),
+            output_functions=dict(sorted(
+                (pin, function) for pin, function in pin_functions.items()
+                if pin_directions.get(pin) == "output"
+            )),
+            pin_capacitance=dict(sorted(capacitance.items())),
+            arcs=tuple(sorted(
                 arcs,
                 key=lambda arc: (arc.related_pin, arc.to_pin, arc.condition or ""),
             )),
-            sequential,
-            sequential_kind,
-            data_pin,
-            clock_pin,
-            clock_polarity,
-            sequential_outputs,
+            sequential=sequential,
+            sequential_kind=sequential_kind,
+            data_pin=data_pin,
+            clock_pin=clock_pin,
+            clock_polarity=clock_polarity,
+            sequential_outputs=sequential_outputs,
         )
     if required is not None:
         missing = sorted(required - set(cells))
@@ -977,6 +982,114 @@ def _net_output_load(model, graph, net, wire_capacitance):
     )
 
 
+def _is_exact_two_input_and(expression, first_pin, second_pin):
+    """Return whether one Liberty function is exactly ``first & second``."""
+    if expression is None:
+        return False
+    tokens = _BOOLEAN_TOKEN_RE.findall(expression)
+    if not tokens or "".join(tokens) != re.sub(r"\s+", "", expression):
+        return False
+    depth = 0
+    for token in tokens:
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+    if depth != 0:
+        return False
+    try:
+        try:
+            from .liberty import parse_function
+            from .generator_contract import truth_table
+        except ImportError:
+            from liberty import parse_function
+            from generator_contract import truth_table
+        ast = parse_function(expression)
+        if _boolean_variables(ast) != {first_pin, second_pin}:
+            return False
+        return truth_table(ast, (first_pin, second_pin)) == 0b1000
+    except (IndexError, KeyError, TypeError, ValueError):
+        return False
+
+
+def _clock_gate_derivatives(model, graph, latch, observed_clock_nets):
+    """Prove one direct low-latch/AND generated-clock topology.
+
+    This is a deliberately narrow exception, not latch timing support.  A live
+    latch output must feed only an exact two-input AND whose other input is the
+    latch's own low-phase enable clock.  The AND output must be an observed FF
+    clock and may feed only FF clock pins.
+    """
+    latch_cell = model.cell(latch.cell_type)
+    root_net = latch.conns.get(latch_cell.clock_pin)
+    if (latch_cell.clock_polarity != "negative"
+            or root_net not in observed_clock_nets
+            or root_net in graph.drivers
+            or root_net in {"1'b0", "1'b1"}):
+        return None
+    derivatives = []
+    live_outputs = 0
+    for output_pin in latch_cell.sequential_outputs:
+        latch_net = latch.conns.get(output_pin)
+        sinks = () if not latch_net else graph.sinks.get(latch_net, ())
+        if not sinks:
+            continue
+        live_outputs += 1
+        for sink in sinks:
+            gate = graph.instances[sink.instance]
+            gate_cell = model.cell(gate.cell_type)
+            if gate_cell.sequential:
+                return None
+            input_pins = [
+                pin for pin, direction in gate_cell.pin_directions.items()
+                if direction == "input" and pin in gate.conns
+            ]
+            output_pins = [
+                pin for pin, direction in gate_cell.pin_directions.items()
+                if direction == "output" and pin in gate.conns
+            ]
+            if (len(input_pins) != 2 or len(output_pins) != 1
+                    or sink.pin not in input_pins):
+                return None
+            other_pins = [pin for pin in input_pins if pin != sink.pin]
+            if len(other_pins) != 1 or gate.conns[other_pins[0]] != root_net:
+                return None
+            generated_net = gate.conns[output_pins[0]]
+            if (generated_net == root_net
+                    or generated_net not in observed_clock_nets
+                    or not _is_exact_two_input_and(
+                        gate_cell.output_functions.get(output_pins[0]),
+                        sink.pin,
+                        other_pins[0],
+                    )):
+                return None
+            generated_sinks = graph.sinks.get(generated_net, ())
+            if not generated_sinks:
+                return None
+            for generated_sink in generated_sinks:
+                endpoint = graph.instances[generated_sink.instance]
+                endpoint_cell = model.cell(endpoint.cell_type)
+                if (endpoint_cell.sequential_kind != "ff"
+                        or endpoint_cell.clock_pin != generated_sink.pin):
+                    return None
+            derivatives.append({
+                "control_input_pin": sink.pin,
+                "generated_clock": generated_net,
+                "gate_cell": gate.cell_type,
+                "gate_instance": gate.name,
+                "gate_output_pin": output_pins[0],
+                "latch_cell": latch.cell_type,
+                "latch_instance": latch.name,
+                "latch_output": latch_net,
+                "latch_output_pin": output_pin,
+                "root_input_pin": other_pins[0],
+                "root_clock": root_net,
+            })
+    return derivatives if live_outputs and derivatives else None
+
+
 def analyze_mapped_netlist_reg2reg(model, verilog_text, top, *, clock_period,
                                    uncertainty=0.0, initial_slew=0.01,
                                    wire_capacitance=0.0):
@@ -1004,19 +1117,63 @@ def analyze_mapped_netlist_reg2reg(model, verilog_text, top, *, clock_period,
     except VerilogNetlistError as exc:
         raise LibertyTimingError(str(exc)) from exc
     instances = list(graph.instances.values())
-    sequential = [
+    all_sequential = [
         instance for instance in instances if model.cell(instance.cell_type).sequential
     ]
-    if not sequential:
+    if not all_sequential:
         raise LibertyTimingError("mapped top %s has no sequential boundaries" % top)
-    latch_types = sorted({
-        instance.cell_type for instance in sequential
-        if model.cell(instance.cell_type).sequential_kind == "latch"
-    })
-    if latch_types:
-        raise LibertyTimingError(
-            "latch time borrowing is not modeled for %s" % ", ".join(latch_types)
+    sequential = [
+        instance for instance in all_sequential
+        if model.cell(instance.cell_type).sequential_kind == "ff"
+    ]
+    preliminary_clock_nets = {
+        instance.conns.get(model.cell(instance.cell_type).clock_pin)
+        for instance in sequential
+    }
+    preliminary_clock_nets.discard(None)
+    excluded_clock_gate_latches = []
+    excluded_clock_gate_latch_details = []
+    generated_clock_roots = {}
+    generated_clock_edges = []
+    unmodeled_latches = []
+    for instance in all_sequential:
+        cell = model.cell(instance.cell_type)
+        if cell.sequential_kind != "latch":
+            continue
+        derivatives = _clock_gate_derivatives(
+            model, graph, instance, preliminary_clock_nets
         )
+        if derivatives:
+            excluded_clock_gate_latches.append(instance.name)
+            excluded_clock_gate_latch_details.append({
+                "cell_type": instance.cell_type,
+                "generated_clocks": sorted({
+                    row["generated_clock"] for row in derivatives
+                }),
+                "instance": instance.name,
+                "reason": "direct_low_latch_exact_and_clock_only_fanout",
+                "root_clock": derivatives[0]["root_clock"],
+            })
+            for derivative in derivatives:
+                generated = derivative["generated_clock"]
+                root = derivative["root_clock"]
+                previous = generated_clock_roots.get(generated)
+                if previous is not None and previous != root:
+                    raise LibertyTimingError(
+                        "generated clock %s has ambiguous roots %s and %s"
+                        % (generated, previous, root)
+                    )
+                generated_clock_roots[generated] = root
+                generated_clock_edges.append(derivative)
+        else:
+            unmodeled_latches.append(instance.cell_type)
+    if unmodeled_latches:
+        raise LibertyTimingError(
+            "latch time borrowing is not modeled for %s"
+            % ", ".join(sorted(set(unmodeled_latches)))
+        )
+    if not sequential:
+        raise LibertyTimingError("mapped top %s has no flip-flop boundaries" % top)
     clock_bindings = []
     for instance in sequential:
         cell = model.cell(instance.cell_type)
@@ -1025,16 +1182,33 @@ def analyze_mapped_netlist_reg2reg(model, verilog_text, top, *, clock_period,
                 "sequential instance %s has no explicit clock connection" % instance.name
             )
         clock_bindings.append((instance.conns[cell.clock_pin], cell.clock_polarity))
-    clock_nets = sorted({binding[0] for binding in clock_bindings})
-    if len(clock_nets) != 1:
+    observed_clock_counts = {}
+    for clock_net, _polarity in clock_bindings:
+        observed_clock_counts[clock_net] = observed_clock_counts.get(clock_net, 0) + 1
+    clock_root_map = {
+        clock_net: generated_clock_roots.get(clock_net, clock_net)
+        for clock_net in sorted(observed_clock_counts)
+    }
+    root_clock_nets = sorted(set(clock_root_map.values()))
+    if len(root_clock_nets) != 1:
         raise LibertyTimingError(
-            "mapped reg2reg proxy requires one explicit clock net, found %s"
-            % clock_nets
+            "mapped reg2reg proxy requires one root clock net, found %s"
+            % root_clock_nets
+        )
+    driven_roots = sorted(
+        clock_net for clock_net in root_clock_nets
+        if clock_net in graph.drivers or clock_net in {"1'b0", "1'b1"}
+    )
+    if driven_roots:
+        raise LibertyTimingError(
+            "mapped reg2reg proxy root clock is not a primary undriven net: %s"
+            % driven_roots
         )
     polarities = sorted({binding[1] for binding in clock_bindings})
     if len(polarities) != 1:
         raise LibertyTimingError(
-            "mapped reg2reg proxy has mixed clock polarities on %s" % clock_nets[0]
+            "mapped reg2reg proxy has mixed clock polarities on root %s"
+            % root_clock_nets[0]
         )
     required = float(clock_period) - float(uncertainty)
     if (not math.isfinite(required) or required <= 0.0
@@ -1162,18 +1336,57 @@ def analyze_mapped_netlist_reg2reg(model, verilog_text, top, *, clock_period,
     for path in paths:
         family = path["endpoint_family"]
         family_slack[family] = min(family_slack.get(family, math.inf), path["slack"])
+    ff_clock_bindings = [
+        {
+            "cell_type": instance.cell_type,
+            "instance": instance.name,
+            "observed_clock": instance.conns[model.cell(instance.cell_type).clock_pin],
+            "polarity": model.cell(instance.cell_type).clock_polarity,
+            "root_clock": clock_root_map[
+                instance.conns[model.cell(instance.cell_type).clock_pin]
+            ],
+        }
+        for instance in sorted(sequential, key=lambda item: item.name)
+    ]
+    clock_identity = {
+        "excluded_clock_gate_latches": sorted(
+            excluded_clock_gate_latch_details,
+            key=lambda row: row["instance"],
+        ),
+        "ff_clock_bindings": ff_clock_bindings,
+        "generated_clock_edges": sorted(
+            generated_clock_edges,
+            key=lambda row: (
+                row["generated_clock"], row["latch_instance"], row["gate_instance"]
+            ),
+        ),
+        "observed_clock_nets": dict(sorted(observed_clock_counts.items())),
+        "observed_to_root_clock": clock_root_map,
+        "root_clock": root_clock_nets[0],
+    }
     return {
         "scope": "reg2reg",
         "top": top,
         "net_aliases": [list(alias) for alias in graph.aliases],
-        "clock_net": clock_nets[0],
+        "clock_net": root_clock_nets[0],
         "clock_polarity": polarities[0],
+        "clock_root_map": clock_root_map,
+        "clock_identity": clock_identity,
+        "observed_clock_nets": dict(sorted(observed_clock_counts.items())),
+        "excluded_clock_gate_latches": sorted(excluded_clock_gate_latches),
+        "excluded_clock_gate_latch_details": sorted(
+            excluded_clock_gate_latch_details,
+            key=lambda row: row["instance"],
+        ),
         "clock_period": float(clock_period),
         "uncertainty": float(uncertainty),
         "required": required,
         "time_unit": model.time_unit,
         "capacitive_load_unit": model.capacitive_load_unit,
         "path_count": len(paths),
+        "capture_ff_count": len(sequential),
+        "analyzed_capture_endpoint_count": len(paths),
+        "analyzed_capture_endpoint_fraction": len(paths) / len(sequential),
         "worst_delay": paths[0]["delay"],
         "worst_slack": min(path["slack"] for path in paths),
         "negative_slack_mass": sum(max(0.0, -slack) for slack in family_slack.values()),

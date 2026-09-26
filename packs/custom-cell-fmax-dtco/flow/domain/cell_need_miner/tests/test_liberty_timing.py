@@ -50,6 +50,26 @@ def cell(name="BUF", sense="positive_unate", rise=1.0, when=""):
     }}'''
 
 
+def and_cell(name="AND2"):
+    timings = []
+    for pin in ("A1", "A2"):
+        tables = "\n".join(table(table_name, 1.0) for table_name in (
+            "cell_rise", "cell_fall", "rise_transition", "fall_transition"
+        ))
+        timings.append(f'''timing () {{
+          related_pin : "{pin}";
+          timing_sense : positive_unate;
+          {tables}
+        }}''')
+    return f'''cell ({name}) {{
+      pin (A1) {{ direction : input; capacitance : 0.02; }}
+      pin (A2) {{ direction : input; capacitance : 0.02; }}
+      pin (Z) {{ direction : output; function : "A1 & A2";
+        {"".join(timings)}
+      }}
+    }}'''
+
+
 def conditional_cell():
     def timing(condition, rise):
         tables = "\n".join(table(name, rise) for name in (
@@ -253,6 +273,8 @@ class LibertyTimingTests(unittest.TestCase):
             initial_slew=0.01,
         )
         self.assertEqual(result["clock_net"], "clk")
+        self.assertEqual(result["clock_root_map"], {"clk": "clk"})
+        self.assertEqual(result["excluded_clock_gate_latches"], [])
         self.assertEqual(result["path_count"], 1)
         self.assertAlmostEqual(result["worst_delay"], 1.1)
         self.assertAlmostEqual(result["worst_slack"], -0.2)
@@ -270,7 +292,7 @@ class LibertyTimingTests(unittest.TestCase):
           BUF logic0(.A(q0),.Y(n0));
           DFF capture(.D(n0),.CK(clk_b),.Q(q1));
         endmodule'''
-        with self.assertRaisesRegex(LibertyTimingError, "one explicit clock net"):
+        with self.assertRaisesRegex(LibertyTimingError, "one root clock net"):
             analyze_mapped_netlist_reg2reg(model, two_clocks, "top", clock_period=1.0)
 
         loop = '''module top(input clk,seed,output q1);
@@ -426,6 +448,92 @@ class LibertyTimingTests(unittest.TestCase):
         endmodule'''
         with self.assertRaisesRegex(LibertyTimingError, "latch time borrowing"):
             analyze_mapped_netlist_reg2reg(model, netlist, "top", clock_period=1.0)
+
+    def test_clock_gate_control_latch_is_excluded_from_data_path_boundaries(self):
+        negative_latch = sequential_cell("LAT", "latch").replace(
+            'enable : "CK"', 'enable : "!CK"'
+        )
+        model = self.parse(
+            library(sequential_cell(), negative_latch, and_cell(), cell()),
+            {"DFF", "LAT", "AND2", "BUF"},
+        )
+        netlist = '''module top(input clk,enable,seed,output q1);
+          LAT gate_state(.D(enable),.CK(clk),.Q(gate_q));
+          AND2 clock_gate(.A1(gate_q),.A2(clk),.Z(gclk));
+          DFF launch(.D(seed),.CK(clk),.Q(q0));
+          BUF logic0(.A(q0),.Y(n0));
+          DFF capture(.D(n0),.CK(gclk),.Q(q1));
+        endmodule'''
+        result = analyze_mapped_netlist_reg2reg(
+            model, netlist, "top", clock_period=2.0
+        )
+        self.assertEqual(result["clock_net"], "clk")
+        self.assertEqual(result["observed_clock_nets"], {"clk": 1, "gclk": 1})
+        self.assertEqual(result["clock_root_map"], {"clk": "clk", "gclk": "clk"})
+        self.assertEqual(result["excluded_clock_gate_latches"], ["gate_state"])
+        self.assertEqual(result["path_count"], 1)
+
+        for replacement in (
+            ".A2(other_clk)",
+            ".A2(clk),.D(gate_q)",
+            ".A2(clk),.D(gclk)",
+        ):
+            with self.subTest(replacement=replacement):
+                if replacement == ".A2(other_clk)":
+                    rejected = netlist.replace("input clk,", "input clk,other_clk,").replace(
+                        ".A2(clk)", replacement
+                    )
+                elif replacement == ".A2(clk),.D(gate_q)":
+                    rejected = netlist.replace(
+                        "DFF capture(.D(n0)", "DFF capture(.D(gate_q)"
+                    )
+                else:
+                    rejected = netlist.replace(
+                        "DFF capture(.D(n0)", "DFF capture(.D(gclk)"
+                    )
+                with self.assertRaisesRegex(LibertyTimingError, "latch time borrowing"):
+                    analyze_mapped_netlist_reg2reg(
+                        model, rejected, "top", clock_period=2.0
+                    )
+
+        independent = netlist.replace(
+            "input clk,", "input clk,other_clk,"
+        ).replace(
+            "        endmodule",
+            """          DFF other_launch(.D(seed),.CK(other_clk),.Q(other_q0));
+          BUF other_logic(.A(other_q0),.Y(other_n0));
+          DFF other_capture(.D(other_n0),.CK(other_clk),.Q(other_q1));
+        endmodule""",
+        )
+        with self.assertRaisesRegex(LibertyTimingError, "one root clock net"):
+            analyze_mapped_netlist_reg2reg(
+                model, independent, "top", clock_period=2.0
+            )
+
+        driven_root = netlist.replace(
+            "module top(input clk,",
+            "module top(input clk_a,clk_b,",
+        ).replace(
+            "          LAT gate_state",
+            """          AND2 merged_root(.A1(clk_a),.A2(clk_b),.Z(clk));
+          LAT gate_state""",
+        )
+        with self.assertRaisesRegex(LibertyTimingError, "latch time borrowing"):
+            analyze_mapped_netlist_reg2reg(
+                model, driven_root, "top", clock_period=2.0
+            )
+
+        for malformed in ("A1 & A2)", "(A1 & A2"):
+            with self.subTest(malformed=malformed):
+                malformed_gate = and_cell().replace("A1 & A2", malformed)
+                malformed_model = self.parse(
+                    library(sequential_cell(), negative_latch, malformed_gate, cell()),
+                    {"DFF", "LAT", "AND2", "BUF"},
+                )
+                with self.assertRaisesRegex(LibertyTimingError, "latch time borrowing"):
+                    analyze_mapped_netlist_reg2reg(
+                        malformed_model, netlist, "top", clock_period=2.0
+                    )
 
     def test_sequential_pin_accepts_one_grouped_inversion_and_rejects_complex_forms(self):
         for expression in ("!CK", "CK'", "(!CK)", "(CK')", "!(CK)", "(CK)'"):

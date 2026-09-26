@@ -525,6 +525,15 @@ def _record_mapping(ctx, mapping):
 
 def _baseline_metrics(mapping, profile, ctx):
     netlist = _mapping_artifact(mapping, "reference", "mapped_netlist")
+    augmented_netlist = _mapping_artifact(mapping, "augmented", "mapped_netlist")
+    libraries = mapping.get("inputs", {}).get("libraries", {})
+    if (sha_file(netlist) != sha_file(augmented_netlist)
+            or libraries.get("reference") != libraries.get("augmented")
+            or mapping["arms"]["reference"].get("adoption")
+            != mapping["arms"]["augmented"].get("adoption")):
+        raise Rejected(
+            "baseline self-comparison arms have different netlist, Library, or adoption identities"
+        )
     foundry = ctx.file_binding("FOUNDRY_LIB")
     census = mapping["arms"]["reference"]["adoption"]["cell_census"]
     model = parse_liberty_timing(foundry, set(census))
@@ -546,7 +555,8 @@ def _baseline_metrics(mapping, profile, ctx):
             float(assumptions["wire_capacitance_in_library_units"]),
         )
         f3 = {
-            "indicator_only": True, "path_count": raw["path_count"],
+            "indicator_only": True,
+            "path_count": raw["path_count"],
             "worst_delay_indicator_ps": raw["worst_delay"] * unit_ps,
             "worst_slack_indicator_ps": raw["worst_slack"] * unit_ps,
             "negative_slack_mass_indicator_ps": raw["negative_slack_mass"] * unit_ps,
@@ -1165,8 +1175,14 @@ def stage_design_mapping_timing(ctx):
     atomic_json(request_path, request)
     evaluation = lfr.evaluate_round(request)
     if evaluation.get("status") != "succeeded":
+        error = evaluation.get("error") or {}
+        if error.get("code") == "incomparable-clock-identity":
+            raise Rejected(
+                "license-free round has incomparable clock identities: %s"
+                % error.get("message")
+            )
         raise ToolFailure("license-free round evaluation failed at %s: %s" % (
-            evaluation.get("stage"), (evaluation.get("error") or {}).get("message")))
+            evaluation.get("stage"), error.get("message")))
     _record_mapping(ctx, evaluation["mapping"])
     evaluation_path = ctx.run_dir / "evaluation.json"
     atomic_json(evaluation_path, evaluation)

@@ -50,6 +50,15 @@ SIZED_CONSTANT_RE = re.compile(
     r"(?P<width>[1-9][0-9]*)'(?P<base>[bBoOdDhH])"
     r"(?P<digits>[0-9A-Fa-f]+(?:_[0-9A-Fa-f]+)*)\Z"
 )
+DECLARATION_CLAUSE_RE = re.compile(
+    r"(?ms)\b(?:input|output|inout|wire|reg|logic)\b"
+    r"(.*?)(?=\b(?:input|output|inout|wire|reg|logic)\b|[;)])"
+)
+DECLARATION_RANGE_RE = re.compile(
+    r"^\s*(?:signed\s+|unsigned\s+)*"
+    r"(?:\[\s*([0-9]+)\s*:\s*([0-9]+)\s*\])?\s*(.*?)\s*\Z",
+    re.DOTALL,
+)
 MAX_ALIAS_RANGE_WIDTH = 65536
 CONSTANT_NETS = {0: "1'b0", 1: "1'b1"}
 
@@ -216,6 +225,30 @@ def _without_verilog_comments(text):
     return re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.DOTALL)
 
 
+def _declared_plain_net_widths(body):
+    """Read only explicit plain top-net declarations; conflicts stay unknown."""
+    widths = {}
+    for clause_match in DECLARATION_CLAUSE_RE.finditer(
+        _without_verilog_comments(body)
+    ):
+        parsed = DECLARATION_RANGE_RE.fullmatch(clause_match.group(1))
+        if parsed is None:
+            continue
+        first, last, names = parsed.groups()
+        width = 1 if first is None else abs(int(first) - int(last)) + 1
+        if width > MAX_ALIAS_RANGE_WIDTH:
+            continue
+        for item in names.split(","):
+            name = item.strip()
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", name):
+                continue
+            if name in widths and widths[name] != width:
+                widths[name] = None
+            else:
+                widths[name] = width
+    return widths
+
+
 def _simple_net_reference(text):
     """Return ``(base, ordered bit indices or None)`` for one alias operand.
 
@@ -276,7 +309,7 @@ def _sized_constant_bits(text):
     return tuple((value >> bit) & 1 for bit in range(width - 1, -1, -1))
 
 
-def _simple_assign_aliases(lhs_text, rhs_text):
+def _simple_assign_aliases(lhs_text, rhs_text, declared_widths=None):
     """Expand one net alias or known sized-literal tie-off into scalar pairs."""
     lhs = _simple_net_reference(lhs_text)
     rhs = _simple_net_reference(rhs_text)
@@ -291,7 +324,10 @@ def _simple_assign_aliases(lhs_text, rhs_text):
         # A bare LHS may be a scalar or a declared vector; this lightweight
         # structural reader does not own declaration-width parsing. Require an
         # explicit bit/range so literal width is proven locally.
-        if constant_bits is None or lhs_bits is None:
+        if constant_bits is None or (
+            lhs_bits is None
+            and (declared_widths or {}).get(lhs_base) != len(constant_bits)
+        ):
             return None
         rhs_nets = tuple(CONSTANT_NETS[bit] for bit in constant_bits)
     else:
@@ -322,6 +358,7 @@ def top_assign_aliases(text: str, top: str):
     if top not in bodies:
         raise VerilogNetlistError("mapped netlist has no top module %s" % top)
     body = _without_verilog_comments(bodies[top])
+    declared_widths = _declared_plain_net_widths(body)
     aliases = []
     seen_lhs = set()
     cursor = 0
@@ -340,7 +377,9 @@ def top_assign_aliases(text: str, top: str):
             raise VerilogNetlistError(
                 "unsupported continuous assign expression %r" % statement
             )
-        expanded = _simple_assign_aliases(*statement_source.split("=", 1))
+        expanded = _simple_assign_aliases(
+            *statement_source.split("=", 1), declared_widths
+        )
         if expanded is None:
             raise VerilogNetlistError(
                 "unsupported continuous assign expression %r" % statement

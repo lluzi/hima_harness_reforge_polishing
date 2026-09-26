@@ -136,6 +136,43 @@ endmodule
                 ):
                     top_assign_aliases(rejected, "top")
 
+    def test_bare_constant_lhs_requires_an_explicit_scalar_declaration(self):
+        scalar = """module top(output alert_major_o);
+  assign alert_major_o = 1'h0;
+endmodule
+"""
+        self.assertEqual(
+            top_assign_aliases(scalar, "top"), (("alert_major_o", "1'b0"),)
+        )
+        declared_later = """module top();
+  output logic alert_minor_o;
+  assign alert_minor_o = 1'b1;
+endmodule
+"""
+        self.assertEqual(
+            top_assign_aliases(declared_later, "top"), (("alert_minor_o", "1'b1"),)
+        )
+        for text in (
+            """module top(output [3:0] bus);
+  assign bus = 1'b0;
+endmodule
+""",
+            """module top();
+  assign implicit_net = 1'b0;
+endmodule
+""",
+            """module top(output conflict);
+  wire [3:0] conflict;
+  assign conflict = 1'b0;
+endmodule
+""",
+        ):
+            with self.subTest(text=text):
+                with self.assertRaisesRegex(
+                    VerilogNetlistError, "unsupported continuous assign"
+                ):
+                    top_assign_aliases(text, "top")
+
 
 if __name__ == "__main__":
     unittest.main()
