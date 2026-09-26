@@ -84,7 +84,7 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 3 | `policy` | analysisContractDir, targetSetupNs(`{from: goal}`), targetHoldNs(`{from: goal}`) | reads `<analysisContractDir>/policy.json` + `state/baseline.json` + `state/observation.json` | `state/policy.json` (stamped) |
 | 4 | `observe` | querySpec, siteProfile, scenarioCorners(Site-fixed `analysisContract/scenario-corners.json` -- see "Task 12c fix round" below), maxPaths(`{from: strategy}`, an upper cap -- see "Fix round 1" below) | `_scenario_pt_inputs` (x4, built from `state/working-state.json`, re-verified by sha256) then `adapters.compile_pt_scenario_tasks` + `run_tool` (x4) then `state.capture` | `state/observation.json` (also `state/observation-prev.json`, `observations/<id>.json` and `research/observe/max-paths.json`) |
 | 5 | `risk` | priorObservation(`state/observation-prev.json`), currentObservation(`state/observation.json`), recheck | `state.compare_checks` (self-compares on the campaign's first observation, when `priorObservation` does not exist yet) | `state/risk.json` |
-| 6 | `prepare-workers` | baseState(`state/working-state.json`), siteCapabilities, edaProfile, campaignPlan(the ONE admitted `{"workPackages":{"w01"..,"w02"..,"w03"..},"reason"}` document -- see "Task 12c fix round" below) | `workspaces.validate_work_package` + `workspaces.prepare` (x3) + `adapters.compile_xtop_operator_task`/`compile_xtop_analysis_manual_task` (x3, materialized into each worker's own root) | `state/workers.json` (now embeds each slot's full `workPackage`/`workspaceManifest`) |
+| 6 | `prepare-workers` | baseState(`state/working-state.json`), siteCapabilities, edaProfile, campaignPlan(the ONE admitted envelope `{"candidate":{"workPackages":{"w01"..,"w02"..,"w03"..},"reason"},"baseState":..,"siteCapabilities":..}`; reads `candidate.workPackages`, refuses `ambiguous-plan` if a top-level `workPackages` key is also present -- see "Task 12c fix round" below) | `workspaces.validate_work_package` + `workspaces.prepare` (x3) + `adapters.compile_xtop_operator_task`/`compile_xtop_analysis_manual_task` (x3, materialized into each worker's own root) | `state/workers.json` (now embeds each slot's full `workPackage`/`workspaceManifest`) |
 | 7 | `capture-contribution` | slot | `contributions.seal` (base_ref/result_refs composed from `state/workers.json[slot]` and the slot's own workspace root -- see `_cmd_capture_contribution`'s docstring for the exact `before.dump`/`after.dump`/`ops.jsonl`/`summary.json` file names) | `state/contribution-<slot>.json` (one of 3 literal names) |
 | 8 | `collect` | (none) | reads whichever `contribution-w0N.json` exist AND still matches `state/workers.json[slot]`'s current revision (`contribution-index` read envelope: `{"contributions","pending":[{"slot","reason"}]}` -- see "Task 12c fix round" below) | `state/contributions-collected.json` |
 | 9 | `compose-facts` | plan(the SAME admitted integration-plan envelope row 10 reads; absent on the first pass -- see "Task 12c fix round" below) | `composition.analyze` (`baseStateId` from `state/working-state.json`; `resolutions` from the admitted plan, `[]` on the first pass) | `state/composition-facts.json` |
@@ -224,13 +224,19 @@ Task 12c fix round (Opus review of the compiled graph: CLI/Reader fixes)
    `presta` already read). The model's own observation request still only
    chooses what to query (precision, required scenarios, path breadth).
 4. **One admitted document per Workshop output.**
-   a. `prepare-workers` reads the ONE campaign-plan document
-      (`{"workPackages":{"w01"..,"w02"..,"w03"..},"reason"}`) instead of
-      three separate, unadmitted `work-package-w0N.json` files -- see
-      `_cmd_prepare_workers`'s own docstring for why "verifies the same
-      bytes the Reader admitted" reduces to "there is only one copy of
-      these bytes to read" in this Harness's Reader contract. A new
-      `campaign-plan` reader kind in `tools/read-atcs.py` counts problems
+   a. `prepare-workers` reads `candidate.workPackages` of the ONE admitted
+      campaign-plan envelope (`{"candidate":{"workPackages":{"w01"..,
+      "w02"..,"w03"..},"reason"},"baseState":...,"siteCapabilities":...}`)
+      -- the exact field the `campaign-plan` Reader itself counts -- instead
+      of three separate, unadmitted `work-package-w0N.json` files. Fix
+      round 1 (Critical, controller review): an earlier version of this fix
+      had `prepare-workers` read a *different*, top-level `workPackages`
+      key of that same file than the one the Reader validates
+      (`candidate.workPackages`), reintroducing "two copies, nothing
+      enforces they match" one level in; a top-level `workPackages` key
+      present at all is now `AtcsError("ambiguous-plan", ...)` (exit 3) --
+      see `_cmd_prepare_workers`'s own docstring. A new `campaign-plan`
+      reader kind in `tools/read-atcs.py` counts problems
       (`workspaces.request_invalid_count`) across all three packages plus
       structural problems (missing `workPackages`/a slot/`reason`).
    b. `replay-prepare`, `compose-facts` (second pass) and
@@ -668,32 +674,41 @@ def _cmd_risk(workspace, args):
 
 
 def _cmd_prepare_workers(workspace, args):
-    """Every slot's raw candidate comes from the ONE admitted campaign-plan document (Task 12c item 4a).
+    """Every slot's raw candidate comes from `candidate.workPackages` of the ONE admitted
+    campaign-plan envelope -- the exact field the `campaign-plan` Reader itself counts
+    (Task 12c item 4a; Fix round 1 item 1, Critical).
 
     Previously this read three separate, unadmitted
     `research/requests/work-package-w0N.json` files -- no `readers/*.yml`
     entry ever validated them, so their content could silently diverge from
     `research/requests/campaign-plan.json`, the file the plan Workshop's
     `campaignPlan` output actually admits via the Reader (`tc_request_
-    invalid_count`). This call now reads that *same* single file (the plan
-    Workshop's `{"workPackages": {"w01": ..., "w02": ..., "w03": ...},
-    "reason": ...}` document) and validates each slot's own candidate from
-    it via `workspaces.validate_work_package`, exactly as before.
+    invalid_count`). A first fix round then had this call read a *different*
+    field of that same file (a top-level `workPackages` key) than the one the
+    Reader actually validates (`candidate.workPackages`, per
+    `tools/read-atcs.py`'s `_read_campaign_plan` envelope) -- reintroducing
+    the exact same "two copies, nothing enforces they match" problem one
+    level in, since nothing required the top-level copy to equal the
+    `candidate` one. Controller decision: **one copy**. This call now reads
+    `candidate.workPackages` -- the SAME field the Reader counted -- and
+    refuses outright (`AtcsError("ambiguous-plan", ...)`, exit 3) when a
+    top-level `workPackages` key is present at all, regardless of whether
+    its content happens to agree with `candidate.workPackages`: a second
+    copy is a hazard the moment it exists, not only once it disagrees.
 
     "Verifies the same bytes the Reader admitted": this Harness's Reader
     contract has no channel to pass a recorded digest forward to a Tool (a
     Reader's own `OUT` only ever carries typed numeric values, never a
     hash) -- and since `read-campaign-plan` and `prepare-workers` both read
-    the *same* fixed campaign-plan path with no rewriting node in between
+    the *same* fixed campaign-plan path, in the *same* field
+    (`candidate.workPackages`), with no rewriting node in between
     (`graph.yml`), "the envelope the graph admits is the file itself": by
-    construction there is only ever one copy of these bytes for this call
-    to read. What actually changed here is removing the *second*,
-    unadmitted copy (the three separate `work-package-w0N.json` files) that
-    used to let `prepare-workers` diverge from what the Reader saw at all;
-    any content that would flip the Reader's own `tc_request_invalid_count`
+    construction there is only ever one copy of these bytes, read from the
+    one field the Reader itself validated, for this call to read. Any
+    content that would flip the Reader's own `tc_request_invalid_count`
     away from zero also makes `workspaces.validate_work_package` refuse
     here, since both call the identical validation function on the
-    identical bytes.
+    identical field of the identical bytes.
     """
     base_state_path, site_caps_path, eda_profile_path, campaign_plan_path = args
     base_state = _read_declared(base_state_path, "design-state")
@@ -703,10 +718,22 @@ def _cmd_prepare_workers(workspace, args):
         if not eda_profile.get(key):
             raise InputError("invalid-input", f"eda profile is missing {key!r}")
 
-    campaign_plan = _read_plain(campaign_plan_path)
-    work_packages = campaign_plan.get("workPackages")
+    envelope = _read_plain(campaign_plan_path)
+    if not isinstance(envelope, dict):
+        raise InputError("invalid-input", f"campaign plan at {campaign_plan_path} must be a JSON object")
+    if "workPackages" in envelope:
+        raise core.AtcsError(
+            "ambiguous-plan",
+            f"campaign plan at {campaign_plan_path} carries a top-level workPackages key as well as "
+            "candidate.workPackages -- there must be exactly one copy (candidate.workPackages, the "
+            "field the campaign-plan Reader itself validates)",
+        )
+    candidate = envelope.get("candidate")
+    if not isinstance(candidate, dict):
+        raise InputError("invalid-input", f"campaign plan at {campaign_plan_path} is missing candidate")
+    work_packages = candidate.get("workPackages")
     if not isinstance(work_packages, dict):
-        raise InputError("invalid-input", f"campaign plan at {campaign_plan_path} is missing workPackages")
+        raise InputError("invalid-input", f"campaign plan candidate at {campaign_plan_path} is missing workPackages")
 
     workspace = Path(workspace)
     netlist_path = workspace / base_state["netlist"]["path"]
@@ -1220,7 +1247,7 @@ def _merge_commit_provenance(workspace, implement):
     )
 
 
-def _load_merge_commit_like(workspace, implement):
+def _load_merge_commit_like(workspace, implement, provenance=None):
     """Return the sealed `merge-commit` `implement` was built from, or a synthetic stand-in for an APR-run candidate.
 
     See `_merge_commit_provenance` for how "which one" is decided (by id,
@@ -1228,8 +1255,19 @@ def _load_merge_commit_like(workspace, implement):
     (an APR stage intervention never changes netlist topology or PG
     structures, so `verification.plan_checks` adds no extra functional/pg
     checks for it, correctly).
+
+    `provenance` lets a caller that already computed it (e.g.
+    `_cmd_record_experience`, which needs it up front to pick its reason
+    source) pass that same value straight through instead of this function
+    re-deriving it a second time (Fix round 1 item 3) -- re-reading
+    `state/merge-commit.json`/`state/apr-task.json` twice for one call would
+    be pure waste, since the answer cannot change between the two reads
+    within a single subcommand invocation. Defaults to `None`, in which
+    case this recomputes it itself (every other caller here has no
+    precomputed value to offer).
     """
-    provenance = _merge_commit_provenance(workspace, implement)
+    if provenance is None:
+        provenance = _merge_commit_provenance(workspace, implement)
     if provenance == "merge":
         return _read_declared(_paths(workspace)["merge_commit"], "merge-commit")
     if not implement.get("parentStateId"):
@@ -1816,7 +1854,8 @@ def _cmd_record_experience(workspace, args):
     (reason_source_path,) = args
     workspace = Path(workspace)
     implement = _read_plain(_paths(workspace)["implement"])
-    if _merge_commit_provenance(workspace, implement) == "merge":
+    provenance = _merge_commit_provenance(workspace, implement)
+    if provenance == "merge":
         envelope = _read_plain(reason_source_path)
         plan_raw = envelope.get("plan") if isinstance(envelope, dict) else None
         reason_doc = plan_raw if isinstance(plan_raw, dict) else {}
@@ -1834,7 +1873,9 @@ def _cmd_record_experience(workspace, args):
     evaluation = _read_declared(_paths(workspace)["evaluation"], "evaluation")
     collected = _read_json_or_default(_paths(workspace)["contributions_collected"], {"contributions": []})
     sta = _read_json_or_default(_paths(workspace)["sta"], {})
-    merge_commit = _load_merge_commit_like(workspace, implement)
+    # Fix round 1 item 3: reuse the provenance already computed above rather
+    # than making `_load_merge_commit_like` re-derive it from disk again.
+    merge_commit = _load_merge_commit_like(workspace, implement, provenance)
 
     precision = None
     for entry in sta.get("sta", {}).values():

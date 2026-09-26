@@ -531,11 +531,17 @@ class CliMissingInputExitCodeTest(unittest.TestCase):
     """Step 1 requirement: every subcommand refuses a missing declared input
     with exit code 2, a JSON error on stderr, and no output file."""
 
+    # `compose-facts` is deliberately absent from this table: its own `plan`
+    # arg is *optional* (a missing/absent path is the legitimate first-pass
+    # case, Task 12c item 4c), so a "MISSING/..." value there would pass this
+    # sweep for the wrong reason (the real, always-required missing input is
+    # `state/working-state.json`, never read via this arg at all) -- see
+    # `ComposeFactsMissingWorkingStateTest` below, which names the real cause
+    # directly (Fix round 1 item 2).
     CASES = {
         "bind-inputs": ["MISSING/manifest.json", "MISSING/site.json"],
         "baseline": ["MISSING/manifest.json"],
         "risk": ["MISSING/prior.json", "MISSING/current.json", "MISSING/recheck.json"],
-        "compose-facts": ["MISSING/resolutions.json"],
         "physical": ["MISSING/drc.rpt", "MISSING/connectivity.rpt", "baseline"],
         "evaluate": ["MISSING/policy.json"],
         "adopt": ["MISSING/policy.json"],
@@ -578,6 +584,29 @@ class CliMissingInputExitCodeTest(unittest.TestCase):
         result = subprocess.run([sys.executable, str(CLI_PATH), "bogus-subcommand", str(workspace)],
                                  capture_output=True, text=True)
         self.assertEqual(result.returncode, 2)
+
+
+class ComposeFactsMissingWorkingStateTest(unittest.TestCase):
+    """Fix round 1 item 2: `compose-facts`'s `plan` arg is optional (an absent path is the
+    legitimate Task 12c item 4c first-pass case), so the missing-input sweep above cannot
+    use it to exercise a real refusal. `state/working-state.json` is the subcommand's own
+    always-required declared input; this asserts the refusal actually names it, not just
+    that *some* exit-2 refusal happened for *some* reason."""
+
+    def test_missing_working_state_is_refused_and_named(self):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        plan_path = workspace / "integration-plan.json"  # legitimately absent -- the first pass
+        self.assertFalse(plan_path.exists())
+        result = subprocess.run(
+            [sys.executable, str(CLI_PATH), "compose-facts", str(workspace), str(plan_path)],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 2, f"stdout={result.stdout} stderr={result.stderr}")
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "missing-input")
+        self.assertIn("working-state.json", payload["detail"])
+        self.assertFalse((workspace / "state").exists())
 
 
 class CliBindInputsIntegrationTest(unittest.TestCase):

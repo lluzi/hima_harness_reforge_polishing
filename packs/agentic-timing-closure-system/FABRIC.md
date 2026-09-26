@@ -149,11 +149,6 @@ Deviations from the brief where the code is the authority:
   through `reads`.
 - G15 The SPEC's `workerManifestNN` is one output, `workerManifests` (`state/workers.json`), because
   `prepare-workers` writes one index for all slots.
-- G16 (NEEDS_CONTEXT) The campaign-plan document has two shapes to satisfy: the `campaign-plan`
-  Reader admits `candidate.workPackages` inside its envelope, while `prepare-workers` prepares the
-  top-level `workPackages`. The plan Workshop is told to write both, identical; `prepare-workers`
-  re-validates what it prepares (`validate_work_package`), but nothing enforces that the prepared
-  packages are the admitted ones.
 - G17 The Operator's `before.dump`, `after.dump` and `summary.json` are not Ledger readings;
   `contributions.seal` re-validates them when `capture-contribution` reads them.
 - G18 Earlier APR is executable end to end in the graph and reachable from the baseline round:

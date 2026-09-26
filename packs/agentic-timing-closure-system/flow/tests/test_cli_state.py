@@ -328,8 +328,10 @@ class TwoRoundFlowTest(unittest.TestCase):
         _write_json(eda_profile_path, {"design": "top", "techLef": "tech.lef", "cellLefGlob": "*.lef"})
         site_caps_path = workspace / "site-caps.json"
         _write_json(site_caps_path, {"pgVerification": False})
-        # Task 12c item 4a: `prepare-workers` reads the ONE admitted campaign-plan
-        # document, never three separate work-package-w0N.json files.
+        # Task 12c item 4a + Fix round 1 item 1: `prepare-workers` reads
+        # `candidate.workPackages` of the ONE admitted campaign-plan envelope,
+        # never three separate work-package-w0N.json files and never a second,
+        # top-level `workPackages` copy.
         work_packages = {
             task_id: {
                 "taskId": task_id, "baseStateId": round1_state_id, "problem": "round 2",
@@ -340,7 +342,10 @@ class TwoRoundFlowTest(unittest.TestCase):
             for task_id in workspaces.TASK_IDS
         }
         campaign_plan_path = workspace / "campaign-plan-round2.json"
-        _write_json(campaign_plan_path, {"workPackages": work_packages, "reason": "round 2 plan"})
+        _write_json(campaign_plan_path, {
+            "candidate": {"workPackages": work_packages, "reason": "round 2 plan"},
+            "baseState": working_state_after_round1, "siteCapabilities": {"pgVerification": False},
+        })
         working_state_path = workspace / "state" / "working-state.json"
         result = _run("prepare-workers", workspace, working_state_path, site_caps_path,
                        eda_profile_path, campaign_plan_path)
@@ -409,12 +414,15 @@ class ReconcileIgnoresRewrittenWorkPackageTest(unittest.TestCase):
 
 
 class PrepareWorkersByteIdentityTest(unittest.TestCase):
-    """Task 12c item 4a: `prepare-workers` reads the ONE admitted campaign-plan
-    document -- any content divergent from what the Reader would have found
-    valid (i.e. different bytes at that same fixed path) is caught by the
+    """Task 12c item 4a + Fix round 1 item 1 (Critical): `prepare-workers` reads
+    `candidate.workPackages` of the ONE admitted campaign-plan envelope -- the
+    exact field the campaign-plan Reader itself validates. Any content
+    divergent from what the Reader would have found valid is caught by the
     same `workspaces.validate_work_package` call the Reader's own
     `tc_request_invalid_count` uses, since both run over the identical
-    current file."""
+    field of the identical current file. A top-level `workPackages` key
+    (a second, unenforced copy) is refused outright, regardless of its
+    content."""
 
     def setUp(self):
         self.workspace = _tmp()
@@ -443,26 +451,63 @@ class PrepareWorkersByteIdentityTest(unittest.TestCase):
         packages["w02"].update(w02_overrides)
         return packages
 
-    def test_a_valid_admitted_plan_is_accepted_bytes_and_all(self):
+    def _envelope(self, work_packages, reason="valid plan"):
+        return {
+            "candidate": {"workPackages": work_packages, "reason": reason},
+            "baseState": self.working_state, "siteCapabilities": {"pgVerification": False},
+        }
+
+    def _run_prepare_workers(self, campaign_plan_path):
+        return _run("prepare-workers", self.workspace, self.working_state_path, self.site_caps_path,
+                     self.eda_profile_path, campaign_plan_path)
+
+    def test_a_valid_single_copy_plan_is_prepared_from_candidate_workpackages(self):
         campaign_plan_path = self.workspace / "campaign-plan.json"
-        _write_json(campaign_plan_path, {"workPackages": self._work_packages(), "reason": "valid plan"})
-        result = _run("prepare-workers", self.workspace, self.working_state_path, self.site_caps_path,
-                       self.eda_profile_path, campaign_plan_path)
+        _write_json(campaign_plan_path, self._envelope(self._work_packages()))
+        result = self._run_prepare_workers(campaign_plan_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        workers = json.loads((self.workspace / "state" / "workers.json").read_text())
+        for task_id in workspaces.TASK_IDS:
+            self.assertEqual(workers["workers"][task_id]["workPackage"]["taskId"], task_id)
 
     def test_bytes_differing_from_the_admitted_plan_are_refused(self):
         """Simulates a plan whose bytes changed after admission: w02's own package now
         names an action outside ACTION_KINDS -- the exact same content problem the
         campaign-plan Reader's own `tc_request_invalid_count` would have flagged."""
         campaign_plan_path = self.workspace / "campaign-plan.json"
-        _write_json(campaign_plan_path, {
-            "workPackages": self._work_packages(actions=["not-a-real-action"]), "reason": "tampered after admission",
-        })
-        result = _run("prepare-workers", self.workspace, self.working_state_path, self.site_caps_path,
-                       self.eda_profile_path, campaign_plan_path)
+        _write_json(campaign_plan_path, self._envelope(
+            self._work_packages(actions=["not-a-real-action"]), reason="tampered after admission",
+        ))
+        result = self._run_prepare_workers(campaign_plan_path)
         self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
         payload = json.loads(result.stderr)
         self.assertEqual(payload["code"], "invalid-work-package")
+        self.assertFalse((self.workspace / "state" / "workers.json").exists())
+
+    def test_a_second_top_level_workpackages_copy_is_refused_even_when_it_agrees(self):
+        """Fix round 1 item 1 (Critical): a top-level `workPackages` key is a hazard the
+        moment it exists -- refused unconditionally, not only when it happens to disagree
+        with `candidate.workPackages`."""
+        campaign_plan_path = self.workspace / "campaign-plan.json"
+        work_packages = self._work_packages()
+        envelope = self._envelope(work_packages)
+        envelope["workPackages"] = work_packages  # identical copy -- still refused
+        _write_json(campaign_plan_path, envelope)
+        result = self._run_prepare_workers(campaign_plan_path)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "ambiguous-plan")
+        self.assertFalse((self.workspace / "state" / "workers.json").exists())
+
+    def test_a_diverging_top_level_workpackages_copy_is_refused(self):
+        campaign_plan_path = self.workspace / "campaign-plan.json"
+        envelope = self._envelope(self._work_packages())
+        envelope["workPackages"] = self._work_packages(actions=["not-a-real-action"])  # diverges
+        _write_json(campaign_plan_path, envelope)
+        result = self._run_prepare_workers(campaign_plan_path)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "ambiguous-plan")
         self.assertFalse((self.workspace / "state" / "workers.json").exists())
 
 

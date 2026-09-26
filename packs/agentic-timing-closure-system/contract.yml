@@ -76,8 +76,11 @@ outputs:
     path: research/requests/campaign-plan.json
     reader: atcs-campaign-plan
     description: >-
-      The plan Workshop's one campaign-plan document holding all three slot work packages; the
-      campaign-plan Reader admits it and prepare-workers prepares the slots from the same file.
+      The plan Workshop's one campaign-plan document, holding all three slot work packages under
+      candidate.workPackages (with baseState and siteCapabilities alongside, for the Reader's own
+      validation) and nowhere else. The campaign-plan Reader admits candidate.workPackages, and
+      prepare-workers reads that exact same field; a top-level workPackages key is refused
+      (ambiguous-plan) if present at all, since a second copy is never allowed to exist.
   - name: workerManifests
     path: state/workers.json
     description: M2 prepared private workspaces of the three worker slots (roots, name prefixes, session Tcl, ops logs).
@@ -579,10 +582,10 @@ workshops:
       objects, may-affect checks, admissible actions (size_cell, insert_buffer, delete_buffer, and
       pg_local_adjust only when siteCapabilities.pgVerification is true) and budget, all against the
       working design-state (workingState). Write one document, research/requests/campaign-plan.json:
-      {workPackages: {w01, w02, w03}, reason, candidate: {workPackages: <the same three packages>,
-      reason: <the same reason>}, baseState: <the stamped workingState>, siteCapabilities: <the Site
-      capabilities>}. The Reader admits candidate; prepare-workers prepares the top-level
-      workPackages, so the two copies must be identical. Do not repeat a failed trial without new evidence; a slot with nothing
+      {candidate: {workPackages: {w01, w02, w03}, reason}, baseState: <the stamped workingState>,
+      siteCapabilities: <the Site capabilities>}. There is exactly one copy of workPackages, under
+      candidate; never repeat it at the top level. The Reader admits candidate.workPackages, and
+      prepare-workers prepares that same field. Do not repeat a failed trial without new evidence; a slot with nothing
       worth researching still gets a bounded package whose diagnosis-only outcome is a valid no-fix.
     directory: research/plan
     entry: entry.py
