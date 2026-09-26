@@ -415,16 +415,22 @@ function authoringDenial(execution: Readonly<ToolExecution>, packsDir: string): 
   return undefined;
 }
 
-/** Refuse raw PTY access from a current Campaign owner until the F2 Site/Fabric bridge qualifies it. */
+/** Refuse raw shell/PTY access from a current Campaign owner until the F2 Site/Fabric bridge qualifies it. */
 export function terminalDenial(execution: Readonly<ToolExecution>, ledger: Pick<Ledger, 'runs'>): string | undefined {
-  if (!(TERMINAL_TOOLS as readonly string[]).includes(execution.name)) return undefined;
-  if (execution.agent === undefined) return 'raw terminal tools require a live ordinary side-talk Agent; anonymous execution is refused.';
+  const shell = execution.name === SHELL_TOOL;
+  const terminal = (TERMINAL_TOOLS as readonly string[]).includes(execution.name);
+  if (!shell && !terminal) return undefined;
+  if (execution.agent === undefined) return 'raw shell or terminal tools require a live ordinary side-talk Agent; anonymous execution is refused.';
   const owner = String(execution.agent.id);
-  if (execution.agent.session.header.parentSession !== undefined) {
-    return `native child Agent ${owner} may not use raw terminal tools before its delegation and Site/Fabric terminal authority are qualified.`;
+  if (ledger.runs().some((run) => run.control?.owner === owner)) {
+    return `Campaign Agent ${owner} may not use raw shell or terminal tools before the qualified Site/Fabric terminal bridge; use hima_execute and the Pack-declared Channel instead.`;
   }
-  if (!ledger.runs().some((run) => run.control?.owner === owner)) return undefined;
-  return `Campaign Agent ${owner} may not use raw terminal tools before the qualified Site/Fabric terminal bridge; use hima_execute and the Pack-declared Channel instead.`;
+  const parent = execution.agent.session.header.parentSession;
+  if (parent !== undefined && (terminal || ledger.runs().some((run) => run.control?.owner === String(parent)))) {
+    return `native child Agent ${owner} may not use raw shell or terminal tools before its delegation and Site/Fabric terminal authority are qualified.`;
+  }
+  if (parent !== undefined) return undefined;
+  return undefined;
 }
 
 /**

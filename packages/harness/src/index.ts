@@ -676,7 +676,7 @@ export default class Hima extends Service {
     // it unwinds with the plugin. `authoring.ts` says why this is a guard and not a longer skill
     // body, and why dsh's own file sandbox is not this rule.
     this.ctx.effect(() => registerAuthoringGuard(this.ctx, this.config.packsDir), 'hima: the pack authoring guard');
-    this.ctx.effect(() => this.ctx.tools.guard(execution => terminalDenial(execution, this.ledger)), 'hima: raw terminals stay outside Campaign execution');
+    this.ctx.effect(() => this.ctx.tools.guard(execution => terminalDenial(execution, this.ledger)), 'hima: raw shell and terminals stay outside Campaign execution');
     this.ctx.effect(()=>registerDelegationGuard(this.ctx,id=>delegationRuntimePolicy(this.deps(),id)),'hima: delegated tool grants');
     this.ctx.effect(()=>this.ctx.tools.guard(execution=>{
       const agent=execution.agent;if(!agent)return;
