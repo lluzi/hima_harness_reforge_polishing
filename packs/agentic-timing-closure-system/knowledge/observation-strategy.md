@@ -60,6 +60,21 @@
   该行确定违例，只是具体数值不可信，两者不能混为一谈。这条 Pack 自己的
   `pt-scenario.tcl` 也把 `-significant_digits` 从默认的 2 提高到 4，减少（但不能
   消除，PT 内部仍可能存在更小的真实违例）今后新鲜报告落入这个边界的概率。
+- **`report_global_timing` 同样受这条边界影响，且已同样加宽精度。**
+  `report_global_timing(2)` man page（`X-2025.06`，只读读取核实，路径同上）：
+  `-significant_digits digits` 「Allowed values are 0-13. If you do not use
+  this option, the number of digits is specified by the
+  report_default_significant_digits variable, which is 2 by default.」——与
+  `report_timing` 共享同一个默认值和同一条「只影响显示、不影响内部精度」的规则，
+  因此顶层 `WNS`/`NUM` 摘要一样可能把一条真实违例显示成 `-0.00`
+  （`float("-0.00") == -0.0`，Python 的 `-0.0 >= 0.0` 为 `True`）。`pt-scenario.tcl`
+  与 `pt-presta.tcl` 的 `report_global_timing` 调用都已加上 `-significant_digits 4`。
+  即便如此，`atcs.reports.parse_global_timing` 仍不单独信任显示出来的 `WNS`：当
+  同一 mode 的 `NUM`（违例数）已知且 `> 0`，但 `WNS` 显示为已知的 `>= 0.0`（包括
+  `-0.00`），或 `NUM` 本身不可解析，`WNS` 一律被降级为 `unknown`；`atcs.state.capture`
+  再额外用该 scenario/mode 自己的逐路径 `violated` 事实与 `WNS` 互相校验，两者矛盾时
+  同样降级为 `unknown`——加宽精度只是减少落入边界的概率，真正的兜底始终是这条
+  跨字段一致性检查，不是显示精度本身。
 
 ## Counterexample
 

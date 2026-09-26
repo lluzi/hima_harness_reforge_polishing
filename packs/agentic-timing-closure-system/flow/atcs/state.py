@@ -158,6 +158,17 @@ every parsed scenario's setup and hold path reports were both `complete`;
 `coverage.reasons` lists every contributing gap. `sources[]` lists every
 report file actually read, each hash-bound via `core.file_sha256`.
 
+C1 (final review): each scenario's own `setup.wns`/`hold.wns` (from
+`atcs.reports.parse_global_timing`) is additionally cross-checked, per
+mode, against that same scenario's own parsed path rows
+(`_wns_consistent_with_violated_paths`) — a known, non-negative `wns`
+(`>= 0.0`, including a displayed "-0.00") that coexists with any path row
+this scenario/mode's own `setup.rpt`/`hold.rpt` marked `violated: True` is
+downgraded to `unknown`: the global summary and the per-path report must
+never be allowed to disagree about whether this scenario/mode has a
+violation at all, and a favorable global reading can never outrank a
+PT-confirmed per-path VIOLATED verdict.
+
 `compare_checks(prior, current, recheck)`
 --------------------------------------------
 
@@ -432,6 +443,29 @@ def _read_and_track_source(path, sources):
     return text
 
 
+def _wns_consistent_with_violated_paths(wns_measure, path_rows):
+    """`wns_measure`, downgraded to `unknown` when it contradicts this same
+    scenario/mode's own per-path evidence (C1, final review).
+
+    A known, non-negative `wns_measure` (`>= 0.0`, including a "-0.00"-style
+    negative zero) can never coexist with a per-path report row this same
+    scenario/mode's own `atcs.reports.parse_path_report` call marked
+    `violated: True` (PT's own VIOLATED verdict for that path) -- one of the
+    two readings must be wrong, and this Pack never lets the more
+    favorable one (the global summary) silently win. Only ever downgrades
+    an already-known `wns_measure`; an already-`unknown` value, or a known
+    *negative* one (consistent with a violation existing), is returned
+    unchanged.
+    """
+    if core.is_known(wns_measure) and core.value_of(wns_measure) >= 0.0:
+        if any(row.get("violated") for row in path_rows):
+            return core.unknown(
+                "precision-limited: a per-path VIOLATED row exists for this scenario/mode "
+                "while its global WNS displays non-negative"
+            )
+    return wns_measure
+
+
 def capture(source_refs, query_spec):
     max_paths = query_spec["maxPaths"]
     required_scenarios = query_spec.get("requiredScenarios", [])
@@ -473,9 +507,14 @@ def capture(source_refs, query_spec):
                 "violated": row["violated"],
             }
 
+        setup_summary = dict(global_timing["setup"])
+        setup_summary["wns"] = _wns_consistent_with_violated_paths(setup_summary["wns"], setup_result["paths"])
+        hold_summary = dict(global_timing["hold"])
+        hold_summary["wns"] = _wns_consistent_with_violated_paths(hold_summary["wns"], hold_result["paths"])
+
         scenarios_out[name] = {
-            "setup": global_timing["setup"],
-            "hold": global_timing["hold"],
+            "setup": setup_summary,
+            "hold": hold_summary,
             "unconstrained": check_timing["unconstrainedEndpoints"],
             "complete": {"setup": setup_result["complete"], "hold": hold_result["complete"]},
         }

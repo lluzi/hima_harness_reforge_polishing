@@ -23,6 +23,19 @@ Three report kinds are parsed:
   numeric value — Python's ``float()`` happily parses those strings, so
   this is checked explicitly.
 
+  C1 (final review): a table's own `wns` reading is never trusted at face
+  value against that same mode's own `violations` count. When `violations`
+  itself could not be parsed, `wns` is downgraded to `unknown` too (an
+  unresolved violation count leaves nothing to cross-check `wns` against).
+  When `violations` is a known count `> 0` but `wns` is a known value
+  `>= 0.0`, `wns` is downgraded to `unknown` — most commonly PT's own
+  negative-zero display (`WNS -0.00`, where `float("-0.00") == -0.0` and
+  Python's `-0.0 >= 0.0` is `True`), but the same rule applies to any other
+  displayed non-negative WNS a positive violation count contradicts. A
+  "-0.00"-style negative-zero reading can therefore never be mistaken for a
+  known, goal-passing `>= 0.0` WNS while that mode has any known violation
+  at all (see `parse_global_timing`'s own docstring for the exact rule).
+
 - ``setup.rpt`` / ``hold.rpt`` (worst-path reports) — via
   `parse_path_report`. Splits the text on ``Startpoint:`` markers (each
   block then holds one path's ``Startpoint``, ``Endpoint``, ``Path Group``,
@@ -165,7 +178,36 @@ def _finite_int_measure(raw):
 
 
 def parse_global_timing(text):
-    """Parse a ``global_timing.rpt`` into `{"setup": {...}, "hold": {...}}` Measures."""
+    """Parse a ``global_timing.rpt`` into `{"setup": {...}, "hold": {...}}` Measures.
+
+    C1 (final review, evidence identity): a `WNS` row's own *displayed*
+    value can never be trusted, on its own, to prove "no violation" once
+    that mode's own `NUM` (violation count) says otherwise. Two additional
+    checks run after the table itself is parsed, each capable of turning an
+    otherwise-known `wns` into `unknown`:
+
+    - **`violations` itself unknown -> `wns` unknown too.** A `NUM` row
+      this function could not parse (`missing-num-row`/non-finite) leaves
+      no basis for cross-checking `wns` against it, so `wns` cannot be
+      trusted either -- an unresolved violation count and a "known,
+      non-negative" WNS reading side by side would let a genuinely
+      violating mode read as clean.
+    - **`violations` known and `> 0`, but `wns` is known and `>= 0.0` ->
+      `wns` unknown.** A positive violation count is direct proof that mode
+      has at least one violating path, so a displayed WNS of `0.0` or
+      higher is never trustworthy in that case -- most commonly PT's own
+      negative-zero display (`WNS -0.00 NUM 3`, where `float("-0.00") ==
+      -0.0` and `-0.0 >= 0.0` is `True` in Python), but the same rule
+      catches any other displayed non-negative WNS paired with `NUM > 0`
+      (e.g. a malformed/inconsistent report). A "-0.00"-style negative-zero
+      reading is therefore *never* a known, goal-passing `>= 0.0` value
+      when that mode has any known violation at all.
+
+    Neither check ever turns a *negative*, `NUM > 0`-consistent WNS
+    unknown, and neither ever manufactures a value where none was parsed;
+    they only ever downgrade an already-parsed `known` `wns` to `unknown`,
+    each time naming a machine-readable reason.
+    """
     result = {}
     for mode in ("setup", "hold"):
         if _ZERO_VIOLATIONS_RE[mode].search(text):
@@ -188,11 +230,18 @@ def parse_global_timing(text):
         wns_match = re.search(r"(?m)^WNS\s+(\S+)", body)
         tns_match = re.search(r"(?m)^TNS\s+(\S+)", body)
         num_match = re.search(r"(?m)^NUM\s+(\S+)", body)
-        result[mode] = {
-            "wns": _finite_float_measure(wns_match.group(1)) if wns_match else core.unknown("missing-wns-row"),
-            "tns": _finite_float_measure(tns_match.group(1)) if tns_match else core.unknown("missing-tns-row"),
-            "violations": _finite_int_measure(num_match.group(1)) if num_match else core.unknown("missing-num-row"),
-        }
+        wns = _finite_float_measure(wns_match.group(1)) if wns_match else core.unknown("missing-wns-row")
+        tns = _finite_float_measure(tns_match.group(1)) if tns_match else core.unknown("missing-tns-row")
+        violations = _finite_int_measure(num_match.group(1)) if num_match else core.unknown("missing-num-row")
+
+        if not core.is_known(violations):
+            wns = core.unknown(
+                "precision-limited: violation count is itself unknown, so a non-negative WNS cannot be trusted"
+            )
+        elif core.is_known(wns) and core.value_of(violations) > 0 and core.value_of(wns) >= 0.0:
+            wns = core.unknown("precision-limited: NUM>0 but WNS displays non-negative")
+
+        result[mode] = {"wns": wns, "tns": tns, "violations": violations}
     return result
 
 

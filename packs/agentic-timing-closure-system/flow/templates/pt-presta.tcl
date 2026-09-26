@@ -26,5 +26,5 @@ if {[sizeof_collection [all_clocks]] == 0} { error "no clocks were created" }
 read_parasitics -format spef $env(SPEF)
 set_propagated_clock [all_clocks]
 update_timing -full
-redirect $report_dir/global_timing.rpt { report_global_timing }
+redirect $report_dir/global_timing.rpt { report_global_timing -significant_digits 4 }
 exit

@@ -47,7 +47,17 @@ read_parasitics -format spef $env(SPEF)
 set_propagated_clock [all_clocks]
 update_timing -full
 redirect $report_dir/check_timing.rpt { check_timing -verbose }
-redirect $report_dir/global_timing.rpt { report_global_timing }
+# -significant_digits 4 here too (report_global_timing(2) man page, PT
+# X-2025.06, read-only verified: "Allowed values are 0-13 ... the default
+# ... is 2 by default" -- the same knob and the same default as
+# report_timing's own) -- C1 (final review): without this, a genuinely
+# violating mode's own WNS can display as a bare "-0.00", which Python's
+# `-0.0 >= 0.0` (True) would otherwise let a Goal judge over
+# atcs.reports.parse_global_timing misread as a passing, non-negative WNS.
+# atcs.reports.parse_global_timing's own NUM-vs-WNS cross-check is the
+# actual fail-closed backstop either way; this flag only narrows how often
+# a fresh report falls into that boundary in the first place.
+redirect $report_dir/global_timing.rpt { report_global_timing -significant_digits 4 }
 # -significant_digits 4 (default is 2, per PT's own man page --
 # report_timing(2), "-significant_digits digits ... the default is
 # determined by the report_default_significant_digits variable, which is 2

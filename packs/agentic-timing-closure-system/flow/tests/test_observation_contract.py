@@ -330,6 +330,71 @@ class CaptureTest(unittest.TestCase):
         self.assertIs(result["checks"][key]["violated"], True)
 
 
+class CaptureWnsIdentityCrossCheckTest(unittest.TestCase):
+    """C1 (final review, probe_negzero.py): a scenario/mode's own global WNS
+    must never be trusted as a known, non-negative value when that same
+    scenario/mode's own per-path report carries a PT-confirmed VIOLATED row
+    -- the global summary and the per-path report must never be allowed to
+    disagree about whether a violation exists at all."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.scenario_dir = self.root / "func_ssg_rcworst_m40"
+        self.scenario_dir.mkdir()
+        (self.scenario_dir / "check_timing.rpt").write_text(fixtures.check_timing_report(0))
+
+    def _source_refs(self):
+        return {
+            "designStateId": "ds-0001",
+            "scenarios": {
+                "func_ssg_rcworst_m40": {
+                    "globalTiming": str(self.scenario_dir / "global_timing.rpt"),
+                    "setupPaths": str(self.scenario_dir / "setup.rpt"),
+                    "holdPaths": str(self.scenario_dir / "hold.rpt"),
+                    "checkTiming": str(self.scenario_dir / "check_timing.rpt"),
+                },
+            },
+        }
+
+    def _query_spec(self):
+        return {"precision": "pba", "requiredScenarios": ["func_ssg_rcworst_m40"], "maxPaths": 50}
+
+    def test_violated_setup_row_downgrades_a_nonnegative_global_setup_wns(self):
+        # A stale/inconsistent global summary claims a clean setup (WNS
+        # 0.00, NUM 0) while the per-path setup.rpt still carries one real
+        # PT-confirmed VIOLATED row for the same scenario.
+        (self.scenario_dir / "global_timing.rpt").write_text(fixtures.global_report(0.0, 0.0, 0, -0.1, -0.2, 1))
+        (self.scenario_dir / "setup.rpt").write_text(fixtures.path_report([("epA", -0.05)], "setup"))
+        (self.scenario_dir / "hold.rpt").write_text(fixtures.path_report([("epC", -0.1)], "hold"))
+
+        result = state.capture(self._source_refs(), self._query_spec())
+
+        self.assertFalse(core.is_known(result["scenarios"]["func_ssg_rcworst_m40"]["setup"]["wns"]))
+        # The check itself still carries its own, independently-known slack.
+        setup_key = core.check_key("func_ssg_rcworst_m40", "setup", "epA")
+        self.assertTrue(result["checks"][setup_key]["violated"])
+
+    def test_consistent_negative_wns_is_left_known(self):
+        (self.scenario_dir / "global_timing.rpt").write_text(fixtures.global_report(-0.5, -1.2, 3, -0.1, -0.2, 1))
+        (self.scenario_dir / "setup.rpt").write_text(fixtures.path_report([("epA", -0.5), ("epB", -0.3)], "setup"))
+        (self.scenario_dir / "hold.rpt").write_text(fixtures.path_report([("epC", -0.1)], "hold"))
+
+        result = state.capture(self._source_refs(), self._query_spec())
+
+        self.assertEqual(result["scenarios"]["func_ssg_rcworst_m40"]["setup"]["wns"], {"value": -0.5})
+
+    def test_no_violated_rows_leaves_a_nonnegative_wns_known(self):
+        (self.scenario_dir / "global_timing.rpt").write_text(fixtures.global_report(0.0, 0.0, 0, 0.0, 0.0, 0))
+        (self.scenario_dir / "setup.rpt").write_text(fixtures.path_report([], "setup"))
+        (self.scenario_dir / "hold.rpt").write_text(fixtures.path_report([], "hold"))
+
+        result = state.capture(self._source_refs(), self._query_spec())
+
+        self.assertEqual(result["scenarios"]["func_ssg_rcworst_m40"]["setup"]["wns"], {"value": 0.0})
+
+
 class CompareChecksTest(unittest.TestCase):
     def test_missing_from_truncated_current_is_missing_prior_not_fixed(self):
         key = core.check_key("func_ssg_rcworst_m40", "setup", "epA")

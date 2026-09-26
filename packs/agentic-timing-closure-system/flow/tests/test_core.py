@@ -154,6 +154,53 @@ class ParseGlobalTimingTest(unittest.TestCase):
         # Sibling fields in the same well-formed block are unaffected.
         self.assertEqual(result["setup"]["tns"], {"value": -1.2})
 
+    # --- C1 (final review, probe_negzero.py): a "-0.00"-style negative-zero
+    # WNS (or any other non-negative WNS) must never be a known, goal-passing
+    # value while that mode's own NUM says it has violations. ---
+
+    def test_negative_zero_wns_with_positive_violations_is_unknown(self):
+        text = fixtures.global_report("-0.00", "-0.01", 3, "-0.02", "0.00", 0)
+        result = reports.parse_global_timing(text)
+        self.assertFalse(core.is_known(result["setup"]["wns"]))
+        # `violations` itself is still a known, trustworthy count -- only
+        # `wns` is downgraded.
+        self.assertEqual(result["setup"]["violations"], {"value": 3})
+        # The Goal's own `>= 0.0` reading can therefore never fire on this
+        # value: there is no known value left to compare at all.
+        with self.assertRaises(core.AtcsError):
+            core.value_of(result["setup"]["wns"])
+
+    def test_true_zero_wns_with_positive_violations_is_unknown(self):
+        text = fixtures.global_report("0.00", "-0.02", 5, "-0.01", "0.00", 0)
+        result = reports.parse_global_timing(text)
+        self.assertFalse(core.is_known(result["setup"]["wns"]))
+
+    def test_positive_wns_with_positive_violations_is_unknown(self):
+        text = fixtures.global_report("0.01", "-0.01", 2, "-0.01", "0.00", 0)
+        result = reports.parse_global_timing(text)
+        self.assertFalse(core.is_known(result["setup"]["wns"]))
+
+    def test_negative_wns_with_positive_violations_stays_known(self):
+        """A genuinely negative WNS consistent with NUM>0 is never downgraded."""
+        text = fixtures.global_report("-0.05", "-0.10", 3, "-0.01", "0.00", 0)
+        result = reports.parse_global_timing(text)
+        self.assertEqual(result["setup"]["wns"], {"value": -0.05})
+
+    def test_zero_wns_with_zero_violations_stays_known(self):
+        """NUM==0 (not >0) never triggers the cross-check -- a genuinely clean
+        mode may legitimately show a WNS of exactly 0.0."""
+        text = fixtures.global_report("0.00", "0.00", 0, "-0.01", "0.00", 0)
+        result = reports.parse_global_timing(text)
+        self.assertEqual(result["setup"]["wns"], {"value": 0.0})
+
+    def test_unparsable_violations_count_makes_wns_unknown_too(self):
+        """An unresolved NUM leaves nothing to cross-check a non-negative WNS
+        against, so WNS cannot be trusted either -- never a known value."""
+        text = fixtures.global_report("0.00", "-0.02", "N/A", "-0.01", "0.00", 0)
+        result = reports.parse_global_timing(text)
+        self.assertFalse(core.is_known(result["setup"]["violations"]))
+        self.assertFalse(core.is_known(result["setup"]["wns"]))
+
 
 class ParsePathReportTest(unittest.TestCase):
     def test_complete_when_below_cap(self):
