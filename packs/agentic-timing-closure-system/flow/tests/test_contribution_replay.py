@@ -206,6 +206,12 @@ class ParseOpsLogTests(unittest.TestCase):
             contributions.parse_ops_log(json.dumps(op))
         self.assertEqual(ctx.exception.code, "malformed-ops-log")
 
+    def test_rejects_inverted_region(self):
+        op = {"op": "pg_local_adjust", "region": [20, 20, -5, -5], "action": "strap", "detail": "widen"}
+        with self.assertRaises(core.AtcsError) as ctx:
+            contributions.parse_ops_log(json.dumps(op))
+        self.assertEqual(ctx.exception.code, "malformed-ops-log")
+
     def test_rejects_non_finite_region_coordinate(self):
         text = '{"op": "pg_local_adjust", "region": [0, 0, 1, Infinity], "action": "strap", "detail": "widen"}'
         with self.assertRaises(core.AtcsError) as ctx:
@@ -454,7 +460,7 @@ class SealTests(unittest.TestCase):
             self.assertEqual(contribution["outOfScope"], [new_instance])
             self.assertNotIn("bad-name", [r["code"] for r in contribution["refusals"]])
 
-    def test_op_kind_not_in_work_package_actions_is_out_of_scope(self):
+    def test_op_kind_not_in_work_package_actions_is_action_not_allowed(self):
         with tempfile.TemporaryDirectory() as tmp:
             base_ref, _prefix = make_base_ref(edit_instances=["U1"], actions=["insert_buffer"])
             before = write_dump(tmp, "before.txt", {"U1": "A"})
@@ -466,7 +472,11 @@ class SealTests(unittest.TestCase):
             )
 
             self.assertFalse(contribution["admissible"])
-            self.assertIn("U1", contribution["outOfScope"])
+            self.assertIn("action-not-allowed", [r["code"] for r in contribution["refusals"]])
+            # An undeclared op kind is a different problem from an
+            # out-of-scope object; it must not also show up there.
+            self.assertEqual(contribution["outOfScope"], [])
+            self.assertNotIn("out-of-scope", [r["code"] for r in contribution["refusals"]])
 
     def test_pg_local_adjust_within_edit_domain_region_is_admissible(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -634,7 +644,12 @@ class SealTests(unittest.TestCase):
 
             self.assertIn([0, 1], contribution["atomicGroups"])
 
-    def test_explicit_group_on_creator_suppresses_implicit_pairing(self):
+    def test_explicit_group_merges_with_creator_dependent_edge(self):
+        # Controller decision: an explicit "group" tag adds an edge, it
+        # never suppresses the creator->dependent edge. Here op 0 (the
+        # creator) is explicitly tagged alone; op 1 (untagged) still
+        # targets op 0's own new instance, so the two must merge into one
+        # group rather than staying [0] and un-grouped.
         with tempfile.TemporaryDirectory() as tmp:
             base_ref, prefix = make_base_ref(edit_nets=["N1"])
             new_instance = f"{prefix}BUF1"
@@ -652,8 +667,53 @@ class SealTests(unittest.TestCase):
                 base_ref, {"beforeDump": before, "afterDump": after, "script": None, "diagnosis": None}, trace
             )
 
-            self.assertIn([0], contribution["atomicGroups"])
-            self.assertNotIn([0, 1], contribution["atomicGroups"])
+            self.assertEqual(contribution["atomicGroups"], [[0, 1]])
+
+    def test_atomic_group_merges_explicit_pair_then_creator_edge(self):
+        # [insert B (group 7), size D (group 7), size B (no group)] -> [[0, 1, 2]]
+        with tempfile.TemporaryDirectory() as tmp:
+            base_ref, prefix = make_base_ref(edit_nets=["N1"], edit_instances=["D"])
+            new_instance = f"{prefix}B"
+            before = write_dump(tmp, "before.txt", {"D": "X"})
+            after = write_dump(tmp, "after.txt", {"D": "Y", new_instance: "BUFX2"})
+            trace = ops_text(
+                {
+                    "op": "insert_buffer", "net": "N1", "loadPins": ["U2/A"], "newInstance": new_instance,
+                    "newNet": "N1_buf", "master": "BUFX1", "location": None, "group": 7,
+                },
+                {"op": "size_cell", "instance": "D", "fromMaster": "X", "toMaster": "Y", "group": 7},
+                {"op": "size_cell", "instance": new_instance, "fromMaster": "BUFX1", "toMaster": "BUFX2"},
+            )
+
+            contribution = contributions.seal(
+                base_ref, {"beforeDump": before, "afterDump": after, "script": None, "diagnosis": None}, trace
+            )
+
+            self.assertTrue(contribution["admissible"])
+            self.assertEqual(contribution["atomicGroups"], [[0, 1, 2]])
+
+    def test_atomic_group_merges_creator_edge_then_explicit_pair(self):
+        # [insert B (no group), size B (group 7), size D (group 7)] -> [[0, 1, 2]]
+        with tempfile.TemporaryDirectory() as tmp:
+            base_ref, prefix = make_base_ref(edit_nets=["N1"], edit_instances=["D"])
+            new_instance = f"{prefix}B"
+            before = write_dump(tmp, "before.txt", {"D": "X"})
+            after = write_dump(tmp, "after.txt", {"D": "Y", new_instance: "BUFX2"})
+            trace = ops_text(
+                {
+                    "op": "insert_buffer", "net": "N1", "loadPins": ["U2/A"], "newInstance": new_instance,
+                    "newNet": "N1_buf", "master": "BUFX1", "location": None,
+                },
+                {"op": "size_cell", "instance": new_instance, "fromMaster": "BUFX1", "toMaster": "BUFX2", "group": 7},
+                {"op": "size_cell", "instance": "D", "fromMaster": "X", "toMaster": "Y", "group": 7},
+            )
+
+            contribution = contributions.seal(
+                base_ref, {"beforeDump": before, "afterDump": after, "script": None, "diagnosis": None}, trace
+            )
+
+            self.assertTrue(contribution["admissible"])
+            self.assertEqual(contribution["atomicGroups"], [[0, 1, 2]])
 
     def test_seal_is_deterministic(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -711,6 +771,44 @@ class SealTests(unittest.TestCase):
             )
 
             self.assertEqual(contribution["dependencies"], ["dep-a", "dep-b"])
+
+    def test_dependencies_bare_string_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base_ref, _prefix = make_base_ref(edit_instances=["U1"])
+            before = write_dump(tmp, "before.txt", {"U1": "BUFX1"})
+            after = write_dump(tmp, "after.txt", {"U1": "BUFX2"})
+            trace = ops_text({"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"})
+
+            with self.assertRaises(core.AtcsError) as ctx:
+                contributions.seal(
+                    base_ref,
+                    {
+                        "beforeDump": before, "afterDump": after, "script": None, "diagnosis": None,
+                        "dependencies": "dep-a",
+                    },
+                    trace,
+                )
+            self.assertEqual(ctx.exception.code, "malformed-input")
+
+    def test_dependencies_with_invalid_entries_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base_ref, _prefix = make_base_ref(edit_instances=["U1"])
+            before = write_dump(tmp, "before.txt", {"U1": "BUFX1"})
+            after = write_dump(tmp, "after.txt", {"U1": "BUFX2"})
+            trace = ops_text({"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"})
+
+            for bad_entry in (None, {"id": "dep-a"}, ""):
+                with self.subTest(bad_entry=bad_entry):
+                    with self.assertRaises(core.AtcsError) as ctx:
+                        contributions.seal(
+                            base_ref,
+                            {
+                                "beforeDump": before, "afterDump": after, "script": None, "diagnosis": None,
+                                "dependencies": ["dep-a", bad_entry],
+                            },
+                            trace,
+                        )
+                    self.assertEqual(ctx.exception.code, "malformed-input")
 
     def test_missing_predicted_values_are_unknown_with_no_validation_level(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -784,6 +882,25 @@ class SealTests(unittest.TestCase):
             self.assertIn("unknown", contribution["predicted"]["xtopSetupWns"])
             self.assertEqual(contribution["validationLevel"], "none")
 
+    def test_predicted_measure_with_empty_unknown_reason_is_malformed_measure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base_ref, _prefix = make_base_ref(edit_instances=["U1"])
+            before = write_dump(tmp, "before.txt", {"U1": "BUFX1"})
+            after = write_dump(tmp, "after.txt", {"U1": "BUFX2"})
+            trace = ops_text({"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"})
+
+            contribution = contributions.seal(
+                base_ref,
+                {
+                    "beforeDump": before, "afterDump": after, "script": None, "diagnosis": None,
+                    "predicted": {"xtopSetupWns": {"unknown": ""}, "xtopHoldWns": {"unknown": 123}},
+                },
+                trace,
+            )
+
+            self.assertEqual(contribution["predicted"]["xtopSetupWns"], core.unknown("malformed measure"))
+            self.assertEqual(contribution["predicted"]["xtopHoldWns"], core.unknown("malformed measure"))
+
     def test_base_mismatch_between_manifest_and_state_id_raises(self):
         base_ref, _prefix = make_base_ref(edit_instances=["U1"])
         base_ref["workspaceManifest"] = dict(base_ref["workspaceManifest"])
@@ -802,6 +919,19 @@ class SealTests(unittest.TestCase):
                 "",
             )
         self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_non_utf8_before_dump_raises_missing_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base_ref, _prefix = make_base_ref(edit_instances=["U1"])
+            before_path = Path(tmp) / "before.txt"
+            before_path.write_bytes(b"\xff\xfe\x00bad")
+            after = write_dump(tmp, "after.txt", {"U1": "BUFX1"})
+
+            with self.assertRaises(core.AtcsError) as ctx:
+                contributions.seal(
+                    base_ref, {"beforeDump": str(before_path), "afterDump": after, "script": None}, ""
+                )
+            self.assertEqual(ctx.exception.code, "missing-input")
 
     def test_malformed_ops_log_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -848,7 +978,7 @@ class SealTests(unittest.TestCase):
                     {"beforeDump": before, "afterDump": after, "script": str(outside_script), "diagnosis": None},
                     trace,
                 )
-            self.assertEqual(ctx.exception.code, "missing-input")
+            self.assertEqual(ctx.exception.code, "script-outside-workspace")
 
     def test_touches_checks_are_union_of_targets_and_may_affect(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -25,15 +25,16 @@ A contribution is the core object of the whole method (M4 composes
 contributions, M5 replays them), so it must be refused — but still
 returned, never raised away — when the declared operation trace, the
 actual delta and the declared scope disagree. Fail-closed applies only to
-genuinely *unusable* inputs: `seal` raises `AtcsError` for an unreadable
-dump/script file, a malformed operations log, a script path that resolves
-outside its own workspace root, or a `base_ref` whose three parts
-(`stateId`, `workspaceManifest`, `workPackage`) do not agree with each
-other. Everything else that can go wrong with the *content* of an
-otherwise-readable trace (trace/delta mismatch, a precondition the
-replayed state does not actually hold, out-of-scope edits, a buffer name
-missing its workspace prefix, a `no-fix` with no diagnosis) is recorded as
-a sealed-but-inadmissible contribution (`admissible: False`,
+genuinely *unusable* inputs: `seal` raises `AtcsError` for an unreadable or
+non-UTF-8 dump/script file, a script path that resolves outside its own
+workspace root, a malformed operations log, a malformed `dependencies`
+list, or a `base_ref` whose three parts (`stateId`, `workspaceManifest`,
+`workPackage`) do not agree with each other. Everything else that can go
+wrong with the *content* of an otherwise-readable trace (trace/delta
+mismatch, a precondition the replayed state does not actually hold,
+out-of-scope edits, an op kind the work package never declared, a buffer
+name missing its workspace prefix, a `no-fix` with no diagnosis) is
+recorded as a sealed-but-inadmissible contribution (`admissible: False`,
 `refusals[]`), so a Reader can still count it (``tc_ready_contribution_count``
 per `SPEC.md` reads `admissible`).
 
@@ -55,10 +56,12 @@ through untouched, never stripped. Every string-shaped field above
 (`instance`, `fromMaster`, `toMaster`, `net`, `newInstance`, `newNet`,
 `master`, each `loadPins` entry, `action`, `detail`) must be a non-empty
 string; `location` must be JSON `null` or exactly two finite numbers;
-`region` must be exactly four finite numbers; `group`, when present, must
-be a plain `int` (not `bool`, not a `float`). `parse_ops_log` rejects any
-violation as `AtcsError("malformed-ops-log", ...)` — a shape a downstream
-consumer could not safely use is never silently passed through.
+`region` must be exactly four finite numbers with `x1 <= x2` and
+`y1 <= y2` (an inverted box is rejected, not silently normalized — this
+module never guesses which corner the author meant); `group`, when
+present, must be a plain `int` (not `bool`, not a `float`). `parse_ops_log`
+rejects any violation as `AtcsError("malformed-ops-log", ...)` — a shape a
+downstream consumer could not safely use is never silently passed through.
 
 ``base_ref`` shape (binding for `seal`)
 ------------------------------------------
@@ -99,27 +102,34 @@ is never merely recorded as a refusal.
 `beforeDump`/`afterDump` are file paths because `seal` must read the
 *actual* native state, not trust a summary of it — per
 `knowledge/contribution-and-merge.md`: "结构化操作描述负责比较和前置
-条件；源脚本与原生状态负责核实，不能让模型摘要替代真实 diff." An
-unreadable dump or script file is `AtcsError("missing-input", ...)`.
-`beforeDump`'s own bytes are also hashed into `beforeDumpSha256` on the
-sealed contribution, so M4 can check that two contributions claiming the
+条件；源脚本与原生状态负责核实，不能让模型摘要替代真实 diff." Each is
+read exactly once, as bytes; those same bytes are decoded (UTF-8) for
+`parse_cell_dump`, and for `beforeDump` also hashed, unmodified, into
+`beforeDumpSha256` on the sealed contribution — never a second, separate
+read of the file — so M4 can check that two contributions claiming the
 same `baseStateId` actually started from the same native state, not just
-the same declared id.
+the same declared id. An unreadable or non-UTF-8 dump or script file is
+`AtcsError("missing-input", ...)`.
 
 `script`, when given, is stored on the contribution with its `path`
 rewritten to be **campaign-relative** — everything from
 `workspaceManifest["root"]` onward in its resolved filesystem path — so
 `contribution["id"]` never depends on where the campaign happens to be
-checked out on disk. A script path that does not resolve to somewhere
-under its own workspace root is `AtcsError("missing-input", ...)`: a
-script from outside the workspace the manifest describes is not evidence
-this contribution can stand on.
+checked out on disk (see `_campaign_relative_path`). A script path that
+does not resolve to somewhere under its own workspace root is
+`AtcsError("script-outside-workspace", ...)`: a script from outside the
+workspace the manifest describes is not evidence this contribution can
+stand on.
 
-`dependencies` (optional) is copied straight onto the sealed contribution
-as a sorted, de-duplicated list of `str` ids — the *revisions this one
-builds on*, supplied by the caller (e.g. a resubmission after M4/M5 asked
-for a revised contribution). `seal` never infers dependencies on its own;
-cross-contribution dependency *detection* is M4's `analyze` job.
+`dependencies` (optional) is copied onto the sealed contribution as a
+sorted, de-duplicated list — the *revisions this one builds on*, supplied
+by the caller (e.g. a resubmission after M4/M5 asked for a revised
+contribution). Absent or `None` becomes `[]`; anything else that is not a
+list, or a list containing anything that is not itself a non-empty
+string, is `AtcsError("malformed-input", ...)` — a dependency id is an
+identifier a later lookup will use verbatim, so it is never coerced or
+guessed at. `seal` never infers dependencies on its own; cross-contribution
+dependency *detection* is M4's `analyze` job.
 
 ``operation_trace`` is the raw ``ops.jsonl`` text (not a path) — `seal`
 parses it itself via `parse_ops_log`, so a malformed trace surfaces as
@@ -135,49 +145,59 @@ existing instance to check, so scope instead asks whether the buffered
 inherits that op's scope verdict. A `pg_local_adjust`'s `region` is in
 scope when it is fully contained (all four coordinates) inside at least
 one of `editDomain.regions`' boxes — a region only partially overlapping,
-or outside all of them, is out of scope. Independently of all of the
-above, **every** op's own kind must be a member of `workPackage.actions`
-— this is the same gate M2's `validate_work_package` applies to the whole
-package (e.g. `pg_local_adjust` needing `siteCapabilities.pgVerification`
-to even be a declared action), re-checked here per-op because a specific
-trace can still emit an op kind the *package* never declared. Every
-out-of-scope object found (an instance, a `pg_local_adjust` region, or an
-op whose kind is not a declared action) is collected into `outOfScope`
-and also turns into one `"out-of-scope"` refusal (so `admissible` is
-`False`).
+or outside all of them, is out of scope. Every out-of-scope object found
+this way (an instance or a `pg_local_adjust` region) is collected into
+`outOfScope` and turns into one `"out-of-scope"` refusal.
+
+Independently of all of the above, **every** op's own kind must be a
+member of `workPackage.actions` — this is the same gate M2's
+`validate_work_package` applies to the whole package (e.g. `pg_local_adjust`
+needing `siteCapabilities.pgVerification` to even be a declared action),
+re-checked here per-op because a specific trace can still emit an op kind
+the *package* never declared. This is a different kind of problem from an
+in-scope-but-wrong-object edit — the operation itself isn't permitted,
+regardless of what it touches — so it gets its own `"action-not-allowed"`
+refusal (naming the disallowed op kinds) and is never added to
+`outOfScope`.
 
 Atomic groups
 -------------
 
-Two independent ways an atomic group is recorded, per
-``knowledge/contribution-and-merge.md``'s "原子提交与部分采用" and this
-task's Decisions:
+Every atomic group is one connected component of a union-find merge over
+two independent kinds of edge — **neither suppresses the other; both
+always merge into the same component** (a controller decision: an
+explicit `"group"` tag adds a relationship, it never overrides one):
 
-1. **Explicit**: any ops carrying the same integer ``"group"`` field form
-   one atomic group, regardless of position in the trace. Explicit
-   grouping always wins: an op with a `"group"` field is never also
-   folded into an implicit group below.
-2. **Implicit**: every `size_cell`/`delete_buffer` operation that targets
-   an instance created earlier in the *same trace* by an `insert_buffer`
-   joins one atomic group together with that creating `insert_buffer` —
-   regardless of how far apart they are in the trace, and regardless of
-   how many such later operations there are (they all join the same
-   group as the one creating op). This is "sizing/deleting the buffer you
-   just inserted"; it is unaffected by adjacency because a worker's trace
-   may interleave unrelated operations between creating an object and
-   later touching it.
+1. **Explicit**: every pair of ops carrying the same integer ``"group"``
+   field is unioned together, wherever they sit in the trace.
+2. **Creator→dependent**: every `size_cell`/`delete_buffer` operation that
+   targets an instance created earlier in the *same trace* by an
+   `insert_buffer` is unioned with that creating `insert_buffer` —
+   regardless of how far apart they are, and regardless of whether either
+   op also carries an explicit `"group"` tag.
+
+Because the two kinds of edge merge instead of one overriding the other,
+an explicit `"group"` tag connecting an `insert_buffer` to some unrelated
+op, plus a later untagged op that targets that `insert_buffer`'s own new
+instance, all end up in **one** merged group — the explicit edge and the
+creator→dependent edge share the `insert_buffer`'s index, so union-find
+joins all three regardless of which edge was recorded first.
+
+Only connected components with **two or more** members are reported (a
+lone `"group"` tag on an otherwise-unconnected op describes no actual
+coupling, so it is not surfaced as a group of one). Each group is
+`[opIndex, ...]`, sorted ascending, indices into the sealed `operations`
+list; the list of groups is itself sorted by each group's smallest index,
+so the result is deterministic regardless of dict/set iteration order.
 
 Grouping an *upstream driver* with an insertion — e.g. resizing the
 pre-existing gate that used to drive a net, once a buffer now sits
 between it and its loads — is a different relationship: the operation
 schema has no `driver` field connecting a `size_cell` on a pre-existing
 instance to a particular `insert_buffer` on the net it drives, so this
-module has no way to infer that relationship from the trace alone. That
-kind of atomic grouping can only be expressed by both ops carrying the
-same explicit `"group"` value; this is a controller decision, not an
-oversight.
-
-Each group is `[opIndex, ...]`, indices into the sealed `operations` list.
+module has no creator→dependent edge to infer there. That kind of atomic
+grouping can only be expressed by both ops carrying the same explicit
+`"group"` value; this is a controller decision, not an oversight.
 
 Preconditions
 -------------
@@ -226,6 +246,7 @@ precondition), but the contribution is inadmissible.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -304,6 +325,12 @@ def _validate_operation_shape(record, op_kind, line_number):
             raise core.AtcsError(
                 "malformed-ops-log",
                 f"line {line_number}: pg_local_adjust.region must be 4 finite numbers, got {region!r}",
+            )
+        x1, y1, x2, y2 = region
+        if x1 > x2 or y1 > y2:
+            raise core.AtcsError(
+                "malformed-ops-log",
+                f"line {line_number}: pg_local_adjust.region must have x1<=x2 and y1<=y2, got {region!r}",
             )
 
     if "group" in record and not _is_plain_int(record["group"]):
@@ -493,19 +520,33 @@ def _require(mapping, key, label):
     return mapping[key]
 
 
-def _read_text(path, label):
+def _read_dump_bytes(path, label):
     try:
-        return Path(path).read_text(encoding="utf-8")
+        return Path(path).read_bytes()
     except OSError as exc:
         raise core.AtcsError("missing-input", f"cannot read {label} at {path}: {exc}") from exc
 
 
+def _decode_utf8(data, path, label):
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise core.AtcsError("missing-input", f"{label} at {path} is not valid UTF-8: {exc}") from exc
+
+
 def _normalize_measure(measure):
-    """A Measure with exactly one key and (if `value`) a finite number; `unknown` otherwise."""
+    """A Measure with exactly one key: `value` a finite number, or `unknown` a non-empty reason.
+
+    Anything else — not a single-key dict, an `unknown` whose reason is
+    not a non-empty string, or a `value` that is not a finite number — is
+    itself replaced by `unknown`, never passed through malformed.
+    """
     if not isinstance(measure, dict) or len(measure) != 1:
         return core.unknown("not-predicted")
     if "unknown" in measure:
-        return measure
+        if _is_nonempty_string(measure["unknown"]):
+            return measure
+        return core.unknown("malformed measure")
     if "value" in measure:
         value = measure["value"]
         if _is_finite_number(value):
@@ -530,48 +571,76 @@ def _predicted_measures(predicted_in):
 
 
 def _dependencies(result_refs):
+    """`result_refs["dependencies"]`, validated: absent/`None` -> `[]`, else a sorted set of ids.
+
+    Raises `AtcsError("malformed-input", ...)` when present but not a
+    list, or when any entry is not a non-empty string — a dependency id is
+    used verbatim by later lookups, so it is never coerced or guessed at.
+    """
     raw = result_refs.get("dependencies")
-    raw = raw if isinstance(raw, list) else []
-    return sorted({str(dependency) for dependency in raw})
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise core.AtcsError("malformed-input", f"result_refs.dependencies must be a list, got {raw!r}")
+    for entry in raw:
+        if not _is_nonempty_string(entry):
+            raise core.AtcsError(
+                "malformed-input", f"result_refs.dependencies entries must be non-empty strings, got {entry!r}"
+            )
+    return sorted(set(raw))
+
+
+def _uf_find(parent, item):
+    root = item
+    while parent[root] != root:
+        root = parent[root]
+    while parent[item] != root:
+        parent[item], item = root, parent[item]
+    return root
+
+
+def _uf_union(parent, left, right):
+    root_left, root_right = _uf_find(parent, left), _uf_find(parent, right)
+    if root_left != root_right:
+        parent[root_right] = root_left
 
 
 def _atomic_groups(operations):
-    """Explicit ``"group"``-tagged ops, plus every op on a trace-created instance
-    joined with that instance's creating `insert_buffer` (see module docstring)."""
-    explicit_by_group = {}
-    explicit_order = []
+    """Union-find over explicit ``"group"`` membership and creator→dependent
+    edges (see module docstring's "Atomic groups" section for the full rule —
+    the two kinds of edge always merge, neither one suppresses the other)."""
+    parent = list(range(len(operations)))
+
+    first_index_by_group = {}
     for index, op in enumerate(operations):
         group_id = op.get("group")
         if group_id is None:
             continue
-        if group_id not in explicit_by_group:
-            explicit_by_group[group_id] = []
-            explicit_order.append(group_id)
-        explicit_by_group[group_id].append(index)
-
-    explicit_indices = {index for indices in explicit_by_group.values() for index in indices}
-    atomic_groups = [sorted(explicit_by_group[group_id]) for group_id in explicit_order]
+        if group_id in first_index_by_group:
+            _uf_union(parent, first_index_by_group[group_id], index)
+        else:
+            first_index_by_group[group_id] = index
 
     creator_index_by_instance = {}
     for index, op in enumerate(operations):
-        if op.get("op") == "insert_buffer" and index not in explicit_indices:
+        if op.get("op") == "insert_buffer":
             creator_index_by_instance[op["newInstance"]] = index
 
-    implicit_members_by_creator = {}
     for index, op in enumerate(operations):
-        if index in explicit_indices:
-            continue
         if op.get("op") not in ("size_cell", "delete_buffer"):
             continue
         creator_index = creator_index_by_instance.get(op.get("instance"))
-        if creator_index is None or creator_index == index:
-            continue
-        implicit_members_by_creator.setdefault(creator_index, {creator_index}).add(index)
+        if creator_index is not None and creator_index != index:
+            _uf_union(parent, creator_index, index)
 
-    for creator_index in sorted(implicit_members_by_creator):
-        atomic_groups.append(sorted(implicit_members_by_creator[creator_index]))
+    members_by_root = {}
+    for index in range(len(operations)):
+        root = _uf_find(parent, index)
+        members_by_root.setdefault(root, []).append(index)
 
-    return atomic_groups
+    groups = [sorted(members) for members in members_by_root.values() if len(members) > 1]
+    groups.sort(key=lambda members: members[0])
+    return groups
 
 
 def _preconditions(operations):
@@ -648,10 +717,13 @@ def _op_identifier(op):
 def _scope_check(operations, work_package, name_prefix):
     """Return `(out_of_scope, refusals)` for `operations` against `work_package`.
 
-    See the module docstring's "Scope rule" section for the full contract:
-    editDomain instance/net membership, `pg_local_adjust` region
-    containment, and the independent "op kind must be a declared action"
-    gate.
+    See the module docstring's "Scope rule" section for the full contract.
+    editDomain instance/net/region membership feeds `outOfScope` and one
+    `"out-of-scope"` refusal. An op kind absent from `workPackage.actions`
+    is a different problem — the operation itself isn't permitted,
+    regardless of what it touches — so it gets its own
+    `"action-not-allowed"` refusal (naming the disallowed kinds) and is
+    never added to `outOfScope`.
     """
     edit_domain = work_package.get("editDomain") or {}
     edit_instances = set(edit_domain.get("instances") or [])
@@ -662,9 +734,14 @@ def _scope_check(operations, work_package, name_prefix):
     out_of_scope = []
     refusals = []
 
-    for op in operations:
-        if op.get("op") not in allowed_actions:
-            out_of_scope.append(_op_identifier(op))
+    disallowed_kinds = sorted({op.get("op") for op in operations if op.get("op") not in allowed_actions})
+    if disallowed_kinds:
+        refusals.append(
+            {
+                "code": "action-not-allowed",
+                "detail": f"op kinds not declared in workPackage.actions: {disallowed_kinds}",
+            }
+        )
 
     new_instance_in_scope = {}
     for op in operations:
@@ -706,7 +783,30 @@ def _scope_check(operations, work_package, name_prefix):
 
 
 def _campaign_relative_path(path, manifest):
-    """Rewrite `path`'s resolved form to start at `manifest["root"]`; refuse if it never does."""
+    """Rewrite `path`'s resolved form to start at `manifest["root"]`.
+
+    Searches the resolved (absolute, symlink-free) form of `path` for the
+    *rightmost* occurrence of `manifest["root"]`'s own path components
+    (e.g. `("workspaces", "w01", "r1")`) and returns everything from there
+    onward, joined with `/`.
+
+    This is a heuristic, not a guarantee: it trusts that those components
+    identify *this* workspace uniquely within the path. That holds for
+    every layout `workspaces.prepare` itself creates
+    (`<campaign_root>/workspaces/<taskId>/r<revision>/`), but a
+    pathologically nested layout (e.g. a backup of the campaign root
+    copied *inside* the campaign root) could in principle contain the same
+    component sequence twice; searching from the right — preferring the
+    deepest/last match — is what keeps an accidental *earlier* occurrence
+    from being chosen over the real workspace directory in that case, but
+    it cannot detect the ambiguity itself.
+
+    Raises `AtcsError("script-outside-workspace", ...)` when no such
+    occurrence exists at all — the script does not appear to live
+    anywhere under its own workspace root, which is either a caller wiring
+    bug or a script whose provenance is not evidence this contribution can
+    stand on.
+    """
     root = (manifest.get("root") or "").strip("/")
     if not root:
         raise core.AtcsError("missing-input", "workspaceManifest.root")
@@ -716,19 +816,22 @@ def _campaign_relative_path(path, manifest):
     for start in range(len(resolved_parts) - window, -1, -1):
         if resolved_parts[start : start + window] == root_parts:
             return "/".join(resolved_parts[start:])
-    raise core.AtcsError("missing-input", f"script path {path} is outside workspace root {root}")
+    raise core.AtcsError(
+        "script-outside-workspace", f"script path {path} is outside workspace root {root}"
+    )
 
 
 def seal(base_ref, result_refs, operation_trace):
     """Seal a worker's real tool work into a ``contribution`` artifact.
 
-    Raises `AtcsError` only for unusable inputs: an unreadable dump or
-    script file, a script path outside its own workspace root, a
-    malformed `operation_trace`, or a `base_ref` whose three parts
-    disagree with each other. Every other problem (trace vs. actual delta
-    mismatch, a stale precondition, out-of-scope edits, a buffer name
-    missing its workspace prefix, a `no-fix` with no diagnosis) is
-    recorded on the returned, still-stamped contribution as
+    Raises `AtcsError` only for unusable inputs: an unreadable or
+    non-UTF-8 dump or script file, a script path outside its own
+    workspace root, a malformed `operation_trace`, a malformed
+    `dependencies` list, or a `base_ref` whose three parts disagree with
+    each other. Every other problem (trace vs. actual delta mismatch, a
+    stale precondition, out-of-scope edits, an undeclared op kind, a
+    buffer name missing its workspace prefix, a `no-fix` with no
+    diagnosis) is recorded on the returned, still-stamped contribution as
     `admissible: False` plus `refusals[]` — see the module docstring for
     the full contract.
     """
@@ -756,13 +859,17 @@ def seal(base_ref, result_refs, operation_trace):
     revision = _require(manifest, "revision", "workspaceManifest")
     name_prefix = _require(manifest, "namePrefix", "workspaceManifest")
 
+    dependencies = _dependencies(result_refs)
+
     operations = parse_ops_log(operation_trace)
 
     before_path = _require(result_refs, "beforeDump", "result_refs")
     after_path = _require(result_refs, "afterDump", "result_refs")
-    before = parse_cell_dump(_read_text(before_path, "beforeDump"))
-    after = parse_cell_dump(_read_text(after_path, "afterDump"))
-    before_dump_sha256 = _dump_sha256(before_path, "beforeDump")
+    before_bytes = _read_dump_bytes(before_path, "beforeDump")
+    before_dump_sha256 = hashlib.sha256(before_bytes).hexdigest()
+    before = parse_cell_dump(_decode_utf8(before_bytes, before_path, "beforeDump"))
+    after_bytes = _read_dump_bytes(after_path, "afterDump")
+    after = parse_cell_dump(_decode_utf8(after_bytes, after_path, "afterDump"))
 
     script_path = result_refs.get("script")
     script = None
@@ -810,7 +917,7 @@ def seal(base_ref, result_refs, operation_trace):
         "delta": delta,
         "touches": _touches(operations, work_package, result_refs),
         "preconditions": _preconditions(operations),
-        "dependencies": _dependencies(result_refs),
+        "dependencies": dependencies,
         "atomicGroups": _atomic_groups(operations),
         "predicted": predicted,
         "validationLevel": validation_level,
@@ -820,13 +927,6 @@ def seal(base_ref, result_refs, operation_trace):
         "outOfScope": out_of_scope,
     }
     return core.stamp("contribution", body)
-
-
-def _dump_sha256(path, label):
-    try:
-        return core.file_sha256(path)
-    except OSError as exc:
-        raise core.AtcsError("missing-input", f"cannot read {label} at {path}: {exc}") from exc
 
 
 def _script_sha256(path):
