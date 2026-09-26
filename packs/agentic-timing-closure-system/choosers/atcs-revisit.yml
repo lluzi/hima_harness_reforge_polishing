@@ -1,16 +1,17 @@
 id: atcs-revisit
 version: "1"
-title: Take the revisit the routing Judges already chose, keeping the bounded worker slots
+title: Take the revisit the routing Judges already chose, restoring the default query breadth
 # The domain route (observe, research, compose, revise, implement, earlier-apr, a corrected request)
 # is chosen by the Judge chain on tc_next_action and by which Explore node the Run reached; each
-# Explore node has exactly one revisit edge. This chooser never ends the Run: it only carries the
-# Strategy (workerSlots, bound to the three compiled slots) into the next Generation.
-parameter: { name: slots, unit: count }
+# Explore node has exactly one revisit edge. This chooser never ends the Run. A clause must set a
+# knob and cannot read the Strategy it is on, so it sets maxPaths to the bound value (the default,
+# 1000 paths) for the next Generation's observe queries.
+parameter: { name: paths, unit: paths }
 reads: {}
 decide:
   - when: { constraint: PASS }
     next:
-      workerSlots: slots
+      maxPaths: paths
   - when: { constraint: FAIL }
     next:
-      workerSlots: slots
+      maxPaths: paths

@@ -27,7 +27,7 @@ nodes:
     kind: judge
     parameters: { rules: [inputs-ready] }
 
-  # 2. Common baseline and initial observation.
+  # 2. Common baseline, initial observation, and the stamped acceptance policy (Goal bound here).
   - id: baseline
     kind: act
     parameters:
@@ -41,6 +41,15 @@ nodes:
       arguments:
         ANALYSIS_CONTRACT: { from: input, name: analysisContract }
         SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+        MAX_PATHS: { from: strategy, name: maxPaths }
+  - id: policy
+    kind: act
+    parameters:
+      tool: policy
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        TARGET_SETUP_NS: { from: goal, name: target_setup_wns_ns }
+        TARGET_HOLD_NS: { from: goal, name: target_hold_wns_ns }
   - id: physical-baseline
     kind: act
     parameters:
@@ -66,13 +75,14 @@ nodes:
     parameters: { rules: [request-admissible, request-checked] }
   - id: retry-diagnose
     kind: explore
-    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+    parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
   - id: observe-query
     kind: act
     parameters:
       tool: observe-query
       arguments:
         SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+        MAX_PATHS: { from: strategy, name: maxPaths }
   - id: risk-query
     kind: act
     parameters:
@@ -299,7 +309,7 @@ nodes:
     parameters: { rules: [request-admissible, request-checked] }
   - id: revisit-next-decision
     kind: explore
-    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+    parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
   - id: check-continue
     kind: judge
     parameters: { rules: [continue-or-wait] }
@@ -309,33 +319,34 @@ nodes:
     parameters: { rules: [next-action-observe, continue-or-wait] }
   - id: revisit-observe
     kind: explore
-    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+    parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
   - id: route-research
     kind: judge
     parameters: { rules: [next-action-research, continue-or-wait] }
   - id: revisit-research
     kind: explore
-    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+    parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
   - id: route-compose
     kind: judge
     parameters: { rules: [next-action-compose, continue-or-wait] }
   - id: revisit-compose
     kind: explore
-    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+    parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
   - id: route-revise
     kind: judge
     parameters: { rules: [next-action-revise, continue-or-wait] }
   - id: revisit-revise
     kind: explore
-    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+    parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
   - id: route-implement
     kind: judge
     parameters: { rules: [next-action-implement, continue-or-wait] }
   - id: revisit-implement
     kind: explore
-    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+    parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
 
-  # 9. Earlier APR: full-flow only, re-checked on a fresh readiness reading.
+  # 9. Earlier APR: full-flow only, re-checked on a fresh readiness reading; the stage run joins the
+  #    implement chain at extract (same refresh, evaluation, judges and adoption).
   - id: route-earlier-apr
     kind: judge
     parameters: { rules: [next-action-earlier-apr, continue-or-wait] }
@@ -347,10 +358,17 @@ nodes:
     parameters: { rules: [lifecycle-available, inputs-ready] }
   - id: revisit-earlier-apr
     kind: explore
-    parameters: { chooser: atcs-revisit, bind: { slots: 3 } }
+    parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
   - id: apr-prepare
     kind: act
     parameters: { tool: apr-prepare, arguments: { STAGE: postroute } }
+  - id: apr-run
+    kind: act
+    parameters:
+      tool: apr-run
+      arguments:
+        STAGE: postroute
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
 
   # Goal met: every final rule again, over a fresh reading of the current final evaluation.
   - id: route-goal-met
@@ -404,7 +422,7 @@ nodes:
         target_hold_wns_ns: { from: goal, name: target_hold_wns_ns }
   - id: close-on-goal
     kind: explore
-    parameters: { chooser: atcs-goal-met, bind: { slots: 3 } }
+    parameters: { chooser: atcs-goal-met, bind: { paths: 1000 } }
 
   # The one wait node: missing minimum inputs (inputs-ready FAIL), a next decision requiring an
   # external input/scope/capability (continue-or-wait FAIL), and every UNDETERMINED verdict.
@@ -418,7 +436,8 @@ edges:
   - { from: check-inputs, to: baseline, outcome: PASS }
   - { from: check-inputs, to: wait-for-person, outcome: FAIL }
   - { from: baseline, to: observe-baseline }
-  - { from: observe-baseline, to: physical-baseline }
+  - { from: observe-baseline, to: policy }
+  - { from: policy, to: physical-baseline }
   - { from: physical-baseline, to: risk-baseline }
   - { from: risk-baseline, to: diagnose }
 
@@ -538,7 +557,8 @@ edges:
   - { from: check-apr-scope, to: revisit-earlier-apr, outcome: PASS }
   - { from: check-apr-scope, to: revisit-next-decision, outcome: FAIL }
   - { from: revisit-earlier-apr, to: apr-prepare, revisit: true }
-  - { from: apr-prepare, to: decide-next }
+  - { from: apr-prepare, to: apr-run }
+  - { from: apr-run, to: extract }
 
   - { from: route-goal-met, to: reread-final-evaluation, outcome: PASS }
   - { from: route-goal-met, to: wait-for-person, outcome: FAIL }

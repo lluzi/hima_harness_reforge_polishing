@@ -26,11 +26,13 @@ inputs:
     description: >-
       Read-only directory of the fixed analysis contract, one JSON document per concern, read by the
       tools at fixed names: query-spec.json (final PBA/coverage query: precision, requiredScenarios,
-      maxPaths, nworst), scenario-corners.json ({scenario: RC corner}), corners.json ({"corners": [...]}),
-      sdc.json ({"sdc": [...]}), scenario-inputs.json (per-scenario PT inputs of the starting state),
-      baseline-source-refs.json (report references of the baseline observation), recheck.json,
-      policy.json (fixed comparison and acceptance policy), baseline-verify-drc.rpt and
-      baseline-verify-connectivity.rpt (starting-state physical reports). The model never writes it.
+      nworst; maxPaths comes from the Strategy), scenario-corners.json ({scenario: RC corner}),
+      corners.json ({"corners": [...]}), sdc.json ({"sdc": [...]}), scenario-inputs.json (per-scenario
+      PT inputs of the starting state), recheck.json, policy.json (the static acceptance terms only:
+      allowDegradedWorking, degradeLimitNs, maxNewConstraintFailures, scenarioCorners,
+      requiredScenarios; the policy tool refuses a file setting goal or a run-time field),
+      baseline-verify-drc.rpt and baseline-verify-connectivity.rpt (starting-state physical reports).
+      The model never writes it.
   - name: siteCapabilities
     description: >-
       Site-owned JSON of qualified capabilities and bindings: edaShell (the Site's EDA launch prefix
@@ -47,7 +49,17 @@ outputs:
     description: M1 input-readiness (post-route minimum inputs, strict full-flow/post-route-only scope, lifecycle availability).
   - name: baselineState
     path: state/baseline.json
-    description: M1 design-state of the starting database; the common base every batch of this Run is replayed from.
+    description: M1 design-state of the starting database, fixed for the whole Campaign (policy anchor).
+  - name: workingState
+    path: state/working-state.json
+    description: >-
+      The design-state every batch is based on: seeded from the baseline by baseline, rewritten by
+      adopt whenever the working pointer moves to an adopted candidate.
+  - name: acceptancePolicy
+    path: state/policy.json
+    description: >-
+      Stamped acceptance policy: the Site's static terms, the Run's Goal targets, and the baseline
+      state id, baseline minimum WNS and Campaign root composed by the policy tool.
   - name: currentObservations
     path: state/observation.json
     description: M1 observation-set of the latest PT observation (baseline or query); raw reports stay under research/observe/.
@@ -56,7 +68,7 @@ outputs:
     description: Starting-state DRC/connectivity report text the final evaluation compares candidate physical checks against.
   - name: riskAtlas
     path: state/risk.json
-    description: M1 check-comparison of the current observation (fixed/remaining/entrant/regressed/missing-prior check keys).
+    description: M1 check-comparison of the previous observation against the current one (fixed/remaining/entrant/regressed/missing-prior).
   - name: observationRequest
     path: research/requests/observation-request.json
     reader: atcs-observation-request
@@ -122,7 +134,9 @@ outputs:
     description: M5 sealed batch relative to its common parent state (operations, Innovus ECO Tcl, source map).
   - name: implementation
     path: state/implement.json
-    description: Innovus ECO implementation receipt (database, netlist, DEF identities and report paths).
+    description: >-
+      Implementation receipt of the current candidate (database, netlist, DEF, DRC and connectivity
+      report identities, parent state), written by implement or, on the earlier-apr route, apr-run.
   - name: extraction
     path: state/extract.json
     description: StarRC SPEF identities per corner for the implemented candidate.
@@ -151,7 +165,7 @@ outputs:
     description: Residual cases of the checks still failing (evidence, attempts, limits, suggested stage).
   - name: aprTask
     path: apr/postroute/task.json
-    description: The prepared single APR stage task (full-flow only); preparation only, never executed by this Pack.
+    description: The prepared single APR stage task (full-flow only) that apr-run executes.
   - name: campaignExperience
     path: state/experience.json
     description: M8 append-only experience entries (hypothesis, action, conditions, predicted, measured, verdict).
@@ -190,33 +204,48 @@ tools:
     recommendedVersion: PrimeTime X-2025.06
     file: flow/atcs_cli.py
     description: Run the four required PT scenarios on the starting state and capture the baseline observation.
-    inputs: [WORKSPACE, ANALYSIS_CONTRACT, SITE_CAPABILITIES]
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT, SITE_CAPABILITIES, MAX_PATHS]
     licences: { primetime: 1 }
     argv:
       - python3
       - ${WORKSPACE}/flow/atcs_cli.py
       - observe
       - ${WORKSPACE}
-      - ${ANALYSIS_CONTRACT}/baseline-source-refs.json
       - ${ANALYSIS_CONTRACT}/query-spec.json
       - ${SITE_CAPABILITIES}
       - ${ANALYSIS_CONTRACT}/scenario-inputs.json
+      - ${MAX_PATHS}
+
+  - id: policy
+    file: flow/atcs_cli.py
+    description: >-
+      Compose the stamped acceptance policy from the Site's static terms, the Run's Goal targets and
+      the baseline state and observation; refuses a static file that sets a Goal or run-time field.
+    inputs: [WORKSPACE, ANALYSIS_CONTRACT, TARGET_SETUP_NS, TARGET_HOLD_NS]
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - policy
+      - ${WORKSPACE}
+      - ${ANALYSIS_CONTRACT}
+      - ${TARGET_SETUP_NS}
+      - ${TARGET_HOLD_NS}
 
   - id: observe-query
     recommendedVersion: PrimeTime X-2025.06
     file: flow/atcs_cli.py
     description: Run the admitted observation request as PT scenario queries and capture the new observation.
-    inputs: [WORKSPACE, SITE_CAPABILITIES]
+    inputs: [WORKSPACE, SITE_CAPABILITIES, MAX_PATHS]
     licences: { primetime: 1 }
     argv:
       - python3
       - ${WORKSPACE}/flow/atcs_cli.py
       - observe
       - ${WORKSPACE}
-      - ${WORKSPACE}/research/requests/observe-source-refs.json
       - ${WORKSPACE}/research/requests/observation-request.json
       - ${SITE_CAPABILITIES}
       - ${WORKSPACE}/research/requests/observe-scenario-inputs.json
+      - ${MAX_PATHS}
 
   - id: physical-baseline
     file: flow/atcs_cli.py
@@ -233,14 +262,16 @@ tools:
 
   - id: risk
     file: flow/atcs_cli.py
-    description: Compare the current observation's checks into the risk atlas (M1 compare_checks).
+    description: >-
+      Compare the previous observation with the current one into the risk atlas (M1 compare_checks);
+      the Campaign's first observation is compared with itself.
     inputs: [WORKSPACE, ANALYSIS_CONTRACT]
     argv:
       - python3
       - ${WORKSPACE}/flow/atcs_cli.py
       - risk
       - ${WORKSPACE}
-      - ${WORKSPACE}/state/observation.json
+      - ${WORKSPACE}/state/observation-prev.json
       - ${WORKSPACE}/state/observation.json
       - ${ANALYSIS_CONTRACT}/recheck.json
 
@@ -253,7 +284,7 @@ tools:
       - ${WORKSPACE}/flow/atcs_cli.py
       - prepare-workers
       - ${WORKSPACE}
-      - ${WORKSPACE}/state/baseline.json
+      - ${WORKSPACE}/state/working-state.json
       - ${SITE_CAPABILITIES}
       - ${SITE_CAPABILITIES}
       - ${WORKSPACE}/research/requests/work-package-w01.json
@@ -282,17 +313,11 @@ tools:
 
   - id: capture-contribution
     file: flow/atcs_cli.py
-    description: Seal one slot's actual tool work into a Contribution (M3 seal).
+    description: >-
+      Seal one slot's actual tool work into a Contribution (M3 seal), composed from state/workers.json
+      and the slot's own workspace (before.dump, after.dump, ops.jsonl, optional summary.json).
     inputs: [WORKSPACE, SLOT]
-    argv:
-      - python3
-      - ${WORKSPACE}/flow/atcs_cli.py
-      - capture-contribution
-      - ${WORKSPACE}
-      - ${SLOT}
-      - ${WORKSPACE}/research/requests/capture-${SLOT}-base-ref.json
-      - ${WORKSPACE}/research/requests/capture-${SLOT}-result-refs.json
-      - ${WORKSPACE}/research/requests/capture-${SLOT}-ops.jsonl
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', capture-contribution, '${WORKSPACE}', '${SLOT}']
 
   - id: collect
     file: flow/atcs_cli.py
@@ -309,7 +334,6 @@ tools:
       - ${WORKSPACE}/flow/atcs_cli.py
       - compose-facts
       - ${WORKSPACE}
-      - ${WORKSPACE}/state/baseline.json
       - ${WORKSPACE}/research/requests/resolutions.json
 
   - id: replay-prepare
@@ -323,7 +347,7 @@ tools:
       - ${WORKSPACE}/flow/atcs_cli.py
       - replay-prepare
       - ${WORKSPACE}
-      - ${WORKSPACE}/state/baseline.json
+      - ${WORKSPACE}/state/working-state.json
       - ${WORKSPACE}/research/requests/integration-plan.json
       - ${SITE_CAPABILITIES}
 
@@ -351,7 +375,7 @@ tools:
       - ${WORKSPACE}/flow/atcs_cli.py
       - presta
       - ${WORKSPACE}
-      - ${WORKSPACE}/state/baseline.json
+      - ${WORKSPACE}/state/working-state.json
       - ${ANALYSIS_CONTRACT}/scenario-corners.json
       - ${SITE_CAPABILITIES}
 
@@ -366,7 +390,7 @@ tools:
       - ${WORKSPACE}/flow/atcs_cli.py
       - implement
       - ${WORKSPACE}
-      - ${WORKSPACE}/state/baseline.json
+      - ${WORKSPACE}/state/working-state.json
       - ${SITE_CAPABILITIES}
 
   - id: extract
@@ -397,39 +421,30 @@ tools:
       - ${ANALYSIS_CONTRACT}/query-spec.json
       - ${ANALYSIS_CONTRACT}/sdc.json
       - ${ANALYSIS_CONTRACT}/scenario-corners.json
-      - ${WORKSPACE}/state/baseline.json
+      - ${WORKSPACE}/state/working-state.json
       - ${SITE_CAPABILITIES}
 
   - id: physical-candidate
     file: flow/atcs_cli.py
-    description: Package the implemented candidate's DRC/connectivity reports for the final evaluation.
+    description: >-
+      Package the current candidate's DRC/connectivity reports for the final evaluation, re-hashing
+      the identities state/implement.json records.
     inputs: [WORKSPACE]
-    argv:
-      - python3
-      - ${WORKSPACE}/flow/atcs_cli.py
-      - physical
-      - ${WORKSPACE}
-      - ${WORKSPACE}/state/candidate-verify-drc.rpt
-      - ${WORKSPACE}/state/candidate-verify-connectivity.rpt
-      - candidate
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', physical, '${WORKSPACE}', candidate]
 
   - id: evaluate
     file: flow/atcs_cli.py
     description: Plan the required checks and assemble the candidate's evaluation (M6).
-    inputs: [WORKSPACE, ANALYSIS_CONTRACT]
-    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', evaluate, '${WORKSPACE}', '${ANALYSIS_CONTRACT}/policy.json']
+    inputs: [WORKSPACE]
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', evaluate, '${WORKSPACE}', '${WORKSPACE}/state/policy.json']
 
   - id: adopt
     file: flow/atcs_cli.py
-    description: Publish the evaluation against the fixed policy and move the working/best/delivery pointers (M7).
-    inputs: [WORKSPACE, ANALYSIS_CONTRACT]
-    argv:
-      - python3
-      - ${WORKSPACE}/flow/atcs_cli.py
-      - adopt
-      - ${WORKSPACE}
-      - ${WORKSPACE}/state/baseline.json
-      - ${ANALYSIS_CONTRACT}/policy.json
+    description: >-
+      Publish the evaluation against the stamped policy and the current working state, move the
+      working/best/delivery pointers (M7) and, when working moves, rewrite state/working-state.json.
+    inputs: [WORKSPACE]
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', adopt, '${WORKSPACE}', '${WORKSPACE}/state/policy.json']
 
   - id: residual
     file: flow/atcs_cli.py
@@ -439,22 +454,32 @@ tools:
 
   - id: record-experience
     file: flow/atcs_cli.py
-    description: Append the last decision's predicted and measured outcome to the Campaign experience (M8).
+    description: >-
+      Append the evaluated candidate's predicted and measured outcome to the Campaign experience (M8),
+      composed from state files; the hypothesis is the integration plan's reason.
     inputs: [WORKSPACE]
     argv:
       - python3
       - ${WORKSPACE}/flow/atcs_cli.py
       - record-experience
       - ${WORKSPACE}
-      - ${WORKSPACE}/research/requests/experience-lineage.json
-      - ${WORKSPACE}/research/requests/experience-decision.json
-      - ${WORKSPACE}/research/requests/experience-outcome.json
+      - ${WORKSPACE}/research/requests/integration-plan.json
 
   - id: apr-prepare
     file: flow/atcs_cli.py
     description: Compile residual cases into one bounded APR stage intervention task (full-flow only; refused for post-route-only).
     inputs: [WORKSPACE, STAGE]
     argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', apr-prepare, '${WORKSPACE}', '${STAGE}']
+
+  - id: apr-run
+    recommendedVersion: Innovus 23.14
+    file: flow/atcs_cli.py
+    description: >-
+      Run the prepared APR stage task in Innovus, export the stage's database, DEF, netlist and physical
+      reports, and write the same implementation receipt implement writes.
+    inputs: [WORKSPACE, STAGE, SITE_CAPABILITIES]
+    licences: { innovus: 1 }
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', apr-run, '${WORKSPACE}', '${STAGE}', '${SITE_CAPABILITIES}']
 
 rules:
   - inputs-ready
@@ -486,12 +511,12 @@ goal:
   target_hold_wns_ns: { type: number, unit: ns, min: 0, max: 1, default: 0 }
 
 strategy:
-  workerSlots: { type: number, unit: count, min: 1, max: 3, default: 3 }
+  maxPaths: { type: number, unit: paths, min: 100, max: 5000, default: 1000 }
 
 words:
   target_setup_wns_ns: { label: target setup WNS, unit: ns }
   target_hold_wns_ns: { label: target hold WNS, unit: ns }
-  workerSlots: { label: worker slots, unit: count }
+  maxPaths: { label: max paths per scenario query, unit: paths }
 
 knowledge:
   - file: method-and-benchmark.md
@@ -521,18 +546,15 @@ workshops:
       Diagnose the current timing problem from the declared baseline state, current observation, risk
       atlas and experience: name the competing root causes and the cheapest query that separates them.
       Write the observation request to research/requests/observation-request.json as one JSON object
-      {designStateId, precision (gba|pba), requiredScenarios, maxPaths, nworst} naming the design-state
-      it observes. Also write the query's companion files the observe tool reads:
-      research/requests/observe-source-refs.json ({designStateId, scenarios: {<scenario>: {globalTiming,
-      setupPaths, holdPaths, checkTiming}}} naming, as absolute paths under the Campaign workspace, the
-      global_timing.rpt, setup.rpt, hold.rpt and check_timing.rpt that research/observe/<scenario>/
-      will hold) and research/requests/observe-scenario-inputs.json ({<scenario>: {design, netlist,
-      sdc, spef}} of that design-state, absolute paths). Every required scenario stays in the request; the request never
+      {designStateId, precision (gba|pba), requiredScenarios, maxPaths, nworst} naming the working
+      design-state it observes; the Run's maxPaths Strategy knob is what the observe tool applies, so
+      state that value. Also write research/requests/observe-scenario-inputs.json ({<scenario>:
+      {design, netlist, sdc, spef}} of that design-state, absolute paths), which the observe tool reads. Every required scenario stays in the request; the request never
       changes frequency, exceptions or required checks. It is a plan, not a measurement.
     directory: research/diagnose
     entry: entry.py
     language: python
-    reads: [baselineState, inputReadiness, currentObservations, riskAtlas, campaignExperience, statePointers]
+    reads: [workingState, inputReadiness, currentObservations, riskAtlas, campaignExperience, statePointers]
     knowledge: [observation-strategy.md, mechanisms-and-falsifiers.md, state-and-evidence.md, experience-transfer.md]
     produces: observationRequest
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -542,17 +564,18 @@ workshops:
       Decompose the current problem into exactly three bounded worker work packages (taskId w01, w02,
       w03), each against the baseline design-state: problem, target check keys, edit domain, protected
       objects, may-affect checks, admissible actions (size_cell, insert_buffer, delete_buffer, and
-      pg_local_adjust only when siteCapabilities.pgVerification is true) and budget. Write each package
+      pg_local_adjust only when siteCapabilities.pgVerification is true) and budget, all against the
+      working design-state (workingState). Write each package
       to research/requests/work-package-w0N.json. Write the campaign plan to
       research/requests/campaign-plan.json as {candidate: <w01 package>, baseState: <the stamped
-      baselineState>, siteCapabilities: <the Site capabilities>, workPackages: [<w01>, <w02>, <w03>],
+      workingState>, siteCapabilities: <the Site capabilities>, workPackages: [<w01>, <w02>, <w03>],
       rationale}. When starting a new batch, write research/requests/resolutions.json as
       {"resolutions": []}. Do not repeat a failed trial without new evidence; a slot with nothing
       worth researching still gets a bounded package whose diagnosis-only outcome is a valid no-fix.
     directory: research/plan
     entry: entry.py
     language: python
-    reads: [baselineState, inputReadiness, currentObservations, riskAtlas, contributionIndex, campaignExperience, statePointers]
+    reads: [workingState, inputReadiness, currentObservations, riskAtlas, contributionIndex, campaignExperience, statePointers]
     knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md]
     produces: campaignPlan
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -563,13 +586,15 @@ workshops:
       manifest, its work package and the recorded evidence; choose the analysis, candidate-generation
       and manual/auto strategy and the typed atcs_* procedures the Operator session will run. Write the
       slot's request to research/requests/worker-request-w01.json as {candidate: <the w01 work
-      package, never wider than the prepared edit domain>, baseState: <the stamped baselineState>,
+      package, never wider than the prepared edit domain>, baseState: <the stamped workingState>,
       siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. A prediction is a hypothesis for the tool to test, never a result.
+      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
+      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
+      dependencies}. A prediction is a hypothesis for the tool to test, never a result.
     directory: research/worker-01
     entry: entry.py
     language: python
-    reads: [baselineState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult01]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult01]
     knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest01
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -580,13 +605,15 @@ workshops:
       manifest, its work package and the recorded evidence; choose the analysis, candidate-generation
       and manual/auto strategy and the typed atcs_* procedures the Operator session will run. Write the
       slot's request to research/requests/worker-request-w02.json as {candidate: <the w02 work
-      package, never wider than the prepared edit domain>, baseState: <the stamped baselineState>,
+      package, never wider than the prepared edit domain>, baseState: <the stamped workingState>,
       siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. A prediction is a hypothesis for the tool to test, never a result.
+      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
+      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
+      dependencies}. A prediction is a hypothesis for the tool to test, never a result.
     directory: research/worker-02
     entry: entry.py
     language: python
-    reads: [baselineState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult02]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult02]
     knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest02
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -597,13 +624,15 @@ workshops:
       manifest, its work package and the recorded evidence; choose the analysis, candidate-generation
       and manual/auto strategy and the typed atcs_* procedures the Operator session will run. Write the
       slot's request to research/requests/worker-request-w03.json as {candidate: <the w03 work
-      package, never wider than the prepared edit domain>, baseState: <the stamped baselineState>,
+      package, never wider than the prepared edit domain>, baseState: <the stamped workingState>,
       siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. A prediction is a hypothesis for the tool to test, never a result.
+      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
+      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
+      dependencies}. A prediction is a hypothesis for the tool to test, never a result.
     directory: research/worker-03
     entry: entry.py
     language: python
-    reads: [baselineState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult03]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult03]
     knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest03
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -634,14 +663,16 @@ workshops:
       research/requests/next-decision.json with stateRef, observationRef, budgetRef, question, action
       (observe, research, compose, revise, implement, earlier-apr, wait or goal-met), targets, reason,
       falsifier, costBasis and requiredArtifacts. earlier-apr is legal only when the scope is
-      full-flow; wait names the concrete external input, scope or capability required; goal-met is
+      full-flow and must name a stage (this compiled graph executes postroute only; another stage is
+      refused as inadmissible); wait names the concrete external input, scope or capability required;
+      goal-met is
       legal only when the current final evaluation and accepted artifact support it. A temporarily
       degraded working state must name its follow-up and falsifier. Cite new information; never retry
       by revision alone.
     directory: research/next
     entry: entry.py
     language: python
-    reads: [inputReadiness, currentObservations, riskAtlas, contributionIndex, integrationState, precheckEvidence, physicalDelta, finalEvaluation, statePointers, residualCases, campaignExperience]
+    reads: [inputReadiness, workingState, acceptancePolicy, currentObservations, riskAtlas, contributionIndex, integrationState, precheckEvidence, physicalDelta, finalEvaluation, statePointers, residualCases, campaignExperience]
     knowledge: [method-and-benchmark.md, state-and-evidence.md, cheap-verification.md, lifecycle-and-input-modes.md, innovus-stage-interventions.md, experience-transfer.md]
     produces: nextDecision
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']

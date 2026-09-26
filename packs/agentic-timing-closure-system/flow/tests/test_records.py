@@ -343,6 +343,16 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
         self.assertTrue(tool_written)
         self.assertEqual(sorted(set(tool_written) - written), [], "contract.yml declares tool outputs atcs_cli.py never writes")
 
+    def test_graph_apr_stage_is_one_the_next_decision_reader_admits(self):
+        """apr-prepare/apr-run take the stage as a literal; the Reader must refuse any other stage."""
+        stages = set(re.findall(r"STAGE: ([a-z]+)", GRAPH_PATH.read_text(encoding="utf-8")))
+        self.assertTrue(stages, "graph.yml binds no APR stage")
+        reader = (PACK_ROOT / "tools" / "read-atcs.py").read_text(encoding="utf-8")
+        executable = re.search(r"^_EXECUTABLE_APR_STAGES = \(([^)]*)\)", reader, re.M)
+        self.assertIsNotNone(executable)
+        admitted = set(re.findall(r'"([a-z]+)"', executable.group(1)))
+        self.assertEqual(stages, admitted)
+
     def test_parser_reads_both_list_spellings(self):
         sample = "a:\n  rules: [x, y]\n  rules:\n    - z\n    - w\nb: { rules: [v] }\n"
         self.assertEqual(yaml_key_lists(sample, "rules"), [["x", "y"], ["z", "w"], ["v"]])

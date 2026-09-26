@@ -686,6 +686,8 @@ _NEXT_DECISION_REQUIRED_FIELDS = (
     "targets", "reason", "falsifier", "costBasis", "requiredArtifacts",
 )
 _ID_SHAPE_RE = re.compile(r"^[0-9a-f]{20}$")
+_APR_STAGES = ("place", "cts", "route", "postroute")
+_EXECUTABLE_APR_STAGES = ("postroute",)
 
 
 def _collect_next_decision_problems(obj, workspace):
@@ -699,6 +701,17 @@ def _collect_next_decision_problems(obj, workspace):
     action = obj.get("action")
     if "action" in obj and action not in _ACTION_CODES:
         problems.append(f"action must be one of {sorted(_ACTION_CODES)}, got {action!r}")
+    if action == "earlier-apr":
+        # Only this action needs a stage, so it is not in `_NEXT_DECISION_REQUIRED_FIELDS`. The
+        # stage must be one `atcs_cli.APR_STAGES` knows AND one the compiled graph can execute:
+        # `apr-prepare`/`apr-run` take the stage as a literal argv word (graph.yml binds
+        # `postroute`), so a decision naming another stage is refused here rather than silently
+        # run as a postroute intervention (FABRIC.md gap on the earlier-apr stage).
+        stage = obj.get("stage")
+        if stage not in _APR_STAGES:
+            problems.append(f"stage must be one of {list(_APR_STAGES)} when action is 'earlier-apr', got {stage!r}")
+        elif stage not in _EXECUTABLE_APR_STAGES:
+            problems.append(f"stage {stage!r} is not executable by this compiled graph; executable: {list(_EXECUTABLE_APR_STAGES)}")
 
     for ref_key in ("stateRef", "observationRef"):
         if ref_key not in obj:

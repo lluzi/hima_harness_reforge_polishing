@@ -774,12 +774,37 @@ class NextDecisionReaderTest(unittest.TestCase):
             "implement": 5, "earlier-apr": 6, "wait": 7, "goal-met": 8,
         }
         for action, code in codes.items():
-            report = self._write_decision(self._decision(action=action))
+            extra = {"stage": "postroute"} if action == "earlier-apr" else {}
+            report = self._write_decision(self._decision(action=action, **extra))
             values = read_atcs.read("next-decision", report, self.workspace)
             by_type = {v["type"]: v for v in values}
             self.assertEqual(by_type["tc_next_action"]["value"], code, action)
             self.assertEqual(by_type["tc_stop_required"]["value"], 1 if code == 7 else 0, action)
             self.assertEqual(by_type["tc_request_invalid_count"]["value"], 0, action)
+
+    def test_earlier_apr_requires_a_declared_stage(self):
+        report = self._write_decision(self._decision(action="earlier-apr", stage="postroute"))
+        by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
+        self.assertEqual(by_type["tc_request_invalid_count"]["value"], 0)
+        self.assertEqual(by_type["tc_next_action"]["value"], 6)
+        for bad in ({}, {"stage": "floorplan"}, {"stage": None}):
+            report = self._write_decision(self._decision(action="earlier-apr", **bad))
+            by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
+            self.assertEqual(by_type["tc_request_invalid_count"]["value"], 1, bad)
+            self.assertIsNone(by_type["tc_next_action"]["value"], bad)
+
+    def test_earlier_apr_stage_the_graph_cannot_run_is_refused_not_rerouted(self):
+        # graph.yml binds apr-prepare/apr-run to postroute; any other known stage is inadmissible.
+        for stage in ("place", "cts", "route"):
+            report = self._write_decision(self._decision(action="earlier-apr", stage=stage))
+            by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
+            self.assertEqual(by_type["tc_request_invalid_count"]["value"], 1, stage)
+            self.assertIsNone(by_type["tc_next_action"]["value"], stage)
+
+    def test_stage_is_not_required_for_other_actions(self):
+        report = self._write_decision(self._decision(action="implement"))
+        by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
+        self.assertEqual(by_type["tc_request_invalid_count"]["value"], 0)
 
     def test_action_outside_the_eight_is_unknown_not_a_guess(self):
         report = self._write_decision(self._decision(action="freelance"))

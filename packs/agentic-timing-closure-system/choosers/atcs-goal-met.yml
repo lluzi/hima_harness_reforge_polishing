@@ -4,7 +4,7 @@ title: Request goal-met only when every current final rule passed on one candida
 # The last Judge before this Explore node is the goal-met gate: every final rule over the
 # re-read final evaluation (coverage first, setup Goal second, then hold Goal, identity, constraint
 # failures and unknowns, accepted artifact). The Harness refuses goal-met unless all of them PASS.
-parameter: { name: slots, unit: count }
+parameter: { name: paths, unit: paths }
 reads:
   finalSetupWns: { type: tc_final_setup_wns_ns, unit: ns, mode: setup }
   finalHoldWns: { type: tc_final_hold_wns_ns, unit: ns, mode: hold }
@@ -13,7 +13,7 @@ decide:
     goalMet: true
   - when: { constraint: FAIL }
     next:
-      workerSlots: slots
+      maxPaths: paths
   - when: { goal: FAIL }
     next:
-      workerSlots: slots
+      maxPaths: paths
