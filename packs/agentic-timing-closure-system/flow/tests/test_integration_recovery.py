@@ -521,6 +521,57 @@ class ValidatePlanTests(unittest.TestCase):
         with self.assertRaises(core.AtcsError):
             integration.validate_plan(plan, facts)
 
+    def test_one_target_with_two_distinct_revised_contributions_is_invalid(self):
+        c1 = make_contribution("c1", operations=[size_op("U1", "A", "B")])
+        c2 = make_contribution("c2", operations=[size_op("U1", "A", "C")])
+        c1r_a = make_contribution("c1r-a", operations=[size_op("U2", "X", "Y")])
+        c1r_b = make_contribution("c1r-b", operations=[size_op("U3", "X", "Y")])
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2, c1r_a, c1r_b], [])
+        conflict = find_conflict(facts, "same-instance-different-master")
+
+        # Two resolutions both say "revise:c1", but disagree on which considered
+        # contribution actually replaces it — unresolvable, since only one of
+        # them could ever actually replay in c1's slot.
+        plan = make_plan(
+            "b1",
+            select=["c1", "c2"],
+            resolutions=[
+                {"conflictKey": conflict["key"], "decision": "revise:c1", "revisedContribution": "c1r-a"},
+                {"conflictKey": conflict["key"], "decision": "revise:c1", "revisedContribution": "c1r-b"},
+            ],
+        )
+
+        self.assertGreaterEqual(integration.plan_invalid_count(plan, facts), 1)
+        with self.assertRaises(core.AtcsError):
+            integration.validate_plan(plan, facts)
+
+    def test_validate_plan_also_catches_a_conflict_left_unresolved_after_substitution(self):
+        # Same scenario `prepare_replay`'s
+        # test_revise_does_not_hide_a_conflict_the_revised_contribution_is_in
+        # exercises — this time checked at `validate_plan`/`plan_invalid_count`
+        # time, via the SAME shared helper `prepare_replay` itself calls (no
+        # duplicated logic), so a plan `prepare_replay` would refuse is already
+        # counted invalid before it ever gets that far.
+        c1 = make_contribution("c1", operations=[size_op("X", "A", "B")])
+        c2 = make_contribution("c2", operations=[size_op("X", "A", "C")])
+        c1r = make_contribution("c1r", operations=[size_op("Y", "P", "Q")])
+        c3 = make_contribution("c3", operations=[size_op("Y", "P", "R")])
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2, c1r, c3], [])
+        conflicts = facts["conflicts"]
+        conflict_x = next(c for c in conflicts if set(c["contributions"]) == {"c1", "c2"})
+        conflict_y = next(c for c in conflicts if set(c["contributions"]) == {"c1r", "c3"})
+
+        plan = make_plan(
+            "b1",
+            select=["c1", "c3"],
+            resolutions=[{"conflictKey": conflict_x["key"], "decision": "revise:c1", "revisedContribution": "c1r"}],
+        )
+
+        self.assertGreaterEqual(integration.plan_invalid_count(plan, facts), 1)
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.validate_plan(plan, facts)
+        self.assertIn(conflict_y["key"], str(ctx.exception))
+
 
 class PrepareReplayTests(unittest.TestCase):
     def test_steps_follow_facts_order_with_expected_step_ids(self):

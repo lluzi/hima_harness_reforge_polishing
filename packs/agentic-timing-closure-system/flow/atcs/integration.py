@@ -642,16 +642,22 @@ def _collect_plan_problems(obj, facts):
 
     # Second pass: `revise`-specific checks. A `revisedContribution` must be a
     # considered id that is not itself part of this same batch any other way
-    # (directly selected, deferred, or dropped) and not the substitute for more
-    # than one target — any of those would let the same considered contribution's
-    # operations enter the replay under two different identities/positions,
-    # which is exactly what `prepare_replay`'s "duplicate-step" defense also
-    # guards against at replay time.
+    # (directly selected, deferred, or dropped), not the substitute for more
+    # than one target, and a given target must not itself receive more than one
+    # *distinct* `revisedContribution` (two different resolutions both saying
+    # "revise:c1" but naming different substitutes is unresolvable — which one
+    # would actually replay?) — any of these would let the same considered
+    # contribution's operations enter the replay under two different
+    # identities/positions, which is exactly what `prepare_replay`'s
+    # "duplicate-step" defense also guards against at replay time.
     revise_target_counts = {}
+    revised_ids_by_target = {}
     for conflict_key, kind, target_id, resolution in parsed:
         if kind != "revise":
             continue
         revised_id = resolution.get("revisedContribution")
+        if _hashable(target_id) and _hashable(revised_id):
+            revised_ids_by_target.setdefault(target_id, set()).add(revised_id)
         if not _hashable(revised_id) or revised_id not in considered:
             problems.append(f"revise:{target_id} revisedContribution {revised_id!r} is not in facts.considered")
             continue
@@ -670,6 +676,13 @@ def _collect_plan_problems(obj, facts):
     for revised_id, count in revise_target_counts.items():
         if count > 1:
             problems.append(f"revisedContribution {revised_id!r} is the target of {count} revise resolutions")
+
+    for target_id, revised_ids in revised_ids_by_target.items():
+        if len(revised_ids) > 1:
+            problems.append(
+                f"revise:{target_id} has {len(revised_ids)} distinct revisedContribution values: "
+                f"{sorted(revised_ids)}"
+            )
 
     # Third pass: contradiction checks.
     # - `kinds_by_target` is deliberately keyed by target id *alone* (not by
@@ -699,6 +712,18 @@ def _collect_plan_problems(obj, facts):
             problems.append(
                 f"conflictKey {conflict_key!r} has contradictory 'keep' targets: {sorted(keep_targets)}"
             )
+
+    # Fourth pass: the same post-substitution unresolved-conflict check
+    # `prepare_replay` itself would apply (via `_check_no_unresolved_conflict` —
+    # shared, not duplicated, so the two can never silently drift apart). A plan
+    # `prepare_replay` would refuse is therefore already counted invalid here,
+    # with the conflict key named in the problem text.
+    drop_ids, revise_map, keep_exclusions = _resolution_effects(obj, facts)
+    excluded_ids_for_conflict_check = drop_ids | keep_exclusions | deferred_set
+    try:
+        _check_no_unresolved_conflict(select, excluded_ids_for_conflict_check, revise_map, facts)
+    except core.AtcsError as exc:
+        problems.append(f"plan leaves a conflict unresolved after substitution: {exc.detail}")
 
     return problems
 
@@ -732,14 +757,25 @@ def _resolution_effects(plan, facts):
     Generic over conflict `kind` (controller decision) — `keep`/`drop`
     exclusion and `revise` substitution are computed purely from
     contribution ids and each named conflict's own `contributions` list,
-    never from what kind of conflict it is.
+    never from what kind of conflict it is. Tolerant of a malformed
+    `plan.resolutions` (not a list, or containing a non-object entry) —
+    such an entry is simply skipped here, since `_collect_plan_problems`
+    is what reports it as a real structural problem; this function is also
+    reused from `plan_invalid_count`'s never-raises path (via the shared
+    unresolved-conflict check), so it must not raise on untrusted input.
     """
     conflicts_by_key = {conflict["key"]: conflict for conflict in (facts.get("conflicts") or [])}
+
+    resolutions = plan.get("resolutions")
+    if not isinstance(resolutions, list):
+        resolutions = []
 
     drop_ids = set()
     revise_map = {}
     keep_exclusions = set()
-    for resolution in plan.get("resolutions") or []:
+    for resolution in resolutions:
+        if not isinstance(resolution, dict):
+            continue
         kind, target_id = _decision_parts(resolution.get("decision"))
         if kind == "drop":
             drop_ids.add(target_id)
@@ -765,8 +801,21 @@ def _check_no_unresolved_conflict(select_ids, excluded_ids, revise_map, facts):
     an unresolved batch — the original `revise:<id>` target's own conflicts
     are, conversely, no longer relevant once its slot no longer replays its
     own operations.
+
+    Also used from `validate_plan`/`plan_invalid_count` (shared, not
+    duplicated) against untrusted plan content, so `select_ids` may contain
+    an unhashable entry — such an entry can never legitimately match a
+    conflict's `contributions` list anyway, so it is skipped rather than
+    raising `TypeError` out of a function `plan_invalid_count` promises
+    never to raise from.
     """
-    effective_selected = {revise_map.get(cid, cid) for cid in select_ids if cid not in excluded_ids}
+    effective_selected = set()
+    for cid in select_ids:
+        if not _hashable(cid) or cid in excluded_ids:
+            continue
+        mapped = revise_map.get(cid, cid)
+        effective_selected.add(mapped if _hashable(mapped) else cid)
+
     for conflict in facts.get("conflicts") or []:
         members_remaining = sorted(
             cid for cid in conflict.get("contributions") or [] if cid in effective_selected
