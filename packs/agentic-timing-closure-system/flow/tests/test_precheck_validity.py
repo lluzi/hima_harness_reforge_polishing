@@ -58,8 +58,14 @@ SCENARIO_WNS = {
 }
 
 
+# Every base-fixture scenario is pinned to this one corner, and the base plan's
+# `scenarioCorners` map agrees — the identity chain is fully walkable and clean.
+BASE_CORNER = "corner_a"
+
+
 def _base_receipts():
-    """Fully consistent receipts covering all four required scenarios."""
+    """Fully consistent receipts covering all four required scenarios, all on
+    `BASE_CORNER` (matching `_base_plan`'s `scenarioCorners`)."""
     spef = {
         "corner_a": {"path": "a.spef", "sha256": SPEF_A_SHA, "inputDefSha256": DEF_SHA},
         "corner_b": {"path": "b.spef", "sha256": SPEF_B_SHA, "inputDefSha256": DEF_SHA},
@@ -67,6 +73,7 @@ def _base_receipts():
     sta = {}
     for scenario, (setup_wns, hold_wns) in SCENARIO_WNS.items():
         sta[scenario] = {
+            "corner": BASE_CORNER,
             "inputs": {"netlistSha256": NETLIST_SHA, "spefSha256": SPEF_A_SHA},
             "observation": _observation(scenario, core.known(setup_wns), core.known(hold_wns)),
         }
@@ -84,7 +91,11 @@ def _base_receipts():
 
 
 def _base_plan():
-    return verification.plan_checks({"id": "mc-1", "operations": [{"op": "size_cell"}]}, {})
+    scenario_corners = {scenario: BASE_CORNER for scenario in SCENARIO_WNS}
+    return verification.plan_checks(
+        {"id": "mc-1", "operations": [{"op": "size_cell"}]},
+        {"scenarioCorners": scenario_corners},
+    )
 
 
 class PlanChecksTest(unittest.TestCase):
@@ -113,6 +124,16 @@ class PlanChecksTest(unittest.TestCase):
     def test_carries_merge_commit_id(self):
         plan = verification.plan_checks({"id": "mc-4", "operations": []}, {})
         self.assertEqual(plan["mergeCommitId"], "mc-4")
+
+    def test_scenario_corners_copied_from_policy(self):
+        scenario_corners = {"func_ssg_rcworst_m40": "rcworst_m40"}
+        plan = verification.plan_checks({"id": "mc-5", "operations": []},
+                                         {"scenarioCorners": scenario_corners})
+        self.assertEqual(plan["scenarioCorners"], scenario_corners)
+
+    def test_scenario_corners_defaults_to_empty_when_policy_omits_it(self):
+        plan = verification.plan_checks({"id": "mc-6", "operations": []}, {})
+        self.assertEqual(plan["scenarioCorners"], {})
 
 
 class PrestaQualificationTest(unittest.TestCase):
@@ -271,6 +292,146 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(evaluation["fixedCheckCount"], core.known(1))
         self.assertEqual(evaluation["missingPriorCheckCount"], core.known(0))
         self.assertEqual(evaluation["comparison"]["fixed"], [core.check_key("func_ssg_rcworst_m40", "setup", "EP1")])
+
+
+# A realistic corner-per-scenario mapping: ssg scenarios need the worst-case RC
+# ("rcworst") SPEF, ffg scenarios need the best-case RC ("cbest") SPEF, each at
+# its own temperature corner. Used only by the per-scenario corner identity tests
+# below — `_base_plan`/`_base_receipts` above deliberately keep a single shared
+# corner for every other test's simplicity.
+FOUR_CORNERS = ("rcworst_m40", "rcworst_125", "cbest_m40", "cbest_125")
+CORRECT_SCENARIO_CORNERS = {
+    "func_ssg_rcworst_m40": "rcworst_m40",
+    "func_ssg_rcworst_125": "rcworst_125",
+    "func_ffg_cbest_m40": "cbest_m40",
+    "func_ffg_cbest_125": "cbest_125",
+}
+
+
+def _spef_for_corners(corners):
+    return {corner: {"path": f"{corner}.spef", "sha256": f"sha-{corner}", "inputDefSha256": DEF_SHA}
+            for corner in corners}
+
+
+def _sta_with_corners(receipt_corner_by_scenario):
+    """Each scenario's STA receipt claims `receipt_corner_by_scenario[scenario]` as its
+    corner, self-consistently (its `inputs.spefSha256` really is that corner's sha) —
+    any identity error introduced by a test must come from a *wrong* corner claim, not
+    from an internally-inconsistent one."""
+    sta = {}
+    for scenario, corner in receipt_corner_by_scenario.items():
+        setup_wns, hold_wns = SCENARIO_WNS[scenario]
+        sta[scenario] = {
+            "corner": corner,
+            "inputs": {"netlistSha256": NETLIST_SHA, "spefSha256": f"sha-{corner}"},
+            "observation": _observation(scenario, core.known(setup_wns), core.known(hold_wns)),
+        }
+    return sta
+
+
+def _corner_receipts(receipt_corner_by_scenario):
+    return {
+        "database": {"path": "design.enc", "sha256": "e" * 64},
+        "netlist": {"path": "design.v", "sha256": NETLIST_SHA},
+        "def": {"path": "design.def", "sha256": DEF_SHA},
+        "spef": _spef_for_corners(FOUR_CORNERS),
+        "sta": _sta_with_corners(receipt_corner_by_scenario),
+        "physical": {"drc": fixtures.drc_report([]), "connectivity": fixtures.connectivity_report([])},
+    }
+
+
+class PerScenarioCornerIdentityTest(unittest.TestCase):
+    def setUp(self):
+        self.plan = verification.plan_checks(
+            {"id": "mc-corners", "operations": []}, {"scenarioCorners": CORRECT_SCENARIO_CORNERS}
+        )
+        self.prior_observation = {"checks": {}}
+        self.baseline_physical = {"drc": fixtures.drc_report([]), "connectivity": fixtures.connectivity_report([])}
+
+    def test_correct_mapping_gives_zero_identity_errors(self):
+        receipts = _corner_receipts(CORRECT_SCENARIO_CORNERS)
+
+        evaluation = verification.assemble(self.plan, receipts, self.prior_observation, self.baseline_physical)
+
+        self.assertEqual(evaluation["finalIdentityErrorCount"], core.known(0))
+
+    def test_all_four_scenarios_on_one_corner_counts_errors(self):
+        # Every scenario's STA receipt claims "rcworst_m40" — correct only for
+        # func_ssg_rcworst_m40 itself; the other three are on the wrong corner.
+        wrong_map = {scenario: "rcworst_m40" for scenario in CORRECT_SCENARIO_CORNERS}
+        receipts = _corner_receipts(wrong_map)
+
+        evaluation = verification.assemble(self.plan, receipts, self.prior_observation, self.baseline_physical)
+
+        self.assertEqual(core.value_of(evaluation["finalIdentityErrorCount"]), 3)
+
+    def test_ssg_scenario_pointing_at_cbest_spef_is_an_error(self):
+        receipt_corners = dict(CORRECT_SCENARIO_CORNERS)
+        receipt_corners["func_ssg_rcworst_m40"] = "cbest_m40"
+        receipts = _corner_receipts(receipt_corners)
+
+        evaluation = verification.assemble(self.plan, receipts, self.prior_observation, self.baseline_physical)
+
+        self.assertEqual(core.value_of(evaluation["finalIdentityErrorCount"]), 1)
+
+
+class MissingIdentityLegTest(unittest.TestCase):
+    def setUp(self):
+        self.plan = _base_plan()
+        self.prior_observation = {"checks": {}}
+        self.baseline_physical = {"drc": fixtures.drc_report([]), "connectivity": fixtures.connectivity_report([])}
+
+    def test_def_none_makes_identity_count_unknown(self):
+        receipts = _base_receipts()
+        receipts["def"] = None
+
+        evaluation = verification.assemble(self.plan, receipts, self.prior_observation, self.baseline_physical)
+
+        self.assertFalse(core.is_known(evaluation["finalIdentityErrorCount"]))
+
+    def test_missing_spef_input_def_sha_makes_identity_count_unknown(self):
+        receipts = _base_receipts()
+        del receipts["spef"]["corner_a"]["inputDefSha256"]
+
+        evaluation = verification.assemble(self.plan, receipts, self.prior_observation, self.baseline_physical)
+
+        self.assertFalse(core.is_known(evaluation["finalIdentityErrorCount"]))
+
+    def test_missing_netlist_sha_makes_identity_count_unknown(self):
+        receipts = _base_receipts()
+        del receipts["netlist"]["sha256"]
+
+        evaluation = verification.assemble(self.plan, receipts, self.prior_observation, self.baseline_physical)
+
+        self.assertFalse(core.is_known(evaluation["finalIdentityErrorCount"]))
+
+    def test_missing_database_sha_makes_identity_count_unknown(self):
+        receipts = _base_receipts()
+        del receipts["database"]["sha256"]
+
+        evaluation = verification.assemble(self.plan, receipts, self.prior_observation, self.baseline_physical)
+
+        self.assertFalse(core.is_known(evaluation["finalIdentityErrorCount"]))
+
+    def test_scenario_corners_map_absent_makes_identity_count_unknown(self):
+        # A plan built without any scenarioCorners policy at all.
+        plan = verification.plan_checks({"id": "mc-7", "operations": []}, {})
+        receipts = _base_receipts()
+
+        evaluation = verification.assemble(plan, receipts, self.prior_observation, self.baseline_physical)
+
+        self.assertFalse(core.is_known(evaluation["finalIdentityErrorCount"]))
+
+    def test_scenario_corners_map_missing_a_required_scenario_makes_identity_count_unknown(self):
+        scenario_corners = {scenario: BASE_CORNER for scenario in SCENARIO_WNS}
+        del scenario_corners["func_ffg_cbest_125"]
+        plan = verification.plan_checks({"id": "mc-8", "operations": []},
+                                         {"scenarioCorners": scenario_corners})
+        receipts = _base_receipts()
+
+        evaluation = verification.assemble(plan, receipts, self.prior_observation, self.baseline_physical)
+
+        self.assertFalse(core.is_known(evaluation["finalIdentityErrorCount"]))
 
 
 if __name__ == "__main__":

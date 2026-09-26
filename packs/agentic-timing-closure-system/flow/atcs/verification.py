@@ -49,12 +49,20 @@ and never a silently-assumed PASS.
         },
         "sta": {
             "<scenario>": {
+                "corner": "<corner name — a key of receipts[\"spef\"]>",
                 "inputs": {"netlistSha256": "<64 hex>", "spefSha256": "<64 hex>"},
                 "observation": <observation-set-shaped dict>,
             }, ...
         },
         "physical": {"drc": "<verify_drc.rpt text>", "connectivity": "<verifyConnectivity.rpt text>"},
     }
+
+T12 (`atcs.adapters`) is the producer that must assemble receipts in exactly
+this shape from the actual Innovus/StarRC/PrimeTime tool outputs it
+collects — in particular, every `receipts["sta"][scenario]` entry now
+carries its own `"corner"` (the SPEF corner that STA run actually used),
+not just its input hashes; T12 must record that corner alongside the
+hashes it already has to hand, not infer or omit it.
 
 `baseline_physical` is `{"drc": "<text>", "connectivity": "<text>"}` in the
 same report grammar — the pre-implementation (or control-arm) physical
@@ -77,9 +85,21 @@ a final Goal judgement must never rest on modeled-not-measured parasitics.
 "Required scenarios" — this Pack does not let a merge commit or policy grow
 or shrink it). `extraction` and `sta` are always the literal string
 `"full"` (no partial/incremental extraction or STA scope exists in this
-Pack). `physical` defaults to `["drc", "connectivity"]` — the two physical
-checks every candidate always needs — but `policy` may override it via
-`policy["physical"]`.
+Pack). `physical` defaults to `["drc", "connectivity"]` — the fixed
+drc/connectivity pair `assemble` always evaluates as part of the
+`evaluation` artifact's own schema — but `policy` may override it via
+`policy["physical"]`; `plan.physical` is read by the *implementation* step
+(T11/T12) as the literal list of physical-check jobs it must actually run
+to produce `receipts["physical"]`, not by `assemble` itself.
+
+`scenarioCorners` is copied verbatim from `policy["scenarioCorners"]` (a
+`{scenario: corner}` map the upstream analysis contract supplies — which
+SPEF corner each required scenario's STA is expected to use); when
+`policy` carries no such key the plan's `scenarioCorners` is `{}`.
+`assemble` reads this map to check that each scenario's STA receipt used
+the corner the plan actually requires for it (see `assemble`'s Identity
+step below) — `plan_checks` itself does not validate or complete this map,
+it only carries it through.
 
 `functional` and `pg` are conditional on the merge commit's own
 `operations[]` (the shared `operation` records named in global-context's
@@ -173,22 +193,37 @@ Builds the final `evaluation` artifact. Order of operations:
    conditions makes the whole mode's final WNS `unknown`, naming every
    contributing scenario/reason — never a partial minimum over whichever
    scenarios happened to be available.
-4. **Identity** (`finalIdentityErrorCount`) — two independent identity
-   chains, each mismatch adding one to the count: (a) every
-   `receipts["spef"][corner]["inputDefSha256"]` must equal
+4. **Identity** (`finalIdentityErrorCount`) — the chain DB -> netlist/DEF
+   -> SPEF -> STA is checked *per scenario*, and is fail-closed at the leg
+   level: `finalIdentityErrorCount` is only ever a known count when every
+   leg below was actually present to check. If any leg is missing —
+   `receipts["database"]["sha256"]` or `receipts["netlist"]["sha256"]`
+   absent, `receipts["def"]` is `None` (or its `sha256` absent), any
+   `receipts["spef"][corner]` lacks `inputDefSha256`, or `plan["scenarioCorners"]`
+   is absent/empty or lacks an entry for one of `plan["requiredScenarios"]`
+   — the whole count is `unknown`, naming every missing leg (never a
+   partial known count computed only over the legs that happened to be
+   present: a chain that cannot be fully walked cannot certify a `0`).
+   Only once every leg is present does `assemble` count actual mismatches,
+   one per violation, across all of `receipts["sta"]`'s scenarios:
+   (a) every `receipts["spef"][corner]["inputDefSha256"]` must equal
    `receipts["def"]["sha256"]` (the extraction ran on the actual final
-   DEF, not a stale one); (b) every `receipts["sta"][scenario]["inputs"]`
-   must have `netlistSha256 == receipts["netlist"]["sha256"]` and a
-   `spefSha256` that matches *some* recorded SPEF extraction output's
-   `sha256` (this Pack's receipts do not name which corner a scenario
-   used, only that STA's input SPEF must be traceable to a real
-   extraction output — an `spefSha256` matching no known extraction output
-   at all is exactly the "STA input SPEF sha ≠ extraction output sha" case
-   this task's brief names). This is independent of coverage: a scenario
-   can be identity-mismatched and still contribute a (untrustworthy but
-   present) WNS value — `final-evidence-ready`'s two Judge nodes
-   (`-coverage` then `-identity`) gate on these two counts separately, in
-   sequence, per `SPEC.md`.
+   DEF, not a stale one); (b) each scenario's own `receipts["sta"][scenario]["corner"]`
+   must name a key of `receipts["spef"]`, and that scenario's
+   `inputs.spefSha256` must equal `receipts["spef"][that corner]["sha256"]`
+   exactly (an `spefSha256`/corner that don't agree with any real
+   extraction output is exactly the "STA input SPEF sha ≠ extraction
+   output sha" case this task's brief names); (c) that same
+   `receipts["sta"][scenario]["corner"]` must equal
+   `plan["scenarioCorners"][scenario]` — the corner the upstream analysis
+   contract actually required for this scenario (an `ssg`/`rcworst`
+   scenario silently reading a `cbest` SPEF is a real identity error even
+   when that SPEF's own hash matches perfectly); (d) `inputs.netlistSha256`
+   must equal `receipts["netlist"]["sha256"]`. This is independent of
+   coverage: a scenario can be identity-mismatched and still contribute a
+   (untrustworthy but present) WNS value — `final-evidence-ready`'s two
+   Judge nodes (`-coverage` then `-identity`) gate on these two counts
+   separately, in sequence, per `SPEC.md`.
 5. **Physical constraints** (`constraintFailureCount`,
    `constraintUnknownCount`, and the `physical` field) — for each of
    `"drc"`/`"connectivity"`, both `receipts["physical"][kind]` (the
@@ -262,6 +297,9 @@ def plan_checks(merge_commit, policy):
 
     functional = ["connectivity"] if op_kinds & set(_TOPOLOGY_OPS) else []
     pg = ["pg"] if "pg_local_adjust" in op_kinds else []
+    # `assemble` always evaluates the fixed drc/connectivity pair the `evaluation`
+    # schema declares; `plan.physical` is what the implementation step (T11/T12)
+    # must actually run to produce `receipts["physical"]`, not a knob `assemble` reads.
     physical = list(policy.get("physical", DEFAULT_PHYSICAL_CHECKS))
 
     body = {
@@ -271,6 +309,7 @@ def plan_checks(merge_commit, policy):
         "physical": physical,
         "functional": functional,
         "pg": pg,
+        "scenarioCorners": dict(policy.get("scenarioCorners") or {}),
         "mergeCommitId": merge_commit.get("id"),
     }
     return core.stamp("check-plan", body)
@@ -378,24 +417,76 @@ def _final_wns(plan, receipts, mode):
     return core.known(min(values))
 
 
-def _identity_errors(receipts):
-    netlist_sha = (receipts.get("netlist") or {}).get("sha256")
-    def_sha = (receipts.get("def") or {}).get("sha256")
+def _missing_identity_legs(plan, receipts):
+    """Name every leg of the DB -> netlist/DEF -> SPEF -> STA chain that is not
+    even present to check. Non-empty means `_identity_errors` cannot run at all —
+    the chain must be fully walkable to certify a known error count, even `0`."""
+    missing = []
+
+    if not (receipts.get("database") or {}).get("sha256"):
+        missing.append("missing database sha256")
+    if not (receipts.get("netlist") or {}).get("sha256"):
+        missing.append("missing netlist sha256")
+
+    def_entry = receipts.get("def")
+    if def_entry is None:
+        missing.append("def is None")
+    elif not def_entry.get("sha256"):
+        missing.append("missing def sha256")
+
+    for corner, entry in receipts.get("spef", {}).items():
+        if not entry.get("inputDefSha256"):
+            missing.append(f"spef {corner} missing inputDefSha256")
+
+    scenario_corners = plan.get("scenarioCorners") or {}
+    if not scenario_corners:
+        missing.append("missing scenarioCorners map")
+    else:
+        for scenario in plan["requiredScenarios"]:
+            if scenario not in scenario_corners:
+                missing.append(f"scenarioCorners missing {scenario}")
+
+    return missing
+
+
+def _identity_errors(plan, receipts):
+    """Count actual identity mismatches. Only called once `_missing_identity_legs`
+    is empty — every leg it checks is guaranteed present here."""
+    netlist_sha = receipts["netlist"]["sha256"]
+    def_sha = receipts["def"]["sha256"]
     spef = receipts.get("spef", {})
-    valid_spef_shas = {entry.get("sha256") for entry in spef.values()}
+    scenario_corners = plan["scenarioCorners"]
 
     errors = []
     for corner, entry in spef.items():
-        if def_sha is not None and entry.get("inputDefSha256") != def_sha:
+        if entry["inputDefSha256"] != def_sha:
             errors.append(f"spef {corner} was extracted from a different DEF")
 
     for scenario, entry in receipts.get("sta", {}).items():
         inputs = entry.get("inputs", {})
-        if netlist_sha is not None and inputs.get("netlistSha256") != netlist_sha:
+        if inputs.get("netlistSha256") != netlist_sha:
             errors.append(f"sta {scenario} used a different netlist")
-        if inputs.get("spefSha256") not in valid_spef_shas:
-            errors.append(f"sta {scenario} spef sha does not match any extraction output")
+
+        receipt_corner = entry.get("corner")
+        if receipt_corner is None or receipt_corner not in spef:
+            errors.append(f"sta {scenario} does not name a valid spef corner")
+            continue
+        if inputs.get("spefSha256") != spef[receipt_corner]["sha256"]:
+            errors.append(f"sta {scenario} spef sha does not match corner {receipt_corner}'s extraction output")
+
+        expected_corner = scenario_corners.get(scenario)
+        if expected_corner is not None and expected_corner != receipt_corner:
+            errors.append(
+                f"sta {scenario} used corner {receipt_corner!r} but the plan requires {expected_corner!r}"
+            )
     return errors
+
+
+def _final_identity_error_count(plan, receipts):
+    missing_legs = _missing_identity_legs(plan, receipts)
+    if missing_legs:
+        return core.unknown("; ".join(missing_legs))
+    return core.known(len(_identity_errors(plan, receipts)))
 
 
 def _combine_sta_observations(sta_receipts):
@@ -436,7 +527,7 @@ def assemble(plan, receipts, prior_observation, baseline_physical):
     final_setup_wns = _final_wns(plan, receipts, "setup")
     final_hold_wns = _final_wns(plan, receipts, "hold")
 
-    final_identity_error_count = core.known(len(_identity_errors(receipts)))
+    final_identity_error_count = _final_identity_error_count(plan, receipts)
 
     physical_out = {}
     failure_count = 0
