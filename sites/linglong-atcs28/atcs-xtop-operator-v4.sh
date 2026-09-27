@@ -29,7 +29,7 @@ adapter_sha256='<REPLACE-WITH-QUALIFIED-ATCS-CLI-SHA256>'
 flow_digest='<REPLACE-WITH-QUALIFIED-ATCS-FLOW-DIGEST>'
 verifier=/data/eda/project/hima_harness/operator-admin/atcs-v4/verify-worker-startup.py
 verifier_sha256='<REPLACE-WITH-QUALIFIED-VERIFIER-SHA256>'
-site_profile=/data/eda/project/hima_harness/atcs-inputs/siteCapabilities.json
+site_profile=/data/eda/project/hima_harness/atcs-inputs/siteCapabilities-v4.json
 site_profile_sha256='<REPLACE-WITH-QUALIFIED-SITE-PROFILE-SHA256>'
 bootstrap_root=/data/eda/project/hima_harness/operator-admin/atcs-v4/bootstraps
 

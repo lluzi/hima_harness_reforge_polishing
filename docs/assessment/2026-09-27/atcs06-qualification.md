@@ -58,3 +58,11 @@ read roots, and never into the writable slot. Executable/control paths still rej
 failed v3 installation/snapshot remains unchanged. Two additional local counterexamples cover an
 unapproved target and a target inside the writable slot; all 17 verifier tests PASS. No mutation or
 new commercial command was used to diagnose this prelaunch refusal.
+
+One additional checkpoint link points to Foundation `rc_model.bin`, already inside the Site Permit's
+declared read roots. A versioned `siteCapabilities-v4.json` now mirrors that approved root in the
+verifier's pinned profile; the previous profile remains unchanged. Real v4 prelaunch verification
+PASS. A no-EDA, no-network container probe with identical filesystem mounts refused writes to
+Campaign state, administrator data and sibling w02, while allowing a synthetic marker in w01/r2.
+This is a filesystem-confinement PASS, not a worker mutation or binding PASS. Current Host contract
+2/2 PASS, 41.130 seconds, zero SSH/Electron.

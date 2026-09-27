@@ -1,0 +1,54 @@
+{
+  "edaShell": ["/usr/local/bin/edarun", "bash", "-lc"],
+  "design": "swerv_wrapper",
+  "techLef": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lef/tsmcn28_10lm5X2Y2ZUTRDL.tlef",
+  "cellLefGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lef/*.lef",
+  "pgVerification": false,
+  "qualifiedReadRoots": [
+    "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation",
+    "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input",
+    "/data/eda/project/techlib/tsmc28"
+  ],
+  "xtopContext": {
+    "siteMap": ["unit", "core"],
+    "removableFillers": ["FILL*", "DCAP*"],
+    "scenarios": [
+      {
+        "name": "func_ssg_rcworst_m40",
+        "corner": "ssg_m40c",
+        "libertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ssg_m40c/*.lib"
+      },
+      {
+        "name": "func_ssg_rcworst_125",
+        "corner": "ssg_125c",
+        "libertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ssg_125c/*.lib"
+      },
+      {
+        "name": "func_ffg_cbest_m40",
+        "corner": "ffg_m40c",
+        "libertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ffg_m40c/*.lib"
+      },
+      {
+        "name": "func_ffg_cbest_125",
+        "corner": "ffg_125c",
+        "libertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ffg_125c/*.lib"
+      }
+    ],
+    "ecoParameters": {
+      "bufferListForHold": [
+        "DEL025D1BWP30P140", "DEL050MD1BWP30P140", "DEL075MD1BWP30P140",
+        "DEL100MD1BWP30P140", "DEL150MD1BWP30P140", "DEL200MD1BWP30P140",
+        "DEL250MD1BWP30P140", "BUFFD2BWP30P140", "BUFFD4BWP30P140"
+      ],
+      "bufferListForSetup": [
+        "BUFFD2BWP30P140", "BUFFD3BWP30P140", "BUFFD4BWP30P140",
+        "BUFFD6BWP30P140", "BUFFD8BWP30P140", "BUFFD12BWP30P140", "BUFFD16BWP30P140"
+      ],
+      "cellClassifyRule": "cell_attribute",
+      "cellMatchAttribute": "footprint",
+      "cellNominalSwapKeywords": ["ULVT", "LVT", "", "HVT"],
+      "cellNominalSizingPattern": "D([0-9]+)BWP",
+      "gainThreshold": 0.001
+    }
+  }
+}
