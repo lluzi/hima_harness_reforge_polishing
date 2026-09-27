@@ -75,3 +75,45 @@ occurred. The Pack template now resolves cell collections for queries and pre-mu
 readback. Mutation domains and admitted sizing targets reject wildcard expansion. A native-collection
 local falsifier and a wildcard-domain counterexample pass (90 adapter tests, 18 workspace tests).
 v5 retains v4's reviewed isolation boundary and installs a new immutable path for the new flow bytes.
+
+## Worker changed-surface L4 PASS — frozen candidate
+
+Method source: `eb9d323430c067ce49b71e388edb71a428bb60a6`, remote main verified.
+Pack `agentic-timing-closure-system@0.1.0` digest
+`339c25d773bf0755c58b6db500bcc28be9620c5057b85bba365aeb7b33bfc8b9`.
+Flow `b91195068ac13f31229547b5c613b4066e502772d67129f269a8851ff9631fb3`.
+Wrapper v5 `b6210b3de57312b568755f7ea63afb06bf1a5ed87eba5ed231d41f1c766239f0`.
+Verifier `86321360e9fffcba3a0dcf97ee2e2c6d972e98e51bb31124169fdb8647d1d107`.
+External profile `26b99daba92494810fe53a9f82ec5f7b28d1b1336af62a5b1708214450ae0415`.
+
+The v5 worker in `workspaces/w01/r4` reached exact READY with qualified timing/placement context.
+Its typed identity/falsifier query returned the expected master. Before/after each contain 95,472
+instances: exactly one master changed, zero added or removed instances, and exactly one ops trace.
+One route-preserving logical/physical ECO pair was exported; normal close returned exit 0.
+Contribution `6baeb439fc78f1d2963e` is admissible, kind fix, one operation, base
+`5d6827db2d165d0f0b31`. Capture and collect succeeded without another mutation.
+
+Retained remote hashes:
+- before dump `6e4b8e6fd0cdae73d6a469d49905c96c0771c07bb47bb33ce102b5884830b016`;
+- after dump `348d50e469d335b2c1de846d256a2a2ee5d8e0c8f87e15624596e048afcb4119`;
+- ops trace `c591c702ac54ef917f6847a43dea6bd7d97894ba5b75755fc4e8f3d71174d3b6`;
+- logical ECO `6f8d3bfb248eab1f57b261310054ebf4260beb50789d587539211ddace8cf599`;
+- physical ECO `852b8e588a1eff2470ebdae8f83db86342aa835cb938341ae43534749e354cd2`;
+- transcript `d387a9d52c1894dd35b7cc4ab135087382d3230905ae11abb528e5f7d01f1910`.
+
+A v5 zero-EDA container probe denied source-tree and /usr/bin execution-write attempts, state and
+sibling writes, and allowed only a marker in the selected slot. The frozen Harness binding bridge
+then verified the actual remote wrapper and current Pack/source/Permit as confinement enforced.
+Binding `linglong-atcs28:xtop-operator-v5:339c25d773bf0755`, SHA
+`139057998653a2933a9620a9edba8da58f7b9bcfa6cc8ae53ab0997e1135c855`; environment SHA
+`bf938c79d3338b1bb620e3438f911ecb5bbdc1b962859cb445f1445f3dd83dd0`.
+Both are retained under `.hima-tmp/atcs06-eb9d3234/`, outside the production write root.
+
+The binding preflight first correctly refused a missing administrator Permit read root. The Permit
+now grants only the current immutable atcs-v5 directory read access; no administrator write root
+was added. The packaging helper's control-Pack-only preflight rejected ATCS and is not counted PASS.
+
+This checkpoint satisfies the coordinator's worker changed-surface gate. Replay, one joint physical
+refresh, native TEST/seal/App and the actual bounded Campaign remain pending. No QoR or signoff is
+claimed; the XTop diagnostic slack values are not commercial final-STA evidence. #52's generic
+Agent Team/Harness and unchanged UI/App boundaries are reused only within their demonstrated scope.

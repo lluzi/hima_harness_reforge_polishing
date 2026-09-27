@@ -1,4 +1,5 @@
 allowedReadRoots:
+  - /data/eda/project/hima_harness/operator-admin/atcs-v5
   - /data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation
   # Final review: the real tech LEF and cell LEF glob for this design (`prepare-workers`'
   # eda-profile.json / this Site's own siteCapabilities.json `techLef`/`cellLefGlob`) live
