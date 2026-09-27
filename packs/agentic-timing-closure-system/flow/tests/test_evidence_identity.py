@@ -155,6 +155,123 @@ class ImplementIsWriteOnceTest(cli.TwoRoundFlowTest):
         self.assertEqual(payload["code"], "write-once")
 
 
+class ImplementRetryAfterFailureTest(cli.TwoRoundFlowTest):
+    """N2 (final fix batch C): `_cmd_implement` used to write the write-once
+    completion marker (and `state/merge-commit.json`) BEFORE `run_tool` ran at
+    all -- a failed Innovus ECO run (the wrapper ran but produced no output, or
+    crashed) still left the marker in place, so a legitimate retry of the exact
+    same merge commit was wrongly refused `write-once` even though nothing had
+    ever actually succeeded. The marker is now written only after the ECO
+    outputs are verified; a retry moves the failed attempt's own partial
+    output directory aside (never overwrites it in place) and runs again."""
+
+    def test_two_round_flow_uses_adopted_state_id(self):
+        self.skipTest("inherited from cli.TwoRoundFlowTest -- already covered there, not this class's own case")
+
+    def test_a_failed_attempt_can_be_retried_and_the_partial_attempt_is_preserved(self):
+        workspace = self.workspace
+        manifest = cli._make_baseline_manifest(workspace)
+        manifest_path = workspace / "manifest.json"
+        cli._write_json(manifest_path, manifest)
+        self.assertEqual(cli._run("baseline", workspace, manifest_path).returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+
+        contribution, work_package = self._build_fix_contribution(baseline, instance="U1")
+        cli._write_json(workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
+        from atcs import composition, integration
+        facts = composition.analyze(baseline["id"], [contribution], [])
+        plan_raw = {
+            "batchId": "batch-U1", "baseStateId": baseline["id"], "select": [contribution["id"]],
+            "resolutions": [], "deferred": [], "reason": "single fix",
+        }
+        plan = integration.validate_plan(plan_raw, facts)
+        request = integration.prepare_replay(plan, facts, [contribution])
+        step = request["steps"][0]
+        receipt = {
+            "stepId": step["stepId"], "status": "ok",
+            "observedDelta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        }
+        edit_domains = {contribution["id"]: work_package["editDomain"]}
+        integration_state = integration.reconcile(request, [receipt], edit_domains)
+        core.write_artifact(workspace / "state" / "composition-facts.json", facts)
+        core.write_artifact(workspace / "state" / "replay-request.json", request)
+        core.write_artifact(workspace / "state" / "integration-state.json", integration_state)
+
+        merge_commit = integration.seal_batch(integration_state, request, facts, [contribution])
+        merge_id = merge_commit["id"]
+        impl_root = workspace / "implementations" / merge_id
+        # Deliberately do NOT pre-seed the fake wrapper's expected outputs this
+        # time -- the no-op wrapper exits 0 but produces nothing, so the CLI's
+        # own post-run existence check fails, exactly like a real Innovus crash.
+
+        site_profile_path = cli._site_profile_path(workspace)
+        current_state_path = workspace / "current-state.json"
+        cli._write_json(current_state_path, baseline)
+
+        first = cli._run("implement", workspace, current_state_path, site_profile_path)
+        self.assertEqual(first.returncode, 4, first.stdout + first.stderr)
+        self.assertEqual(json.loads(first.stderr)["code"], "tool-failed")
+        # The partial attempt's own eco.tcl was written (compile_innovus_eco_task
+        # writes it before run_tool runs) -- but no completion marker, and no
+        # declared state/implement.json, since the run never actually succeeded.
+        self.assertTrue((impl_root / "eco.tcl").is_file())
+        self.assertFalse((impl_root / "merge-commit.json").is_file())
+        self.assertFalse((workspace / "state" / "implement.json").is_file())
+        self.assertFalse((workspace / "state" / "merge-commit.json").is_file())
+
+        # Retry with a wrapper that actually PRODUCES the expected outputs when
+        # it runs (relative to its own cwd, which `_cmd_implement` sets to the
+        # fresh, post-rename `output_root`) -- unlike this suite's usual
+        # pre-seed-before-calling convention, a genuine retry's own outputs
+        # cannot be pre-seeded from outside: the CLI moves any pre-existing
+        # `output_root` (this exact one, still holding attempt 1's `eco.tcl`)
+        # aside BEFORE compiling/running this attempt.
+        productive_wrapper = workspace / "productive-wrapper.sh"
+        productive_wrapper.write_text(
+            "#!/bin/sh\n"
+            "mkdir -p DBS EXPORT RPT DBS/top.enc.dat\n"
+            f"printf 'database for {merge_id}' > DBS/top.enc\n"
+            "printf 'placeholder\\n' > DBS/top.enc.dat/placeholder.txt\n"
+            "printf 'DEF placeholder\\n' > EXPORT/design.def\n"
+            "printf 'module top(); endmodule\\n' > EXPORT/design.v\n"
+            "printf 'drc report\\n' > RPT/verify_drc.rpt\n"
+            "printf 'connectivity report\\n' > RPT/verify_connectivity.rpt\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        productive_wrapper.chmod(0o755)
+        productive_site_profile_path = workspace / "productive-site-profile.json"
+        cli._write_json(productive_site_profile_path, {
+            "edaShell": [str(productive_wrapper)], "design": "top",
+            "techLef": str(workspace / "tech.lef"), "cellLefGlob": str(workspace / "cells" / "*.lef"),
+        })
+
+        second = cli._run("implement", workspace, current_state_path, productive_site_profile_path)
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        implement = json.loads((workspace / "state" / "implement.json").read_text())
+        self.assertEqual(implement["mergeCommitId"], merge_id)
+        self.assertTrue((impl_root / "merge-commit.json").is_file())
+
+        # The failed first attempt's own partial directory was moved aside, not
+        # overwritten in place or discarded.
+        attempt_dirs = sorted(
+            p for p in (workspace / "implementations").iterdir()
+            if p.name != merge_id and p.name.startswith(merge_id)
+        )
+        self.assertTrue(attempt_dirs, "expected the failed attempt's directory to be preserved, moved aside")
+        self.assertTrue((attempt_dirs[0] / "eco.tcl").is_file())
+        # The fresh, successful output_root still has exactly the completed
+        # attempt's own evidence -- not a stray leftover file from the first,
+        # failed attempt (a rename-aside, not a merge of the two directories).
+        self.assertTrue((impl_root / "DBS" / "top.enc").is_file())
+
+        # write-once still refuses a third call now that this merge commit is
+        # genuinely complete.
+        third = cli._run("implement", workspace, current_state_path, productive_site_profile_path)
+        self.assertEqual(third.returncode, 3, third.stdout + third.stderr)
+        self.assertEqual(json.loads(third.stderr)["code"], "write-once")
+
+
 class BaselineExternalRootTest(unittest.TestCase):
     """C3 (final review): `baseline`'s manifest may name an EXTERNAL root (a
     Site-supplied staging directory the Campaign workspace never otherwise sees) --

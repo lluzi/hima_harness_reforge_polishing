@@ -1623,6 +1623,23 @@ def _cmd_implement(workspace, args):
     Both checks run, and both refusal paths leave `state/merge-commit.json`/
     `implementations/<mergeId>/merge-commit.json` untouched -- refusing
     `implement` must never leave partial or misleading bookkeeping behind.
+
+    N2 (final fix batch C): the completion marker (and `state/merge-commit.
+    json`) are now written only AFTER the ECO's own outputs are verified
+    present below -- matching `_cmd_apr_run`'s own write-once convention
+    (its `apr-run-complete.json` marker is likewise written only at the very
+    end of a successful run). Before this fix, both were written BEFORE
+    `run_tool` ran at all, so a run that failed partway through (the wrapper
+    crashed, or simply produced no output) still left the marker in place;
+    a legitimate retry of the exact same merge commit was then wrongly
+    refused `write-once` even though nothing had ever actually succeeded.
+    When a PRIOR attempt's own `output_root` already exists (no completion
+    marker in it -- guaranteed by the write-once check just above, which
+    would have refused otherwise), it is renamed aside to
+    `implementations/<mergeId>-attempt-<n>/` before this attempt starts,
+    preserving that partial evidence for debugging rather than silently
+    overwriting or discarding it in place; a fresh `output_root` is then
+    used for this attempt.
     """
     current_state_path, site_profile_path = args
     workspace = Path(workspace)
@@ -1653,12 +1670,24 @@ def _cmd_implement(workspace, args):
             "-- a merge commit's implementation output is never overwritten",
         )
 
+    # N2 (final fix batch C): `output_root / "eco.tcl"` is written ONLY by this
+    # function (right below, from the compiled task -- before `run_tool` even
+    # runs) and by nothing else, so its presence is the precise signal that a
+    # PRIOR `implement` attempt for this exact merge id already started here
+    # and did not complete (write-once, checked above, guarantees no completion
+    # marker is in it either way -- this could only be a failed attempt, never
+    # an adopted one). Preserve that partial evidence, moved aside, rather than
+    # overwriting or discarding it in place, then run this attempt into a fresh
+    # `output_root`.
+    if (output_root / "eco.tcl").is_file():
+        attempt = 1
+        while (output_root.parent / f"{merge_id}-attempt-{attempt}").exists():
+            attempt += 1
+        output_root.rename(output_root.parent / f"{merge_id}-attempt-{attempt}")
+
     design = current_state["top"]
     current_db = workspace / current_state["database"]["path"]
     task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root))
-
-    _canonical_write(_paths(workspace)["merge_commit"], merge_commit)
-    _canonical_write(merge_commit_marker, merge_commit)
 
     eco_path = Path(task["ecoPath"])
     eco_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1696,6 +1725,13 @@ def _cmd_implement(workspace, args):
             "path": _relpath(outputs["connectivity"], workspace), "sha256": core.file_sha256(outputs["connectivity"]),
         },
     }
+
+    # N2: written only now that the ECO's own outputs are verified present above --
+    # never before `run_tool` ran, so a failed attempt never leaves a marker a
+    # retry would be wrongly refused write-once against.
+    _canonical_write(_paths(workspace)["merge_commit"], merge_commit)
+    _canonical_write(merge_commit_marker, merge_commit)
+
     return _paths(workspace)["implement"], body
 
 
