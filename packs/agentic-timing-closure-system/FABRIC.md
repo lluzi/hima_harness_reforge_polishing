@@ -243,23 +243,44 @@ Known gaps carried from earlier tasks:
   `state/extract.json`'s `spef[corner].template`) instead of this Pack's one shipped `starrc.cmd`
   fallback for every corner regardless -- real Foundation corners (`cworst_T`/`cbest`) each need their
   own qualified command-file template (`STAR_MODE`, layer stack, etc. genuinely differ per corner).
-- G29 (final review batch B, I2 -- **only half closed**) `baseline` now stages every declared
-  full-flow lifecycle stage's own checkpoint (`.enc` script + `.enc.dat` directory) into
-  `<workspace>/DBS/<stage>.enc(.dat)`, the exact workspace-relative location `atcs.lifecycle.
-  stage_task` has always restored from but that nothing ever populated before this batch -- an
-  `apr-run` for any stage past the very first would previously have restored a checkpoint that was
-  never actually staged. **Still open:** `innovus-eco.tcl`/`innovus-export.tcl`/`apr-stage.tcl`'s
-  `restoreDesign` calls do not source the Foundation flow config (`FF/vars.tcl` and friends) the old
-  qualified `xtop-timing-closure` Pack sources before restoring a real Foundation checkpoint
+- G29 (final review batch B, I2; **post-route restore form closed in fix batch C** -- full-flow APR
+  stage pre-steps remain open, see below) `baseline` stages every declared full-flow lifecycle
+  stage's own checkpoint (`.enc` script + `.enc.dat` directory) into `<workspace>/DBS/<stage>.
+  enc(.dat)`, the exact workspace-relative location `atcs.lifecycle.stage_task` has always restored
+  from but that nothing ever populated before batch B -- an `apr-run` for any stage past the very
+  first would previously have restored a checkpoint that was never actually staged.
+
+  **Fix batch C:** `innovus-export.tcl`/`innovus-eco.tcl`/`apr-stage.tcl` used to call
+  `restoreDesign` on `CURRENT_DB`/`CHECKPOINT` alone -- this Pack's own database-identity convention
+  names the `.enc` restore-SCRIPT path (`design-state.database.path`; `apr-stage.tcl`'s `CHECKPOINT`
+  is already `./DBS/<prevStage>.enc.dat`), but a real Innovus `restoreDesign` call needs the `.enc.dat`
+  DIRECTORY plus the top cell name, never the script path alone and never the directory without the
+  top cell. Foundation evidence (read-only, `DBS/xtop_round2_eco_route.enc`): the real restore script
+  itself runs `restoreDesign …/xtop_round2_eco_route.enc.dat swerv_wrapper` -- every Foundation flow
+  restores the `.enc.dat` directory with the top cell, never the script itself and never the directory
+  alone. `innovus-export.tcl`/`innovus-eco.tcl` now call `restoreDesign $env(CURRENT_DB).dat
+  $env(DESIGN)` (matches `atcs.state.design_state`'s own `f"{path}.dat"` convention for `datDigest`);
+  `apr-stage.tcl` now calls `restoreDesign ${CHECKPOINT} ${TOP}`, with `atcs.lifecycle.stage_task`
+  gaining a required `top` parameter (`_cmd_apr_prepare`/`_cmd_apr_run` both supply
+  `working_state["top"]`) -- the pre-fix template named no top cell at all. `FF/vars.tcl` was read
+  (per this fix's own controller decision) and confirmed NOT needed for this fix: it only fills a Tcl
+  `vars()` array, nothing this Pack's own `restoreDesign` call reads.
+
+  **Still open:** `innovus-eco.tcl`/`innovus-export.tcl`/`apr-stage.tcl`'s restore calls do not source
+  the rest of the Foundation flow config (`FF/procs.tcl` and any Foundation CTS/route-stage spec) the
+  old qualified `xtop-timing-closure` Pack sources before running a full-flow stage command
   (`packs/xtop-timing-closure/flow/templates/apply-eco.tcl`'s own `cd $env(WORK_ROOT)` / `source
   FF/vars.tcl` / `foreach file $vars(config_files) { source $file }` / `source FF/procs.tcl`
-  preamble, read-only reference). Implementing this speculatively -- without live re-verification of
-  the exact `FF/vars.tcl` contract, which staging/config-file set a Foundation `restoreDesign`
-  genuinely needs, and how that interacts with this Pack's own `OUTPUT_ROOT`/per-generation directory
-  convention (materially different from the old Pack's own `WORK_ROOT`-as-cwd design) -- was judged a
-  higher risk of introducing an unverifiable regression into already-tested, working Innovus task
-  compilation than leaving it open. A real Run against Foundation data may fail at `restoreDesign`
-  until this is closed with server access to confirm the exact contract.
+  preamble, read-only reference). This is now scoped narrowly to full-flow APR stage PRE-STEPS
+  (procs/CTS-stage spec a `place`/`cts`/`route`/`postroute` stage command may itself depend on), not
+  the restore call itself (closed above) -- implementing it speculatively, without live
+  re-verification of the exact `FF/procs.tcl`/CTS-spec contract and how it would interact with this
+  Pack's own `OUTPUT_ROOT`/per-generation directory convention, was judged a higher risk of
+  introducing an unverifiable regression than leaving it open. A real full-flow Run reaching a stage
+  PAST the first may still fail inside the stage command itself (not at `restoreDesign`, now fixed)
+  until this is closed with server access to confirm the exact contract. The bounded post-route-only
+  route (`implement`/`extract`/`sta`/`physical`/`evaluate`/`adopt`, no `apr-run` stage command
+  involved) does not depend on this gap at all.
 - G30 (final review batch B, I3) `xtop-replay.tcl` now builds its own fresh XTop workspace from the
   batch's own base-state LEF/netlist/DEF (`create_workspace`/`link_reference_library`/
   `create_design_definition`/`import_designs`, the same shape a worker session's own

@@ -352,10 +352,19 @@ def compile_intervention(residual_cases, stage, readiness):
     }
 
 
-def stage_task(stage, readiness, intervention, workspace_root, parent_state_id=None):
+def stage_task(stage, readiness, intervention, workspace_root, top, parent_state_id=None):
     """Build a single APR stage task that restores `stage`'s predecessor checkpoint.
 
     See module docstring "Restore/run/readback mechanics".
+
+    Final review (fix batch C, G29): `top` is the design's own top-cell name
+    (`state/working-state.json["top"]` at the CLI layer) -- a real Innovus
+    `restoreDesign <db> <topCellName>` call always takes both the database
+    and the top cell; the pre-fix template restored only the `.enc.dat`
+    checkpoint directory with no top cell at all, which every real Foundation
+    restore script (`DBS/*.enc`, read-only verified on the server) always
+    supplies. Required (never optional/guessed) and validated the same way
+    every other Tcl token this module emits is (`_validate_token`).
 
     C2 (final review): `parent_state_id` (the design-state id this stage is
     actually restoring/running against -- `state/working-state.json`'s own
@@ -384,6 +393,7 @@ def stage_task(stage, readiness, intervention, workspace_root, parent_state_id=N
     if not workspace_root or workspace_root.startswith("/"):
         raise core.AtcsError("absolute-workspace-root", workspace_root)
     workspace_root = _validate_token(workspace_root)
+    top = _validate_token(top)
 
     prev_stage = STAGE_ORDER[STAGE_ORDER.index(stage) - 1]
     checkpoint = _validate_token(f"./DBS/{prev_stage}.enc.dat")
@@ -397,6 +407,7 @@ def stage_task(stage, readiness, intervention, workspace_root, parent_state_id=N
         PREV_STAGE=_validate_token(prev_stage),
         STAGE=_validate_token(stage),
         CHECKPOINT=checkpoint,
+        TOP=top,
         OUTPUT_DIR=output_rel,
         STAGE_COMMAND=stage_command,
         HOOK_TCL=hook_tcl,

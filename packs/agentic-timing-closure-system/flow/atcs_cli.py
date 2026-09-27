@@ -2763,7 +2763,9 @@ def _cmd_apr_prepare(workspace, args):
     readiness = _read_declared(_paths(workspace)["readiness"], "input-readiness")
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
     intervention = lifecycle.compile_intervention(residual_doc.get("cases", []), stage, readiness)
-    task = lifecycle.stage_task(stage, readiness, intervention, ".", parent_state_id=working_state["id"])
+    task = lifecycle.stage_task(
+        stage, readiness, intervention, ".", working_state["top"], parent_state_id=working_state["id"],
+    )
     task_id = lifecycle.task_id_for(
         stage, intervention["hookTcl"], intervention["readbackTcl"], parent_state_id=working_state["id"],
     )
@@ -3169,7 +3171,7 @@ def _cmd_apr_run(workspace, args):
     readiness = _read_declared(_paths(workspace)["readiness"], "input-readiness")
     recompiled_intervention = lifecycle.compile_intervention(residual_doc.get("cases", []), stage, readiness)
     recompiled_task = lifecycle.stage_task(
-        stage, readiness, recompiled_intervention, ".", parent_state_id=working_state["id"],
+        stage, readiness, recompiled_intervention, ".", working_state["top"], parent_state_id=working_state["id"],
     )
     recompiled_task_id = lifecycle.task_id_for(
         stage, recompiled_intervention["hookTcl"], recompiled_intervention["readbackTcl"],

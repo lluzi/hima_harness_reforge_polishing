@@ -5,8 +5,13 @@
 # the hook set. Every path below is resolved relative to this job's own
 # working directory (the workspace `stage_task` was given) — never an
 # absolute Foundation path.
+#
+# Final review (fix batch C, G29): the restore call below takes the
+# checkpoint's own `.enc.dat` directory AND the top cell name -- every real
+# Foundation restore script (`DBS/*.enc`, read-only verified on the server)
+# always supplies both; the pre-fix template restored the directory alone.
 
-restoreDesign ${CHECKPOINT}
+restoreDesign ${CHECKPOINT} ${TOP}
 
 file mkdir ${OUTPUT_DIR}
 cd ${OUTPUT_DIR}

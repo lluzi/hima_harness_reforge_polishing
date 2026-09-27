@@ -5,13 +5,23 @@
 # `atcs.integration.innovus_eco_tcl`, never re-derived here), route the ECO
 # and export the implemented DB/DEF/netlist/physical evidence.
 #
+# Final review (fix batch C, G29): `CURRENT_DB` is this Pack's own database
+# identity convention -- the `.enc` restore-script PATH (`design-state.
+# database.path`), never the directory `restoreDesign` itself actually
+# reads. Foundation evidence (read-only, `DBS/xtop_round2_eco_route.enc`):
+# every real Foundation restore script itself calls
+# `restoreDesign <path>.enc.dat <topCell>` -- the `.enc.dat` SIBLING
+# directory, plus the top cell. `$env(CURRENT_DB).dat` is exactly that
+# sibling (matches `atcs.state.design_state`'s own `f"{path}.dat"`
+# convention for `datDigest`).
+#
 # Required env vars: CURRENT_DB DESIGN ECO_TCL OUTPUT_ROOT
 ########################################################################
 foreach required {CURRENT_DB DESIGN ECO_TCL OUTPUT_ROOT} {
     if {![info exists env($required)]} { error "$required is required" }
 }
 if {![file readable $env(ECO_TCL)]} { error "ECO_TCL is not readable: $env(ECO_TCL)" }
-restoreDesign $env(CURRENT_DB) $env(DESIGN)
+restoreDesign $env(CURRENT_DB).dat $env(DESIGN)
 source $env(ECO_TCL)
 setNanoRouteMode -routeWithEco true -routeWithTimingDriven false -routeWithSiDriven false \
     -drouteUseMultiCutViaEffort high

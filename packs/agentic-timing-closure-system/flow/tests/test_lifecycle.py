@@ -143,48 +143,49 @@ class StageTaskTest(unittest.TestCase):
     def test_refuses_post_route_only_for_every_stage(self):
         for stage in ("place", "cts", "route", "postroute", "init", "bogus"):
             with self.assertRaises(core.AtcsError) as ctx:
-                lifecycle.stage_task(stage, POST_ROUTE_ONLY, self.intervention, "workspaces/w01/r1")
+                lifecycle.stage_task(stage, POST_ROUTE_ONLY, self.intervention, "workspaces/w01/r1", "swerv_wrapper")
             self.assertEqual(ctx.exception.code, "lifecycle-unavailable")
 
     def test_refuses_unsupported_stage(self):
         with self.assertRaises(core.AtcsError) as ctx:
-            lifecycle.stage_task("init", FULL_FLOW, self.intervention, "workspaces/w01/r1")
+            lifecycle.stage_task("init", FULL_FLOW, self.intervention, "workspaces/w01/r1", "swerv_wrapper")
         self.assertEqual(ctx.exception.code, "unsupported-stage")
 
     def test_refuses_absolute_workspace_root(self):
         with self.assertRaises(core.AtcsError) as ctx:
             lifecycle.stage_task("route", FULL_FLOW, self.intervention,
-                                  "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation")
+                                  "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation",
+                                  "swerv_wrapper")
         self.assertEqual(ctx.exception.code, "absolute-workspace-root")
 
     def test_restores_the_matching_earlier_checkpoint(self):
-        task = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1")
+        task = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1", "swerv_wrapper")
         self.assertIn("restoreDesign", task["tcl"])
         self.assertIn("cts.enc.dat", task["tcl"])
         self.assertNotIn("route.enc.dat", task["tcl"].split("restoreDesign", 1)[1].split("\n", 1)[0])
 
     def test_restores_init_checkpoint_for_place(self):
         place_intervention = lifecycle.compile_intervention([FANOUT_AT_LOCATION], "place", FULL_FLOW)
-        task = lifecycle.stage_task("place", FULL_FLOW, place_intervention, "workspaces/w02/r1")
+        task = lifecycle.stage_task("place", FULL_FLOW, place_intervention, "workspaces/w02/r1", "swerv_wrapper")
         restore_line = task["tcl"].split("restoreDesign", 1)[1].split("\n", 1)[0]
         self.assertIn("init.enc.dat", restore_line)
 
     def test_restores_route_checkpoint_for_postroute(self):
         postroute_intervention = lifecycle.compile_intervention([ROUTE_DOMINATED], "postroute", FULL_FLOW)
-        task = lifecycle.stage_task("postroute", FULL_FLOW, postroute_intervention, "workspaces/w02/r1")
+        task = lifecycle.stage_task("postroute", FULL_FLOW, postroute_intervention, "workspaces/w02/r1", "swerv_wrapper")
         restore_line = task["tcl"].split("restoreDesign", 1)[1].split("\n", 1)[0]
         self.assertIn("route.enc.dat", restore_line)
         self.assertNotIn("postroute.enc.dat", restore_line)
 
     def test_refuses_stage_mismatch_between_intervention_and_requested_stage(self):
         with self.assertRaises(core.AtcsError) as ctx:
-            lifecycle.stage_task("cts", FULL_FLOW, self.intervention, "workspaces/w01/r1")
+            lifecycle.stage_task("cts", FULL_FLOW, self.intervention, "workspaces/w01/r1", "swerv_wrapper")
         self.assertEqual(ctx.exception.code, "stage-mismatch")
 
     def test_blockage_output_path_is_carried_into_stage_task_outputs(self):
         blockage_intervention = lifecycle.compile_intervention([FANOUT_AT_LOCATION], "place", FULL_FLOW)
         self.assertTrue(blockage_intervention["outputs"], "expected compile_intervention to declare an output")
-        task = lifecycle.stage_task("place", FULL_FLOW, blockage_intervention, "workspaces/w03/r1")
+        task = lifecycle.stage_task("place", FULL_FLOW, blockage_intervention, "workspaces/w03/r1", "swerv_wrapper")
         fplan_outputs = [path for path in task["outputs"] if "fplan_" in path]
         self.assertTrue(fplan_outputs, task["outputs"])
         for path in fplan_outputs:
@@ -192,14 +193,14 @@ class StageTaskTest(unittest.TestCase):
 
     def test_stage_command_matches_the_requested_stage(self):
         place_intervention = lifecycle.compile_intervention([FANOUT_AT_LOCATION], "place", FULL_FLOW)
-        task = lifecycle.stage_task("place", FULL_FLOW, place_intervention, "workspaces/w02/r1")
+        task = lifecycle.stage_task("place", FULL_FLOW, place_intervention, "workspaces/w02/r1", "swerv_wrapper")
         self.assertIn("place_opt_design", task["tcl"])
         cts_intervention = lifecycle.compile_intervention([SLEW_DOMINATED], "cts", FULL_FLOW)
-        task = lifecycle.stage_task("cts", FULL_FLOW, cts_intervention, "workspaces/w02/r1")
+        task = lifecycle.stage_task("cts", FULL_FLOW, cts_intervention, "workspaces/w02/r1", "swerv_wrapper")
         self.assertIn("clock_opt_design", task["tcl"])
 
     def test_outputs_are_written_under_apr_stage_id(self):
-        task = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1")
+        task = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1", "swerv_wrapper")
         self.assertTrue(task["outputs"], "expected at least one declared output path")
         for output in task["outputs"]:
             self.assertTrue(output.startswith("workspaces/w01/r1/apr/route/"), output)
@@ -207,7 +208,7 @@ class StageTaskTest(unittest.TestCase):
             self.assertNotIn("swerv_wrapper_tsmc28", output)
 
     def test_inputs_and_tcl_never_carry_the_foundation_root(self):
-        task = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1")
+        task = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1", "swerv_wrapper")
         foundation_root = "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation"
         self.assertNotIn(foundation_root, task["tcl"])
         for path in task["inputs"] + task["outputs"]:
@@ -215,15 +216,34 @@ class StageTaskTest(unittest.TestCase):
             self.assertNotIn(foundation_root, path)
 
     def test_hook_and_readback_content_is_embedded_in_the_stage_tcl(self):
-        task = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1")
+        task = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1", "swerv_wrapper")
         self.assertIn("setPathGroupOptions", task["tcl"])
         self.assertIn("reportPathGroupOptions", task["tcl"])
 
     def test_same_intervention_and_workspace_are_deterministic(self):
-        task_a = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1")
-        task_b = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1")
+        task_a = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1", "swerv_wrapper")
+        task_b = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1", "swerv_wrapper")
         self.assertEqual(task_a["tcl"], task_b["tcl"])
         self.assertEqual(task_a["outputs"], task_b["outputs"])
+
+    def test_restore_line_names_the_top_cell(self):
+        """Final review fix C: `restoreDesign` must restore the checkpoint's own
+        `.enc.dat` directory WITH the top cell name -- a real Innovus `restoreDesign`
+        call takes both; the pre-fix template only ever restored the directory."""
+        task = lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1", "swerv_wrapper")
+        restore_line = task["tcl"].split("restoreDesign", 1)[1].split("\n", 1)[0]
+        self.assertIn("cts.enc.dat", restore_line)
+        self.assertIn("swerv_wrapper", restore_line)
+
+    def test_refuses_empty_top(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1", "")
+        self.assertEqual(ctx.exception.code, "invalid-value")
+
+    def test_refuses_unsafe_top(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            lifecycle.stage_task("route", FULL_FLOW, self.intervention, "workspaces/w01/r1", "top;rm -rf")
+        self.assertEqual(ctx.exception.code, "invalid-value")
 
 
 if __name__ == "__main__":

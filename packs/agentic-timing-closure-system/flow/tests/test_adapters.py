@@ -398,6 +398,29 @@ class InnovusEcoTaskTest(unittest.TestCase):
             adapters.compile_innovus_eco_task(merge_commit, "/campaign/state/current.enc", "top", "/campaign/implementations/x")
         self.assertEqual(ctx.exception.code, "missing-input")
 
+    def test_restores_the_staged_enc_dat_directory_with_the_top_cell(self):
+        """Final review fix C, G29: `CURRENT_DB` is the `.enc` restore-script path
+        (`design-state.database.path`), never the directory `restoreDesign` itself
+        reads -- the real Foundation restore convention (read-only verified) is
+        `restoreDesign <path>.enc.dat <topCell>`."""
+        merge_commit = core.stamp("merge-commit", {
+            "parentStateId": "base123", "contributions": [], "operations": [],
+            "innovusEcoTcl": "ecoChangeCell -inst {U1} -cell MOCKBUFX4\n", "sourceMap": {}, "newNets": [],
+        })
+        output_root = f"/campaign/implementations/{merge_commit['id']}"
+        task = adapters.compile_innovus_eco_task(merge_commit, "/campaign/state/current.enc", "top", output_root)
+        self.assertIn("restoreDesign $env(CURRENT_DB).dat $env(DESIGN)", task["tcl"])
+        self.assertNotIn("restoreDesign $env(CURRENT_DB) $env(DESIGN)", task["tcl"])
+
+
+class InnovusExportTaskTest(unittest.TestCase):
+    def test_restores_the_staged_enc_dat_directory_with_the_top_cell(self):
+        """Final review fix C, G29: same restore convention as
+        `compile_innovus_eco_task` -- see that test's own docstring."""
+        task = adapters.compile_innovus_export_task("/campaign/DBS/top.enc", "swerv_wrapper", "/campaign/out")
+        self.assertIn("restoreDesign $env(CURRENT_DB).dat $env(DESIGN)", task["tcl"])
+        self.assertNotIn("restoreDesign $env(CURRENT_DB) $env(DESIGN)", task["tcl"])
+
 
 # ---------------------------------------------------------------------------
 # Step 1 requirement: xtop_operator argv carries the workspace-manifest
