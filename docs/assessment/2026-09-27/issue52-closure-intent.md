@@ -3,6 +3,15 @@
 Status: current execution authority. Source baseline:
 `15ac2735d3824b75f9bc8f94953c0b584a17f141`.
 
+Final user scope update (2026-09-27): accept the retained core Pack integration
+path; stop further GUI/product actions. Missing continue receipt and loaded Data
+Insight view are disclosed deferred coverage, not closure blockers, unless they
+invalidate execution, evidence truth, permission, duplicate-effect safety or
+recovery. The same-Run downstream overrun is disclosed, not automatically FAIL.
+See [final acceptance receipt](issue52-final-acceptance-receipt.md) for evidence
+and non-claims. Original journey requirements below remain the historical test
+target, not a claim that waived coverage passed.
+
 ## Business
 
 Close Issue #52 by proving that the upgraded HimaHarness architecture and features work together in
@@ -132,4 +141,3 @@ An independent reviewer verifies the final handoff and fixed identities. On PASS
    unclaimed.
 
 Issue #39 is SUPERSEDED. Issues #30 and #62 do not block #52.
-
