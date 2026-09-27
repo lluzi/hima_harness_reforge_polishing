@@ -51,3 +51,18 @@ child output-format defects. Preserve all existing Runs and child transcripts.
 
 Attempt 4 remains permanently parked. Claude has not been dispatched. Issue 52 remains open.
 No timing improvement, PPA, signoff or ROI claim is made.
+
+## Minimal candidate correction
+
+The Pack Researcher task now requests at most three group-level hypotheses, only the four
+required top-level fields, and a compact response below 2,000 characters. It explicitly avoids
+individual endpoint/report inventories and the extra `endpointGroups` wrapper. The generic
+Runtime, JSON parser, schema gate and 5,000-token allocation are unchanged.
+
+Local regression: the bounded task assertion failed before the change; afterwards the focused
+XTop Pack and delegation prompt suite passed 8/8, including the Pack Python contracts and
+old-Pack compatibility. This verifies declaration/integration, not real-model output success.
+New development method digest:
+`5cab1ddba6d2b6d35f27e2c5a1ddc05a8cd1b8758d1330c9c6c569dfd0cd78b1`.
+The prior binding and any TEST record must not be claimed for these changed method bytes.
+The isolated real-model qualification remains the next gate before native TEST/rebinding/App.

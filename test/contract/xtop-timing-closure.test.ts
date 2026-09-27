@@ -38,6 +38,10 @@ test('the XTop closure Pack loads, fits its declared execution surface and passe
   assert.ok(team);
   assert.equal(team.triggerNode, 'run-xtop-fix');
   assert.deepEqual(team.members.map(member => member.id), ['researcher', 'reviewer', 'operator']);
+  const researcherTask = team.members.find(member => member.id === 'researcher')!.taskTemplate;
+  assert.match(researcherTask, /at most three hypotheses/);
+  assert.match(researcherTask, /Only the four required top-level fields/);
+  assert.match(researcherTask, /Do not enumerate individual endpoints/);
   assert.deepEqual(team.members.find(member => member.id === 'operator')?.allowedTools, ['hima_interactive']);
   const check = checkPack(pack, loadSite(local.sitesDir, local.name));
   assert.equal(check.fit, true, check.errors.join('\n'));

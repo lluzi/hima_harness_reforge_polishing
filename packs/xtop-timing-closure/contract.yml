@@ -255,6 +255,14 @@ agentTeams:
         taskTemplate: >-
           Read only the declared current closure state and closure experience. Identify fixed,
           remaining, entrant and regressed endpoint groups, then return bounded action hypotheses.
+          Return at most three hypotheses, each with a short group-level rationale and verification
+          guard. Do not enumerate individual endpoints or copy source report inventories.
+          Only the four required top-level fields belong in the result: schema, hypotheses,
+          evidenceRefs, limitations. Put group classification in the hypothesis rationale; when
+          no prior iteration exists, state that fixed, entrant and regressed are unknown in limitations.
+          Keep evidenceRefs to the two granted record identities and the entire response below
+          2000 characters. Use arrays for hypotheses, evidenceRefs and limitations. Close every
+          JSON object and array before ending; do not add an endpointGroups wrapper or extra fields.
           Do not operate XTop, change the Goal, complete a node or claim timing closure.
         inputs: [closureState, closureExperience]
         allowedTools: [hima_delegation_input]

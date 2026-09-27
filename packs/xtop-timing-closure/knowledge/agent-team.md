@@ -7,6 +7,11 @@ tool on its own.
 The Timing Researcher reads only the current closure-state and append-only closure-experience
 observations. It classifies fixed, remaining, entrant and regressed endpoint groups and returns
 bounded hypotheses as candidate evidence. It cannot operate XTop, complete nodes or change Goal.
+Its compact result uses only `schema`, `hypotheses`, `evidenceRefs` and `limitations` at the top
+level, with at most three group-level hypotheses. It does not reproduce individual endpoints or
+report inventories. With no prior iteration, fixed/entrant/regressed classification remains unknown.
+The 2,000-character response instruction bounds presentation, not evidence completeness or a new
+Runtime acceptance rule; JSON/schema admission remains fail-closed.
 
 The Timing Reviewer reads that exact retained Researcher candidate plus the current closure evidence
 and reader-backed fix plan. It checks identity, action vocabulary, opposing setup/hold margin, prior
