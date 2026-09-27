@@ -343,5 +343,21 @@ Known gaps carried from earlier tasks:
     report; `python3 -m unittest discover -s packs/agentic-timing-closure-system/flow/tests` and the
     Node contract test (`loadPack`/`checkPack` against `linglong-atcs28` and the local Site) were run
     green after every commit in every batch.
-  - **Pending re-review**: this FABRIC.md's own G27-G33 and the three batches' combined diff have not
-    yet had a second reviewer pass since batch B landed.
+  - Batch C (`.superpowers/sdd/final-fix-C-report.md`), the last four blockers plus Minors before a
+    bounded post-route-only real-tool test: N2 (`implement`'s write-once marker written only after
+    outputs are verified, matching `apr-run`'s convention; a failed attempt's own `output_root` is
+    preserved, moved aside, on retry), N1 (round-2 prior observation -- `sta` persists a combined,
+    candidate-labelled observation to `observations/<candidateStateId>.json`; `verification.assemble`'s
+    "no prior" comparison lists are `None`, never present-but-empty `[]`, so
+    `adoption._timing_failure_count` correctly reads `+inf`, never a false winning `0`; `residual` falls
+    back to the candidate's own observation's failing checks when `comparison.remaining` is
+    unavailable), N4 (every `pt-query.tcl` target carries its own setup/hold mode; `-delay_type max`/
+    `min` emitted per target, plus the PBA flag only when precision is `pba`), and the restore-form half
+    of G29 closed (see G29 above: `innovus-export.tcl`/`innovus-eco.tcl` restore the staged `.enc.dat`
+    directory, `apr-stage.tcl` now also names the top cell -- `lifecycle.stage_task` gained a required
+    `top` parameter). Minors: the other contradictory sign (`NUM 0` with a displayed negative WNS) is
+    now also caught; `main()` resolves `workspace` to an absolute path; the Site's own missing
+    `query-spec.json` template (bound by `contract.yml` but never actually present) is added with
+    `precision: gba`, documented why.
+  - **Pending re-review**: this FABRIC.md's own G27-G33 and the four batches' combined diff have not
+    yet had a second reviewer pass since batch C landed.
