@@ -24,6 +24,14 @@ not resumed under changed bytes. The final trial uses one fresh Campaign with `1
 seconds-scale regressions, two-start production qualification, native TEST/seal and packaged-App
 preflight all passed.
 
+Attempt 3 created that one fresh Campaign under trial.31 and completed the baseline through the
+owner-authored plan, then parked before any XTop Job when the owner-facing minimal delegation
+contract was rejected. App `0.3.0-trial.32` fixes only that Host/API normalization; Pack, binding,
+Goal and retained Run facts are unchanged. The final acceptance therefore continues the same Run
+across a normal trial.31 → trial.32 App restart. It must prove recovery with no duplicate Campaign,
+Run, baseline Job, plan, child or mutation; completed trial.31 records remain Runtime facts rather
+than being replayed under trial.32.
+
 The Pack is a workload for Harness acceptance. Its setup/hold/DRC/connectivity result is evidence the
 product must display truthfully, not an acceptance threshold.
 

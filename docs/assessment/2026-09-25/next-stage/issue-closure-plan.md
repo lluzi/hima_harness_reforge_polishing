@@ -21,6 +21,12 @@ The final workload is sealed `xtop-timing-closure@1.0.15`, method digest
 `linglong-swerv28` Site and production XTop Operator binding. Timing, DRC, connectivity and closure
 score are facts to retain and explain; their direction is not a PASS gate.
 
+The final Harness candidate is App `0.3.0-trial.32` / Harness `0.1.2`. Attempt 3 proved the Pack,
+baseline and real GUI path but exposed an App-only owner-contract normalization defect before any
+XTop Job. Its trial.32 continuation resumes that exact parked Run and is the closure path: it must
+recover the same Campaign/owner/execution history and may not recreate baseline work. This bounded
+App upgrade is also the required recovery test; any duplicate effect fails the acceptance.
+
 `1.0.15` supersedes `1.0.14` only for this final acceptance after Attempt 2 proved two Pack
 qualification defects: the Operator child lacked a retained named argument catalog, and repeated
 startup collided with a persisted XTop workspace. The new method has native TEST Run
