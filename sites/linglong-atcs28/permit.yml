@@ -19,6 +19,7 @@ allowedWrappers:
   - /usr/bin/python3
   - /data/eda/project/hima_harness/operator-admin/atcs-v1/atcs-xtop-operator.sh
   - /data/eda/project/hima_harness/operator-admin/atcs-v2/atcs-xtop-operator-v2.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v3/atcs-xtop-operator-v3.sh
 forbidden:
   - services
   - licence-servers

@@ -1,5 +1,15 @@
 # linglong-atcs28 Site administration
 
+Current qualification candidate: `atcs-xtop-operator-v3.sh`, administrator-owned
+`verify-worker-startup.py`, and `xtop-operator-environment-v3.template.json`. v1/v2 remain historical
+unqualified candidates. v3 pins the verifier and a Site profile outside the Campaign, hashes source
+before importing it, independently regenerates both Tcl files in a read-only administrator snapshot,
+and mounts only the selected slot writable with a fresh HOME and no shell startup profiles.
+Install the verifier and bootstrap directory under `operator-admin/atcs-v3/`, pin their exact
+identities and the profile hash in the v3 wrapper, and pass the local falsifiers in
+`test_verify_worker_startup.py` before real qualification. The older v2 instructions below are
+retained for source history; they do not authorize a v2 production binding.
+
 `linglong-atcs28` hosts the `agentic-timing-closure-system` Pack (`packs/agentic-timing-closure-system/`)
 against the same Foundation reference used by the frozen `linglong-swerv28` Site
 (`/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation`), read-only. Nothing in this

@@ -196,7 +196,7 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   assert.equal(joined.contributions[0].operations[0].toMaster, 'BUF2');
   assert.equal((await readFile(path.join(slotRoot, 'ops.jsonl'), 'utf8')).trim().split('\n').length, 1);
 });
-const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v2/atcs-xtop-operator-v2.sh';
+const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v3/atcs-xtop-operator-v3.sh';
 
 test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the local Site, and passes its Python contract tests', async (t) => {
   const h = await createHimaHome();
@@ -244,12 +244,12 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   for (const forbiddenCommand of ['source', 'exec', 'sh', 'bash']) {
     assert.equal(commandNames.includes(forbiddenCommand), false, `interactive catalog exposes ${forbiddenCommand}`);
   }
-  const v2Wrapper = path.join(atcs28SourceDir, 'atcs-xtop-operator-v2.sh');
-  const shellSyntax = spawnSync('/bin/bash', ['-n', v2Wrapper], { encoding: 'utf8' });
+  const qualifiedWrapper = path.join(atcs28SourceDir, 'atcs-xtop-operator-v3.sh');
+  const shellSyntax = spawnSync('/bin/bash', ['-n', qualifiedWrapper], { encoding: 'utf8' });
   assert.equal(shellSyntax.status, 0, shellSyntax.stderr);
-  const wrapperText = await readFile(v2Wrapper, 'utf8');
-  assert.match(wrapperText, /flow-digest/);
-  assert.match(wrapperText, /sessionTclSha256/);
+  const wrapperText = await readFile(qualifiedWrapper, 'utf8');
+  assert.match(wrapperText, /verify-worker-startup/);
+  assert.match(wrapperText, /--profile-hash/);
 
   // No tool or workshop argv may reference the frozen old pack's design-zoo Foundation root or its
   // own Site's workspace-root folder name -- this Pack's own argv is workspace-relative only
