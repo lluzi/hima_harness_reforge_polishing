@@ -1,0 +1,6 @@
+id: required-constraints-pass-unknowns
+version: "1"
+title: No applicable required constraint lacks sufficient evidence
+requires: [{ type: tc_applicable_constraint_unknown_count }]
+subject: { type: tc_applicable_constraint_unknown_count }
+predicate: { op: eq, threshold: 0, unit: count }

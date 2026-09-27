@@ -1,0 +1,9 @@
+id: artifact-ready
+version: "1"
+title: The accepted candidate's actual database and recovery material re-verify against its evaluation
+# tc_final_setup_wns_ns is required (never the subject) so that this verdict also cites the final
+# evaluation reading: an Explore node weighs only verdicts citing its generation's latest reading
+# (node-turns.ts exploreEvidence), and the goal-met gate re-reads finalEvaluation last.
+requires: [{ type: tc_accepted_artifact_ready }, { type: tc_final_setup_wns_ns, mode: setup }]
+subject: { type: tc_accepted_artifact_ready }
+predicate: { op: eq, threshold: 1, unit: count }

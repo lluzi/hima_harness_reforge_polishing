@@ -1,0 +1,135 @@
+# Value types this Pack's own Readers emit (`tools/read-atcs.py`), one entry per
+# `tc_*` row of `SPEC.md`'s "Semantics" table. Units and, for WNS values, `mode`
+# are transcribed verbatim from that table; the two qualifier vocabularies
+# (`mode`: setup/hold, `scope`: all/reg2reg) are Harness-fixed
+# (`.superpowers/sdd/pack-mechanics.md` §1.14) and this Pack never invents a
+# third word for either. None of these six ns-typed values declare `scope`:
+# this Pack's WNS facts are aggregates across the required scenarios, not
+# broken out by path-group scope anywhere in the shared data model, so
+# declaring `scope` would be an unsupported qualifier no reading ever carries.
+values:
+  tc_required_input_missing_count:
+    unit: count
+    description: >-
+      Post-route minimum input set items missing from an `input-readiness`
+      artifact's own `missing[]`/`missingCount`. Explicit verification only;
+      0 only from a complete readiness document.
+  tc_lifecycle_available:
+    unit: count
+    description: >-
+      1 when an `input-readiness` artifact's full declared lifecycle stage
+      set (init/place/cts/route/postroute) hash-binds successfully, 0
+      otherwise (with `lifecycleMissing` naming every gap); unknown when the
+      lifecycle check itself could not complete.
+  tc_request_invalid_count:
+    unit: count
+    description: >-
+      Structural/reference/scope failures in a typed request-shaped
+      artifact (observationRequest, work-package, workerRequestNN,
+      next-decision). 0 only when this Reader completed a full legality
+      check and found none; unknown when the corresponding artifact was
+      never fully checked (e.g. a companion reference could not be
+      resolved).
+  tc_pending_research_count:
+    unit: count
+    description: Currently unfinished research tasks recorded in the current `contributionIndex`.
+  tc_ready_contribution_count:
+    unit: count
+    description: >-
+      Sealed, admissible `fix` contributions in the current
+      `contributionIndex` (an admissible `no-fix` contribution is never
+      counted as a ready fix).
+  tc_replay_mismatch_count:
+    unit: count
+    description: Steps in an `integration-state` whose expected and actual replayed effect disagreed.
+  tc_unresolved_conflict_count:
+    unit: count
+    description: >-
+      Unresolved conflicts/dependencies in the current selected composition
+      (a `composition-facts` artifact's own `unresolvedCount`, over its
+      current `conflicts[]` only — not the whole research pool's conflicts).
+  tc_out_of_scope_edit_count:
+    unit: count
+    description: Actually-replayed edits in an `integration-state` that landed outside their work package's declared edit domain.
+  tc_unqualified_rc_net_count:
+    unit: count
+    description: >-
+      A candidate's newly-introduced nets that lack a qualifying SPEF entry
+      (`atcs.verification.presta_qualification`); unknown net-name lists
+      never qualify as clean.
+  tc_xtop_setup_wns_ns:
+    unit: ns
+    mode: [setup]
+    description: A sealed Contribution's predicted XTop-model worst setup slack (`predicted.xtopSetupWns`); unknown when not reported.
+  tc_xtop_hold_wns_ns:
+    unit: ns
+    mode: [hold]
+    description: A sealed Contribution's predicted XTop-model worst hold slack (`predicted.xtopHoldWns`); unknown when not reported.
+  tc_presta_setup_wns_ns:
+    unit: ns
+    mode: [setup]
+    description: A sealed Contribution's predicted PT pre-check worst setup slack (`predicted.prestaSetupWns`); never a final Goal source.
+  tc_presta_hold_wns_ns:
+    unit: ns
+    mode: [hold]
+    description: A sealed Contribution's predicted PT pre-check worst hold slack (`predicted.prestaHoldWns`); never a final Goal source.
+  tc_final_setup_wns_ns:
+    unit: ns
+    mode: [setup]
+    description: >-
+      Worst setup slack across all required checks under the fixed final
+      analysis contract (`evaluation.finalSetupWns`); unknown unless every
+      required scenario's coverage and Measure are actually known.
+  tc_final_hold_wns_ns:
+    unit: ns
+    mode: [hold]
+    description: >-
+      Worst hold slack across all required checks under the fixed final
+      analysis contract (`evaluation.finalHoldWns`); unknown unless every
+      required scenario's coverage and Measure are actually known.
+  tc_missing_required_check_count:
+    unit: count
+    description: Required scenarios/checks with no valid final analysis in the current `evaluation`. 0 only from confirmed complete coverage.
+  tc_final_identity_error_count:
+    unit: count
+    description: >-
+      DB/netlist/SPEF/report identity-chain mismatches in the current
+      `evaluation`; unknown whenever any leg of the chain could not itself
+      be checked.
+  tc_applicable_constraint_failure_count:
+    unit: count
+    description: Measured failures among the required constraints applicable to this candidate's actions; a missing check is counted separately, never folded into 0.
+  tc_applicable_constraint_unknown_count:
+    unit: count
+    description: Required constraints with insufficient evidence to decide; never covered up by a failure count of 0.
+  tc_fixed_check_count:
+    unit: count
+    description: Checks confirmed to have moved from negative to non-negative slack under the same identity; a check that merely disappeared from a report is never counted as fixed.
+  tc_missing_prior_check_count:
+    unit: count
+    description: Prior checks that needed comparison but could no longer be located/observed; kept separate from an intentional lineage replacement.
+  tc_refresh_count:
+    unit: count
+    description: Completed actual full physical refreshes recorded in the pointers history as of this acceptance record; kept separate from research/generation counts.
+  tc_accepted_artifact_ready:
+    unit: count
+    description: >-
+      1 only when the accepted candidate's actual on-disk database/recovery
+      material re-hashes to the identity recorded at evaluation time; a
+      same-named file is never sufficient.
+  tc_stop_required:
+    unit: count
+    description: 1 iff the current next-decision's `action` is `wait`, with a concrete reason; never evidence that the problem is globally unsolvable.
+  tc_next_action:
+    unit: count
+    description: >-
+      The next-investment decision, encoded from a schema-valid
+      `next-decision.action`: 1 observe, 2 research, 3 compose, 4 revise,
+      5 implement, 6 earlier-apr, 7 wait, 8 goal-met. unknown whenever the
+      `next-decision` document itself fails structural validation.
+  tc_selected_contribution_count:
+    unit: count
+    description: >-
+      Length of the current `integration-plan.select` — contributions
+      actually chosen for this batch's integration replay; 0 is a valid,
+      distinct fact from "no valid integration-plan produced" (unknown).

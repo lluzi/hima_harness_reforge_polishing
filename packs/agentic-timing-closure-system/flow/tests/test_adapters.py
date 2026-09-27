@@ -1,0 +1,1211 @@
+"""Tests for `atcs.adapters` (T12: tool adapters, task templates, CLI contract).
+
+Runnable directly:
+    python3 packs/agentic-timing-closure-system/flow/tests/test_adapters.py -v
+
+Runnable via discovery:
+    python3 -m unittest discover -s packs/agentic-timing-closure-system/flow/tests -v
+
+No test here launches EDA or SSH: template compilation is checked as text
+and (for the typed edit-domain gate) by sourcing the generated Tcl in a
+plain `tclsh` with hand-written stubs standing in for the real XTop
+commands -- never a real XTop/Innovus/StarRC/PrimeTime binary. Subcommand
+I/O-contract tests drive `flow/atcs_cli.py` as a subprocess against a fake,
+local wrapper script (never a real Site wrapper or SSH).
+"""
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+TESTS_DIR = Path(__file__).resolve().parent
+FLOW_DIR = TESTS_DIR.parent
+PACK_DIR = FLOW_DIR.parent
+sys.path.insert(0, str(FLOW_DIR))
+sys.path.insert(0, str(TESTS_DIR))
+
+from atcs import core  # noqa: E402
+from atcs import adapters  # noqa: E402
+import fixtures  # noqa: E402
+
+CLI_PATH = FLOW_DIR / "atcs_cli.py"
+TEMPLATES_DIR = FLOW_DIR / "templates"
+TCLSH = shutil.which("tclsh")
+
+
+def _tmp():
+    return Path(tempfile.mkdtemp(prefix="atcs-adapters-"))
+
+
+# ---------------------------------------------------------------------------
+# Step 1 requirement: no template references the frozen old Pack's real corpus path.
+# ---------------------------------------------------------------------------
+
+
+class NoDesignZooReferenceTest(unittest.TestCase):
+    def test_no_template_references_design_zoo(self):
+        template_files = sorted(TEMPLATES_DIR.glob("*"))
+        self.assertTrue(template_files, "expected flow/templates/ to contain template files")
+        for path in template_files:
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("/data/eda/project/design_zoo", text, f"{path} references design_zoo")
+
+    def test_no_template_uses_the_undocumented_get_object_name(self):
+        # Confirmed absent from both the XTop man tree and command_surface.tsv
+        # (Task 12 fix round item 2) -- get_cells + foreach_in_collection +
+        # get_attribute full_name/ref_name replace it. See
+        # knowledge/xtop-capabilities.md for the citation. Only *code* lines
+        # are checked -- a comment is allowed to name the banned command
+        # while explaining why it must not be used (as this Pack's own
+        # templates do).
+        for path in sorted(TEMPLATES_DIR.glob("*.tcl")):
+            code_lines = [line for line in path.read_text(encoding="utf-8").splitlines()
+                          if not line.strip().startswith("#")]
+            self.assertNotIn("get_object_name", "\n".join(code_lines),
+                              f"{path} uses undocumented get_object_name")
+
+
+# ---------------------------------------------------------------------------
+# Step 1 requirement: PT scenario task compiles all four scenario names,
+# max_paths/nworst and PBA mode exactly from query_spec.
+# ---------------------------------------------------------------------------
+
+
+def _scenario_inputs():
+    return {
+        scenario: {
+            "design": "top", "netlist": "/ws/netlist.v", "sdc": "/ws/constraints.sdc",
+            "spef": f"/ws/{scenario}.spef",
+        }
+        for scenario in adapters.REQUIRED_SCENARIOS
+    }
+
+
+class HashLibraryGlobTest(unittest.TestCase):
+    """C4 (final review, per-scenario library identity): `adapters.hash_library_glob`
+    catches an unmatched Site `libGlob` in Python, before PT ever launches, with an
+    informative error -- the same failure Tcl's own `lsort [glob -nocomplain ...]`
+    check inside `pt-scenario.tcl`/`pt-presta.tcl` would otherwise only surface as an
+    opaque PT `error`."""
+
+    def setUp(self):
+        self.tmp = _tmp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def test_matches_are_hashed_and_sorted_by_path(self):
+        (self.tmp / "b.db").write_bytes(b"b")
+        (self.tmp / "a.db").write_bytes(b"a")
+        result = adapters.hash_library_glob(str(self.tmp / "*.db"))
+        self.assertEqual([entry["path"] for entry in result], [str(self.tmp / "a.db"), str(self.tmp / "b.db")])
+        self.assertEqual(result[0]["sha256"], core.file_sha256(self.tmp / "a.db"))
+        self.assertEqual(result[1]["sha256"], core.file_sha256(self.tmp / "b.db"))
+
+    def test_no_match_is_a_missing_input_refusal(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.hash_library_glob(str(self.tmp / "nope-*.db"))
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+
+class PtScenarioTaskTest(unittest.TestCase):
+    def test_compiles_all_four_scenario_names(self):
+        query_spec = {"precision": "gba", "requiredScenarios": list(adapters.REQUIRED_SCENARIOS), "maxPaths": 500}
+        tasks = adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(), "/ws/reports")
+        self.assertEqual(set(tasks), set(adapters.REQUIRED_SCENARIOS))
+        for scenario, task in tasks.items():
+            self.assertEqual(task["scenario"], scenario)
+            self.assertIn(f'set env(SCENARIO) "{scenario}"', task["tcl"])
+
+    def test_max_paths_and_nworst_come_from_query_spec(self):
+        query_spec = {"precision": "gba", "requiredScenarios": [], "maxPaths": 777, "nworst": 13}
+        tasks = adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(), "/ws/reports")
+        for task in tasks.values():
+            self.assertEqual(task["env"]["MAX_PATHS"], "777")
+            self.assertEqual(task["env"]["NWORST"], "13")
+            self.assertIn('set env(MAX_PATHS) "777"', task["tcl"])
+            self.assertIn('set env(NWORST) "13"', task["tcl"])
+
+    def test_nworst_defaults_when_query_spec_omits_it(self):
+        query_spec = {"precision": "gba", "requiredScenarios": [], "maxPaths": 100}
+        tasks = adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(), "/ws/reports")
+        for task in tasks.values():
+            self.assertEqual(task["env"]["NWORST"], str(adapters.DEFAULT_NWORST))
+
+    def test_pba_mode_reflects_query_spec_precision(self):
+        for precision, expected in (("gba", "0"), ("pba", "1")):
+            query_spec = {"precision": precision, "requiredScenarios": [], "maxPaths": 100}
+            tasks = adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(), "/ws/reports")
+            for task in tasks.values():
+                self.assertEqual(task["env"]["PBA_MODE"], expected)
+
+    def test_pba_precision_actually_runs_pba_mode_in_the_rendered_tcl(self):
+        """Minor (final review): a `precision: pba` request must make
+        report_timing/report_global_timing actually pass PT's own `-pba_mode` flag
+        (verified read-only against the PT X-2025.06 man page: report_timing(2)/
+        report_global_timing(2) both accept `-pba_mode none|path|exhaustive|
+        ml_exhaustive`, default `none` == GBA) -- setting `PBA_MODE=1` in the
+        environment alone (previously only consumed by the optional icexplorer
+        STA_DATA export block) never actually ran PBA for the reports this Pack's own
+        `state.capture` labels "precision: pba", which would have been a mismatched
+        label. The template computes its own `-pba_mode` argument from `$env
+        (PBA_MODE)` at Tcl runtime (`pba_mode_arg`), so the rendered Tcl text is the
+        same either way -- this checks that computed argument is actually threaded
+        into all three report calls, never silently dropped."""
+        task = adapters.compile_pt_scenario_task(
+            adapters.REQUIRED_SCENARIOS[0],
+            _scenario_inputs()[adapters.REQUIRED_SCENARIOS[0]],
+            "/ws/reports",
+            {"precision": "pba", "requiredScenarios": [], "maxPaths": 100},
+        )
+        tcl = task["tcl"]
+        self.assertIn("set pba_mode_arg none", tcl)
+        self.assertIn("if {$env(PBA_MODE) == 1} { set pba_mode_arg path }", tcl)
+        self.assertIn("report_global_timing -significant_digits 4 -pba_mode $pba_mode_arg", tcl)
+        self.assertEqual(
+            tcl.count("-pba_mode $pba_mode_arg"), 3, "setup.rpt/hold.rpt/global_timing.rpt each need it",
+        )
+
+    def test_missing_required_scenario_is_refused(self):
+        query_spec = {"precision": "gba", "requiredScenarios": [], "maxPaths": 100}
+        inputs = _scenario_inputs()
+        del inputs[adapters.REQUIRED_SCENARIOS[0]]
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_pt_scenario_tasks(query_spec, inputs, "/ws/reports")
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_invalid_precision_is_refused(self):
+        query_spec = {"precision": "bogus", "requiredScenarios": [], "maxPaths": 100}
+        with self.assertRaises(core.AtcsError):
+            adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(), "/ws/reports")
+
+
+class PtQueryTaskTest(unittest.TestCase):
+    """N4 (final fix batch C): every `pt-query.tcl` target now carries its own
+    `mode` (`setup`/`hold`), and `-delay_type max`/`min` is emitted per target
+    from it -- PT's own `-delay_type` default (`max`) would otherwise silently
+    report a hold check's setup-side slack. `pba` threads `PBA_MODE` the same
+    way `compile_pt_scenario_task`'s own `query_spec["precision"]` does."""
+
+    def _inputs(self):
+        return {"design": "top", "netlist": "/ws/design.v", "sdc": "/ws/design.sdc", "spef": "/ws/corner.spef"}
+
+    def test_setup_and_hold_targets_map_to_delay_type_max_and_min(self):
+        targets = [
+            {"checkKey": "s1|setup|EP1", "startpoint": "SP1", "endpoint": "EP1", "mode": "setup"},
+            {"checkKey": "s1|hold|EP2", "startpoint": "SP2", "endpoint": "EP2", "mode": "hold"},
+        ]
+        task = adapters.compile_pt_query_task(self._inputs(), "/ws/reports", targets)
+        tcl = task["tcl"]
+        self.assertIn("{SP1 EP1 setup q000}", tcl)
+        self.assertIn("{SP2 EP2 hold q001}", tcl)
+        # The template's own mode->delay_type mapping (rendered verbatim; the
+        # actual selection happens at Tcl runtime, but the mapping logic itself
+        # must be present and correct in the compiled text).
+        self.assertIn('if {$mode eq "setup"} {\n        set delay_type max', tcl)
+        self.assertIn('} elseif {$mode eq "hold"} {\n        set delay_type min', tcl)
+        self.assertIn("-delay_type $delay_type", tcl)
+
+    def test_refuses_a_target_missing_mode(self):
+        targets = [{"checkKey": "s1|setup|EP1", "startpoint": "SP1", "endpoint": "EP1"}]
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_pt_query_task(self._inputs(), "/ws/reports", targets)
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_refuses_an_invalid_mode(self):
+        targets = [{"checkKey": "s1|bogus|EP1", "startpoint": "SP1", "endpoint": "EP1", "mode": "bogus"}]
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_pt_query_task(self._inputs(), "/ws/reports", targets)
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_pba_flag_only_set_when_requested(self):
+        targets = [{"checkKey": "s1|setup|EP1", "startpoint": "SP1", "endpoint": "EP1", "mode": "setup"}]
+        task = adapters.compile_pt_query_task(self._inputs(), "/ws/reports", targets)
+        self.assertEqual(task["env"]["PBA_MODE"], "0")
+        self.assertIn('set env(PBA_MODE) "0"', task["tcl"])
+
+        task_pba = adapters.compile_pt_query_task(self._inputs(), "/ws/reports", targets, pba=True)
+        self.assertEqual(task_pba["env"]["PBA_MODE"], "1")
+        self.assertIn('set env(PBA_MODE) "1"', task_pba["tcl"])
+        self.assertIn("-pba_mode $pba_mode_arg", task_pba["tcl"])
+
+
+class PtPrestaTaskTest(unittest.TestCase):
+    """C4 (final review): `pt-presta.tcl` never set `target_library`/`link_path` at
+    all before this fix -- `link_design` for a real (non-fixture) netlist would have
+    had no cell library to resolve references against. `compile_pt_presta_task`'s
+    `inputs` gains the same optional `libGlob`/`driverLibrary`/`originalDriverLibrary`
+    triple `compile_pt_scenario_task` already accepted."""
+
+    def _inputs(self, **extra):
+        return {
+            "design": "top", "netlist": "/ws/design.v", "sdc": "/ws/design.sdc", "spef": "/ws/corner.spef",
+            **extra,
+        }
+
+    def test_without_library_fields_the_env_carries_no_library_vars(self):
+        task = adapters.compile_pt_presta_task("func_ssg_rcworst_m40", self._inputs(), "/ws/reports")
+        self.assertNotIn("LIB_GLOB", task["env"])
+        self.assertNotIn("DRIVER_LIBRARY", task["env"])
+        self.assertNotIn('set env(LIB_GLOB)', task["tcl"])
+
+    def test_with_library_fields_the_env_carries_them_and_the_tcl_links_a_library(self):
+        inputs = self._inputs(
+            libGlob="/foundation/libdb/ssg_m40c/*.db",
+            driverLibrary="tcbn28...ssg0p81vm40c", originalDriverLibrary="tcbn28...typ0p9v25c",
+        )
+        task = adapters.compile_pt_presta_task("func_ssg_rcworst_m40", inputs, "/ws/reports")
+        self.assertEqual(task["env"]["LIB_GLOB"], inputs["libGlob"])
+        self.assertEqual(task["env"]["DRIVER_LIBRARY"], inputs["driverLibrary"])
+        self.assertEqual(task["env"]["ORIGINAL_DRIVER_LIBRARY"], inputs["originalDriverLibrary"])
+        self.assertIn("set_app_var target_library", task["tcl"])
+        self.assertIn("info exists env(LIB_GLOB)", task["tcl"])
+
+    def test_missing_a_required_input_is_refused(self):
+        inputs = self._inputs()
+        del inputs["spef"]
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_pt_presta_task("func_ssg_rcworst_m40", inputs, "/ws/reports")
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+
+# ---------------------------------------------------------------------------
+# Step 1 requirement: StarRC task writes into a new private work dir, never
+# into the input's directory.
+# ---------------------------------------------------------------------------
+
+
+class StarrcTaskTest(unittest.TestCase):
+    def test_work_dir_is_new_and_private_not_the_input_directory(self):
+        task = adapters.compile_starrc_task("top", "rcworst_m40", "/campaign/implementations/m1a2b3c4d5e6f7a8b9c0/EXPORT/design.def",
+                                             "/campaign/implementations/m1a2b3c4d5e6f7a8b9c0")
+        work_dir = Path(task["workDir"])
+        def_dir = Path("/campaign/implementations/m1a2b3c4d5e6f7a8b9c0/EXPORT")
+        self.assertNotEqual(work_dir, def_dir)
+        self.assertNotEqual(work_dir.resolve(), def_dir.resolve())
+        self.assertTrue(str(work_dir).startswith("/campaign/implementations/m1a2b3c4d5e6f7a8b9c0/starrc/rcworst_m40"))
+        self.assertIn("STAR_DIRECTORY: " + str(work_dir), task["cmdText"])
+        self.assertIn("TOP_DEF_FILE: /campaign/implementations/m1a2b3c4d5e6f7a8b9c0/EXPORT/design.def", task["cmdText"])
+
+    def test_refuses_when_work_dir_would_equal_def_directory(self):
+        # A pathological base template whose own work dir happens to fall in the DEF's directory.
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_starrc_task(
+                "top", "corner", "/ws/starrc/corner/work/design.def", "/ws",
+            )
+        self.assertEqual(ctx.exception.code, "invalid-workspace")
+
+    def test_multiple_corners_each_get_their_own_work_dir(self):
+        tasks = adapters.compile_starrc_tasks("top", ["rcworst_m40", "cbest_125"], "/ws/EXPORT/design.def", "/ws")
+        self.assertEqual(set(tasks), {"rcworst_m40", "cbest_125"})
+        self.assertNotEqual(tasks["rcworst_m40"]["workDir"], tasks["cbest_125"]["workDir"])
+
+    def test_refuses_a_corner_that_would_escape_output_root(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_starrc_task("top", "../x", "/ws/EXPORT/design.def", "/ws")
+        self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+    def test_refuses_a_corner_containing_a_newline(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_starrc_task("top", "a\nb", "/ws/EXPORT/design.def", "/ws")
+        self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+    def test_refuses_a_design_that_would_escape_output_root(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_starrc_task("../x", "corner", "/ws/EXPORT/design.def", "/ws")
+        self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+    def test_refuses_work_dir_nested_several_levels_inside_the_def_directory(self):
+        # `output_root` itself lands under the DEF's own directory, so the
+        # computed work dir is nested (not just equal) inside it -- the
+        # containment check must catch this, not only exact-path equality.
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_starrc_task(
+                "top", "corner", "/ws/EXPORT/design.def", "/ws/EXPORT/nested/deeper",
+            )
+        self.assertEqual(ctx.exception.code, "invalid-workspace")
+
+    def test_accepts_a_work_dir_genuinely_inside_output_root_and_outside_def_dir(self):
+        task = adapters.compile_starrc_task("top", "corner", "/ws/EXPORT/design.def", "/ws/implementations/m1")
+        self.assertTrue(Path(task["workDir"]).is_relative_to(Path("/ws/implementations/m1")))
+
+    def test_a_custom_per_corner_template_text_is_used_instead_of_the_shipped_fallback(self):
+        """I1 (final review): a Site-provided StarRC command-file template
+        (`corners.json`'s own per-corner `templatePath`) must actually be the text
+        StarXtract runs against -- not this Pack's own single shipped `starrc.cmd`
+        fallback, which real Foundation corners each need their own qualified
+        version of (different STAR_MODE/layer-stack settings per corner)."""
+        custom_template = (
+            "STAR_MODE: RC_EXTRACT\n"
+            "TOP_DEF_FILE: placeholder\n"
+            "STAR_DIRECTORY: placeholder\n"
+            "NETLIST_FILE: placeholder\n"
+        )
+        task = adapters.compile_starrc_task(
+            "top", "cworst_T", "/ws/EXPORT/design.def", "/ws/implementations/m1", template_text=custom_template,
+        )
+        self.assertIn("STAR_MODE: RC_EXTRACT", task["cmdText"])
+        self.assertIn("TOP_DEF_FILE: /ws/EXPORT/design.def", task["cmdText"])
+
+    def test_omitting_template_text_falls_back_to_the_shipped_starrc_cmd(self):
+        task = adapters.compile_starrc_task("top", "corner", "/ws/EXPORT/design.def", "/ws/implementations/m1")
+        shipped = adapters.load_template("starrc.cmd")
+        self.assertNotIn("STAR_MODE: RC_EXTRACT", shipped)
+
+    def test_multiple_corners_each_use_their_own_template(self):
+        """`compile_starrc_tasks`'s `templates` param maps corner -> base text -- two
+        corners with genuinely different templates must render genuinely different
+        command text, not both silently fall back to the one shipped default."""
+        templates = {
+            "cworst_T": "STAR_MODE: RC_WORST\nTOP_DEF_FILE: x\nSTAR_DIRECTORY: x\nNETLIST_FILE: x\n",
+            "cbest": "STAR_MODE: RC_BEST\nTOP_DEF_FILE: x\nSTAR_DIRECTORY: x\nNETLIST_FILE: x\n",
+        }
+        tasks = adapters.compile_starrc_tasks(
+            "top", ["cworst_T", "cbest"], "/ws/EXPORT/design.def", "/ws", templates=templates,
+        )
+        self.assertIn("STAR_MODE: RC_WORST", tasks["cworst_T"]["cmdText"])
+        self.assertIn("STAR_MODE: RC_BEST", tasks["cbest"]["cmdText"])
+
+
+class NoMutableCurrentDirectoryTest(unittest.TestCase):
+    """Architecture Sec.13.4 (Task 12 fix round item 3): no implementation or
+    integration artifact may live under a mutable directory named `current`
+    -- every one lives under its own real `implementations/<mergeId>/` or
+    `integrations/<batchId>/`."""
+
+    def test_dispatcher_never_builds_a_current_directory_path(self):
+        text = (FLOW_DIR / "atcs_cli.py").read_text(encoding="utf-8")
+        code_lines = [line for line in text.splitlines() if not line.strip().startswith("#")]
+        code_text = "\n".join(code_lines)
+        self.assertNotIn('"implementations" / "current"', code_text)
+        self.assertNotIn('"integrations" / "current"', code_text)
+        self.assertNotIn("implementations/current", code_text)
+        self.assertNotIn("integrations/current", code_text)
+
+
+class PathSegmentValidatorTest(unittest.TestCase):
+    def test_accepts_ordinary_identifiers(self):
+        for value in ("rcworst_m40", "func_ssg_rcworst_m40", "top-design", "m1a2b3c4d5e6f7a8b9c0", "place"):
+            self.assertEqual(adapters.validate_path_segment(value, "x"), value)
+
+    def test_refuses_empty_or_non_string(self):
+        for value in ("", None, 123, [], {}):
+            with self.assertRaises(core.AtcsError) as ctx:
+                adapters.validate_path_segment(value, "x")
+            self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+    def test_refuses_dot_and_dotdot(self):
+        for value in (".", ".."):
+            with self.assertRaises(core.AtcsError) as ctx:
+                adapters.validate_path_segment(value, "x")
+            self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+    def test_refuses_path_traversal(self):
+        for value in ("../x", "a/../b", "/etc/passwd", "a/b"):
+            with self.assertRaises(core.AtcsError) as ctx:
+                adapters.validate_path_segment(value, "x")
+            self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+    def test_refuses_newline_and_other_unsafe_characters(self):
+        for value in ("a\nb", "a;b", "a$b", "a b"):
+            with self.assertRaises(core.AtcsError) as ctx:
+                adapters.validate_path_segment(value, "x")
+            self.assertEqual(ctx.exception.code, "invalid-path-segment")
+
+
+# ---------------------------------------------------------------------------
+# Step 1 requirement: Innovus ECO task sources the merge commit's own
+# innovusEcoTcl and exports DB/DEF/netlist under implementations/<mergeId>/.
+# ---------------------------------------------------------------------------
+
+
+class InnovusEcoTaskTest(unittest.TestCase):
+    def test_sources_merge_commit_eco_tcl_and_exports_under_merge_id_root(self):
+        merge_commit = core.stamp("merge-commit", {
+            "parentStateId": "base123", "contributions": [], "operations": [],
+            "innovusEcoTcl": "ecoChangeCell -inst {U1} -cell MOCKBUFX4\n", "sourceMap": {}, "newNets": [],
+        })
+        output_root = f"/campaign/implementations/{merge_commit['id']}"
+        task = adapters.compile_innovus_eco_task(merge_commit, "/campaign/state/current.enc", "top", output_root)
+
+        self.assertEqual(task["ecoText"], merge_commit["innovusEcoTcl"])
+        self.assertTrue(task["ecoPath"].startswith(output_root))
+        self.assertIn(f'set env(ECO_TCL) "{task["ecoPath"]}"', task["tcl"])
+        self.assertIn("source $env(ECO_TCL)", adapters.load_template("innovus-eco.tcl"))
+        for key in ("database", "def", "netlist", "drc", "connectivity"):
+            self.assertTrue(task["outputs"][key].startswith(output_root),
+                             f"{key} output {task['outputs'][key]} is not under {output_root}")
+        self.assertTrue(task["outputs"]["database"].endswith("top.enc"))
+        self.assertTrue(task["outputs"]["def"].endswith("design.def"))
+        self.assertTrue(task["outputs"]["netlist"].endswith("design.v"))
+
+    def test_refuses_a_merge_commit_with_no_eco_tcl(self):
+        merge_commit = {"innovusEcoTcl": ""}
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_innovus_eco_task(merge_commit, "/campaign/state/current.enc", "top", "/campaign/implementations/x")
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_restores_the_staged_enc_dat_directory_with_the_top_cell(self):
+        """Final review fix C, G29: `CURRENT_DB` is the `.enc` restore-script path
+        (`design-state.database.path`), never the directory `restoreDesign` itself
+        reads -- the real Foundation restore convention (read-only verified) is
+        `restoreDesign <path>.enc.dat <topCell>`."""
+        merge_commit = core.stamp("merge-commit", {
+            "parentStateId": "base123", "contributions": [], "operations": [],
+            "innovusEcoTcl": "ecoChangeCell -inst {U1} -cell MOCKBUFX4\n", "sourceMap": {}, "newNets": [],
+        })
+        output_root = f"/campaign/implementations/{merge_commit['id']}"
+        task = adapters.compile_innovus_eco_task(merge_commit, "/campaign/state/current.enc", "top", output_root)
+        self.assertIn("restoreDesign $env(CURRENT_DB).dat $env(DESIGN)", task["tcl"])
+        self.assertNotIn("restoreDesign $env(CURRENT_DB) $env(DESIGN)", task["tcl"])
+
+
+class InnovusExportTaskTest(unittest.TestCase):
+    def test_restores_the_staged_enc_dat_directory_with_the_top_cell(self):
+        """Final review fix C, G29: same restore convention as
+        `compile_innovus_eco_task` -- see that test's own docstring."""
+        task = adapters.compile_innovus_export_task("/campaign/DBS/top.enc", "swerv_wrapper", "/campaign/out")
+        self.assertIn("restoreDesign $env(CURRENT_DB).dat $env(DESIGN)", task["tcl"])
+        self.assertNotIn("restoreDesign $env(CURRENT_DB) $env(DESIGN)", task["tcl"])
+
+
+# ---------------------------------------------------------------------------
+# Step 1 requirement: xtop_operator argv carries the workspace-manifest
+# namePrefix.
+# ---------------------------------------------------------------------------
+
+
+class XtopOperatorArgvTest(unittest.TestCase):
+    def test_argv_carries_workspace_manifest_name_prefix(self):
+        manifest = {"namePrefix": "atcs_w01_r3_"}
+        task = adapters.compile_xtop_operator_task(
+            manifest, "top", "/pdk/tech.lef", "/pdk/cells/*.lef", "/ws/netlist.v", "/ws/design.def", "/ws/run",
+        )
+        self.assertIn(manifest["namePrefix"], task["argv"])
+        self.assertEqual(task["ecoPrefix"], manifest["namePrefix"] + "eco")
+
+    def test_refuses_a_manifest_with_no_name_prefix(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_xtop_operator_task({}, "top", "lef", "glob", "net", "def", "/ws/run")
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+
+# ---------------------------------------------------------------------------
+# Step 1 requirement: typed procedures reject a target outside the
+# edit-domain list passed at session start (real tclsh execution, XTop
+# commands stubbed).
+# ---------------------------------------------------------------------------
+
+
+_STUB_PROCS = """
+proc set_parameter {args} {}
+proc create_workspace {args} {}
+proc link_reference_library {args} {}
+proc create_design_definition {args} {}
+proc set_site_map {args} {}
+proc set_removable_fillers {args} {}
+proc import_designs {args} {}
+proc check_placement_readiness {args} {}
+proc read_timing_data {args} {}
+proc save_workspace {args} {}
+proc get_attribute {obj attr} {
+    if {$attr eq "full_name"} { return $obj }
+    return "MASTERX"
+}
+proc size_cell {insts master} { set ::ATCS_TEST_LAST_CALL [list size_cell $insts $master] }
+proc insert_buffer {args} { set ::ATCS_TEST_LAST_CALL [linsert $args 0 insert_buffer] }
+proc remove_buffer {insts} { set ::ATCS_TEST_LAST_CALL [list remove_buffer $insts] }
+# Documented XTop commands only (knowledge/xtop-capabilities.md): get_cells
+# -hierarchical enumerates every cell; foreach_in_collection iterates; there
+# is no get_object_name. "get_cells $i" (a single, already-known name) just
+# re-wraps that name, matching get_attribute.1's own worked example.
+proc get_cells {args} {
+    if {[llength $args] == 1 && [lindex $args 0] eq "-hierarchical"} {
+        return {U_IN_DOMAIN U_OUT_DOMAIN}
+    }
+    return [lindex $args 0]
+}
+proc foreach_in_collection {iter_var collection body} {
+    upvar 1 $iter_var i
+    foreach i $collection { uplevel 1 $body }
+}
+"""
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class TypedProcedureEditDomainTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = _tmp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        for name in ("tech.lef", "cells.lef", "netlist.v", "design.def"):
+            (self.tmp / name).write_text("stub", encoding="utf-8")
+        self.run_root = self.tmp / "run"
+        self.run_root.mkdir()
+        self.ops_log = self.run_root / "ops.jsonl"
+
+        manifest = {"namePrefix": "atcs_w01_r1_"}
+        operator_task = adapters.compile_xtop_operator_task(
+            manifest, "top", str(self.tmp / "tech.lef"), str(self.tmp / "cells.lef"),
+            str(self.tmp / "netlist.v"), str(self.tmp / "design.def"), str(self.run_root),
+        )
+        self.operator_tcl_path = self.run_root / "operator.tcl"
+        self.operator_tcl_path.write_text(operator_task["tcl"], encoding="utf-8")
+
+        edit_domain = {"instances": ["U_IN_DOMAIN"], "nets": ["N_IN_DOMAIN"]}
+        analysis_task = adapters.compile_xtop_analysis_manual_task(
+            manifest, edit_domain, self.operator_tcl_path, self.ops_log,
+        )
+        self.script_path = self.tmp / "test-session.tcl"
+        self.script_path.write_text(_STUB_PROCS + analysis_task["tcl"], encoding="utf-8")
+
+    def _run_tcl(self, extra_commands):
+        script = self.script_path.read_text(encoding="utf-8") + "\n" + extra_commands
+        combined = self.tmp / "combined.tcl"
+        combined.write_text(script, encoding="utf-8")
+        return subprocess.run([TCLSH, str(combined)], capture_output=True, text=True)
+
+    def test_rejects_size_cell_on_out_of_domain_instance(self):
+        result = self._run_tcl('atcs_size_cell U_OUT_DOMAIN MOCKBUFX4\n')
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("out-of-scope", result.stdout + result.stderr)
+        self.assertFalse(self.ops_log.exists() and self.ops_log.read_text().strip(),
+                          "an out-of-scope mutation must not be logged")
+
+    def test_rejects_delete_buffer_on_out_of_domain_instance(self):
+        result = self._run_tcl('atcs_delete_buffer U_OUT_DOMAIN\n')
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("out-of-scope", result.stdout + result.stderr)
+
+    def test_rejects_insert_buffer_on_out_of_domain_net(self):
+        result = self._run_tcl('atcs_insert_buffer N_OUT_DOMAIN {P1 P2} U_NEW N_NEW MOCKBUFX2\n')
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("out-of-scope", result.stdout + result.stderr)
+
+    def test_accepts_size_cell_on_in_domain_instance_and_logs_one_operation(self):
+        result = self._run_tcl('atcs_size_cell U_IN_DOMAIN MOCKBUFX4\nputs "TCL-OK"\n')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("TCL-OK", result.stdout)
+        lines = [line for line in self.ops_log.read_text(encoding="utf-8").splitlines() if line.strip()]
+        self.assertEqual(len(lines), 1)
+        op = json.loads(lines[0])
+        self.assertEqual(op, {"op": "size_cell", "instance": "U_IN_DOMAIN", "fromMaster": "MASTERX", "toMaster": "MOCKBUFX4"})
+
+    def test_accepts_insert_buffer_on_in_domain_net_and_logs_one_operation(self):
+        result = self._run_tcl('atcs_insert_buffer N_IN_DOMAIN {P1 P2} U_NEW N_NEW MOCKBUFX2\nputs "TCL-OK"\n')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        lines = [line for line in self.ops_log.read_text(encoding="utf-8").splitlines() if line.strip()]
+        self.assertEqual(len(lines), 1)
+        op = json.loads(lines[0])
+        self.assertEqual(op["op"], "insert_buffer")
+        self.assertEqual(op["net"], "N_IN_DOMAIN")
+        self.assertEqual(op["loadPins"], ["P1", "P2"])
+        self.assertEqual(op["newInstance"], "U_NEW")
+        self.assertEqual(op["newNet"], "N_NEW")
+        self.assertEqual(op["master"], "MOCKBUFX2")
+        self.assertIsNone(op["location"])
+
+
+# ---------------------------------------------------------------------------
+# atcs_dump_cells writes the "instance master" dump M3 parses.
+# ---------------------------------------------------------------------------
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class DumpCellsTest(unittest.TestCase):
+    def test_dump_matches_the_instance_master_grammar_m3_parses(self):
+        from atcs import contributions as contributions_module
+
+        tmp = _tmp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        for name in ("tech.lef", "cells.lef", "netlist.v", "design.def"):
+            (tmp / name).write_text("stub", encoding="utf-8")
+        run_root = tmp / "run"
+        run_root.mkdir()
+        manifest = {"namePrefix": "atcs_w01_r1_"}
+        operator_task = adapters.compile_xtop_operator_task(
+            manifest, "top", str(tmp / "tech.lef"), str(tmp / "cells.lef"),
+            str(tmp / "netlist.v"), str(tmp / "design.def"), str(run_root),
+        )
+        analysis_task = adapters.compile_xtop_analysis_manual_task(
+            manifest, {"instances": [], "nets": []}, run_root / "operator.tcl", run_root / "ops.jsonl",
+        )
+        (run_root / "operator.tcl").write_text(operator_task["tcl"], encoding="utf-8")
+        script_path = tmp / "dump-session.tcl"
+        dump_path = tmp / "cells.dump"
+        script_path.write_text(
+            _STUB_PROCS + analysis_task["tcl"] + f'\natcs_dump_cells "{dump_path}"\n', encoding="utf-8",
+        )
+        result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        parsed = contributions_module.parse_cell_dump(dump_path.read_text(encoding="utf-8"))
+        self.assertEqual(parsed, {"U_IN_DOMAIN": "MASTERX", "U_OUT_DOMAIN": "MASTERX"})
+
+
+class XtopReplayWorkspaceTest(unittest.TestCase):
+    """I3 (final review): `xtop-replay.tcl` builds its own fresh XTop workspace from
+    the batch's own base-state LEF/netlist/DEF -- never `open_workspace` on an
+    Innovus `.enc` restore script."""
+
+    def test_never_calls_open_workspace(self):
+        task = adapters.compile_xtop_replay_task(
+            "top", "/pdk/tech.lef", "/pdk/cells/*.lef", "/ws/netlist.v", "/ws/design.def", [], "/ws/run",
+        )
+        code_lines = [line for line in task["tcl"].splitlines() if not line.strip().startswith("#")]
+        self.assertFalse(any("open_workspace" in line for line in code_lines), task["tcl"])
+        self.assertIn("create_workspace", task["tcl"])
+        self.assertIn("link_reference_library", task["tcl"])
+        self.assertIn("create_design_definition", task["tcl"])
+
+    def test_env_carries_lef_and_design_inputs_not_a_current_db(self):
+        task = adapters.compile_xtop_replay_task(
+            "top", "/pdk/tech.lef", "/pdk/cells/*.lef", "/ws/netlist.v", "/ws/design.def", [], "/ws/run",
+        )
+        self.assertEqual(task["env"]["TECH_LEF"], "/pdk/tech.lef")
+        self.assertEqual(task["env"]["CELL_LEF_GLOB"], "/pdk/cells/*.lef")
+        self.assertEqual(task["env"]["NETLIST"], "/ws/netlist.v")
+        self.assertEqual(task["env"]["DEF"], "/ws/design.def")
+        self.assertNotIn("CURRENT_DB", task["env"])
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class XtopReplayEndToEndTest(unittest.TestCase):
+    """Real `tclsh` execution (documented XTop commands stubbed): confirms the
+    compiled `xtop-replay.tcl` actually builds a workspace and replays a step,
+    never just that its text happens to contain the right substrings."""
+
+    def setUp(self):
+        self.tmp = _tmp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        for name in ("tech.lef", "cells.lef", "netlist.v", "design.def"):
+            (self.tmp / name).write_text("stub", encoding="utf-8")
+        self.run_root = self.tmp / "run"
+        self.run_root.mkdir()
+
+    def _compile_and_write(self, steps):
+        task = adapters.compile_xtop_replay_task(
+            "top", str(self.tmp / "tech.lef"), str(self.tmp / "cells.lef"),
+            str(self.tmp / "netlist.v"), str(self.tmp / "design.def"), steps, str(self.run_root),
+        )
+        Path(task["stepsPath"]).write_text(task["stepsText"], encoding="utf-8")
+        script_path = self.tmp / "replay-session.tcl"
+        script_path.write_text(_STUB_PROCS + task["tcl"], encoding="utf-8")
+        return task, script_path
+
+    def test_a_successful_step_produces_an_ok_receipt_and_two_dumps(self):
+        steps = [{"stepId": "s1", "op": {"op": "size_cell", "instance": "U_IN_DOMAIN", "toMaster": "MOCKBUFX4"}}]
+        task, script_path = self._compile_and_write(steps)
+        result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipts = adapters.read_replay_receipts(task["receiptsLog"])
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(receipts[0]["stepId"], "s1")
+        self.assertEqual(receipts[0]["status"], "ok")
+        self.assertTrue((Path(task["dumpDir"]) / "000.dump").is_file())
+        self.assertTrue((Path(task["dumpDir"]) / "001.dump").is_file())
+
+    def test_a_missing_required_input_refuses_before_any_workspace_command(self):
+        # DEF file does not exist -- must fail on the `file readable` check, never
+        # silently proceed to `create_workspace`.
+        (self.tmp / "design.def").unlink()
+        task, script_path = self._compile_and_write([])
+        result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("not readable", result.stdout + result.stderr)
+
+
+# ---------------------------------------------------------------------------
+# `parse_path_detail` / `parse_spef_net_names` (bounded, best-effort helpers).
+# ---------------------------------------------------------------------------
+
+
+class ParsePathDetailTest(unittest.TestCase):
+    """Grammar cross-checked against a real Foundation ROUND3 ``setup.rpt``
+    sample (Task 16, ``docs/assessment/2026-09-26/atcs-qualification/
+    corpus-preflight.md``) via `fixtures.path_detail_report`. Every
+    cell/instance/net name is invented; the shape (wrapped long names, the
+    stray ``&`` annotation, fanout/cap-only net rows) is real.
+    """
+
+    def test_sums_cell_and_net_arcs_from_wrapped_long_names(self):
+        text = fixtures.path_detail_report(
+            [
+                (
+                    "mock_block/mock_leaf_ff_stage1/A", "mock_block/mock_leaf_ff_stage1/Z",
+                    "MOCKBUFX2", 0.02, 0.08, 0.01, 0.05, "n_mock_1", 4, 1.50,
+                ),
+                (
+                    "mock_block/mock_leaf_ff_stage2/A", "mock_block/mock_leaf_ff_stage2/Z",
+                    "MOCKINVX1", 0.03, 0.10, 0.02, 0.04, "n_mock_2", 1, 0.80,
+                ),
+            ],
+            tail_net_fanout=2,
+        )
+        detail = adapters.parse_path_detail(text)
+        # Each stage's *input*-pin Incr is that net's delay; its *output*-pin
+        # Incr is the cell's own delay -- see module docstring's net/cell
+        # alternation rule.
+        self.assertAlmostEqual(core.value_of(detail["netDelay"]), 0.08 + 0.10, places=6)
+        self.assertAlmostEqual(core.value_of(detail["cellDelay"]), 0.05 + 0.04, places=6)
+        self.assertAlmostEqual(core.value_of(detail["slew"]), 0.03, places=6)
+        self.assertEqual(core.value_of(detail["fanout"]), 4)  # worst fanout across every net row (stage1's, not the smaller tail net's)
+        self.assertEqual(core.value_of(detail["location"]), "mock_block/mock_leaf_ff_stage2")
+
+    def test_terminal_net_without_cap_does_not_corrupt_delay_totals(self):
+        # Regression: a fanout-only net line (the shape a path's very last,
+        # off-chip net has) must never be misread as a delay value.
+        text = fixtures.path_detail_report(
+            [("mock_a/A", "mock_a/Z", "MOCKAOI21X1", 0.01, 0.02, 0.01, 0.03, "n_mock", 5, 0.20)],
+            tail_net_fanout=9,
+        )
+        detail = adapters.parse_path_detail(text)
+        self.assertAlmostEqual(core.value_of(detail["netDelay"]), 0.02, places=6)
+        self.assertAlmostEqual(core.value_of(detail["cellDelay"]), 0.03, places=6)
+        self.assertEqual(core.value_of(detail["fanout"]), 9)
+
+    def test_short_name_and_values_sharing_one_line_with_annotation(self):
+        # A short name (e.g. a top-level port) fits its values on the same
+        # physical line; the "&" annotation between Incr and Path must not
+        # break the match.
+        text = (
+            "  Point                       Fanout    Cap      Trans       Incr       Path\n"
+            "  -----------------------------------------------------------------------------\n"
+            "  mock_clk (in)                                   0.04       0.02 &     0.02 r\n"
+            "  data arrival time                                                     0.02\n"
+        )
+        detail = adapters.parse_path_detail(text)
+        self.assertAlmostEqual(core.value_of(detail["netDelay"]), 0.02, places=6)
+        self.assertFalse(core.is_known(detail["cellDelay"]))  # only one pin arc: net-delay role, no cell arc at all
+        self.assertAlmostEqual(core.value_of(detail["slew"]), 0.04, places=6)
+        self.assertEqual(core.value_of(detail["location"]), "mock_clk")
+
+    def test_unparseable_text_yields_unknown_never_zero(self):
+        detail = adapters.parse_path_detail("not a timing report at all\n")
+        for measure in detail.values():
+            self.assertFalse(core.is_known(measure))
+
+
+class ParseQuerySlackTest(unittest.TestCase):
+    """`adapters.parse_query_slack` -- I5 (final review): the single targeted path's own
+    slack Measure from one `pt-query.tcl` report, MET or VIOLATED, fed to
+    `atcs.state.compare_checks`'s own `recheck` parameter."""
+
+    def test_met_verdict_is_a_known_non_negative_slack(self):
+        text = "  slack (MET)                       0.12\n"
+        self.assertEqual(adapters.parse_query_slack(text), core.known(0.12))
+
+    def test_violated_verdict_is_a_known_negative_slack(self):
+        text = "  slack (VIOLATED)                  -0.05\n"
+        self.assertEqual(adapters.parse_query_slack(text), core.known(-0.05))
+
+    def test_precision_limited_violated_row_is_unknown_never_a_bare_zero(self):
+        text = "  slack (VIOLATED: increase significant digits) -0.00\n"
+        measure = adapters.parse_query_slack(text)
+        self.assertFalse(core.is_known(measure))
+
+    def test_precision_limited_met_row_is_also_unknown(self):
+        text = "  slack (MET: increase significant digits)      0.00\n"
+        measure = adapters.parse_query_slack(text)
+        self.assertFalse(core.is_known(measure))
+
+    def test_no_slack_line_is_unknown(self):
+        measure = adapters.parse_query_slack("not a timing report at all\n")
+        self.assertFalse(core.is_known(measure))
+
+
+class ParseSpefNetNamesTest(unittest.TestCase):
+    """Grammar cross-checked against a real Foundation ROUND3 StarRC
+    ``.spef`` sample (Task 16, ``docs/assessment/2026-09-26/atcs-
+    qualification/corpus-preflight.md``). Every index and name is invented.
+    """
+
+    def test_resolves_name_map_index_aliases(self):
+        text = fixtures.spef_net_name_map_and_d_nets(
+            {1001: "mock_net_a", 1002: "mock_net_b[3]"},
+            [(1001, 12.34), (1002, 5.6)],
+        )
+        self.assertEqual(adapters.parse_spef_net_names(text), {"mock_net_a", "mock_net_b[3]"})
+
+    def test_literal_d_net_name_used_directly_when_not_index_aliased(self):
+        text = "*D_NET n1 1.2\n...\n*D_NET n2 3.4\n"
+        self.assertEqual(adapters.parse_spef_net_names(text), {"n1", "n2"})
+
+    def test_unresolvable_alias_is_dropped_not_guessed(self):
+        text = fixtures.spef_net_name_map_and_d_nets({}, [(9999, 1.0)])
+        self.assertEqual(adapters.parse_spef_net_names(text), set())
+
+    def test_none_when_unreadable(self):
+        self.assertIsNone(adapters.parse_spef_net_names(None))
+
+    def test_ports_section_direction_line_never_collides_with_name_map(self):
+        # Fix round 1 (Task 16 review, Important #3): confirmed against a
+        # real, unfiltered SPEF prefix that a real *PORTS section reuses
+        # the identical "*<index> <token>" line shape as *NAME_MAP, for an
+        # entirely different purpose (port direction I/O/B, not a name).
+        # Real *NAME_MAP index *98784 named "clk"; the real file's *PORTS
+        # section separately has "*98784 I" (an unrelated input-direction
+        # marker for the same index) -- this must resolve to "clk", not
+        # raise a spurious conflict against "I".
+        text = (
+            "*NAME_MAP\n"
+            "*98784 mock_clk\n"
+            "*98785 mock_rst\n"
+            "\n"
+            "*PORTS\n"
+            "\n"
+            "*98784 I\n"
+            "*98785 B\n"
+            "\n"
+            "*D_NET *98784 1.0\n"
+        )
+        self.assertEqual(adapters.parse_spef_net_names(text), {"mock_clk"})
+
+    def test_identical_duplicate_name_map_line_is_tolerated(self):
+        # Fix round 1 (Task 16 review, Minor): a harmless, redundant repeat
+        # of the same index/name pair is not an identity conflict.
+        text = fixtures.spef_net_name_map_and_d_nets(
+            [(1001, "mock_net_a"), (1001, "mock_net_a")],
+            [(1001, 12.34)],
+        )
+        self.assertEqual(adapters.parse_spef_net_names(text), {"mock_net_a"})
+
+    def test_conflicting_duplicate_name_map_line_raises(self):
+        # The same index naming two different nets is a real identity
+        # conflict -- fail closed rather than silently picking one.
+        text = fixtures.spef_net_name_map_and_d_nets(
+            [(1001, "mock_net_a"), (1001, "mock_net_b")],
+            [(1001, 12.34)],
+        )
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.parse_spef_net_names(text)
+        self.assertEqual(ctx.exception.code, "spef-name-map-conflict")
+
+
+# ---------------------------------------------------------------------------
+# `run_tool` and the CLI dispatcher's exit-code contract, driven against a
+# fake local wrapper script (never real EDA/SSH).
+# ---------------------------------------------------------------------------
+
+
+class RunToolTest(unittest.TestCase):
+    """`run_tool` joins `command` into one string and hands it to the Site
+    wrapper as a single argv entry (`site_profile["edaShell"] + [shell_line
+    (...)]`) -- exactly `closure.py`'s `run_eda` convention. A wrapper that
+    itself runs an ssh+container command line ultimately re-interprets that
+    one string through a remote shell; the fake wrapper here does the same
+    locally (`sh -c "$1"`), never launching real EDA or SSH.
+    """
+
+    def setUp(self):
+        self.tmp = _tmp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.wrapper = self.tmp / "fake-wrapper.sh"
+        self.wrapper.write_text('#!/bin/sh\nexec sh -c "$1"\n', encoding="utf-8")
+        self.wrapper.chmod(0o755)
+
+    def test_raises_adapter_tool_error_on_nonzero_exit(self):
+        with self.assertRaises(adapters.AdapterToolError):
+            adapters.run_tool({"edaShell": [str(self.wrapper)]}, ["false"], cwd=self.tmp, log_path=self.tmp / "log.txt")
+
+    def test_raises_adapter_tool_error_on_error_marker_in_log(self):
+        with self.assertRaises(adapters.AdapterToolError):
+            adapters.run_tool({"edaShell": [str(self.wrapper)]}, ["sh", "-c", 'echo "ERROR: bad"'],
+                               cwd=self.tmp, log_path=self.tmp / "log.txt")
+
+    def test_succeeds_and_returns_the_log_path(self):
+        log = adapters.run_tool({"edaShell": [str(self.wrapper)]}, ["echo", "hello"], cwd=self.tmp,
+                                 log_path=self.tmp / "log.txt")
+        self.assertIn("hello", Path(log).read_text())
+
+    def test_missing_eda_shell_is_an_atcs_error(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.run_tool({}, ["true"], cwd=self.tmp, log_path=self.tmp / "log.txt")
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+
+def _write_json(path, obj):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj), encoding="utf-8")
+
+
+class CliMissingInputExitCodeTest(unittest.TestCase):
+    """Step 1 requirement: every subcommand refuses a missing declared input
+    with exit code 2, a JSON error on stderr, and no output file."""
+
+    # `compose-facts` is deliberately absent from this table: its own `plan`
+    # arg is *optional* (a missing/absent path is the legitimate first-pass
+    # case, Task 12c item 4c), so a "MISSING/..." value there would pass this
+    # sweep for the wrong reason (the real, always-required missing input is
+    # `state/working-state.json`, never read via this arg at all) -- see
+    # `ComposeFactsMissingWorkingStateTest` below, which names the real cause
+    # directly (Fix round 1 item 2).
+    CASES = {
+        "bind-inputs": ["MISSING/manifest.json", "MISSING/site.json"],
+        "baseline": ["MISSING/manifest.json"],
+        "risk": ["MISSING/prior.json", "MISSING/current.json", "MISSING/recheck.json"],
+        "physical": ["MISSING/site.json", "baseline"],
+        "evaluate": ["MISSING/policy.json"],
+        "adopt": ["MISSING/policy.json"],
+        "residual": ["MISSING/scenarios.json", "MISSING/site.json"],
+        "apr-prepare": [],
+        "apr-run": ["MISSING/site.json"],
+        "policy": ["MISSING/analysis-contract-dir", "0.0", "0.0"],
+        "record-experience": ["MISSING/reason.json"],
+        "capture-contribution": ["w01"],
+        "prepare-workers": ["MISSING/base.json", "MISSING/site.json", "MISSING/eda.json",
+                             "MISSING/campaign-plan.json"],
+        "reconcile": [],
+        "presta": ["MISSING/base.json", "MISSING/scenarios.json", "MISSING/site.json"],
+        "implement": ["MISSING/state.json", "MISSING/site.json"],
+        "extract": ["MISSING/corners.json", "MISSING/site.json"],
+        "sta": ["MISSING/query.json", "MISSING/scenarios.json", "MISSING/base.json", "MISSING/site.json", "1000"],
+        "observe": ["MISSING/query.json", "MISSING/site.json", "MISSING/scenarios.json", "1000"],
+        "replay-prepare": ["MISSING/base.json", "MISSING/plan.json", "MISSING/site.json"],
+    }
+
+    def test_every_subcommand_refuses_a_missing_declared_input(self):
+        for subcommand, args in self.CASES.items():
+            with self.subTest(subcommand=subcommand):
+                workspace = _tmp()
+                self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+                result = subprocess.run(
+                    [sys.executable, str(CLI_PATH), subcommand, str(workspace)] + args,
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 2, f"{subcommand}: stdout={result.stdout} stderr={result.stderr}")
+                payload = json.loads(result.stderr)
+                self.assertIn("code", payload)
+                self.assertIn("detail", payload)
+                self.assertFalse(any((workspace / "state").glob("**/*.json")),
+                                  f"{subcommand} must not write any output on a missing input")
+
+    def test_unknown_subcommand_is_exit_code_2(self):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        result = subprocess.run([sys.executable, str(CLI_PATH), "bogus-subcommand", str(workspace)],
+                                 capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+
+
+class ComposeFactsMissingWorkingStateTest(unittest.TestCase):
+    """Fix round 1 item 2: `compose-facts`'s `plan` arg is optional (an absent path is the
+    legitimate Task 12c item 4c first-pass case), so the missing-input sweep above cannot
+    use it to exercise a real refusal. `state/working-state.json` is the subcommand's own
+    always-required declared input; this asserts the refusal actually names it, not just
+    that *some* exit-2 refusal happened for *some* reason."""
+
+    def test_missing_working_state_is_refused_and_named(self):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        plan_path = workspace / "integration-plan.json"  # legitimately absent -- the first pass
+        self.assertFalse(plan_path.exists())
+        result = subprocess.run(
+            [sys.executable, str(CLI_PATH), "compose-facts", str(workspace), str(plan_path)],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 2, f"stdout={result.stdout} stderr={result.stderr}")
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "missing-input")
+        self.assertIn("working-state.json", payload["detail"])
+        self.assertFalse((workspace / "state").exists())
+
+
+class CliBindInputsIntegrationTest(unittest.TestCase):
+    """A minimal end-to-end pass for one non-EDA subcommand, exercising the
+    real dispatcher process and the atomic single-output-file contract."""
+
+    def test_bind_inputs_writes_exactly_the_declared_output(self):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        manifest_path = workspace / "in" / "manifest.json"
+        site_path = workspace / "in" / "site.json"
+        _write_json(manifest_path, {
+            "top": "top", "stage": "postroute", "root": str(workspace),
+            "database": {"enc": "db.enc", "encDat": "db.enc.dat"},
+            "netlist": "netlist.v", "sdc": [], "scenarios": [],
+        })
+        _write_json(site_path, {"pgVerification": False})
+        result = subprocess.run([sys.executable, str(CLI_PATH), "bind-inputs", str(workspace),
+                                  str(manifest_path), str(site_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        output_path = workspace / "state" / "readiness.json"
+        self.assertTrue(output_path.is_file())
+        body = json.loads(output_path.read_text())
+        self.assertEqual(body["schema"], "atcs.input-readiness/1")
+
+
+class CliExtractPathSegmentTest(unittest.TestCase):
+    """`extract` validates every `corners` entry via `validate_path_segment`
+    before touching the filesystem (Task 12 fix round item 1)."""
+
+    def _run(self, corner):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        corners_path = workspace / "in" / "corners.json"
+        _write_json(corners_path, {"corners": {corner: "unused/template.cmd"}})
+        result = subprocess.run(
+            [sys.executable, str(CLI_PATH), "extract", str(workspace), str(corners_path), "MISSING/site.json"],
+            capture_output=True, text=True,
+        )
+        return result
+
+    def test_path_traversal_corner_is_refused(self):
+        result = self._run("../x")
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "invalid-path-segment")
+
+    def test_newline_containing_corner_is_refused(self):
+        result = self._run("a\nb")
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "invalid-path-segment")
+
+
+class CliCollectContributionIndexTest(unittest.TestCase):
+    """`collect`'s output must match `tools/read-atcs.py`'s `contribution-index`
+    read envelope exactly: partial completion is reported via `pending`,
+    never a missing-input refusal (see `_cmd_collect`'s own docstring)."""
+
+    def test_collect_succeeds_with_no_contributions_yet_and_reports_all_three_pending(self):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        result = subprocess.run([sys.executable, str(CLI_PATH), "collect", str(workspace)],
+                                 capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        body = json.loads((workspace / "state" / "contributions-collected.json").read_text())
+        self.assertEqual(body["contributions"], [])
+        self.assertEqual(sorted(entry["slot"] for entry in body["pending"]), ["w01", "w02", "w03"])
+        self.assertTrue(all(entry.get("reason") for entry in body["pending"]))
+
+    def test_collect_reports_one_pending_when_two_of_three_slots_sealed(self):
+        from atcs import contributions as contributions_module
+
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        workers = {}
+        for slot, task_id in (("w01", "w01"), ("w02", "w02")):
+            contribution = core.stamp("contribution", {
+                "taskId": task_id, "revision": 1, "baseStateId": "base123", "kind": "no-fix",
+                "operations": [], "script": None,
+                "delta": {"mastersChanged": {}, "added": {}, "removed": {}},
+                "touches": {"instances": [], "nets": [], "regions": [], "checks": [], "cones": []},
+                "preconditions": [], "dependencies": [], "atomicGroups": [],
+                "predicted": {}, "validationLevel": "none", "diagnosis": "nothing to fix",
+                "admissible": True, "refusals": [], "outOfScope": [], "beforeDumpSha256": "0" * 64,
+            })
+            _write_json(workspace / "state" / f"contribution-{slot}.json", contribution)
+            # Item 6: `collect` only accepts a contribution matching the CURRENT
+            # `state/workers.json[slot]` revision -- seed that same revision here.
+            workers[slot] = {"workspaceManifest": {"revision": 1}}
+        _write_json(workspace / "state" / "workers.json", {"workers": workers})
+        result = subprocess.run([sys.executable, str(CLI_PATH), "collect", str(workspace)],
+                                 capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        body = json.loads((workspace / "state" / "contributions-collected.json").read_text())
+        self.assertEqual(len(body["contributions"]), 2)
+        self.assertEqual([entry["slot"] for entry in body["pending"]], ["w03"])
+        del contributions_module  # imported only to document the shape's producer module
+
+
+class CliCollectNoResurrectionTest(unittest.TestCase):
+    """Task 12c item 6: `collect` never resurrects a previous batch's contribution.
+
+    A slot's sealed `state/contribution-<slot>.json` is only collected when
+    its own `revision` still matches `state/workers.json[slot]`'s CURRENT
+    `workspaceManifest.revision` -- a contribution left over from an
+    earlier `prepare-workers` revision (a new batch's work package for that
+    slot has since been prepared) must be reported as `pending`, never
+    silently re-collected into the new batch.
+    """
+
+    def test_stale_revision_contribution_is_pending_not_collected(self):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        stale_contribution = core.stamp("contribution", {
+            "taskId": "w01", "revision": 1, "baseStateId": "base123", "kind": "no-fix",
+            "operations": [], "script": None,
+            "delta": {"mastersChanged": {}, "added": {}, "removed": {}},
+            "touches": {"instances": [], "nets": [], "regions": [], "checks": [], "cones": []},
+            "preconditions": [], "dependencies": [], "atomicGroups": [],
+            "predicted": {}, "validationLevel": "none", "diagnosis": "from an earlier batch",
+            "admissible": True, "refusals": [], "outOfScope": [], "beforeDumpSha256": "0" * 64,
+        })
+        _write_json(workspace / "state" / "contribution-w01.json", stale_contribution)
+        # A new `prepare-workers` call has since produced revision 2 for this slot.
+        _write_json(workspace / "state" / "workers.json", {
+            "workers": {"w01": {"workspaceManifest": {"revision": 2}}},
+        })
+
+        result = subprocess.run([sys.executable, str(CLI_PATH), "collect", str(workspace)],
+                                 capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        body = json.loads((workspace / "state" / "contributions-collected.json").read_text())
+        self.assertEqual(body["contributions"], [])
+        pending_by_slot = {entry["slot"]: entry["reason"] for entry in body["pending"]}
+        self.assertIn("w01", pending_by_slot)
+        self.assertIn("revision", pending_by_slot["w01"])
+
+    def test_current_revision_contribution_is_collected(self):
+        """Sanity check: the same slot IS collected once its revision matches current."""
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        contribution = core.stamp("contribution", {
+            "taskId": "w01", "revision": 2, "baseStateId": "base123", "kind": "no-fix",
+            "operations": [], "script": None,
+            "delta": {"mastersChanged": {}, "added": {}, "removed": {}},
+            "touches": {"instances": [], "nets": [], "regions": [], "checks": [], "cones": []},
+            "preconditions": [], "dependencies": [], "atomicGroups": [],
+            "predicted": {}, "validationLevel": "none", "diagnosis": "this batch's own result",
+            "admissible": True, "refusals": [], "outOfScope": [], "beforeDumpSha256": "0" * 64,
+        })
+        _write_json(workspace / "state" / "contribution-w01.json", contribution)
+        _write_json(workspace / "state" / "workers.json", {
+            "workers": {"w01": {"workspaceManifest": {"revision": 2}}},
+        })
+
+        result = subprocess.run([sys.executable, str(CLI_PATH), "collect", str(workspace)],
+                                 capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        body = json.loads((workspace / "state" / "contributions-collected.json").read_text())
+        self.assertEqual(len(body["contributions"]), 1)
+        self.assertEqual(body["contributions"][0]["id"], contribution["id"])
+
+
+class CliPrestaEnvelopeTest(unittest.TestCase):
+    """`presta`'s output is `verification.precheck_evidence`'s own stamped
+    `precheck-evidence` artifact; the SPEF net-name source it points at must
+    be plain text, one name per line -- exactly what `tools/read-atcs.py`'s
+    `precheck-evidence` reader parses (`resolved.read_text(...)
+    .splitlines()`), never JSON."""
+
+    def test_precheck_evidence_over_a_plain_text_net_name_file(self):
+        from atcs import verification
+
+        tmp = _tmp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        merge_commit = core.stamp("merge-commit", {
+            "parentStateId": "base123", "contributions": [], "operations": [],
+            "innovusEcoTcl": "", "sourceMap": {}, "newNets": ["n_new_2", "n_new_1"],
+        })
+        spef_net_names = adapters.parse_spef_net_names("*D_NET n_new_1 1.0\n*D_NET n_existing 2.0\n")
+        names_path = tmp / "spef-net-names.txt"
+        names_path.write_text("\n".join(sorted(spef_net_names)) + "\n", encoding="utf-8")
+
+        result = verification.precheck_evidence(merge_commit, str(names_path))
+        self.assertEqual(result["schema"], "atcs.precheck-evidence/1")
+        self.assertEqual(result["newNets"], ["n_new_1", "n_new_2"])
+        self.assertEqual(result["spefNetNames"]["path"], str(names_path))
+        self.assertEqual(result["spefNetNames"]["sha256"], core.file_sha256(names_path))
+
+        # What the Reader does with that source: re-parse as plain lines and
+        # recompute qualification independently.
+        reread = {line.strip() for line in names_path.read_text(encoding="utf-8").splitlines() if line.strip()}
+        qualification = verification.presta_qualification(result["newNets"], sorted(reread))
+        self.assertEqual(qualification["unqualified"], ["n_new_2"])
+
+
+if __name__ == "__main__":
+    unittest.main()

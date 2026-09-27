@@ -1,0 +1,6 @@
+id: next-action-observe
+version: "1"
+title: The admitted next decision is observe (code 1)
+requires: [{ type: tc_next_action }]
+subject: { type: tc_next_action }
+predicate: { op: eq, threshold: 1, unit: count }

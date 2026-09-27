@@ -1,0 +1,6 @@
+id: next-action-earlier-apr
+version: "1"
+title: The admitted next decision is earlier-apr (code 6)
+requires: [{ type: tc_next_action }]
+subject: { type: tc_next_action }
+predicate: { op: eq, threshold: 6, unit: count }

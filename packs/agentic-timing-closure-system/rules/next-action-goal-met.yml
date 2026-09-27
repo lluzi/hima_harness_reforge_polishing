@@ -1,0 +1,6 @@
+id: next-action-goal-met
+version: "1"
+title: The admitted next decision is goal-met (code 8)
+requires: [{ type: tc_next_action }]
+subject: { type: tc_next_action }
+predicate: { op: eq, threshold: 8, unit: count }

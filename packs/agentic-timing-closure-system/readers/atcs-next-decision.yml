@@ -1,0 +1,9 @@
+id: atcs-next-decision
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'next-decision', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-next-decision/1
+emits:
+  - tc_next_action
+  - tc_stop_required
+  - tc_request_invalid_count

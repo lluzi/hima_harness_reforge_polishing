@@ -516,6 +516,7 @@ Use these as progressive references rather than copying them into a new Pack:
 - [Database-relation adoption](../../packages/harness/skills/knowledge/attribute-by-database-relation.md)
 - [One checker per session](../../packages/harness/skills/knowledge/one-checker-per-session.md)
 - [XTop timing-closure Pack development record](xtop-timing-closure-pack.md)
+- [Agentic Timing Closure System handoff](agentic-timing-closure-system/README.md): cooperative ECO contributions, merge and joint verification; compiled, not yet tested
 - [Released XTop timing-closure example](../../packs/xtop-timing-closure/)
 - [Library Intelligence development example](library-intelligence-platform/README.md)
 - [Library Function Richness development method](library-function-richness/framework-development.en.md)

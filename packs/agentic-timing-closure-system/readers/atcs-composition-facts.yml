@@ -1,0 +1,7 @@
+id: atcs-composition-facts
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'composition-facts', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-composition-facts/1
+emits:
+  - tc_unresolved_conflict_count

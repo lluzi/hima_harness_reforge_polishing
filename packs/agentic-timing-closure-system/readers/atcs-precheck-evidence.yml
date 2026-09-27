@@ -1,0 +1,7 @@
+id: atcs-precheck-evidence
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'precheck-evidence', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-precheck-evidence/1
+emits:
+  - tc_unqualified_rc_net_count

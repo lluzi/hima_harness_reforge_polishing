@@ -1,0 +1,30 @@
+allowedReadRoots:
+  - /data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation
+  # Final review: the real tech LEF and cell LEF glob for this design (`prepare-workers`'
+  # eda-profile.json / this Site's own siteCapabilities.json `techLef`/`cellLefGlob`) live
+  # here, not under techlib/tsmc28's own tree (confirmed absent there by a deep read-only
+  # search) -- this root closes the "techLef/cellLefGlob are outside this Site's declared
+  # read roots" gap the README used to carry. The container's own mount already exposes all
+  # of /data/eda read-only regardless (see README's "Known gaps"); this list is the
+  # Harness-level least-privilege/audit boundary, a narrower statement of intent than what
+  # the container mount alone would allow.
+  - /data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input
+  - /data/eda/project/techlib/tsmc28
+  - /data/eda/project/hima_harness/atcs-inputs
+  - /data/eda/project/hima_harness/atcs-runs
+allowedWriteRoots:
+  - /data/eda/project/hima_harness/atcs-runs
+allowedWrappers:
+  - python3
+  - /usr/bin/python3
+  - /data/eda/project/hima_harness/operator-admin/atcs-v1/atcs-xtop-operator.sh
+forbidden:
+  - services
+  - licence-servers
+  - network-settings
+  - dns
+  - proxy
+  - tailscale
+  - deletions
+  - moves-of-run-directories
+  - repository-downloads

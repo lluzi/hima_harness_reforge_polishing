@@ -1,0 +1,6 @@
+id: presta-model-qualified
+version: "1"
+title: Every new net of the pre-checked batch has a qualifying RC model
+requires: [{ type: tc_unqualified_rc_net_count }]
+subject: { type: tc_unqualified_rc_net_count }
+predicate: { op: eq, threshold: 0, unit: count }

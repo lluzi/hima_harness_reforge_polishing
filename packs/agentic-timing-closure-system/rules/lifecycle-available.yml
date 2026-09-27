@@ -1,0 +1,6 @@
+id: lifecycle-available
+version: "1"
+title: The full declared lifecycle input set is verified (full-flow scope)
+requires: [{ type: tc_lifecycle_available }]
+subject: { type: tc_lifecycle_available }
+predicate: { op: eq, threshold: 1, unit: count }
