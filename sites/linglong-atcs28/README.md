@@ -22,43 +22,63 @@ real documents into it. `sites/linglong-atcs28/inputs/` holds a template for eac
   confirmed present on the server by a read-only `ls` on 2026-09-26. It declares no `lifecycle` block
   (post-route-only scope): the EDA guide is explicit that the earlier `init/place/cts/.../postroute`
   checkpoints existing is file-existence evidence only, not proof this Pack's own full-flow lifecycle
-  contract is satisfied, and this task does not assert that.
-- `inputs/analysisContract/policy.json` — the static acceptance terms only (`allowDegradedWorking`,
-  `degradeLimitNs`, `maxNewConstraintFailures`, `scenarioCorners`, `requiredScenarios`). It must never
-  set `goal`, `baselineStateId`, `baselineMinWns` or `campaignRoot` — `atcs_cli.py`'s `policy`
-  subcommand refuses any static file that tries (`AtcsError("invalid-policy", ...)`).
-- `inputs/analysisContract/scenario-corners.json` — the same `{scenario: corner}` map, at the fixed
-  name the `presta` and `sta` tools read directly from `${analysisContract}/scenario-corners.json`.
-- `inputs/analysisContract/corners.json` — `{"corners": {corner: templatePath}}` (I1, final review):
-  each RC corner's own Site-provided StarRC command-file template, hashed by `extract` and threaded
-  into the compiled `.cmd` it actually runs. This Site's own copy points at the same
-  `SIGNOFF/STARRC/cworst_T.cmd`/`cbest.cmd` Foundation paths the frozen `linglong-swerv28` Site
-  profile already names.
+  contract is satisfied, and this task does not assert that. **Final review:** when a manifest DOES
+  declare `lifecycle`, `baseline` stages every listed stage's own checkpoint (`.enc` script + `.enc.dat`
+  directory) into the Campaign workspace's own `DBS/<stage>.enc(.dat)`, the fixed location `apr-run`'s
+  own stage-restore step reads from -- this Site's own manifest declares none (post-route-only scope),
+  so nothing here changes for it.
 - `inputs/siteCapabilities.json` — `edaShell`, `design`, `techLef`, `cellLefGlob`, `pgVerification:
   false` (this Site declares no PG-local-adjust capability, so `pg_local_adjust` stays inadmissible in
   every work package this Campaign plans).
-
-The full `analysisContract` directory the Pack actually reads at run time (`contract.yml`'s own
-description) also needs `query-spec.json`, `recheck.json` — this task's brief scoped the written
-templates to the documents above; the administrator composes the rest from the same Foundation
-evidence (the EDA guide's §8 "最快找到原始报告" paths) before a real Run. `sdc.json` and
-`scenario-inputs.json` are gone (this Pack now reads the SDC and per-scenario PT inputs from the
-design-state itself, never a separate static copy); the Campaign baseline's own DRC/connectivity
-reports are likewise no longer a Site-authored `baseline-verify-*.rpt` document (I13, final review) --
-`physical-baseline` now runs this Pack's own Innovus export against the staged baseline database.
+- `inputs/analysisContract/` — a read-only directory, one JSON document per concern, at these fixed
+  names (**final review**: every file the Pack actually reads at run time, listed here in full):
+  - `policy.json` — the static acceptance terms only: `allowDegradedWorking` (bool), `degradeLimitNs`
+    (number), `maxNewConstraintFailures` (int). It must never set `goal`, `baselineStateId`,
+    `baselineMinWns` or `campaignRoot` — `atcs_cli.py`'s `policy` subcommand refuses any static file
+    that tries (`AtcsError("invalid-policy", ...)`). It also must never set a `scenarioCorners`/
+    `requiredScenarios` that *disagrees* with the value `scenarios.json` derives (see below) — it may
+    omit both entirely (the common case) or carry them for documentation as long as they agree.
+  - `scenarios.json` — **(C4, final review)** the single source of both a scenario's RC corner and its
+    PT library identity, replacing the old bare `scenario-corners.json`:
+    `[{name, corner, libGlob, driverLibrary, originalDriverLibrary}]`, one entry per required scenario
+    (`func_ssg_rcworst_m40`, `func_ssg_rcworst_125`, `func_ffg_cbest_m40`, `func_ffg_cbest_125` —
+    exactly these four, no more, no fewer). This Site's own copy is populated verbatim from
+    `sites/linglong-swerv28/swerv28-site-profile.json`'s own `scenarios[]` (`spefCorner` → `corner`,
+    `libGlob`/`driverLibrary` unchanged, `originalDriverLibrary` from that profile's own top-level
+    field, the same value for every scenario). `observe`/`sta`/`residual`/`presta` all read it directly;
+    `policy` derives `scenarioCorners`/`requiredScenarios` from it.
+  - `corners.json` — **(I1, final review)** `{"corners": {corner: templatePath}}`: each RC corner's own
+    Site-provided StarRC command-file template, hashed by `extract` and threaded into the compiled
+    `.cmd` it actually runs. This Site's own copy points at the same `SIGNOFF/STARRC/cworst_T.cmd`/
+    `cbest.cmd` Foundation paths the frozen `linglong-swerv28` Site profile already names.
+  - `query-spec.json` — the final PBA/coverage query the `observe-baseline` graph node's `observe` tool
+    reads: `{"precision": "gba"|"pba", "requiredScenarios": [...], "nworst": <int>?}`. `maxPaths` is
+    never set here — it comes from the Run's own `maxPaths` Strategy knob instead, which caps whatever
+    an admitted observation request separately asks for.
+  - `recheck.json` — the `risk` tool's own optional supplemental-recheck-data argument
+    (`atcs.state.compare_checks`'s `recheck` parameter). This Site declares no recheck data of its own:
+    `{}` (an empty JSON object) is the correct, complete value here — `compare_checks` treats an empty
+    `recheck` exactly like "no supplemental data was gathered", never a refusal.
+  - **Gone (final review):** `sdc.json` and `scenario-inputs.json` no longer exist at all — this Pack
+    now reads the SDC and every per-scenario PT input (netlist, SPEF, and, since C4, the library
+    triple) from the design-state itself, never a separate static copy that could silently diverge from
+    it. `baseline-verify-drc.rpt`/`baseline-verify-connectivity.rpt` are likewise gone (**I13, final
+    review**): the Campaign baseline's own DRC/connectivity reports are no longer a Site-authored
+    document at all — `physical-baseline` now runs this Pack's own Innovus export against the staged
+    baseline database, with the same limits a candidate's own `implement`/`apr-run` is held to.
 
 ## Known gaps (read before using this Site for a real Run)
 
-- **`techLef`/`cellLefGlob` are outside this Site's declared read roots.** The real tech LEF and cell
-  LEF glob for this design live under
-  `/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lef/` (confirmed present on the
-  server), which this task's controller-fixed Permit read-root list (Foundation root, techlib root,
-  `atcs-inputs`, workspace root) does not include. `techlib/tsmc28`'s own tree does not hold this
-  design's staged tech/cell LEFs (a deep read-only search found none). This is flagged, not silently
-  fixed: either extend `permit.yml`'s `allowedReadRoots` with that flows/input path (or a narrower
-  parent of it), or stage a copy of the needed LEF set under `atcs-inputs/` and point
-  `siteCapabilities.json` there instead, before running `prepare-workers` or opening the XTop Operator
-  for real.
+- **Closed (final review): `techLef`/`cellLefGlob`'s own read root.** The real tech LEF and cell LEF
+  glob for this design live under
+  `/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/` (confirmed present on the server;
+  `techlib/tsmc28`'s own tree does not hold this design's staged tech/cell LEFs, confirmed absent by a
+  deep read-only search). `permit.yml`'s `allowedReadRoots` now names it. This was never a container
+  *access* gap in the strict sense — `atcs-xtop-operator.sh` mounts the whole of `/data/eda` read-only
+  into the container regardless of `allowedReadRoots` (see "Wrapper safety checks" below), so the tool
+  could always physically reach the path; `allowedReadRoots` is instead the Harness-level
+  least-privilege/audit declaration of which paths this Site's own tooling is *permitted* to name, and
+  it previously understated that scope for a path this Pack genuinely, routinely needs.
 - **The wrapper template's two placeholders are unfilled.** `atcs-xtop-operator.sh` ships with
   `<REPLACE-WITH-QUALIFIED-IMAGE-DIGEST>` and `<REPLACE-WITH-QUALIFIED-ATCS-CLI-SHA256>` literally in
   it. No qualification of this Pack's XTop Operator tool against this Site has happened yet, so no real
@@ -79,7 +99,12 @@ reports are likewise no longer a Site-authored `baseline-verify-*.rpt` document 
 
 `atcs-xtop-operator.sh` is a **template**, not the production artifact. Before installing it:
 
-1. Build this repository (`pnpm run build`) so `packs/agentic-timing-closure-system/flow/atcs_cli.py`
+1. **Confirm the licence mode.** `cat /data/eda/env/empyrean-license-mode` on the server must read
+   exactly `old` before any of the steps below are exercised for real — the wrapper itself refuses to
+   launch XTop otherwise (see "Wrapper safety checks" below), and this Permit forbids touching
+   `licence-servers` at all, so the administrator confirms this out-of-band, read-only, never changes it
+   from this Site's own tooling.
+2. Build this repository (`pnpm run build`) so `packs/agentic-timing-closure-system/flow/atcs_cli.py`
    is the exact reviewed bytes this Pack ships, then compute
    `sha256sum packs/agentic-timing-closure-system/flow/atcs_cli.py` and put that hash in the wrapper's
    `adapter_sha256` placeholder. `atcs_cli.py` is deployed verbatim into every Campaign workspace at
@@ -98,18 +123,18 @@ reports are likewise no longer a Site-authored `baseline-verify-*.rpt` document 
    image changes. A future wrapper revision should assert this digest itself, the same way
    `adapter_sha256` is already asserted, once `scripts/generate-xtop-operator-binding.mjs` (see
    "Known gaps" above) supports it.
-2. Confirm (or build) the qualified `edarunner` container image this server already uses for the
+3. Confirm (or build) the qualified `edarunner` container image this server already uses for the
    frozen `xtop-timing-closure-v1` wrapper, or a fresh qualified image for this Pack, and put its
    `sha256:...` digest in the `image` placeholder.
-3. Copy the completed script to
+4. Copy the completed script to
    `/data/eda/project/hima_harness/operator-admin/atcs-v1/atcs-xtop-operator.sh`, outside the Permit's
    write root (`atcs-runs`), mode `0755`.
-4. Run a bounded real XTop qualification session under a fresh child of
+5. Run a bounded real XTop qualification session under a fresh child of
    `/data/eda/project/hima_harness/atcs-runs` (never inside `xtop-timing-closure-runs`, the frozen
    Pack's own root) that exercises `atcs_query_paths`/`atcs_query_cells` (read), `atcs_size_cell`
    (mutate), `atcs_dump_cells`/`atcs_export_changes` (save) and `atcs_close`, confirming source/exec
    writes stay denied and the session exits normally.
-5. Once `scripts/generate-xtop-operator-binding.mjs` (see "Known gaps" above) accepts
+6. Once `scripts/generate-xtop-operator-binding.mjs` (see "Known gaps" above) accepts
    `linglong-atcs28` / `xtop-operator`, generate the Host's `interactive-bindings.json` from that
    qualification evidence and configure `interactiveBindingsFile` to point at it. At every open and
    dispatch the Host re-reads the binding, the retained Pack digest and the remote wrapper's own bytes;
