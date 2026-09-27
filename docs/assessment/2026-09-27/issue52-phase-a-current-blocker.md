@@ -14,6 +14,16 @@ ending `completed` at seq 33. Its single allowed follow-up is consumed. Token ex
 is observed; its causal contribution to the malformed final result remains an inference.
 Cold Host inspection confirms no admissible candidate is currently available.
 
+Continuation verification read the retained session through native `sessionQuery`, without
+resuming the child or executing a model/commercial tool. The completed turn's assistant
+message at seq 31 contains 8,067 characters. Standard `JSON.parse` deterministically rejects
+it with `Expected ',' or '}' after property value in JSON at position 8067`.
+The result is missing an enclosing closing brace; its `hypotheses`, `evidenceRefs` and
+`limitations` also appear inside the unclosed `endpointGroups` object rather than as the
+required top-level fields. Thus adding a brace alone would not satisfy the declared schema.
+This is a confirmed malformed/schema-misplaced child output, not a JSON-admission defect.
+No retained response was repaired or adopted, and no historical Run was changed.
+
 Owning seam: Pack Researcher task/result contract materialized by
 `packages/harness/src/delegation.ts`, with fail-closed admission in
 `packages/harness/src/delegation-runtime.ts`. No parser relaxation is justified.
