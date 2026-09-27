@@ -11,12 +11,18 @@ clean signoff, labor saving, ROI or the scientific effectiveness of one optimiza
 
 The stable test vehicle is the already qualified Timing ECO method:
 
-- Pack: `xtop-timing-closure@1.0.14`;
-- method digest: `19207d78dc3b1e9f4fd80f6bd4c21df209f1dfffc5f83fa7afd3ac5c96fd2a92`;
-- sealed TEST Run: `run-ddabd488-f05c-44d6-9c9b-45abccaff226`;
+- Pack: `xtop-timing-closure@1.0.15`;
+- method digest: `dac4e1b9b60661de50a4863da4dfa177afff25563f28aa26b7c21d03b368e910`;
+- sealed TEST Run: `run-f7daabc9-3bcb-408a-875f-b82360b5cbf4`;
 - Site: `linglong-swerv28`;
 - input design: the Site-bound SWERV28 Innovus checkpoint and source manifest;
-- operator: the production-qualified XTop interactive binding for this exact Pack/Site/tool identity.
+- operator: production-qualified binding `linglong-swerv28:xtop-operator-v2:dac4e1b9b60661de`
+  for this exact Pack/Site/tool identity.
+
+Attempts 1–2 remain immutable trial.29/trial.30 defect evidence. Attempt 2's parked `1.0.14` Run is
+not resumed under changed bytes. The final trial uses one fresh Campaign with `1.0.15` after
+seconds-scale regressions, two-start production qualification, native TEST/seal and packaged-App
+preflight all passed.
 
 The Pack is a workload for Harness acceptance. Its setup/hold/DRC/connectivity result is evidence the
 product must display truthfully, not an acceptance threshold.

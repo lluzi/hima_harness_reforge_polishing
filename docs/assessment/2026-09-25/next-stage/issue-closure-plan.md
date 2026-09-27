@@ -16,10 +16,16 @@ The final acceptance proves component integration. It does not certify:
 - DTCO scientific effectiveness;
 - labor saving, ROI or replacement of an engineering team.
 
-The final workload is sealed `xtop-timing-closure@1.0.14`, method digest
-`19207d78dc3b1e9f4fd80f6bd4c21df209f1dfffc5f83fa7afd3ac5c96fd2a92`, on its qualified
+The final workload is sealed `xtop-timing-closure@1.0.15`, method digest
+`dac4e1b9b60661de50a4863da4dfa177afff25563f28aa26b7c21d03b368e910`, on its qualified
 `linglong-swerv28` Site and production XTop Operator binding. Timing, DRC, connectivity and closure
 score are facts to retain and explain; their direction is not a PASS gate.
+
+`1.0.15` supersedes `1.0.14` only for this final acceptance after Attempt 2 proved two Pack
+qualification defects: the Operator child lacked a retained named argument catalog, and repeated
+startup collided with a persisted XTop workspace. The new method has native TEST Run
+`run-f7daabc9-3bcb-408a-875f-b82360b5cbf4`, exact named command validation, a v2 qualified wrapper,
+and two consecutive READY starts in one retained qualification workspace without deletion.
 
 ## Terminal vocabulary
 
@@ -98,7 +104,7 @@ The complete authority is
 The integrator prepares one version-isolated kit containing:
 
 1. the exact packaged App and manifest;
-2. sealed `xtop-timing-closure@1.0.14`;
+2. sealed `xtop-timing-closure@1.0.15`;
 3. the qualified `linglong-swerv28` Site and Permit;
 4. the administrator-qualified XTop interactive binding;
 5. current Site/client/licence preflight;
