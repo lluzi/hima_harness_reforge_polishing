@@ -43,6 +43,72 @@ test('an unfinished candidate manifest cannot be verified or mistaken for a rele
   } finally { await (await import('node:fs/promises')).rm(output, { recursive: true, force: true }); }
 });
 
+test('administrator binding packaging checks exact environment and current method without provisioning a Home', async () => {
+  const output = await mkdtemp(path.join(os.tmpdir(), 'hima-binding-package-'));
+  const file = path.join(output, 'bindings.json');
+  const environmentFile = path.join(output, 'environment.json');
+  const check = () => spawnSync(process.execPath, [path.join(repoRoot, 'scripts/package-trial.mjs'),
+    '--check-interactive-bindings', file], { cwd: repoRoot, encoding: 'utf8', timeout: 10_000 });
+  try {
+    const { snapshotPackFolder, packDigestExcludes } = await import('../../packages/harness/lib/pack-folder.js');
+    const { loadPackFrom } = await import('../../packages/harness/lib/packs.js');
+    const { BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest } = await import('../../packages/harness/lib/interactive-binding.js');
+    const folder = snapshotPackFolder(path.join(repoRoot, 'packs/xtop-timing-closure'));
+    const tool = loadPackFrom(folder).contract.tools.find(tool => tool.id === 'run-xtop-fix')!;
+    const digest = folder.digest(packDigestExcludes);
+    const commandsDigest = interactiveCommandsDigest(tool);
+    const sha = 'a'.repeat(64);
+    const environment = {
+      schema: 'hima-interactive-environment/1', site: 'fixture-site', toolId: 'run-xtop-fix',
+      pack: { id: 'xtop-timing-closure', digest },
+      adapter: { id: 'hima-tcl-line-v1', digest: BUILTIN_TCL_ADAPTER_DIGEST }, commandsDigest,
+      wrapper: { path: tool.interactive!.argv[0], sha256: sha }, image: { reference: 'fixture', digest: `sha256:${sha}` },
+      sourceTemplate: { path: 'flow/templates/xtop-operator.tcl', sha256: createHash('sha256').update(
+        await readFile(path.join(repoRoot, 'packs/xtop-timing-closure/flow/templates/xtop-operator.tcl'))).digest('hex') },
+      confinement: { rootFilesystem: 'read-only', dataRoot: '/fixture/data', dataMount: 'read-only',
+        privateWriteRoot: '/fixture/write', network: 'host-localhost-licence-only', capabilities: 'dropped-all', noNewPrivileges: true },
+      qualification: { status: 'passed', transcriptSha256: sha, logicalEcoSha256: sha, physicalEcoSha256: sha,
+        xtopReady: true, identityQuery: true, mutation: true, save: true, sourceWriteDenied: true, execWriteDenied: true, normalExit: true },
+    };
+    const bytes = JSON.stringify(environment);
+    await writeFile(environmentFile, bytes);
+    const row = { id: 'fixture-qualified', site: 'fixture-site', packDigest: digest, toolId: 'run-xtop-fix',
+      adapter: 'hima-tcl-line-v1', adapterHash: BUILTIN_TCL_ADAPTER_DIGEST, commandsDigest,
+      environment: { id: 'fixture-environment', file: environmentFile,
+        sha256: createHash('sha256').update(bytes).digest('hex') }, mutation: 'qualified' };
+    const writeBindings = async (overrides = {}) => writeFile(file, JSON.stringify({
+      schema: 'hima-interactive-bindings/1', bindings: [{ ...row, ...overrides }],
+    }));
+    await writeBindings();
+    const valid = check();
+    assert.equal(valid.status, 0, valid.stderr);
+    const metadata = JSON.parse(valid.stdout);
+    assert.equal(metadata.file, 'operator-qualification/interactive-bindings.json');
+    assert.equal(metadata.bindings[0].environment.file, environmentFile);
+    assert.equal(metadata.bindings[0].environment.sha256, row.environment.sha256);
+    assert.match(metadata.installation, /administrator config required.*not portable/);
+    const wrongWrapperBytes = JSON.stringify({ ...environment, wrapper: { ...environment.wrapper, path: '/fixture/wrong-wrapper' } });
+    await writeFile(environmentFile, wrongWrapperBytes);
+    await writeBindings({ environment: { ...row.environment,
+      sha256: createHash('sha256').update(wrongWrapperBytes).digest('hex') } });
+    const wrongWrapper = check();
+    assert.equal(wrongWrapper.status, 1);
+    assert.match(wrongWrapper.stderr, /qualification differs/);
+    await writeFile(environmentFile, bytes);
+    await writeBindings({ packDigest: 'b'.repeat(64) });
+    const wrongPack = check();
+    assert.equal(wrongPack.status, 1);
+    assert.match(wrongPack.stderr, /qualification differs/);
+    await writeBindings({ mutation: 'unavailable' });
+    assert.equal(check().status, 1);
+    await writeBindings();
+    await writeFile(environmentFile, `${bytes}\n`);
+    const changedEnvironment = check();
+    assert.equal(changedEnvironment.status, 1);
+    assert.match(changedEnvironment.stderr, /environment bytes differ/);
+  } finally { await (await import('node:fs/promises')).rm(output, { recursive: true, force: true }); }
+});
+
 test('trial packager refuses a candidate Pack with no contract or a manifest whose knowledge is absent', async () => {
   const output = await mkdtemp(path.join(os.tmpdir(), 'hima-trial-pack-'));
   const packs = path.join(output, 'packs');
@@ -108,6 +174,31 @@ test('trial packager refuses a candidate Pack with no contract or a manifest who
     assert.equal(wrongVersion.status, 1);
     assert.match(wrongVersion.stderr, /versions differ/);
     await writeFile(path.join(timing, 'graph.yml'), 'id: xtop-timing-closure\nversion: "1.0.7"\nentry: export\n');
+    const missingTest = check();
+    assert.equal(missingTest.status, 1);
+    assert.match(missingTest.stderr, /timing Pack.*missing TEST\.md/);
+    const timingRun = 'run-00000000-0000-4000-8000-000000000001';
+    await writeFile(path.join(timing, 'TEST.md'), `## Run\n\nrun: ${timingRun}\n`);
+    const missingSeal = check();
+    assert.equal(missingSeal.status, 1);
+    assert.match(missingSeal.stderr, /timing Pack.*missing VERSION\.yml/);
+    const { snapshotPackFolder, packDigestExcludes } = await import('../../packages/harness/lib/pack-folder.js');
+    const writeTimingSeal = async (run = timingRun, methodDigest?: string) => {
+      const folder = snapshotPackFolder(timing);
+      await writeFile(path.join(timing, 'VERSION.yml'), [
+        'pack: xtop-timing-closure',
+        'version: "1.0.7"',
+        `methodDigest: ${methodDigest ?? folder.digest(packDigestExcludes)}`,
+        'released: "2026-09-27T00:00:00.000Z"',
+        'test:',
+        '  record: TEST.md',
+        `  run: ${run}`,
+        'files:',
+        ...folder.sealFiles().map(([file, sha]) => `  '${file}': '${sha}'`),
+        '',
+      ].join('\n'));
+    };
+    await writeTimingSeal();
     const missingDemo = check();
     assert.equal(missingDemo.status, 1);
     assert.match(missingDemo.stderr, /local demo Pack opene902-timing-probe is missing contract\.yml/);
@@ -126,6 +217,20 @@ test('trial packager refuses a candidate Pack with no contract or a manifest who
     const complete = check();
     assert.equal(complete.status, 0, complete.stderr);
     assert.match(complete.stdout, /checked custom-cell-fmax-dtco, xtop-timing-closure and opene902-timing-probe assets/);
+    await writeTimingSeal('run-00000000-0000-4000-8000-000000000002');
+    const wrongTimingRun = check();
+    assert.equal(wrongTimingRun.status, 1);
+    assert.match(wrongTimingRun.stderr, /TEST\.md names run/);
+    await writeTimingSeal(timingRun, 'a'.repeat(64));
+    const wrongTimingDigest = check();
+    assert.equal(wrongTimingDigest.status, 1);
+    assert.match(wrongTimingDigest.stderr, /methodDigest.*does not match/);
+    await writeTimingSeal();
+    await writeFile(path.join(timing, 'flow/closure.py'), '# changed after release\n');
+    const changedTiming = check();
+    assert.equal(changedTiming.status, 1);
+    assert.match(changedTiming.stderr, /flow\/closure\.py no longer hashes/);
+    await writeTimingSeal();
     await writeFile(path.join(pack, 'TEST.md'), '# changed after release\n');
     const changedAfterRelease = check();
     assert.equal(changedAfterRelease.status, 1);

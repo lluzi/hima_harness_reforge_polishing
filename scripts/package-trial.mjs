@@ -17,6 +17,8 @@ const timingPackId = 'xtop-timing-closure';
 const timingPackRelative = path.join('packs', timingPackId);
 const demoPackId = 'opene902-timing-probe';
 const demoPackRelative = path.join('packs', demoPackId);
+const qualificationRelative = 'operator-qualification';
+const bindingsRelative = `${qualificationRelative}/interactive-bindings.json`;
 const args = process.argv.slice(2);
 const value = (flag) => { const at = args.indexOf(flag); return at < 0 ? undefined : args[at + 1]; };
 const fail = (message) => { throw new Error(`package-trial: ${message}`); };
@@ -94,7 +96,7 @@ function assertTrialPackAssets(packsRoot) {
   return { pack, documents, version, methodDigest: seal.methodDigest, testRun: seal.test.run };
 }
 
-function assertTimingPackAssets(packsRoot) {
+async function assertTimingPackAssets(packsRoot) {
   const pack = path.join(packsRoot, timingPackId);
   for (const file of ['contract.yml', 'graph.yml', 'knowledge/manifest.yml',
     'flow/closure.py', 'flow/templates/apply-eco.tcl', 'tools/read-output.py']) {
@@ -110,6 +112,77 @@ function assertTimingPackAssets(packsRoot) {
   if (!version || version !== graphVersion) {
     fail('timing Pack contract/graph versions differ');
   }
+  for (const file of ['TEST.md', 'VERSION.yml']) {
+    if (!existsSync(path.join(pack, file)) || !lstatSync(path.join(pack, file)).isFile()) {
+      fail(`timing Pack ${timingPackId} is missing ${file}`);
+    }
+  }
+  // Reuse the native release authority for digest, inventory, hashes and TEST Run binding.
+  const { snapshotPackFolder } = await import(pathToFileURL(path.join(root, 'packages/harness/lib/pack-folder.js')).href);
+  const { releaseIssue } = await import(pathToFileURL(path.join(root, 'packages/harness/lib/release.js')).href);
+  const issue = releaseIssue(snapshotPackFolder(pack), { id: timingPackId, version });
+  if (issue) fail(`timing Pack ${timingPackId} native release seal: ${issue}`);
+  const seal = parse(readFileSync(path.join(pack, 'VERSION.yml'), 'utf8'));
+  if (!seal.methodDigest) fail(`timing Pack ${timingPackId} native release seal lacks methodDigest`);
+  return { version, methodDigest: seal.methodDigest, testRun: seal.test.run };
+}
+
+async function inspectInteractiveBindings(file, packsRoot, evidenceRoot) {
+  if (!path.isAbsolute(file) || !existsSync(file) || !lstatSync(file).isFile()) {
+    fail('--interactive-bindings must name an absolute regular administrator file');
+  }
+  const authority = await import(pathToFileURL(path.join(root, 'packages/harness/lib/interactive-binding.js')).href);
+  const { snapshotPackFolder, packDigestExcludes } = await import(pathToFileURL(path.join(root, 'packages/harness/lib/pack-folder.js')).href);
+  const { loadPackFrom } = await import(pathToFileURL(path.join(root, 'packages/harness/lib/packs.js')).href);
+  const folder = snapshotPackFolder(path.join(packsRoot, timingPackId));
+  const pack = loadPackFrom(folder);
+  const packDigest = folder.digest(packDigestExcludes);
+  const document = authority.interactiveBindingsDocument.parse(JSON.parse(readFileSync(file, 'utf8')));
+  if (document.bindings.length === 0) fail('interactive bindings document has no qualified binding');
+  const ids = new Set();
+  const bindings = document.bindings.map(row => {
+    if (ids.has(row.id)) fail(`duplicate interactive binding ${row.id}`);
+    ids.add(row.id);
+    const bundledFile = `${qualificationRelative}/environment-${row.environment.sha256}.json`;
+    const environmentFile = evidenceRoot ? path.join(evidenceRoot, bundledFile) : row.environment.file;
+    if (!path.isAbsolute(row.environment.file) || !existsSync(environmentFile)
+        || !lstatSync(environmentFile).isFile() || hash(environmentFile) !== row.environment.sha256) {
+      fail(`interactive binding ${row.id} administrator environment bytes differ`);
+    }
+    if (evidenceRoot && (!existsSync(row.environment.file) || !lstatSync(row.environment.file).isFile()
+        || hash(row.environment.file) !== row.environment.sha256)) {
+      fail(`interactive binding ${row.id} station administrator environment bytes differ`);
+    }
+    const environment = authority.interactiveEnvironmentEvidence.parse(JSON.parse(readFileSync(environmentFile, 'utf8')));
+    const tool = pack.contract.tools.find(tool => tool.id === row.toolId);
+    const templateRoot = realpathSync(path.join(packsRoot, timingPackId));
+    const template = path.resolve(templateRoot, environment.sourceTemplate.path);
+    const inside = path.relative(templateRoot, template);
+    if (inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)
+        || !existsSync(template) || !lstatSync(template).isFile()) {
+      fail(`interactive binding ${row.id} source template is not a regular file inside the timing Pack`);
+    }
+    const realInside = path.relative(templateRoot, realpathSync(template));
+    if (realInside === '..' || realInside.startsWith(`..${path.sep}`) || path.isAbsolute(realInside)) {
+      fail(`interactive binding ${row.id} source template escapes the timing Pack`);
+    }
+    if (row.mutation !== 'qualified' || row.packDigest !== packDigest
+        || row.adapterHash !== authority.BUILTIN_TCL_ADAPTER_DIGEST
+        || !tool?.interactive || row.commandsDigest !== authority.interactiveCommandsDigest(tool)
+        || environment.site !== row.site || environment.toolId !== row.toolId
+        || environment.pack.id !== timingPackId || environment.pack.digest !== row.packDigest
+        || environment.adapter.id !== row.adapter || environment.adapter.digest !== row.adapterHash
+        || environment.commandsDigest !== row.commandsDigest
+        || environment.wrapper.path !== tool.interactive.argv[0]
+        || hash(template) !== environment.sourceTemplate.sha256) {
+      fail(`interactive binding ${row.id} qualification differs from the timing Pack/tool/environment`);
+    }
+    return { id: row.id, site: row.site, toolId: row.toolId, packDigest: row.packDigest,
+      environment: { ...row.environment, bundledFile }, wrapper: environment.wrapper,
+      image: environment.image, sourceTemplate: environment.sourceTemplate };
+  });
+  return { file: bindingsRelative, sha256: hash(file), bindings,
+    installation: 'administrator config required; station-scoped absolute environment paths; not portable' };
 }
 
 function assertDemoPackAssets(packsRoot) {
@@ -155,7 +228,7 @@ function collect(base, current = base, files = {}) {
   return files;
 }
 
-function verify(app, allowPending = false) {
+async function verify(app, allowPending = false) {
   const manifestAt = path.join(path.dirname(app), 'trial-manifest.json');
   if (!existsSync(manifestAt)) fail(`manifest missing: ${manifestAt}`);
   const manifest = JSON.parse(readFileSync(manifestAt, 'utf8'));
@@ -177,8 +250,21 @@ function verify(app, allowPending = false) {
       || manifest.runtimeInputs?.trialPack?.testRun !== trialPack.testRun) {
     fail('manifest trial Pack identity differs from the bundled native release seal');
   }
-  assertTimingPackAssets(path.join(resource, 'packs'));
+  const timingPack = await assertTimingPackAssets(path.join(resource, 'packs'));
+  if (manifest.runtimeInputs?.timingPack?.id !== timingPackId
+      || manifest.runtimeInputs?.timingPack?.version !== timingPack.version
+      || manifest.runtimeInputs?.timingPack?.methodDigest !== timingPack.methodDigest
+      || manifest.runtimeInputs?.timingPack?.testRun !== timingPack.testRun) {
+    fail('manifest timing Pack identity differs from the bundled native release seal');
+  }
   assertDemoPackAssets(path.join(resource, 'packs'));
+  const bundledBindings = path.join(resource, bindingsRelative);
+  if (manifest.runtimeInputs?.interactiveBindings || existsSync(bundledBindings)) {
+    const bindings = await inspectInteractiveBindings(bundledBindings, path.join(resource, 'packs'), resource);
+    if (JSON.stringify(bindings) !== JSON.stringify(manifest.runtimeInputs?.interactiveBindings)) {
+      fail('manifest interactive binding identity differs from the bundled qualification evidence');
+    }
+  }
   const architecture = run('file', [path.join(app, 'Contents/MacOS/HimaHarness')]);
   if (!architecture.includes('arm64')) fail(`launcher is not arm64: ${architecture.trim()}`);
   const nodeVersion = run(path.join(resource, 'node/bin/node'), ['--version']).trim();
@@ -426,18 +512,23 @@ async function smokeVersionIsolatedTrialHome(app) {
 }
 
 if (args.includes('--help') || args.includes('-h')) {
-  process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] | --verify <HimaHarness.app>\n');
+  process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] [--interactive-bindings <absolute administrator file>] | --verify <HimaHarness.app>\n');
+} else if (args[0] === '--check-interactive-bindings') {
+  const file = value('--check-interactive-bindings');
+  if (!file) fail('--check-interactive-bindings needs an absolute administrator file');
+  const bindings = await inspectInteractiveBindings(file, path.join(root, 'packs'));
+  process.stdout.write(`${JSON.stringify(bindings, null, 2)}\n`);
 } else if (args[0] === '--check-pack-assets') {
   const packs = value('--check-pack-assets');
   if (!packs) fail('--check-pack-assets needs a packs directory');
   assertTrialPackAssets(path.resolve(packs));
-  assertTimingPackAssets(path.resolve(packs));
+  await assertTimingPackAssets(path.resolve(packs));
   assertDemoPackAssets(path.resolve(packs));
   process.stdout.write(`package-trial: checked ${trialPackId}, ${timingPackId} and ${demoPackId} assets\n`);
 } else if (args[0] === '--verify') {
   const app = value('--verify');
   if (!app) fail('--verify needs an app path');
-  verify(path.resolve(app));
+  await verify(path.resolve(app));
 } else {
   const output = path.resolve(value('--output') ?? path.join(root, '.hima-tmp/pilot-release'));
   if (process.platform !== 'darwin' || process.arch !== 'arm64') fail('this builder must run on macOS arm64');
@@ -456,6 +547,11 @@ if (args.includes('--help') || args.includes('-h')) {
   if (ignoredInputs.length) fail(`ignored resource inputs are not approved release assets: ${ignoredInputs.join(', ')}`);
   const source = sourceState();
   if (source.dirty) fail('commit tracked product changes before building a release candidate');
+  // Admission precedes build/deployment; an unsealed method cannot produce a candidate.
+  const timingPack = await assertTimingPackAssets(path.join(root, 'packs'));
+  const bindingFile = value('--interactive-bindings');
+  if (args.includes('--interactive-bindings') && !bindingFile) fail('--interactive-bindings needs an absolute administrator file');
+  const interactiveBindings = bindingFile ? await inspectInteractiveBindings(bindingFile, path.join(root, 'packs')) : undefined;
   // Rebuild the three shipped entry points from this source in this invocation.
   // Existing lib/ bytes are not evidence that they came from the source SHA.
   run(node24, [path.join(root, 'node_modules/typescript/bin/tsc'), '-p', 'packages/harness/tsconfig.json']);
@@ -493,7 +589,7 @@ if (args.includes('--help') || args.includes('-h')) {
     assertSourceTreeIsSafe(path.join(root, timingPackRelative));
     assertSourceTreeIsSafe(path.join(root, demoPackRelative));
     const trialPack = assertTrialPackAssets(path.join(root, 'packs'));
-    assertTimingPackAssets(path.join(root, 'packs'));
+    await assertTimingPackAssets(path.join(root, 'packs'));
     assertDemoPackAssets(path.join(root, 'packs'));
     cpSync(path.join(root, 'profiles'), path.join(resource, 'profiles'), { recursive: true });
     mkdirSync(path.join(resource, 'packs'), { recursive: true });
@@ -506,6 +602,15 @@ if (args.includes('--help') || args.includes('-h')) {
       return !name.startsWith('.') && name !== 'run-assets' && name !== '.evidence';
     } });
     cpSync(path.join(root, demoPackRelative), path.join(resource, demoPackRelative), { recursive: true });
+    if (interactiveBindings) {
+      mkdirSync(path.join(resource, qualificationRelative), { recursive: true });
+      cpSync(bindingFile, path.join(resource, bindingsRelative));
+      for (const binding of interactiveBindings.bindings) {
+        cpSync(binding.environment.file, path.join(resource, binding.environment.bundledFile));
+      }
+      const copied = await inspectInteractiveBindings(path.join(resource, bindingsRelative), path.join(resource, 'packs'), resource);
+      if (JSON.stringify(copied) !== JSON.stringify(interactiveBindings)) fail('administrator qualification changed during packaging');
+    }
     mkdirSync(path.join(resource, 'packages'), { recursive: true });
     symlinkSync('../node_modules/@hima/harness', path.join(resource, 'packages/harness'));
     mkdirSync(path.join(resource, 'node/bin'), { recursive: true });
@@ -533,13 +638,16 @@ if (args.includes('--help') || args.includes('-h')) {
       runtimeInputs: { node: '24', ledgerSchema: runtimeLedger.ledgerSpec.version,
         bundledPacks: [trialPackId, timingPackId, demoPackId],
         trialPack: { id: trialPackId, version: trialPack.version, methodDigest: trialPack.methodDigest,
-          testRun: trialPack.testRun } },
+          testRun: trialPack.testRun },
+        timingPack: { id: timingPackId, version: timingPack.version, methodDigest: timingPack.methodDigest,
+          testRun: timingPack.testRun },
+        ...(interactiveBindings ? { interactiveBindings } : {}) },
       compatibility: { home: 'version-isolated; no automatic migration', oldLedger: 'explicit offline import only' },
       impactedChecks: ['local contracts', 'isolated Desktop workbench', 'packaged Host and Pack-read smoke'],
       rollbackRef: 'v0.3.0-trial.18', status: 'building',
       source, files };
     writeFileSync(path.join(output, 'trial-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-    verify(app, true);
+    await verify(app, true);
     await smokeVersionIsolatedTrialHome(app);
     smokeRelocatedHost(app);
     writeComputerUseLauncher(output);
@@ -549,7 +657,7 @@ if (args.includes('--help') || args.includes('-h')) {
     const accepted = path.join(stage, 'accepted-manifest.json');
     writeFileSync(accepted, `${JSON.stringify({ ...manifest, status: 'structurally-verified trial candidate' }, null, 2)}\n`);
     renameSync(accepted, path.join(output, 'trial-manifest.json'));
-    verify(app);
+    await verify(app);
   } catch (error) {
     // These names were absent at admission, so only this attempt can own them.
     // A failed smoke must never leave a signed App beside a verified label.
