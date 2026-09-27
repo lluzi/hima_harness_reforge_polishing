@@ -67,7 +67,7 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
       inputs: ['qorReport'], allowedTools: ['hima_delegation_input'], scopePolicy: 'declared-inputs-only',
       budgetShare: { maxElapsedMs: 10_000, maxFollowups: 0 }, dependencyRoles: [],
       resultSchema: { id: 'fixture-research/1', required: ['schema', 'hypotheses'] }, recipient: 'run-owner',
-      ownerAdoption: 'candidate-only', identity: 'one-child-per-role-per-execution', followup: 'forbidden',
+      ownerAdoption: 'required', identity: 'one-child-per-role-per-execution', followup: 'forbidden',
       cancellation: 'request-stop-preserve-unknown', terminal: ['completed', 'cancelled', 'expired', 'uncertain', 'refused'],
       refusalConditions: ['missing-evidence'] },
     { id: 'reviewer', role: 'reviewer', node: 'synthesize', taskTemplate: 'Return one reviewed action.',
@@ -180,9 +180,25 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
   assert.equal(reviewerBeforeResearch.status, 'refused'); assert.match(reviewerBeforeResearch.reason, /dependency researcher/);
   await appendCandidate(researcher.effectiveContract.delegationId,
     JSON.stringify({ schema: 'fixture-research/1', hypotheses: ['hold endpoint group'] }), 'gated-research-result');
+  const researchRecord = host.ctx.hima.ledger.records({ runId: gated.run.id, type: 'delegation' })
+    .findLast(record => record.type === 'delegation' && record.delegationId === researcher.effectiveContract.delegationId && record.event === 'result-observed');
+  assert.ok(researchRecord);
+  const reviewerBeforeAdoption = await recipeCreate('reviewer', 'gated-reviewer-before-research-adoption');
+  assert.equal(reviewerBeforeAdoption.status, 'refused');
+  gatedControl = host.ctx.hima.ledger.run(gated.run.id)!.control!;
+  const adoptedResearch = await host.ctx.hima.delegate({ runId: gated.run.id, actor: String(owner.id), action: 'adopt',
+    delegationId: researcher.effectiveContract.delegationId, resultRecordId: researchRecord.id,
+    requestId: 'gated-adopt-research', expectedEpoch: gatedControl.epoch, expectedRevision: gatedControl.revision } as never) as Record<string, any>;
+  assert.equal(adoptedResearch.status, 'accepted', JSON.stringify(adoptedResearch));
   const operatorTooEarly = await recipeCreate('operator', 'gated-operator-too-early');
   assert.equal(operatorTooEarly.status, 'refused'); assert.match(operatorTooEarly.reason, /dependency reviewer/);
   const reviewer = await recipeCreate('reviewer', 'gated-reviewer'); assert.equal(reviewer.status, 'created', JSON.stringify(reviewer));
+  const retainedResearch = await host.ctx.hima.delegationInput(reviewer.receipt.childSessionId,
+    { runId: gated.run.id, recordId: researchRecord.id }) as Record<string, any>;
+  assert.equal(retainedResearch.kind, 'record-fact');
+  assert.deepEqual(JSON.parse(retainedResearch.payload.text),
+    { schema: 'fixture-research/1', hypotheses: ['hold endpoint group'] },
+    'ATCS-02: an adopted Researcher result reaches the Reviewer intact without a Pack-output projection');
   assert.deepEqual(reviewer.effectiveContract.tools, ['hima_delegation_input']);
   assert.equal(reviewer.effectiveContract.recipient.sessionId, String(owner.id));
   await appendCandidate(reviewer.effectiveContract.delegationId,

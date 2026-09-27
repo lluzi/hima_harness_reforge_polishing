@@ -1,6 +1,18 @@
 # ATCS-02 — 资格并实现 adopted Team result 的 Pack 投影
 
-状态：blocked-on-ATCS-01
+状态：PASS — existing retained dependency path reused (2026-09-27)
+
+The bounded ATCS worker keeps its existing Workshop-produced, reader-backed candidate action list.
+Researcher reviews that exact input and returns hypotheses; owner adopts its exact retained result,
+which Reviewer reads through `hima_delegation_input`. Reviewer selects one action from the existing
+plan; the qualified Host verifies the plan SHA and injects the immutable action into Operator.
+No Pack tool consumes Researcher prose, and no Researcher bytes need a second file authority.
+
+Lowest deterministic evidence: `test/contract/interactive-eda.host.test.ts` now refuses Reviewer
+creation before Researcher adoption and verifies exact Researcher JSON retrieval afterwards. Its
+existing reviewed-action, adoption, typed mutation and finalization gates remain green (1/1 Host
+test, one in-process Host, zero SSH/Electron/EDA). Runtime source changes: zero. ATCS-03 consumes
+this path; newly generated actions must first pass the existing Workshop/Reader plan admission.
 
 依赖：ATCS-01
 
