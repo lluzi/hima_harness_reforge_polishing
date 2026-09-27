@@ -315,6 +315,14 @@ Known gaps carried from earlier tasks:
   three modules was judged higher-risk, lower-value churn across an already well-tested surface than
   a genuine bug fix, and out of this batch's scope; a controller call on whether a differently-scoped
   derivative Pack would ever need this decoupled.
+- G34 (final re-review, N3 -- **not closed**) The worker XTop session (`flow/templates/xtop-operator.tcl`,
+  compiled by `prepare-workers`) is set up with less than the frozen, qualified B_lazy operator
+  (`packs/xtop-timing-closure/flow/templates/xtop-operator.tcl`): no `set_site_map`,
+  `set_removable_fillers`, `check_placement_readiness`, no timing library (`LIBRARY_TCL`), no STA data
+  (`prepare-workers` passes `sta_data=None`) and no `eco_*` parameters, while `xtop-replay.tcl` has the
+  first three. Workers therefore research without an XTop timing view, and worker and replay legality
+  may differ. It does not block a mechanical first Run; it belongs to the L4 XTop Operator qualification
+  before worker research quality is judged.
 
 ## Reviews
 
