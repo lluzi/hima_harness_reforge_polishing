@@ -13,6 +13,8 @@ import {
   discoverSshSite,
   installPackMethod,
   loadPack,
+  listInteractiveSessions,
+  parseInteractiveRecord,
   overridesOf,
   packDigestExcludes,
   packStage,
@@ -404,12 +406,25 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
   const launched = records.filter((record): record is JobRecord => record.type === 'job' && record.event === 'launched');
   const interactiveJobs = launched.filter((record) => record.nodeId === 'run-xtop-fix');
   const interactive = records.filter((record) => record.type === 'interactive');
+  const protocol = interactive.map(record=>({...record,payload:parseInteractiveRecord(record.payload)}));
+  const completedCloses = protocol.filter(record => {
+    const intent=record.payload;
+    return intent.event==='input-intent' && intent.effect==='close'
+      && protocol.some(done => done.payload.event==='command-completed' && done.toolSessionId===record.toolSessionId
+        && done.executionId===record.executionId && done.payload.commandId===intent.commandId
+        && done.payload.inputDigest===intent.inputDigest && done.requestId===record.requestId && done.seq>record.seq);
+  });
+  const normalExits = records.filter((record): record is JobRecord => record.type === 'job' && record.event === 'finished'
+    && record.exitCode === 0 && interactiveJobs.some(job => job.job.session === record.job.session));
+  const closedSessions = listInteractiveSessions(host.ctx.hima.ledger, runId).filter(session => session.status === 'closed'
+    && interactiveJobs.some(job => job.job.session === session.toolSessionId));
   check.require('one qualified interactive Job retained typed command and normal-close receipts',
     operatorAcceptance !== undefined && interactiveJobs.length === 1
       && interactive.some((record) => record.event === 'opened')
       && interactive.filter((record) => record.event.includes('command')).length >= 5
-      && interactive.some((record) => record.event.includes('closed') || record.event.includes('close')),
-    { interactiveJob: interactiveJobs, events: interactive.map((record) => record.event) });
+      && completedCloses.length === 1 && normalExits.length === 1 && closedSessions.length === 1,
+    { interactiveJob: interactiveJobs, events: interactive.map((record) => record.event),
+      completedCloseRecords:completedCloses.map(record=>record.id),normalExitRecords:normalExits.map(record=>record.id),closedSessions });
   check.require('the Campaign has no unsettled execution or unaccounted live Job',
     finalContext.executions.every((execution) => execution.phase !== 'working' && execution.phase !== 'uncertain'),
     finalContext.executions);

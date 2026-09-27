@@ -28,6 +28,42 @@ const binding: InteractiveBinding = {
 const execution = { id: 'execution-1', nodeId: 'manual', kind: 'act' as const, generation: 1, attempt: 1,
   methodDigest: digest('a'), inputDigest: digest('d'), phase: 'begun' as const };
 
+test('interactive session projection recognizes a finished Job without inventing command completion', () => {
+  const runId = 'normal-close-run', toolSessionId = 'normal-close-session';
+  const address = { runId, toolSessionId, executionId: execution.id, nodeId: 'manual', actor: 'operator',
+    ownerEpoch: 1, controlRevision: 0, requestId: 'close-request', operationDigest: digest('a'),
+    callerDigest: digest('b'), at: '2026-09-27T13:20:35.000Z' };
+  const protocol = (data: object) => ({ type: 'interactive', runId, payload: parseInteractiveRecord({ ...address, ...data }) });
+  const opening = [
+    protocol({ event: 'open-intent', jobSession: toolSessionId, transcriptPath: '/fixture/transcript.log',
+      exitPath: '/fixture/session.exit', sessionDeadlineAt: '2026-09-27T14:20:35.000Z' }),
+    protocol({ event: 'opened', jobSession: toolSessionId, readiness: 'ready', qualification: {
+      bindingDigest: digest('c'), adapter: binding.adapter, environment: binding.environment,
+      mutation: 'qualified', testOnly: true } }),
+    protocol({ event: 'input-intent', commandId: 'close-1', inputDigest: digest('d'), requestDigest: digest('b'),
+      protocolToken: 'T'.repeat(32), inputBytes: 1, submit: true, effect: 'close', cursorBefore: 0,
+      commandDeadlineAt: '2026-09-27T13:30:35.000Z' }),
+    protocol({ event: 'input-sent', commandId: 'close-1', inputDigest: digest('d') }),
+  ];
+  const completed = protocol({ event: 'command-completed', commandId: 'close-1', inputDigest: digest('d'), cursorAfter: 123 });
+  const finished = { type: 'job', runId, event: 'finished', job: { session: toolSessionId }, exitCode: 0 };
+  const project = (records: object[]) => listInteractiveSessions({
+    records: (query: { type: string }) => records.filter((record) => (record as { type: string }).type === query.type),
+  } as never, runId)[0]!;
+  assert.equal(project([...opening, completed]).status, 'ready', 'a close command receipt alone does not prove process exit');
+  assert.equal(project([...opening, completed, { ...finished, job: { session: 'other-session' } }]).status, 'ready');
+  const rows = [...opening, completed, finished];
+  const before = JSON.stringify(rows);
+  const closed = project(rows);
+  assert.equal(closed.status, 'closed', 'same-session finished Job proves process exit without an interactive closed event');
+  assert.equal(closed.activeCommand, undefined);
+  assert.equal(closed.lastCursor, 123);
+  assert.equal(JSON.stringify(rows), before, 'projection does not modify historical records');
+  const interrupted = project([...opening, { ...finished, exitCode: 1 }]);
+  assert.equal(interrupted.status, 'closed', 'process exit is independent of business success');
+  assert.equal(interrupted.activeCommand?.state, 'sent', 'process exit does not manufacture a command completion receipt');
+});
+
 test('interactive runtime derives authority from Run/Ledger, preserves single-writer and refuses spoofed completion', async (t) => {
   assert.deepEqual(parseInteractiveRequest({ action: 'open', runId: 'run-1', executionId: 'execution-1', nodeId: 'manual',
     requestId: 'open-1', ownerEpoch: 1, controlRevision: 0 }, 'actual-host-agent').actor, 'actual-host-agent');

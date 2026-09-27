@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   currentRecordsIn,
   loadPack,
+  listInteractiveSessions,
   packDigestExcludes,
   packStage,
   runDelegations,
@@ -21,6 +22,9 @@ import { guardInstalled, runLive, sha256, type LiveCheck } from './live-check-wo
 const NAME = 'resume-xtop-native-test';
 const PACK_ID = 'xtop-timing-closure';
 const args = process.argv.slice(2);
+const reportOnlyAt=args.indexOf('--report-only');
+const reportOnly=reportOnlyAt>=0;
+if(reportOnly)args.splice(reportOnlyAt,1);
 const take = (flag: string): string => {
   const at = args.indexOf(flag); const value = at < 0 ? undefined : args[at + 1];
   if (!value || value.startsWith('--')) throw new Error(`missing ${flag}`);
@@ -56,6 +60,35 @@ await runLive(NAME, 16, async (check: LiveCheck) => {
   const ownerId = initial.control.owner;
   const owner = check.trackResumed((await resumeTestAgent(host.ctx, ownerId, { provider: 'deepseek-official', model: 'deepseek-flash' })).agent);
   check.observed.recovered = { runId, ownerId, home: homeRoot, bindingFile: { path: bindingFile, sha256: sha256(readFileSync(bindingFile)) } };
+  if(reportOnly) {
+    const source=loadPack(path.join(repoRoot,'packs'),PACK_ID);
+    assert.ok(initial.purpose==='test'&&initial.status?.startsWith('ended-'), 'report-only requires an already ended native TEST');
+    assert.equal(initial.packDigest,source.folder.digest(packDigestExcludes));
+    assert.equal(loadPack(path.join(homeRoot,'hima/packs'),PACK_ID).folder.digest(packDigestExcludes),initial.packDigest);
+    const beforeRun=JSON.stringify(initial);
+    const before=host.ctx.hima.ledger.records({runId});
+    const jobs=before.filter((record):record is JobRecord=>record.type==='job'&&record.event==='launched'&&record.nodeId==='run-xtop-fix');
+    assert.equal(jobs.length,1);
+    assert.ok(before.some(record=>record.type==='job'&&record.event==='finished'&&record.exitCode===0&&record.job.session===jobs[0]!.job.session));
+    assert.equal(listInteractiveSessions(host.ctx.hima.ledger,runId).find(session=>session.toolSessionId===jobs[0]!.job.session)?.status,'closed');
+    assert.ok(currentRecordsIn(before).some(record=>record.type==='node'&&record.nodeId==='read-xtop'&&record.state==='done'));
+    host.ctx.tools.guard(execution=>['hima_execute','hima_interactive','hima_delegate','hima_run','hima_prepare'].includes(execution.name)
+      ?'Report-only finalization cannot execute, resume or create a Run, Job, child or interactive operation.':undefined);
+    check.observed.reportOnly={runId,status:initial.status,recordCount:before.length,control:initial.control};
+    for(const stage of ['tested','released'] as const) {
+      const instruction=stage==='tested'
+        ?`/hima-test Reporting only for the already ended native test Run ${runId}. Do not resume the Run or create anything. Read its retained records and write TEST.md through the native test path. Preserve method bytes and report the exact ${initial.status} ending.`
+        :`/hima-release ${PACK_ID}. Seal only the tested method using hima_pack_release; never handwrite VERSION.yml.`;
+      for(let attempt=0;attempt<3&&packStage(installedPackDirectory).stage!==stage;attempt++)await check.say(owner,instruction);
+      check.require(`report-only native pipeline reaches ${stage}`,packStage(installedPackDirectory).stage===stage,packStage(installedPackDirectory));
+    }
+    assert.equal(JSON.stringify(host.ctx.hima.ledger.run(runId)),beforeRun,'report-only changed the ended Run');
+    assert.deepEqual(host.ctx.hima.ledger.records({runId}).map(record=>record.id),before.map(record=>record.id),'report-only changed Run evidence');
+    copyFileSync(path.join(installedPackDirectory,'TEST.md'),path.join(sourcePackDirectory,'TEST.md'));
+    copyFileSync(path.join(installedPackDirectory,'VERSION.yml'),path.join(sourcePackDirectory,'VERSION.yml'));
+    check.observed.release={runId,packDigest:initial.packDigest,testSha256:sha256(readFileSync(path.join(sourcePackDirectory,'TEST.md'))),versionSha256:sha256(readFileSync(path.join(sourcePackDirectory,'VERSION.yml')))};
+    return;
+  }
   check.beforeDispose(async () => {
     const run = host.ctx.hima.ledger.run(runId);
     if (run?.status === 'running') {

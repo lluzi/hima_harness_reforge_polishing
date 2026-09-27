@@ -329,7 +329,13 @@ function reconstructSessions(ledger: Ledger, runId: string): InteractiveSessionV
     if (record.event === 'closed') sessions.set(record.toolSessionId, { ...previous, status: 'closed', activeCommand: undefined });
     if (record.event === 'close-uncertain') sessions.set(record.toolSessionId, { ...previous, status: 'uncertain', reason: record.reason });
   }
-  return [...sessions.values()];
+  return [...sessions.values()].map((session) => {
+    // A finished Job is authoritative process exit even when the tool's normal
+    // exit did not produce an interactive closed receipt. Keep command evidence:
+    // process exit alone does not prove an in-flight command completed.
+    const finished = jobs.some((record) => record.event === 'finished' && record.job.session === session.toolSessionId);
+    return finished ? { ...session, status: 'closed' as const } : session;
+  });
 }
 
 export const listInteractiveSessions = (ledger: Ledger, runId: string, executionId?: string): InteractiveSessionView[] =>
