@@ -10,9 +10,18 @@
 # ORIGINAL_DRIVER_LIBRARY together -- without them `link_design` has no cell
 # library to resolve references against at all; they are optional here only
 # so a caller that genuinely has none to offer (a compile-level unit test)
-# still renders.
+# still renders. PBA_MODE (final fix batch C, N4) -- "1" runs PBA (path mode,
+# the same worst-path-only scope pt-scenario.tcl's own PBA_MODE uses), any
+# other value or absence runs GBA; optional for the same reason.
 # Required Tcl global: ::ATCS_QUERY_TARGETS -- a list of
-#   {startpoint endpoint reportName} triples, one per targeted check.
+#   {startpoint endpoint mode reportName} quadruples, one per targeted check.
+#   `mode` is `setup` or `hold` (final fix batch C, N4): every targeted check
+#   this template queries is one specific mode's own check -- a setup check
+#   queried with PT's default `-delay_type max` is correct, but a HOLD
+#   check queried the same way would silently report the wrong (max/setup)
+#   delay arc's slack instead of its own min/hold one. `mode` decides
+#   `-delay_type` per target below, never a single value shared by every
+#   target in the list.
 ########################################################################
 foreach required {DESIGN NETLIST INPUT_SDC SPEF REPORT_ROOT} {
     if {![info exists env($required)]} { error "$required is required" }
@@ -53,10 +62,32 @@ if {[sizeof_collection [all_clocks]] == 0} { error "no clocks were created" }
 read_parasitics -format spef $env(SPEF)
 set_propagated_clock [all_clocks]
 update_timing -full
+# N4 (final fix batch C): same knob, same default-"none"/GBA rule as
+# pt-scenario.tcl's own `pba_mode_arg` (report_timing(2)/report_global_timing(2),
+# PT X-2025.06 man page, read-only verified: "-pba_mode none|path|exhaustive|
+# ml_exhaustive", default "none") -- optional here (unlike pt-scenario.tcl's
+# required PBA_MODE) so a caller with no precision to offer at all (a
+# compile-level unit test) still renders.
+set pba_mode_arg none
+if {[info exists env(PBA_MODE)] && $env(PBA_MODE) == 1} { set pba_mode_arg path }
 foreach target $::ATCS_QUERY_TARGETS {
     set startpoint [lindex $target 0]
     set endpoint [lindex $target 1]
-    set report_name [lindex $target 2]
+    set mode [lindex $target 2]
+    set report_name [lindex $target 3]
+    # N4 (final fix batch C): `-delay_type max` for a setup check, `min` for a
+    # hold check -- PT's own default (`max`) would silently report a HOLD
+    # check's setup-side slack instead of its own min/hold one. Every target
+    # in ::ATCS_QUERY_TARGETS carries its own `mode` (never shared across the
+    # whole query) precisely so this never mixes up two targets on the same
+    # PT session that happen to query different modes.
+    if {$mode eq "setup"} {
+        set delay_type max
+    } elseif {$mode eq "hold"} {
+        set delay_type min
+    } else {
+        error "target for report $report_name has unknown mode: $mode (expected setup or hold)"
+    }
     redirect $env(REPORT_ROOT)/$report_name.rpt {
         # -significant_digits 4 (same knob, same default-2 rule as report_timing(2)/
         # report_global_timing(2), PT X-2025.06 man page, read-only verified -- see
@@ -65,9 +96,10 @@ foreach target $::ATCS_QUERY_TARGETS {
         # atcs.adapters.parse_query_slack could misread; PT's own MET/VIOLATED
         # verdict plus its "increase significant digits" annotation remain the
         # actual fail-closed backstop either way.
-        report_timing -from $startpoint -to $endpoint -path_type full_clock_expanded \
+        report_timing -from $startpoint -to $endpoint -delay_type $delay_type \
+            -path_type full_clock_expanded \
             -input_pins -nets -transition_time -capacitance -max_paths 1 \
-            -significant_digits 4
+            -significant_digits 4 -pba_mode $pba_mode_arg
     }
 }
 exit

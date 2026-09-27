@@ -400,8 +400,12 @@ def compile_pt_scenario_tasks(query_spec, scenario_inputs, report_root):
 # ---------------------------------------------------------------------------
 
 
-def compile_pt_query_task(inputs, report_root, targets):
-    """One `pt-query.tcl` task querying every `{"checkKey","startpoint","endpoint"}` in `targets`.
+_QUERY_TARGET_MODES = ("setup", "hold")
+
+
+def compile_pt_query_task(inputs, report_root, targets, pba=False):
+    """One `pt-query.tcl` task querying every `{"checkKey","startpoint","endpoint","mode"}`
+    in `targets`.
 
     C4 (final review): `inputs` gains the same optional
     `libGlob`/`driverLibrary`/`originalDriverLibrary` triple
@@ -410,6 +414,16 @@ def compile_pt_query_task(inputs, report_root, targets):
     `target_library`/`link_path` either, so its own `link_design` (used by
     both `residual` and `sta`'s bounded parent-violator recheck) had no cell
     library to resolve references against for a real netlist.
+
+    N4 (final fix batch C): every target now carries its own `"mode"`
+    (`"setup"` or `"hold"`) -- `pt-query.tcl` emits `-delay_type max` for a
+    setup target and `min` for a hold one, so a hold check's own targeted
+    query never silently reports its setup-side slack instead (PT's own
+    `-delay_type` default is `max`). `pba` (default `False`, matching this
+    Pack's own `precision: gba` default) sets `PBA_MODE` the same way
+    `compile_pt_scenario_task`'s own `query_spec["precision"]` does, so a
+    caller observing at PBA precision re-queries at that same precision
+    here too.
     """
     for key in ("design", "netlist", "sdc", "spef"):
         if not inputs.get(key):
@@ -422,16 +436,23 @@ def compile_pt_query_task(inputs, report_root, targets):
     for index, target in enumerate(targets):
         name = f"q{index:03d}"
         report_names[target["checkKey"]] = name
+        mode = target.get("mode")
+        if mode not in _QUERY_TARGET_MODES:
+            raise core.AtcsError(
+                "missing-input",
+                f"pt-query target for {target.get('checkKey')!r} must carry mode in "
+                f"{_QUERY_TARGET_MODES}, got {mode!r}",
+            )
         # I7 (final review): each target is one nested brace group inside the outer
         # ATCS_QUERY_TARGETS list below, so a bus-bit startpoint/endpoint (`bus[3]`)
         # is safe here (`allow_brackets=True`).
         startpoint = tcl_safe(target["startpoint"], "startpoint", allow_brackets=True)
         endpoint = tcl_safe(target["endpoint"], "endpoint", allow_brackets=True)
-        tcl_targets.append("{" + f"{startpoint} {endpoint} {name}" + "}")
+        tcl_targets.append("{" + f"{startpoint} {endpoint} {mode} {name}" + "}")
 
     env = {
         "DESIGN": inputs["design"], "NETLIST": inputs["netlist"], "INPUT_SDC": inputs["sdc"],
-        "SPEF": inputs["spef"], "REPORT_ROOT": str(report_root),
+        "SPEF": inputs["spef"], "REPORT_ROOT": str(report_root), "PBA_MODE": "1" if pba else "0",
     }
     if inputs.get("libGlob"):
         env["LIB_GLOB"] = inputs["libGlob"]

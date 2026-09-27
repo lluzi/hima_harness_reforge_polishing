@@ -1892,7 +1892,9 @@ def _load_merge_commit_like(workspace, implement, provenance=None):
 STA_RECHECK_BOUND = 200
 
 
-def _bounded_parent_violator_recheck(workspace, prior_observation, scenario_inputs_by_scenario, site_profile, report_root):
+def _bounded_parent_violator_recheck(
+    workspace, prior_observation, scenario_inputs_by_scenario, site_profile, report_root, pba=False,
+):
     """I5 (final review, fixed count): re-query, on the CANDIDATE's own netlist/SPEF/SDC
     (`scenario_inputs_by_scenario`, the exact per-scenario inputs the real STA loop
     above just used), up to `STA_RECHECK_BOUND` of the PARENT's own worst-known-slack
@@ -1901,6 +1903,15 @@ def _bounded_parent_violator_recheck(workspace, prior_observation, scenario_inpu
     generation's own top-N-worst-path STA no longer happened to report this check" for
     a genuine `missingPrior`: a parent violator that has dropped out of the worst-N
     listing precisely because it is now FIXED must still be recognized as fixed.
+
+    N4 (final fix batch C): each check key's own `mode` (`"<scenario>|<mode>|
+    <endpoint>"`) is carried into its `pt-query.tcl` target -- a hold check
+    recheck must never be queried with PT's own `-delay_type` default (`max`,
+    a setup check's own delay arc), which would silently recheck the wrong
+    slack. `pba` (default `False`) is threaded straight through to
+    `adapters.compile_pt_query_task`; `_cmd_sta` passes its own
+    `query_spec["precision"] == "pba"`, so this recheck always runs at the
+    same precision the candidate's own STA loop just used.
 
     Returns `(recheck, complete, notes)`: `recheck` is `{checkKey: Measure}` (slack
     only -- `state.compare_checks`'s own `recheck` contract, no `violated` fact);
@@ -1929,7 +1940,7 @@ def _bounded_parent_violator_recheck(workspace, prior_observation, scenario_inpu
         if len(parts) != 3:
             notes.append(f"{key}: malformed check key")
             continue
-        scenario, _mode, endpoint = parts
+        scenario, mode, endpoint = parts
         entry = checks.get(key) or {}
         startpoint = entry.get("startpoint")
         if not isinstance(startpoint, str) or not startpoint:
@@ -1938,14 +1949,19 @@ def _bounded_parent_violator_recheck(workspace, prior_observation, scenario_inpu
         if scenario not in scenario_inputs_by_scenario:
             notes.append(f"{key}: scenario {scenario!r} is not one of this generation's own required scenarios")
             continue
-        by_scenario.setdefault(scenario, []).append({"checkKey": key, "startpoint": startpoint, "endpoint": endpoint})
+        if mode not in ("setup", "hold"):
+            notes.append(f"{key}: unrecognized mode {mode!r}")
+            continue
+        by_scenario.setdefault(scenario, []).append(
+            {"checkKey": key, "startpoint": startpoint, "endpoint": endpoint, "mode": mode}
+        )
 
     recheck = {}
     for scenario, targets in sorted(by_scenario.items()):
         inputs = scenario_inputs_by_scenario[scenario]
         scenario_report_root = report_root / scenario
         try:
-            task = adapters.compile_pt_query_task(inputs, str(scenario_report_root), targets)
+            task = adapters.compile_pt_query_task(inputs, str(scenario_report_root), targets, pba=pba)
         except core.AtcsError as exc:
             notes.append(f"{scenario}: {exc.detail}")
             continue
@@ -2224,7 +2240,7 @@ def _cmd_sta(workspace, args):
     parent_observation = _find_prior_observation_for_state(workspace, base_state["id"])
     recheck, recheck_complete, recheck_notes = _bounded_parent_violator_recheck(
         workspace, parent_observation, scenario_inputs_by_scenario, site_profile,
-        workspace / "implementations" / merge_id / "recheck",
+        workspace / "implementations" / merge_id / "recheck", pba=(query_spec.get("precision") == "pba"),
     )
 
     body = {
@@ -2579,8 +2595,16 @@ def _collect_residual_evidence(workspace, working_state, scenarios_contract, sit
     `state/residual-cases.json` (`queryNotes`), not part of
     `atcs.residual`'s own artifact shape.
 
+    N4 (final fix batch C): each check key's own `mode` is carried into its
+    `pt-query.tcl` target, exactly like `_bounded_parent_violator_recheck`'s
+    own recheck queries -- a hold check must never be queried with PT's own
+    `-delay_type` default (a setup check's own delay arc). The query runs at
+    `observation`'s own `precision` (the same precision that observation's
+    checks were themselves captured at).
+
     Returns `(check_details, notes)`.
     """
+    pba = observation.get("precision") == "pba"
     checks = observation.get("checks", {}) or {}
     bounded_keys = _bounded_remaining_checks(observation, remaining_keys, RESIDUAL_QUERY_BOUND)
     check_details = {}
@@ -2596,7 +2620,7 @@ def _collect_residual_evidence(workspace, working_state, scenarios_contract, sit
             notes.append(reason)
             check_details[key] = _unknown_evidence(reason)
             continue
-        scenario, _mode, endpoint = parts
+        scenario, mode, endpoint = parts
         entry = checks.get(key) or {}
         startpoint = entry.get("startpoint")
         if not isinstance(startpoint, str) or not startpoint:
@@ -2604,7 +2628,14 @@ def _collect_residual_evidence(workspace, working_state, scenarios_contract, sit
             notes.append(reason)
             check_details[key] = _unknown_evidence(reason)
             continue
-        by_scenario.setdefault(scenario, []).append({"checkKey": key, "startpoint": startpoint, "endpoint": endpoint})
+        if mode not in ("setup", "hold"):
+            reason = f"{key}: unrecognized mode {mode!r}"
+            notes.append(reason)
+            check_details[key] = _unknown_evidence(reason)
+            continue
+        by_scenario.setdefault(scenario, []).append(
+            {"checkKey": key, "startpoint": startpoint, "endpoint": endpoint, "mode": mode}
+        )
 
     # I12 (final review): one fresh, write-once generation directory for this whole
     # call (every scenario queried below shares it) -- a later `residual` call (the
@@ -2620,7 +2651,7 @@ def _collect_residual_evidence(workspace, working_state, scenarios_contract, sit
         try:
             inputs = _scenario_pt_inputs(workspace, working_state, scenarios_contract, scenario)
             report_root = residual_generation_root / scenario
-            task = adapters.compile_pt_query_task(inputs, str(report_root), targets)
+            task = adapters.compile_pt_query_task(inputs, str(report_root), targets, pba=pba)
         except (InputError, core.AtcsError) as exc:
             reason = f"{scenario}: {exc.detail}"
             notes.append(reason)

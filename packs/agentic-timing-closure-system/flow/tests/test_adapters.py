@@ -183,6 +183,56 @@ class PtScenarioTaskTest(unittest.TestCase):
             adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(), "/ws/reports")
 
 
+class PtQueryTaskTest(unittest.TestCase):
+    """N4 (final fix batch C): every `pt-query.tcl` target now carries its own
+    `mode` (`setup`/`hold`), and `-delay_type max`/`min` is emitted per target
+    from it -- PT's own `-delay_type` default (`max`) would otherwise silently
+    report a hold check's setup-side slack. `pba` threads `PBA_MODE` the same
+    way `compile_pt_scenario_task`'s own `query_spec["precision"]` does."""
+
+    def _inputs(self):
+        return {"design": "top", "netlist": "/ws/design.v", "sdc": "/ws/design.sdc", "spef": "/ws/corner.spef"}
+
+    def test_setup_and_hold_targets_map_to_delay_type_max_and_min(self):
+        targets = [
+            {"checkKey": "s1|setup|EP1", "startpoint": "SP1", "endpoint": "EP1", "mode": "setup"},
+            {"checkKey": "s1|hold|EP2", "startpoint": "SP2", "endpoint": "EP2", "mode": "hold"},
+        ]
+        task = adapters.compile_pt_query_task(self._inputs(), "/ws/reports", targets)
+        tcl = task["tcl"]
+        self.assertIn("{SP1 EP1 setup q000}", tcl)
+        self.assertIn("{SP2 EP2 hold q001}", tcl)
+        # The template's own mode->delay_type mapping (rendered verbatim; the
+        # actual selection happens at Tcl runtime, but the mapping logic itself
+        # must be present and correct in the compiled text).
+        self.assertIn('if {$mode eq "setup"} {\n        set delay_type max', tcl)
+        self.assertIn('} elseif {$mode eq "hold"} {\n        set delay_type min', tcl)
+        self.assertIn("-delay_type $delay_type", tcl)
+
+    def test_refuses_a_target_missing_mode(self):
+        targets = [{"checkKey": "s1|setup|EP1", "startpoint": "SP1", "endpoint": "EP1"}]
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_pt_query_task(self._inputs(), "/ws/reports", targets)
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_refuses_an_invalid_mode(self):
+        targets = [{"checkKey": "s1|bogus|EP1", "startpoint": "SP1", "endpoint": "EP1", "mode": "bogus"}]
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_pt_query_task(self._inputs(), "/ws/reports", targets)
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_pba_flag_only_set_when_requested(self):
+        targets = [{"checkKey": "s1|setup|EP1", "startpoint": "SP1", "endpoint": "EP1", "mode": "setup"}]
+        task = adapters.compile_pt_query_task(self._inputs(), "/ws/reports", targets)
+        self.assertEqual(task["env"]["PBA_MODE"], "0")
+        self.assertIn('set env(PBA_MODE) "0"', task["tcl"])
+
+        task_pba = adapters.compile_pt_query_task(self._inputs(), "/ws/reports", targets, pba=True)
+        self.assertEqual(task_pba["env"]["PBA_MODE"], "1")
+        self.assertIn('set env(PBA_MODE) "1"', task_pba["tcl"])
+        self.assertIn("-pba_mode $pba_mode_arg", task_pba["tcl"])
+
+
 class PtPrestaTaskTest(unittest.TestCase):
     """C4 (final review): `pt-presta.tcl` never set `target_library`/`link_path` at
     all before this fix -- `link_design` for a real (non-fixture) netlist would have

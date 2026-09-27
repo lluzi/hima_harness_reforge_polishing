@@ -1030,6 +1030,87 @@ class StaParentViolatorRecheckTest(TwoRoundFlowTest):
         self.assertFalse(core.is_known(evaluation["missingPriorCheckCount"]))
 
 
+class BoundedParentViolatorRecheckModeMappingTest(unittest.TestCase):
+    """N4 (final fix batch C): `_bounded_parent_violator_recheck` carries each check
+    key's own mode (`"<scenario>|<mode>|<endpoint>"`) into its `pt-query.tcl`
+    target -- a hold check's own targeted requery must never carry `mode: "setup"`
+    (which `pt-query.tcl` maps to `-delay_type max`, a setup check's own delay arc),
+    and vice versa. Exercises `atcs_cli._bounded_parent_violator_recheck` directly
+    (in-process, no subprocess) against a no-op wrapper -- the point is the
+    compiled `pt-query.tcl` text and the checkKey->mode mapping, not a real PT run."""
+
+    SCENARIO = "func_ssg_rcworst_m40"
+    SETUP_KEY = f"{SCENARIO}|setup|EP_SETUP"
+    HOLD_KEY = f"{SCENARIO}|hold|EP_HOLD"
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+
+    def test_a_hold_check_never_receives_a_setup_target_and_vice_versa(self):
+        prior_observation = {
+            "checks": {
+                self.SETUP_KEY: {"slack": core.known(-0.05), "startpoint": "SP_SETUP", "pathGroup": "reg2reg"},
+                self.HOLD_KEY: {"slack": core.known(-0.02), "startpoint": "SP_HOLD", "pathGroup": "reg2reg"},
+            },
+        }
+        scenario_inputs_by_scenario = {
+            self.SCENARIO: {
+                "design": "top", "netlist": "/unused/netlist.v", "sdc": "/unused/design.sdc",
+                "spef": "/unused/corner.spef",
+            },
+        }
+        site_profile = {"edaShell": [str(_no_op_wrapper(self.workspace))]}
+        report_root = self.workspace / "recheck"
+
+        recheck, complete, notes = atcs_cli._bounded_parent_violator_recheck(
+            self.workspace, prior_observation, scenario_inputs_by_scenario, site_profile, report_root,
+        )
+        self.assertFalse(complete, notes)  # the no-op wrapper produced no reports at all
+
+        # The compiled pt-query.tcl this call wrote to disk -- inspect the actual
+        # ATCS_QUERY_TARGETS literal, never just trust the Python-side dict.
+        tcl_text = (report_root / self.SCENARIO / "pt-query.tcl").read_text(encoding="utf-8")
+        self.assertIn("{SP_SETUP EP_SETUP setup ", tcl_text)
+        self.assertIn("{SP_HOLD EP_HOLD hold ", tcl_text)
+        # Never swapped: neither startpoint appears paired with the other's mode.
+        self.assertNotIn("{SP_SETUP EP_SETUP hold ", tcl_text)
+        self.assertNotIn("{SP_HOLD EP_HOLD setup ", tcl_text)
+
+    def test_the_recheck_slack_actually_answers_the_right_check_not_the_other_ones(self):
+        """Pre-seed each target's own fake PT report at its deterministic path
+        (this suite's established fake-wrapper convention) with DIFFERENT slack
+        values, and confirm each check key's own recheck slack is its own --
+        never the other check's, which a mode/target mix-up would produce."""
+        prior_observation = {
+            "checks": {
+                self.SETUP_KEY: {"slack": core.known(-0.05), "startpoint": "SP_SETUP", "pathGroup": "reg2reg"},
+                self.HOLD_KEY: {"slack": core.known(-0.02), "startpoint": "SP_HOLD", "pathGroup": "reg2reg"},
+            },
+        }
+        scenario_inputs_by_scenario = {
+            self.SCENARIO: {
+                "design": "top", "netlist": "/unused/netlist.v", "sdc": "/unused/design.sdc",
+                "spef": "/unused/corner.spef",
+            },
+        }
+        site_profile = {"edaShell": [str(_no_op_wrapper(self.workspace))]}
+        report_root = self.workspace / "recheck"
+        # `_bounded_remaining_checks` orders targets by WORST (most negative) known
+        # slack first -- SETUP_KEY's -0.05 is worse than HOLD_KEY's -0.02, so
+        # SETUP_KEY becomes q000 and HOLD_KEY becomes q001
+        # (`compile_pt_query_task` numbers targets in the order it is given them).
+        _write_text(report_root / self.SCENARIO / "q000.rpt", 'slack (VIOLATED) -0.05\n')
+        _write_text(report_root / self.SCENARIO / "q001.rpt", 'slack (VIOLATED) -0.02\n')
+
+        recheck, complete, notes = atcs_cli._bounded_parent_violator_recheck(
+            self.workspace, prior_observation, scenario_inputs_by_scenario, site_profile, report_root,
+        )
+        self.assertTrue(complete, notes)
+        self.assertEqual(core.value_of(recheck[self.HOLD_KEY]), -0.02)
+        self.assertEqual(core.value_of(recheck[self.SETUP_KEY]), -0.05)
+
+
 class StaLibraryIdentityTest(TwoRoundFlowTest):
     """C4 (final review): `sta` hashes each scenario's own PT library-file set fresh,
     right before that scenario's PT task launches, and records it in
