@@ -3,7 +3,7 @@
 // One authorized J3 arm: a real DeepSeek Campaign owner drives one complete XTop generation.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { copyFileSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
 import {
@@ -15,6 +15,7 @@ import {
   loadPack,
   overridesOf,
   packDigestExcludes,
+  packStage,
   readCampaignFile,
   readNativeSessionContext,
   runDelegations,
@@ -45,13 +46,16 @@ const sourceSiteDirectory = path.join(repoRoot, 'sites', SITE_NAME);
 const rawArgs = process.argv.slice(2);
 const preflightOnly = rawArgs.includes('--preflight-only');
 const delegateOperatorOnly = rawArgs.includes('--delegate-operator-only');
+const nativeTestRelease = rawArgs.includes('--native-test-release');
+assert.ok(!(delegateOperatorOnly && nativeTestRelease), '--delegate-operator-only and --native-test-release are mutually exclusive');
 const bindingAt = rawArgs.indexOf('--binding-file');
 const bindingArgument = bindingAt < 0 ? undefined : rawArgs[bindingAt + 1];
 if (!bindingArgument || bindingArgument.startsWith('--') || rawArgs.filter((arg) => arg === '--binding-file').length !== 1) {
-  throw new Error(`usage: node scripts/${NAME}.ts --binding-file <absolute-admin-binding.json> --out <fresh-directory> [--delegate-operator-only] [--timeout-ms 10800000 --max-turns 40 --max-steps 600]`);
+  throw new Error(`usage: node scripts/${NAME}.ts --binding-file <absolute-admin-binding.json> --out <fresh-directory> [--delegate-operator-only | --native-test-release] [--timeout-ms 10800000 --max-turns 40 --max-steps 600]`);
 }
 process.argv = [process.argv[0]!, process.argv[1]!, ...rawArgs.filter((arg, index) => arg !== '--preflight-only'
-  && arg !== '--delegate-operator-only' && index !== bindingAt && index !== bindingAt + 1)];
+  && arg !== '--delegate-operator-only' && arg !== '--native-test-release'
+  && index !== bindingAt && index !== bindingAt + 1)];
 const bindingFile = realpathSync(bindingArgument);
 assert.ok(path.isAbsolute(bindingFile) && lstatSync(bindingFile).isFile() && !lstatSync(bindingFile).isSymbolicLink(),
   'interactive binding must be one plain absolute administrator file');
@@ -156,10 +160,13 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
   const bundle = realpathSync(path.join(home.profileDir, 'node_modules/@hima/harness'));
   guardInstalled(check, host, [bundle, packsDirOf(home), home.workspace], installedPackDirectory, check.temporary);
   host.ctx.tools.guard((execution) => {
-    if (['write', 'edit', 'bash', 'terminal'].includes(execution.name)) {
+    if (['bash', 'terminal'].includes(execution.name)
+        || (!nativeTestRelease && ['write', 'edit'].includes(execution.name))) {
       return 'J3 business work uses only the installed Pack, Hima tools and the qualified interactive binding';
     }
-    if (['hima_author', 'hima_pack_release'].includes(execution.name)) return 'the J3 arm executes but does not author or release the method';
+    if (execution.name === 'hima_author' || (!nativeTestRelease && execution.name === 'hima_pack_release')) {
+      return 'the J3 arm executes but does not author or release the method';
+    }
     return undefined;
   });
 
@@ -179,14 +186,14 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
   // otherwise a hybrid tool may legitimately choose its batch fallback before the J3 protocol is
   // visible. Admission still uses the same prepared proposal and Fabric; only auto-notification is
   // omitted so the first owner turn is deterministic and user-visible below.
-  const owner = check.track(await createRootAgent(host.ctx, home.workspace));
+  const owner = check.track(await createRootAgent(host.ctx, nativeTestRelease ? installedPackDirectory : home.workspace));
   const campaign = readCampaignFile(home.workspace);
   assert.ok(campaign, 'the reviewed Campaign file must still be present at confirmation');
   const overrides = overridesOf(campaign.file);
   const started = await host.ctx.hima.startRun({ proposalId: prepared.id, pack: PACK_ID, site: SITE_NAME,
     goal: prepared.goal, strategy: prepared.strategy, ownerSessionId: String(owner.id),
     guideSessionId: String(guide.id), overrides, timeBoxMs: TIME_BOX_MINUTES * 60_000,
-    retryAllowance: 1, generationLimit: 1 });
+    retryAllowance: 1, generationLimit: 1, ...(nativeTestRelease ? { test: true } : {}) });
   assert.equal(started.kind, 'ran', JSON.stringify(started));
   if (started.kind !== 'ran') throw new Error('the prepared J3 Campaign was not admitted');
   const runId = started.run.id;
@@ -398,6 +405,30 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
     loadPack(packsDirOf(home), PACK_ID).folder.digest(packDigestExcludes) === sourceDigest
       && loadPack(path.join(repoRoot, 'packs'), PACK_ID).folder.digest(packDigestExcludes) === sourceDigest,
     { expected: sourceDigest, installed: loadPack(packsDirOf(home), PACK_ID).folder.digest(packDigestExcludes) });
+
+  if (nativeTestRelease) {
+    const finishStage = async (stage: 'tested' | 'released', instruction: string) => {
+      for (let attempt = 0; attempt < 3 && packStage(installedPackDirectory).stage !== stage; attempt += 1) {
+        await check.say(owner, instruction);
+        await check.wait(owner.whenIdle());
+      }
+      check.require(`the native Pack pipeline reached ${stage}`,
+        packStage(installedPackDirectory).stage === stage, packStage(installedPackDirectory));
+    };
+    await finishStage('tested', `/hima-test Resume only the existing ended test Run ${runId}. Do not start another Run. Read hima_status for this exact Run, write TEST.md from its retained records, and check the Pack. Preserve every method byte and the truthful budget ending.`);
+    await finishStage('released', `/hima-release ${PACK_ID}. Seal only the tested method through hima_pack_release; do not handwrite VERSION.yml.`);
+    copyFileSync(path.join(installedPackDirectory, 'TEST.md'), path.join(sourcePackDirectory, 'TEST.md'));
+    copyFileSync(path.join(installedPackDirectory, 'VERSION.yml'), path.join(sourcePackDirectory, 'VERSION.yml'));
+    check.require('the native TEST and seal were transferred without changing method identity',
+      loadPack(path.join(repoRoot, 'packs'), PACK_ID).folder.digest(packDigestExcludes) === sourceDigest
+        && packStage(sourcePackDirectory).stage === 'released',
+      { sourceDigest, sourceStage: packStage(sourcePackDirectory) });
+    check.observed.nativeRelease = {
+      runId,
+      testSha256: sha256(readFileSync(path.join(sourcePackDirectory, 'TEST.md'))),
+      versionSha256: sha256(readFileSync(path.join(sourcePackDirectory, 'VERSION.yml'))),
+    };
+  }
 
   check.observed.outcome = 'INCONCLUSIVE — engineering result matches control and evidence is complete, but human-minute savings are not measured precisely enough for a positive value claim';
   check.observed.final = { run: finalRun, observation: observation?.id, values: Object.fromEntries(values),

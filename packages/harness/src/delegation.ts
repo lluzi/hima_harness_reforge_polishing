@@ -350,7 +350,7 @@ async function verifyChild(ctx: Context, parent: Agent, childId: string, workspa
   return entry?.kind === 'child' && entry.mode === 'continuable' && (expectedLabel === undefined || entry.label === expectedLabel);
 }
 
-const taskPrompt = (contract: DelegationContract, effective: EffectiveDelegationContract): string => [
+export const delegationTaskPrompt = (contract: DelegationContract, effective: EffectiveDelegationContract): string => [
   `Role: ${effective.role}.`,
   `Task: ${contract.task.trim()}`,
   `Inputs: ${contract.inputRefs.length === 0 ? '(none)' : contract.inputRefs.join(', ')}`,
@@ -370,6 +370,8 @@ const taskPrompt = (contract: DelegationContract, effective: EffectiveDelegation
       `${command.effect} ${command.name}(${command.arguments?.map((argument) => `${argument.name}: ${argument.type}${argument.choices === undefined ? '' : ` {${argument.choices.join('|')}}`}${argument.minimum === undefined && argument.maximum === undefined ? '' : ` [${argument.minimum ?? '-inf'}..${argument.maximum ?? '+inf'}]`}`).join(', ') ?? 'legacy positional arguments'})`).join('; ')}. Supply declared names inside command.args; the Host validates exact keys before dispatch.`,
   effective.recipe === undefined ? 'Pack Agent Team recipe: unavailable; this is a manually declared delegation.'
     : `Pack Agent Team recipe: ${effective.recipe.teamId}@${effective.recipe.version}/${effective.recipe.memberId}, execution ${effective.recipe.executionId}, result schema ${effective.recipe.resultSchema.id}.`,
+  effective.recipe === undefined ? 'Agent Team result format: unavailable for this manually declared delegation.'
+    : `Agent Team result format: return exactly one JSON object and no prose or Markdown. Set schema to ${JSON.stringify(effective.recipe.resultSchema.id)} and include these top-level fields: ${effective.recipe.resultSchema.required.join(', ')}.`,
   effective.recipe?.inlinePayload === undefined ? 'Immutable reviewed action: none.'
     : `Immutable reviewed action: ${JSON.stringify(effective.recipe.inlinePayload)}. Use exactly this plan hash, command and typed arguments; do not substitute another action.`,
   'Do not claim a Campaign action, verdict, tool result, or file change that the corresponding tool/session transcript does not record.',
@@ -421,7 +423,7 @@ export async function createDelegation(ctx: Context, contract: DelegationContrac
   try {
     const started = await subagents.startContinuable({
       provider: 'spawn', label, childId: childSessionId,
-      request: { parent, prompt: [{ type: 'text', text: taskPrompt(contract, proposed) }],
+      request: { parent, prompt: [{ type: 'text', text: delegationTaskPrompt(contract, proposed) }],
         agentOptions: { provider: proposed.model.provider, model: proposed.model.model,
           ...(proposed.model.maxTokensPerTurn === undefined ? {} : { maxTokens: proposed.model.maxTokensPerTurn }) },
         maxDepth: 1, toolFilter: { allow: proposed.tools }, persona: `You are Hima's bounded ${proposed.role} child. Work only inside the effective contract and return candidate evidence to the named recipient.` },
