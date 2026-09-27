@@ -110,8 +110,9 @@ used as the final #52 acceptance.
 
 ## Wave 4 — final HimaHarness component integration
 
-The complete authority is
-+[Final HimaHarness component-integration acceptance](../../2026-09-26/next-stage/final-harness-integration-acceptance.md).
+The current execution authority is
+[Issue #52 closure intent](../../2026-09-27/issue52-closure-intent.md), with the product matrix in
+[Final HimaHarness component-integration acceptance](../../2026-09-26/next-stage/final-harness-integration-acceptance.md).
 
 ### Fixed preconditions
 

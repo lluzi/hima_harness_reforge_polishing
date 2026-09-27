@@ -129,11 +129,14 @@ operate HimaHarness concurrently with Claude.
 ### 5. Controlled execution
 
 - Run the admitted Timing ECO reference path for the bounded test generation.
-- At the XTop node, use the qualified Operator child and typed interactive commands; raw Tcl is not
-  sent through an unrestricted shell.
+- At the XTop node, materialize the Pack-declared Researcher, then Reviewer; the owner adopts the
+  exact Reviewer result before materializing the qualified Operator child.
+- The Operator receives one reviewed action inline and uses typed interactive commands; raw Tcl is
+  not sent through an unrestricted shell.
 - Preserve single-writer state, command receipts, transcript, checkpoint and normal/known close.
-- Downstream Innovus, StarRC and PrimeTime stages run only as declared by the Pack and available
-  budget.
+- The owner adopts the exact Operator result, completes `run-xtop-fix`, executes `read-xtop`, and
+  stops at that reader-backed bounded evidence boundary. Downstream Innovus/StarRC/PrimeTime reuse
+  their already closed J3 evidence and are not rerun for this acceptance.
 
 ### 6. Human control and recovery
 
@@ -163,7 +166,8 @@ The acceptance is PASS when all of the following are true:
 4. the visible graph and node/evidence drill-down reflect Runtime facts;
 5. a declared child/Operator task runs under its effective scope and produces inspectable receipts;
 6. pause/continue and recovery preserve authoritative state without duplicate effects;
-7. the Timing ECO Pack executes through the bounded evidence boundary reached by the test;
+7. the Timing ECO Pack executes its Pack-declared Agent Team through one Operator transaction and
+   reader-backed `read-xtop` evidence;
 8. reports, Data Insight and Guide explanations cite the same retained facts;
 9. the final status is truthful and includes all material limitations;
 10. Claude completes the GUI-only journey and writes a durable, independently reviewable handoff.
