@@ -155,6 +155,125 @@ class ImplementIsWriteOnceTest(cli.TwoRoundFlowTest):
         self.assertEqual(payload["code"], "write-once")
 
 
+class ImplementRecoversFromCrashWindowTest(cli.TwoRoundFlowTest):
+    """Final review minors (item 2): `_cmd_implement` writes its own write-once marker
+    (`implementations/<mergeId>/merge-commit.json`) and `state/merge-commit.json` itself,
+    then RETURNS to `main()`, which only THEN writes the declared `state/implement.json`
+    output (`core.write_artifact`, after the handler returns -- see `atcs_cli.main`). A
+    crash in that exact window leaves a fully verified, already-completed implementation
+    (marker present, every ECO output on disk) with `state/implement.json` either missing
+    entirely, or still naming an earlier candidate. `implement` must recognize that window
+    and rewrite `state/implement.json` from the verified outputs instead of refusing
+    `write-once` for a candidate that never got the chance to record itself -- while a
+    candidate whose `state/implement.json` already matches (a genuine, already-fully-
+    recorded implement) must still refuse `write-once`, exactly as before."""
+
+    def test_two_round_flow_uses_adopted_state_id(self):
+        self.skipTest("inherited from cli.TwoRoundFlowTest -- already covered there, not this class's own case")
+
+    def _seal_single_fix_merge_commit(self, workspace, baseline, instance):
+        contribution, work_package = self._build_fix_contribution(baseline, instance=instance)
+        cli._write_json(workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
+        from atcs import composition, integration
+        facts = composition.analyze(baseline["id"], [contribution], [])
+        plan_raw = {
+            "batchId": f"batch-{instance}", "baseStateId": baseline["id"], "select": [contribution["id"]],
+            "resolutions": [], "deferred": [], "reason": "single fix",
+        }
+        plan = integration.validate_plan(plan_raw, facts)
+        request = integration.prepare_replay(plan, facts, [contribution])
+        step = request["steps"][0]
+        receipt = {
+            "stepId": step["stepId"], "status": "ok",
+            "observedDelta": {"mastersChanged": {instance: ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        }
+        edit_domains = {contribution["id"]: work_package["editDomain"]}
+        integration_state = integration.reconcile(request, [receipt], edit_domains)
+        core.write_artifact(workspace / "state" / "composition-facts.json", facts)
+        core.write_artifact(workspace / "state" / "replay-request.json", request)
+        core.write_artifact(workspace / "state" / "integration-state.json", integration_state)
+        return integration.seal_batch(integration_state, request, facts, [contribution])
+
+    def _seed_completed_implementation(self, workspace, merge_commit):
+        merge_id = merge_commit["id"]
+        impl_root = workspace / "implementations" / merge_id
+        (impl_root / "DBS").mkdir(parents=True, exist_ok=True)
+        (impl_root / "DBS" / "top.enc").write_bytes(f"database for {merge_id}".encode("utf-8"))
+        cli._sha256_matching_empty_directory(impl_root / "DBS" / "top.enc.dat")
+        cli._write_text(impl_root / "EXPORT" / "design.def", "DEF placeholder\n")
+        cli._write_text(impl_root / "EXPORT" / "design.v", "module top(); endmodule\n")
+        cli._write_text(impl_root / "RPT" / "verify_drc.rpt", fixtures.drc_report([]))
+        cli._write_text(impl_root / "RPT" / "verify_connectivity.rpt", fixtures.connectivity_report([]))
+        # The two writes a successful `_cmd_implement` itself makes BEFORE returning
+        # to `main()` -- exactly what a crash right after them, but before `main()`
+        # writes the declared `state/implement.json` output, would leave behind.
+        core.write_artifact(workspace / "state" / "merge-commit.json", merge_commit)
+        core.write_artifact(impl_root / "merge-commit.json", merge_commit)
+        return impl_root
+
+    def test_missing_implement_json_is_rewritten_from_verified_outputs_not_refused(self):
+        workspace = self.workspace
+        manifest = cli._make_baseline_manifest(workspace)
+        manifest_path = workspace / "manifest.json"
+        cli._write_json(manifest_path, manifest)
+        self.assertEqual(cli._run("baseline", workspace, manifest_path).returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+
+        merge_commit = self._seal_single_fix_merge_commit(workspace, baseline, instance="U1")
+        merge_id = merge_commit["id"]
+        self._seed_completed_implementation(workspace, merge_commit)
+        self.assertFalse((workspace / "state" / "implement.json").exists())
+
+        site_profile_path = cli._site_profile_path(workspace)
+        current_state_path = workspace / "current-state.json"
+        cli._write_json(current_state_path, baseline)
+
+        result = cli._run("implement", workspace, current_state_path, site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        implement = json.loads((workspace / "state" / "implement.json").read_text())
+        self.assertEqual(implement["mergeCommitId"], merge_id)
+        self.assertEqual(implement["parentStateId"], baseline["id"])
+
+        # Now that `state/implement.json` genuinely matches this exact candidate,
+        # a further call is a plain retry of an already-fully-recorded implement --
+        # write-once still refuses it, same as before this fix.
+        again = cli._run("implement", workspace, current_state_path, site_profile_path)
+        self.assertEqual(again.returncode, 3, again.stdout + again.stderr)
+        self.assertEqual(json.loads(again.stderr)["code"], "write-once")
+
+    def test_stale_implement_json_naming_a_different_candidate_is_rewritten(self):
+        workspace = self.workspace
+        manifest = cli._make_baseline_manifest(workspace)
+        manifest_path = workspace / "manifest.json"
+        cli._write_json(manifest_path, manifest)
+        self.assertEqual(cli._run("baseline", workspace, manifest_path).returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+
+        merge_commit = self._seal_single_fix_merge_commit(workspace, baseline, instance="U1")
+        merge_id = merge_commit["id"]
+        self._seed_completed_implementation(workspace, merge_commit)
+
+        # `state/implement.json` names some earlier, unrelated candidate -- e.g.
+        # left over from before a Campaign-external cleanup, or an APR stage run.
+        cli._write_json(workspace / "state" / "implement.json", {
+            "mergeCommitId": "stale-candidate-id0", "design": "top", "parentStateId": None,
+            "stage": "postroute", "database": {"path": "nowhere", "sha256": "0" * 64, "datDigest": "0" * 64},
+            "netlist": {"path": "nowhere", "sha256": "0" * 64}, "def": {"path": "nowhere", "sha256": "0" * 64},
+            "drcReport": {"path": "nowhere", "sha256": "0" * 64},
+            "connectivityReport": {"path": "nowhere", "sha256": "0" * 64},
+        })
+
+        site_profile_path = cli._site_profile_path(workspace)
+        current_state_path = workspace / "current-state.json"
+        cli._write_json(current_state_path, baseline)
+
+        result = cli._run("implement", workspace, current_state_path, site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        implement = json.loads((workspace / "state" / "implement.json").read_text())
+        self.assertEqual(implement["mergeCommitId"], merge_id)
+        self.assertNotEqual(implement["mergeCommitId"], "stale-candidate-id0")
+
+
 class ImplementRetryAfterFailureTest(cli.TwoRoundFlowTest):
     """N2 (final fix batch C): `_cmd_implement` used to write the write-once
     completion marker (and `state/merge-commit.json`) BEFORE `run_tool` ran at

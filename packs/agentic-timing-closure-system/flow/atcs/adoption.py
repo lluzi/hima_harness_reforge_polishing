@@ -460,6 +460,13 @@ def _constraints_known(evaluation):
     return core.value_of(unknown_count) == 0
 
 
+def _is_negative_zero(value):
+    """`True` only for a `-0.0`-signed float -- `-0.0 == 0.0` is `True` in Python, so
+    `math.copysign(1.0, value)` (the only reliable way to read a float's own sign bit,
+    since `value < 0` is `False` for `-0.0`) is what actually tells the two apart."""
+    return value == 0.0 and math.copysign(1.0, value) < 0
+
+
 def _wns_status(evaluation, goal):
     setup = evaluation.get("finalSetupWns")
     hold = evaluation.get("finalHoldWns")
@@ -469,6 +476,16 @@ def _wns_status(evaluation, goal):
     setup_v = core.value_of(setup)
     hold_v = core.value_of(hold)
     if not (math.isfinite(setup_v) and math.isfinite(hold_v)):
+        return {"known": False, "goalMet": False, "min": None}
+
+    # Minor (final review): a known value of exactly `0.0` that nonetheless carries a
+    # negative sign bit is the same "-0.00" negative-zero display `atcs.reports`/
+    # `atcs.state` already refuse to call a real non-negative value at parse time (see
+    # their own module docstrings). Nothing upstream is expected to ever hand this
+    # function such a value, but the Goal is this Pack's final adoption gate -- a
+    # defensive guard here too, treating it as unknown rather than trusting a bare
+    # float's sign at the last possible moment before deciding a candidate meets Goal.
+    if _is_negative_zero(setup_v) or _is_negative_zero(hold_v):
         return {"known": False, "goalMet": False, "min": None}
 
     goal_met = setup_v >= goal.get("setup", 0.0) and hold_v >= goal.get("hold", 0.0)

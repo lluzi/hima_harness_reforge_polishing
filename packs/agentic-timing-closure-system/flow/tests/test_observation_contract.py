@@ -90,6 +90,24 @@ class DesignStateTest(DesignStateTestBase):
             state.design_state(manifest)
         self.assertEqual(ctx.exception.code, "missing-input")
 
+    def test_encdat_name_not_paired_with_enc_name_refuses(self):
+        """Final review minor: the Innovus restore templates (`innovus-eco.tcl`/
+        `innovus-export.tcl`) always call `restoreDesign $env(CURRENT_DB).dat ...`, where
+        `CURRENT_DB` is `design-state.database.path` -- i.e. they assume `database.encDat`'s
+        own name is EXACTLY `database.enc`'s own name + ".dat". A manifest naming a real,
+        existing `encDat` directory that just happens to have some OTHER name would, without
+        this check, silently hash and record a directory the restore templates would never
+        actually read at run time -- `design_state` must refuse it up front instead."""
+        manifest = self.base_manifest()
+        mismatched_dir = self.root / "other-name.dat"
+        mismatched_dir.mkdir()
+        (mismatched_dir / "part-a.txt").write_text("part a")
+        manifest["database"]["encDat"] = "other-name.dat"
+
+        with self.assertRaises(core.AtcsError) as ctx:
+            state.design_state(manifest)
+        self.assertEqual(ctx.exception.code, "missing-input")
+
     def test_missing_top_level_key_raises_missing_input_not_key_error(self):
         manifest = self.base_manifest()
         del manifest["top"]

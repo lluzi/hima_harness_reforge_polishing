@@ -1596,6 +1596,31 @@ def _cmd_presta(workspace, args):
     return _paths(workspace)["presta"], body
 
 
+def _implement_body_from_outputs(merge_commit, design, outputs, workspace):
+    """The exact `state/implement.json` shape `_cmd_implement` writes, built from an
+    already-compiled ECO task's own `outputs` paths (re-hashed fresh, right now --
+    never trusted from an earlier run)."""
+    database_ref = {
+        "path": _relpath(outputs["database"], workspace), "sha256": core.file_sha256(outputs["database"]),
+        "datDigest": core.tree_digest(outputs["database"] + ".dat"),
+    }
+    netlist_ref = {"path": _relpath(outputs["netlist"], workspace), "sha256": core.file_sha256(outputs["netlist"])}
+    def_ref = {"path": _relpath(outputs["def"], workspace), "sha256": core.file_sha256(outputs["def"])}
+    return {
+        "mergeCommitId": merge_commit["id"], "design": design, "parentStateId": merge_commit.get("parentStateId"),
+        # Minor (final review): a real Integration Fix Session merge always occurs
+        # post-route (`sta` used to hard-code this same literal for every candidate,
+        # including an apr-run one at an earlier stage -- see that fix); recorded
+        # explicitly here too, for symmetry with `_cmd_apr_run`'s own `stage` field.
+        "stage": "postroute",
+        "database": database_ref, "netlist": netlist_ref, "def": def_ref,
+        "drcReport": {"path": _relpath(outputs["drc"], workspace), "sha256": core.file_sha256(outputs["drc"])},
+        "connectivityReport": {
+            "path": _relpath(outputs["connectivity"], workspace), "sha256": core.file_sha256(outputs["connectivity"]),
+        },
+    }
+
+
 def _cmd_implement(workspace, args):
     """C2 (final review, stale re-implement overwrites adopted DB): two independent
     refusals guard against silently overwriting an already-implemented (and possibly
@@ -1640,6 +1665,22 @@ def _cmd_implement(workspace, args):
     preserving that partial evidence for debugging rather than silently
     overwriting or discarding it in place; a fresh `output_root` is then
     used for this attempt.
+
+    Final review minor (item 2, crash window): `main()` only writes the declared
+    `state/implement.json` output AFTER this handler returns (`core.write_artifact`,
+    outside this function entirely) -- but this function itself already wrote the
+    write-once marker (`merge_commit_marker`) and `state/merge-commit.json` a few
+    lines earlier, once the ECO's own outputs were verified present. A crash in that
+    exact window leaves a fully verified, already-completed implementation with
+    `state/implement.json` either missing, or still naming an earlier candidate.
+    When the marker already exists, this function now recompiles the SAME
+    deterministic ECO task from the sealed merge commit (never re-running it) and,
+    if this merge id's own outputs are still verified present on disk AND
+    `state/implement.json` does not already record this exact candidate, rewrites
+    `state/implement.json` from those verified outputs instead of refusing. A
+    `state/implement.json` that already matches this candidate is a plain retry of
+    an already-fully-recorded implement -- that one still refuses `write-once`,
+    exactly as before.
     """
     current_state_path, site_profile_path = args
     workspace = Path(workspace)
@@ -1660,10 +1701,24 @@ def _cmd_implement(workspace, args):
             "against the current working state before implementing again",
         )
 
+    design = current_state["top"]
+    current_db = workspace / current_state["database"]["path"]
+
     merge_id = adapters.validate_path_segment(merge_commit["id"], "merge-commit.id")
     output_root = workspace / "implementations" / merge_id
     merge_commit_marker = output_root / "merge-commit.json"
     if merge_commit_marker.is_file():
+        # Crash-window recovery (final review minor, item 2): recompile the same
+        # deterministic task (no side effects, never runs the tool) so the exact
+        # outputs a genuine prior success would have produced can be re-verified.
+        recovery_task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root))
+        recovery_outputs = recovery_task["outputs"]
+        outputs_verified = all(Path(path).is_file() for path in recovery_outputs.values())
+        if outputs_verified:
+            recovered_body = _implement_body_from_outputs(merge_commit, design, recovery_outputs, workspace)
+            existing_implement = _read_json_or_default(_paths(workspace)["implement"], {})
+            if existing_implement != recovered_body:
+                return _paths(workspace)["implement"], recovered_body
         raise core.AtcsError(
             "write-once",
             f"implementations/{merge_id}/ has already been implemented ({merge_commit_marker} exists) "
@@ -1685,8 +1740,6 @@ def _cmd_implement(workspace, args):
             attempt += 1
         output_root.rename(output_root.parent / f"{merge_id}-attempt-{attempt}")
 
-    design = current_state["top"]
-    current_db = workspace / current_state["database"]["path"]
     task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root))
 
     eco_path = Path(task["ecoPath"])
@@ -1705,26 +1758,7 @@ def _cmd_implement(workspace, args):
         if not Path(path).is_file():
             raise adapters.AdapterToolError(f"expected Innovus ECO output missing: {name}={path}", log_path)
 
-    database_ref = {
-        "path": _relpath(outputs["database"], workspace), "sha256": core.file_sha256(outputs["database"]),
-        "datDigest": core.tree_digest(outputs["database"] + ".dat"),
-    }
-    netlist_ref = {"path": _relpath(outputs["netlist"], workspace), "sha256": core.file_sha256(outputs["netlist"])}
-    def_ref = {"path": _relpath(outputs["def"], workspace), "sha256": core.file_sha256(outputs["def"])}
-
-    body = {
-        "mergeCommitId": merge_commit["id"], "design": design, "parentStateId": merge_commit.get("parentStateId"),
-        # Minor (final review): a real Integration Fix Session merge always occurs
-        # post-route (`sta` used to hard-code this same literal for every candidate,
-        # including an apr-run one at an earlier stage -- see that fix); recorded
-        # explicitly here too, for symmetry with `_cmd_apr_run`'s own `stage` field.
-        "stage": "postroute",
-        "database": database_ref, "netlist": netlist_ref, "def": def_ref,
-        "drcReport": {"path": _relpath(outputs["drc"], workspace), "sha256": core.file_sha256(outputs["drc"])},
-        "connectivityReport": {
-            "path": _relpath(outputs["connectivity"], workspace), "sha256": core.file_sha256(outputs["connectivity"]),
-        },
-    }
+    body = _implement_body_from_outputs(merge_commit, design, outputs, workspace)
 
     # N2: written only now that the ECO's own outputs are verified present above --
     # never before `run_tool` ran, so a failed attempt never leaves a marker a

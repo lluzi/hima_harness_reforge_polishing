@@ -657,6 +657,29 @@ class PublishGuardTest(unittest.TestCase):
         self.assertEqual(record["decision"], "refused")
         self.assertEqual(record["reason"], "wns-unknown")
 
+    def test_negative_signed_zero_setup_wns_is_refused_like_unknown(self):
+        """Final review minor: a known value of exactly `0.0` that nonetheless carries a
+        negative sign bit (`-0.0`, `math.copysign(1, v) < 0`) is the same "-0.00" negative-zero
+        display `atcs.reports`/`atcs.state` already refuse to call a real non-negative value at
+        parse time -- a defensive belt-and-suspenders guard at the Goal gate itself must treat
+        it as unknown too, never as a passing (>= 0.0) zero."""
+        ev_a = _evaluation("state-a", core.known(-0.01), core.known(-0.005), parent_state_id=BASELINE)
+        adoption.publish(ev_a, BASELINE, self.path, DEFAULT_POLICY)
+
+        ev = _evaluation("state-p", core.known(-0.0), core.known(0.0), parent_state_id="state-a")
+        record = adoption.publish(ev, "state-a", self.path, DEFAULT_POLICY)
+        self.assertEqual(record["decision"], "refused")
+        self.assertEqual(record["reason"], "wns-unknown")
+
+    def test_negative_signed_zero_hold_wns_is_refused_like_unknown(self):
+        ev_a = _evaluation("state-a", core.known(-0.01), core.known(-0.005), parent_state_id=BASELINE)
+        adoption.publish(ev_a, BASELINE, self.path, DEFAULT_POLICY)
+
+        ev = _evaluation("state-q", core.known(0.0), core.known(-0.0), parent_state_id="state-a")
+        record = adoption.publish(ev, "state-a", self.path, DEFAULT_POLICY)
+        self.assertEqual(record["decision"], "refused")
+        self.assertEqual(record["reason"], "wns-unknown")
+
     # -- Degraded-working baseline is best (falling back to the *first* working
     # entry ever recorded, not the moving working, only when best is None) --
 

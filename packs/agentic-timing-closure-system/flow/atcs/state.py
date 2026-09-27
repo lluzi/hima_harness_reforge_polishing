@@ -265,6 +265,23 @@ def design_state(manifest):
     database = core.require(manifest, "database", "manifest")
     enc_rel = core.require(database, "enc", "manifest.database")
     enc_dat_rel = core.require(database, "encDat", "manifest.database")
+    # Final review minor: the Innovus restore templates (`innovus-eco.tcl`/
+    # `innovus-export.tcl`) always call `restoreDesign $env(CURRENT_DB).dat ...`, where
+    # `CURRENT_DB` is this design-state's own recorded `database.path` (`enc_rel`) -- i.e.
+    # they assume `database.encDat`'s own name is EXACTLY `database.enc`'s own name +
+    # ".dat", the same convention this function's own `datDigest` field documents. A
+    # manifest naming a real, existing `encDat` directory that just happens to have some
+    # OTHER name would otherwise be silently hashed and recorded here, even though the
+    # restore templates would never actually read that directory at run time -- refuse it
+    # up front instead of letting a later Innovus run fail against, or worse silently
+    # restore, a mismatched pairing.
+    expected_enc_dat_name = Path(enc_rel).name + ".dat"
+    if Path(enc_dat_rel).name != expected_enc_dat_name:
+        raise core.AtcsError(
+            "missing-input",
+            f"manifest.database.encDat {enc_dat_rel!r} is not paired with manifest.database.enc "
+            f"{enc_rel!r} -- expected an encDat named {expected_enc_dat_name!r}",
+        )
     netlist_rel = core.require(manifest, "netlist", "manifest")
 
     enc_path = _resolve(root, enc_rel)
