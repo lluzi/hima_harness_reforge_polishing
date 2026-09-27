@@ -480,15 +480,27 @@ def _timing_failure_count(evaluation):
     — the brief's "fewer failing checks" tie-break metric, read from the
     evaluation's own `check-comparison`. Returns `None` (treated as `+inf` —
     never wins a tie — by `_is_better`) when `evaluation["comparison"]` isn't
-    a dict carrying all three lists; a genuinely empty list still counts as
-    `0`, only an actually-missing list is `+inf`."""
+    a dict carrying all three lists as actual lists; a genuinely empty list
+    still counts as `0`, only a missing or `None` list is `+inf`.
+
+    N1 (final fix batch C): `verification.assemble` reports `remaining`/
+    `entrant`/`regressed` as explicit `None` (never a present-but-empty `[]`)
+    when it has no real comparison to offer (no prior observation could be
+    found for this candidate's parent state) -- a present `None` value used
+    to slip past the old "key present" check below and then crash `len()`
+    (or, before that check existed, silently read as `0`, which is worse: a
+    confirmed-clean tie-break score this Pack never actually confirmed).
+    Both an absent key and an explicit `None` value must be treated
+    identically as "unknown", never as `0`.
+    """
     comparison = evaluation.get("comparison")
     if not isinstance(comparison, dict):
         return None
     keys = ("remaining", "entrant", "regressed")
-    if not all(key in comparison for key in keys):
+    values = [comparison.get(key) for key in keys]
+    if any(value is None for value in values):
         return None
-    return sum(len(comparison[key]) for key in keys)
+    return sum(len(value) for value in values)
 
 
 def _is_better(candidate, current_best):

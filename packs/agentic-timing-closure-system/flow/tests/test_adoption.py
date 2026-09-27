@@ -800,6 +800,27 @@ class PublishGuardTest(unittest.TestCase):
         self.assertEqual(pointers["best"]["stateId"], "state-a")  # unchanged
         self.assertEqual(pointers["working"]["stateId"], "state-b")
 
+    def test_null_comparison_lists_never_win_a_tie_either(self):
+        """N1 (final fix batch C): `verification.assemble`'s "no prior observation"
+        case reports `comparison`'s `remaining`/`entrant`/`regressed` as explicit
+        `None` (a real reader's own `evaluation.comparison`, not this test's
+        fixture), never as present-but-EMPTY lists -- `[]` reads as "0 failing
+        checks, confirmed", a false claim this Pack must never make when the
+        comparison itself could not be computed. `_timing_failure_count` must
+        treat an explicit `None` value the exact same way it already treats an
+        absent key: `+inf`, never a winning `0`."""
+        ev_a = _evaluation("state-a", core.known(-0.01), core.known(-0.005), parent_state_id=BASELINE)
+        adoption.publish(ev_a, BASELINE, self.path, DEFAULT_POLICY)  # 0 failing timing checks
+
+        ev_b = _evaluation("state-b", core.known(-0.01), core.known(-0.005), parent_state_id="state-a",
+                            comparison={"remaining": None, "entrant": None, "regressed": None,
+                                        "fixed": None, "missingPrior": None, "reason": "no prior observation"})
+        record_b = adoption.publish(ev_b, "state-a", self.path, DEFAULT_POLICY)
+        self.assertEqual(record_b["decision"], "working-only")
+        pointers = adoption.load_pointers(self.path)
+        self.assertEqual(pointers["best"]["stateId"], "state-a")  # unchanged
+        self.assertEqual(pointers["working"]["stateId"], "state-b")
+
     # -- Delivery: goal met, constraints pass, and a live, campaign-root-resolved artifact_ready --
 
     def test_goal_met_and_artifact_ready_yields_delivery(self):

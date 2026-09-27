@@ -2027,6 +2027,18 @@ def _cmd_sta(workspace, args):
     `sta_receipts[scenario]["inputs"]["libraries"]` -- a library-identity leg
     `verification.assemble` now requires present (alongside netlist/SPEF)
     before `finalIdentityErrorCount` can be a known count.
+
+    N1 (final fix batch C, round-2 prior observation): once every scenario's
+    STA has run, a SINGLE combined observation covering all `REQUIRED_SCENARIOS`
+    (the same shape `_cmd_observe` itself captures) is persisted, write-once, at
+    `observations/<candidateStateId>.json` -- before this fix, `sta` only ever
+    captured per-scenario mini-observations into `sta_receipts[...]
+    ["observation"]`, never written to `observations/`, so a SECOND
+    implementation round with no fresh `observe` call in between could never
+    find this generation's own prior via `_find_prior_observation_for_state`;
+    `evaluate`'s comparison fell back to "no prior observation" every time,
+    even though this candidate's own STA already gathered everything a real
+    prior observation needs.
     """
     query_spec_path, scenarios_path, base_design_state_path, site_profile_path, max_paths_raw = args
     workspace = Path(workspace)
@@ -2096,6 +2108,11 @@ def _cmd_sta(workspace, args):
     sta_receipts = {}
     sta_sources = {}
     scenario_inputs_by_scenario = {}
+    # N1 (final fix batch C): every scenario's own report paths, collected as the
+    # loop below runs, so a SINGLE combined observation covering all
+    # `REQUIRED_SCENARIOS` (mirroring `_cmd_observe`'s own `source_refs` shape) can
+    # be captured and persisted once the loop finishes -- see the write below.
+    combined_scenario_source_refs = {}
     for scenario in adapters.REQUIRED_SCENARIOS:
         corner = scenario_corners[scenario]
         spef_ref = extract["spef"].get(corner)
@@ -2136,13 +2153,15 @@ def _cmd_sta(workspace, args):
             if not Path(report_path).is_file():
                 raise adapters.AdapterToolError(f"expected PT report missing: {report_path}", log_path)
 
+        scenario_source_ref = {
+            "globalTiming": task["reports"]["global_timing.rpt"], "setupPaths": task["reports"]["setup.rpt"],
+            "holdPaths": task["reports"]["hold.rpt"], "checkTiming": task["reports"]["check_timing.rpt"],
+        }
+        combined_scenario_source_refs[scenario] = scenario_source_ref
         source_refs = {
             # C5: the candidate's OWN state id, never base_state["id"] (the parent).
             "designStateId": design_state["id"],
-            "scenarios": {scenario: {
-                "globalTiming": task["reports"]["global_timing.rpt"], "setupPaths": task["reports"]["setup.rpt"],
-                "holdPaths": task["reports"]["hold.rpt"], "checkTiming": task["reports"]["check_timing.rpt"],
-            }},
+            "scenarios": {scenario: scenario_source_ref},
         }
         one_scenario_query_spec = dict(query_spec)
         one_scenario_query_spec["requiredScenarios"] = [scenario]
@@ -2161,6 +2180,28 @@ def _cmd_sta(workspace, args):
         }
 
     _canonical_write(workspace / "implementations" / merge_id / "design-state.json", design_state)
+
+    # N1 (final fix batch C): a combined, candidate-labelled observation covering
+    # every REQUIRED_SCENARIOS entry -- the same shape `_cmd_observe` itself
+    # captures and persists (`{"designStateId", "scenarios": {...}}` through
+    # `state.capture`) -- is captured here and persisted, write-once, at
+    # `observations/<candidateStateId>.json`. Before this fix, `sta` only ever
+    # captured per-scenario mini-observations into `sta_receipts[...]
+    # ["observation"]` (never written to `observations/`), so a SECOND
+    # implementation round with no fresh `observe` call in between could never
+    # find this generation's own prior via `_find_prior_observation_for_state`
+    # -- `evaluate`'s comparison fell back to "no prior observation", which is
+    # honest but avoidable: this candidate's own STA already gathered
+    # everything a real prior observation needs. Write-once (checked by the
+    # candidate's own state id, which is content-derived -- the same file
+    # would never legitimately need overwriting) so a retried `sta` for the
+    # same candidate never clobbers this generation's own persisted evidence.
+    combined_observation = state.capture(
+        {"designStateId": design_state["id"], "scenarios": combined_scenario_source_refs}, query_spec,
+    )
+    combined_observation_path = workspace / "observations" / f"{design_state['id']}.json"
+    if not combined_observation_path.is_file():
+        _canonical_write(combined_observation_path, combined_observation)
 
     # Called exactly once here: extraction (`extract.json`, already read
     # above) and all `REQUIRED_SCENARIOS`' STA (the loop above) have both
@@ -2693,6 +2734,15 @@ def _cmd_residual(workspace, args):
     setting, `lifecycle.compile_intervention` (called by `apr-prepare`)
     still raises `AtcsError("no-intervention")` (exit 3) -- this subcommand
     never manufactures a setting to avoid that refusal.
+
+    N1 (final fix batch C): `evaluation.comparison.remaining` is `None`
+    (never a present-but-empty `[]`) when `evaluate` had no prior observation
+    to diff against (`verification.assemble`'s own "no prior" case). This is
+    "unknown", never "nothing is failing": rather than crash `residual.
+    extract`'s own `for key in remaining_keys` on a bare `None`, this falls
+    back to deriving "remaining failing checks" directly from the candidate's
+    own combined observation -- the exact rule `_failing_checks_from_
+    observation` already applies below when no evaluation exists at all.
     """
     scenarios_path, site_profile_path = args
     workspace = Path(workspace)
@@ -2719,7 +2769,22 @@ def _cmd_residual(workspace, args):
             "scenarios": combined_scenarios, "checks": combined_checks,
             "missingScenarios": [], "coverage": {"complete": True, "reasons": []}, "sources": sources,
         }
-        remaining_keys = evaluation.get("comparison", {}).get("remaining", [])
+        remaining_keys = evaluation.get("comparison", {}).get("remaining")
+        if remaining_keys is None:
+            # N1 (final fix batch C): `comparison.remaining` is `None` when `evaluate`
+            # had no prior observation to diff against (`verification.assemble`'s own
+            # "no prior" case, which reports every comparison list as `None` -- never a
+            # present-but-empty `[]` -- see that module's own docstring). This is
+            # "unknown", never "nothing is failing": fall back to deriving "remaining
+            # failing checks" directly from the candidate's own combined observation
+            # (the exact rule `_failing_checks_from_observation` already applies below
+            # when no evaluation exists at all) instead of crashing `residual.extract`'s
+            # own `for key in remaining_keys` on a bare `None`, or silently treating the
+            # unknown comparison as "zero residual cases".
+            remaining_keys = _failing_checks_from_observation(base_observation)
+            evaluation = dict(evaluation)
+            evaluation["comparison"] = dict(evaluation.get("comparison") or {})
+            evaluation["comparison"]["remaining"] = remaining_keys
         pt_state, pt_state_failure = _residual_candidate_state(workspace, evaluation)
     else:
         base_observation = _read_declared(_paths(workspace)["observation"], "observation-set")

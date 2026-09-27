@@ -299,6 +299,24 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(evaluation["constraintFailureCount"], core.known(0))
         self.assertEqual(evaluation["constraintUnknownCount"], core.known(0))
 
+    def test_no_prior_observation_reports_null_comparison_lists_not_empty_ones(self):
+        """N1 (final fix batch C): when `prior_observation is None` (the caller
+        found no persisted observation matching this candidate's own
+        parentStateId), `comparison`'s `remaining`/`entrant`/`regressed`/`fixed`/
+        `missingPrior` must be `None`, never a present-but-EMPTY `[]` -- `[]`
+        reads as "0 entries, confirmed", which `atcs.adoption.
+        _timing_failure_count` (the "fewer failing checks" tie-break metric)
+        would otherwise misread as a genuine, winning `0` failing checks."""
+        receipts = _base_receipts()
+        evaluation = verification.assemble(self.plan, receipts, None, self.baseline_physical)
+
+        self.assertFalse(core.is_known(evaluation["fixedCheckCount"]))
+        self.assertFalse(core.is_known(evaluation["missingPriorCheckCount"]))
+        comparison = evaluation["comparison"]
+        for key in ("remaining", "entrant", "regressed", "fixed", "missingPrior"):
+            self.assertIsNone(comparison[key], comparison)
+        self.assertIn("reason", comparison)
+
     def test_one_missing_required_scenario_blocks_coverage_and_final_setup_wns(self):
         receipts = _base_receipts()
         del receipts["sta"]["func_ffg_cbest_125"]

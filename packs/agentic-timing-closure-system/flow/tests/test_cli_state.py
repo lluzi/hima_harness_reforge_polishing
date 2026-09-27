@@ -2055,6 +2055,36 @@ class ResidualPtQueryEvidenceTest(unittest.TestCase):
         self.assertEqual(payload["code"], "no-intervention")
 
 
+class ResidualFallsBackWhenComparisonRemainingIsUnavailableTest(ResidualPtQueryEvidenceTest):
+    """N1 (final fix batch C): `evaluation.comparison.remaining` is `None` when
+    `evaluate` had no prior observation to diff against
+    (`verification.assemble`'s own "no prior" case). `residual` must not crash
+    (`residual.extract`'s own `for key in remaining_keys` on a bare `None`) and
+    must not silently treat "unknown" as "nothing is failing" either -- it
+    falls back to the candidate's own combined observation's known-negative-
+    slack checks, exactly like the "no evaluation exists yet" branch already
+    does."""
+
+    def setUp(self):
+        super().setUp()
+        evaluation = json.loads((self.workspace / "state" / "evaluation.json").read_text())
+        evaluation["comparison"] = {
+            "fixed": None, "remaining": None, "entrant": None, "regressed": None, "missingPrior": None,
+            "reason": f"no prior observation recorded for parentStateId {evaluation['parentStateId']!r}",
+        }
+        evaluation = core.stamp("evaluation", evaluation)
+        _write_json(self.workspace / "state" / "evaluation.json", evaluation)
+
+    def test_residual_falls_back_to_the_candidates_own_observation(self):
+        result = self._run_residual(self.NET_DOMINATED_REPORT)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        residual_doc = json.loads((self.workspace / "state" / "residual-cases.json").read_text())
+        self.assertEqual(len(residual_doc["cases"]), 1)
+        case = residual_doc["cases"][0]
+        self.assertEqual(case["checks"], [self.CHECK_KEY])
+        self.assertTrue(core.is_known(case["evidence"]["netDelay"]))
+
+
 class ResidualQueriesTheEvaluatedCandidateStateTest(unittest.TestCase):
     """Fix round 2 item 1 (Important): once an evaluation exists, residual's targeted PT
     queries run against the EVALUATED CANDIDATE's own design-state

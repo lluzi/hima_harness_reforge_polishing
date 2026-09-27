@@ -391,12 +391,21 @@ class EvaluateComparesAgainstTheCorrectGenerationTest(cli.TwoRoundFlowTest):
     `designStateId` equals the merge commit's `parentStateId` -- never whatever
     `state/observation.json` currently holds, which (after a second implementation
     round with no fresh `observe` in between) may still be labeled with an earlier
-    generation's state id."""
+    generation's state id.
+
+    N1 (final fix batch C, round-2 prior observation): `sta` now persists a
+    combined, candidate-labelled observation to `observations/<candidateStateId>.
+    json` (write-once) whenever it runs -- so a SECOND round, with no fresh
+    `observe` call in between, DOES find its own true prior (round 1's own
+    candidate, exactly the state round 2's own `parentStateId` names), rather
+    than falling back to "no prior observation recorded" every time. The
+    still-genuinely-missing case (no observation anywhere, e.g. before this
+    Campaign's very first `sta` has ever run) is covered separately below."""
 
     def test_two_round_flow_uses_adopted_state_id(self):
         self.skipTest("inherited from cli.TwoRoundFlowTest -- already covered there, not this class's own case")
 
-    def test_missing_matching_prior_observation_makes_the_comparison_unknown(self):
+    def test_sta_persists_a_combined_observation_so_a_second_round_finds_its_own_true_prior(self):
         workspace = self.workspace
         manifest = cli._make_baseline_manifest(workspace)
         manifest_path = workspace / "manifest.json"
@@ -414,18 +423,35 @@ class EvaluateComparesAgainstTheCorrectGenerationTest(cli.TwoRoundFlowTest):
         evaluation_round1 = json.loads((workspace / "state" / "evaluation.json").read_text())
         self.assertTrue(core.is_known(evaluation_round1["fixedCheckCount"]))
         self.assertTrue(core.is_known(evaluation_round1["missingPriorCheckCount"]))
-
-        # Round 2: the adopted state (round 1's own candidate) becomes the
-        # new working state, but `state/observation.json` was never
-        # refreshed by a fresh `observe` against it -- there is no
-        # persisted observation anywhere whose own designStateId equals
-        # round 2's parentStateId. The comparison must be unknown, never a
-        # silent diff against the wrong (round-1-parent) generation.
         working_after_round1 = json.loads((workspace / "state" / "working-state.json").read_text())
+        # N1: round 1's own `sta` persisted a combined observation labeled with
+        # its own candidate state id -- never overwriting `observations/` with
+        # something else, and never needing a fresh `observe` call to exist.
+        round1_observation_path = workspace / "observations" / f"{working_after_round1['id']}.json"
+        self.assertTrue(round1_observation_path.is_file(), sorted(
+            p.name for p in (workspace / "observations").glob("*.json")
+        ))
+
+        # Round 2: the adopted state (round 1's own candidate) becomes the new
+        # working state; `state/observation.json` was never refreshed by a
+        # fresh `observe` call against it, but round 1's own `sta` already
+        # persisted round 2's TRUE prior (above) -- the comparison must be
+        # known, and correctly reflect that nothing changed between two
+        # rounds of otherwise-identical, clean STA reports.
         self._run_implement_round(working_after_round1, instance="U2")
         evaluation_round2 = json.loads((workspace / "state" / "evaluation.json").read_text())
-        self.assertFalse(core.is_known(evaluation_round2["fixedCheckCount"]))
-        self.assertFalse(core.is_known(evaluation_round2["missingPriorCheckCount"]))
+        self.assertTrue(core.is_known(evaluation_round2["fixedCheckCount"]))
+        self.assertTrue(core.is_known(evaluation_round2["missingPriorCheckCount"]))
+        self.assertEqual(core.value_of(evaluation_round2["fixedCheckCount"]), 0)
+        self.assertEqual(core.value_of(evaluation_round2["missingPriorCheckCount"]), 0)
+
+    # The still-genuine "no prior at all" case (C5's original point) is
+    # exercised at the `verification.assemble` module level, not the CLI:
+    # `_cmd_policy` itself refuses unless `state/observation.json` is bound to
+    # the CURRENT baseline's own id, so a real CLI round trip can no longer
+    # reach `evaluate` with a genuinely absent baseline observation -- see
+    # `test_precheck_validity.py::AssembleTest::
+    # test_no_prior_observation_reports_null_comparison_lists_not_empty_ones`.
 
 
 class EvidenceGenerationWriteOnceTest(unittest.TestCase):

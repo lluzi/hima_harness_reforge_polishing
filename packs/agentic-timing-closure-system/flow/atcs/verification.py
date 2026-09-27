@@ -764,8 +764,16 @@ def assemble(plan, receipts, prior_observation, baseline_physical, baseline_unco
         # persisted observation whose own designStateId matches this plan's
         # parentStateId, so the comparison itself is unknown, not "zero".
         reason = f"no prior observation recorded for parentStateId {plan.get('parentStateId')!r}"
+        # N1 (final fix batch C): every list is `None`, never a present-but-EMPTY
+        # `[]` -- `[]` reads as "0 entries, confirmed", which
+        # `atcs.adoption._timing_failure_count` (the "fewer failing checks"
+        # tie-break metric) would otherwise misread as a genuine, winning `0`
+        # failing checks, when this comparison could not actually be computed
+        # at all. `None` is `_timing_failure_count`'s own existing signal for
+        # "unknown -- treat as +inf, never win a tie".
         comparison = {
-            "fixed": [], "remaining": [], "entrant": [], "regressed": [], "missingPrior": [], "reason": reason,
+            "fixed": None, "remaining": None, "entrant": None, "regressed": None, "missingPrior": None,
+            "reason": reason,
         }
         fixed_check_count = core.unknown(reason)
         missing_prior_check_count = core.unknown(reason)
