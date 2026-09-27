@@ -74,8 +74,9 @@ Historical Attempt 4 remains permanently parked and excluded from PASS.
 
 ## Durable local receipts
 
+- [Final scoped tester handoff](</Users/lluzi/code/hima_harness_agent_issue52_acceptance/Issue 52 Trial 33 Final Handoff Addendum.md>) — corrects the prior view/continue claims; tester idle, no further product actions.
 - [Tester final retained audit](</Users/lluzi/code/hima_harness_agent_issue52_acceptance/Issue 52 Trial 33 Final Retained Evidence Audit.md>) — preserve original, subject to corrections above.
-- [Consumed tester handoff](/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/improver-tester/history/20260927T161543Z-handoff.json).
+- [Consumed final tester handoff](/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/improver-tester/history/20260927T163112Z-handoff.json).
 - [Native TEST/seal receipt](/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/issue52-phase-a-v5/native-test-current-report-qualified/evidence.json).
 - [Composed no-commercial preflight](/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/issue52-phase-a-v5/app-preflight.json).
 - [Retained ledger](/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/issue52-app-trial33/Trial Data/dsh/storages/hima_ledger.json).
