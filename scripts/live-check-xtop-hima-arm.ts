@@ -292,15 +292,15 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
         result = await waitForSettledResult(created.effectiveContract.delegationId, 'wave1-result-operator-2', 20 * 60_000);
       }
       check.require('real Operator model returned a retained candidate result', ['candidate', 'duplicate'].includes(result.status), result);
+      await check.until('qualified interactive execution finalizes', () => {
+        const current = host.ctx.hima.executionContext(runId).executions.find(item => item.id === begunOperator.id);
+        return current?.phase === 'ready';
+      }, 20 * 60_000);
       const operatorRow = runDelegations((host.ctx.hima as unknown as { deps(): any }).deps(), runId)
         .find(row => row.delegationId === created.effectiveContract.delegationId); assert.ok(operatorRow?.resultRecordId);
       const adopted = await delegate({ action: 'adopt', requestId: 'wave1-adopt-operator',
         delegationId: created.effectiveContract.delegationId, resultRecordId: operatorRow.resultRecordId });
       check.require('Run owner explicitly adopted the exact Operator result', ['accepted', 'duplicate'].includes(adopted.status), adopted);
-      await check.until('qualified interactive execution finalizes', () => {
-        const current = host.ctx.hima.executionContext(runId).executions.find(execution => execution.id === begunOperator.id);
-        return current?.phase === 'ready';
-      }, 20 * 60_000);
       const control = host.ctx.hima.executionContext(runId).run.control!;
       const completed = await host.ctx.hima.executionAction({ runId, actor: ownerId, origin: 'agent', action: 'complete',
         nodeId: 'run-xtop-fix', executionId: begunOperator.id, requestId: 'wave1-complete-operator-node',

@@ -113,13 +113,13 @@ await runLive(NAME, 16, async (check: LiveCheck) => {
     operatorResult = await waitForResult(operator.effectiveContract.delegationId, 'wave1-result-operator-2', 20 * 60_000);
   }
   check.require('the Operator returns one durable candidate', ['candidate', 'duplicate'].includes(operatorResult.status), operatorResult);
-  const operatorRow = runDelegations((host.ctx.hima as unknown as { deps(): any }).deps(), runId).find(row => row.delegationId === operator.effectiveContract.delegationId); assert.ok(operatorRow?.resultRecordId);
-  const operatorAdopted = operatorRow.adoptedRecordId ? { status: 'duplicate', adoptedRecordId: operatorRow.adoptedRecordId }
-    : await delegate({ action: 'adopt', requestId: 'wave1-adopt-operator', delegationId: operator.effectiveContract.delegationId,
-      resultRecordId: operatorRow.resultRecordId });
-  check.require('owner adopts the exact Operator candidate', ['accepted', 'duplicate'].includes(operatorAdopted.status), operatorAdopted);
   await check.until('the typed Operator finalizer makes the execution ready', () =>
     operatorReady(), 20 * 60_000);
+  const operatorRow = runDelegations((host.ctx.hima as unknown as { deps(): any }).deps(), runId).find(row => row.delegationId === operator.effectiveContract.delegationId); assert.ok(operatorRow?.resultRecordId);
+  const operatorAdopted = operatorRow.adoptedRecordId ? { status: 'duplicate', adoptedRecordId: operatorRow.adoptedRecordId }
+    : await delegate({ action: 'adopt', requestId: 'wave1-adopt-operator-recovery', delegationId: operator.effectiveContract.delegationId,
+      resultRecordId: operatorRow.resultRecordId });
+  check.require('owner adopts the exact Operator candidate', ['accepted', 'duplicate'].includes(operatorAdopted.status), operatorAdopted);
   let control = host.ctx.hima.executionContext(runId).run.control!;
   const complete = await host.ctx.hima.executionAction({ runId, actor: ownerId, origin: 'agent', action: 'complete',
     nodeId: 'run-xtop-fix', executionId: execution.id, requestId: 'wave1-complete-operator-node',

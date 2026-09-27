@@ -120,6 +120,11 @@ test('real Run delegation recovers a cold completed result, gates dependencies, 
   const cold=await host.ctx.hima.delegate({runId,actor,action:'result',delegationId:'coder',requestId:'observe-cold-result',expectedEpoch:control.epoch,expectedRevision:control.revision}) as any;
   assert.equal(cold.status,'candidate',JSON.stringify(cold));assert.equal(cold.source,'native-persisted-session');
   control=host.ctx.hima.executionContext(runId).run.control!;
+  const sameTurn=await host.ctx.hima.delegate({runId,actor,action:'result',delegationId:'coder',requestId:'observe-same-completed-turn-again',expectedEpoch:control.epoch,expectedRevision:control.revision}) as any;
+  assert.equal(sameTurn.status,'unavailable',JSON.stringify(sameTurn));assert.match(sameTurn.unknowns.join(' '),/no newer completed turn/);
+  assert.equal(host.ctx.hima.ledger.records({runId,type:'delegation'}).filter(r=>r.type==='delegation'&&r.event==='result-observed').length,1,
+    'a new request id cannot relabel the same completed native turn as a new candidate');
+  control=host.ctx.hima.executionContext(runId).run.control!;
   const cancelComplete=await host.ctx.hima.delegate({runId,actor,action:'cancel',delegationId:'coder',requestId:'cancel-completed',expectedEpoch:control.epoch,expectedRevision:control.revision}) as any;
   assert.equal(cancelComplete.status,'refused');
   assert.equal(cold.evidence.artifactRefs.length,1);assert.match(cold.evidence.artifactRefs[0].sha256,/^[0-9a-f]{64}$/);

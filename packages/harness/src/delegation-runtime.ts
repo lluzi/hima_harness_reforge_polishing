@@ -5,7 +5,7 @@ import { controlling, identityOf, executionContext, type FabricDeps } from './fa
 import { timeBoxRemainingMs, ownedWaitedMs } from './budget.js';
 import { runExitFence } from './host-exit.js';
 import type { DelegationRecord, RunRecord } from './ledger.js';
-import { createDelegation, followupDelegation, cancelDelegation, readDelegationResult, durableDelegationHandoff, type DelegationContract, type EffectiveDelegationContract, type DelegationAuthority, type DelegationReservation, type DelegationRuntimePolicy, type DurableDelegationState, type OperatorDelegationGrant } from './delegation.js';
+import { createDelegation, followupDelegation, cancelDelegation, readDelegationResult, durableDelegationHandoff, parseDelegationResultObservedPayload, type DelegationContract, type EffectiveDelegationContract, type DelegationAuthority, type DelegationReservation, type DelegationRuntimePolicy, type DurableDelegationState, type OperatorDelegationGrant } from './delegation.js';
 const json = (value: unknown) => JSON.parse(JSON.stringify(value));
 type Creation = {
     contract: DelegationContract;
@@ -263,6 +263,10 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
                 return { status: 'refused', artifacts: [], unknowns: [], reason: 'Re-read the active unheld Run before adopting a child result.' };
             const result = all.filter(row => row.delegationId === found.delegationId && row.event === 'result-observed').at(-1);
             if (!result) return { status: 'refused', artifacts: [], unknowns: [], reason: 'Only an exact observed child result can be adopted.' };
+            if (found.effective.recipe?.memberId === 'operator'
+                && latest.control.executions[found.effective.recipe.executionId]?.phase !== 'ready') {
+                return { status: 'refused', artifacts: [], unknowns: [], reason: 'An Operator result cannot be adopted before its exact interactive execution is finalized and ready.' };
+            }
             if (found.effective.recipe && request.resultRecordId === undefined)
                 return { status: 'refused', artifacts: [], unknowns: [], reason: 'Pack Agent Team adoption must name the exact observed result record.' };
             if (request.resultRecordId !== undefined && request.resultRecordId !== result.id)
@@ -296,13 +300,27 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
             return { status: 'refused', artifacts: [], unknowns: [], reason: `Agent Team result does not satisfy ${found.effective.recipe.resultSchema.id}.` };
         }
     }
+    let candidateHandoff: ReturnType<typeof durableDelegationHandoff> | undefined;
+    if (result.status === 'candidate') {
+        candidateHandoff = durableDelegationHandoff(result, { recordId:found.contractRecordId, requestDigest:found.requestDigest });
+        const previous = records(deps, run.id).filter(row => row.delegationId === found.delegationId && row.event === 'result-observed').at(-1);
+        if (previous) {
+            let prior: ReturnType<typeof parseDelegationResultObservedPayload>;
+            try { prior = parseDelegationResultObservedPayload(previous.payload); }
+            catch { return { status: 'refused', artifacts: [], unknowns: [], reason: 'The prior delegated result handoff is malformed.' }; }
+            if (prior.handoff.outputIdentity === candidateHandoff.outputIdentity
+                && JSON.stringify(prior.handoff.completedTurn) === JSON.stringify(candidateHandoff.completedTurn)) {
+                return { status: 'unavailable', childSessionId: found.childSessionId, artifacts: [], unknowns: ['The delegated child has no newer completed turn after its prior observed result.'] };
+            }
+        }
+    }
     if (result.status === 'candidate' && found.state === 'accepted')
         await controlling(deps, run.id, async () => {
             const latest = deps.ledger.run(run.id);
             if (!latest?.control || latest.control.owner !== found.parentSessionId || latest.control.epoch !== request.expectedEpoch
                 || latest.control.revision !== request.expectedRevision) throw new Error('Re-read the Run before recording this child result.');
             if (!records(deps, run.id).some(r => r.requestId === request.requestId)) {
-                const handoff = durableDelegationHandoff(result, { recordId:found.contractRecordId, requestDigest:found.requestDigest });
+                const handoff = candidateHandoff!;
                 await deps.ledger.appendDelegation(run.id, { delegationId: found.delegationId, parentSessionId: found.parentSessionId,
                     childSessionId: found.childSessionId, event: 'result-observed', requestId: request.requestId,
                     requestDigest: identityOf({ child: found.childSessionId, outputIdentity:handoff.outputIdentity, completedTurn: handoff.completedTurn, evidence: handoff.evidence }),
