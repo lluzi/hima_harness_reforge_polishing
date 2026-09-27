@@ -121,4 +121,5 @@ proc atcs_close {} {
     return "closing after adapter receipt"
 }
 
-puts "HIMA:hima-tcl-line-v1:1:READY:$env(NAME_PREFIX)"
+puts "ATCS:worker:$env(NAME_PREFIX)"
+puts "HIMA:hima-tcl-line-v1:1:READY"

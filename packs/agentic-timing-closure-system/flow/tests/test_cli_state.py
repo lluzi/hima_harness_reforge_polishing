@@ -372,6 +372,13 @@ class FlowDigestTest(unittest.TestCase):
         after = atcs_cli.flow_digest(self.tmp)
         self.assertNotEqual(before, after)
 
+    def test_python_import_cache_does_not_change_the_deployed_method_identity(self):
+        before = atcs_cli.flow_digest(self.tmp)
+        cache = self.tmp / "atcs" / "__pycache__"
+        cache.mkdir()
+        (cache / "core.cpython-312.pyc").write_bytes(b"generated import cache")
+        self.assertEqual(before, atcs_cli.flow_digest(self.tmp))
+
     def test_a_file_outside_the_deployed_roots_never_affects_the_digest(self):
         """`flow/tests/` (and anything else beside the deployed tree) is never
         copied into a Campaign workspace -- it must not be able to change the

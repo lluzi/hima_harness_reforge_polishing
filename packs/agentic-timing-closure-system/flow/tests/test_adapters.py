@@ -571,6 +571,8 @@ class XtopOperatorArgvTest(unittest.TestCase):
         )
         self.assertIn(manifest["namePrefix"], task["argv"])
         self.assertEqual(task["ecoPrefix"], manifest["namePrefix"] + "eco")
+        self.assertIn('puts "HIMA:hima-tcl-line-v1:1:READY"', task["tcl"])
+        self.assertNotIn('HIMA:hima-tcl-line-v1:1:READY:', task["tcl"])
 
     def test_refuses_a_manifest_with_no_name_prefix(self):
         with self.assertRaises(core.AtcsError) as ctx:

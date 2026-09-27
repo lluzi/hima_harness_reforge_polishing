@@ -3555,8 +3555,11 @@ def _flow_digest_entries(flow_dir):
         if not root.is_dir():
             raise core.AtcsError("missing-input", f"not a directory: {root}")
         for current, dirnames, filenames in os.walk(root):
+            dirnames[:] = [name for name in dirnames if name != "__pycache__"]
             dirnames.sort()
             for name in sorted(filenames):
+                if name.endswith((".pyc", ".pyo")):
+                    continue
                 full = Path(current) / name
                 rel = full.relative_to(flow_dir).as_posix()
                 entries.append({"path": rel, "size": full.stat().st_size, "sha256": core.file_sha256(full)})
