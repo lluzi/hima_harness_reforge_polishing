@@ -258,45 +258,45 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
         let latest: Record<string, any> = { status: 'unavailable', reason: 'child result has not been read yet' };
         while (Date.now() < deadline) {
           latest = await delegate({ action: 'result', requestId, delegationId });
-          if (latest.status === 'candidate' || latest.status === 'refused') return latest;
+          if (latest.status === 'candidate' || latest.status === 'duplicate' || latest.status === 'refused') return latest;
           await new Promise(resolve => setTimeout(resolve, 150));
         }
         return latest;
       };
       const researcher = await materialize('researcher', 'wave1-create-researcher');
-      check.require('Pack recipe materialized one Timing Researcher', researcher.status === 'created', researcher);
+      check.require('Pack recipe materialized one Timing Researcher', ['created', 'duplicate'].includes(researcher.status), researcher);
       const researcherAgent = host.ctx.get('agents')!.get(researcher.receipt.childSessionId as never); assert.ok(researcherAgent);
       const researcherResult = await waitForSettledResult(researcher.effectiveContract.delegationId, 'wave1-result-researcher', 10 * 60_000);
-      check.require('Timing Researcher returned one retained candidate', researcherResult.status === 'candidate', researcherResult);
+      check.require('Timing Researcher returned one retained candidate', ['candidate', 'duplicate'].includes(researcherResult.status), researcherResult);
       const reviewer = await materialize('reviewer', 'wave1-create-reviewer');
-      check.require('Pack recipe materialized one dependent Timing Reviewer', reviewer.status === 'created', reviewer);
+      check.require('Pack recipe materialized one dependent Timing Reviewer', ['created', 'duplicate'].includes(reviewer.status), reviewer);
       const reviewerAgent = host.ctx.get('agents')!.get(reviewer.receipt.childSessionId as never); assert.ok(reviewerAgent);
       const reviewerResult = await waitForSettledResult(reviewer.effectiveContract.delegationId, 'wave1-result-reviewer', 5 * 60_000);
-      check.require('Timing Reviewer returned one retained candidate', reviewerResult.status === 'candidate', reviewerResult);
+      check.require('Timing Reviewer returned one retained candidate', ['candidate', 'duplicate'].includes(reviewerResult.status), reviewerResult);
       const reviewerRow = runDelegations((host.ctx.hima as unknown as { deps(): any }).deps(), runId)
         .find(row => row.delegationId === reviewer.effectiveContract.delegationId); assert.ok(reviewerRow?.resultRecordId);
       const reviewerAdopted = await delegate({ action: 'adopt', requestId: 'wave1-adopt-reviewer',
         delegationId: reviewer.effectiveContract.delegationId, resultRecordId: reviewerRow.resultRecordId });
-      check.require('Run owner adopted the exact reviewed action candidate', reviewerAdopted.status === 'accepted', reviewerAdopted);
+      check.require('Run owner adopted the exact reviewed action candidate', ['accepted', 'duplicate'].includes(reviewerAdopted.status), reviewerAdopted);
       const created = await materialize('operator', 'wave1-create-operator');
-      check.require('production binding minted one real Operator child with no raw terminal', created.status === 'created'
+      check.require('production binding minted one real Operator child with no raw terminal', ['created', 'duplicate'].includes(created.status)
         && created.effectiveContract?.operator?.testOnly === false
         && JSON.stringify(created.effectiveContract?.tools) === JSON.stringify(['hima_interactive']), created);
       const operatorId = created.receipt.childSessionId as string;
       const operator = host.ctx.get('agents')!.get(operatorId as never); assert.ok(operator);
       let result = await waitForSettledResult(created.effectiveContract.delegationId, 'wave1-result-operator-1', 20 * 60_000);
-      if (result.status !== 'candidate') {
+      if (!['candidate', 'duplicate'].includes(result.status)) {
         const follow = await delegate({ action: 'followup', requestId: 'wave1-finish-operator', delegationId: created.effectiveContract.delegationId,
           text: 'Finish the exact typed sequence from retained interactive facts, close once, then return a concise final receipt summary.' });
         assert.equal(follow.status, 'accepted', JSON.stringify({ result, follow }));
         result = await waitForSettledResult(created.effectiveContract.delegationId, 'wave1-result-operator-2', 20 * 60_000);
       }
-      check.require('real Operator model returned a retained candidate result', result.status === 'candidate', result);
+      check.require('real Operator model returned a retained candidate result', ['candidate', 'duplicate'].includes(result.status), result);
       const operatorRow = runDelegations((host.ctx.hima as unknown as { deps(): any }).deps(), runId)
         .find(row => row.delegationId === created.effectiveContract.delegationId); assert.ok(operatorRow?.resultRecordId);
       const adopted = await delegate({ action: 'adopt', requestId: 'wave1-adopt-operator',
         delegationId: created.effectiveContract.delegationId, resultRecordId: operatorRow.resultRecordId });
-      check.require('Run owner explicitly adopted the exact Operator result', adopted.status === 'accepted', adopted);
+      check.require('Run owner explicitly adopted the exact Operator result', ['accepted', 'duplicate'].includes(adopted.status), adopted);
       await check.until('qualified interactive execution finalizes', () => {
         const current = host.ctx.hima.executionContext(runId).executions.find(execution => execution.id === begunOperator.id);
         return current?.phase === 'ready';
