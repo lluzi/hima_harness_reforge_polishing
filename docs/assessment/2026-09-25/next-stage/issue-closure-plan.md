@@ -27,6 +27,14 @@ XTop Job. Its trial.32 continuation resumes that exact parked Run and is the clo
 recover the same Campaign/owner/execution history and may not recreate baseline work. This bounded
 App upgrade is also the required recovery test; any duplicate effect fails the acceptance.
 
+The trial.32 continuation proved that recovery and the complete production Operator-child path, then
+completed real Innovus apply and post-ECO StarRC. Independent review rejected its first PASS wording:
+the 120-minute Run remained at `read-after-extraction` without that reader execution or a retained
+post-extraction artifact hash. The amended Claude handoff is therefore `BLOCKED`, not PASS. Attempt 4
+keeps the exact App/Pack/Site/binding bytes and opens one fresh isolated 180-minute, one-generation
+Campaign. This is not a retry of a product defect; it removes the long debug/restart interval from
+the wall-clock acceptance budget and must reach a reader-backed bounded boundary.
+
 `1.0.15` supersedes `1.0.14` only for this final acceptance after Attempt 2 proved two Pack
 qualification defects: the Operator child lacked a retained named argument catalog, and repeated
 startup collided with a persisted XTop workspace. The new method has native TEST Run
@@ -161,6 +169,19 @@ PASS requires:
 A valid negative, unchanged, blocked or budget-limited Timing ECO outcome may pass. False success,
 identity mismatch, permission bypass, missing evidence, broken recovery or an unusable required GUI
 path fails the acceptance.
+
+### Attempt 3 disposition and Attempt 4 entry
+
+- Attempt 3 continuation retained exactly one production Operator child, typed XTop sequence,
+  explicit owner adoption, Innovus apply exit 0 and StarRC extraction exit 0 without duplicate
+  effects. Those integration facts remain valid.
+- Its amended handoff is `BLOCKED`: ledger records `#000119/#000121/#000122` prove the final StarRC
+  Job launch/exit-0/node-done sequence, but `read-after-extraction` did not execute and no
+  post-extraction output-artifact hash was retained.
+- Attempt 4 uses
+  [the trial.32 Attempt 4 manual](../../../user-guide/final-harness-integration-acceptance-timing-eco-v0.3.0-trial.32-attempt4.md),
+  one fresh Campaign/Run/owner and a 180-minute wall-clock budget. It preserves Attempts 1–3 and may
+  not introduce a second generation or duplicate effect.
 
 ## Wave 5 — #52 closure
 

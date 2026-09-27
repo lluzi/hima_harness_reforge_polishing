@@ -32,6 +32,14 @@ across a normal trial.31 → trial.32 App restart. It must prove recovery with n
 Run, baseline Job, plan, child or mutation; completed trial.31 records remain Runtime facts rather
 than being replayed under trial.32.
 
+That continuation proved recovery, the production Operator child, explicit adoption, Innovus apply
+and a fresh StarRC extraction. It did not pass the complete matrix: the long defect-debug interval
+consumed the active portion of its 120-minute wall-clock budget, so `read-after-extraction` never
+executed and no post-extraction artifact hash was retained. Its amended final handoff is `BLOCKED`.
+Attempt 4 reuses the exact App/Pack/Site/binding bytes in a fresh isolated Home/Workspace with one
+generation and a 180-minute time box. The larger wall-clock budget removes the debug-delay artifact;
+it does not widen the Goal, generation limit, retry allowance, tool scope or evidence standard.
+
 The Pack is a workload for Harness acceptance. Its setup/hold/DRC/connectivity result is evidence the
 product must display truthfully, not an acceptance threshold.
 
