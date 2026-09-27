@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { appendFile,mkdir,readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -9,7 +10,7 @@ import { repoRoot } from './support/dsh-home.ts';
 import { writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import { QUIET_TITLE_ROW } from './support/pipeline.ts';
 import { timingProbePackId } from './support/pack.ts';
-import { delegationRuntimePolicy,delegationToolDenial,readNativeSessionContext,runDelegations } from '@hima/harness';
+import { delegationRuntimePolicy,delegationToolDenial,readNativeSessionContext,retainRunMaterial,runDelegations } from '@hima/harness';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE='0';
 process.env.HIMA_TEST_SILENT_AGENT='1';
@@ -56,6 +57,29 @@ test('two independent native children share one Run budget and retain separate r
   const reviewerLog=await host.ctx.get('sessionQuery')!.readSession(secondId as never);
   assert.match(JSON.stringify(reviewerLog.events),/Independent reviewer completed its own task/);
   assert.equal(host.ctx.hima.ledger.records({runId,type:'delegation'}).filter(row=>row.type==='delegation'&&row.event==='create-intent').length,2);
+ }finally{if(runId)await host.ctx.hima.cancelRun(runId);await host.dispose();await home.h.dispose();}
+});
+test('delegated structured observations compact JSON without discarding endpoint evidence',async t=>{
+ const home=await localHome(t,{sleepSeconds:0});assert.ok(home);const host=await bootInProcess(home.h);let runId:string|undefined;
+ try{
+  const owner=await createRootAgent(host.ctx,home.h.home);const actor=String(owner.id);
+  const started=await host.ctx.hima.startRun({pack:timingProbePackId,site:'local',goal:{target_period_ns:2},ownerSessionId:actor,timeBoxMs:60000});
+  assert.equal(started.kind,'ran');if(started.kind!=='ran')return;runId=started.run.id;
+  const value={schema:'xtop-timing-closure-state/1',database:{files:Array.from({length:350},(_,index)=>({path:`db/file-${index}.bin`,sha256:'a'.repeat(64),bytes:1}))},
+   endpointSlackNs:Object.fromEntries(Array.from({length:200},(_,index)=>[`scenario|hold|endpoint/${index}`,-0.1])),metrics:{setup_wns_ns:-0.04,hold_wns_ns:-0.16}};
+  const text=JSON.stringify(value,null,2);const digest=createHash('sha256').update(text).digest('hex');
+  assert.ok(JSON.stringify({material:{text,truncated:false}}).length>65536&&JSON.stringify({material:{encoding:'json',value,truncated:false}}).length<65536);
+  const retainedPath=await retainRunMaterial({ledger:host.ctx.hima.ledger,packsDir:path.join(home.h.home,'hima/packs')},runId,Buffer.from(text),digest);assert.ok(retainedPath);
+  const observation=await host.ctx.hima.ledger.appendObservation(runId,{path:'flow/state/current.json',contentSha256:digest,retainedPath,bytes:Buffer.byteLength(text),
+   reader:{id:'xtop-closure-state',version:'1',reportKind:'xtop-timing-closure-state/1',emits:['xtop_hold_wns']},values:[{type:'xtop_hold_wns',unit:'ns',value:-0.16}]});
+  const child=await host.ctx.hima.delegate({runId,actor,action:'create',requestId:'compact-observation-child',expectedEpoch:1,expectedRevision:0,
+   contract:{delegationId:'compact-observation-child',role:'researcher',task:'Read the exact structured observation.',inputRefs:[observation.id],allowedTools:['hima_delegation_input'],
+    budgetShare:{maxElapsedMs:5000,maxFollowups:0},dependencyIds:[],recipient:{kind:'run-owner',sessionId:actor}}}) as any;
+  assert.equal(child.status,'created',JSON.stringify(child));
+  const supplied=await host.ctx.hima.delegationInput(child.receipt.childSessionId,{runId,recordId:observation.id}) as any;
+  assert.equal(supplied.kind,'record-fact',JSON.stringify(supplied));assert.equal(supplied.payload.material.encoding,'json');
+  assert.equal(supplied.payload.material.value.endpointSlackNs['scenario|hold|endpoint/199'],-0.1);
+  assert.equal(supplied.payload.contentSha256,digest,'the compact view remains bound to the original retained report bytes');
  }finally{if(runId)await host.ctx.hima.cancelRun(runId);await host.dispose();await home.h.dispose();}
 });
 test('real Run delegation recovers a cold completed result, gates dependencies, and keeps lifecycle/tool authority truthful',async t=>{
