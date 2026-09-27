@@ -908,11 +908,22 @@ export default class Hima extends Service {
     const record=this.ledger.record(request.recordId);
     if(!record||record.runId!==request.runId||!recordValidityOf(this.ledger.records({runId:request.runId}),record.id).valid)throw new BadRequest('The delegated input is missing or invalidated.');
     const base={runId:request.runId,recordId:record.id,recordType:record.type};
+    // DSH's native spill-policy caps model-facing plain-text results at 50,000 UTF-8
+    // bytes. Bound the complete envelope below that ceiling, not just report text.
+    const viewLimitBytes=40000;
+    const viewBytes=(value:object)=>Buffer.byteLength(JSON.stringify(value),'utf8');
+    const bounded=(value:object,handoffSource?:{outputIdentity:string;contractRecordId:string}):object=>viewBytes(value)<=viewLimitBytes?value:{...base,kind:'unavailable',
+      truncated:true,viewLimitBytes,
+      ...(handoffSource===undefined?{}:{...handoffSource,source:'durable-ledger-child-handoff',identityEncoding:'sha256-native-assistant-output'}),
+      ...(record.type==='observation'?{contentSha256:record.contentSha256,bytes:record.bytes}
+        :record.type==='code'||record.type==='knowledge'?{sha256:record.sha256,bytes:record.bytes}:{}),
+      reason:'The typed input exceeds the bounded native child view; delegate smaller verified material.'};
     if(record.type==='code'||record.type==='knowledge') {
       if(record.bytes>1024*1024)return {...base,kind:'unavailable',reason:'This material exceeds the bounded child input view; delegate a smaller verified source.'};
       const material=await readMaterial(this.deps(),request.runId,record.id);
       if(material.kind!=='read')return {...base,kind:'unavailable',reason:`Recorded material is ${material.kind}; original bytes were not delivered.`};
-      return {...base,kind:'material',sha256:record.sha256,bytes:record.bytes,text:material.text.slice(0,65536),truncated:material.text.length>65536};
+      return bounded({...base,kind:'material',sha256:record.sha256,bytes:record.bytes,text:material.text,
+        returnedBytes:Buffer.byteLength(material.text,'utf8'),truncated:false});
     }
     if(record.type==='delegation'&&record.event==='result-observed') {
       const source=runDelegations(this.deps(),request.runId).find(item=>item.delegationId===record.delegationId);
@@ -928,19 +939,20 @@ export default class Hima extends Service {
           ||!recordValidityOf(this.ledger.records({runId:request.runId}),contractRecord.id).valid) {
         return {...base,kind:'unavailable',reason:'The exact recorded delegation contract for this child handoff is missing or invalidated.'};
       }
-      return {...base,kind:'record-fact',payload:{candidateOnly:true,outputIdentity:handoff.outputIdentity,
+      return bounded({...base,kind:'record-fact',payload:{candidateOnly:true,outputIdentity:handoff.outputIdentity,
         contractRecordId:contractRecord.id,task:source.contract.task,inputRefs:source.contract.inputRefs,
         text:handoff.output.text,content:handoff.output.content,truncated:handoff.output.truncated,
         completedTurn:handoff.completedTurn,unknowns:handoff.unknowns,evidence:handoff.evidence,
         artifacts:handoff.evidence.artifactRefs.map(({path:_path,...artifact})=>artifact),limitations:handoff.evidence.limitations},
-        source:'durable-ledger-child-handoff',identity:handoff.outputIdentity,identityEncoding:'sha256-native-assistant-output'};
+        source:'durable-ledger-child-handoff',identity:handoff.outputIdentity,identityEncoding:'sha256-native-assistant-output'},
+        {outputIdentity:handoff.outputIdentity,contractRecordId:contractRecord.id});
     }
-    let observationMaterial:{text:string;truncated:boolean}|undefined;
+    let observationMaterial:{text:string;returnedBytes:number;truncated:boolean}|undefined;
     let observationJson:unknown;
     if(record.type==='observation') {
       const retained=await readReportMaterial(this.deps(),request.runId,record.id);
       if(retained.kind==='read') {
-        observationMaterial={text:retained.text.slice(0,65536),truncated:retained.text.length>65536};
+        observationMaterial={text:retained.text,returnedBytes:Buffer.byteLength(retained.text,'utf8'),truncated:false};
         try { observationJson=JSON.parse(retained.text); } catch { /* non-JSON reports retain the bounded text projection */ }
       }
     }
@@ -949,14 +961,17 @@ export default class Hima extends Service {
       :record.type==='verdict'?{outcome:record.outcome,ruleId:record.ruleId,ruleVersion:record.ruleVersion,cites:record.cites,valuesAsRead:record.valuesAsRead,reason:record.reason}
       :record.type==='analysis'?{analysis:record.analysis}:undefined;
     if(payload===undefined)return {...base,kind:'unavailable',reason:'This record type has no bounded delegated material projection.'};
-    let bytes=JSON.stringify(payload);
-    if(bytes.length>65536&&record.type==='observation'&&observationJson!==undefined) {
+    if(viewBytes({...base,kind:'record-fact',payload,identity:'0'.repeat(64),identityEncoding:'canonical-ledger-projection'})>viewLimitBytes&&record.type==='observation'&&observationJson!==undefined) {
       payload={reader:record.reader,contentSha256:record.contentSha256,bytes:record.bytes,values:record.values,
-        material:{encoding:'json',value:observationJson,truncated:false}};
-      bytes=JSON.stringify(payload);
+        material:{encoding:'json',value:observationJson,returnedBytes:Buffer.byteLength(JSON.stringify(observationJson),'utf8'),truncated:false}};
     }
-    if(bytes.length>65536)return {...base,kind:'unavailable',reason:'The typed input exceeds the bounded delegated view.'};
-    return {...base,kind:'record-fact',payload,identity:identityOf(payload),identityEncoding:'canonical-ledger-projection'};
+    if(record.type==='observation'&&observationMaterial!==undefined
+        &&viewBytes({...base,kind:'record-fact',payload,identity:'0'.repeat(64),identityEncoding:'canonical-ledger-projection'})>viewLimitBytes) {
+      payload={reader:record.reader,contentSha256:record.contentSha256,bytes:record.bytes,values:record.values,
+        material:{encoding:observationJson===undefined?'text':'json',truncated:true,returnedBytes:0,
+          reason:'Complete material exceeds the bounded native view limit; only typed reader values are delivered.'}};
+    }
+    return bounded({...base,kind:'record-fact',payload,identity:identityOf(payload),identityEncoding:'canonical-ledger-projection'});
   }
 
   async delegate(request:RunDelegationRequest,signal:AbortSignal=AbortSignal.timeout(30000)):Promise<object> {

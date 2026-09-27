@@ -65,10 +65,10 @@ test('delegated structured observations compact JSON without discarding endpoint
   const owner=await createRootAgent(host.ctx,home.h.home);const actor=String(owner.id);
   const started=await host.ctx.hima.startRun({pack:timingProbePackId,site:'local',goal:{target_period_ns:2},ownerSessionId:actor,timeBoxMs:60000});
   assert.equal(started.kind,'ran');if(started.kind!=='ran')return;runId=started.run.id;
-  const value={schema:'xtop-timing-closure-state/1',database:{files:Array.from({length:350},(_,index)=>({path:`db/file-${index}.bin`,sha256:'a'.repeat(64),bytes:1}))},
+  const value={schema:'xtop-timing-closure-state/1',database:{files:Array.from({length:200},(_,index)=>({path:`db/file-${index}.bin`,sha256:'a'.repeat(64),bytes:1}))},
    endpointSlackNs:Object.fromEntries(Array.from({length:200},(_,index)=>[`scenario|hold|endpoint/${index}`,-0.1])),metrics:{setup_wns_ns:-0.04,hold_wns_ns:-0.16}};
   const text=JSON.stringify(value,null,2);const digest=createHash('sha256').update(text).digest('hex');
-  assert.ok(JSON.stringify({material:{text,truncated:false}}).length>65536&&JSON.stringify({material:{encoding:'json',value,truncated:false}}).length<65536);
+  assert.ok(Buffer.byteLength(JSON.stringify({material:{text,truncated:false}}))>40000&&Buffer.byteLength(JSON.stringify({material:{encoding:'json',value,truncated:false}}))<40000);
   const retainedPath=await retainRunMaterial({ledger:host.ctx.hima.ledger,packsDir:path.join(home.h.home,'hima/packs')},runId,Buffer.from(text),digest);assert.ok(retainedPath);
   const observation=await host.ctx.hima.ledger.appendObservation(runId,{path:'flow/state/current.json',contentSha256:digest,retainedPath,bytes:Buffer.byteLength(text),
    reader:{id:'xtop-closure-state',version:'1',reportKind:'xtop-timing-closure-state/1',emits:['xtop_hold_wns']},values:[{type:'xtop_hold_wns',unit:'ns',value:-0.16}]});
