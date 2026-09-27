@@ -3,6 +3,10 @@
 Status: Phase A PASS. Native TEST/seal, Pack release, trial.33 App and composed
 no-model/no-Desktop/no-commercial preflight are fixed. GUI acceptance remains pending.
 
+GUI cycle3 subsequently stopped before any Campaign on missing DeepSeek credentials
+in its launching environment/Home. Identity preflight did not cover that readiness
+gate; see `issue52-trial33-credential-blocker.md`. Seal/App identities are unchanged.
+
 - App/Pack release source: `b2759b0a3a7cc6ba889fa81f523b274fc5a0fbf7`.
 - Pack: `xtop-timing-closure@1.0.16`, natively sealed; declared maturity remains development.
 - Method digest: `5cab1ddba6d2b6d35f27e2c5a1ddc05a8cd1b8758d1330c9c6c569dfd0cd78b1`.
