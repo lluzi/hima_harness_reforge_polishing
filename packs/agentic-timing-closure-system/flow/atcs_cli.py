@@ -1245,7 +1245,7 @@ def _cmd_prepare_workers(workspace, args):
             # of its own beyond the slot name.
             "workPackage": validated, "workspaceManifest": manifest,
         }
-    return _paths(workspace)["workers"], {"workers": index}
+    return _paths(workspace)["workers"], {"workers": index, "requiredSlots": ["w01"]}
 
 
 def _cmd_capture_contribution(workspace, args):
@@ -1353,10 +1353,15 @@ def _cmd_collect(workspace, args):
     workspace = Path(workspace)
     workers_doc = _read_json_or_default(_paths(workspace)["workers"], {"workers": {}})
     workers = workers_doc.get("workers", {}) or {}
+    required_slots = workers_doc.get("requiredSlots", list(workspaces.TASK_IDS))
+    if (not isinstance(required_slots, list) or not required_slots
+            or any(slot not in workspaces.TASK_IDS for slot in required_slots)
+            or len(set(required_slots)) != len(required_slots)):
+        raise InputError("invalid-input", "workers.requiredSlots must name unique declared slots")
 
     collected = []
     pending = []
-    for slot in workspaces.TASK_IDS:
+    for slot in required_slots:
         path = _contribution_path(workspace, slot)
         if not path.is_file():
             pending.append({"slot": slot, "reason": "no contribution sealed yet"})

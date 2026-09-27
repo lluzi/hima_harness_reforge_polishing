@@ -447,6 +447,18 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
         raise ValueError(f"candidate.taskId must be {expected_task_id!r}, got {candidate.get('taskId')!r}")
 
     count = workspaces_mod.request_invalid_count(candidate, base_state, site_capabilities)
+    if expected_task_id == "w01":
+        actions = envelope.get("actions")
+        domain = (candidate.get("editDomain") or {}).get("instances") or []
+        if not isinstance(actions, list) or not 1 <= len(actions) <= 3:
+            raise ValueError("worker actions must contain one to three sizing candidates")
+        for action in actions:
+            if not isinstance(action, dict) or set(action) != {"instance", "toMaster"}:
+                raise ValueError("worker action must have exactly instance and toMaster")
+            if action["instance"] not in domain:
+                raise ValueError("worker action instance is outside the admitted edit domain")
+            if not isinstance(action["toMaster"], str) or not action["toMaster"] or core.is_tcl_unsafe(action["toMaster"]):
+                raise ValueError("worker action master is not a safe cell name")
     return [_emit_count("tc_request_invalid_count", count)]
 
 

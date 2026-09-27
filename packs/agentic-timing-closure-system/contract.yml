@@ -193,7 +193,7 @@ environment:
   wrappers:
     - python3
     - /usr/bin/python3
-    - /data/eda/project/hima_harness/operator-admin/atcs-v1/atcs-xtop-operator.sh
+    - /data/eda/project/hima_harness/operator-admin/atcs-v2/atcs-xtop-operator-v2.sh
 
 workspace:
   source: pack
@@ -321,13 +321,22 @@ tools:
     interactive:
       mode: interactive-only
       adapter: hima-tcl-line-v1
-      argv: [/data/eda/project/hima_harness/operator-admin/atcs-v1/atcs-xtop-operator.sh, '${WORKSPACE}', '${SLOT}']
+      argv: [/data/eda/project/hima_harness/operator-admin/atcs-v2/atcs-xtop-operator-v2.sh, '${WORKSPACE}', '${SLOT}']
       commands:
         read: [atcs_query_paths, atcs_query_cells]
         mutate: [atcs_size_cell, atcs_insert_buffer, atcs_delete_buffer]
         save: [atcs_dump_cells, atcs_export_changes]
         close: [atcs_close]
-    argv: [/data/eda/project/hima_harness/operator-admin/atcs-v1/atcs-xtop-operator.sh, '${WORKSPACE}', '${SLOT}']
+      arguments:
+        atcs_query_paths: []
+        atcs_query_cells: [{ name: object_spec, type: string }, { name: attr_name, type: string }]
+        atcs_size_cell: [{ name: instance, type: string }, { name: toMaster, type: string }, { name: planSha256, type: string }]
+        atcs_insert_buffer: [{ name: net, type: string }, { name: load_pins, type: string }, { name: new_instance, type: string }, { name: new_net, type: string }, { name: master, type: string }]
+        atcs_delete_buffer: [{ name: instance, type: string }]
+        atcs_dump_cells: [{ name: path, type: string }]
+        atcs_export_changes: []
+        atcs_close: []
+    argv: [/data/eda/project/hima_harness/operator-admin/atcs-v2/atcs-xtop-operator-v2.sh, '${WORKSPACE}', '${SLOT}']
 
   - id: capture-contribution
     file: flow/atcs_cli.py
@@ -582,6 +591,78 @@ knowledge:
   - file: experience-transfer.md
     purpose: Success and failure conditions, predicted versus measured, and version/region applicability of recorded experience.
 
+agentTeams:
+  - id: atcs-worker-01
+    version: "1"
+    triggerNode: operate-worker-01
+    members:
+      - id: researcher
+        role: researcher
+        node: operate-worker-01
+        taskTemplate: Read the exact admitted workerRequest01. Return bounded hypotheses and falsifiers for its declared actions. Do not invent or execute actions; request a Workshop revision when none is suitable.
+        inputs: [workerRequest01]
+        allowedTools: [hima_delegation_input]
+        scopePolicy: declared-inputs-only
+        budgetShare: { maxElapsedMs: 600000, maxFollowups: 0, maxTokensPerTurn: 5000 }
+        dependencyRoles: []
+        resultSchema:
+          id: atcs-worker-research/1
+          required: [schema, hypotheses, evidenceRefs, limitations]
+        recipient: run-owner
+        ownerAdoption: required
+        identity: one-child-per-role-per-execution
+        followup: forbidden
+        cancellation: request-stop-preserve-unknown
+        terminal: [completed, cancelled, expired, uncertain, refused]
+        refusalConditions: [missing-current-evidence, unsafe-action, stale-execution, outcome-unknown]
+      - id: reviewer
+        role: reviewer
+        node: operate-worker-01
+        taskTemplate: Read the adopted Researcher result and exact workerRequest01. Select one atcs_size_cell action from actions; return its exact instance and toMaster, the observation content SHA as planSha256, and limitations. Refuse if no safe action exists.
+        inputs: [workerRequest01]
+        allowedTools: [hima_delegation_input]
+        scopePolicy: declared-inputs-only
+        budgetShare: { maxElapsedMs: 600000, maxFollowups: 0, maxTokensPerTurn: 5000 }
+        dependencyRoles: [researcher]
+        resultSchema:
+          id: atcs-worker-review/1
+          required: [schema, planSha256, command, arguments, evidenceRefs, limitations]
+        recipient: run-owner
+        ownerAdoption: required
+        identity: one-child-per-role-per-execution
+        followup: forbidden
+        cancellation: request-stop-preserve-unknown
+        terminal: [completed, cancelled, expired, uncertain, refused]
+        refusalConditions: [missing-current-evidence, unsafe-action, stale-execution, outcome-unknown]
+      - id: operator
+        role: operator
+        node: operate-worker-01
+        taskTemplate: Read the immutable Host-injected reviewed action. Dump before.dump, query the falsifier, apply that one action once, dump after.dump, export the route-preserving ECO pair, finalize through the qualified Runtime and close. Preserve uncertain outcomes and never replay a mutation.
+        inputs: [workerRequest01]
+        allowedTools: [hima_interactive]
+        scopePolicy: site-qualified-interactive-only
+        budgetShare: { maxElapsedMs: 600000, maxFollowups: 0, maxTokensPerTurn: 5000 }
+        dependencyRoles: [reviewer]
+        resultSchema:
+          id: atcs-worker-receipts/1
+          required: [schema, planSha256, mutationReceipt, limitations]
+        recipient: run-owner
+        ownerAdoption: required
+        identity: one-child-per-role-per-execution
+        followup: forbidden
+        cancellation: request-stop-preserve-unknown
+        terminal: [completed, cancelled, expired, uncertain, refused]
+        refusalConditions: [missing-current-evidence, unsafe-action, stale-execution, outcome-unknown]
+        reviewedAction:
+          fromRole: reviewer
+          planInput: workerRequest01
+          actionListField: actions
+          command: atcs_size_cell
+          hostPlanHashArgument: planSha256
+          planHashField: planSha256
+          commandField: command
+          argumentsField: arguments
+
 workshops:
   - id: diagnose-and-observe
     purpose: >-
@@ -631,6 +712,9 @@ workshops:
       of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
       slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
       dependencies}. A prediction is a hypothesis for the tool to test, never a result.
+      Also include top-level actions with one to three objects {instance, toMaster}; each instance
+      must be in candidate.editDomain.instances and each action proposes one size_cell mutation.
+      The Agent Team reviews and selects one exact action from this admitted list.
     directory: research/worker-01
     entry: entry.py
     language: python

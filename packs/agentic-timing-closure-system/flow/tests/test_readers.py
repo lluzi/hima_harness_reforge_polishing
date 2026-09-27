@@ -296,6 +296,23 @@ class WorkPackageReaderTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             read_atcs.read("worker-request", report, self.workspace, extra=["w02"])
 
+    def test_bounded_worker_admits_only_declared_sizing_candidates(self):
+        report = self._write_envelope(self._valid_candidate())
+        envelope = json.loads(report.read_text())
+        envelope["actions"] = [{"instance": "U1", "toMaster": "BUF2"}]
+        report.write_text(json.dumps(envelope))
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertEqual(values[0]["value"], 0)
+        envelope["actions"][0]["instance"] = "OUTSIDE"
+        report.write_text(json.dumps(envelope))
+        with self.assertRaisesRegex(ValueError, "outside"):
+            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+
+    def test_bounded_worker_without_action_authority_is_refused(self):
+        report = self._write_envelope(self._valid_candidate())
+        with self.assertRaisesRegex(ValueError, "sizing candidates"):
+            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+
     def test_tampered_base_state_is_refused(self):
         tampered_design = dict(self.design)
         tampered_design["top"] = "not-the-real-top"  # id no longer matches

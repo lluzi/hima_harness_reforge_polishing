@@ -1,5 +1,12 @@
 # Agentic Timing Closure System — handoff
 
+Current integration scope (2026-09-27): one bounded post-route sizing worker uses the frozen #52
+Agent Team seam. The existing Workshop plan remains reader-backed; Researcher results travel as
+retained dependencies without Runtime projection. See
+[bounded integration evidence](../../assessment/2026-09-27/atcs-bounded-integration.md) and
+the Pack's `knowledge/agent-team.md`. The current graph routes w01 directly to collect; imported
+w02/w03 definitions remain parked. Three-worker optimization and real-tool qualification are pending.
+
 > **Polishing integration baseline (2026-09-27):** imported onto
 > `main@fda5493ff699742d934a54aa487ac4b3c0cfe6ec` from the fixed source
 > `claude/himapack-development-c56369@a9b2e8812baac73b8a6f5e0eb861e67e15b85270`.

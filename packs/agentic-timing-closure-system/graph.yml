@@ -484,10 +484,10 @@ edges:
   - { from: research-worker-01, to: read-worker-request-01 }
   - { from: read-worker-request-01, to: check-worker-request-01 }
   - { from: check-worker-request-01, to: operate-worker-01, outcome: PASS }
-  - { from: check-worker-request-01, to: research-worker-02, outcome: FAIL }
+  - { from: check-worker-request-01, to: wait-for-person, outcome: FAIL }
   - { from: operate-worker-01, to: capture-worker-01 }
   - { from: capture-worker-01, to: read-worker-result-01 }
-  - { from: read-worker-result-01, to: research-worker-02 }
+  - { from: read-worker-result-01, to: collect }
 
   - { from: research-worker-02, to: read-worker-request-02 }
   - { from: read-worker-request-02, to: check-worker-request-02 }

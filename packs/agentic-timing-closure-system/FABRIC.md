@@ -85,13 +85,23 @@ How the reference graph expresses SPEC behaviour 1–9:
 
 ## Gaps
 
+2026-09-27 bounded integration: `atcs-worker-01` reuses the frozen Issue #52 Team seam.
+The current research path runs only w01 through adopted Researcher/Reviewer results, one typed sizing
+Operator, Contribution Reader and collect. w02/w03 and three-worker optimization are deferred under
+the coordinator's executable-convergence scope. ATCS-02 required no Runtime changes: the exact
+Researcher result is a retained dependency and the existing Workshop output remains the action authority.
+Local Host/Tcl fixtures prove the mechanism; commercial qualification remains a separate gate.
+
 Every tool and reader `contract.yml` names is held in this folder (tools run `flow/atcs_cli.py` or
 the Site's XTop Operator wrapper; readers run `tools/read-atcs.py`). None of the gaps below is
 closed by a hidden loop or background process.
 
 Schema limits and how the graph expresses them:
 
-- G1 Worker slots run sequentially, and every round runs all three slots before `collect`: a batch
+- G1 Historical imported graph: worker slots ran sequentially, and every round ran all three before
+  `collect`. The current bounded graph schedules w01 only, with a native Team and direct collect;
+  the three-worker parallel optimization remains deferred. The original limitation below is retained
+  as source history: a batch
   can never seal while a slot is still researching, the opposite of SPEC Constraint 7's dynamic
   batching (`pending` is non-empty only for a skipped or stale slot), and a slot with nothing worth
   fixing still costs an XTop Operator session to end as a no-fix. A variant forking the three slot

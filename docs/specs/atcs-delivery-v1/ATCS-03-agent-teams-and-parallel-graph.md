@@ -1,6 +1,12 @@
 # ATCS-03 — Pack-declared worker Teams 与资源感知并行图
 
-状态：blocked-on-ATCS-02/04/05
+状态：INTEGRATION_READY — bounded single-worker scope (2026-09-27)
+
+Coordinator scope update (2026-09-27, after #52 CLOSED — PASS): first qualify one complete
+post-route Researcher → Reviewer → owner adoption → typed Operator → Contribution → collect path.
+The three-worker concurrency matrix below is deferred; it is not implied by the bounded checkpoint.
+The frozen #52 retained-result, reviewed-action and finalization interface is reused without changes.
+See `docs/assessment/2026-09-27/atcs-bounded-integration.md` for evidence and limits.
 
 依赖：ATCS-01、ATCS-02、ATCS-04、ATCS-05
 
