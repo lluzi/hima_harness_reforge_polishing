@@ -867,8 +867,9 @@ export default class Hima extends Service {
   }
   async interactive(sessionId:string,raw:unknown):Promise<object> {
     let request=parseInteractiveRequest(raw,sessionId);
-    await authorizeProjectRun(this.guideDeps(),sessionId,request.runId);
     const run=this.ledger.run(request.runId);
+    const delegated=run?.control&&run.control.owner!==sessionId?operatorInteractiveAuthority(this.deps(),sessionId,request):undefined;
+    if(!delegated)await authorizeProjectRun(this.guideDeps(),sessionId,request.runId);
     if(run?.control?.owner===sessionId&&request.action==='open') {
       const qualification=await interactiveDelegationGrant(this.interactiveDeps(),{runId:run.id,nodeId:request.nodeId,
         executionId:request.executionId,actor:sessionId,ownerEpoch:request.ownerEpoch,controlRevision:request.controlRevision});
@@ -876,7 +877,6 @@ export default class Hima extends Service {
         reason:'A production-qualified interactive execution must be operated by a recorded Operator child. Use hima_delegate to create role operator for this exact freshly begun node execution; the Run owner adopts its retained candidate result.'};
     }
     if(run?.control&&run.control.owner!==sessionId) {
-      const delegated=operatorInteractiveAuthority(this.deps(),sessionId,request);
       if(!delegated)return {status:'refused',reason:'This conversation has no active Operator delegation for the exact Run execution.'};
       if(request.action==='input'&&delegated.reviewedAction!==undefined) {
         const command=request.command;

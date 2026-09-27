@@ -105,9 +105,10 @@ await runLive(NAME, 16, async (check: LiveCheck) => {
   check.require('recovery materializes exactly one qualified Operator', ['created', 'duplicate'].includes(operator.status)
     && operator.effectiveContract?.tools?.length === 1 && operator.effectiveContract.tools[0] === 'hima_interactive', operator);
   let operatorResult = await waitForResult(operator.effectiveContract.delegationId, 'wave1-result-operator-1', 20 * 60_000);
-  if (operatorResult.status === 'refused') {
+  const operatorReady = () => host.ctx.hima.executionContext(runId).executions.find(item => item.id === execution.id)?.phase === 'ready';
+  if (operatorResult.status === 'refused' || !operatorReady()) {
     const follow = await delegate({ action: 'followup', requestId: 'wave1-finish-operator', delegationId: operator.effectiveContract.delegationId,
-      text: 'Finish the exact typed sequence from retained interactive facts, close once, then return exactly one JSON object matching xtop-operator-receipts/1.' });
+      text: 'The prior open attempts were deterministic pre-session authorization refusals and produced no XTop Job or mutation. Reuse this same child and exact immutable reviewed action. Open the qualified session with a fresh request id, run the typed validate/mutate/verify/save/close sequence once, then return exactly one JSON object matching xtop-operator-receipts/1.' });
     assert.equal(follow.status, 'accepted', JSON.stringify({ operatorResult, follow }));
     operatorResult = await waitForResult(operator.effectiveContract.delegationId, 'wave1-result-operator-2', 20 * 60_000);
   }
@@ -118,7 +119,7 @@ await runLive(NAME, 16, async (check: LiveCheck) => {
       resultRecordId: operatorRow.resultRecordId });
   check.require('owner adopts the exact Operator candidate', ['accepted', 'duplicate'].includes(operatorAdopted.status), operatorAdopted);
   await check.until('the typed Operator finalizer makes the execution ready', () =>
-    host.ctx.hima.executionContext(runId).executions.find(item => item.id === execution.id)?.phase === 'ready', 20 * 60_000);
+    operatorReady(), 20 * 60_000);
   let control = host.ctx.hima.executionContext(runId).run.control!;
   const complete = await host.ctx.hima.executionAction({ runId, actor: ownerId, origin: 'agent', action: 'complete',
     nodeId: 'run-xtop-fix', executionId: execution.id, requestId: 'wave1-complete-operator-node',
