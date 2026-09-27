@@ -137,20 +137,101 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     }
     assert.equal(directOwner.status, 'refused', JSON.stringify(directOwner));
     assert.match(directOwner.reason, /production-qualified.*Operator child|Operator child.*production-qualified/i);
-    const control = host.ctx.hima.ledger.run(runId)!.control!;
+    let control = host.ctx.hima.ledger.run(runId)!.control!;
+    const conflicting = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+      requestId: 'delegate-operator-conflict', expectedEpoch: control.epoch, expectedRevision: control.revision,
+      contract: { role: 'operator', nodeRef: nodeId, nodeId: 'another-node', executionId },
+      text: 'Operate only the exact qualified interactive fixture and report typed receipts.' } as never) as Record<string, any>;
+    assert.equal(conflicting.status, 'refused'); assert.match(conflicting.reason, /nodeId.*nodeRef|different node/i);
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'delegation' }).length, 0,
+      'a conflicting owner alias is refused before any child intent is recorded');
+    control = host.ctx.hima.ledger.run(runId)!.control!;
+    for (const [requestId, execution] of [['delegate-operator-missing-execution', undefined],
+      ['delegate-operator-malformed-execution', 42]] as const) {
+      const missingExecution = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+        requestId, expectedEpoch: control.epoch, expectedRevision: control.revision,
+        contract: { role: 'operator', nodeId, ...(execution === undefined ? {} : { executionId: execution }) },
+        text: 'Operate only the exact qualified interactive fixture and report typed receipts.' } as never) as Record<string, any>;
+      assert.equal(missingExecution.status, 'refused'); assert.match(missingExecution.reason, /requires the exact executionId/);
+      assert.equal(host.ctx.hima.ledger.records({ runId, type: 'delegation' }).length, 0);
+    }
+    const wrongExecution = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+      requestId: 'delegate-operator-wrong-execution', expectedEpoch: control.epoch, expectedRevision: control.revision,
+      contract: { role: 'operator', nodeId, executionId: 'another-execution' },
+      text: 'Operate only the exact qualified interactive fixture and report typed receipts.' } as never) as Record<string, any>;
+    assert.equal(wrongExecution.status, 'refused'); assert.match(wrongExecution.reason, /executionId differs/);
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'delegation' }).length, 0,
+      'a mismatched execution alias is refused before any child intent is recorded');
+    control = host.ctx.hima.ledger.run(runId)!.control!;
+    const operatorTask = 'Operate only the exact qualified interactive fixture and report typed receipts.';
+    for (const [requestId, budgetShare] of [['delegate-operator-total-tokens', { maxTotalTokens: 1_000 }],
+      ['delegate-operator-total-cost', { maxCost: 1 }]] as const) {
+      const unsupportedBudget = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+        requestId, expectedEpoch: control.epoch, expectedRevision: control.revision,
+        contract: { role: 'operator', nodeId, executionId, budgetShare },
+        text: 'Operate only the exact qualified interactive fixture and report typed receipts.' } as never) as Record<string, any>;
+      assert.equal(unsupportedBudget.status, 'refused'); assert.match(unsupportedBudget.reason, /no enforceable task-total token or cost cap/);
+      assert.equal(host.ctx.hima.ledger.records({ runId, type: 'delegation' }).length, 0);
+    }
+    for (const [requestId, budgetShare] of [['delegate-operator-null-budget', null],
+      ['delegate-operator-array-budget', []], ['delegate-operator-string-budget', 'invalid'],
+      ['delegate-operator-number-budget', 0]] as const) {
+      const malformedBudget = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+        requestId, expectedEpoch: control.epoch, expectedRevision: control.revision,
+        contract: { role: 'operator', nodeId, executionId, budgetShare }, text: operatorTask } as never) as Record<string, any>;
+      assert.equal(malformedBudget.status, 'refused'); assert.match(malformedBudget.reason, /budgetShare must be an object/);
+      assert.equal(host.ctx.hima.ledger.records({ runId, type: 'delegation' }).length, 0);
+    }
+    for (const [requestId, budgetShare] of [['delegate-operator-zero-elapsed', { maxElapsedMs: 0 }],
+      ['delegate-operator-zero-tokens', { maxTokensPerTurn: 0 }],
+      ['delegate-operator-negative-followups', { maxFollowups: -1 }]] as const) {
+      const invalidBudget = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+        requestId, expectedEpoch: control.epoch, expectedRevision: control.revision,
+        contract: { role: 'operator', nodeId, executionId, budgetShare }, text: operatorTask } as never) as Record<string, any>;
+      assert.equal(invalidBudget.status, 'refused'); assert.match(invalidBudget.reason, /budget .* is invalid/);
+      assert.equal(host.ctx.hima.ledger.records({ runId, type: 'delegation' }).length, 0);
+    }
+    control = host.ctx.hima.ledger.run(runId)!.control!;
     const delegated = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
       requestId: 'delegate-operator', expectedEpoch: control.epoch, expectedRevision: control.revision,
-      contract: { delegationId: 'operator', role: 'operator', task: 'Use only the qualified interactive fixture and report typed receipts.',
-        inputRefs: [], nodeRef: nodeId, allowedTools: ['hima_interactive', 'terminal_open', 'bash'],
-        budgetShare: { maxElapsedMs: 30_000, maxFollowups: 1, maxTokensPerTurn: 512 }, dependencyIds: [],
-        recipient: { kind: 'run-owner', sessionId: String(owner.id) } } } as never) as Record<string, any>;
+      contract: { executionId, nodeId, role: 'operator' }, text: operatorTask } as never) as Record<string, any>;
     assert.equal(delegated.status, 'created', delegated.reason); const operatorId = delegated.receipt?.childSessionId as string; assert.ok(operatorId);
+    const operatorDelegationId = delegated.effectiveContract.delegationId as string;
     assert.deepEqual(delegated.effectiveContract.tools, ['hima_interactive']);
     assert.equal(delegated.effectiveContract.operator.executionId, executionId);
+    assert.equal(delegated.effectiveContract.nodeRef, nodeId);
+    assert.equal(delegated.effectiveContract.delegationId, `operator-${executionId}`);
+    assert.equal(delegated.effectiveContract.recipient.sessionId, String(owner.id));
+    assert.equal(delegated.effectiveContract.budgetShare.maxFollowups, 1);
+    assert.equal(delegated.effectiveContract.budgetShare.maxTokensPerTurn, 5_000);
+    assert.ok(delegated.effectiveContract.budgetShare.maxElapsedMs > 0
+      && delegated.effectiveContract.budgetShare.maxElapsedMs <= 60_000,
+    'the Host default is capped by the actual remaining Run time box');
     assert.deepEqual(delegated.effectiveContract.operator.commands.find((command: { name: string }) => command.name === 'set_value'), {
       name: 'set_value', effect: 'mutate', arguments: [{ name: 'key', type: 'string' }, { name: 'value', type: 'number' }],
     }, 'the Host-minted Operator contract carries the retained Pack argument catalog');
     assert.equal(host.ctx.hima.ledger.run(runId)!.control!.owner, String(owner.id), 'Operator delegation never changes the Run owner');
+    control = host.ctx.hima.ledger.run(runId)!.control!;
+    const duplicateDelegation = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+      requestId: 'delegate-operator-duplicate', expectedEpoch: control.epoch, expectedRevision: control.revision,
+      contract: { executionId, nodeId, role: 'operator' }, text: operatorTask } as never) as Record<string, any>;
+    assert.equal(duplicateDelegation.status, 'duplicate', duplicateDelegation.reason);
+    assert.equal(duplicateDelegation.receipt.childSessionId, operatorId,
+      'the clock-derived default is frozen by the prior contract for a durable retry');
+    control = host.ctx.hima.ledger.run(runId)!.control!;
+    const legacyDuplicate = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+      requestId: 'delegate-operator-legacy-full', expectedEpoch: control.epoch, expectedRevision: control.revision,
+      contract: { delegationId: operatorDelegationId, role: 'operator', task: operatorTask, inputRefs: [], nodeRef: nodeId,
+        allowedTools: ['hima_interactive', 'terminal_open', 'bash'], budgetShare: delegated.effectiveContract.budgetShare,
+        dependencyIds: [], recipient: { kind: 'run-owner', sessionId: String(owner.id) } } } as never) as Record<string, any>;
+    assert.equal(legacyDuplicate.status, 'duplicate', legacyDuplicate.reason);
+    assert.equal(legacyDuplicate.receipt.childSessionId, operatorId,
+      'the complete legacy nodeRef contract without executionId remains compatible and bound to the retained grant');
+    control = host.ctx.hima.ledger.run(runId)!.control!;
+    const rebindPrior = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+      requestId: 'delegate-operator-rebind', expectedEpoch: control.epoch, expectedRevision: control.revision,
+      contract: { delegationId: operatorDelegationId, executionId: 'later-execution', nodeId, role: 'operator' }, text: operatorTask } as never) as Record<string, any>;
+    assert.equal(rebindPrior.status, 'refused'); assert.match(rebindPrior.reason, /different Run, node or execution/);
     process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = 'local-tcl-fixture';
     const opened = await request({ action: 'open', requestId: 'interactive-open' });
     assert.equal(opened.status, 'opened', opened.reason); assert.equal(opened.readiness, 'ready');
@@ -204,7 +285,7 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     const closed = await request({ action: 'close', requestId: 'interactive-close', toolSessionId });
     assert.equal(closed.status, 'closed');
     const cancelControl = host.ctx.hima.ledger.run(runId)!.control!;
-    const cancelOperator = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'cancel', delegationId: 'operator',
+    const cancelOperator = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'cancel', delegationId: operatorDelegationId,
       requestId: 'cancel-operator', expectedEpoch: cancelControl.epoch, expectedRevision: cancelControl.revision } as never) as Record<string, any>;
     assert.equal(cancelOperator.status, 'accepted');
     const completed = await action('complete', 'interactive-complete', { executionId });

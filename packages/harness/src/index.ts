@@ -29,7 +29,7 @@ import type {} from '@deepseek-ai/dsh-commands';
 import { hasEnded, Ledger, ledgerSpec, recordValidityOf, type RunRecord } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { convergeOf, newCampaignProposalId, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
-import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs } from './budget.js';
+import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs, ownedWaitedMs, timeBoxRemainingMs } from './budget.js';
 import { controlling, identityOf, drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, type RunDelegationRequest } from './delegation-runtime.js';
@@ -935,24 +935,86 @@ export default class Hima extends Service {
 
   async delegate(request:RunDelegationRequest,signal:AbortSignal=AbortSignal.timeout(30000)):Promise<object> {
     await authorizeProjectRun(this.guideDeps(),request.actor,request.runId);
+    let normalizedRequest=request;
     let operatorGrant:import('./delegation.js').OperatorDelegationGrant|undefined;
     if(request.action==='create'&&request.contract&&typeof request.contract==='object'
         &&(request.contract as {role?:unknown}).role==='operator') {
-      const contract=request.contract as {delegationId?:unknown;nodeRef?:unknown};
-      const prior=typeof contract.delegationId==='string'?runDelegations(this.deps(),request.runId).find(row=>row.delegationId===contract.delegationId):undefined;
+      const raw=request.contract as Record<string,unknown>;
+      const declaredNodeRef=typeof raw.nodeRef==='string'?raw.nodeRef:undefined;
+      const nodeIdAlias=typeof raw.nodeId==='string'?raw.nodeId:undefined;
+      if(declaredNodeRef!==undefined&&nodeIdAlias!==undefined&&declaredNodeRef!==nodeIdAlias)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator contract nodeId and nodeRef name different nodes.'};
+      const nodeRef=declaredNodeRef??nodeIdAlias;
+      if(nodeRef===undefined)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator contract requires nodeRef; nodeId is accepted as its owner-facing alias.'};
+      const requestedExecutionId=typeof raw.executionId==='string'?raw.executionId:undefined;
+      const legacyFull=typeof raw.delegationId==='string'&&typeof raw.nodeRef==='string'&&typeof raw.task==='string'
+        &&Array.isArray(raw.inputRefs)&&Array.isArray(raw.allowedTools)&&raw.budgetShare!==null
+        &&typeof raw.budgetShare==='object'&&!Array.isArray(raw.budgetShare)&&Array.isArray(raw.dependencyIds)
+        &&raw.recipient!==null&&typeof raw.recipient==='object';
+      if(requestedExecutionId===undefined&&!legacyFull)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator contract requires the exact executionId; only the complete legacy nodeRef contract may resolve the unique begun execution.'};
+      const run=this.ledger.run(request.runId);
+      if(!run?.control)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation requires a controlled Run.'};
+      const delegationId=typeof raw.delegationId==='string'?raw.delegationId:`operator-${requestedExecutionId!}`;
+      const existingDelegations=runDelegations(this.deps(),request.runId);
+      const prior=existingDelegations.find(row=>row.delegationId===delegationId);
+      let targetExecutionId=requestedExecutionId;
+      if(prior?.effective.operator) {
+        const retained=prior.effective.operator;
+        targetExecutionId??=retained.executionId;
+        if(retained.runId!==run.id||retained.nodeId!==nodeRef||retained.executionId!==targetExecutionId
+            ||prior.effective.role!=='operator')return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation identity belongs to a different Run, node or execution.'};
+      } else {
+        const executions=Object.values(run.control.executions).filter(entry=>entry.nodeId===nodeRef&&!entry.supersededBy&&entry.phase==='begun');
+        if(executions.length!==1)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation requires exactly one freshly begun interactive execution at its declared node.'};
+        if(targetExecutionId!==undefined&&executions[0]!.id!==targetExecutionId)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator contract executionId differs from the exact freshly begun execution.'};
+        targetExecutionId=executions[0]!.id;
+      }
+      const task=typeof raw.task==='string'&&raw.task.trim()!==''?raw.task:typeof request.text==='string'&&request.text.trim()!==''?request.text:undefined;
+      if(task===undefined)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation requires a bounded task in contract.task or text.'};
+      if(raw.budgetShare!==undefined&&(raw.budgetShare===null||typeof raw.budgetShare!=='object'||Array.isArray(raw.budgetShare)))return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation budgetShare must be an object.'};
+      const suppliedBudget=raw.budgetShare===undefined?{}:raw.budgetShare as Record<string,unknown>;
+      if(suppliedBudget.maxTotalTokens!==undefined||suppliedBudget.maxCost!==undefined)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation has no enforceable task-total token or cost cap; omit maxTotalTokens and maxCost.'};
+      for(const [name,allowZero] of [['maxElapsedMs',false],['maxFollowups',true],['maxTokensPerTurn',false]] as const) {
+        const value=suppliedBudget[name];
+        if(value!==undefined&&(typeof value!=='number'||!Number.isSafeInteger(value)||(allowZero?value<0:value<=0)))return {unknowns:[],status:'refused',artifacts:[],reason:`Operator delegation budget ${name} is invalid.`};
+      }
+      if(raw.readScope!==undefined||raw.writeScope!==undefined)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation cannot receive generic readScope or writeScope.'};
+      const stringArray=(value:unknown,name:string):readonly string[]|{readonly reason:string}=>value===undefined?[]:Array.isArray(value)&&value.every(item=>typeof item==='string')?value:{reason:`Operator delegation ${name} must be an array of record identities.`};
+      const inputRefs=stringArray(raw.inputRefs,'inputRefs');if('reason' in inputRefs)return {unknowns:[],status:'refused',artifacts:[],reason:inputRefs.reason};
+      const dependencyIds=stringArray(raw.dependencyIds,'dependencyIds');if('reason' in dependencyIds)return {unknowns:[],status:'refused',artifacts:[],reason:dependencyIds.reason};
+      if(raw.allowedTools!==undefined&&(!Array.isArray(raw.allowedTools)||!raw.allowedTools.every(item=>typeof item==='string')||!raw.allowedTools.includes('hima_interactive')))return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation allowedTools must include hima_interactive.'};
+      if(raw.recipient!==undefined&&((raw.recipient as {kind?:unknown;sessionId?:unknown}).kind!=='run-owner'
+          ||(raw.recipient as {sessionId?:unknown}).sessionId!==run.control.owner))return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation recipient must be the current Run owner.'};
+      const workspaceRef=raw.workspaceRef===undefined?undefined:typeof raw.workspaceRef==='string'?raw.workspaceRef:null;
+      if(workspaceRef===null)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation workspaceRef must be a string.'};
+      let budgetCeiling:number;
+      let budgetDefault:import('./delegation.js').DelegationBudgetShare;
+      if(prior) {
+        budgetDefault=prior.contract.budgetShare;budgetCeiling=budgetDefault.maxElapsedMs;
+      } else {
+        const allocatedMs=existingDelegations.reduce((total,row)=>total+row.effective.budgetShare.maxElapsedMs,0);
+        const totalAvailableMs=run.budget?Math.max(0,run.budget.timeBoxMs-allocatedMs):20*60_000;
+        const remainingMs=timeBoxRemainingMs(run,ownedWaitedMs(run))??20*60_000;
+        // Leave admission-time clock drift outside the child share; authority re-reads the deadline.
+        budgetCeiling=Math.min(20*60_000,totalAvailableMs,Math.max(0,remainingMs-1_000));
+        if(budgetCeiling<1)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation has no remaining Run time budget.'};
+        budgetDefault={maxElapsedMs:budgetCeiling,maxFollowups:1,maxTokensPerTurn:5_000};
+      }
+      const normalizedContract={delegationId,role:'operator' as const,task,inputRefs,nodeRef,allowedTools:['hima_interactive'],
+        ...(workspaceRef===undefined?{}:{workspaceRef}),
+        budgetShare:{maxElapsedMs:suppliedBudget.maxElapsedMs===undefined?budgetDefault.maxElapsedMs:Math.min(suppliedBudget.maxElapsedMs as number,budgetCeiling),
+          maxFollowups:suppliedBudget.maxFollowups===undefined?budgetDefault.maxFollowups:Math.min(suppliedBudget.maxFollowups as number,budgetDefault.maxFollowups),
+          maxTokensPerTurn:suppliedBudget.maxTokensPerTurn===undefined?budgetDefault.maxTokensPerTurn:Math.min(suppliedBudget.maxTokensPerTurn as number,budgetDefault.maxTokensPerTurn??5_000)},
+        dependencyIds,recipient:{kind:'run-owner' as const,sessionId:run.control.owner}};
+      normalizedRequest={...request,...(prior?.reservation.admittedRevision===undefined?{}:{expectedRevision:prior.reservation.admittedRevision}),contract:normalizedContract};
       if(prior?.effective.operator) operatorGrant=prior.effective.operator;
       else {
-        const run=this.ledger.run(request.runId);const nodeRef=contract.nodeRef;
-        const executions=run?.control&&typeof nodeRef==='string'?Object.values(run.control.executions).filter(entry=>entry.nodeId===nodeRef&&!entry.supersededBy&&entry.phase==='begun'):[];
-        if(!run?.control||executions.length!==1)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation requires exactly one freshly begun interactive execution at its declared node.'};
-        const execution=executions[0]!;
-        const qualification=await interactiveDelegationGrant(this.interactiveDeps(),{runId:run.id,nodeId:nodeRef as string,executionId:execution.id,
+        const qualification=await interactiveDelegationGrant(this.interactiveDeps(),{runId:run.id,nodeId:nodeRef as string,executionId:targetExecutionId!,
           actor:run.control.owner,ownerEpoch:run.control.epoch,controlRevision:run.control.revision});
         if('reason' in qualification)return {unknowns:[],status:'refused',artifacts:[],reason:qualification.reason};
-        operatorGrant={runId:run.id,nodeId:nodeRef as string,executionId:execution.id,...qualification};
+        operatorGrant={runId:run.id,nodeId:nodeRef as string,executionId:targetExecutionId!,...qualification};
       }
     }
-    const result=await operateRunDelegation(this.ctx,this.deps(),request,signal,{operatorGrant});this.syncDelegationDeadlines();return {'unknowns':[],...result};
+    const result=await operateRunDelegation(this.ctx,this.deps(),normalizedRequest,signal,{operatorGrant});this.syncDelegationDeadlines();return {'unknowns':[],...result};
   }
   async delegations(sessionId:string,runId:string):Promise<object> {
     await authorizeProjectRun(this.guideDeps(),sessionId,runId);
