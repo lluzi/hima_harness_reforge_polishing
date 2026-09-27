@@ -5,6 +5,7 @@ import { copyFileSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import {
   currentRecordsIn,
+  checkTestRecord,
   loadPack,
   listInteractiveSessions,
   packDigestExcludes,
@@ -15,7 +16,6 @@ import {
   type ObservationRecord,
   type RunRecord,
 } from '@hima/harness';
-import { testRecordIssue } from '../packages/harness/lib/packs.js';
 import { bootInProcess, resumeTestAgent } from '../test/contract/support/boot-inprocess.ts';
 import { repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { guardInstalled, runLive, sha256, type LiveCheck } from './live-check-workshop.ts';
@@ -78,7 +78,7 @@ await runLive(NAME, 16, async (check: LiveCheck) => {
     check.observed.reportOnly={runId,status:initial.status,recordCount:before.length,control:initial.control};
     for(const stage of ['tested','released'] as const) {
       const reached=()=>{
-        const checked=testRecordIssue(loadPack(path.join(homeRoot,'hima/packs'),PACK_ID),host.ctx.hima.ledger);
+        const checked=checkTestRecord(loadPack(path.join(homeRoot,'hima/packs'),PACK_ID),host.ctx.hima.ledger);
         return packStage(installedPackDirectory).stage===stage&&checked?.run===runId&&checked.error===undefined;
       };
       const instruction=stage==='tested'
