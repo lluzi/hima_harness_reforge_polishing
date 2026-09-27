@@ -37,7 +37,7 @@ test/contract/delegation-run.host.test.ts test/contract/delegation-prompt.test.t
 
 ## Limits and next gate
 
-This changes neither source files nor result-admission rules and makes no full-report
+This changes neither retained source evidence nor result-admission rules and makes no full-report
 delivery promise for oversized material. A child must acknowledge omitted material rather
 than infer endpoint facts from unavailable data. A deployment lowering DSH's native ceiling
 below Hima's bound needs independent qualification.
@@ -46,3 +46,24 @@ Independent native reproduction/review uses Sol/High; isolated model check is as
 Terra/High. Development token counts are not measured. One Flash qualification using the
 current honest native projection is the next gate. Phase A binding/TEST/seal/App and GUI
 acceptance are not yet claimed. Historical Attempt 4 and retained TEST Runs remain untouched.
+
+## Current isolated qualification blocker
+
+After the user's model update, remaining qualification work uses GPT-6 Sol / Medium.
+The single allowed Flash operation consumed both inputs through current native tools and
+completed one turn, but the driver had copied only the Pack task template into a manual
+delegation, omitting its result-schema id. The output used `closure-hypotheses/1` instead of
+`xtop-timing-research/1`, so the diagnostic correctly failed. This is a qualification-driver
+context defect, not evidence that the production Pack recipe materializer or JSON gate failed.
+
+Owning file: `scripts/qualify-xtop-researcher.ts`. The minimal correction is to derive the
+explicit schema id and required fields from the current Pack member declaration. No further
+model operation was launched after this failure. Fresh local Run and native child evidence
+remain preserved, separate from historical source provenance and native TEST Runs.
+
+Failure receipt:
+`.hima-tmp/issue52-researcher-current-projection-sol-20260927/receipt.json`.
+Child: `hima-child-523d2c6649f1a9a2b2bda1b272eedb46`.
+Next minimal gate: one fresh isolated qualification with the corrected declared schema
+instruction and the same honest input projection; only then continue Phase A.
+No new commercial baseline, tool qualification, binding, seal, App or Claude trial is claimed.
