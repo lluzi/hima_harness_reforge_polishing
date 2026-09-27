@@ -931,6 +931,32 @@ class NextDecisionReaderTest(unittest.TestCase):
         _write(report, json.dumps(decision))
         return report
 
+    def test_next_decision_cli_decodes_declared_report_file_with_string_workspace(self):
+        # Retained ATCS-07 input shape: all ten fields, action=research,
+        # string costBasis. REPORT is a file; sys.argv WORKSPACE is a str.
+        decision = self._decision(action="research", costBasis="one bounded worker")
+        report = self.workspace / "research" / "requests" / "next-decision.json"
+        _write(report, json.dumps(decision))
+        out = self.workspace / "reader-output.json"
+        proc = subprocess.run(
+            [sys.executable, str(READ_ATCS_PATH), "next-decision", str(report),
+             str(out), str(self.workspace)], capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        by_type = {v["type"]: v for v in json.loads(out.read_text())["values"]}
+        self.assertEqual(by_type["tc_request_invalid_count"]["value"], 0)
+        self.assertEqual(by_type["tc_next_action"]["value"], 2)
+        self.assertEqual(by_type["tc_stop_required"]["value"], 0)
+
+    def test_string_workspace_still_refuses_stale_state_reference(self):
+        stale = core.digest({"marker": "stale"})
+        _write(self.workspace / "state" / "stale.json", json.dumps({"id": stale}))
+        report = self._write_decision(self._decision(stateRef=stale))
+        values = read_atcs.read("next-decision", str(report), str(self.workspace))
+        by_type = {v["type"]: v for v in values}
+        self.assertEqual(by_type["tc_request_invalid_count"]["value"], 1)
+        self.assertIsNone(by_type["tc_next_action"]["value"])
+
     def _write_ready_implement_batch(self):
         """A minimal but real, fully-reconciled, unimplemented (empty) batch
         based on a fresh `state/working-state.json` -- everything C2's

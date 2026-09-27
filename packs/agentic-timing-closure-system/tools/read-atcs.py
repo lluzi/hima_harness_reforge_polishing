@@ -916,6 +916,7 @@ def _implement_batch_ready(workspace, mods):
 
 
 def _collect_next_decision_problems(obj, workspace):
+    workspace = Path(workspace)
     problems = []
     if not isinstance(obj, dict):
         return ["next-decision must be a JSON object"]
