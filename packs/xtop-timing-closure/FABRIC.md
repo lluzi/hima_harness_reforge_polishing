@@ -106,6 +106,17 @@ connectivity/DRC and refreshed STA; this record does not pre-claim those results
 
 ## Reviews
 
+Attempt 4 exposed two coupled production-Operator contract defects after the fresh baseline had
+completed. The first child was given an ungranted remote `fix-plan.json` path, so it issued no typed
+mutation; save returned `DONE` with an empty output directory and only the finalizer rejected the
+missing ECO pair. A human-cleared retry inlined plan values and issued mutations, but the empty
+directory from the first failed save made the retry refuse overwrite. The retry also revealed that
+the old three-argument `hima_fix_hold` could not distinguish the plan's `hold-size` and
+`hold-buffer` methods. Version 1.0.16 makes deterministic Pack code project the complete
+reader-backed plan behind one argument-free typed mutation, refuses save before mutation, verifies the ECO pair before
+`DONE`, and removes only empty failed-save residue. Attempt 4 remains immutable BLOCKED evidence;
+it is not promoted as a successful method Run.
+
 The method preserves one visible Campaign owner and one persistent Run. AI controls the next
 bounded fix hypothesis; deterministic code controls identity, command whitelist, evidence parsing,
 comparison and database selection. Runtime remains domain-neutral. The source Foundation Flow is

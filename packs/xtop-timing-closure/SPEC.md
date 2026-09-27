@@ -61,6 +61,18 @@ the prior plan, then writes an exact JSON plan with diagnosis, competing hypothe
 actions, avoid-list and reasoning. The deterministic adapter validates fields, ranges and action
 whitelist before any licensed tool starts.
 
+`read-fix-plan` retains and hashes the plan before XTop. At interactive startup, deterministic Pack
+code validates the same plan and generates a fixed Tcl projection of its complete one-through-eight
+setup/hold action portfolio. The child has only the named typed catalog and calls
+`hima_apply_plan()` once; it receives no generic plan-path read and supplies no Tcl or action
+arguments. A hash-bound projection manifest is verified immediately before and after XTop; a changed
+plan/projection, repeat application or partial application fails closed and cannot be saved.
+
+The deterministic projection preserves setup/hold sizing and buffer insertion exactly. Candidate save is refused before
+any successful mutation, verifies the unique logical/physical keep-route ECO pair before returning
+`DONE`, and removes only an empty failed-save directory so the single admitted retry is not poisoned.
+Any non-empty or partial candidate output is retained and blocks overwrite as uncertain evidence.
+
 ## Knowledge
 
 The Pack carries the verified source method and source manifest, its completion boundary, and the

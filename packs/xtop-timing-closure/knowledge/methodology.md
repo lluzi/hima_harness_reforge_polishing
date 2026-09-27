@@ -53,3 +53,15 @@ The Workshop writes exactly this contract, with `iteration` equal to current sta
 `high`; each numeric target or margin is finite and between -0.2 ns and 0.2 ns; one through eight
 actions are allowed. The adapter rejects extra or missing fields and never executes model-authored
 Tcl directly.
+
+After the reader has retained `fix-plan.json`, deterministic Pack code validates all one through
+eight actions and projects the complete setup/hold portfolio into the Operator startup. The bounded
+Operator calls typed `hima_apply_plan()` once; it has no generic file access, cannot read the plan
+path, and supplies no model-authored Tcl or action arguments. The startup records the exact plan and
+projection hashes; the immutable Site wrapper re-validates the projection before and after XTop.
+The command is one-shot: a completed application cannot replay, and a partial failure becomes
+uncertain and forbids both replay and save. Candidate save is allowed only after
+that mutation completes, and it returns success only
+after exactly one logical and one physical ECO file exist. An empty failed save is removed so the
+single admitted retry is not poisoned; any partial or non-empty output is retained and blocks
+overwrite as uncertain evidence.

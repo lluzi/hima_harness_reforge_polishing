@@ -676,7 +676,7 @@ def validate_plan(path: Path, expected_iteration: int):
     return plan
 
 
-def actions_tcl(plan, target: Path):
+def actions_tcl_text(plan):
     lines = []
     for action in plan["actions"]:
         effort = action["effort"]
@@ -688,7 +688,13 @@ def actions_tcl(plan, target: Path):
             lines.append(f"fix_hold_gba_violations -size_cell_only -size_rule nominal_keywords -hold_target {action['holdTargetNs']} -setup_margin {action['setupMarginNs']}")
         elif action["kind"] == "hold-buffer":
             lines.append(f"fix_hold_gba_violations -effort {effort} -hold_target {action['holdTargetNs']} -setup_margin {action['setupMarginNs']}")
-    target.write_text("\n".join(lines) + "\n")
+    return "\n".join(lines) + "\n"
+
+
+def actions_tcl(plan, target: Path):
+    text = actions_tcl_text(plan)
+    target.write_text(text)
+    return text
 
 
 def validate_sourceable_eco(path: Path, role: str):
@@ -747,27 +753,63 @@ def xtop(workspace: Path):
 def xtop_interactive_startup(workspace: Path):
     """Materialize the fixed typed Operator startup without launching a commercial tool."""
     runtime = load_runtime(workspace)
+    next_iteration = int(runtime["iteration"]) + 1
+    plan = validate_plan(paths(workspace)["plan"], next_iteration)
     profile, export, analysis = runtime["profile"], runtime.get("currentExport"), runtime.get("currentAnalysis")
     if not isinstance(export, dict) or not isinstance(analysis, dict) or not analysis.get("staData"):
         raise Rejected("current export and PrimeTime timing data are required for the XTop Operator")
-    next_iteration = int(runtime["iteration"]) + 1
     root = paths(workspace)["flow"] / "iterations" / f"g{next_iteration:03d}" / "XTOP"
     root.mkdir(parents=True, exist_ok=True)
     library_file = root / "libraries.tcl"
+    action_file = root / "operator-actions.tcl"
     generate_xtop_libraries(profile, library_file)
+    actions_tcl(plan, action_file)
+    plan_file = paths(workspace)["plan"]
+    atomic_json(root / "operator-plan-manifest.json", {
+        "schema": "xtop-operator-plan-projection/1", "iteration": next_iteration,
+        "actionCount": len(plan["actions"]),
+        "plan": file_ref(plan_file, workspace, "fix-plan"),
+        "actions": file_ref(action_file, workspace, "operator-actions"),
+    })
     env = {
         "DESIGN": profile["design"], "TECH_LEF": profile["techLef"], "CELL_LEF_GLOB": profile["cellLefGlob"],
         "NETLIST": export["netlist"], "DEF": export["def"], "STA_DATA": analysis["staData"], "RUN_ROOT": root,
-        "LIBRARY_TCL": library_file, "ECO_PREFIX": f"xtop_operator_g{next_iteration:03d}_eco",
+        "LIBRARY_TCL": library_file, "ACTIONS_TCL": action_file, "ACTION_COUNT": len(plan["actions"]),
+        "ECO_PREFIX": f"xtop_operator_g{next_iteration:03d}_eco",
         "OPERATOR_IDENTITY": f"{profile['design']}|g{int(runtime['iteration']):03d}|{len(profile['scenarios'])}-scenario-PrimeTime",
     }
     return copy_template(workspace, "xtop-operator.tcl", root / "operator.tcl", env=env)
+
+
+def verify_xtop_interactive_projection(workspace: Path):
+    """Bind the executable projection to the exact validated plan and retained manifest bytes."""
+    runtime = load_runtime(workspace)
+    iteration = int(runtime["iteration"]) + 1
+    root = paths(workspace)["flow"] / "iterations" / f"g{iteration:03d}" / "XTOP"
+    plan_file = paths(workspace)["plan"]
+    action_file = root / "operator-actions.tcl"
+    manifest_file = root / "operator-plan-manifest.json"
+    manifest = read_json(manifest_file)
+    if set(manifest) != {"schema", "iteration", "actionCount", "plan", "actions"} \
+            or manifest.get("schema") != "xtop-operator-plan-projection/1" or manifest.get("iteration") != iteration:
+        raise Rejected("interactive plan projection manifest differs")
+    plan = validate_plan(plan_file, iteration)
+    expected_actions = actions_tcl_text(plan)
+    if action_file.is_symlink() or not action_file.is_file() or action_file.read_text() != expected_actions:
+        raise Rejected("interactive plan projection actions changed")
+    current_plan = file_ref(plan_file, workspace, "fix-plan")
+    current_actions = file_ref(action_file, workspace, "operator-actions")
+    if manifest.get("plan") != current_plan or manifest.get("actions") != current_actions \
+            or manifest.get("actionCount") != len(plan["actions"]):
+        raise Rejected("interactive plan projection identity changed")
+    return manifest
 
 
 def finalize_xtop_interactive(workspace: Path):
     """Admit only the fixed save command's unique, sourceable keep-route ECO pair."""
     started = time.time()
     runtime = load_runtime(workspace)
+    projection = verify_xtop_interactive_projection(workspace)
     iteration = int(runtime["iteration"]) + 1
     root = paths(workspace)["flow"] / "iterations" / f"g{iteration:03d}" / "XTOP"
     eco = root / "eco_output"
@@ -781,6 +823,7 @@ def finalize_xtop_interactive(workspace: Path):
     runtime["pendingEco"] = {"root": str(eco), "netlist": str(logical[0]), "physical": str(physical[0])}
     atomic_json(paths(workspace)["runtime"], runtime)
     return write_stage(workspace, "xtop", "passed", started, iteration=iteration, mode="typed-interactive",
+                       planProjection=projection,
                        routePreservation={"keepRouteRequested": True, "logicalTcl": logical_tcl, "physicalTcl": physical_tcl},
                        artifacts=[file_ref(logical[0], workspace, "netlist-eco"), file_ref(physical[0], workspace, "physical-eco")])
 
@@ -1199,6 +1242,7 @@ def main():
         "summarize": lambda: summarize(workspace),
         "xtop": lambda: xtop(workspace),
         "xtop-interactive-startup": lambda: print(xtop_interactive_startup(workspace)),
+        "xtop-interactive-verify": lambda: print(json.dumps(verify_xtop_interactive_projection(workspace), sort_keys=True)),
         "xtop-interactive-finalize": lambda: finalize_xtop_interactive(workspace),
         "apply-eco": lambda: apply_eco(workspace),
         "compare": lambda: compare(workspace),

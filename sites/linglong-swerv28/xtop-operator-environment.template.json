@@ -12,8 +12,8 @@
   },
   "commandsDigest": "<current-commands-digest>",
   "wrapper": {
-    "path": "/data/eda/project/hima_harness/operator-admin/xtop-v2/xtop-operator-v2.sh",
-    "sha256": "970100357a5c08e6922dedb7ae576bd243f625bc720e8e29d05d381fb03c3455"
+    "path": "/data/eda/project/hima_harness/operator-admin/xtop-v3/xtop-operator-v3.sh",
+    "sha256": "02d71fe3b879aaeb1532caa7b307845dfd1acd289ad57a7d51bad289de007d6a"
   },
   "image": {
     "reference": "localhost/edarunner",
@@ -21,7 +21,7 @@
   },
   "sourceTemplate": {
     "path": "flow/templates/xtop-operator.tcl",
-    "sha256": "278a9bc36f2cc0f1118f3b183ca9ab2123d5f3b40ff989454ce54b78c3da6157"
+    "sha256": "4e1eb4be0b67949865fff8d2d0e3c0521bb0bed4c33cf98f87ee1009655f7177"
   },
   "confinement": {
     "rootFilesystem": "read-only",

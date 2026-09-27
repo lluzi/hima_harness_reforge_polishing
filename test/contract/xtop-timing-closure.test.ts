@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { BUILTIN_TCL_ADAPTER_DIGEST, choose, encodeRetainedInteractiveCommand, interactiveCommandsDigest, loadPack, checkPack, packDigestExcludes, packStage, loadSite, installPackMethod, resolveChooser, type InteractiveBinding, type ObservationRecord, type VerdictRecord } from '@hima/harness';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
@@ -12,7 +13,7 @@ import { writeLocalSite } from './support/site.ts';
 import { waitUntil } from './support/fabric.ts';
 
 const packId = 'xtop-timing-closure';
-const xtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/xtop-v2/xtop-operator-v2.sh';
+const xtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/xtop-v3/xtop-operator-v3.sh';
 
 test('the XTop closure Pack loads, fits its declared execution surface and passes its cheap data-contract tests', async (t) => {
   const h = await createHimaHome();
@@ -39,7 +40,7 @@ test('the XTop closure Pack loads, fits its declared execution surface and passe
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /xtop-timing-closure@1\.0\.15.*fit/s);
+    assert.match(throughHost.text, /xtop-timing-closure@1\.0\.16.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {
@@ -53,28 +54,28 @@ test('run-xtop-fix keeps batch argv and exposes only the qualified typed Operato
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
   const tool = pack.contract.tools.find((candidate) => candidate.id === 'run-xtop-fix');
   assert.ok(tool);
+  assert.match(tool.description, /reader-backed.*hima_apply_plan/is,
+    'the Pack exposes one deterministic typed command for the already retained plan portfolio');
+  assert.match(tool.description, /no generic file access|must not.*read.*plan path/is,
+    'the Pack never assigns an unreachable fix-plan path to an interactive-only Operator child');
   assert.equal(tool.interactive?.mode, 'hybrid');
   assert.deepEqual(tool.argv, ['/usr/bin/python3', '${WORKSPACE}/flow/closure.py', 'xtop', '${WORKSPACE}']);
   assert.deepEqual(tool.interactive?.argv, [xtopOperatorWrapper, '${WORKSPACE}', '${WORKSPACE}/flow/closure.py',
     '${WORKSPACE}/flow/templates/xtop-operator.tcl']);
   assert.deepEqual(tool.interactive?.commands, {
-    read: ['hima_operator_identity', 'hima_summary'], mutate: ['hima_fix_hold'],
+    read: ['hima_operator_identity', 'hima_summary'], mutate: ['hima_apply_plan'],
     save: ['hima_save_candidate'], close: ['hima_close'],
   });
   assert.deepEqual(tool.interactive?.arguments, {
     hima_operator_identity: [],
     hima_summary: [{ name: 'mode', type: 'string', choices: ['setup', 'hold'] }],
-    hima_fix_hold: [
-      { name: 'effort', type: 'string', choices: ['low', 'medium', 'high'] },
-      { name: 'target', type: 'number', minimum: -0.2, maximum: 0.2 },
-      { name: 'margin', type: 'number', minimum: -0.2, maximum: 0.2 },
-    ],
+    hima_apply_plan: [],
     hima_save_candidate: [],
     hima_close: [],
   }, 'the retained Pack tells an Operator child the exact positional shape of every typed command');
   assert.equal(tool.interactive?.commands.read.includes('source'), false);
   assert.equal(tool.interactive?.commands.read.includes('exec'), false);
-  const wrapper = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v2.sh'), 'utf8');
+  const wrapper = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v3.sh'), 'utf8');
   assert.match(wrapper, /trap cleanup_container EXIT HUP INT TERM/);
   assert.match(wrapper, /podman run --rm -it \\\n+  --name "\$container_name"/);
   assert.match(wrapper, /podman rm -f -- "\$container_name"/);
@@ -87,36 +88,15 @@ test('run-xtop-fix keeps batch argv and exposes only the qualified typed Operato
     environment: { id: 'fixture', digest: 'a'.repeat(64) }, mutation: 'qualified',
     limits: { startupWaitMs: 1, callWaitMaxMs: 1, commandMaxMs: 1, sessionMaxMs: 1, idleMaxMs: 1 },
   };
-  const hostile = '$x; [exec touch /tmp/escaped]; source /tmp/escaped.tcl';
-  const encoded = encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-1', protocolToken: 'Q'.repeat(32),
-    name: 'hima_fix_hold', args: { effort: 'high', target: 0, margin: 0.02 } });
+  const encoded = encodeRetainedInteractiveCommand(tool, binding, { commandId: 'plan-1', protocolToken: 'Q'.repeat(32),
+    name: 'hima_apply_plan', args: {} });
   assert.equal(encoded.effect, 'mutation');
-  assert.match(encoded.text, /hima_fix_hold "high" "0" "0\.02"/);
+  assert.match(encoded.text, /hima_apply_plan/);
   assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'source-1', protocolToken: 'S'.repeat(32),
     name: 'source', args: { arguments: ['/tmp/untrusted.tcl'] } }), /not classified/);
-  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-wrong-shape', protocolToken: 'A'.repeat(32),
-    name: 'hima_fix_hold', args: { effort: 'high', target: 0 } }), /effort, target, margin/,
-  'a declared command is refused before Tcl dispatch when the Operator omits an argument');
-  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-positional', protocolToken: 'P'.repeat(32),
-    name: 'hima_fix_hold', args: { arguments: ['high', 0, 0.02] } }), /effort, target, margin/,
-  'declared named arguments cannot silently fall back to an undiscoverable positional payload');
-  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-extra', protocolToken: 'E'.repeat(32),
-    name: 'hima_fix_hold', args: { effort: 'high', target: 0, margin: 0.02, script: 'source /tmp/x' } }), /unexpected.*script/i,
-  'the retained signature rejects extra keys instead of ignoring them');
-  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-invalid-enum', protocolToken: 'I'.repeat(32),
-    name: 'hima_fix_hold', args: { effort: hostile, target: 0, margin: 0.02 } }), /one of low, medium, high/);
-  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-wrong-type', protocolToken: 'T'.repeat(32),
-    name: 'hima_fix_hold', args: { effort: 'high', target: '0', margin: 0.02 } }), /target must be number/);
-  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-nonfinite', protocolToken: 'F'.repeat(32),
-    name: 'hima_fix_hold', args: { effort: 'high', target: Number.POSITIVE_INFINITY, margin: 0.02 } }), /finite|number/i);
-  for (const boundary of [-0.2, 0.2]) assert.doesNotThrow(() => encodeRetainedInteractiveCommand(tool, binding, {
-    commandId: `hold-boundary-${String(boundary)}`, protocolToken: 'B'.repeat(32), name: 'hima_fix_hold',
-    args: { effort: 'high', target: boundary, margin: boundary },
-  }));
-  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-below', protocolToken: 'L'.repeat(32),
-    name: 'hima_fix_hold', args: { effort: 'high', target: -0.2001, margin: 0.02 } }), /below -0\.2/);
-  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'hold-above', protocolToken: 'U'.repeat(32),
-    name: 'hima_fix_hold', args: { effort: 'high', target: 0, margin: 0.2001 } }), /exceeds 0\.2/);
+  assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'plan-extra', protocolToken: 'E'.repeat(32),
+    name: 'hima_apply_plan', args: { script: 'source /tmp/x' } }), /unexpected.*script/i,
+  'the fixed plan command refuses any model-authored path or Tcl argument');
   const close = encodeRetainedInteractiveCommand(tool, binding, { commandId: 'close-1', protocolToken: 'C'.repeat(32),
     name: 'hima_close', args: {} });
   assert.equal(close.effect, 'close');
@@ -127,8 +107,100 @@ test('run-xtop-fix keeps batch argv and exposes only the qualified typed Operato
   assert.deepEqual(saves, [], 'Operator retries retain only the admitted ECO output pair, never collision-prone named XTop workspaces');
   assert.match(template, /write_design_changes -format INNOVUS .* -output_dir \$::eco_output_dir -keep_route/,
     'hima_save_candidate still persists the declared logical/physical ECO pair');
+  assert.match(template, /proc hima_apply_plan \{\}/);
+  assert.match(template, /source \$::env\(ACTIONS_TCL\)/,
+    'the typed mutation executes only the deterministic validated plan projection');
+  assert.match(template, /candidate requires at least one successful typed mutation/,
+    'save fails before creating residue when the Operator skipped every mutation');
+  assert.match(template, /file delete -force \$::eco_output_dir/,
+    'an empty failed save is removed so one admitted retry is not poisoned by empty residue');
+  assert.match(template, /candidate write produced no unique netlist and physical ECO pair/,
+    'save does not return DONE until the exact ECO pair exists');
   assert.match(template, /candidate ECO output already exists; refusing an uncertain overwrite/,
     'a retry cannot overwrite an earlier or uncertain candidate artifact');
+});
+
+test('the XTop typed save refuses zero-mutation residue and admits one exact ECO pair', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'hima-xtop-operator-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const sta = path.join(root, 'sta'); await mkdir(sta);
+  for (const name of ['tech.lef', 'cell.lef', 'design.v', 'design.def', 'libraries.tcl']) {
+    await writeFile(path.join(root, name), '\n');
+  }
+  const actions = path.join(root, 'actions.tcl');
+  await writeFile(actions, [
+    'fix_hold_gba_violations -size_cell_only -size_rule nominal_keywords -hold_target 0 -setup_margin 0.02',
+    'fix_hold_gba_violations -effort medium -hold_target 0 -setup_margin 0.02',
+    'fix_setup_gba_violations -methods size_cell -effort high -setup_target 0 -hold_margin 0.02',
+  ].join('\n') + '\n');
+  const uncertainActions = path.join(root, 'uncertain-actions.tcl');
+  await writeFile(uncertainActions, [
+    'fix_hold_gba_violations -effort medium -hold_target 0 -setup_margin 0.02',
+    'error partial-plan-failure',
+  ].join('\n') + '\n');
+  const template = path.join(repoRoot, 'packs/xtop-timing-closure/flow/templates/xtop-operator.tcl');
+  const script = `
+set env(DESIGN) top
+set env(TECH_LEF) ${JSON.stringify(path.join(root, 'tech.lef'))}
+set env(CELL_LEF_GLOB) ${JSON.stringify(path.join(root, 'cell.lef'))}
+set env(NETLIST) ${JSON.stringify(path.join(root, 'design.v'))}
+set env(DEF) ${JSON.stringify(path.join(root, 'design.def'))}
+set env(STA_DATA) ${JSON.stringify(sta)}
+set env(RUN_ROOT) ${JSON.stringify(root)}
+set env(LIBRARY_TCL) ${JSON.stringify(path.join(root, 'libraries.tcl'))}
+set env(ACTIONS_TCL) ${JSON.stringify(actions)}
+set env(ACTION_COUNT) 3
+set env(ECO_PREFIX) operator_g001
+set env(OPERATOR_IDENTITY) fixture
+foreach name {set_parameter create_workspace link_reference_library create_design_definition set_site_map set_removable_fillers import_designs check_placement_readiness read_timing_data check_inst_reference_library check_inst_timing_library summarize_gba_violations} {
+  proc $name args {}
+}
+proc fix_hold_gba_violations args { lappend ::fixes $args }
+proc fix_setup_gba_violations args { lappend ::fixes $args }
+set fixes {}
+set write_mode empty
+proc write_design_changes args {
+  set output_dir [lindex $args [expr {[lsearch -exact $args -output_dir] + 1}]]
+  set prefix [lindex $args [expr {[lsearch -exact $args -eco_file_prefix] + 1}]]
+  if {$::write_mode eq "pair"} {
+    close [open [file join $output_dir "\${prefix}_netlist_top.txt"] w]
+    close [open [file join $output_dir "\${prefix}_physical_top.txt"] w]
+  }
+}
+source ${JSON.stringify(template)}
+if {![catch {hima_save_candidate} message] || ![string match {*requires at least one successful typed mutation*} $message]} { error zero-mutation-save-was-not-refused }
+hima_apply_plan
+if {[llength $::fixes] != 3} { error plan-portfolio-was-not-fully-applied }
+if {[lsearch -exact [lindex $::fixes 0] -size_cell_only] < 0} { error hold-size-method-was-lost }
+if {[lsearch -exact [lindex $::fixes 1] -effort] < 0} { error hold-buffer-method-was-lost }
+if {[lsearch -exact [lindex $::fixes 2] -methods] < 0} { error setup-method-was-lost }
+if {![catch {hima_apply_plan} message] || ![string match {*already attempted; state=applied*} $message]} { error duplicate-plan-application-was-not-refused }
+if {[llength $::fixes] != 3} { error duplicate-plan-application-had-an-effect }
+if {![catch {hima_save_candidate} message] || ![string match {*no unique netlist and physical ECO pair*} $message]} { error empty-save-was-not-refused }
+if {[file exists [file join ${JSON.stringify(root)} eco_output]]} { error empty-save-residue-remained }
+file mkdir [file join ${JSON.stringify(root)} eco_output]
+close [open [file join ${JSON.stringify(root)} eco_output .partial] w]
+if {![catch {hima_save_candidate} message] || ![string match {*refusing an uncertain overwrite*} $message]} { error hidden-residue-was-not-refused }
+if {![file exists [file join ${JSON.stringify(root)} eco_output .partial]]} { error hidden-residue-was-deleted }
+file delete -force [file join ${JSON.stringify(root)} eco_output]
+set write_mode pair
+set saved [hima_save_candidate]
+if {![file exists [file join $saved operator_g001_netlist_top.txt]] || ![file exists [file join $saved operator_g001_physical_top.txt]]} { error exact-pair-was-not-retained }
+if {![catch {hima_save_candidate} message] || ![string match {*refusing an uncertain overwrite*} $message]} { error nonempty-retry-was-not-refused }
+set ::hima_plan_state ready
+set ::hima_mutation_count 0
+set ::fixes {}
+set env(ACTIONS_TCL) ${JSON.stringify(uncertainActions)}
+set env(ACTION_COUNT) 2
+if {![catch {hima_apply_plan} message] || ![string match {*partial-plan-failure*} $message]} { error partial-plan-failure-was-not-retained }
+if {$::hima_plan_state ne "uncertain" || [llength $::fixes] != 1} { error partial-plan-state-was-not-uncertain }
+if {![catch {hima_apply_plan} message] || ![string match {*already attempted; state=uncertain*} $message]} { error uncertain-plan-was-replayed }
+if {![catch {hima_save_candidate} message] || ![string match {*application is uncertain*} $message]} { error uncertain-plan-was-saved }
+puts QUALIFIED
+`;
+  const checked = spawnSync('/usr/bin/tclsh', [], { input: script, encoding: 'utf8' });
+  assert.equal(checked.status, 0, `${checked.stdout}\n${checked.stderr}`);
+  assert.match(checked.stdout, /QUALIFIED/);
 });
 
 test('the admin generator binds qualification to linglong-swerv28 and the current Pack digest', async (t) => {
@@ -150,17 +222,25 @@ test('the admin generator binds qualification to linglong-swerv28 and the curren
   assert.equal(generated.status, 0, generated.stderr);
   const document = JSON.parse(await readFile(output, 'utf8'));
   assert.equal(document.bindings[0].site, 'linglong-swerv28');
-  assert.match(document.bindings[0].id, /^linglong-swerv28:xtop-operator-v2:/);
-  assert.equal(document.bindings[0].environment.id, 'linglong-swerv28:xtop-operator-v2');
+  assert.match(document.bindings[0].id, /^linglong-swerv28:xtop-operator-v3:/);
+  assert.equal(document.bindings[0].environment.id, 'linglong-swerv28:xtop-operator-v3');
   assert.equal(document.bindings[0].packDigest, pack.folder.digest(packDigestExcludes));
   assert.equal(document.bindings[0].commandsDigest, interactiveCommandsDigest(tool));
   assert.equal(document.bindings[0].mutation, 'qualified');
   const parsedEvidence = JSON.parse(evidence);
-  const wrapperBytes = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v2.sh'));
+  const wrapperBytes = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v3.sh'));
   const sourceBytes = await readFile(path.join(repoRoot, 'packs/xtop-timing-closure/flow/templates/xtop-operator.tcl'));
+  const adapterBytes = await readFile(path.join(repoRoot, 'packs/xtop-timing-closure/flow/closure.py'));
   assert.equal(parsedEvidence.wrapper.path, xtopOperatorWrapper);
   assert.equal(parsedEvidence.wrapper.sha256, createHash('sha256').update(wrapperBytes).digest('hex'));
   assert.equal(parsedEvidence.sourceTemplate.sha256, createHash('sha256').update(sourceBytes).digest('hex'));
+  const wrapperText = wrapperBytes.toString('utf8');
+  assert.match(wrapperText, new RegExp(createHash('sha256').update(sourceBytes).digest('hex')),
+    'the immutable production wrapper pins the current startup template bytes');
+  assert.match(wrapperText, new RegExp(createHash('sha256').update(adapterBytes).digest('hex')),
+    'the immutable production wrapper pins the current Pack adapter bytes');
+  assert.match(wrapperText, /xtop-interactive-verify/,
+    'the production wrapper verifies the plan projection immediately before and after XTop');
 
   const overwrite = spawnSync(process.execPath, [path.join(repoRoot, 'scripts/generate-xtop-operator-binding.mjs'),
     '--environment', environment, '--output', output], { cwd: repoRoot, encoding: 'utf8' });

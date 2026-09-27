@@ -1089,14 +1089,33 @@ class ClosureContractTest(unittest.TestCase):
             "currentAnalysis": {"staData": str(self.workspace / "sta_data")},
         })
         self.save_runtime()
+        (self.workspace / "flow" / "research" / "fix-plan.json").write_text(json.dumps({
+            "schema": closure.PLAN_SCHEMA, "iteration": 1, "diagnosis": "test",
+            "hypotheses": ["test"], "endpointGroups": ["core_clock"],
+            "actions": [
+                {"kind": "hold-size", "effort": "high", "setupTargetNs": 0.0,
+                 "holdTargetNs": 0.0, "setupMarginNs": 0.02, "holdMarginNs": 0.02,
+                 "endpointGroups": ["core_clock"], "reason": "size"},
+                {"kind": "hold-buffer", "effort": "medium", "setupTargetNs": 0.0,
+                 "holdTargetNs": 0.0, "setupMarginNs": 0.02, "holdMarginNs": 0.02,
+                 "endpointGroups": ["core_clock"], "reason": "buffer"},
+                {"kind": "setup-size", "effort": "high", "setupTargetNs": 0.0,
+                 "holdTargetNs": 0.0, "setupMarginNs": 0.02, "holdMarginNs": 0.02,
+                 "endpointGroups": ["core_clock"], "reason": "setup"},
+            ], "avoid": [], "reasoning": "test",
+        }))
 
         startup = closure.xtop_interactive_startup(self.workspace)
         self.assertEqual(startup, self.workspace / "flow" / "iterations" / "g001" / "XTOP" / "operator.tcl")
         text = startup.read_text()
         self.assertIn('proc hima_operator_identity {}', text)
         self.assertIn('proc hima_summary {mode}', text)
-        self.assertIn('proc hima_fix_hold {effort target margin}', text)
+        self.assertIn('proc hima_apply_plan {}', text)
+        self.assertIn('source $::env(ACTIONS_TCL)', text)
         self.assertIn('proc hima_save_candidate {}', text)
+        self.assertIn('candidate requires at least one successful typed mutation', text)
+        self.assertIn('candidate write produced no unique netlist and physical ECO pair', text)
+        self.assertIn('file delete -force $::eco_output_dir', text)
         self.assertIn('proc hima_close {}', text)
         self.assertIn('HIMA:hima-tcl-line-v1:1:READY', text)
         self.assertNotIn('save_workspace', text,
@@ -1105,10 +1124,43 @@ class ClosureContractTest(unittest.TestCase):
         self.assertIn('candidate ECO output already exists; refusing an uncertain overwrite', text)
         self.assertNotIn('operator-qualification-20260924', text)
         self.assertTrue((startup.parent / "libraries.tcl").is_file())
+        actions = startup.parent / "operator-actions.tcl"
+        self.assertTrue(actions.is_file())
+        action_text = actions.read_text()
+        self.assertIn('fix_hold_gba_violations -size_cell_only -size_rule nominal_keywords', action_text)
+        self.assertIn('fix_hold_gba_violations -effort medium', action_text)
+        self.assertIn('fix_setup_gba_violations -methods size_cell -effort high', action_text)
+        manifest = startup.parent / "operator-plan-manifest.json"
+        self.assertTrue(manifest.is_file())
+        verified = closure.verify_xtop_interactive_projection(self.workspace)
+        self.assertEqual(verified["actionCount"], 3)
+        self.assertEqual(verified["plan"]["sha256"], closure.sha_file(
+            self.workspace / "flow" / "research" / "fix-plan.json"))
+        actions.write_text(action_text + "puts tampered\n")
+        with self.assertRaisesRegex(closure.Rejected, "projection.*changed|actions.*changed"):
+            closure.verify_xtop_interactive_projection(self.workspace)
 
     def test_interactive_finalize_accepts_the_actual_xtop_keep_route_filenames(self):
         self.save_runtime()
-        eco = self.workspace / "flow" / "iterations" / "g001" / "XTOP" / "eco_output"
+        root = self.workspace / "flow" / "iterations" / "g001" / "XTOP"
+        plan_file = self.workspace / "flow" / "research" / "fix-plan.json"
+        plan = {
+            "schema": closure.PLAN_SCHEMA, "iteration": 1, "diagnosis": "test", "hypotheses": ["test"],
+            "endpointGroups": ["core_clock"], "actions": [{
+                "kind": "hold-buffer", "effort": "high", "setupTargetNs": 0.0, "holdTargetNs": 0.0,
+                "setupMarginNs": 0.02, "holdMarginNs": 0.02, "endpointGroups": ["core_clock"], "reason": "test",
+            }], "avoid": [], "reasoning": "test",
+        }
+        plan_file.write_text(json.dumps(plan))
+        root.mkdir(parents=True)
+        actions = root / "operator-actions.tcl"
+        closure.actions_tcl(plan, actions)
+        closure.atomic_json(root / "operator-plan-manifest.json", {
+            "schema": "xtop-operator-plan-projection/1", "iteration": 1, "actionCount": 1,
+            "plan": closure.file_ref(plan_file, self.workspace, "fix-plan"),
+            "actions": closure.file_ref(actions, self.workspace, "operator-actions"),
+        })
+        eco = root / "eco_output"
         eco.mkdir(parents=True)
         logical = eco / "xtop_operator_g001_eco_netlist_swerv_wrapper.txt"
         physical = eco / "xtop_operator_g001_eco_physical_swerv_wrapper.txt"

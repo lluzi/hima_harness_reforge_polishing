@@ -6,6 +6,7 @@ allowedWrappers:
   - /usr/bin/python3
   - /data/eda/project/hima_harness/operator-admin/xtop-v1/xtop-operator-v1.sh
   - /data/eda/project/hima_harness/operator-admin/xtop-v2/xtop-operator-v2.sh
+  - /data/eda/project/hima_harness/operator-admin/xtop-v3/xtop-operator-v3.sh
 forbidden:
   - services
   - licence-servers

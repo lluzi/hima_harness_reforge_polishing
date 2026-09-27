@@ -1,4 +1,4 @@
-foreach required {DESIGN TECH_LEF CELL_LEF_GLOB NETLIST DEF STA_DATA RUN_ROOT LIBRARY_TCL ECO_PREFIX OPERATOR_IDENTITY} {
+foreach required {DESIGN TECH_LEF CELL_LEF_GLOB NETLIST DEF STA_DATA RUN_ROOT LIBRARY_TCL ACTIONS_TCL ACTION_COUNT ECO_PREFIX OPERATOR_IDENTITY} {
     if {![info exists env($required)]} { error "$required is required" }
 }
 set design $env(DESIGN)
@@ -6,7 +6,7 @@ set operator_root [file normalize $env(RUN_ROOT)]
 set eco_output_dir [file join $operator_root eco_output]
 set cell_lefs [lsort [glob -nocomplain $env(CELL_LEF_GLOB)]]
 set lef_files [linsert $cell_lefs 0 $env(TECH_LEF)]
-foreach file [concat [list $env(NETLIST) $env(DEF) $env(LIBRARY_TCL)] $lef_files] {
+foreach file [concat [list $env(NETLIST) $env(DEF) $env(LIBRARY_TCL) $env(ACTIONS_TCL)] $lef_files] {
     if {![file readable $file]} { error "required XTop input is not readable: $file" }
 }
 if {![file isdirectory $env(STA_DATA)]} { error "PrimeTime timing-data directory is missing" }
@@ -38,6 +38,19 @@ set_parameter eco_cell_match_attribute footprint
 set_parameter eco_cell_nominal_swap_keywords {ULVT LVT {} HVT}
 set_parameter eco_cell_nominal_sizing_pattern {D([0-9]+)BWP}
 set_parameter eco_gain_threshold 0.001
+set hima_mutation_count 0
+set hima_plan_state ready
+
+proc hima_directory_entries {directory} {
+    set entries [concat \
+        [glob -nocomplain -directory $directory *] \
+        [glob -nocomplain -directory $directory .*]]
+    set retained {}
+    foreach entry $entries {
+        if {[file tail $entry] ni {. ..}} { lappend retained $entry }
+    }
+    return $retained
+}
 
 proc hima_operator_identity {} {
     return $::env(OPERATOR_IDENTITY)
@@ -47,19 +60,56 @@ proc hima_summary {mode} {
     if {$mode eq "hold"} { summarize_gba_violations -exclude_path -as_reference -hold; return }
     error "mode must be setup or hold"
 }
-proc hima_fix_hold {effort target margin} {
-    if {$effort ni {low medium high}} { error "effort must be low, medium or high" }
-    if {![string is double -strict $target] || ![string is double -strict $margin]} {
-        error "target and margin must be finite numeric Tcl literals"
+proc hima_apply_plan {} {
+    if {$::hima_plan_state ne "ready"} {
+        error "validated plan was already attempted; state=$::hima_plan_state"
     }
-    fix_hold_gba_violations -effort $effort -hold_target $target -setup_margin $margin
+    if {![string is integer -strict $::env(ACTION_COUNT)] || $::env(ACTION_COUNT) < 1 || $::env(ACTION_COUNT) > 8} {
+        error "validated plan action count is outside one through eight"
+    }
+    set ::hima_plan_state applying
+    set apply_code [catch {source $::env(ACTIONS_TCL)} apply_result apply_options]
+    if {$apply_code != 0} {
+        set ::hima_plan_state uncertain
+        return -options $apply_options $apply_result
+    }
+    set ::hima_plan_state applied
+    incr ::hima_mutation_count
+    return "applied $::env(ACTION_COUNT) validated plan action(s)"
 }
 proc hima_save_candidate {} {
+    if {$::hima_plan_state eq "uncertain"} {
+        error "validated plan application is uncertain; candidate save is forbidden"
+    }
+    if {$::hima_mutation_count < 1} {
+        error "candidate requires at least one successful typed mutation"
+    }
     if {[file exists $::eco_output_dir]} {
-        error "candidate ECO output already exists; refusing an uncertain overwrite"
+        set existing [hima_directory_entries $::eco_output_dir]
+        if {[llength $existing] == 0} {
+            file delete -force $::eco_output_dir
+        } else {
+            error "candidate ECO output already exists; refusing an uncertain overwrite"
+        }
     }
     file mkdir $::eco_output_dir
-    write_design_changes -format INNOVUS -eco_file_prefix $::env(ECO_PREFIX) -output_dir $::eco_output_dir -keep_route
+    set write_code [catch {
+        write_design_changes -format INNOVUS -eco_file_prefix $::env(ECO_PREFIX) -output_dir $::eco_output_dir -keep_route
+    } write_result write_options]
+    if {$write_code != 0} {
+        if {[llength [hima_directory_entries $::eco_output_dir]] == 0} {
+            file delete -force $::eco_output_dir
+        }
+        return -options $write_options $write_result
+    }
+    set logical [glob -nocomplain [file join $::eco_output_dir "$::env(ECO_PREFIX)_netlist_*.txt"]]
+    set physical [glob -nocomplain [file join $::eco_output_dir "$::env(ECO_PREFIX)_physical_*.txt"]]
+    if {[llength $logical] != 1 || [llength $physical] != 1} {
+        if {[llength [hima_directory_entries $::eco_output_dir]] == 0} {
+            file delete -force $::eco_output_dir
+        }
+        error "candidate write produced no unique netlist and physical ECO pair"
+    }
     return $::eco_output_dir
 }
 proc hima_close {} {

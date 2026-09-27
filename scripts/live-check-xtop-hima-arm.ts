@@ -37,7 +37,7 @@ const PACK_ID = 'xtop-timing-closure';
 const SITE_NAME = 'linglong-swerv28';
 const EXPECTED_PROVIDER = 'deepseek-official';
 const EXPECTED_MODEL = 'deepseek-flash';
-const EXPECTED_VERSION = '1.0.15';
+const EXPECTED_VERSION = '1.0.16';
 const TIME_BOX_MINUTES = 120;
 const sourcePackDirectory = path.join(repoRoot, 'packs', PACK_ID);
 const sourceSiteDirectory = path.join(repoRoot, 'sites', SITE_NAME);
@@ -246,7 +246,7 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
         allowedTools: ['hima_interactive', 'terminal_open', 'bash'], dependencyIds: [],
         budgetShare: { maxElapsedMs: 20 * 60_000, maxFollowups: 1, maxTokensPerTurn: 5000 },
         recipient: { kind: 'run-owner', sessionId: ownerId },
-        task: `Operate only exact Run ${runId}, node run-xtop-fix, execution ${begunOperator.id}. Use only hima_interactive. For request identity fields, supply this exact Run/node/execution; the Host refreshes delegated epoch/revision authority. Read the Host-provided typed command catalog in this task context and execute in order: open; hima_operator_identity; hima_summary for setup; hima_summary for hold; one hima_fix_hold at high effort, target 0 and margin 0.02; hima_save_candidate; hima_close; close the exact toolSessionId. Supply the catalog's named command.args keys exactly. Use unique requestId and commandId values, wait up to 60000 ms for each input, and observe a sent command before continuing. Report only typed receipts and limitations; this is candidate output until the owner adopts it.`,
+        task: `Operate only exact Run ${runId}, node run-xtop-fix, execution ${begunOperator.id}. Use only hima_interactive. For request identity fields, supply this exact Run/node/execution; the Host refreshes delegated epoch/revision authority. Read the Host-provided typed command catalog in this task context and execute in order: open; hima_operator_identity; hima_summary for setup; hima_summary for hold; one argument-free hima_apply_plan call; hima_summary for setup; hima_summary for hold; hima_save_candidate; hima_close; close the exact toolSessionId. The Pack has already validated and projected the complete retained plan behind hima_apply_plan; do not read a plan path or supply Tcl/action arguments. Use unique requestId and commandId values, wait up to 60000 ms for each input, and observe a sent command before continuing. Report only typed receipts and limitations; this is candidate output until the owner adopts it.`,
       } });
       check.require('production binding minted one real Operator child with no raw terminal', created.status === 'created'
         && created.effectiveContract?.operator?.testOnly === false

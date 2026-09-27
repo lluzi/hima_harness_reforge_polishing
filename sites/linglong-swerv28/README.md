@@ -1,14 +1,14 @@
 # linglong-swerv28 XTop Operator administration
 
-`xtop-operator-v2.sh` is the current Site-owned production wrapper. Install those exact bytes at
-`/data/eda/project/hima_harness/operator-admin/xtop-v2/xtop-operator-v2.sh`, outside the Permit write
+`xtop-operator-v3.sh` is the current Site-owned production wrapper. Install those exact bytes at
+`/data/eda/project/hima_harness/operator-admin/xtop-v3/xtop-operator-v3.sh`, outside the Permit write
 root, mode `0755`. It pins the container image, read-only root and `/data/eda` mount, dropped
 capabilities, `no-new-privileges`, host networking needed for the localhost licence service, and one
 derived Campaign workspace as the only writable bind.
 
-`xtop-operator-v1.sh` remains versioned for historical `xtop-timing-closure@1.0.14` Runs. Never
-replace its bytes in place; the Permit admits both exact wrapper paths so retained Runs remain
-reviewable while new Campaigns select v2 from their retained Pack.
+`xtop-operator-v1.sh` and `xtop-operator-v2.sh` remain versioned for historical 1.0.14 and 1.0.15
+Runs. Never replace their bytes in place; the Permit admits every exact wrapper path so retained Runs
+remain reviewable while new Campaigns select v3 from their retained Pack.
 
 The earlier qualification wrapper SHA `67d6055692d03cd19e462c0ab7b69dead1128bdf7629637535c01b53f07e4277`
 was scoped to `operator-qualification-20260924/private`; it is retained evidence, not this production

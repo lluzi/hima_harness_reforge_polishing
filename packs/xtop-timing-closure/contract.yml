@@ -1,5 +1,5 @@
 id: xtop-timing-closure
-version: "1.0.15"
+version: "1.0.16"
 title: XTop iterative timing closure
 status: development
 minimumHarnessVersion: 0.1.1
@@ -90,7 +90,7 @@ outputs:
 environment:
   wrappers:
     - /usr/bin/python3
-    - /data/eda/project/hima_harness/operator-admin/xtop-v2/xtop-operator-v2.sh
+    - /data/eda/project/hima_harness/operator-admin/xtop-v3/xtop-operator-v3.sh
 
 workspace:
   source: pack
@@ -145,30 +145,32 @@ tools:
   - id: run-xtop-fix
     recommendedVersion: XTop 2025.09.tmp15
     file: tools/closure.py
-    description: Validate the AI plan and execute only the whitelisted XTop setup/hold actions.
+    description: >-
+      Validate the reader-backed AI plan and execute its complete whitelisted setup/hold portfolio.
+      After read-fix-plan, the Operator calls hima_apply_plan once; deterministic Pack code has
+      already projected the retained plan into the startup. The child has no generic file access and
+      must not be told to read the fix-plan path or supply Tcl/arguments. Save only after the typed
+      mutation returns DONE.
     inputs: [WORKSPACE]
     licences: { XTop: 1 }
     interactive:
       mode: hybrid
       adapter: hima-tcl-line-v1
       argv:
-        - /data/eda/project/hima_harness/operator-admin/xtop-v2/xtop-operator-v2.sh
+        - /data/eda/project/hima_harness/operator-admin/xtop-v3/xtop-operator-v3.sh
         - ${WORKSPACE}
         - ${WORKSPACE}/flow/closure.py
         - ${WORKSPACE}/flow/templates/xtop-operator.tcl
       commands:
         read: [hima_operator_identity, hima_summary]
-        mutate: [hima_fix_hold]
+        mutate: [hima_apply_plan]
         save: [hima_save_candidate]
         close: [hima_close]
       arguments:
         hima_operator_identity: []
         hima_summary:
           - { name: mode, type: string, choices: [setup, hold] }
-        hima_fix_hold:
-          - { name: effort, type: string, choices: [low, medium, high] }
-          - { name: target, type: number, minimum: -0.2, maximum: 0.2 }
-          - { name: margin, type: number, minimum: -0.2, maximum: 0.2 }
+        hima_apply_plan: []
         hima_save_candidate: []
         hima_close: []
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/closure.py', xtop, '${WORKSPACE}']
