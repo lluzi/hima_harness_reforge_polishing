@@ -29,7 +29,7 @@ const target = {
   },
   'linglong-atcs28/xtop-operator': {
     packId: 'agentic-timing-closure-system', mode: 'interactive-only',
-    environmentId: 'linglong-atcs28:xtop-operator-v4',
+    environmentId: 'linglong-atcs28:xtop-operator-v5',
   },
 }[`${evidence.site}/${evidence.toolId}`];
 if (!target) throw new Error('unsupported Site / XTop Operator tool evidence');

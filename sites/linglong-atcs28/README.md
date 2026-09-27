@@ -1,12 +1,12 @@
 # linglong-atcs28 Site administration
 
-Current qualification candidate: `atcs-xtop-operator-v4.sh`, administrator-owned
-`verify-worker-startup.py`, and `xtop-operator-environment-v4.template.json`. v1/v2/v3 remain historical
-unqualified candidates. v4 pins the verifier and a Site profile outside the Campaign, hashes source
+Current qualification candidate: `atcs-xtop-operator-v5.sh`, administrator-owned
+`verify-worker-startup.py`, and `xtop-operator-environment-v5.template.json`. v1–v4 remain historical
+unqualified candidates. v5 pins the verifier and a Site profile outside the Campaign, hashes source
 before importing it, independently regenerates both Tcl files in a read-only administrator snapshot,
 and mounts only the selected slot writable with a fresh HOME and no shell startup profiles.
-Install the verifier and bootstrap directory under `operator-admin/atcs-v4/`, pin their exact
-identities and the profile hash in the v4 wrapper, and pass the local falsifiers in
+Install the verifier and bootstrap directory under `operator-admin/atcs-v5/`, pin their exact
+identities and the profile hash in the v5 wrapper, and pass the local falsifiers in
 `test_verify_worker_startup.py` before real qualification. The older v2 instructions below are
 retained for source history; they do not authorize a v2 production binding.
 

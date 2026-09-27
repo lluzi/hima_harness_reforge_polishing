@@ -193,7 +193,7 @@ environment:
   wrappers:
     - python3
     - /usr/bin/python3
-    - /data/eda/project/hima_harness/operator-admin/atcs-v4/atcs-xtop-operator-v4.sh
+    - /data/eda/project/hima_harness/operator-admin/atcs-v5/atcs-xtop-operator-v5.sh
 
 workspace:
   source: pack
@@ -321,7 +321,7 @@ tools:
     interactive:
       mode: interactive-only
       adapter: hima-tcl-line-v1
-      argv: [/data/eda/project/hima_harness/operator-admin/atcs-v4/atcs-xtop-operator-v4.sh, '${WORKSPACE}', '${SLOT}']
+      argv: [/data/eda/project/hima_harness/operator-admin/atcs-v5/atcs-xtop-operator-v5.sh, '${WORKSPACE}', '${SLOT}']
       commands:
         read: [atcs_query_paths, atcs_query_cells]
         mutate: [atcs_size_cell, atcs_insert_buffer, atcs_delete_buffer]
@@ -336,7 +336,7 @@ tools:
         atcs_dump_cells: [{ name: path, type: string }]
         atcs_export_changes: []
         atcs_close: []
-    argv: [/data/eda/project/hima_harness/operator-admin/atcs-v4/atcs-xtop-operator-v4.sh, '${WORKSPACE}', '${SLOT}']
+    argv: [/data/eda/project/hima_harness/operator-admin/atcs-v5/atcs-xtop-operator-v5.sh, '${WORKSPACE}', '${SLOT}']
 
   - id: capture-contribution
     file: flow/atcs_cli.py

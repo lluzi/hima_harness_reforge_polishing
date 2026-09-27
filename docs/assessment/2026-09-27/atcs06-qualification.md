@@ -66,3 +66,12 @@ PASS. A no-EDA, no-network container probe with identical filesystem mounts refu
 Campaign state, administrator data and sibling w02, while allowing a synthetic marker in w01/r2.
 This is a filesystem-confinement PASS, not a worker mutation or binding PASS. Current Host contract
 2/2 PASS, 41.130 seconds, zero SSH/Electron.
+
+The first fully guarded v4 startup refused reuse of an existing private baseline save; a separate
+qualification revision preserves that attempt. A real typed cell query then exposed the Pack wrapper's
+incorrect string-to-attribute call: direct `atcs_query_cells` returned empty, while native
+`get_attribute [get_cells <same-top-instance>] ref_name` returned the expected master. No mutation
+occurred. The Pack template now resolves cell collections for queries and pre-mutation master
+readback. Mutation domains and admitted sizing targets reject wildcard expansion. A native-collection
+local falsifier and a wildcard-domain counterexample pass (90 adapter tests, 18 workspace tests).
+v5 retains v4's reviewed isolation boundary and installs a new immutable path for the new flow bytes.

@@ -700,6 +700,20 @@ class TypedProcedureEditDomainTest(unittest.TestCase):
         op = json.loads(lines[0])
         self.assertEqual(op, {"op": "size_cell", "instance": "U_IN_DOMAIN", "fromMaster": "MASTERX", "toMaster": "MOCKBUFX4"})
 
+    def test_cell_query_and_mutation_readback_resolve_native_collections(self):
+        result = self._run_tcl('''
+proc get_cells {args} { return "COLLECTION:[lindex $args 0]" }
+proc get_attribute {obj attr} {
+    if {![string match "COLLECTION:*" $obj]} { error "unwrapped native object" }
+    return MASTERX
+}
+if {[atcs_query_cells U_IN_DOMAIN ref_name] ne "MASTERX"} { error "wrong query" }
+atcs_size_cell U_IN_DOMAIN MOCKBUFX4
+puts "COLLECTION-PASS"
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("COLLECTION-PASS", result.stdout)
+
     def test_accepts_insert_buffer_on_in_domain_net_and_logs_one_operation(self):
         result = self._run_tcl('atcs_insert_buffer N_IN_DOMAIN {P1 P2} U_NEW N_NEW MOCKBUFX2\nputs "TCL-OK"\n')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -457,7 +457,8 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
                 raise ValueError("worker action must have exactly instance and toMaster")
             if action["instance"] not in domain:
                 raise ValueError("worker action instance is outside the admitted edit domain")
-            if not isinstance(action["toMaster"], str) or not action["toMaster"] or core.is_tcl_unsafe(action["toMaster"]):
+            if (not isinstance(action["toMaster"], str) or not action["toMaster"]
+                    or core.is_tcl_unsafe(action["toMaster"]) or "*" in action["toMaster"] or "?" in action["toMaster"]):
                 raise ValueError("worker action master is not a safe cell name")
     return [_emit_count("tc_request_invalid_count", count)]
 

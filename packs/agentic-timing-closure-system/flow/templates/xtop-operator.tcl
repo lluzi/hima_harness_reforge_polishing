@@ -59,13 +59,13 @@ proc atcs_query_paths {args} {
     return [uplevel 1 [linsert $args 0 get_paths]]
 }
 proc atcs_query_cells {object_spec attr_name args} {
-    return [uplevel 1 [linsert $args 0 get_attribute $object_spec $attr_name]]
+    return [uplevel 1 [linsert $args 0 get_attribute [get_cells $object_spec] $attr_name]]
 }
 proc atcs_size_cell {instance to_master {plan_sha256 ""}} {
     if {![atcs_in_domain $instance $::EDIT_DOMAIN_INSTANCES]} {
         error "out-of-scope instance: $instance"
     }
-    set from_master [get_attribute $instance ref_name]
+    set from_master [get_attribute [get_cells $instance] ref_name]
     size_cell [list $instance] $to_master
     atcs_log_op "{\"op\":\"size_cell\",\"instance\":\"[atcs_json_escape $instance]\",\"fromMaster\":\"[atcs_json_escape $from_master]\",\"toMaster\":\"[atcs_json_escape $to_master]\"}"
 }
@@ -90,7 +90,7 @@ proc atcs_delete_buffer {instance} {
     if {![atcs_in_domain $instance $::EDIT_DOMAIN_INSTANCES]} {
         error "out-of-scope instance: $instance"
     }
-    set from_master [get_attribute $instance ref_name]
+    set from_master [get_attribute [get_cells $instance] ref_name]
     remove_buffer [list $instance]
     atcs_log_op "{\"op\":\"delete_buffer\",\"instance\":\"[atcs_json_escape $instance]\",\"master\":\"[atcs_json_escape $from_master]\"}"
 }

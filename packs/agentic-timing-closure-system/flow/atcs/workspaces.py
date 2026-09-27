@@ -162,7 +162,8 @@ def _collect_problems(obj, base_state, site_capabilities):
     # caught up front.
     for kind, names in (("instance", edit_instances), ("net", edit_nets)):
         for name in sorted(names):
-            if not isinstance(name, str) or not name or core.is_tcl_unsafe(name, allow_brackets=True):
+            if (not isinstance(name, str) or not name or core.is_tcl_unsafe(name, allow_brackets=True)
+                    or "*" in name or "?" in name):
                 problems.append(f"editDomain {kind} {name!r} is not a safe Tcl name")
 
     actions = obj.get("actions") if isinstance(obj.get("actions"), list) else []

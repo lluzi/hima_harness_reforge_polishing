@@ -95,6 +95,12 @@ class ValidateWorkPackageTest(unittest.TestCase):
             workspaces.request_invalid_count(package, self.base_state, self.site_capabilities), 1
         )
 
+    def test_mutation_domain_cannot_expand_through_a_wildcard(self):
+        for name in ("*", "U?/BUF1"):
+            package = make_work_package(base_state_id=self.base_state["id"], edit_instances=[name])
+            with self.assertRaises(core.AtcsError):
+                workspaces.validate_work_package(package, self.base_state, self.site_capabilities)
+
     def test_action_swap_rtl_rejected(self):
         package = make_work_package(base_state_id=self.base_state["id"], actions=["swap_rtl"])
         with self.assertRaises(core.AtcsError) as ctx:

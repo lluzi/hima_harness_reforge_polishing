@@ -27,14 +27,14 @@ if "--prepare-worker" in sys.argv:
         raise SystemExit("no bounded non-clock buffer candidate")
     master, instance = candidates[0]
     to_master = master.replace("BUFFD2", "BUFFD4", 1)
+    attempt = len(list(receipts.glob("action*.json"))) + 1
     packages = {}
     for slot in ("w01", "w02", "w03"):
         packages[slot] = {"taskId": slot, "baseStateId": base["id"],
-            "problem": "bounded qualification of one top-level data buffer sizing command",
+            "problem": "bounded qualification of one top-level data buffer sizing command; attempt " + str(attempt),
             "targets": [], "editDomain": {"instances": [instance] if slot == "w01" else [], "nets": [], "regions": []},
             "protected": {"instances": [], "nets": []}, "mayAffect": [], "actions": ["size_cell"],
             "budget": {"xtopMinutes": 5, "queries": 2, "attempts": 1}}
-    attempt = len(list(receipts.glob("action*.json"))) + 1
     plan = receipts / ("campaign-plan-" + str(attempt) + ".json")
     with plan.open("x") as output:
         output.write(json.dumps({"candidate": {"workPackages": packages, "reason": "one isolated L4 worker"}}))
