@@ -16,7 +16,12 @@ with the same 30-minute closing reserve. It still permits one generation and one
   manifest SHA-256 `ef475bba7b2c5596260ca1e88225e76690f252de981f377231a15e1177e292c5`.
 - Kit:
   `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/final-harness-integration-trial32-attempt4`.
-- Kit receipt: `acceptance-kit.json`.
+- Governing authority commit: `a0f55e9607dc0256150a8c791f4eb3513e83bbab`, pushed and verified on
+  `origin/main` before kit sealing.
+- Kit receipt: `acceptance-kit.json`; SHA-256
+  `f690a3e13e962911680382910011e0f7a2db215dcba96f240e402c42d99194f3`.
+- Launcher: `launch-hima-trial.command`; SHA-256
+  `19dac4c4c9ea8d95d1b0bfe0fb0cf737078c1f9e847474b436c27c1a11f767c0`.
 - No-commercial preflight:
   `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/final-harness-integration-preflight-issue52-trial32-attempt4/evidence.json`;
   SHA-256 `27d5c6454848bf597768aff1cb8e5dd46ece45ebc0e63265d90f4b3d4cb69999`.
