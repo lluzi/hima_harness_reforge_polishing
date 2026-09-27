@@ -45,6 +45,10 @@ generic binding preflight and real shipped Host cold-start with zero model/EDA c
 Do not rebuild the App, reinstall another Pack or recopy a historical Home. Launch only
 `<kit>/launch-atcs-trial.command` through Computer Use from the normal user Terminal shell.
 Existing DeepSeek credentials may be used; never print/copy them into evidence or chat.
+The launcher passes no `--site` argument: that App flag only seeds the development `local`
+stand-in. Select the already installed `linglong-atcs28` through Guide/Preparation instead.
+The initial launcher refusal and tester report remain preserved; no Campaign or Run existed
+at that refusal. Continue this same cycle/Home after the preparation-only correction.
 Before commercial commands read `empyrean-license status`: old must be active for XTop
 2025, no concurrent QuaLib, one licence per tool and one Job at a time. Do not switch licences.
 
