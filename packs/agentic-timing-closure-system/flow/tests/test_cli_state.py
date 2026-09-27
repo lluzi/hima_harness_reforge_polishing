@@ -345,6 +345,22 @@ class FlowDigestTest(unittest.TestCase):
         int(result.stdout.strip(), 16)
 
 
+class IsStaleBaseTest(unittest.TestCase):
+    """Minor (final review): `atcs_cli._is_stale_base` is the one shared "stale base"
+    comparison `compose-facts`'s own plan-vs-working-state check and `replay-
+    prepare`'s own base-vs-facts check both now use, instead of each independently
+    re-writing the identical `!=`."""
+
+    def test_matching_ids_are_not_stale(self):
+        self.assertFalse(atcs_cli._is_stale_base("state-1", "state-1"))
+
+    def test_differing_ids_are_stale(self):
+        self.assertTrue(atcs_cli._is_stale_base("state-1", "state-2"))
+
+    def test_a_missing_candidate_id_is_stale(self):
+        self.assertTrue(atcs_cli._is_stale_base(None, "state-1"))
+
+
 class BaselineStagesLifecycleCheckpointsTest(unittest.TestCase):
     """I2 (final review): `atcs.lifecycle.stage_task` has always restored
     `./DBS/<prevStage>.enc.dat`, workspace-relative -- but nothing ever staged a
@@ -1069,6 +1085,66 @@ class StaLibraryIdentityTest(TwoRoundFlowTest):
         result = _run("sta", workspace, query_spec_path, scenarios_path, base_design_state_path,
                        site_profile_path, "1000")
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+class PrestaPredictedLabelTest(TwoRoundFlowTest):
+    """Minor (final review): `presta`'s own `predicted.json` side file is labelled
+    explicitly as base-netlist-derived -- PT runs against the *base* (pre-batch,
+    pre-ECO) netlist at this stage, since no post-fix netlist exists yet, and a bare
+    `"predicted"` key could be mistaken for a genuine prediction of the batch."""
+
+    def test_two_round_flow_uses_adopted_state_id(self):
+        self.skipTest("inherited from TwoRoundFlowTest -- already covered there, not this class's own case")
+
+    def test_predicted_json_carries_explicit_base_netlist_labels(self):
+        workspace = self.workspace
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        self.assertEqual(_run("baseline", workspace, workspace / "manifest.json").returncode, 0)
+        base_state = json.loads((workspace / "state" / "working-state.json").read_text())
+
+        contribution, work_package = self._build_fix_contribution(base_state, instance="U1")
+        _write_json(workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
+        facts = composition.analyze(base_state["id"], [contribution], [])
+        plan_raw = {
+            "batchId": "batch-presta", "baseStateId": base_state["id"],
+            "select": [contribution["id"]], "resolutions": [], "deferred": [], "reason": "single fix",
+        }
+        plan = integration.validate_plan(plan_raw, facts)
+        request = integration.prepare_replay(plan, facts, [contribution])
+        step = request["steps"][0]
+        receipt = {
+            "stepId": step["stepId"], "status": "ok",
+            "observedDelta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        }
+        edit_domains = {contribution["id"]: work_package["editDomain"]}
+        integration_state = integration.reconcile(request, [receipt], edit_domains)
+        core.write_artifact(workspace / "state" / "composition-facts.json", facts)
+        core.write_artifact(workspace / "state" / "replay-request.json", request)
+        core.write_artifact(workspace / "state" / "integration-state.json", integration_state)
+
+        scenarios_path = _scenarios_contract_path(workspace)
+        site_profile_path = _site_profile_path(workspace)
+        # `presta` only ever runs REQUIRED_SCENARIOS[0]'s own PT task -- pre-seed its
+        # clean global_timing.rpt at the exact path `compile_pt_presta_task` computes
+        # (integrations/<batchId>/presta/<scenario>/global_timing.rpt).
+        report_root = workspace / "integrations" / "batch-presta" / "presta"
+        _write_text(
+            report_root / REQUIRED_SCENARIOS[0] / "global_timing.rpt",
+            fixtures.global_report("0.05", "0.00", "0", "0.03", "0.00", "0"),
+        )
+        result = _run("presta", workspace, workspace / "state" / "working-state.json",
+                       scenarios_path, site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        predicted = json.loads((report_root / "predicted.json").read_text())
+        self.assertEqual(predicted["scenario"], REQUIRED_SCENARIOS[0])
+        self.assertEqual(predicted["basis"], "base-netlist")
+        self.assertIn("predictedBaseNetlistSetupWns", predicted)
+        self.assertIn("predictedBaseNetlistHoldWns", predicted)
+        self.assertNotIn("predicted", predicted)
+        self.assertAlmostEqual(core.value_of(predicted["predictedBaseNetlistSetupWns"]), 0.05)
+        self.assertAlmostEqual(core.value_of(predicted["predictedBaseNetlistHoldWns"]), 0.03)
 
 
 class StaMaxPathsTest(TwoRoundFlowTest):
@@ -2362,6 +2438,11 @@ class AprPrepareRunTest(unittest.TestCase):
         result = _run("sta", self.workspace, query_spec_path, scenario_corners_path,
                        self.workspace / "state" / "working-state.json", site_profile_path, "5000")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        # Minor (final review): the candidate's own design-state must carry the real
+        # APR stage ("route") it was actually implemented at, never a hard-coded
+        # "postroute" borrowed from the real-merge-commit path.
+        candidate_design_state = json.loads((impl_root / "design-state.json").read_text())
+        self.assertEqual(candidate_design_state["stage"], "route")
 
         result = _run("physical", self.workspace, "candidate")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -2435,6 +2516,15 @@ class RecordExperienceComposedTest(unittest.TestCase):
         })
         merge_id = merge_commit["id"]
         _write_json(self.workspace / "state" / "merge-commit.json", merge_commit)
+        # Minor (final review): `record-experience` now checks the reasonSource plan's
+        # own `batchId` against `state/replay-request.json`'s -- this fixture's
+        # `reason_path` envelopes all name "batch-fixture" (see the module-level sed
+        # above/each test's own `_write_json(reason_path, ...)` call).
+        replay_request = core.stamp("replay-request", {
+            "batchId": "batch-fixture", "baseStateId": self.working_state["id"],
+            "steps": [], "expectedDelta": {},
+        })
+        _write_json(self.workspace / "state" / "replay-request.json", replay_request)
         _write_json(self.workspace / "state" / "implement.json", {
             "mergeCommitId": merge_id, "design": "top", "parentStateId": self.working_state["id"],
         })
@@ -2480,9 +2570,26 @@ class RecordExperienceComposedTest(unittest.TestCase):
         reason_path = self.workspace / f"reason-{self.decision_id_seed}.json"
         return reason_path
 
+    def test_a_reason_source_from_a_different_batch_is_refused(self):
+        """Minor (final review): `record-experience` used to trust `<reasonSource>`'s
+        own `reason` purely by convention -- nothing verified it was actually the plan
+        the sealed merge commit was produced from. A stale envelope from an unrelated
+        batch (still sitting on disk from an earlier round) must not silently supply
+        this candidate's recorded hypothesis."""
+        reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
+        _write_json(reason_path, {
+            "plan": {"batchId": "some-other-stale-batch", "reason": "wrong batch's own reason"}, "facts": {},
+        })
+
+        result = _run("record-experience", self.workspace, reason_path)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "identity-mismatch")
+        self.assertFalse((self.workspace / "state" / "experience.json").exists())
+
     def test_measured_positive_delta_is_helped(self):
         reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
-        _write_json(reason_path, {"plan": {"reason": "candidate closed the remaining setup violation on U1"}, "facts": {}})
+        _write_json(reason_path, {"plan": {"batchId": "batch-fixture", "reason": "candidate closed the remaining setup violation on U1"}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -2494,7 +2601,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def test_measured_negative_delta_is_hurt(self):
         reason_path = self._write_candidate(parent_min_wns=0.05, candidate_setup_wns=0.01, candidate_hold_wns=0.01)
-        _write_json(reason_path, {"plan": {"reason": "candidate regressed relative to the parent"}, "facts": {}})
+        _write_json(reason_path, {"plan": {"batchId": "batch-fixture", "reason": "candidate regressed relative to the parent"}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -2504,7 +2611,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def test_measured_zero_delta_is_neutral(self):
         reason_path = self._write_candidate(parent_min_wns=0.04, candidate_setup_wns=0.04, candidate_hold_wns=0.09)
-        _write_json(reason_path, {"plan": {"reason": "candidate matched the parent exactly"}, "facts": {}})
+        _write_json(reason_path, {"plan": {"batchId": "batch-fixture", "reason": "candidate matched the parent exactly"}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -2516,7 +2623,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
         reason_path = self._write_candidate(
             parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04, parent_known=False,
         )
-        _write_json(reason_path, {"plan": {"reason": "no recorded parent min WNS for this state"}, "facts": {}})
+        _write_json(reason_path, {"plan": {"batchId": "batch-fixture", "reason": "no recorded parent min WNS for this state"}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -2528,7 +2635,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def test_blank_reason_is_refused(self):
         reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
-        _write_json(reason_path, {"plan": {"reason": "   "}, "facts": {}})
+        _write_json(reason_path, {"plan": {"batchId": "batch-fixture", "reason": "   "}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
@@ -2538,7 +2645,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def test_missing_reason_field_is_refused(self):
         reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
-        _write_json(reason_path, {"plan": {"question": "no reason field at all"}, "facts": {}})
+        _write_json(reason_path, {"plan": {"batchId": "batch-fixture", "question": "no reason field at all"}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
@@ -2549,7 +2656,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
         reason_path = self._write_candidate(
             parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04, precision=None,
         )
-        _write_json(reason_path, {"plan": {"reason": "a real reason, but sta has no precision anywhere"}, "facts": {}})
+        _write_json(reason_path, {"plan": {"batchId": "batch-fixture", "reason": "a real reason, but sta has no precision anywhere"}, "facts": {}})
 
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
@@ -2559,7 +2666,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def test_no_research_requests_experience_file_is_ever_read_or_written(self):
         reason_path = self._write_candidate(parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04)
-        _write_json(reason_path, {"plan": {"reason": "candidate closed the remaining setup violation on U1"}, "facts": {}})
+        _write_json(reason_path, {"plan": {"batchId": "batch-fixture", "reason": "candidate closed the remaining setup violation on U1"}, "facts": {}})
         result = _run("record-experience", self.workspace, reason_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse((self.workspace / "research").exists())

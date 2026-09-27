@@ -1316,6 +1316,22 @@ def _read_admitted_plan(plan_path):
     return plan_raw
 
 
+def _is_stale_base(candidate_base_state_id, current_base_state_id):
+    """True when `candidate_base_state_id` no longer names the base this Campaign is
+    actually building on right now (Minor, final review: one shared definition of
+    "stale base", instead of `compose-facts`'s own plan-vs-working-state comparison
+    and `replay-prepare`'s own base-state-vs-facts comparison each independently
+    re-writing the same `!=` check). Deliberately returns only the yes/no answer, not
+    a response: `compose-facts` treats a stale plan as "no plan yet" (Task 12c item
+    4c's documented first-vs-second-pass semantics -- a real design choice, not an
+    oversight to unify away) while `replay-prepare` treats a stale base as a hard
+    refusal (`AtcsError("stale-base", ...)`, since proceeding would replay a real
+    XTop batch against evidence that no longer matches this Campaign's own current
+    state) -- each call site keeps its own response, sharing only the rule itself.
+    """
+    return candidate_base_state_id != current_base_state_id
+
+
 def _cmd_compose_facts(workspace, args):
     """`baseStateId` comes from `state/working-state.json`'s own `id`, not a literal argv id (G1).
 
@@ -1350,7 +1366,7 @@ def _cmd_compose_facts(workspace, args):
     collected = _read_plain(_paths(workspace)["contributions_collected"])
     plan_raw = _read_admitted_plan(plan_path)
     if plan_raw is not None:
-        if plan_raw.get("baseStateId") != working_state["id"]:
+        if _is_stale_base(plan_raw.get("baseStateId"), working_state["id"]):
             plan_raw = None  # stale: for a base this campaign has since moved on from
         else:
             replay_request_path = _paths(workspace)["replay_request"]
@@ -1391,7 +1407,7 @@ def _cmd_replay_prepare(workspace, args):
         raise InputError("missing-input", f"declared input not found: {plan_path}")
     site_profile = _read_plain(site_profile_path)
     base_state = _read_declared(base_state_path, "design-state")
-    if base_state["id"] != facts.get("baseStateId"):
+    if _is_stale_base(base_state["id"], facts.get("baseStateId")):
         raise core.AtcsError("stale-base", "base design-state does not match facts.baseStateId")
 
     validated_plan = integration.validate_plan(plan_raw, facts)
@@ -1560,7 +1576,21 @@ def _cmd_presta(workspace, args):
     # `predicted` (the cheap PT-level WNS estimate) is not part of the
     # `precheck_evidence` artifact's own contract -- kept as a side file for
     # `evaluate`/debugging, never the declared output.
-    _canonical_write(report_root / "predicted.json", {"scenario": scenario, "predicted": predicted})
+    #
+    # Minor (final review): labelled explicitly as base-netlist-derived -- `task`
+    # (compiled above) hands PT the *base* (pre-batch, pre-ECO) netlist
+    # (`base_state["netlist"]`), never the pending candidate's own not-yet-
+    # implemented one, since no post-fix netlist exists yet at this stage. A bare
+    # `"predicted"` key could be mistaken for a genuine prediction of the batch's
+    # own effect; `predictedBaseNetlistSetupWns`/`predictedBaseNetlistHoldWns`
+    # names what this value actually is. No other reader consumes this field today
+    # (`record-experience`'s own "predicted" comes from each contribution's own
+    # submitted `predicted` measures, not from this side file).
+    _canonical_write(report_root / "predicted.json", {
+        "scenario": scenario, "basis": "base-netlist",
+        "predictedBaseNetlistSetupWns": predicted.get("setup", {}).get("wns"),
+        "predictedBaseNetlistHoldWns": predicted.get("hold", {}).get("wns"),
+    })
 
     body = verification.precheck_evidence(merge_commit, str(spef_net_names_path))
     return _paths(workspace)["presta"], body
@@ -1655,6 +1685,11 @@ def _cmd_implement(workspace, args):
 
     body = {
         "mergeCommitId": merge_commit["id"], "design": design, "parentStateId": merge_commit.get("parentStateId"),
+        # Minor (final review): a real Integration Fix Session merge always occurs
+        # post-route (`sta` used to hard-code this same literal for every candidate,
+        # including an apr-run one at an earlier stage -- see that fix); recorded
+        # explicitly here too, for symmetry with `_cmd_apr_run`'s own `stage` field.
+        "stage": "postroute",
         "database": database_ref, "netlist": netlist_ref, "def": def_ref,
         "drcReport": {"path": _relpath(outputs["drc"], workspace), "sha256": core.file_sha256(outputs["drc"])},
         "connectivityReport": {
@@ -1977,8 +2012,16 @@ def _cmd_sta(workspace, args):
     # Built BEFORE the STA loop (C5): every scenario's `state.capture` call
     # below labels its observation with this candidate's own id, never the
     # parent `base_state`'s.
+    #
+    # Minor (final review): `stage` comes from `implement.json`'s own recorded
+    # value -- an apr-run candidate at an earlier stage (place/cts/route) used to
+    # be mislabeled "postroute" unconditionally, the same literal a real
+    # Integration Fix Session merge (always post-route) also uses. Both
+    # `_cmd_implement` and `_cmd_apr_run` now record their own accurate `stage`;
+    # `.get(..., "postroute")` only covers an `implement.json` written before this
+    # fix (never a live gap, since both writers now always populate it).
     manifest = adapters.build_design_state_manifest(
-        top=implement["design"], stage="postroute",
+        top=implement["design"], stage=implement.get("stage", "postroute"),
         database_enc=implement["database"]["path"], database_dat=implement["database"]["path"] + ".dat",
         netlist=implement["netlist"]["path"], def_path=implement["def"]["path"],
         spef_by_corner={corner: ref["path"] for corner, ref in extract["spef"].items()},
@@ -2861,6 +2904,22 @@ def _cmd_record_experience(workspace, args):
         envelope = _read_plain(reason_source_path)
         plan_raw = envelope.get("plan") if isinstance(envelope, dict) else None
         reason_doc = plan_raw if isinstance(plan_raw, dict) else {}
+        # Minor (final review): `<reasonSource>` used to be trusted as "the plan this
+        # merge commit was sealed from" purely by convention -- nothing actually
+        # verified that. `state/replay-request.json` is the one artifact this exact
+        # candidate's own seal_batch call was built from (`_cmd_replay_prepare`'s
+        # declared output, `request.batchId` a direct passthrough of `plan.batchId`);
+        # a `reasonSource` naming a different batch (a stale envelope still sitting on
+        # disk from an earlier round) must never silently supply this candidate's
+        # recorded hypothesis.
+        replay_request = _read_declared(_paths(workspace)["replay_request"], "replay-request")
+        if reason_doc.get("batchId") != replay_request.get("batchId"):
+            raise core.AtcsError(
+                "identity-mismatch",
+                f"reasonSource plan.batchId {reason_doc.get('batchId')!r} does not match "
+                f"state/replay-request.json's own batchId {replay_request.get('batchId')!r} -- "
+                "this is not the plan the sealed merge commit was actually produced from",
+            )
     else:
         # No Integration Fix Session batch produced this candidate (an
         # apr-run candidate) -- the "why" lives in the next-investment
@@ -3181,6 +3240,10 @@ def _cmd_apr_run(workspace, args):
     }
     body = {
         "mergeCommitId": task_id, "design": working_state["top"], "parentStateId": working_state["id"],
+        # Minor (final review): the resolved APR stage (place/cts/route/postroute),
+        # never hard-coded -- `sta` reads this back instead of assuming "postroute"
+        # for every candidate regardless of provenance.
+        "stage": stage,
         "database": database_ref, "netlist": netlist_ref, "def": def_ref,
         "drcReport": {
             "path": _relpath(export_task["outputs"]["drc"], workspace),

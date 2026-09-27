@@ -933,6 +933,26 @@ def _collect_next_decision_problems(obj, workspace):
             problems.append(f"{ref_key} must be a 20-hex-char artifact id, got {ref!r}")
         elif _resolve_id_in_workspace(workspace, ref) is None:
             problems.append(f"{ref_key} {ref!r} does not resolve to any artifact in the workspace")
+        elif ref_key == "stateRef":
+            # Minor (final review): resolving to *some* artifact in the workspace was
+            # never enough on its own -- a `stateRef` naming a stale, resolvable
+            # artifact (an old baseline, a superseded candidate's own design-state)
+            # used to pass this check just as well as one naming the actual current
+            # working state. `next-decision`'s whole point is a decision about the
+            # CURRENT campaign state, so `stateRef` must equal `state/working-
+            # state.json`'s own current id, not merely resolve to *a* real id.
+            try:
+                working_state = _load_json(workspace / "state" / "working-state.json")
+            except ValueError:
+                working_state = None
+            working_state_id = working_state.get("id") if isinstance(working_state, dict) else None
+            if not working_state_id:
+                problems.append("stateRef cannot be verified: state/working-state.json is missing or unreadable")
+            elif ref != working_state_id:
+                problems.append(
+                    f"stateRef {ref!r} does not match state/working-state.json's own current id "
+                    f"{working_state_id!r}"
+                )
 
     if "budgetRef" in obj and (not isinstance(obj.get("budgetRef"), str) or not obj.get("budgetRef")):
         problems.append("budgetRef must be a non-empty string")

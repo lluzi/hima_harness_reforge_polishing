@@ -890,6 +890,13 @@ class NextDecisionReaderTest(unittest.TestCase):
                json.dumps({"schema": "atcs.design-state/1", "id": self.state_ref, "marker": "state"}))
         _write(self.workspace / "flow" / "records" / "observation.json",
                json.dumps({"schema": "atcs.observation-set/1", "id": self.observation_ref, "marker": "observation"}))
+        # Minor (final review): `stateRef` must now equal `state/working-state.json`'s
+        # own current id, not merely resolve to *some* artifact in the workspace --
+        # this IS that current working state for every test in this class that does
+        # not call `_write_ready_implement_batch` (which overwrites it with a
+        # different, real one, and updates its own decisions' `stateRef` to match).
+        _write(self.workspace / "state" / "working-state.json",
+               json.dumps({"schema": "atcs.design-state/1", "id": self.state_ref, "marker": "state"}))
 
     def _decision(self, **overrides):
         decision = {
@@ -927,16 +934,20 @@ class NextDecisionReaderTest(unittest.TestCase):
         integration_state = integration.reconcile(request, [], {})
         _write(self.workspace / "state" / "integration-state.json", json.dumps(integration_state))
         _write(self.workspace / "state" / "contributions-collected.json", json.dumps({"contributions": []}))
+        return working_state["id"]
 
     def test_each_of_the_eight_actions_encodes_and_matches_stop_required(self):
-        self._write_ready_implement_batch()
+        # Minor (final review): this real, fresh working state's own id -- not
+        # `self.state_ref`, which `_write_ready_implement_batch` just overwrote
+        # `state/working-state.json` away from -- is what `stateRef` must now match.
+        working_state_id = self._write_ready_implement_batch()
         codes = {
             "observe": 1, "research": 2, "compose": 3, "revise": 4,
             "implement": 5, "earlier-apr": 6, "wait": 7, "goal-met": 8,
         }
         for action, code in codes.items():
             extra = {"stage": "postroute"} if action == "earlier-apr" else {}
-            report = self._write_decision(self._decision(action=action, **extra))
+            report = self._write_decision(self._decision(action=action, stateRef=working_state_id, **extra))
             values = read_atcs.read("next-decision", report, self.workspace)
             by_type = {v["type"]: v for v in values}
             self.assertEqual(by_type["tc_next_action"]["value"], code, action)
@@ -983,6 +994,20 @@ class NextDecisionReaderTest(unittest.TestCase):
 
     def test_unresolvable_state_ref_is_counted_invalid(self):
         report = self._write_decision(self._decision(stateRef="f" * 20))
+        values = read_atcs.read("next-decision", report, self.workspace)
+        by_type = {v["type"]: v for v in values}
+        self.assertGreaterEqual(by_type["tc_request_invalid_count"]["value"], 1)
+        self.assertIsNone(by_type["tc_next_action"]["value"])
+
+    def test_a_state_ref_resolving_to_a_stale_non_working_state_is_counted_invalid(self):
+        """Minor (final review): resolving to *some* real artifact in the workspace was
+        never enough on its own -- an old baseline, or a superseded candidate's own
+        design-state, still resolves; only the CURRENT `state/working-state.json` id
+        may be named."""
+        stale_id = core.digest({"marker": "a stale, unrelated design-state"})
+        _write(self.workspace / "flow" / "records" / "stale-state.json",
+               json.dumps({"schema": "atcs.design-state/1", "id": stale_id, "marker": "stale"}))
+        report = self._write_decision(self._decision(stateRef=stale_id))
         values = read_atcs.read("next-decision", report, self.workspace)
         by_type = {v["type"]: v for v in values}
         self.assertGreaterEqual(by_type["tc_request_invalid_count"]["value"], 1)
@@ -1049,7 +1074,10 @@ class NextDecisionImplementBatchReadinessTest(unittest.TestCase):
         _write(self.workspace / "state" / "working-state.json", json.dumps(working_state))
         self._ready_batch(working_state["id"])
 
-        report = self._write_decision(self._decision())
+        # Minor (final review): `stateRef` must equal this real working state's own
+        # id, not the arbitrary `self.state_ref` marker `setUp` only wrote to
+        # `flow/records/state.json`.
+        report = self._write_decision(self._decision(stateRef=working_state["id"]))
         by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
         self.assertEqual(by_type["tc_request_invalid_count"]["value"], 0)
         self.assertEqual(by_type["tc_next_action"]["value"], 5)
