@@ -50,3 +50,11 @@ symlink/hardlink and base-in-slot refusal, slot-only writable mount and fresh HO
 profiles. All 15 local adversarial tests PASS; independent incremental review found no unresolved
 defect in those boundaries. Real v3 wrapper/mount qualification remains a separate gate.
 Current ATCS Host contract 2/2 PASS, 38.766 seconds, zero SSH/Electron, including the Pack Python suite.
+
+The first real v3 prelaunch check refused vendor LEF links in the copied Innovus database. These
+resolve to the configured, read-only physical-library roots. v4 adds a narrow data-only exception:
+database leaf links must resolve to a regular file inside the Campaign's read-only tree or approved
+read roots, and never into the writable slot. Executable/control paths still reject all links. The
+failed v3 installation/snapshot remains unchanged. Two additional local counterexamples cover an
+unapproved target and a target inside the writable slot; all 17 verifier tests PASS. No mutation or
+new commercial command was used to diagnose this prelaunch refusal.

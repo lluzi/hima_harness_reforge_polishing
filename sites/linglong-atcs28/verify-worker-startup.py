@@ -38,6 +38,17 @@ def flow_hash(flow):
     canonical = json.dumps(entries, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     return hashlib.sha256(canonical).hexdigest()
 
+def verify_database_tree(directory, workspace, write_root, read_roots):
+    """Vendor checkpoints may link read-only LEF data; executable/control paths never use this exception."""
+    for path in directory.rglob("*"):
+        if path.is_symlink():
+            target = plain(path.resolve(strict=True))
+            if (not target.is_file() or target.is_relative_to(write_root)
+                    or not any(target.is_relative_to(root) for root in (workspace, *read_roots))):
+                raise ValueError("database data link escapes qualified read-only roots")
+        else:
+            plain(path, workspace)
+
 def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_root):
     workspace = plain(workspace)
     if slot not in ("w01", "w02", "w03"):
@@ -99,8 +110,7 @@ def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_roo
     database_data = plain(workspace / (base["database"]["path"] + ".dat"), workspace)
     if database_data.is_relative_to(root):
         raise ValueError("base database data lies in the writable worker slot")
-    for path in database_data.rglob("*"):
-        plain(path, workspace)
+    verify_database_tree(database_data, workspace, root, roots)
     if core.tree_digest(database_data) != base["database"]["datDigest"]:
         raise ValueError("base database data changed")
     for pattern in (profile["techLef"], profile["cellLefGlob"]):

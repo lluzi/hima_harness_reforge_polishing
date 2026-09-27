@@ -137,7 +137,7 @@ class VerifierTest(unittest.TestCase):
         self.assertNotEqual(self.run_verifier().returncode, 0)
 
     def test_wrapper_declares_campaign_readonly_and_only_selected_slot_writable(self):
-        wrapper = Path(__file__).with_name("atcs-xtop-operator-v3.sh").read_text()
+        wrapper = Path(__file__).with_name("atcs-xtop-operator-v4.sh").read_text()
         self.assertIn('src="$workspace",dst="$workspace",ro=true', wrapper)
         self.assertIn('src="$slot_root",dst="$slot_root",rw=true', wrapper)
         self.assertNotIn('src="$workspace",dst="$workspace",rw=true', wrapper)
@@ -187,6 +187,25 @@ class VerifierTest(unittest.TestCase):
         self.index_path.rename(moved)
         self.index_path.symlink_to(moved)
         self.assertNotEqual(self.run_verifier().returncode, 0)
+
+    def test_vendor_database_link_must_resolve_to_qualified_readonly_data(self):
+        database = self.w / "db.enc.dat"
+        link = database / "technology.lef"
+        link.symlink_to(self.lib / "tech.lef")
+        verify_module.verify_database_tree(database, self.w, self.slot, [self.lib])
+        link.unlink()
+        secret = self.root / "outside-qualified-roots"
+        secret.write_text("outside\n")
+        link.symlink_to(secret)
+        with self.assertRaisesRegex(ValueError, "escapes"):
+            verify_module.verify_database_tree(database, self.w, self.slot, [self.lib])
+
+    def test_database_link_into_writable_slot_is_refused(self):
+        target = self.slot / "mutable-data"
+        target.write_text("mutable\n")
+        (self.w / "db.enc.dat/escape").symlink_to(target)
+        with self.assertRaisesRegex(ValueError, "escapes"):
+            verify_module.verify_database_tree(self.w / "db.enc.dat", self.w, self.slot, [self.lib])
 
     def test_sta_tree_escape_is_refused(self):
         target = self.root / "external"
