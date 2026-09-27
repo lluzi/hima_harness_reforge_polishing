@@ -65,14 +65,21 @@ export async function bootInProcess(h: HimaHome, { withWebApp = false } = {}): P
 
 /** Create one root agent the way dsh's own headless bundle does; no model request is made until a turn runs. */
 export async function createRootAgent(ctx: Context, cwd: string): Promise<Agent> {
-  const agents = ctx.get('agents');
   const defaultModel = ctx.get('agentDefaultModel');
-  if (!agents || !defaultModel) throw new Error('agents/agentDefaultModel services missing');
+  if (!defaultModel) throw new Error('agentDefaultModel service missing');
   const selection = defaultModel.currentSelection();
+  return createTestAgentWithModel(ctx, cwd, { provider: selection.provider, model: selection.model });
+}
+
+/** Create one native test Agent with an explicit pinned request budget when a live check needs it. */
+export async function createTestAgentWithModel(ctx: Context, cwd: string,
+  model: { provider: string; model: string; maxTokens?: number }): Promise<Agent> {
+  const agents = ctx.get('agents');
+  if (!agents) throw new Error('agents service missing');
   const { agent } = await agents.create({
     sessionId: `session-${randomUUID()}` as never,
     meta: { cwd },
-    agentOptions: { provider: selection.provider, model: selection.model },
+    agentOptions: model,
   });
   await agent.whenIdle();
   return agent;

@@ -66,3 +66,24 @@ New development method digest:
 `5cab1ddba6d2b6d35f27e2c5a1ddc05a8cd1b8758d1330c9c6c569dfd0cd78b1`.
 The prior binding and any TEST record must not be claimed for these changed method bytes.
 The isolated real-model qualification remains the next gate before native TEST/rebinding/App.
+
+## Isolated diagnostic result and remaining admission gate
+
+One isolated native DeepSeek Flash turn completed in 14.1 seconds with a 5,000-token cap,
+zero tool calls and a 1,587-character JSON candidate. The required top-level fields and
+bounded arrays passed. Receipt:
+`.hima-tmp/issue52-researcher-qualification-20260927053256/receipt.json`.
+This is a response-format diagnostic, not a delegated-team or full-input acceptance.
+
+Read-only inspection of copied retained native sessions matched the observation ids and
+content hashes, but did not establish complete input visibility: the closure-state tool
+presentation is 49,999 characters (49,770-character JSON fact plus an adjacent 229-character
+block), while its original source identity names 66,674 bytes and `material.truncated` is
+false. Bytes and characters are different units, so their difference is not an omitted-byte
+count. Receipt: `.hima-tmp/issue52-researcher-input-inspection-20260927053514/receipt.json`.
+
+The next minimal gate is a deterministic complete-input delivery regression at
+`index.ts:delegationInput` through `tools.ts` and native rendering, identifying whether the
+adjacent block signals omitted material or only presentation. No parser relaxation, further
+model call, new commercial baseline, TEST/seal or GUI dispatch is justified until this is
+resolved. All retained original Homes and Runs remained inert during this diagnostic.
