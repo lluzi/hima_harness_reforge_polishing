@@ -34,12 +34,36 @@ from atcs import adapters  # noqa: E402
 import fixtures  # noqa: E402
 
 CLI_PATH = FLOW_DIR / "atcs_cli.py"
+CORPUS_PREFLIGHT = PACK_DIR.parent.parent / "scripts" / "atcs-corpus-preflight.py"
 TEMPLATES_DIR = FLOW_DIR / "templates"
 TCLSH = shutil.which("tclsh")
+SCENARIOS = ("slow_setup", "fast_hold")
 
 
 def _tmp():
     return Path(tempfile.mkdtemp(prefix="atcs-adapters-"))
+
+
+def _xtop_context(root=None):
+    if root is None:
+        library_tcl, sta_data = "/ws/xtop-library.tcl", "/ws/sta_data"
+    else:
+        library_path = Path(root) / "xtop-library.tcl"
+        library_path.write_text("# synthetic XTop library context\n", encoding="utf-8")
+        timing_path = Path(root) / "sta_data"
+        timing_path.mkdir(exist_ok=True)
+        (timing_path / "slow_setup_data_finish").write_text("done\n", encoding="utf-8")
+        library_tcl, sta_data = str(library_path), str(timing_path)
+    return {
+        "libraryTcl": {"path": library_tcl}, "staData": {"path": sta_data},
+        "siteMap": ["unit", "core"], "removableFillers": ["FILL*", "DCAP*"],
+        "ecoParameters": {
+            "bufferListForHold": ["DELAY1", "BUF2"], "bufferListForSetup": ["BUF2", "BUF4"],
+            "cellClassifyRule": "cell_attribute", "cellMatchAttribute": "footprint",
+            "cellNominalSwapKeywords": ["ULVT", "LVT", "", "HVT"],
+            "cellNominalSizingPattern": "D([0-9]+)BWP", "gainThreshold": 0.001,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +93,12 @@ class NoDesignZooReferenceTest(unittest.TestCase):
             self.assertNotIn("get_object_name", "\n".join(code_lines),
                               f"{path} uses undocumented get_object_name")
 
+    def test_corpus_preflight_help_does_not_touch_the_real_corpus(self):
+        result = subprocess.run([sys.executable, str(CORPUS_PREFLIGHT), "--help"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("usage:", result.stdout)
+        self.assertNotIn("Foundation ROUND3", result.stdout)
+
 
 # ---------------------------------------------------------------------------
 # Step 1 requirement: PT scenario task compiles all four scenario names,
@@ -76,13 +106,13 @@ class NoDesignZooReferenceTest(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-def _scenario_inputs():
+def _scenario_inputs(scenarios=SCENARIOS):
     return {
         scenario: {
             "design": "top", "netlist": "/ws/netlist.v", "sdc": "/ws/constraints.sdc",
             "spef": f"/ws/{scenario}.spef",
         }
-        for scenario in adapters.REQUIRED_SCENARIOS
+        for scenario in scenarios
     }
 
 
@@ -111,17 +141,58 @@ class HashLibraryGlobTest(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "missing-input")
 
 
+class XtopSiteContextTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = _tmp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        for name in ("slow", "fast"):
+            directory = self.tmp / name
+            directory.mkdir()
+            (directory / f"{name}.lib").write_text(f"library({name}) {{}}\n", encoding="utf-8")
+
+    def _profile(self):
+        runtime = _xtop_context()
+        return {"xtopContext": {
+            "siteMap": runtime["siteMap"], "removableFillers": runtime["removableFillers"],
+            "scenarios": [
+                {"name": "slow_setup", "corner": "slow", "libertyGlob": str(self.tmp / "slow" / "*.lib")},
+                {"name": "fast_hold", "corner": "fast", "libertyGlob": str(self.tmp / "fast" / "*.lib")},
+            ],
+            "ecoParameters": runtime["ecoParameters"],
+        }}
+
+    def test_compiles_library_and_hashes_for_the_dynamic_scenario_set(self):
+        context = adapters.compile_xtop_site_context(self._profile(), SCENARIOS)
+        self.assertIn("create_scenario -corner slow -mode func slow_setup", context["libraryTcl"])
+        self.assertEqual(set(context["libraryFiles"]), set(SCENARIOS))
+
+    def test_mismatched_site_scenarios_are_refused(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_xtop_site_context(self._profile(), ("slow_setup", "unexpected"))
+        self.assertEqual(ctx.exception.code, "invalid-input")
+
+    def test_missing_context_field_is_refused_before_task_compilation(self):
+        context = _xtop_context()
+        del context["staData"]
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_xtop_operator_task(
+                {"namePrefix": "atcs_w01_r1_"}, "top", "tech.lef", "*.lef", "net.v", "design.def",
+                "/ws/run", context,
+            )
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+
 class PtScenarioTaskTest(unittest.TestCase):
-    def test_compiles_all_four_scenario_names(self):
-        query_spec = {"precision": "gba", "requiredScenarios": list(adapters.REQUIRED_SCENARIOS), "maxPaths": 500}
+    def test_compiles_the_declared_scenario_names(self):
+        query_spec = {"precision": "gba", "requiredScenarios": list(SCENARIOS), "maxPaths": 500}
         tasks = adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(), "/ws/reports")
-        self.assertEqual(set(tasks), set(adapters.REQUIRED_SCENARIOS))
+        self.assertEqual(tuple(tasks), SCENARIOS)
         for scenario, task in tasks.items():
             self.assertEqual(task["scenario"], scenario)
             self.assertIn(f'set env(SCENARIO) "{scenario}"', task["tcl"])
 
     def test_max_paths_and_nworst_come_from_query_spec(self):
-        query_spec = {"precision": "gba", "requiredScenarios": [], "maxPaths": 777, "nworst": 13}
+        query_spec = {"precision": "gba", "requiredScenarios": list(SCENARIOS), "maxPaths": 777, "nworst": 13}
         tasks = adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(), "/ws/reports")
         for task in tasks.values():
             self.assertEqual(task["env"]["MAX_PATHS"], "777")
@@ -130,14 +201,14 @@ class PtScenarioTaskTest(unittest.TestCase):
             self.assertIn('set env(NWORST) "13"', task["tcl"])
 
     def test_nworst_defaults_when_query_spec_omits_it(self):
-        query_spec = {"precision": "gba", "requiredScenarios": [], "maxPaths": 100}
+        query_spec = {"precision": "gba", "requiredScenarios": list(SCENARIOS), "maxPaths": 100}
         tasks = adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(), "/ws/reports")
         for task in tasks.values():
             self.assertEqual(task["env"]["NWORST"], str(adapters.DEFAULT_NWORST))
 
     def test_pba_mode_reflects_query_spec_precision(self):
         for precision, expected in (("gba", "0"), ("pba", "1")):
-            query_spec = {"precision": precision, "requiredScenarios": [], "maxPaths": 100}
+            query_spec = {"precision": precision, "requiredScenarios": list(SCENARIOS), "maxPaths": 100}
             tasks = adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(), "/ws/reports")
             for task in tasks.values():
                 self.assertEqual(task["env"]["PBA_MODE"], expected)
@@ -156,10 +227,10 @@ class PtScenarioTaskTest(unittest.TestCase):
         same either way -- this checks that computed argument is actually threaded
         into all three report calls, never silently dropped."""
         task = adapters.compile_pt_scenario_task(
-            adapters.REQUIRED_SCENARIOS[0],
-            _scenario_inputs()[adapters.REQUIRED_SCENARIOS[0]],
+            SCENARIOS[0],
+            _scenario_inputs()[SCENARIOS[0]],
             "/ws/reports",
-            {"precision": "pba", "requiredScenarios": [], "maxPaths": 100},
+            {"precision": "pba", "requiredScenarios": list(SCENARIOS), "maxPaths": 100},
         )
         tcl = task["tcl"]
         self.assertIn("set pba_mode_arg none", tcl)
@@ -170,17 +241,30 @@ class PtScenarioTaskTest(unittest.TestCase):
         )
 
     def test_missing_required_scenario_is_refused(self):
-        query_spec = {"precision": "gba", "requiredScenarios": [], "maxPaths": 100}
+        query_spec = {"precision": "gba", "requiredScenarios": list(SCENARIOS), "maxPaths": 100}
         inputs = _scenario_inputs()
-        del inputs[adapters.REQUIRED_SCENARIOS[0]]
+        del inputs[SCENARIOS[0]]
         with self.assertRaises(core.AtcsError) as ctx:
             adapters.compile_pt_scenario_tasks(query_spec, inputs, "/ws/reports")
         self.assertEqual(ctx.exception.code, "missing-input")
 
     def test_invalid_precision_is_refused(self):
-        query_spec = {"precision": "bogus", "requiredScenarios": [], "maxPaths": 100}
+        query_spec = {"precision": "bogus", "requiredScenarios": list(SCENARIOS), "maxPaths": 100}
         with self.assertRaises(core.AtcsError):
             adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(), "/ws/reports")
+
+    def test_a_second_site_scenario_set_uses_the_same_compiler(self):
+        scenarios = ("mode_a_rcmax", "mode_b_rcmin", "scan_slow")
+        query_spec = {"precision": "gba", "requiredScenarios": list(scenarios), "maxPaths": 100}
+        tasks = adapters.compile_pt_scenario_tasks(query_spec, _scenario_inputs(scenarios), "/ws/reports")
+        self.assertEqual(tuple(tasks), scenarios)
+
+    def test_an_extra_site_scenario_is_refused(self):
+        query_spec = {"precision": "gba", "requiredScenarios": list(SCENARIOS), "maxPaths": 100}
+        inputs = _scenario_inputs(SCENARIOS + ("unexpected",))
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_pt_scenario_tasks(query_spec, inputs, "/ws/reports")
+        self.assertEqual(ctx.exception.code, "missing-input")
 
 
 class PtQueryTaskTest(unittest.TestCase):
@@ -483,14 +567,33 @@ class XtopOperatorArgvTest(unittest.TestCase):
         manifest = {"namePrefix": "atcs_w01_r3_"}
         task = adapters.compile_xtop_operator_task(
             manifest, "top", "/pdk/tech.lef", "/pdk/cells/*.lef", "/ws/netlist.v", "/ws/design.def", "/ws/run",
+            _xtop_context(),
         )
         self.assertIn(manifest["namePrefix"], task["argv"])
         self.assertEqual(task["ecoPrefix"], manifest["namePrefix"] + "eco")
 
     def test_refuses_a_manifest_with_no_name_prefix(self):
         with self.assertRaises(core.AtcsError) as ctx:
-            adapters.compile_xtop_operator_task({}, "top", "lef", "glob", "net", "def", "/ws/run")
+            adapters.compile_xtop_operator_task({}, "top", "lef", "glob", "net", "def", "/ws/run", _xtop_context())
         self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_worker_and_replay_share_legality_timing_and_eco_settings(self):
+        context = _xtop_context()
+        operator = adapters.compile_xtop_operator_task(
+            {"namePrefix": "atcs_w01_r1_"}, "top", "tech.lef", "*.lef", "net.v", "design.def",
+            "/ws/operator", context,
+        )
+        replay = adapters.compile_xtop_replay_task(
+            "top", "tech.lef", "*.lef", "net.v", "design.def", [], "/ws/replay", context,
+        )
+        for token in (
+            "set_site_map $::XTOP_SITE_MAP", "set_removable_fillers $::XTOP_REMOVABLE_FILLERS",
+            "check_placement_readiness", "source $env(LIBRARY_TCL)",
+            "read_timing_data -data_dir $env(STA_DATA)", "eco_buffer_list_for_hold",
+            "eco_buffer_list_for_setup", "eco_cell_nominal_sizing_pattern", "eco_gain_threshold",
+        ):
+            self.assertIn(token, operator["tcl"])
+            self.assertIn(token, replay["tcl"])
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +613,8 @@ proc set_removable_fillers {args} {}
 proc import_designs {args} {}
 proc check_placement_readiness {args} {}
 proc read_timing_data {args} {}
+proc check_inst_reference_library {args} {}
+proc check_inst_timing_library {args} {}
 proc save_workspace {args} {}
 proc get_attribute {obj attr} {
     if {$attr eq "full_name"} { return $obj }
@@ -549,7 +654,7 @@ class TypedProcedureEditDomainTest(unittest.TestCase):
         manifest = {"namePrefix": "atcs_w01_r1_"}
         operator_task = adapters.compile_xtop_operator_task(
             manifest, "top", str(self.tmp / "tech.lef"), str(self.tmp / "cells.lef"),
-            str(self.tmp / "netlist.v"), str(self.tmp / "design.def"), str(self.run_root),
+            str(self.tmp / "netlist.v"), str(self.tmp / "design.def"), str(self.run_root), _xtop_context(self.tmp),
         )
         self.operator_tcl_path = self.run_root / "operator.tcl"
         self.operator_tcl_path.write_text(operator_task["tcl"], encoding="utf-8")
@@ -627,7 +732,7 @@ class DumpCellsTest(unittest.TestCase):
         manifest = {"namePrefix": "atcs_w01_r1_"}
         operator_task = adapters.compile_xtop_operator_task(
             manifest, "top", str(tmp / "tech.lef"), str(tmp / "cells.lef"),
-            str(tmp / "netlist.v"), str(tmp / "design.def"), str(run_root),
+            str(tmp / "netlist.v"), str(tmp / "design.def"), str(run_root), _xtop_context(tmp),
         )
         analysis_task = adapters.compile_xtop_analysis_manual_task(
             manifest, {"instances": [], "nets": []}, run_root / "operator.tcl", run_root / "ops.jsonl",
@@ -652,6 +757,7 @@ class XtopReplayWorkspaceTest(unittest.TestCase):
     def test_never_calls_open_workspace(self):
         task = adapters.compile_xtop_replay_task(
             "top", "/pdk/tech.lef", "/pdk/cells/*.lef", "/ws/netlist.v", "/ws/design.def", [], "/ws/run",
+            _xtop_context(),
         )
         code_lines = [line for line in task["tcl"].splitlines() if not line.strip().startswith("#")]
         self.assertFalse(any("open_workspace" in line for line in code_lines), task["tcl"])
@@ -662,6 +768,7 @@ class XtopReplayWorkspaceTest(unittest.TestCase):
     def test_env_carries_lef_and_design_inputs_not_a_current_db(self):
         task = adapters.compile_xtop_replay_task(
             "top", "/pdk/tech.lef", "/pdk/cells/*.lef", "/ws/netlist.v", "/ws/design.def", [], "/ws/run",
+            _xtop_context(),
         )
         self.assertEqual(task["env"]["TECH_LEF"], "/pdk/tech.lef")
         self.assertEqual(task["env"]["CELL_LEF_GLOB"], "/pdk/cells/*.lef")
@@ -688,6 +795,7 @@ class XtopReplayEndToEndTest(unittest.TestCase):
         task = adapters.compile_xtop_replay_task(
             "top", str(self.tmp / "tech.lef"), str(self.tmp / "cells.lef"),
             str(self.tmp / "netlist.v"), str(self.tmp / "design.def"), steps, str(self.run_root),
+            _xtop_context(self.tmp),
         )
         Path(task["stepsPath"]).write_text(task["stepsText"], encoding="utf-8")
         script_path = self.tmp / "replay-session.tcl"

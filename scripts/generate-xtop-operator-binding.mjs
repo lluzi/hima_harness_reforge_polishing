@@ -23,18 +23,25 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const environmentFile = await realpath(environmentArg);
 const bytes = await readFile(environmentFile);
 const evidence = interactiveEnvironmentEvidence.parse(JSON.parse(bytes.toString('utf8')));
-if (evidence.site !== 'linglong-swerv28' || evidence.toolId !== 'run-xtop-fix') {
-  throw new Error('the production generator accepts only linglong-swerv28 / run-xtop-fix evidence');
-}
+const target = {
+  'linglong-swerv28/run-xtop-fix': {
+    packId: 'xtop-timing-closure', mode: 'hybrid', environmentId: 'linglong-swerv28:xtop-operator-v5',
+  },
+  'linglong-atcs28/xtop-operator': {
+    packId: 'agentic-timing-closure-system', mode: 'interactive-only',
+    environmentId: 'linglong-atcs28:xtop-operator-v2',
+  },
+}[`${evidence.site}/${evidence.toolId}`];
+if (!target) throw new Error('unsupported Site / XTop Operator tool evidence');
 const writeRoot = path.posix.resolve(evidence.confinement.privateWriteRoot);
 if (environmentFile === writeRoot || environmentFile.startsWith(`${writeRoot}/`)) {
   throw new Error('the administrator environment evidence must stay outside the production write root');
 }
 
-const pack = loadPack(path.join(repo, 'packs'), 'xtop-timing-closure');
-const tool = pack.contract.tools.find((candidate) => candidate.id === 'run-xtop-fix');
-if (!tool?.interactive || tool.interactive.mode !== 'hybrid' || tool.interactive.argv?.[0] !== evidence.wrapper.path) {
-  throw new Error('the current retained XTop Pack has no matching hybrid production Operator startup');
+const pack = loadPack(path.join(repo, 'packs'), target.packId);
+const tool = pack.contract.tools.find((candidate) => candidate.id === evidence.toolId);
+if (!tool?.interactive || tool.interactive.mode !== target.mode || tool.interactive.argv?.[0] !== evidence.wrapper.path) {
+  throw new Error('the current retained XTop Pack has no matching production Operator startup');
 }
 const packDigest = pack.folder.digest(packDigestExcludes);
 const commandsDigest = interactiveCommandsDigest(tool);
@@ -47,11 +54,11 @@ const environmentSha256 = createHash('sha256').update(bytes).digest('hex');
 const document = {
   schema: 'hima-interactive-bindings/1',
   bindings: [{
-    id: `linglong-swerv28:xtop-operator-v5:${packDigest.slice(0, 16)}`,
-    site: 'linglong-swerv28', packDigest, toolId: tool.id,
+    id: `${target.environmentId}:${packDigest.slice(0, 16)}`,
+    site: evidence.site, packDigest, toolId: tool.id,
     adapter: 'hima-tcl-line-v1', adapterHash: BUILTIN_TCL_ADAPTER_DIGEST,
     commandsDigest,
-    environment: { id: 'linglong-swerv28:xtop-operator-v5', file: environmentFile, sha256: environmentSha256 },
+    environment: { id: target.environmentId, file: environmentFile, sha256: environmentSha256 },
     mutation: 'qualified',
   }],
 };

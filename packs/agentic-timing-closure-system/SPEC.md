@@ -65,6 +65,7 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 - Full-flow 资料必须共同支持项目约定的 Innovus 全阶段起点、阶段配置/脚本、物理与时序依赖、恢复和下游运行。完整性由声明的资料清单与实际可恢复性核验，不按目录名称或文件数量猜测。
 - `tc_lifecycle_available = 1` 当且仅当全套要求得到确认；否则为 0，并记录缺项，执行范围为 post-route-only。未知依赖不能视为存在。
 - 不额外开放“只有 CTS 数据所以回退 CTS”的第三种范围；不从 post-route DB 或零散资料构造用户未提供的早期流程。
+- 首个发布候选只允许标记为 **post-route-only qualified**。Full-flow APR 的 Foundation stage pre-step、配置和真实恢复链在单独资格通过前保持 unsupported；文件存在或本地模板通过不能升级这一能力声明。
 
 **状态及研究单位**：
 

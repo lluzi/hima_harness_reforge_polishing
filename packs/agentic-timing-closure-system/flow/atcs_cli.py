@@ -359,7 +359,7 @@ Known gaps still open (see also `adapters.py`'s own "Gaps")
   mergeCommitId, designStateId, sta_sources)` exactly once, after the
   per-scenario STA loop and the new design-state are both built.
   `sta_sources` is `{scenario: {"path","sha256"}}` for every
-  `verification.REQUIRED_SCENARIOS` entry -- the SPEF ref that scenario's
+  required scenario entry -- the SPEF ref that scenario's
   STA actually read, matching `record_refresh`'s own validated shape
   (`atcs/refresh.py`'s module docstring: "must name a `{path, sha256}`
   reference for every scenario").
@@ -540,6 +540,7 @@ def _paths(workspace):
         "pointers": state_dir / "pointers.json",
         "observation": state_dir / "observation.json",
         "observation_prev": state_dir / "observation-prev.json",
+        "xtop_context": state_dir / "xtop-context.json",
         "risk": state_dir / "risk.json",
         "experience": state_dir / "experience.json",
         "workers": state_dir / "workers.json",
@@ -811,11 +812,9 @@ def _load_scenarios_contract(scenarios_path):
     independent documents, `scenario-corners.json` for the corner and
     nothing at all for the library, which `_scenario_pt_inputs` never
     filled). Raises `InputError("invalid-input", ...)` when the document is
-    not a list, an entry's fields are not exactly the five above (each a
-    non-empty string), a scenario name repeats, or the set of names is not
-    *exactly* `adapters.REQUIRED_SCENARIOS` -- this Pack never observes,
-    times or pre-checks a subset (or an unrecognized superset) of the four
-    required scenarios silently.
+    not a non-empty list, an entry's fields are not exactly the five above (each a
+    non-empty string), or a scenario name repeats. This admitted Site document owns
+    the scenario names; each query and derived policy must agree with it exactly.
     """
     raw = _read_plain(scenarios_path)
     if not isinstance(raw, list) or not raw:
@@ -834,13 +833,24 @@ def _load_scenarios_contract(scenarios_path):
         if name in scenarios:
             raise InputError("invalid-input", f"duplicate scenario name in scenarios.json: {name!r}")
         scenarios[name] = entry
-    missing = [scenario for scenario in adapters.REQUIRED_SCENARIOS if scenario not in scenarios]
-    if missing:
-        raise InputError("invalid-input", f"scenarios.json is missing required scenario(s): {missing}")
-    extra = sorted(set(scenarios) - set(adapters.REQUIRED_SCENARIOS))
-    if extra:
-        raise InputError("invalid-input", f"scenarios.json names unrecognized scenario(s): {extra}")
     return scenarios
+
+
+def _required_scenarios_for_contract(query_spec, scenarios_contract):
+    """Return the query's ordered names after exact agreement with ``scenarios.json``."""
+    try:
+        required = core.required_scenarios((query_spec or {}).get("requiredScenarios"))
+    except core.AtcsError as exc:
+        raise InputError(exc.code, exc.detail) from exc
+    contract_names = tuple(scenarios_contract)
+    if set(required) != set(contract_names):
+        missing = [name for name in contract_names if name not in required]
+        extra = [name for name in required if name not in scenarios_contract]
+        raise InputError(
+            "invalid-input",
+            f"requiredScenarios disagrees with scenarios.json; missing={missing}, extra={extra}",
+        )
+    return required
 
 
 def _derive_scenario_corners(scenarios_contract):
@@ -849,6 +859,52 @@ def _derive_scenario_corners(scenarios_contract):
     agree with, instead of two independently-authored Site documents that could
     silently diverge."""
     return {scenario: entry["corner"] for scenario, entry in scenarios_contract.items()}
+
+
+def _workspace_context_path(workspace, value, label):
+    """Resolve a context ref and prove it remains inside this Campaign workspace."""
+    workspace = Path(workspace).resolve()
+    path = Path(value)
+    resolved = path.resolve() if path.is_absolute() else (workspace / path).resolve()
+    if not resolved.is_relative_to(workspace):
+        raise core.AtcsError("invalid-input", f"{label} is outside the Campaign workspace")
+    return resolved
+
+
+def _verified_xtop_context(workspace, design_state_id, site_profile):
+    """Load and re-hash the timing/library context immediately before XTop starts."""
+    workspace = Path(workspace)
+    context = _read_declared(_paths(workspace)["xtop_context"], "xtop-context")
+    if context.get("designStateId") != design_state_id:
+        raise core.AtcsError("stale-base", "XTop context is not bound to the current design state")
+    required_scenarios = core.required_scenarios(context.get("requiredScenarios"), "xtopContext.requiredScenarios")
+    current_site_context = adapters.compile_xtop_site_context(site_profile, required_scenarios)
+    if current_site_context is None:
+        raise core.AtcsError("missing-input", "the current Site declares no XTop context")
+    for key in ("libraryFiles", "siteMap", "removableFillers", "ecoParameters"):
+        if context.get(key) != current_site_context.get(key):
+            raise core.AtcsError("identity-mismatch", f"XTop context {key} differs from the current Site")
+    library_ref = context.get("libraryTcl") or {}
+    timing_ref = context.get("staData") or {}
+    library_path = _workspace_context_path(workspace, library_ref.get("path", ""), "libraryTcl.path")
+    timing_path = _workspace_context_path(workspace, timing_ref.get("path", ""), "staData.path")
+    if not library_path.is_file() or core.file_sha256(library_path) != library_ref.get("sha256"):
+        raise core.AtcsError("identity-mismatch", "XTop library Tcl is missing or changed")
+    if library_path.read_text(encoding="utf-8") != current_site_context["libraryTcl"]:
+        raise core.AtcsError("identity-mismatch", "XTop library Tcl differs from the current Site")
+    if not timing_path.is_dir() or core.tree_digest(timing_path) != timing_ref.get("digest"):
+        raise core.AtcsError("identity-mismatch", "XTop STA data is missing or changed")
+    for scenario, refs in (context.get("libraryFiles") or {}).items():
+        if not isinstance(refs, list) or not refs:
+            raise core.AtcsError("missing-input", f"XTop library identity is missing for {scenario}")
+        for ref in refs:
+            path = Path(ref.get("path", ""))
+            if not path.is_file() or core.file_sha256(path) != ref.get("sha256"):
+                raise core.AtcsError("identity-mismatch", f"XTop library file is missing or changed: {path}")
+    verified = dict(context)
+    verified["libraryTcl"] = {**library_ref, "path": str(library_path)}
+    verified["staData"] = {**timing_ref, "path": str(timing_path)}
+    return verified
 
 
 def _scenario_pt_inputs(workspace, working_state, scenarios_contract, scenario):
@@ -990,6 +1046,7 @@ def _cmd_observe(workspace, args):
     query_spec = dict(_read_plain(query_spec_path))
     site_profile = _read_plain(site_profile_path)
     scenarios_contract = _load_scenarios_contract(scenarios_path)
+    required_scenarios = _required_scenarios_for_contract(query_spec, scenarios_contract)
     workspace = Path(workspace)
     query_spec = _apply_max_paths_cap(query_spec, max_paths_raw, workspace / "research" / "observe" / "max-paths.json")
     working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
@@ -999,10 +1056,19 @@ def _cmd_observe(workspace, args):
     # silently overwrite a previous generation's own raw PT reports at a shared
     # scenario-named path.
     report_root = _next_evidence_generation_dir(workspace / "research" / "observe")
+    xtop_site_context = adapters.compile_xtop_site_context(site_profile, required_scenarios)
+    library_tcl_path = report_root / "xtop-library.tcl"
+    sta_data_path = report_root / "sta_data"
+    if xtop_site_context is not None:
+        library_tcl_path.parent.mkdir(parents=True, exist_ok=True)
+        library_tcl_path.write_text(xtop_site_context["libraryTcl"], encoding="utf-8")
     scenario_inputs = {
         scenario: _scenario_pt_inputs(workspace, working_state, scenarios_contract, scenario)
-        for scenario in adapters.REQUIRED_SCENARIOS
+        for scenario in required_scenarios
     }
+    if xtop_site_context is not None:
+        for inputs in scenario_inputs.values():
+            inputs["staData"] = str(sta_data_path)
     tasks = adapters.compile_pt_scenario_tasks(query_spec, scenario_inputs, str(report_root))
     scenario_source_refs = {}
     for scenario, task in tasks.items():
@@ -1019,6 +1085,29 @@ def _cmd_observe(workspace, args):
             "globalTiming": task["reports"]["global_timing.rpt"], "setupPaths": task["reports"]["setup.rpt"],
             "holdPaths": task["reports"]["hold.rpt"], "checkTiming": task["reports"]["check_timing.rpt"],
         }
+
+    if xtop_site_context is not None:
+        missing_timing = [
+            scenario for scenario in required_scenarios
+            if not any(sta_data_path.glob(f"{scenario}_data_finish*"))
+        ]
+        if missing_timing:
+            raise core.AtcsError(
+                "missing-input", f"PrimeTime produced no XTop timing-data finish file for {missing_timing}",
+            )
+        context_body = {
+            "designStateId": working_state["id"],
+            "requiredScenarios": list(required_scenarios),
+            "libraryTcl": {
+                "path": _relpath(library_tcl_path, workspace), "sha256": core.file_sha256(library_tcl_path),
+            },
+            "staData": {"path": _relpath(sta_data_path, workspace), "digest": core.tree_digest(sta_data_path)},
+            "libraryFiles": xtop_site_context["libraryFiles"],
+            "siteMap": xtop_site_context["siteMap"],
+            "removableFillers": xtop_site_context["removableFillers"],
+            "ecoParameters": xtop_site_context["ecoParameters"],
+        }
+        _canonical_write(_paths(workspace)["xtop_context"], core.stamp("xtop-context", context_body))
 
     source_refs = {"designStateId": working_state["id"], "scenarios": scenario_source_refs}
     body = state.capture(source_refs, query_spec)
@@ -1116,6 +1205,7 @@ def _cmd_prepare_workers(workspace, args):
     def_path = None
     if base_state.get("def"):
         def_path = workspace / base_state["def"]["path"]
+    xtop_context = _verified_xtop_context(workspace, base_state["id"], eda_profile)
 
     index = {}
     for slot in workspaces.TASK_IDS:
@@ -1134,7 +1224,7 @@ def _cmd_prepare_workers(workspace, args):
         ops_log_path = session_dir / "ops.jsonl"
         operator_task = adapters.compile_xtop_operator_task(
             manifest, eda_profile["design"], eda_profile["techLef"], eda_profile["cellLefGlob"],
-            str(netlist_path), str(def_path) if def_path else "", str(session_dir),
+            str(netlist_path), str(def_path) if def_path else "", str(session_dir), xtop_context,
         )
         operator_tcl_path = Path(operator_task["tclPath"])
         operator_tcl_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1149,6 +1239,7 @@ def _cmd_prepare_workers(workspace, args):
         index[slot] = {
             "workPackageId": validated["id"], "manifestId": manifest["id"], "root": manifest["root"],
             "namePrefix": manifest["namePrefix"], "sessionTcl": str(analysis_tcl_path), "opsLog": str(ops_log_path),
+            "sessionTclSha256": core.file_sha256(analysis_tcl_path),
             # G2: the full stamped artifacts, not just their ids -- `capture-contribution
             # <slot>` composes `base_ref` from these directly, so it needs no argv path
             # of its own beyond the slot name.
@@ -1434,9 +1525,11 @@ def _cmd_replay_prepare(workspace, args):
             raise InputError("invalid-input", f"site capabilities is missing {key!r}")
     netlist_path = workspace / base_state["netlist"]["path"]
     def_path = workspace / base_state["def"]["path"] if base_state.get("def") else None
+    xtop_context = _verified_xtop_context(workspace, base_state["id"], site_profile)
     task = adapters.compile_xtop_replay_task(
         site_profile["design"], site_profile["techLef"], site_profile["cellLefGlob"],
         str(netlist_path), str(def_path) if def_path else "", request.get("steps", []), output_root,
+        xtop_context,
     )
     Path(task["stepsPath"]).parent.mkdir(parents=True, exist_ok=True)
     Path(task["stepsPath"]).write_text(task["stepsText"], encoding="utf-8")
@@ -1526,7 +1619,7 @@ def _cmd_presta(workspace, args):
     collected = _read_plain(_paths(workspace)["contributions_collected"])
     merge_commit = integration.seal_batch(integration_state, request, facts, collected["contributions"])
 
-    scenario = adapters.REQUIRED_SCENARIOS[0]
+    scenario = next(iter(scenarios_contract))
     scenario_entry = scenarios_contract[scenario]
     corner = scenario_entry["corner"]
     spef_ref = base_state.get("spef", {}).get(corner)
@@ -2079,7 +2172,7 @@ def _cmd_sta(workspace, args):
     before `finalIdentityErrorCount` can be a known count.
 
     N1 (final fix batch C, round-2 prior observation): once every scenario's
-    STA has run, a SINGLE combined observation covering all `REQUIRED_SCENARIOS`
+    STA has run, a SINGLE combined observation covering all required scenarios
     (the same shape `_cmd_observe` itself captures) is persisted, write-once, at
     `observations/<candidateStateId>.json` -- before this fix, `sta` only ever
     captured per-scenario mini-observations into `sta_receipts[...]
@@ -2094,6 +2187,7 @@ def _cmd_sta(workspace, args):
     workspace = Path(workspace)
     query_spec = dict(_read_plain(query_spec_path))
     scenarios_contract = _load_scenarios_contract(scenarios_path)
+    required_scenarios = _required_scenarios_for_contract(query_spec, scenarios_contract)
     scenario_corners = _derive_scenario_corners(scenarios_contract)
     base_state = _read_declared(base_design_state_path, "design-state")
     site_profile = _read_plain(site_profile_path)
@@ -2160,10 +2254,10 @@ def _cmd_sta(workspace, args):
     scenario_inputs_by_scenario = {}
     # N1 (final fix batch C): every scenario's own report paths, collected as the
     # loop below runs, so a SINGLE combined observation covering all
-    # `REQUIRED_SCENARIOS` (mirroring `_cmd_observe`'s own `source_refs` shape) can
+    # required scenarios (mirroring `_cmd_observe`'s own `source_refs` shape) can
     # be captured and persisted once the loop finishes -- see the write below.
     combined_scenario_source_refs = {}
-    for scenario in adapters.REQUIRED_SCENARIOS:
+    for scenario in required_scenarios:
         corner = scenario_corners[scenario]
         spef_ref = extract["spef"].get(corner)
         if not spef_ref:
@@ -2232,7 +2326,7 @@ def _cmd_sta(workspace, args):
     _canonical_write(workspace / "implementations" / merge_id / "design-state.json", design_state)
 
     # N1 (final fix batch C): a combined, candidate-labelled observation covering
-    # every REQUIRED_SCENARIOS entry -- the same shape `_cmd_observe` itself
+    # every required-scenario entry -- the same shape `_cmd_observe` itself
     # captures and persists (`{"designStateId", "scenarios": {...}}` through
     # `state.capture`) -- is captured here and persisted, write-once, at
     # `observations/<candidateStateId>.json`. Before this fix, `sta` only ever
@@ -2254,14 +2348,17 @@ def _cmd_sta(workspace, args):
         _canonical_write(combined_observation_path, combined_observation)
 
     # Called exactly once here: extraction (`extract.json`, already read
-    # above) and all `REQUIRED_SCENARIOS`' STA (the loop above) have both
+    # above) and all required scenarios' STA (the loop above) have both
     # just completed for this implementation. `sta_sources` is one
     # `{"path","sha256"}` ref per required scenario -- the SPEF that
     # scenario's STA actually read (`atcs.refresh.record_refresh`'s own
-    # binding shape: a dict keyed by `verification.REQUIRED_SCENARIOS`).
+    # binding shape: a dict keyed by the analysis contract's required scenarios).
     merge_commit = _load_merge_commit_like(workspace, implement)
     from atcs import refresh  # local import: keeps this dispatcher loadable if this module is ever absent
-    refresh.record_refresh(str(_paths(workspace)["refresh_ledger"]), merge_commit["id"], design_state["id"], sta_sources)
+    refresh.record_refresh(
+        str(_paths(workspace)["refresh_ledger"]), merge_commit["id"], design_state["id"],
+        sta_sources, required_scenarios,
+    )
 
     # I5 (final review, fixed count): the PARENT's own persisted observation (the one
     # whose designStateId equals base_state["id"], the same lookup evaluate itself
@@ -3160,8 +3257,8 @@ def _cmd_record_experience(workspace, args):
     return _paths(workspace)["experience"], body
 
 
-def _baseline_min_wns(observation):
-    """`min(setup, hold)` WNS across every `adapters.REQUIRED_SCENARIOS` entry, or `None` if incomplete.
+def _baseline_min_wns(observation, required_scenarios):
+    """`min(setup, hold)` WNS across the policy's scenarios, or `None` if incomplete.
 
     Mirrors `verification.assemble`'s own fail-closed "final WNS" rule
     (module docstring step 3) at the *baseline*, before any candidate
@@ -3172,7 +3269,7 @@ def _baseline_min_wns(observation):
     scenarios = observation.get("scenarios", {})
     missing = set(observation.get("missingScenarios", []))
     values = []
-    for scenario in adapters.REQUIRED_SCENARIOS:
+    for scenario in required_scenarios:
         if scenario in missing or scenario not in scenarios:
             return None
         entry = scenarios[scenario]
@@ -3230,7 +3327,7 @@ def _cmd_policy(workspace, args):
 
     scenarios_contract = _load_scenarios_contract(contract_dir / "scenarios.json")
     scenario_corners = _derive_scenario_corners(scenarios_contract)
-    required_scenarios = list(adapters.REQUIRED_SCENARIOS)
+    required_scenarios = list(scenarios_contract)
     if "scenarioCorners" in static_policy and static_policy["scenarioCorners"] != scenario_corners:
         raise core.AtcsError(
             "invalid-policy",
@@ -3253,7 +3350,7 @@ def _cmd_policy(workspace, args):
     baseline_observation = _read_declared(_paths(workspace)["observation"], "observation-set")
     if baseline_observation.get("designStateId") != baseline["id"]:
         raise core.AtcsError("stale-base", "baseline observation is not bound to the baseline design-state")
-    baseline_min_wns = _baseline_min_wns(baseline_observation)
+    baseline_min_wns = _baseline_min_wns(baseline_observation, required_scenarios)
     if baseline_min_wns is None:
         raise core.AtcsError(
             "missing-input", "baseline observation does not cover every required scenario's setup/hold WNS"

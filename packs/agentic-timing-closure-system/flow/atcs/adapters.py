@@ -128,13 +128,6 @@ from . import integration as integration_module
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
-# Final review (mechanical dedupe): both re-exported from `atcs.core`, the one shared
-# source, rather than each defining its own copy (`REQUIRED_SCENARIOS` used to also be
-# defined in `atcs.verification`; `_UNSAFE_TCL_CHARS` used to also be defined, without a
-# backslash, in `atcs.integration`, which defines it with one -- `core.UNSAFE_TCL_CHARS`
-# always includes it).
-REQUIRED_SCENARIOS = core.REQUIRED_SCENARIOS
-
 DEFAULT_NWORST = 20
 
 _UNSAFE_TCL_CHARS = core.UNSAFE_TCL_CHARS
@@ -223,7 +216,10 @@ def tcl_list_literal(values, label):
     I7 (final review): the whole list is one brace-quoted group, so each entry is
     checked with `allow_brackets=True` -- a bus-bit name (`bus[3]`) is admitted.
     """
-    safe_values = [tcl_safe(value, f"{label} entry", allow_brackets=True) for value in values]
+    safe_values = [
+        "{}" if value == "" else tcl_safe(value, f"{label} entry", allow_brackets=True)
+        for value in values
+    ]
     return "{" + " ".join(safe_values) + "}"
 
 
@@ -325,6 +321,91 @@ def hash_library_glob(lib_glob, label="libGlob"):
     return [{"path": path, "sha256": core.file_sha256(Path(path))} for path in matches]
 
 
+_XTOP_ECO_FIELDS = {
+    "bufferListForHold", "bufferListForSetup", "cellClassifyRule", "cellMatchAttribute",
+    "cellNominalSwapKeywords", "cellNominalSizingPattern", "gainThreshold",
+}
+
+
+def compile_xtop_site_context(site_profile, required_scenarios):
+    """Validate the Site-owned XTop legality/timing configuration.
+
+    Returns ``None`` only when the Site declares no ``xtopContext`` at all. That keeps ordinary PT
+    observation usable, while worker/replay preparation still fails closed because no verified
+    ``state/xtop-context.json`` can exist. A declared context must be complete and must name exactly
+    the admitted analysis-contract scenarios.
+    """
+    config = (site_profile or {}).get("xtopContext")
+    if config is None:
+        return None
+    if not isinstance(config, dict):
+        raise core.AtcsError("invalid-input", "siteProfile.xtopContext must be an object")
+    required = core.required_scenarios(list(required_scenarios))
+    site_map = config.get("siteMap")
+    fillers = config.get("removableFillers")
+    scenarios = config.get("scenarios")
+    eco = config.get("ecoParameters")
+    if not isinstance(site_map, list) or not site_map or not all(isinstance(x, str) and x for x in site_map):
+        raise core.AtcsError("missing-input", "xtopContext.siteMap must be a non-empty string list")
+    if not isinstance(fillers, list) or not fillers or not all(isinstance(x, str) and x for x in fillers):
+        raise core.AtcsError("missing-input", "xtopContext.removableFillers must be a non-empty string list")
+    if not isinstance(scenarios, list) or not scenarios:
+        raise core.AtcsError("missing-input", "xtopContext.scenarios must be a non-empty list")
+    if not isinstance(eco, dict) or set(eco) != _XTOP_ECO_FIELDS:
+        raise core.AtcsError("missing-input", f"xtopContext.ecoParameters must have exactly {sorted(_XTOP_ECO_FIELDS)}")
+
+    scenario_map = {}
+    library_files = {}
+    lines = []
+    corners = []
+    for row in scenarios:
+        if not isinstance(row, dict) or set(row) != {"name", "corner", "libertyGlob"}:
+            raise core.AtcsError("invalid-input", "each xtopContext.scenarios entry must have name, corner, libertyGlob")
+        if not all(isinstance(row[key], str) and row[key] for key in row):
+            raise core.AtcsError("invalid-input", "XTop scenario fields must be non-empty strings")
+        name = row["name"]
+        if name in scenario_map:
+            raise core.AtcsError("invalid-input", f"duplicate XTop scenario {name!r}")
+        scenario_map[name] = row
+        library_files[name] = hash_library_glob(row["libertyGlob"], label=f"XTop scenario {name} libertyGlob")
+        corner = row["corner"]
+        if corner not in corners:
+            corners.append(corner)
+            liberty_glob = tcl_quote(row["libertyGlob"])
+            lines.extend([
+                f"create_corner {tcl_safe(corner, 'XTop corner')}",
+                f"set libs [lsort [glob -nocomplain \"{liberty_glob}\"]]",
+                f"if {{[llength $libs] == 0}} {{ error \"no Liberty for {tcl_quote(corner)}\" }}",
+                f"link_timing_library -corner {tcl_safe(corner, 'XTop corner')} -search_type min_max $libs",
+            ])
+    if set(scenario_map) != set(required):
+        raise core.AtcsError(
+            "invalid-input",
+            f"xtopContext scenario mismatch; required={list(required)}, configured={list(scenario_map)}",
+        )
+    lines.append("create_mode func")
+    for name in required:
+        corner = scenario_map[name]["corner"]
+        lines.append(
+            f"create_scenario -corner {tcl_safe(corner, 'XTop corner')} -mode func {tcl_safe(name, 'XTop scenario')}"
+        )
+
+    list_fields = ("bufferListForHold", "bufferListForSetup", "cellNominalSwapKeywords")
+    for field in list_fields:
+        value = eco.get(field)
+        if not isinstance(value, list) or not value or not all(isinstance(x, str) for x in value):
+            raise core.AtcsError("invalid-input", f"xtopContext.ecoParameters.{field} must be a non-empty string list")
+    for field in ("cellClassifyRule", "cellMatchAttribute", "cellNominalSizingPattern"):
+        if not isinstance(eco.get(field), str) or not eco[field]:
+            raise core.AtcsError("invalid-input", f"xtopContext.ecoParameters.{field} must be a non-empty string")
+    if isinstance(eco.get("gainThreshold"), bool) or not isinstance(eco.get("gainThreshold"), (int, float)):
+        raise core.AtcsError("invalid-input", "xtopContext.ecoParameters.gainThreshold must be numeric")
+    return {
+        "libraryTcl": "\n".join(lines) + "\n", "libraryFiles": library_files,
+        "siteMap": list(site_map), "removableFillers": list(fillers), "ecoParameters": dict(eco),
+    }
+
+
 # ---------------------------------------------------------------------------
 # PrimeTime: scenario refresh (`observe`/`sta`)
 # ---------------------------------------------------------------------------
@@ -368,7 +449,7 @@ def compile_pt_scenario_task(scenario, inputs, report_root, query_spec):
     if inputs.get("driverLibrary") and inputs.get("originalDriverLibrary"):
         env["DRIVER_LIBRARY"] = inputs["driverLibrary"]
         env["ORIGINAL_DRIVER_LIBRARY"] = inputs["originalDriverLibrary"]
-    if pba_mode and inputs.get("staData"):
+    if inputs.get("staData"):
         env["STA_DATA"] = inputs["staData"]
 
     tcl = compile_task("pt-scenario.tcl", env=env)
@@ -381,16 +462,18 @@ def compile_pt_scenario_task(scenario, inputs, report_root, query_spec):
 
 
 def compile_pt_scenario_tasks(query_spec, scenario_inputs, report_root):
-    """One `compile_pt_scenario_task` per `REQUIRED_SCENARIOS` name.
-
-    Raises `AtcsError("missing-input", ...)` naming any required scenario
-    absent from `scenario_inputs` -- this Pack never observes a subset of
-    the four required scenarios silently.
-    """
+    """Compile exactly the scenario set declared by ``query_spec``."""
+    required = core.required_scenarios((query_spec or {}).get("requiredScenarios"))
+    if not isinstance(scenario_inputs, dict):
+        raise core.AtcsError("missing-input", "scenario_inputs must be an object keyed by scenario")
+    missing = [scenario for scenario in required if scenario not in scenario_inputs]
+    extra = sorted(set(scenario_inputs) - set(required))
+    if missing or extra:
+        raise core.AtcsError(
+            "missing-input", f"scenario input mismatch; missing={missing}, extra={extra}",
+        )
     tasks = {}
-    for scenario in REQUIRED_SCENARIOS:
-        if scenario not in scenario_inputs:
-            raise core.AtcsError("missing-input", f"scenario inputs are missing required scenario {scenario!r}")
+    for scenario in required:
         tasks[scenario] = compile_pt_scenario_task(scenario, scenario_inputs[scenario], report_root, query_spec)
     return tasks
 
@@ -848,8 +931,41 @@ def compile_innovus_eco_task(merge_commit, current_db_path, design, output_root)
 # ---------------------------------------------------------------------------
 
 
+def _xtop_task_context(xtop_context):
+    """Return the shared worker/replay env and globals from one verified receipt."""
+    context = xtop_context if isinstance(xtop_context, dict) else {}
+    library = context.get("libraryTcl") or {}
+    timing = context.get("staData") or {}
+    eco = context.get("ecoParameters") or {}
+    for label, ref in (("libraryTcl", library), ("staData", timing)):
+        if not isinstance(ref, dict) or not isinstance(ref.get("path"), str) or not ref["path"]:
+            raise core.AtcsError("missing-input", f"xtop context {label}.path")
+    site_map = context.get("siteMap")
+    fillers = context.get("removableFillers")
+    if not isinstance(site_map, list) or not site_map:
+        raise core.AtcsError("missing-input", "xtop context siteMap")
+    if not isinstance(fillers, list) or not fillers:
+        raise core.AtcsError("missing-input", "xtop context removableFillers")
+    if set(eco) != _XTOP_ECO_FIELDS:
+        raise core.AtcsError("missing-input", "xtop context ecoParameters")
+    env = {
+        "LIBRARY_TCL": library["path"], "STA_DATA": timing["path"],
+        "ECO_CELL_CLASSIFY_RULE": eco["cellClassifyRule"],
+        "ECO_CELL_MATCH_ATTRIBUTE": eco["cellMatchAttribute"],
+        "ECO_CELL_NOMINAL_SIZING_PATTERN": eco["cellNominalSizingPattern"],
+        "ECO_GAIN_THRESHOLD": str(eco["gainThreshold"]),
+    }
+    globals_ = {
+        "XTOP_SITE_MAP": site_map, "XTOP_REMOVABLE_FILLERS": fillers,
+        "XTOP_ECO_BUFFER_LIST_FOR_HOLD": eco["bufferListForHold"],
+        "XTOP_ECO_BUFFER_LIST_FOR_SETUP": eco["bufferListForSetup"],
+        "XTOP_ECO_CELL_NOMINAL_SWAP_KEYWORDS": eco["cellNominalSwapKeywords"],
+    }
+    return env, globals_
+
+
 def compile_xtop_operator_task(workspace_manifest, design, tech_lef, cell_lef_glob, netlist, def_path,
-                                output_root, sta_data=None):
+                                output_root, xtop_context):
     """One `xtop-operator.tcl` typed-session startup task.
 
     `argv` always carries `workspace_manifest["namePrefix"]` (this task's
@@ -867,10 +983,10 @@ def compile_xtop_operator_task(workspace_manifest, design, tech_lef, cell_lef_gl
         "NETLIST": netlist, "DEF": def_path, "RUN_ROOT": str(output_root),
         "ECO_PREFIX": eco_prefix, "NAME_PREFIX": name_prefix,
     }
-    if sta_data:
-        env["STA_DATA"] = sta_data
+    context_env, context_globals = _xtop_task_context(xtop_context)
+    env.update(context_env)
     tcl_path = output_root / "operator.tcl"
-    tcl = compile_task("xtop-operator.tcl", env=env)
+    tcl = compile_task("xtop-operator.tcl", env=env, globals_=context_globals)
     argv = ["xtop", "-f", str(tcl_path), name_prefix]
     return {"tcl": tcl, "env": env, "tclPath": str(tcl_path), "argv": argv, "ecoPrefix": eco_prefix}
 
@@ -894,7 +1010,8 @@ def compile_xtop_analysis_manual_task(workspace_manifest, edit_domain, operator_
     return {"tcl": tcl, "env": env, "editDomain": {"instances": instances, "nets": nets}}
 
 
-def compile_xtop_replay_task(design, tech_lef, cell_lef_glob, netlist, def_path, steps, output_root):
+def compile_xtop_replay_task(design, tech_lef, cell_lef_glob, netlist, def_path, steps, output_root,
+                             xtop_context):
     """One `xtop-replay.tcl` batch-replay task for `steps` (a `replay-request.steps` list).
 
     I3 (final review, XTop replay source): builds its own fresh XTop workspace
@@ -932,7 +1049,9 @@ def compile_xtop_replay_task(design, tech_lef, cell_lef_glob, netlist, def_path,
         "NETLIST": netlist, "DEF": def_path if def_path else "",
         "STEPS_TCL": str(steps_path), "DUMP_DIR": str(dump_dir), "RECEIPTS_LOG": str(receipts_log),
     }
-    tcl = compile_task("xtop-replay.tcl", env=env)
+    context_env, context_globals = _xtop_task_context(xtop_context)
+    env.update(context_env)
+    tcl = compile_task("xtop-replay.tcl", env=env, globals_=context_globals)
     return {
         "tcl": tcl, "env": env, "stepsPath": str(steps_path), "stepsText": steps_text,
         "dumpDir": str(dump_dir), "receiptsLog": str(receipts_log),

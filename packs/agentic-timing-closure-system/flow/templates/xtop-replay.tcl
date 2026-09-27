@@ -17,26 +17,39 @@
 # Required env vars: DESIGN TECH_LEF CELL_LEF_GLOB NETLIST DEF STEPS_TCL
 #                     DUMP_DIR RECEIPTS_LOG
 ########################################################################
-foreach required {DESIGN TECH_LEF CELL_LEF_GLOB NETLIST DEF STEPS_TCL DUMP_DIR RECEIPTS_LOG} {
+foreach required {DESIGN TECH_LEF CELL_LEF_GLOB NETLIST DEF STEPS_TCL DUMP_DIR RECEIPTS_LOG LIBRARY_TCL STA_DATA ECO_CELL_CLASSIFY_RULE ECO_CELL_MATCH_ATTRIBUTE ECO_CELL_NOMINAL_SIZING_PATTERN ECO_GAIN_THRESHOLD} {
     if {![info exists env($required)]} { error "$required is required" }
 }
 set design $env(DESIGN)
 set cell_lefs [lsort [glob -nocomplain $env(CELL_LEF_GLOB)]]
 set lef_files [linsert $cell_lefs 0 $env(TECH_LEF)]
-foreach file [concat [list $env(NETLIST) $env(DEF)] $lef_files] {
+foreach file [concat [list $env(NETLIST) $env(DEF) $env(LIBRARY_TCL)] $lef_files] {
     if {![file readable $file]} { error "required XTop input is not readable: $file" }
 }
 if {![file readable $env(STEPS_TCL)]} { error "STEPS_TCL is not readable: $env(STEPS_TCL)" }
+if {![file isdirectory $env(STA_DATA)]} { error "PrimeTime timing-data directory is missing" }
 file mkdir $env(DUMP_DIR)
 
 set_parameter max_thread_number 8
 create_workspace ${design}_replay -overwrite
 link_reference_library -format lef $lef_files
 create_design_definition -verilogs $env(NETLIST) -def $env(DEF)
-set_site_map {unit core}
-set_removable_fillers {FILL* DCAP*}
+set_site_map $::XTOP_SITE_MAP
+set_removable_fillers $::XTOP_REMOVABLE_FILLERS
 import_designs
 check_placement_readiness
+source $env(LIBRARY_TCL)
+read_timing_data -data_dir $env(STA_DATA)
+check_inst_reference_library
+check_inst_timing_library
+set_parameter eco_new_object_prefix atcs_replay_eco
+set_parameter eco_buffer_list_for_hold $::XTOP_ECO_BUFFER_LIST_FOR_HOLD
+set_parameter eco_buffer_list_for_setup $::XTOP_ECO_BUFFER_LIST_FOR_SETUP
+set_parameter eco_cell_classify_rule $env(ECO_CELL_CLASSIFY_RULE)
+set_parameter eco_cell_match_attribute $env(ECO_CELL_MATCH_ATTRIBUTE)
+set_parameter eco_cell_nominal_swap_keywords $::XTOP_ECO_CELL_NOMINAL_SWAP_KEYWORDS
+set_parameter eco_cell_nominal_sizing_pattern $env(ECO_CELL_NOMINAL_SIZING_PATTERN)
+set_parameter eco_gain_threshold $env(ECO_GAIN_THRESHOLD)
 
 proc atcs_dump_cells {path} {
     # Same documented get_cells/foreach_in_collection/get_attribute pattern

@@ -5,8 +5,9 @@ against the same Foundation reference used by the frozen `linglong-swerv28` Site
 (`/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation`), read-only. Nothing in this
 directory is installed on the server by writing these files to the repository: `site.yml`/`permit.yml`
 are the policy this Site's administrator publishes into a Harness home's `hima/sites/` as
-`linglong-atcs28.yml` (with `permit.yml` beside it), and `atcs-xtop-operator.sh` is a wrapper
-**template** the administrator reviews, completes and installs by hand (see below).
+`linglong-atcs28.yml` (with `permit.yml` beside it). `atcs-xtop-operator.sh` is the imported v1
+template; `atcs-xtop-operator-v2.sh` is the ATCS-04 candidate the administrator reviews, completes
+and installs as a new path after local and L4 qualification (see below).
 
 ## Inputs this Site binds
 
@@ -29,7 +30,10 @@ real documents into it. `sites/linglong-atcs28/inputs/` holds a template for eac
   so nothing here changes for it.
 - `inputs/siteCapabilities.json` — `edaShell`, `design`, `techLef`, `cellLefGlob`, `pgVerification:
   false` (this Site declares no PG-local-adjust capability, so `pg_local_adjust` stays inadmissible in
-  every work package this Campaign plans).
+  every work package this Campaign plans), plus `xtopContext`. The latter binds the four scenario
+  names to XTop Liberty globs and declares the shared site map, removable fillers and ECO parameters.
+  `observe` hashes those libraries, exports current-state PT timing data and writes one
+  `state/xtop-context.json`; worker and replay re-hash the same receipt immediately before XTop.
 - `inputs/analysisContract/` — a read-only directory, one JSON document per concern, at these fixed
   names (**final review**: every file the Pack actually reads at run time, listed here in full):
   - `policy.json` — the static acceptance terms only: `allowDegradedWorking` (bool), `degradeLimitNs`
@@ -88,30 +92,29 @@ real documents into it. `sites/linglong-atcs28/inputs/` holds a template for eac
   `/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/` (confirmed present on the server;
   `techlib/tsmc28`'s own tree does not hold this design's staged tech/cell LEFs, confirmed absent by a
   deep read-only search). `permit.yml`'s `allowedReadRoots` now names it. This was never a container
-  *access* gap in the strict sense — `atcs-xtop-operator.sh` mounts the whole of `/data/eda` read-only
+  *access* gap in the strict sense — the XTop wrapper mounts the whole of `/data/eda` read-only
   into the container regardless of `allowedReadRoots` (see "Wrapper safety checks" below), so the tool
   could always physically reach the path; `allowedReadRoots` is instead the Harness-level
   least-privilege/audit declaration of which paths this Site's own tooling is *permitted* to name, and
   it previously understated that scope for a path this Pack genuinely, routinely needs.
-- **The wrapper template's two placeholders are unfilled.** `atcs-xtop-operator.sh` ships with
-  `<REPLACE-WITH-QUALIFIED-IMAGE-DIGEST>` and `<REPLACE-WITH-QUALIFIED-ATCS-CLI-SHA256>` literally in
+- **The v2 wrapper template's three placeholders are unfilled.** `atcs-xtop-operator-v2.sh` ships with
+  image, dispatcher SHA-256 and complete flow-digest placeholders literally in
   it. No qualification of this Pack's XTop Operator tool against this Site has happened yet, so no real
   hash exists to fill in — do not invent one. Follow "Installing the wrapper" below.
-- **The admin binding generator does not yet accept this Site or Pack.**
-  `scripts/generate-xtop-operator-binding.mjs` hard-refuses any `site`/`toolId` other than
-  `linglong-swerv28` / `run-xtop-fix` (checked directly in its source, not assumed). Generating a real
-  `interactive-bindings.json` entry for `linglong-atcs28` / `xtop-operator` needs that script extended
-  first — a separate, controller-approved change outside `sites/**`, not part of this Site's own files.
-  Until it lands, the `xtop-operator` tool has no Host binding at all and cannot open for real,
-  batch or interactive.
-- Nothing under `/data/eda/project/hima_harness/atcs-inputs`, `atcs-runs` or
-  `operator-admin/atcs-v1` exists on the server yet (confirmed by a read-only `ls` on 2026-09-26); the
+- **The binding generator entry exists, but final contract integration is intentionally pending.**
+  `scripts/generate-xtop-operator-binding.mjs` now recognizes `linglong-atcs28` / `xtop-operator` and
+  `xtop-operator-environment-v2.template.json` supplies its evidence shape. The current Pack contract
+  still names the imported v1 wrapper; ATCS-03 is the sole owner that may switch the shared contract
+  to v2. Until that integration and a fresh L4 qualification are complete, no binding may be generated
+  or treated as active.
+- Nothing under `/data/eda/project/hima_harness/atcs-inputs`, `atcs-runs` or the candidate
+  `operator-admin/atcs-v2` path is installed by this code-only slice; the
   administrator creates all three, the last two outside any path this repository's automated checks
   touch.
 
 ## Installing the wrapper
 
-`atcs-xtop-operator.sh` is a **template**, not the production artifact. Before installing it:
+`atcs-xtop-operator-v2.sh` is a **template**, not the production artifact. Before installing it:
 
 1. **Confirm the licence mode.** `cat /data/eda/env/empyrean-license-mode` on the server must read
    exactly `old` before any of the steps below are exercised for real — the wrapper itself refuses to
@@ -134,30 +137,30 @@ real documents into it. `sites/linglong-atcs28/inputs/` holds a template for eac
    `adapter_sha256` as this release's pinned **flow digest**; recompute and compare it against a
    deployed Campaign workspace's own `<workspace>/flow` directory (same command, that path instead)
    before trusting any real Run, and again whenever `interactive-bindings.json` or the qualified
-   image changes. A future wrapper revision should assert this digest itself, the same way
-   `adapter_sha256` is already asserted, once `scripts/generate-xtop-operator-binding.mjs` (see
-   "Known gaps" above) supports it.
+   image changes. Put that value in v2's `flow_digest` placeholder; the wrapper asserts it before
+   reading `state/workers.json` or launching XTop.
 3. Confirm (or build) the qualified `edarunner` container image this server already uses for the
    frozen `xtop-timing-closure-v1` wrapper, or a fresh qualified image for this Pack, and put its
    `sha256:...` digest in the `image` placeholder.
 4. Copy the completed script to
-   `/data/eda/project/hima_harness/operator-admin/atcs-v1/atcs-xtop-operator.sh`, outside the Permit's
+   `/data/eda/project/hima_harness/operator-admin/atcs-v2/atcs-xtop-operator-v2.sh`, outside the Permit's
    write root (`atcs-runs`), mode `0755`.
 5. Run a bounded real XTop qualification session under a fresh child of
    `/data/eda/project/hima_harness/atcs-runs` (never inside `xtop-timing-closure-runs`, the frozen
    Pack's own root) that exercises `atcs_query_paths`/`atcs_query_cells` (read), `atcs_size_cell`
    (mutate), `atcs_dump_cells`/`atcs_export_changes` (save) and `atcs_close`, confirming source/exec
    writes stay denied and the session exits normally.
-6. Once `scripts/generate-xtop-operator-binding.mjs` (see "Known gaps" above) accepts
-   `linglong-atcs28` / `xtop-operator`, generate the Host's `interactive-bindings.json` from that
-   qualification evidence and configure `interactiveBindingsFile` to point at it. At every open and
+6. After ATCS-03 changes the Pack contract to the v2 wrapper path, fill
+   `xtop-operator-environment-v2.template.json` from the exact qualification, then use
+   `scripts/generate-xtop-operator-binding.mjs` to generate the Host's `interactive-bindings.json`.
+   Configure `interactiveBindingsFile` to point at it. At every open and
    dispatch the Host re-reads the binding, the retained Pack digest and the remote wrapper's own bytes;
    a changed byte, a symlinked wrapper, a Permit/root mismatch, a Pack digest change or a command
    classification change revokes confinement.
 
 ## Wrapper safety checks (preserved from the frozen `xtop-timing-closure-v1` wrapper)
 
-`atcs-xtop-operator.sh` follows this Pack's own call shape,
+`atcs-xtop-operator-v2.sh` follows this Pack's own call shape,
 `<wrapper> <workspace> <slot>` (`contract.yml`'s `xtop-operator` tool `argv`/`interactive.argv`), which
 resolves the slot's session Tcl from `state/workers.json` rather than taking an adapter/template path
 as a separate argument (see the script's own header comment for why the shapes differ). It keeps every
@@ -165,8 +168,8 @@ safety property the frozen wrapper has:
 
 - realpath-resolves and confines the workspace to the Site's own `allowed_root`
   (`/data/eda/project/hima_harness/atcs-runs`); refuses a symlinked workspace, adapter or session Tcl.
-- Pins the deployed Pack adapter (`flow/atcs_cli.py`) to a fixed sha256 before ever reading
-  `state/workers.json`.
+- Pins the deployed Pack adapter and complete deployed flow tree before ever reading
+  `state/workers.json`, then verifies that slot's exact session Tcl hash from the same record.
 - Resolves the slot's session Tcl only from the one fixed record `prepare-workers` writes, and refuses
   any path outside that slot's own generated `workspaces/<slot>/r<rev>/xtop-analysis-manual.tcl` tree.
 - Requires the licence-mode file (`/data/eda/env/empyrean-license-mode`) to read exactly `old` before

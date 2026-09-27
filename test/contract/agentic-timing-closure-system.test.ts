@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir } from 'node:fs/promises';
+import { cp, mkdir, readFile } from 'node:fs/promises';
 import { loadPack, checkPack, loadSite, packStage, installPackMethod } from '@hima/harness';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { bootInProcess } from './support/boot-inprocess.ts';
@@ -51,6 +51,19 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   const atcs28Site = loadSite(atcs28SitesDir, 'linglong-atcs28');
   const atcs28Check = checkPack(pack, atcs28Site);
   assert.equal(atcs28Check.fit, true, atcs28Check.errors.join('\n'));
+
+  const interactiveTool = pack.contract.tools.find((tool) => tool.id === 'xtop-operator');
+  assert.ok(interactiveTool?.interactive);
+  const commandNames = Object.values(interactiveTool.interactive.commands).flat();
+  for (const forbiddenCommand of ['source', 'exec', 'sh', 'bash']) {
+    assert.equal(commandNames.includes(forbiddenCommand), false, `interactive catalog exposes ${forbiddenCommand}`);
+  }
+  const v2Wrapper = path.join(atcs28SourceDir, 'atcs-xtop-operator-v2.sh');
+  const shellSyntax = spawnSync('/bin/bash', ['-n', v2Wrapper], { encoding: 'utf8' });
+  assert.equal(shellSyntax.status, 0, shellSyntax.stderr);
+  const wrapperText = await readFile(v2Wrapper, 'utf8');
+  assert.match(wrapperText, /flow-digest/);
+  assert.match(wrapperText, /sessionTclSha256/);
 
   // No tool or workshop argv may reference the frozen old pack's design-zoo Foundation root or its
   // own Site's workspace-root folder name -- this Pack's own argv is workspace-relative only

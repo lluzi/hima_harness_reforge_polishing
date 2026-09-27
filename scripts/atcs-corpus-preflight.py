@@ -85,6 +85,7 @@ SCENARIO_CORNER = {
 _STARTPOINT_SPLIT_RE = re.compile(r"(?m)^\s*Startpoint:\s*")
 _MAX_PATHS_RE = re.compile(r"-max_paths\s+(\d+)")
 _ERROR_LOG_RE = re.compile(r"(?m)^(?:\*\*)?(?:ERROR|Error|Fatal):")
+USAGE = "usage: python3 scripts/atcs-corpus-preflight.py [--json OUT.json]"
 
 
 class SshError(RuntimeError):
@@ -324,7 +325,15 @@ def run_spef_net_names(records):
         record_file(records, remote_path, full_sha256, full_size, outcome)
 
 
-def main():
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv in (["--help"], ["-h"]):
+        print(USAGE)
+        return 0
+    if argv and (len(argv) != 2 or argv[0] != "--json" or not argv[1]):
+        print(USAGE, file=sys.stderr)
+        return 2
+    json_output = Path(argv[1]) if argv else None
     records = []
 
     print("=== Foundation ROUND3 PT reports ===")
@@ -358,10 +367,9 @@ def main():
     for entry in refusals:
         print(f"  REFUSAL {entry['path']}: {entry['outcome']['refusal']}")
 
-    if "--json" in sys.argv:
-        out_path = Path(sys.argv[sys.argv.index("--json") + 1])
-        out_path.write_text(json.dumps(records, indent=2, default=str), encoding="utf-8")
-        print(f"\nWrote {out_path}")
+    if json_output is not None:
+        json_output.write_text(json.dumps(records, indent=2, default=str), encoding="utf-8")
+        print(f"\nWrote {json_output}")
 
     return 1 if refusals else 0
 

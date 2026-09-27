@@ -53,13 +53,15 @@ class RequireHelperTest(unittest.TestCase):
 
 
 class SharedConstantsDedupeTest(unittest.TestCase):
-    """Final review (mechanical dedupe): one `REQUIRED_SCENARIOS` source and one
-    `_UNSAFE_TCL_CHARS` source (backslash included), each re-exported rather than
-    redefined."""
+    """Shared Tcl safety constants and dynamic scenario-list validation."""
 
-    def test_required_scenarios_is_the_same_tuple_everywhere(self):
-        self.assertIs(adapters.REQUIRED_SCENARIOS, core.REQUIRED_SCENARIOS)
-        self.assertIs(verification.REQUIRED_SCENARIOS, core.REQUIRED_SCENARIOS)
+    def test_required_scenarios_preserves_site_order(self):
+        self.assertEqual(core.required_scenarios(["slow_setup", "fast_hold"]), ("slow_setup", "fast_hold"))
+
+    def test_required_scenarios_refuses_duplicates(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            core.required_scenarios(["slow_setup", "slow_setup"])
+        self.assertEqual(ctx.exception.code, "invalid-input")
 
     def test_unsafe_tcl_chars_includes_backslash(self):
         self.assertIn("\\", core.UNSAFE_TCL_CHARS)

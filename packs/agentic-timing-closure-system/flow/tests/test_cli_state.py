@@ -39,6 +39,7 @@ from atcs import workspaces  # noqa: E402
 from atcs import contributions  # noqa: E402
 from atcs import composition  # noqa: E402
 from atcs import integration  # noqa: E402
+from atcs import adapters  # noqa: E402
 import fixtures  # noqa: E402
 import atcs_cli  # noqa: E402
 
@@ -75,7 +76,7 @@ def _no_op_wrapper(root):
     return wrapper
 
 
-def _site_profile_path(root):
+def _site_profile_path(root, xtop_scenarios=None):
     """`siteCapabilities.json` -- `edaShell` is all most subcommands read; `design`/
     `techLef`/`cellLefGlob` are also included (I3, final review: `replay-prepare`
     now reads these three the same way `prepare-workers` already did) as plain,
@@ -83,11 +84,57 @@ def _site_profile_path(root):
     XTop, so nothing here needs to resolve to a real file on disk."""
     wrapper = _no_op_wrapper(root)
     path = root / "site-profile.json"
-    _write_json(path, {
+    profile = {
         "edaShell": [str(wrapper)], "design": "top",
         "techLef": str(root / "tech.lef"), "cellLefGlob": str(root / "cells" / "*.lef"),
-    })
+    }
+    if xtop_scenarios is not None:
+        profile.update(_xtop_site_config(root, xtop_scenarios))
+    _write_json(path, profile)
     return path
+
+
+def _xtop_site_config(workspace, required_scenarios):
+    runtime = {
+        "siteMap": ["unit", "core"], "removableFillers": ["FILL*", "DCAP*"],
+        "scenarios": [],
+        "ecoParameters": {
+            "bufferListForHold": ["DELAY1"], "bufferListForSetup": ["BUF2"],
+            "cellClassifyRule": "cell_attribute", "cellMatchAttribute": "footprint",
+            "cellNominalSwapKeywords": ["ULVT", "LVT", "", "HVT"],
+            "cellNominalSizingPattern": "D([0-9]+)BWP", "gainThreshold": 0.001,
+        },
+    }
+    for index, scenario in enumerate(required_scenarios):
+        library_dir = workspace / "xtop-context" / "libs" / f"corner-{index}"
+        library_dir.mkdir(parents=True, exist_ok=True)
+        (library_dir / "synthetic.lib").write_text("library(synthetic) {}\n", encoding="utf-8")
+        runtime["scenarios"].append({
+            "name": scenario, "corner": f"corner-{index}", "libertyGlob": str(library_dir / "*.lib"),
+        })
+    return {"xtopContext": runtime}
+
+
+def _write_xtop_context(workspace, design_state_id, required_scenarios=REQUIRED_SCENARIOS):
+    """Write one synthetic, fully hash-bound worker/replay context; no EDA is launched."""
+    site_config = _xtop_site_config(workspace, required_scenarios)
+    compiled = adapters.compile_xtop_site_context(site_config, required_scenarios)
+    library_tcl = workspace / "xtop-context" / "library.tcl"
+    library_tcl.parent.mkdir(parents=True, exist_ok=True)
+    library_tcl.write_text(compiled["libraryTcl"], encoding="utf-8")
+    sta_data = workspace / "xtop-context" / "sta_data"
+    sta_data.mkdir(parents=True, exist_ok=True)
+    (sta_data / "timing_data_finish").write_text("done\n", encoding="utf-8")
+    body = core.stamp("xtop-context", {
+        "designStateId": design_state_id,
+        "requiredScenarios": list(required_scenarios),
+        "libraryTcl": {"path": str(library_tcl.relative_to(workspace)), "sha256": core.file_sha256(library_tcl)},
+        "staData": {"path": str(sta_data.relative_to(workspace)), "digest": core.tree_digest(sta_data)},
+        "libraryFiles": compiled["libraryFiles"], "siteMap": compiled["siteMap"],
+        "removableFillers": compiled["removableFillers"], "ecoParameters": compiled["ecoParameters"],
+    })
+    core.write_artifact(workspace / "state" / "xtop-context.json", body)
+    return site_config
 
 
 def _run_physical_baseline(workspace, drc_text=None, connectivity_text=None):
@@ -242,16 +289,30 @@ class LoadScenariosContractTest(unittest.TestCase):
             atcs_cli._load_scenarios_contract(self._write({"not": "a list"}))
         self.assertEqual(ctx.exception.code, "invalid-input")
 
-    def test_missing_required_scenario_is_refused(self):
-        doc = [_valid_scenario_entry(name) for name in REQUIRED_SCENARIOS[:-1]]
+    def test_two_different_site_scenario_sets_are_accepted(self):
+        for names in (("slow_setup", "fast_hold"), ("mode_a_rcmax", "mode_b_rcmin", "scan_slow")):
+            doc = [_valid_scenario_entry(name) for name in names]
+            result = atcs_cli._load_scenarios_contract(self._write(doc))
+            self.assertEqual(tuple(result), names)
+
+    def test_query_scenario_set_must_match_the_site_contract(self):
+        contract = atcs_cli._load_scenarios_contract(
+            self._write([_valid_scenario_entry("slow_setup"), _valid_scenario_entry("fast_hold")]),
+        )
         with self.assertRaises(atcs_cli.InputError) as ctx:
-            atcs_cli._load_scenarios_contract(self._write(doc))
+            atcs_cli._required_scenarios_for_contract(
+                {"requiredScenarios": ["slow_setup", "unexpected"]}, contract,
+            )
         self.assertEqual(ctx.exception.code, "invalid-input")
 
-    def test_unrecognized_extra_scenario_is_refused(self):
-        doc = [_valid_scenario_entry(name) for name in REQUIRED_SCENARIOS] + [_valid_scenario_entry("bogus")]
+    def test_duplicate_query_scenario_is_refused(self):
+        contract = atcs_cli._load_scenarios_contract(
+            self._write([_valid_scenario_entry("slow_setup"), _valid_scenario_entry("fast_hold")]),
+        )
         with self.assertRaises(atcs_cli.InputError) as ctx:
-            atcs_cli._load_scenarios_contract(self._write(doc))
+            atcs_cli._required_scenarios_for_contract(
+                {"requiredScenarios": ["slow_setup", "slow_setup"]}, contract,
+            )
         self.assertEqual(ctx.exception.code, "invalid-input")
 
     def test_duplicate_scenario_name_is_refused(self):
@@ -584,9 +645,12 @@ class TwoRoundFlowTest(unittest.TestCase):
         facts_round2 = json.loads((workspace / "state" / "composition-facts.json").read_text())
         self.assertEqual(facts_round2["baseStateId"], round1_state_id)
         self.assertNotEqual(facts_round2["baseStateId"], baseline["id"])
+        xtop_site = _write_xtop_context(workspace, round1_state_id)
 
         eda_profile_path = workspace / "eda-profile.json"
-        _write_json(eda_profile_path, {"design": "top", "techLef": "tech.lef", "cellLefGlob": "*.lef"})
+        _write_json(eda_profile_path, {
+            "design": "top", "techLef": "tech.lef", "cellLefGlob": "*.lef", **xtop_site,
+        })
         site_caps_path = workspace / "site-caps.json"
         _write_json(site_caps_path, {"pgVerification": False})
         # Task 12c item 4a + Fix round 1 item 1: `prepare-workers` reads
@@ -1485,8 +1549,11 @@ class PrepareWorkersByteIdentityTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.working_state_path = self.workspace / "state" / "working-state.json"
         self.working_state = json.loads(self.working_state_path.read_text())
+        xtop_site = _write_xtop_context(self.workspace, self.working_state["id"])
         self.eda_profile_path = self.workspace / "eda-profile.json"
-        _write_json(self.eda_profile_path, {"design": "top", "techLef": "tech.lef", "cellLefGlob": "*.lef"})
+        _write_json(self.eda_profile_path, {
+            "design": "top", "techLef": "tech.lef", "cellLefGlob": "*.lef", **xtop_site,
+        })
         self.site_caps_path = self.workspace / "site-caps.json"
         _write_json(self.site_caps_path, {"pgVerification": False})
 
@@ -1521,6 +1588,25 @@ class PrepareWorkersByteIdentityTest(unittest.TestCase):
         workers = json.loads((self.workspace / "state" / "workers.json").read_text())
         for task_id in workspaces.TASK_IDS:
             self.assertEqual(workers["workers"][task_id]["workPackage"]["taskId"], task_id)
+            self.assertEqual(len(workers["workers"][task_id]["sessionTclSha256"]), 64)
+
+    def test_missing_xtop_context_refuses_before_any_worker_session_is_compiled(self):
+        (self.workspace / "state" / "xtop-context.json").unlink()
+        campaign_plan_path = self.workspace / "campaign-plan.json"
+        _write_json(campaign_plan_path, self._envelope(self._work_packages()))
+        result = self._run_prepare_workers(campaign_plan_path)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.workspace / "state" / "workers.json").exists())
+
+    def test_changed_sta_data_refuses_before_any_worker_session_is_compiled(self):
+        (self.workspace / "xtop-context" / "sta_data" / "timing_data_finish").write_text(
+            "changed\n", encoding="utf-8",
+        )
+        campaign_plan_path = self.workspace / "campaign-plan.json"
+        _write_json(campaign_plan_path, self._envelope(self._work_packages()))
+        result = self._run_prepare_workers(campaign_plan_path)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertFalse((self.workspace / "state" / "workers.json").exists())
 
     def test_bytes_differing_from_the_admitted_plan_are_refused(self):
         """Simulates a plan whose bytes changed after admission: w02's own package now
@@ -2800,6 +2886,7 @@ class ReplayPrepareBatchIdWriteOnceTest(unittest.TestCase):
         self.base_state_path = self.workspace / "base-state.json"
         _write_json(self.base_state_path, working_state)
         self.base_state_id = working_state["id"]
+        _write_xtop_context(self.workspace, self.base_state_id, ("synthetic",))
 
         contribution = core.stamp("contribution", {
             "taskId": "w01", "revision": 1, "baseStateId": self.base_state_id, "kind": "fix",
@@ -2823,7 +2910,7 @@ class ReplayPrepareBatchIdWriteOnceTest(unittest.TestCase):
             },
             "facts": facts,
         })
-        self.site_profile_path = _site_profile_path(self.workspace)
+        self.site_profile_path = _site_profile_path(self.workspace, ("synthetic",))
 
     def test_second_replay_prepare_with_the_same_batch_id_is_refused(self):
         result1 = _run("replay-prepare", self.workspace, self.base_state_path, self.plan_path, self.site_profile_path)
@@ -2863,6 +2950,7 @@ class ReplayPrepareToolFailureTest(unittest.TestCase):
         self.base_state_path = self.workspace / "base-state.json"
         _write_json(self.base_state_path, working_state)
         self.base_state_id = working_state["id"]
+        _write_xtop_context(self.workspace, self.base_state_id, ("synthetic",))
 
         contribution = core.stamp("contribution", {
             "taskId": "w01", "revision": 1, "baseStateId": self.base_state_id, "kind": "fix",
@@ -2894,6 +2982,7 @@ class ReplayPrepareToolFailureTest(unittest.TestCase):
         _write_json(self.site_profile_path, {
             "edaShell": [str(failing_wrapper)], "design": "top",
             "techLef": str(self.workspace / "tech.lef"), "cellLefGlob": str(self.workspace / "cells" / "*.lef"),
+            **_xtop_site_config(self.workspace, ("synthetic",)),
         })
 
     def test_a_failed_replay_run_records_tool_failure_instead_of_being_swallowed(self):
@@ -2914,6 +3003,7 @@ class ReplayPrepareToolFailureTest(unittest.TestCase):
         _write_json(self.site_profile_path, {
             "edaShell": [str(ok_wrapper)], "design": "top",
             "techLef": str(self.workspace / "tech.lef"), "cellLefGlob": str(self.workspace / "cells" / "*.lef"),
+            **_xtop_site_config(self.workspace, ("synthetic",)),
         })
         result = _run("replay-prepare", self.workspace, self.base_state_path, self.plan_path, self.site_profile_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

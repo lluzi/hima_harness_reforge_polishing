@@ -149,10 +149,9 @@ a final Goal judgement must never rest on modeled-not-measured parasitics.
 `plan_checks(merge_commit, policy)`
 --------------------------------------
 
-`requiredScenarios` is always the Pack-wide fixed set
-(`REQUIRED_SCENARIOS`, matching ``.superpowers/sdd/global-context.md``'s
-"Required scenarios" — this Pack does not let a merge commit or policy grow
-or shrink it). `extraction` and `sta` are always the literal string
+`requiredScenarios` and `scenarioCorners` come from the stamped policy derived from the admitted
+Site scenario contract. Both must be complete and agree exactly before a check plan exists; a merge
+commit cannot grow or shrink them. `extraction` and `sta` are always the literal string
 `"full"` (no partial/incremental extraction or STA scope exists in this
 Pack). `physical` defaults to `["drc", "connectivity"]` — the fixed
 drc/connectivity pair `assemble` always evaluates as part of the
@@ -386,10 +385,6 @@ from . import core
 from . import state
 
 
-# Final review (mechanical dedupe): re-exported from `atcs.core`, the one shared
-# source (`atcs.adapters.REQUIRED_SCENARIOS` re-exports the same tuple).
-REQUIRED_SCENARIOS = core.REQUIRED_SCENARIOS
-
 DEFAULT_PHYSICAL_CHECKS = ("drc", "connectivity")
 
 _TOPOLOGY_OPS = ("insert_buffer", "delete_buffer")
@@ -416,6 +411,14 @@ _CONN_NET_RE = re.compile(r"(?m)^Net\s+(\S+?):")
 def plan_checks(merge_commit, policy):
     """Build a ``check-plan`` for `merge_commit` (see module docstring)."""
     policy = policy or {}
+    required_scenarios = core.required_scenarios(
+        policy.get("requiredScenarios"), "policy.requiredScenarios",
+    )
+    scenario_corners = policy.get("scenarioCorners")
+    if not isinstance(scenario_corners, dict) or set(scenario_corners) != set(required_scenarios):
+        raise core.AtcsError(
+            "invalid-policy", "policy.scenarioCorners must map every required scenario exactly once",
+        )
     operations = merge_commit.get("operations", [])
     op_kinds = {operation.get("op") for operation in operations}
 
@@ -427,13 +430,13 @@ def plan_checks(merge_commit, policy):
     physical = list(policy.get("physical", DEFAULT_PHYSICAL_CHECKS))
 
     body = {
-        "requiredScenarios": list(REQUIRED_SCENARIOS),
+        "requiredScenarios": list(required_scenarios),
         "extraction": "full",
         "sta": "full",
         "physical": physical,
         "functional": functional,
         "pg": pg,
-        "scenarioCorners": dict(policy.get("scenarioCorners") or {}),
+        "scenarioCorners": dict(scenario_corners),
         "candidateId": merge_commit.get("id"),
         "parentStateId": merge_commit.get("parentStateId"),
     }

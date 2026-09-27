@@ -724,6 +724,7 @@ class EvaluationReaderTest(unittest.TestCase):
 
 
 _ACCEPTANCE_BASELINE = "baseline-" + "0" * 12
+_READER_SCENARIOS = ("slow_setup", "fast_hold")
 _ACCEPTANCE_POLICY = {
     "allowDegradedWorking": False,
     "degradeLimitNs": 0.0,
@@ -776,8 +777,8 @@ class AcceptanceRecordReaderTest(unittest.TestCase):
         ledger_path = self.workspace / "flow" / "state" / "refresh-ledger.json"
         refresh.record_refresh(ledger_path, "candidate-mc-1", "state-a", {
             scenario: {"path": f"flow/records/sta/{scenario}.rpt", "sha256": f"{i:064x}"}
-            for i, scenario in enumerate(verification.REQUIRED_SCENARIOS)
-        })
+            for i, scenario in enumerate(_READER_SCENARIOS)
+        }, _READER_SCENARIOS)
 
         report = self._write_envelope(
             str(acceptance_path.relative_to(self.workspace)),
@@ -841,8 +842,8 @@ class AcceptanceRecordReaderTest(unittest.TestCase):
         ledger_path = self.workspace / "flow" / "state" / "refresh-ledger.json"
         refresh.record_refresh(ledger_path, "candidate-mc-1", "state-d", {
             scenario: {"path": f"flow/records/sta/{scenario}.rpt", "sha256": f"{i:064x}"}
-            for i, scenario in enumerate(verification.REQUIRED_SCENARIOS)
-        })
+            for i, scenario in enumerate(_READER_SCENARIOS)
+        }, _READER_SCENARIOS)
         tampered = json.loads(ledger_path.read_text())
         tampered["entries"] = []
         ledger_path.write_text(json.dumps(tampered))

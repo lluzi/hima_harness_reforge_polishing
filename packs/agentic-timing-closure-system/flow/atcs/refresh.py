@@ -14,9 +14,9 @@ the physical tools, and a physical refresh completes well before any
 from real receipts). This module is therefore this Pack's single source of
 truth for `tc_refresh_count`, independent of `atcs.adoption`'s pointers.
 
-`record_refresh(path, merge_commit_id, design_state_id, sta_sources)` is
+`record_refresh(path, merge_commit_id, design_state_id, sta_sources, required_scenarios)` is
 called once a merge commit's implementation, extraction and *every* required
-STA scenario (`atcs.verification.REQUIRED_SCENARIOS`) have actually
+STA scenario from the admitted analysis contract have actually
 completed — T12 (`atcs.adapters`) calls it at that point, never earlier and
 never speculatively. It appends one entry
 `{"mergeCommitId", "designStateId", "sources"}` to a single ``refresh-
@@ -40,7 +40,7 @@ A second call naming the same `merge_commit_id`:
   its own entry.
 
 `sta_sources` must name a `{"path", "sha256"}` reference for *every* scenario
-in `atcs.verification.REQUIRED_SCENARIOS` — "every required STA done" is a
+in the supplied `required_scenarios` set — "every required STA done" is a
 checked invariant here, not merely a comment describing when a caller should
 call this function: a partial STA set is `AtcsError("missing-input", ...)`,
 never silently accepted as a completed refresh.
@@ -55,9 +55,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import core
-from . import verification
-
-
 def load_ledger(path):
     """The ``refresh-ledger`` artifact at `path`, or a fresh empty one if absent."""
     target = Path(path)
@@ -66,21 +63,23 @@ def load_ledger(path):
     return core.read_artifact(target, "refresh-ledger")
 
 
-def _validate_sta_sources(sta_sources):
+def _validate_sta_sources(sta_sources, required_scenarios):
     if not isinstance(sta_sources, dict):
         raise core.AtcsError("missing-input", "sta_sources must be an object keyed by scenario name")
-    missing = [scenario for scenario in verification.REQUIRED_SCENARIOS if scenario not in sta_sources]
-    if missing:
+    required = core.required_scenarios(list(required_scenarios))
+    missing = [scenario for scenario in required if scenario not in sta_sources]
+    extra = sorted(set(sta_sources) - set(required))
+    if missing or extra:
         raise core.AtcsError(
             "missing-input",
-            f"sta_sources is missing required scenario(s): {', '.join(missing)}",
+            f"sta_sources scenario mismatch; missing={missing}, extra={extra}",
         )
     for scenario, ref in sta_sources.items():
         if not isinstance(ref, dict) or "path" not in ref or "sha256" not in ref:
             raise core.AtcsError("missing-input", f"sta_sources.{scenario} must be {{path, sha256}}")
 
 
-def record_refresh(path, merge_commit_id, design_state_id, sta_sources):
+def record_refresh(path, merge_commit_id, design_state_id, sta_sources, required_scenarios):
     """Append one completed-physical-refresh entry to the ledger at `path`.
 
     Idempotent when `merge_commit_id` already names an entry with the exact
@@ -92,7 +91,7 @@ def record_refresh(path, merge_commit_id, design_state_id, sta_sources):
         raise core.AtcsError("missing-input", "merge_commit_id must be a non-empty string")
     if not isinstance(design_state_id, str) or not design_state_id:
         raise core.AtcsError("missing-input", "design_state_id must be a non-empty string")
-    _validate_sta_sources(sta_sources)
+    _validate_sta_sources(sta_sources, required_scenarios)
 
     ledger = load_ledger(path)
     entries = list(ledger.get("entries", []))

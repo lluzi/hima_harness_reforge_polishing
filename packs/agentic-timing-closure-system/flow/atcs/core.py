@@ -223,16 +223,20 @@ def require(mapping, key, label):
     return mapping[key]
 
 
-REQUIRED_SCENARIOS = (
-    "func_ssg_rcworst_m40",
-    "func_ssg_rcworst_125",
-    "func_ffg_cbest_m40",
-    "func_ffg_cbest_125",
-)
-"""The Pack-wide fixed set of required STA scenarios (`.superpowers/sdd/global-context.md`'s
-"Required scenarios"). Final review (mechanical dedupe): `atcs.adapters.REQUIRED_SCENARIOS` and
-`atcs.verification.REQUIRED_SCENARIOS` used to each define their own identical copy of this same
-tuple -- both now re-export this one."""
+def required_scenarios(value, label="requiredScenarios"):
+    """Validate one ordered, non-empty list of scenario names.
+
+    Scenario identity comes from the admitted analysis contract or its derived policy. Pack code
+    never supplies a design-specific default, and malformed or duplicate names fail before tool
+    compilation, evaluation or refresh accounting.
+    """
+    if not isinstance(value, list) or not value:
+        raise AtcsError("missing-input", f"{label} must be a non-empty list")
+    if not all(isinstance(name, str) and name for name in value):
+        raise AtcsError("invalid-input", f"{label} must contain non-empty strings")
+    if len(set(value)) != len(value):
+        raise AtcsError("invalid-input", f"{label} contains duplicate scenario names")
+    return tuple(value)
 
 UNSAFE_TCL_CHARS = set(';[]{}$"\n\\')
 """Characters (plus a backslash, so a value can never begin a Tcl-level escape sequence) that make

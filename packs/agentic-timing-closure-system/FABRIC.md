@@ -302,27 +302,18 @@ Known gaps carried from earlier tasks:
   regression against the Campaign baseline's own `check_timing`-derived count
   (`verification._unconstrained_regressions`). The combined count does not, by itself, say which of
   the two causes applies to a given scenario.
-- G33 (final review batch B, I11 -- **not closed**) The four required scenario names remain a
-  Pack-wide, code-level fixed set (`core.REQUIRED_SCENARIOS`), not a value this Pack's own code reads
-  generically from `policy.requiredScenarios`/`scenarios.json` at every point of use: `_load_scenarios_
-  contract` refuses any scenario-name set other than exactly the four literal linglong names (and
-  their four literal names are still hard-coded as the hashing/validation/completeness anchor across
-  `adapters.py`, `verification.py` and `refresh.py`). C4 makes `scenarios.json` the single Site-level
-  *source of the corner/library binding* for those four fixed names; it does not make the *names
-  themselves* Site-configurable. `.superpowers/sdd/global-context.md`'s own Global Constraints section
-  lists these four names as binding for this Pack (not a per-Site variable), so a deeper refactor
-  threading a dynamic `required_scenarios` value through every internal validation point in those
-  three modules was judged higher-risk, lower-value churn across an already well-tested surface than
-  a genuine bug fix, and out of this batch's scope; a controller call on whether a differently-scoped
-  derivative Pack would ever need this decoupled.
-- G34 (final re-review, N3 -- **not closed**) The worker XTop session (`flow/templates/xtop-operator.tcl`,
-  compiled by `prepare-workers`) is set up with less than the frozen, qualified B_lazy operator
-  (`packs/xtop-timing-closure/flow/templates/xtop-operator.tcl`): no `set_site_map`,
-  `set_removable_fillers`, `check_placement_readiness`, no timing library (`LIBRARY_TCL`), no STA data
-  (`prepare-workers` passes `sta_data=None`) and no `eco_*` parameters, while `xtop-replay.tcl` has the
-  first three. Workers therefore research without an XTop timing view, and worker and replay legality
-  may differ. It does not block a mechanical first Run; it belongs to the L4 XTop Operator qualification
-  before worker research quality is judged.
+- G33 (ATCS-05 -- **code-side closed, L4 unchanged**) Scenario names now come only from the admitted
+  `analysisContract/scenarios.json`; query specs must name that exact set, policy derives the same
+  ordered set and corner map, and adapters, STA, evaluation and refresh accounting consume it. No
+  production flow module carries the four linglong scenario literals. Two different synthetic sets
+  pass the same compiler/contract path; duplicate, missing, extra and corner-map mismatches fail closed.
+- G34 (ATCS-04 -- **code-side closed, contract/L4 pending**) `observe` can now compile the Site's
+  `xtopContext`, hash its XTop Liberty files, export current-state PT timing data and seal
+  `state/xtop-context.json`. Both worker and replay re-hash that receipt immediately before XTop and
+  use the same site map, removable fillers, placement checks, library Tcl, STA data and `eco_*`
+  parameters. The v2 wrapper additionally pins the complete flow and slot session Tcl. The current
+  shared `contract.yml` still names v1 until ATCS-03 integrates the v2 path; no real XTop qualification
+  has run, so worker research quality and the v2 binding remain unqualified.
 
 ## Reviews
 

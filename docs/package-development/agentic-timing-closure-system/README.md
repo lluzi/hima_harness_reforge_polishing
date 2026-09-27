@@ -28,7 +28,7 @@ When local ECO stops paying, it can instead choose an earlier APR stage, but onl
 **Status (2026-09-26):**
 - **Stage:** `compiled`. `loadPack` accepts it, and `checkPack` is fit against the local Site and
   `sites/linglong-atcs28`.
-- **Tests:** the Python suite passes (810 tests, 13 skipped), the Harness contract test passes, and the Pack's parsers were
+- **Tests:** the Python suite passes (821 tests, 13 skipped), the Harness contract test passes, and the Pack's parsers were
   run read-only against real linglong reports.
 - **Not yet done:** no real EDA job has run, no Campaign has been started, and no `TEST.md` or `VERSION.yml`
   exists.
@@ -171,13 +171,14 @@ Most adaptation is **Site-side data**. Pack-side edits are rarely needed.
    - `analysisContract/policy.json`: static terms only (`allowDegradedWorking`, `degradeLimitNs`,
      `maxNewConstraintFailures`).
    - `analysisContract/recheck.json` = `{}`.
-   - `siteCapabilities.json`: `edaShell`, `design`, `techLef`, `cellLefGlob`, `pgVerification`.
+   - `siteCapabilities.json`: `edaShell`, `design`, `techLef`, `cellLefGlob`, `pgVerification`, plus
+     `xtopContext` (scenario Liberty globs, site map, removable fillers and ECO parameters).
 2. **Site files.** Create `sites/<new-site>/site.yml` (bindings, `workspaceRoot`, ssh, `parallelJobs`, one
    licence each for `innovus`/`primetime`/`starrc`/`xtop`) and `permit.yml` (read roots covering every
-   input and LEF root; the write root is the Campaign workspace only; the three wrappers).
-3. **Hard-coded scenario names (G33).** The four linglong scenario names are fixed in `adapters.py`,
-   `verification.py` and `refresh.py` (`REQUIRED_SCENARIOS`). A design with other scenarios needs those
-   threaded from `policy.requiredScenarios`. That is the one known Pack-side change for a new Site.
+   input and LEF root; the write root is the Campaign workspace only; the declared wrappers).
+3. **Scenario portability (G33 closed in ATCS-05).** Scenario names come from `scenarios.json`; the
+   query, derived policy, PT tasks, evaluation and refresh ledger must all name that exact set. A new
+   Site supplies its own names and corner/library mappings without changing Pack business code.
 4. **Done when:**
    - `checkPack` is fit against the new Site;
    - `/hima pack check agentic-timing-closure-system --site <new-site>` succeeds in a Host;
@@ -190,14 +191,13 @@ Run the levels in order. Each level must be green before the next one starts: ch
 licensed time. Ask the user before every commercial job.
 
 **Before level 1, the administrator:**
-- creates `/data/eda/project/hima_harness/{atcs-inputs,atcs-runs,operator-admin/atcs-v1}`;
+- creates `/data/eda/project/hima_harness/{atcs-inputs,atcs-runs,operator-admin/atcs-v2}`;
 - installs the Site inputs into `atcs-inputs/`;
 - sets `/data/eda/env/empyrean-license-mode` to `old`, which XTop needs (coordinate: it affects the
   shared server);
-- fills in the wrapper's image digest and `atcs_cli.py` hash, and records `atcs_cli.py flow-digest` for the
-  deployed `flow/`;
-- extends `scripts/generate-xtop-operator-binding.mjs`, which today accepts only
-  `linglong-swerv28`/`run-xtop-fix`, for `linglong-atcs28`/`xtop-operator`, and sets
+- fills in the v2 wrapper's image digest, `atcs_cli.py` hash and complete `flow-digest`;
+- after ATCS-03 integrates the v2 wrapper path into `contract.yml`, fills the v2 environment evidence,
+  generates the binding with `scripts/generate-xtop-operator-binding.mjs`, and sets
   `interactiveBindingsFile`.
 
 The Site README has the full procedure.
@@ -246,9 +246,11 @@ These are from FABRIC; the Gaps section is authoritative.
   `FF/procs.tcl`) are unverified. Use post-route-only scope for the first test.
 - **G19:** presta always finds a batch's new nets unqualified against the base SPEF, so insertion batches
   reach implement only by an explicit decision.
-- **G23, G34:** the XTop Operator is interactive-only and unproven in a real Run, and the worker session
-  lacks the old qualified operator's timing library, STA data and `eco_*` settings. Qualify it at L4 before
-  judging research quality.
+- **G23, G34:** the XTop Operator is interactive-only and unproven in a real Run. ATCS-04 now gives
+  worker and replay the same hash-bound timing library, current PT timing data and legality/ECO settings,
+  but the v2 wrapper path still needs ATCS-03 contract integration and L4 qualification before worker
+  research can be judged.
 - **G25:** the Goal cannot demand a positive margin. PT reports a clean mode as `No violations found`,
   which parses as 0.0.
-- **G33:** scenario names are hard-coded (see Adapting).
+- **G33:** code-side closed; Site-defined scenario sets are local-tested, while real alternate-Site
+  qualification remains future evidence.

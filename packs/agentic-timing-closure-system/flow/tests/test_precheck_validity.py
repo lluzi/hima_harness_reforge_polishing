@@ -68,6 +68,11 @@ SCENARIO_WNS = {
 BASE_CORNER = "corner_a"
 
 
+def _policy(scenario_corners=None):
+    corners = scenario_corners or {scenario: BASE_CORNER for scenario in SCENARIO_WNS}
+    return {"requiredScenarios": list(corners), "scenarioCorners": corners}
+
+
 def _base_receipts():
     """Fully consistent receipts covering all four required scenarios, all on
     `BASE_CORNER` (matching `_base_plan`'s `scenarioCorners`)."""
@@ -106,7 +111,7 @@ def _base_plan():
     scenario_corners = {scenario: BASE_CORNER for scenario in SCENARIO_WNS}
     return verification.plan_checks(
         {"id": "mc-1", "parentStateId": "state-0", "operations": [{"op": "size_cell"}]},
-        {"scenarioCorners": scenario_corners},
+        _policy(scenario_corners),
     )
 
 
@@ -114,7 +119,7 @@ class PlanChecksTest(unittest.TestCase):
     def test_sizing_only_commit_has_no_functional_entry(self):
         merge_commit = {"id": "mc-1", "operations": [{"op": "size_cell", "instance": "U1",
                                                         "fromMaster": "BUFX1", "toMaster": "BUFX2"}]}
-        plan = verification.plan_checks(merge_commit, {})
+        plan = verification.plan_checks(merge_commit, _policy())
         self.assertEqual(plan["functional"], [])
         self.assertEqual(plan["pg"], [])
         self.assertEqual(plan["schema"], "atcs.check-plan/1")
@@ -123,36 +128,37 @@ class PlanChecksTest(unittest.TestCase):
     def test_pg_local_adjust_commit_includes_pg(self):
         merge_commit = {"id": "mc-2", "operations": [{"op": "pg_local_adjust", "region": [0, 0, 1, 1],
                                                         "action": "widen", "detail": "strap"}]}
-        plan = verification.plan_checks(merge_commit, {})
+        plan = verification.plan_checks(merge_commit, _policy())
         self.assertIn("pg", plan["pg"])
 
     def test_insert_buffer_commit_adds_functional_entry(self):
         merge_commit = {"id": "mc-3", "operations": [{"op": "insert_buffer", "net": "n1", "loadPins": [],
                                                         "newInstance": "buf1", "newNet": "n1_buf",
                                                         "master": "BUFX1", "location": None}]}
-        plan = verification.plan_checks(merge_commit, {})
+        plan = verification.plan_checks(merge_commit, _policy())
         self.assertEqual(plan["functional"], ["connectivity"])
 
     def test_carries_candidate_id_and_parent_state_id(self):
         plan = verification.plan_checks(
-            {"id": "mc-4", "parentStateId": "state-3", "operations": []}, {}
+            {"id": "mc-4", "parentStateId": "state-3", "operations": []}, _policy()
         )
         self.assertEqual(plan["candidateId"], "mc-4")
         self.assertEqual(plan["parentStateId"], "state-3")
 
     def test_parent_state_id_defaults_to_none_when_merge_commit_omits_it(self):
-        plan = verification.plan_checks({"id": "mc-4b", "operations": []}, {})
+        plan = verification.plan_checks({"id": "mc-4b", "operations": []}, _policy())
         self.assertIsNone(plan["parentStateId"])
 
     def test_scenario_corners_copied_from_policy(self):
         scenario_corners = {"func_ssg_rcworst_m40": "rcworst_m40"}
         plan = verification.plan_checks({"id": "mc-5", "operations": []},
-                                         {"scenarioCorners": scenario_corners})
+                                         _policy(scenario_corners))
         self.assertEqual(plan["scenarioCorners"], scenario_corners)
 
-    def test_scenario_corners_defaults_to_empty_when_policy_omits_it(self):
-        plan = verification.plan_checks({"id": "mc-6", "operations": []}, {})
-        self.assertEqual(plan["scenarioCorners"], {})
+    def test_policy_without_scenario_authority_is_refused(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            verification.plan_checks({"id": "mc-6", "operations": []}, {})
+        self.assertEqual(ctx.exception.code, "missing-input")
 
 
 class PrestaQualificationTest(unittest.TestCase):
@@ -576,7 +582,7 @@ def _corner_receipts(receipt_corner_by_scenario):
 class PerScenarioCornerIdentityTest(unittest.TestCase):
     def setUp(self):
         self.plan = verification.plan_checks(
-            {"id": "mc-corners", "operations": []}, {"scenarioCorners": CORRECT_SCENARIO_CORNERS}
+            {"id": "mc-corners", "operations": []}, _policy(CORRECT_SCENARIO_CORNERS)
         )
         self.prior_observation = {"checks": {}}
         self.baseline_physical = {"drc": fixtures.drc_report([]), "connectivity": fixtures.connectivity_report([])}
@@ -665,25 +671,23 @@ class MissingIdentityLegTest(unittest.TestCase):
         self.assertFalse(core.is_known(evaluation["finalIdentityErrorCount"]))
         self.assertIsNone(evaluation["database"])
 
-    def test_scenario_corners_map_absent_makes_identity_count_unknown(self):
-        # A plan built without any scenarioCorners policy at all.
-        plan = verification.plan_checks({"id": "mc-7", "operations": []}, {})
-        receipts = _base_receipts()
+    def test_scenario_corners_map_absent_is_refused_before_a_plan_exists(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            verification.plan_checks(
+                {"id": "mc-7", "operations": []},
+                {"requiredScenarios": list(SCENARIO_WNS)},
+            )
+        self.assertEqual(ctx.exception.code, "invalid-policy")
 
-        evaluation = verification.assemble(plan, receipts, self.prior_observation, self.baseline_physical)
-
-        self.assertFalse(core.is_known(evaluation["finalIdentityErrorCount"]))
-
-    def test_scenario_corners_map_missing_a_required_scenario_makes_identity_count_unknown(self):
+    def test_scenario_corners_map_missing_a_required_scenario_is_refused(self):
         scenario_corners = {scenario: BASE_CORNER for scenario in SCENARIO_WNS}
         del scenario_corners["func_ffg_cbest_125"]
-        plan = verification.plan_checks({"id": "mc-8", "operations": []},
-                                         {"scenarioCorners": scenario_corners})
-        receipts = _base_receipts()
-
-        evaluation = verification.assemble(plan, receipts, self.prior_observation, self.baseline_physical)
-
-        self.assertFalse(core.is_known(evaluation["finalIdentityErrorCount"]))
+        with self.assertRaises(core.AtcsError) as ctx:
+            verification.plan_checks(
+                {"id": "mc-8", "operations": []},
+                {"requiredScenarios": list(SCENARIO_WNS), "scenarioCorners": scenario_corners},
+            )
+        self.assertEqual(ctx.exception.code, "invalid-policy")
 
 
 if __name__ == "__main__":

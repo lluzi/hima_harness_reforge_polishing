@@ -20,13 +20,13 @@ sys.path.insert(0, str(TESTS_DIR))
 
 from atcs import core  # noqa: E402
 from atcs import refresh  # noqa: E402
-from atcs import verification  # noqa: E402
+SCENARIOS = ("slow_setup", "fast_hold")
 
 
 def _sta_sources(**overrides):
     sources = {
         scenario: {"path": f"flow/records/sta/{scenario}.rpt", "sha256": f"{i:064x}"}
-        for i, scenario in enumerate(verification.REQUIRED_SCENARIOS)
+        for i, scenario in enumerate(SCENARIOS)
     }
     sources.update(overrides)
     return sources
@@ -44,7 +44,7 @@ class LoadLedgerTest(unittest.TestCase):
     def test_round_trips_through_record_refresh(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "refresh-ledger.json"
-            refresh.record_refresh(path, "mc-1", "ds-1", _sta_sources())
+            refresh.record_refresh(path, "mc-1", "ds-1", _sta_sources(), SCENARIOS)
             reloaded = refresh.load_ledger(path)
             self.assertEqual(len(reloaded["entries"]), 1)
             self.assertEqual(reloaded["entries"][0]["mergeCommitId"], "mc-1")
@@ -57,65 +57,65 @@ class RecordRefreshTest(unittest.TestCase):
         self.path = Path(self.temp.name) / "refresh-ledger.json"
 
     def test_first_call_appends_one_entry(self):
-        ledger = refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources())
+        ledger = refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources(), SCENARIOS)
         self.assertEqual(ledger["entries"], [
             {"mergeCommitId": "mc-1", "designStateId": "ds-1", "sources": _sta_sources()},
         ])
 
     def test_two_different_merge_commits_both_recorded(self):
-        refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources())
-        ledger = refresh.record_refresh(self.path, "mc-2", "ds-2", _sta_sources())
+        refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources(), SCENARIOS)
+        ledger = refresh.record_refresh(self.path, "mc-2", "ds-2", _sta_sources(), SCENARIOS)
         self.assertEqual(len(ledger["entries"]), 2)
         self.assertEqual({e["mergeCommitId"] for e in ledger["entries"]}, {"mc-1", "mc-2"})
 
     def test_identical_resubmission_is_idempotent_no_op(self):
-        first = refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources())
-        second = refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources())
+        first = refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources(), SCENARIOS)
+        second = refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources(), SCENARIOS)
         self.assertEqual(first, second)
         self.assertEqual(len(second["entries"]), 1)
 
     def test_resubmission_with_different_design_state_id_is_refused(self):
-        refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources())
+        refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources(), SCENARIOS)
         with self.assertRaises(core.AtcsError) as ctx:
-            refresh.record_refresh(self.path, "mc-1", "ds-DIFFERENT", _sta_sources())
+            refresh.record_refresh(self.path, "mc-1", "ds-DIFFERENT", _sta_sources(), SCENARIOS)
         self.assertEqual(ctx.exception.code, "immutable-entry")
         # The ledger on disk must be untouched by the refused call.
         self.assertEqual(len(refresh.load_ledger(self.path)["entries"]), 1)
 
     def test_resubmission_with_different_sources_is_refused(self):
-        refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources())
+        refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources(), SCENARIOS)
         changed = _sta_sources()
-        changed[verification.REQUIRED_SCENARIOS[0]] = {"path": "different.rpt", "sha256": "f" * 64}
+        changed[SCENARIOS[0]] = {"path": "different.rpt", "sha256": "f" * 64}
         with self.assertRaises(core.AtcsError) as ctx:
-            refresh.record_refresh(self.path, "mc-1", "ds-1", changed)
+            refresh.record_refresh(self.path, "mc-1", "ds-1", changed, SCENARIOS)
         self.assertEqual(ctx.exception.code, "immutable-entry")
 
     def test_missing_required_scenario_is_refused(self):
         incomplete = _sta_sources()
-        del incomplete[verification.REQUIRED_SCENARIOS[0]]
+        del incomplete[SCENARIOS[0]]
         with self.assertRaises(core.AtcsError) as ctx:
-            refresh.record_refresh(self.path, "mc-1", "ds-1", incomplete)
+            refresh.record_refresh(self.path, "mc-1", "ds-1", incomplete, SCENARIOS)
         self.assertEqual(ctx.exception.code, "missing-input")
         self.assertFalse(self.path.exists())
 
     def test_malformed_source_reference_is_refused(self):
         malformed = _sta_sources()
-        malformed[verification.REQUIRED_SCENARIOS[0]] = "not-a-reference"
+        malformed[SCENARIOS[0]] = "not-a-reference"
         with self.assertRaises(core.AtcsError):
-            refresh.record_refresh(self.path, "mc-1", "ds-1", malformed)
+            refresh.record_refresh(self.path, "mc-1", "ds-1", malformed, SCENARIOS)
 
     def test_empty_merge_commit_id_is_refused(self):
         with self.assertRaises(core.AtcsError) as ctx:
-            refresh.record_refresh(self.path, "", "ds-1", _sta_sources())
+            refresh.record_refresh(self.path, "", "ds-1", _sta_sources(), SCENARIOS)
         self.assertEqual(ctx.exception.code, "missing-input")
 
     def test_empty_design_state_id_is_refused(self):
         with self.assertRaises(core.AtcsError) as ctx:
-            refresh.record_refresh(self.path, "mc-1", "", _sta_sources())
+            refresh.record_refresh(self.path, "mc-1", "", _sta_sources(), SCENARIOS)
         self.assertEqual(ctx.exception.code, "missing-input")
 
     def test_ledger_id_reflects_full_entry_list(self):
-        ledger = refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources())
+        ledger = refresh.record_refresh(self.path, "mc-1", "ds-1", _sta_sources(), SCENARIOS)
         without_id = dict(ledger)
         without_id.pop("id")
         self.assertEqual(ledger["id"], core.digest(without_id))

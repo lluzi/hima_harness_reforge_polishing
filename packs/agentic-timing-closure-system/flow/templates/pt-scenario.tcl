@@ -95,7 +95,7 @@ redirect $report_dir/hold.rpt {
         -input_pins -nets -transition_time -capacitance -significant_digits 4 \
         -pba_mode $pba_mode_arg
 }
-if {$env(PBA_MODE) == 1 && [info exists env(STA_DATA)]} {
+if {[info exists env(STA_DATA)]} {
     file mkdir $env(STA_DATA)
     if {[info exists env(ICEXPLORER_XTOP_HOME)]} {
         source $env(ICEXPLORER_XTOP_HOME)/utilities/sta/timing_data_0.tcl
