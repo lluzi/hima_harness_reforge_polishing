@@ -3493,6 +3493,18 @@ def main(argv=None):
     if len(argv) < 2:
         return _fail("missing-input", "usage: atcs_cli.py <subcommand> <workspace> [args]", 2)
     subcommand, workspace, *rest = argv
+    # Minor (final review, final fix batch C): resolve `workspace` to an
+    # absolute path before any handler ever sees it -- a relative argv value
+    # would otherwise leave every path this call writes (declared outputs,
+    # `_relpath`-computed refs a LATER, separately-invoked subcommand must
+    # resolve the exact same way) dependent on this one process's transient
+    # cwd, never a guaranteed-stable identity for the Campaign workspace.
+    # `os.path.abspath` (join-with-cwd-then-normalize), never `Path.resolve()`
+    # -- `resolve()` also follows symlinks, which would silently rewrite a
+    # workspace path a caller passed deliberately (e.g. `/tmp/...` on a host
+    # where `/tmp` is itself a symlink) into a different, if equivalent,
+    # string than the one it was actually given.
+    workspace = os.path.abspath(workspace)
     handler = SUBCOMMANDS.get(subcommand)
     if handler is None:
         return _fail("missing-input", f"unknown subcommand: {subcommand!r}", 2)

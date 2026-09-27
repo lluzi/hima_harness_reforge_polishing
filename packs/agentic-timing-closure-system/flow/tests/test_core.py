@@ -268,6 +268,32 @@ class ParseGlobalTimingTest(unittest.TestCase):
         result = reports.parse_global_timing(text)
         self.assertEqual(result["setup"]["wns"], {"value": -0.05})
 
+    def test_negative_zero_wns_with_zero_violations_is_unknown(self):
+        """Minor (final fix batch C): the OTHER contradictory sign -- `NUM 0` (no
+        violating paths) but a displayed NEGATIVE `WNS -0.00` -- is just as
+        untrustworthy as `NUM>0` with a non-negative WNS. `float("-0.00") == -0.0`
+        and `-0.0 >= 0.0` is `True` in Python, so this could not be caught by the
+        existing `violations > 0 and wns >= 0.0` check (`violations` here is `0`,
+        not `> 0`) -- a distinct rule is needed for this direction."""
+        text = fixtures.global_report("-0.00", "0.00", 0, "-0.01", "0.00", 0)
+        result = reports.parse_global_timing(text)
+        self.assertFalse(core.is_known(result["setup"]["wns"]))
+        self.assertEqual(result["setup"]["violations"], {"value": 0})
+
+    def test_negative_nonzero_wns_with_zero_violations_is_also_unknown(self):
+        """Same contradiction, not just the `-0.00` display case: any displayed
+        negative WNS paired with a confirmed `NUM 0` is untrustworthy."""
+        text = fixtures.global_report("-0.04", "0.00", 0, "-0.01", "0.00", 0)
+        result = reports.parse_global_timing(text)
+        self.assertFalse(core.is_known(result["setup"]["wns"]))
+
+    def test_true_zero_wns_with_zero_violations_stays_known(self):
+        """`WNS 0.00`/`NUM 0` (no leading minus sign) is NOT contradictory -- a
+        clean mode's own table-form zero, never downgraded."""
+        text = fixtures.global_report("0.00", "0.00", 0, "-0.01", "0.00", 0)
+        result = reports.parse_global_timing(text)
+        self.assertEqual(result["setup"]["wns"], {"value": 0.0})
+
     def test_zero_wns_with_zero_violations_stays_known(self):
         """NUM==0 (not >0) never triggers the cross-check -- a genuinely clean
         mode may legitimately show a WNS of exactly 0.0."""

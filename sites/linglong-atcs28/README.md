@@ -54,7 +54,21 @@ real documents into it. `sites/linglong-atcs28/inputs/` holds a template for eac
   - `query-spec.json` — the final PBA/coverage query the `observe-baseline` graph node's `observe` tool
     reads: `{"precision": "gba"|"pba", "requiredScenarios": [...], "nworst": <int>?}`. `maxPaths` is
     never set here — it comes from the Run's own `maxPaths` Strategy knob instead, which caps whatever
-    an admitted observation request separately asks for.
+    an admitted observation request separately asks for. **This Site's own copy sets `"precision":
+    "gba"` for the first campaign** (final fix batch C, Minor): `pt-scenario.tcl`'s `-slack_lesser_than
+    0.0` filter selects which paths `setup.rpt`/`hold.rpt` report based on the path's ordinary
+    (GBA-computed) slack; PT's own `-pba_mode path` mode then reruns PBA only over that already-selected
+    set (see `knowledge/observation-strategy.md`'s own PBA note), and a path whose more-accurate PBA
+    slack turns out non-negative reports as `slack (MET)`, not `(VIOLATED)`. `atcs.reports.
+    parse_path_report` never expects a `(MET)` row from this Pack's own report generation (its own
+    module docstring: a real `setup.rpt`/`hold.rpt` this Pack generates never contains one, confirmed
+    against the real B_lazy corpus generated with the same flag) — a non-trailing `(MET)` block raises
+    `AtcsError("malformed-report", ...)`, refusing the WHOLE report rather than just that one path. This
+    is a real, unverified-against-a-live-PT-session risk specific to PBA mode (GBA mode has no such
+    reanalysis step, so it cannot produce this mismatch); `gba` avoids it entirely for this Site's first
+    campaign. Switching to `pba` here is safe only once this specific PBA/`-slack_lesser_than`
+    interaction is confirmed against a real PT session (or `parse_path_report` is taught to treat a
+    `(MET)` row as "this path is no longer violating" instead of refusing).
   - `recheck.json` — the `risk` tool's own optional supplemental-recheck-data argument
     (`atcs.state.compare_checks`'s `recheck` parameter). This Site declares no recheck data of its own:
     `{}` (an empty JSON object) is the correct, complete value here — `compare_checks` treats an empty

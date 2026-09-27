@@ -492,11 +492,17 @@ class EvidenceGenerationWriteOnceTest(unittest.TestCase):
         )
         self.assertEqual(result1.returncode, 0, result1.stdout + result1.stderr)
 
-        # Second call, same working state, distinct (worse) reports -- names its
-        # own `g2`, never reusing or overwriting `g1`.
+        # Second call, same working state, distinct reports -- names its own
+        # `g2`, never reusing or overwriting `g1`. Minor (final fix batch C): a
+        # NEGATIVE WNS paired with `_clean_reports`'s own hard-coded `NUM 0` is
+        # exactly the contradictory pairing `parse_global_timing` now downgrades
+        # to `unknown` (no real PT report shows a violation-free count with a
+        # negative worst slack) -- this fixture only needs a value DISTINCT from
+        # the first generation's own, so a different non-negative one (0.09,
+        # still "clean"-shaped) proves the same thing without that contradiction.
         for scenario in cli.REQUIRED_SCENARIOS:
             cli._write_report_set(
-                self.workspace / "research" / "observe" / "g2" / scenario, cli._clean_reports(setup_wns=-0.02),
+                self.workspace / "research" / "observe" / "g2" / scenario, cli._clean_reports(setup_wns=0.09),
             )
         result2 = cli._run(
             "observe", self.workspace, query_spec_path, site_profile_path, scenario_corners_path, "1000",
@@ -512,7 +518,7 @@ class EvidenceGenerationWriteOnceTest(unittest.TestCase):
         # (worse) reports -- proof the dispatcher actually read `g2`, not `g1` again.
         observation = json.loads((self.workspace / "state" / "observation.json").read_text())
         self.assertAlmostEqual(
-            core.value_of(observation["scenarios"][cli.REQUIRED_SCENARIOS[0]]["setup"]["wns"]), -0.02, places=6,
+            core.value_of(observation["scenarios"][cli.REQUIRED_SCENARIOS[0]]["setup"]["wns"]), 0.09, places=6,
         )
 
 

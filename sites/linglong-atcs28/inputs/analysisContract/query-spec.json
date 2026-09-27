@@ -1,0 +1,9 @@
+{
+  "precision": "gba",
+  "requiredScenarios": [
+    "func_ssg_rcworst_m40",
+    "func_ssg_rcworst_125",
+    "func_ffg_cbest_m40",
+    "func_ffg_cbest_125"
+  ]
+}

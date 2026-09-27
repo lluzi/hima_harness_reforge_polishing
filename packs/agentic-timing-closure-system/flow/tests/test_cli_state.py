@@ -19,6 +19,7 @@ checks pass without any real tool ever running.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -3149,6 +3150,44 @@ class MainErrorMappingTest(unittest.TestCase):
         exit_code, stderr = self._run_with_raising_handler(OSError("disk gone"))
         self.assertEqual(exit_code, 2)
         self.assertEqual(json.loads(stderr)["code"], "malformed-input")
+
+
+class MainResolvesWorkspaceToAnAbsolutePathTest(unittest.TestCase):
+    """Minor (final review, final fix batch C): `main()`'s own `workspace` argv
+    value is resolved to an absolute path BEFORE it is handed to any subcommand
+    handler -- a relative `workspace` argument (e.g. a Harness invocation whose
+    own cwd is not guaranteed stable, or simply `.`) must never leave every
+    later-written path (declared outputs, `_relpath`-computed refs a LATER,
+    separately-invoked subcommand must resolve the exact same way) dependent on
+    this one process's transient cwd."""
+
+    def setUp(self):
+        self.addCleanup(atcs_cli.SUBCOMMANDS.pop, "test-capture-workspace", None)
+
+    def test_relative_workspace_argv_is_absolute_by_the_time_a_handler_sees_it(self):
+        captured = {}
+
+        def handler(workspace, args):
+            captured["workspace"] = workspace
+            return Path(workspace) / "out.json", {"ok": True}
+
+        atcs_cli.SUBCOMMANDS["test-capture-workspace"] = handler
+        tmp = _tmp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        original_cwd = os.getcwd()
+        os.chdir(tmp)
+        try:
+            exit_code = atcs_cli.main(["test-capture-workspace", "relative-ws"])
+        finally:
+            os.chdir(original_cwd)
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(os.path.isabs(captured["workspace"]), captured["workspace"])
+        self.assertEqual(Path(captured["workspace"]).resolve(), (tmp / "relative-ws").resolve())
+        # The declared output the handler named (workspace-relative) actually
+        # landed under the RESOLVED absolute workspace, not wherever a later,
+        # different-cwd process might have (mis)resolved "relative-ws" against.
+        self.assertTrue((tmp / "relative-ws" / "out.json").is_file())
 
 
 class EvaluateUnconstrainedCoverageTest(TwoRoundFlowTest):

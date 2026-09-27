@@ -207,6 +207,16 @@ def parse_global_timing(text):
     unknown, and neither ever manufactures a value where none was parsed;
     they only ever downgrade an already-parsed `known` `wns` to `unknown`,
     each time naming a machine-readable reason.
+
+    Minor (final fix batch C): a THIRD check catches the opposite-direction
+    contradiction -- `violations` known `== 0` (no violating paths at all)
+    but `wns`'s own DISPLAYED text is negative (`WNS -0.00`, or any other
+    negative value) -> `wns` unknown. `float("-0.00") == -0.0` and
+    `-0.0 >= 0.0` is `True`, so the `violations > 0` check above cannot catch
+    this direction (`violations` here is `0`, not `> 0`); this checks the
+    raw regex-matched text's own leading `-`, never the converted float
+    (which cannot distinguish `-0.00` from `0.00`). A true, non-negative
+    `WNS 0.00`/`NUM 0` pairing is never downgraded by this check.
     """
     result = {}
     for mode in ("setup", "hold"):
@@ -230,7 +240,8 @@ def parse_global_timing(text):
         wns_match = re.search(r"(?m)^WNS\s+(\S+)", body)
         tns_match = re.search(r"(?m)^TNS\s+(\S+)", body)
         num_match = re.search(r"(?m)^NUM\s+(\S+)", body)
-        wns = _finite_float_measure(wns_match.group(1)) if wns_match else core.unknown("missing-wns-row")
+        wns_raw = wns_match.group(1) if wns_match else None
+        wns = _finite_float_measure(wns_raw) if wns_match else core.unknown("missing-wns-row")
         tns = _finite_float_measure(tns_match.group(1)) if tns_match else core.unknown("missing-tns-row")
         violations = _finite_int_measure(num_match.group(1)) if num_match else core.unknown("missing-num-row")
 
@@ -240,6 +251,19 @@ def parse_global_timing(text):
             )
         elif core.is_known(wns) and core.value_of(violations) > 0 and core.value_of(wns) >= 0.0:
             wns = core.unknown("precision-limited: NUM>0 but WNS displays non-negative")
+        elif (core.is_known(wns) and core.value_of(violations) == 0
+                and wns_raw is not None and wns_raw.strip().startswith("-")):
+            # Minor (final review, final fix batch C): the OTHER contradictory
+            # sign -- `NUM 0` (no violating paths at all) paired with a
+            # DISPLAYED negative `WNS` (including `-0.00`, since
+            # `float("-0.00") == -0.0` and `-0.0 >= 0.0` is `True` in Python,
+            # which the `violations > 0` check above cannot catch when
+            # `violations` is itself `0`). A confirmed-clean violation count
+            # can never coexist with a genuinely negative worst slack; this
+            # checks the raw displayed text's own sign (never the converted
+            # float, which loses the "-0.00" distinction), so it never
+            # downgrades a true, non-negative `WNS 0.00`/`NUM 0` pairing.
+            wns = core.unknown("precision-limited: NUM=0 but WNS displays a negative value")
 
         result[mode] = {"wns": wns, "tns": tns, "violations": violations}
     return result
