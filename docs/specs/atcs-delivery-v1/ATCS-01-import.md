@@ -1,7 +1,9 @@
 # ATCS-01 — 将来源 Pack 接入当前 main
 
-状态：ready-for-agent  
-依赖：无  
+状态：ready-for-agent
+
+依赖：无
+
 产出：可审查的 ATCS development Pack，不改变 Runtime 行为
 
 ## 范围
@@ -44,4 +46,3 @@ PATH="$HOME/.local/node24/bin:$PATH" node scripts/run-contract-tests.mjs --check
 ```
 
 完成记录包含 commit、remote SHA、导入文件清单和未运行范围。
-

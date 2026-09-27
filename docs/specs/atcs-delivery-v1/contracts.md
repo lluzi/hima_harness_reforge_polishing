@@ -99,4 +99,3 @@ Control 和 treatment 使用同一 Harness/App、模型/effort、设计 checkpoi
 | qualification scripts/evidence | ATCS-06 | 不顺手修改产品行为 |
 | TEST/release/App/manual/final handoff | ATCS-07 | 只消费已固定候选 |
 | benchmark charter/audit/report | ATCS-08 | control/treatment 都只读已发布 Pack |
-

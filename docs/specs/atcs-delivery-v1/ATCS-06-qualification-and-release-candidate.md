@@ -1,7 +1,9 @@
 # ATCS-06 — 真实工具资格与固定发布候选
 
-状态：blocked-on-INTEGRATION_READY  
-依赖：ATCS-03（M1）  
+状态：blocked-on-INTEGRATION_READY
+
+依赖：ATCS-03（M1）
+
 产出：一个可交给 bounded Campaign 的固定候选
 
 ## 前置
@@ -40,4 +42,3 @@
 - XTop transcript 展示真实 timing context、typed commands、one mutation、receipts 和 clean close。
 - candidate App 冷启动可发现 Pack/Site，Preparation 在创建 Run 前给出准确 ready/blocked。
 - 资格不声称 timing closure 或 ATCS 优于 control。
-

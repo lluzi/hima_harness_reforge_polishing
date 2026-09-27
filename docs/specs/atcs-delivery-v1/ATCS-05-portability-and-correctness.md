@@ -1,7 +1,9 @@
 # ATCS-05 — 关闭发布前 portability 与 correctness 缺口
 
-状态：ready-after-ATCS-01  
-依赖：ATCS-01  
+状态：ready-after-ATCS-01
+
+依赖：ATCS-01
+
 产出：G33 关闭，post-route 发布路径无开放 P0
 
 ## 范围
@@ -47,4 +49,3 @@ PATH="$HOME/.local/node24/bin:$PATH" node scripts/run-contract-tests.mjs local -
 ```
 
 corpus preflight 的真实 SSH 读取属于 ATCS-06；本任务只运行 synthetic/local 路径。
-

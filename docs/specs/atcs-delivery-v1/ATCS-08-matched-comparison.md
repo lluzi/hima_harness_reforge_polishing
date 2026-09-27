@@ -1,7 +1,9 @@
 # ATCS-08 — 普通 agentic flow 与 ATCS 的 matched comparison
 
-状态：blocked-on-PACK_DELIVERABLE  
-依赖：ATCS-07  
+状态：blocked-on-PACK_DELIVERABLE
+
+依赖：ATCS-07
+
 产出：`BENCHMARK_RECORDED`
 
 ## 问题
@@ -49,4 +51,3 @@ license 资源干扰。运行顺序及冷/热缓存影响写入报告。
 - audit 不从文件名、模型总结或跨 arm 不同分母推断成功。
 - 报告区分 Harness 集成事实、Pack mechanics、业务结果和普遍性限制。
 - 形成一个下一轮方法改进列表；没有最低层证据时不直接修改 Runtime。
-

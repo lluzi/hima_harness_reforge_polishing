@@ -1,7 +1,9 @@
 # ATCS-02 — 资格并实现 adopted Team result 的 Pack 投影
 
-状态：blocked-on-ATCS-01  
-依赖：ATCS-01  
+状态：blocked-on-ATCS-01
+
+依赖：ATCS-01
+
 产出：C1 的通用 Host/Runtime 接口
 
 ## 问题

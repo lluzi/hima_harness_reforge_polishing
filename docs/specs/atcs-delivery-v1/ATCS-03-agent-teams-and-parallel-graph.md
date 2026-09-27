@@ -1,7 +1,9 @@
 # ATCS-03 — Pack-declared worker Teams 与资源感知并行图
 
-状态：blocked-on-ATCS-02/04/05  
-依赖：ATCS-01、ATCS-02、ATCS-04、ATCS-05  
+状态：blocked-on-ATCS-02/04/05
+
+依赖：ATCS-01、ATCS-02、ATCS-04、ATCS-05
+
 产出：`INTEGRATION_READY`
 
 ## 目标
@@ -64,4 +66,3 @@ PATH="$HOME/.local/node24/bin:$PATH" node scripts/run-contract-tests.mjs local -
 PATH="$HOME/.local/node24/bin:$PATH" pnpm run check:seams
 PATH="$HOME/.local/node24/bin:$PATH" pnpm run check:boundary
 ```
-

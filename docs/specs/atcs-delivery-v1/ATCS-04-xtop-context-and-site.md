@@ -1,7 +1,9 @@
 # ATCS-04 — 补齐 worker XTop 上下文、wrapper 与 Site 资格面
 
-状态：ready-after-ATCS-01  
-依赖：ATCS-01  
+状态：ready-after-ATCS-01
+
+依赖：ATCS-01
+
 产出：关闭 G34 的代码侧缺口；为 L4 提供候选 wrapper
 
 ## 问题

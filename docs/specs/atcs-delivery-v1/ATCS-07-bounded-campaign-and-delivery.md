@@ -1,7 +1,9 @@
 # ATCS-07 — Bounded HimaHarness Campaign 与 Pack 交付
 
-状态：blocked-on-ATCS-06  
-依赖：ATCS-06  
+状态：blocked-on-ATCS-06
+
+依赖：ATCS-06
+
 产出：`PACK_DELIVERABLE`
 
 ## 测试主体
@@ -52,4 +54,3 @@ PASS 后：
 6. 记录 `PACK_DELIVERABLE`。
 
 任何 Pack/wrapper/binding 修复都回到 ATCS-06，并使用新 Campaign；不在失败 Run 上替换方法 bytes。
-
