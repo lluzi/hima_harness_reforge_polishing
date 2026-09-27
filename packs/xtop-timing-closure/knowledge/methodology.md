@@ -54,12 +54,12 @@ The Workshop writes exactly this contract, with `iteration` equal to current sta
 actions are allowed. The adapter rejects extra or missing fields and never executes model-authored
 Tcl directly.
 
-After the reader has retained `fix-plan.json`, deterministic Pack code validates all one through
-eight actions and projects the complete setup/hold portfolio into the Operator startup. The bounded
-Operator calls typed `hima_apply_plan()` once; it has no generic file access, cannot read the plan
-path, and supplies no model-authored Tcl or action arguments. The startup records the exact plan and
-projection hashes; the immutable Site wrapper re-validates the projection before and after XTop.
-The command is one-shot: a completed application cannot replay, and a partial failure becomes
+After the reader has retained `fix-plan.json`, the Pack-declared Researcher and Reviewer narrow its
+bounded portfolio to one evidence-checked action. The owner explicitly adopts that exact Reviewer
+candidate. Runtime supplies the action and plan SHA-256 inline to the one Operator child, which calls
+typed `hima_apply_action(...)` once and has no generic file access, plan path or Tcl surface. The
+startup records the retained plan/projection identities; the immutable Site wrapper re-validates
+them before and after XTop. The command is one-shot: a completed application cannot replay, and a partial failure becomes
 uncertain and forbids both replay and save. Candidate save is allowed only after
 that mutation completes, and it returns success only
 after exactly one logical and one physical ECO file exist. An empty failed save is removed so the

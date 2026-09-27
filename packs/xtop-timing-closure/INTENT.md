@@ -30,3 +30,10 @@ The Pack applies the source flow's marker/log/artifact rule, same-physical-versi
 per-generation ECO prefix, independent iteration directories and like-for-like PT comparison. It
 adds endpoint fixed/remaining/entrant/regressed feedback and AI plan revision inside the existing
 Workshop and Fabric surfaces.
+
+## Agent Team
+
+The method declares its Timing Researcher, Timing Reviewer and XTop Operator roles. The Campaign
+owner remains the only Run owner and explicitly dispatches and adopts retained candidates. Harness
+materializes the recipe through the existing delegation Runtime; there is no hidden graph executor
+or second Agent loop.

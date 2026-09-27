@@ -772,6 +772,9 @@ def xtop_interactive_startup(workspace: Path):
     root = paths(workspace)["flow"] / "iterations" / f"g{next_iteration:03d}" / "XTOP"
     root.mkdir(parents=True, exist_ok=True)
     require_fresh_candidate_output(root)
+    selected_file = root / "selected-action.json"
+    if selected_file.is_symlink() or selected_file.exists():
+        raise Rejected("selected-action receipt already exists before Operator startup")
     library_file = root / "libraries.tcl"
     action_file = root / "operator-actions.tcl"
     generate_xtop_libraries(profile, library_file)
@@ -787,6 +790,7 @@ def xtop_interactive_startup(workspace: Path):
         "DESIGN": profile["design"], "TECH_LEF": profile["techLef"], "CELL_LEF_GLOB": profile["cellLefGlob"],
         "NETLIST": export["netlist"], "DEF": export["def"], "STA_DATA": analysis["staData"], "RUN_ROOT": root,
         "LIBRARY_TCL": library_file, "ACTIONS_TCL": action_file, "ACTION_COUNT": len(plan["actions"]),
+        "PLAN_SHA256": file_ref(plan_file, workspace, "fix-plan")["sha256"],
         "ECO_PREFIX": f"xtop_operator_g{next_iteration:03d}_eco",
         "OPERATOR_IDENTITY": f"{profile['design']}|g{int(runtime['iteration']):03d}|{len(profile['scenarios'])}-scenario-PrimeTime",
     }
@@ -824,6 +828,16 @@ def finalize_xtop_interactive(workspace: Path):
     projection = verify_xtop_interactive_projection(workspace)
     iteration = int(runtime["iteration"]) + 1
     root = paths(workspace)["flow"] / "iterations" / f"g{iteration:03d}" / "XTOP"
+    selected_file = root / "selected-action.json"
+    if selected_file.is_symlink() or not selected_file.is_file():
+        raise Rejected("typed XTop Operator selected-action receipt is missing or linked")
+    selected = read_json(selected_file)
+    if set(selected) != {"schema", "planSha256", "action"} or selected.get("schema") != "xtop-selected-action/1" \
+            or selected.get("planSha256") != projection["plan"]["sha256"]:
+        raise Rejected("typed XTop Operator selected-action receipt differs from the retained plan")
+    plan = validate_plan(paths(workspace)["plan"], iteration)
+    if selected.get("action") not in [{name: action[name] for name in ("kind", "effort", "setupTargetNs", "holdTargetNs", "setupMarginNs", "holdMarginNs")} for action in plan["actions"]]:
+        raise Rejected("typed XTop Operator selected action is not one action in the retained plan")
     eco = root / "eco_output"
     logical = list(eco.glob("xtop_operator_g*_eco_netlist_*.txt"))
     physical = list(eco.glob("xtop_operator_g*_eco_physical_*.txt"))
@@ -835,7 +849,7 @@ def finalize_xtop_interactive(workspace: Path):
     runtime["pendingEco"] = {"root": str(eco), "netlist": str(logical[0]), "physical": str(physical[0])}
     atomic_json(paths(workspace)["runtime"], runtime)
     return write_stage(workspace, "xtop", "passed", started, iteration=iteration, mode="typed-interactive",
-                       planProjection=projection,
+                       planProjection=projection, selectedAction=file_ref(selected_file, workspace, "selected-action"),
                        routePreservation={"keepRouteRequested": True, "logicalTcl": logical_tcl, "physicalTcl": physical_tcl},
                        artifacts=[file_ref(logical[0], workspace, "netlist-eco"), file_ref(physical[0], workspace, "physical-eco")])
 

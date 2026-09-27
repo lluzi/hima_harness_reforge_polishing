@@ -1,0 +1,7 @@
+id: xtop-closure-experience
+version: "1"
+file: tools/read-output.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', history]
+reportKind: xtop-timing-closure-experience/1
+emits:
+  - xtop_experience_entries

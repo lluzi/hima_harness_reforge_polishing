@@ -45,6 +45,9 @@ nodes:
   - id: read-fix-plan
     kind: act
     parameters: { observes: fixPlan }
+  - id: read-closure-experience
+    kind: act
+    parameters: { observes: closureExperience }
   - id: run-xtop-fix
     kind: act
     parameters: { tool: run-xtop-fix }
@@ -120,7 +123,8 @@ edges:
   - { from: summarize-baseline, to: read-baseline-state }
   - { from: read-baseline-state, to: plan-fix }
   - { from: plan-fix, to: read-fix-plan }
-  - { from: read-fix-plan, to: run-xtop-fix }
+  - { from: read-fix-plan, to: read-closure-experience }
+  - { from: read-closure-experience, to: run-xtop-fix }
   - { from: run-xtop-fix, to: read-xtop }
   - { from: read-xtop, to: apply-eco }
   - { from: apply-eco, to: read-innovus }

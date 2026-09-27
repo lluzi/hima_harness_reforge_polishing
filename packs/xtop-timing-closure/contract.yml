@@ -62,6 +62,7 @@ outputs:
       every historical snapshot remains under flow/iterations/.
   - name: closureExperience
     path: flow/evidence/experience.jsonl
+    reader: xtop-closure-experience
     description: Append-only success and failure experience for every attempted fix generation.
   - name: fixPlan
     path: flow/research/fix-plan.json
@@ -90,7 +91,7 @@ outputs:
 environment:
   wrappers:
     - /usr/bin/python3
-    - /data/eda/project/hima_harness/operator-admin/xtop-v4/xtop-operator-v4.sh
+    - /data/eda/project/hima_harness/operator-admin/xtop-v5/xtop-operator-v5.sh
 
 workspace:
   source: pack
@@ -146,31 +147,36 @@ tools:
     recommendedVersion: XTop 2025.09.tmp15
     file: tools/closure.py
     description: >-
-      Validate the reader-backed AI plan and execute its complete whitelisted setup/hold portfolio.
-      After read-fix-plan, the Operator calls hima_apply_plan once; deterministic Pack code has
-      already projected the retained plan into the startup. The child has no generic file access and
-      must not be told to read the fix-plan path or supply Tcl/arguments. Save only after the typed
-      mutation returns DONE.
+      Validate the reader-backed AI plan and execute one owner-adopted reviewed setup/hold action.
+      The child has no generic file access: Runtime supplies the exact action and plan SHA-256 inline.
+      Save only after the typed mutation returns DONE.
     inputs: [WORKSPACE]
     licences: { XTop: 1 }
     interactive:
       mode: hybrid
       adapter: hima-tcl-line-v1
       argv:
-        - /data/eda/project/hima_harness/operator-admin/xtop-v4/xtop-operator-v4.sh
+        - /data/eda/project/hima_harness/operator-admin/xtop-v5/xtop-operator-v5.sh
         - ${WORKSPACE}
         - ${WORKSPACE}/flow/closure.py
         - ${WORKSPACE}/flow/templates/xtop-operator.tcl
       commands:
         read: [hima_operator_identity, hima_summary]
-        mutate: [hima_apply_plan]
+        mutate: [hima_apply_action]
         save: [hima_save_candidate]
         close: [hima_close]
       arguments:
         hima_operator_identity: []
         hima_summary:
           - { name: mode, type: string, choices: [setup, hold] }
-        hima_apply_plan: []
+        hima_apply_action:
+          - { name: kind, type: string, choices: [setup-size, setup-buffer, hold-size, hold-buffer] }
+          - { name: effort, type: string, choices: [medium, high] }
+          - { name: setupTargetNs, type: number, minimum: -0.2, maximum: 0.2 }
+          - { name: holdTargetNs, type: number, minimum: -0.2, maximum: 0.2 }
+          - { name: setupMarginNs, type: number, minimum: -0.2, maximum: 0.2 }
+          - { name: holdMarginNs, type: number, minimum: -0.2, maximum: 0.2 }
+          - { name: planSha256, type: string }
         hima_save_candidate: []
         hima_close: []
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/closure.py', xtop, '${WORKSPACE}']
@@ -211,6 +217,8 @@ knowledge:
     purpose: The measured PT-XTop-Innovus-StarRC-PT closure method and honest completion boundary.
   - file: endpoint-feedback.md
     purpose: How to classify fixed, remaining, entrant and regressed endpoints before choosing the next action.
+  - file: agent-team.md
+    purpose: Method-declared Timing Researcher, Reviewer, Operator and Campaign-owner responsibilities.
   - file: source-flow.md
     purpose: The verified SWERV28 Foundation Flow, recovery rules, source paths and two-round evidence.
   - file: source-manifest.txt
@@ -235,3 +243,84 @@ workshops:
     knowledge: [methodology.md, endpoint-feedback.md, source-flow.md]
     produces: fixPlan
     argv: [/usr/bin/python3, '${ENTRY}', '${WORKSPACE}']
+
+agentTeams:
+  - id: timing-eco-team
+    version: "1"
+    triggerNode: run-xtop-fix
+    members:
+      - id: researcher
+        role: researcher
+        node: run-xtop-fix
+        taskTemplate: >-
+          Read only the declared current closure state and closure experience. Identify fixed,
+          remaining, entrant and regressed endpoint groups, then return bounded action hypotheses.
+          Do not operate XTop, change the Goal, complete a node or claim timing closure.
+        inputs: [closureState, closureExperience]
+        allowedTools: [hima_delegation_input]
+        scopePolicy: declared-inputs-only
+        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 5000 }
+        dependencyRoles: []
+        resultSchema:
+          id: xtop-timing-research/1
+          required: [schema, hypotheses, evidenceRefs, limitations]
+        recipient: run-owner
+        ownerAdoption: candidate-only
+        identity: one-child-per-role-per-execution
+        followup: reuse-same-child
+        cancellation: request-stop-preserve-unknown
+        terminal: [completed, cancelled, expired, uncertain, refused]
+        refusalConditions: [missing-current-evidence, stale-execution, budget-or-owner-fence]
+      - id: reviewer
+        role: reviewer
+        node: run-xtop-fix
+        taskTemplate: >-
+          Read the exact Researcher candidate and current closure evidence. Check evidence identity,
+          action vocabulary, setup/hold guard, failed actions, rollback and expected effect. Return
+          exactly one reviewed action; do not adopt, execute or complete the graph node.
+        inputs: [closureState, closureExperience, fixPlan]
+        allowedTools: [hima_delegation_input]
+        scopePolicy: declared-inputs-only
+        budgetShare: { maxElapsedMs: 300000, maxFollowups: 0, maxTokensPerTurn: 5000 }
+        dependencyRoles: [researcher]
+        resultSchema:
+          id: xtop-reviewed-action/1
+          required: [schema, planSha256, command, arguments, evidenceRefs, limitations]
+        recipient: run-owner
+        ownerAdoption: required
+        identity: one-child-per-role-per-execution
+        followup: forbidden
+        cancellation: request-stop-preserve-unknown
+        terminal: [completed, cancelled, expired, uncertain, refused]
+        refusalConditions: [missing-researcher-result, invalid-plan-hash, unsupported-action, missing-rollback]
+      - id: operator
+        role: operator
+        node: run-xtop-fix
+        taskTemplate: >-
+          Operate only the exact Host-qualified execution using the immutable reviewed action and
+          plan SHA-256 supplied inline by the Runtime. Validate identity, mutate once, verify, save
+          one unique ECO pair, finalize and close. Do not choose strategy or complete the node.
+        inputs: [fixPlan]
+        allowedTools: [hima_interactive]
+        scopePolicy: site-qualified-interactive-only
+        budgetShare: { maxElapsedMs: 1200000, maxFollowups: 1, maxTokensPerTurn: 5000 }
+        dependencyRoles: [reviewer]
+        resultSchema:
+          id: xtop-operator-receipts/1
+          required: [schema, planSha256, mutationReceipt, logicalEcoSha256, physicalEcoSha256, limitations]
+        recipient: run-owner
+        ownerAdoption: required
+        identity: one-child-per-role-per-execution
+        followup: reuse-same-child
+        cancellation: request-stop-preserve-unknown
+        terminal: [completed, cancelled, expired, uncertain, refused]
+        refusalConditions: [reviewer-not-adopted, missing-plan-evidence, no-qualified-binding, mutation-outcome-unknown]
+        reviewedAction:
+          fromRole: reviewer
+          planInput: fixPlan
+          actionListField: actions
+          command: hima_apply_action
+          hostPlanHashArgument: planSha256
+          planHashField: planSha256
+          commandField: command
+          argumentsField: arguments

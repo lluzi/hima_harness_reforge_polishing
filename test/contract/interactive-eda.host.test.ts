@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { parse, stringify } from 'yaml';
 import {
   BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest, loadPack, packDigestExcludes,
+  retainRunMaterial, runDelegations,
   type ExecutionActionResult, type JobRecord,
 } from '@hima/harness';
 import { homePatchFile, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
@@ -44,7 +45,48 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     set_value: [{ name: 'key', type: 'string' }, { name: 'value', type: 'number' }],
     fail_command: [], save_state: [{ name: 'file', type: 'string' }], close_session: [],
   } };
+  contract.agentTeams = [{ id: 'fixture-team', version: '1', triggerNode: 'synthesize', members: [{
+    id: 'researcher', role: 'researcher', node: 'synthesize',
+    taskTemplate: 'Read the exact declared QoR observation and return a bounded candidate.',
+    inputs: ['qorReport'], allowedTools: ['hima_delegation_input'], scopePolicy: 'declared-inputs-only',
+    budgetShare: { maxElapsedMs: 5_000, maxFollowups: 0, maxTokensPerTurn: 1_000 }, dependencyRoles: [],
+    resultSchema: { id: 'fixture-research/1', required: ['schema', 'hypotheses'] }, recipient: 'run-owner',
+    ownerAdoption: 'candidate-only', identity: 'one-child-per-role-per-execution', followup: 'forbidden',
+    cancellation: 'request-stop-preserve-unknown', terminal: ['completed', 'cancelled', 'expired', 'uncertain', 'refused'],
+    refusalConditions: ['missing-current-evidence'],
+  }] }];
   await writeFile(contractFile, stringify(contract));
+  const gatedPackId = 'interactive-tcl-team-required';
+  await writePackVariant(path.join(h.home, 'hima/packs'), gatedPackId, [], [], packId);
+  const gatedContractFile = path.join(h.home, 'hima/packs', gatedPackId, 'contract.yml');
+  const gatedContract = parse(await readFile(gatedContractFile, 'utf8')) as Record<string, any>;
+  gatedContract.tools.find((candidate: { id: string }) => candidate.id === 'synth').interactive.arguments.set_value
+    .push({ name: 'planSha256', type: 'string' });
+  gatedContract.agentTeams = [{ id: 'required-team', version: '1', triggerNode: 'synthesize', members: [
+    { id: 'researcher', role: 'researcher', node: 'synthesize', taskTemplate: 'Return bounded hypotheses.',
+      inputs: ['qorReport'], allowedTools: ['hima_delegation_input'], scopePolicy: 'declared-inputs-only',
+      budgetShare: { maxElapsedMs: 10_000, maxFollowups: 0 }, dependencyRoles: [],
+      resultSchema: { id: 'fixture-research/1', required: ['schema', 'hypotheses'] }, recipient: 'run-owner',
+      ownerAdoption: 'candidate-only', identity: 'one-child-per-role-per-execution', followup: 'forbidden',
+      cancellation: 'request-stop-preserve-unknown', terminal: ['completed', 'cancelled', 'expired', 'uncertain', 'refused'],
+      refusalConditions: ['missing-evidence'] },
+    { id: 'reviewer', role: 'reviewer', node: 'synthesize', taskTemplate: 'Return one reviewed action.',
+      inputs: ['qorReport'], allowedTools: ['hima_delegation_input'], scopePolicy: 'declared-inputs-only',
+      budgetShare: { maxElapsedMs: 10_000, maxFollowups: 0 }, dependencyRoles: ['researcher'],
+      resultSchema: { id: 'fixture-review/1', required: ['schema', 'planSha256', 'command', 'arguments'] },
+      recipient: 'run-owner', ownerAdoption: 'required', identity: 'one-child-per-role-per-execution', followup: 'forbidden',
+      cancellation: 'request-stop-preserve-unknown', terminal: ['completed', 'cancelled', 'expired', 'uncertain', 'refused'],
+      refusalConditions: ['missing-evidence'] },
+    { id: 'operator', role: 'operator', node: 'synthesize', taskTemplate: 'Operate the exact adopted action.',
+      inputs: ['qorReport'], allowedTools: ['hima_interactive'], scopePolicy: 'site-qualified-interactive-only',
+      budgetShare: { maxElapsedMs: 10_000, maxFollowups: 0 }, dependencyRoles: ['reviewer'],
+      resultSchema: { id: 'fixture-operator/1', required: ['schema'] }, recipient: 'run-owner', ownerAdoption: 'required',
+      identity: 'one-child-per-role-per-execution', followup: 'forbidden', cancellation: 'request-stop-preserve-unknown',
+      terminal: ['completed', 'cancelled', 'expired', 'uncertain', 'refused'], refusalConditions: ['reviewer-not-adopted'],
+      reviewedAction: { fromRole: 'reviewer', planInput: 'qorReport', actionListField: 'actions', command: 'set_value',
+        hostPlanHashArgument: 'planSha256', planHashField: 'planSha256', commandField: 'command', argumentsField: 'arguments' } },
+  ] }];
+  await writeFile(gatedContractFile, stringify(gatedContract));
   const sourceTemplate = path.join(h.home, 'hima/packs', packId, 'interactive-repl.tcl');
   await copyFile(path.join(repoRoot, 'test/fixtures/interactive-job/repl.tcl'), sourceTemplate);
   await copyFile(sourceTemplate, path.join(flow.root, 'interactive-repl.tcl'));
@@ -83,12 +125,92 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     `${JSON.stringify({ schema: 'hima-interactive-bindings/1', bindings: [{ ...binding,
       environment: { ...binding.environment, sha256: environmentSha256 } }] }, null, 2)}\n`);
   await writeBindings('0'.repeat(64));
+  const gatedPlanText = `${JSON.stringify({ actions: [{ key: 'answer', value: 42 }] })}\n`;
+  const gatedPlanSha256 = createHash('sha256').update(gatedPlanText).digest('hex');
   const scenario = await writeMomentScenario(h, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
   await writeReplayOverlay(h.home, { file: scenario.file, overrideFile: scenario.override, childFiles: scenario.children });
   await appendFile(homePatchFile(h.home), `\n- id: hima\n  config:\n    sitesDir: ${JSON.stringify(site.sitesDir)}\n    packsDir: ${JSON.stringify(path.join(h.home, 'hima/packs'))}\n    knowledgeDir: ${JSON.stringify(path.join(h.home, 'hima/knowledge/current'))}\n    interactiveBindingsFile: ${JSON.stringify(bindingsFile)}\n`);
 
   const host = await bootInProcess(h); t.after(() => host.dispose());
   const owner = await createRootAgent(host.ctx, h.workspace);
+  const gated = await host.ctx.hima.startRun({ pack: gatedPackId, site: site.name, goal: { target_period_ns: 2 },
+    ownerSessionId: String(owner.id), timeBoxMs: 60_000 });
+  assert.equal(gated.kind, 'ran'); if (gated.kind !== 'ran') return;
+  let gatedControl = host.ctx.hima.ledger.run(gated.run.id)!.control!;
+  const gatedBegin = await host.ctx.hima.executionAction({ runId: gated.run.id, actor: String(owner.id), action: 'begin',
+    nodeId: gated.run.currentNode!, requestId: 'gated-begin', expectedEpoch: gatedControl.epoch, expectedRevision: gatedControl.revision });
+  assert.equal(gatedBegin.kind, 'accepted');
+  gatedControl = host.ctx.hima.ledger.run(gated.run.id)!.control!;
+  const manualBypass = await host.ctx.hima.delegate({ runId: gated.run.id, actor: String(owner.id), action: 'create',
+    requestId: 'gated-manual-operator', expectedEpoch: gatedControl.epoch, expectedRevision: gatedControl.revision,
+    contract: { role: 'operator', nodeId: gated.run.currentNode, executionId: gatedBegin.receipt?.executionId },
+    text: 'Skip the declared Reviewer.' } as never) as Record<string, any>;
+  assert.equal(manualBypass.status, 'refused'); assert.match(manualBypass.reason, /declares an Operator Agent Team recipe/);
+  assert.equal(host.ctx.hima.ledger.records({ runId: gated.run.id, type: 'delegation' }).length, 0);
+  const gatedExecutionId = gatedBegin.receipt?.executionId; assert.ok(gatedExecutionId);
+  const gatedPlanBytes = Buffer.from(gatedPlanText);
+  const gatedRetained = await retainRunMaterial({ ledger: host.ctx.hima.ledger,
+    packsDir: path.join(h.home, 'hima/packs') }, gated.run.id, gatedPlanBytes, gatedPlanSha256);
+  assert.ok(gatedRetained);
+  await host.ctx.hima.ledger.appendObservation(gated.run.id, { path: `flow/results/${flow.design}/syn/report/qor.rpt`,
+    contentSha256: gatedPlanSha256, retainedPath: gatedRetained, bytes: gatedPlanBytes.byteLength,
+    reader: { id: 'dc-qor-report', version: '1', reportKind: 'dc-qor', emits: ['clock_period'] }, values: [] });
+  const recipeCreate = async (memberId: string, requestId: string) => {
+    const current = host.ctx.hima.ledger.run(gated.run.id)!.control!;
+    return host.ctx.hima.delegate({ runId: gated.run.id, actor: String(owner.id), action: 'create', requestId,
+      expectedEpoch: current.epoch, expectedRevision: current.revision,
+      recipe: { teamId: 'required-team', version: '1', memberId, executionId: gatedExecutionId } } as never) as Promise<Record<string, any>>;
+  };
+  const appendCandidate = async (delegationId: string, text: string, requestId: string) => {
+    const row = runDelegations((host.ctx.hima as any).deps(), gated.run.id).find(item => item.delegationId === delegationId)!;
+    const outputIdentity = createHash('sha256').update(JSON.stringify([{ type: 'text', text }])).digest('hex');
+    return host.ctx.hima.ledger.appendDelegation(gated.run.id, { delegationId, parentSessionId: row.parentSessionId,
+      childSessionId: row.childSessionId, requestId, requestDigest: createHash('sha256').update(requestId).digest('hex'),
+      event: 'result-observed', payload: { candidate: true, source: 'native-live-session', handoff: {
+        outputIdentity, contract: { recordId: row.contractRecordId, requestDigest: row.requestDigest },
+        output: { text, content: [{ type: 'text', text }], truncated: false }, completedTurn: { turn: 1, endSeq: 1 },
+        unknowns: [], evidence: { artifactRefs: [], diffRefs: [], testRefs: [], limitations: [] },
+      } } });
+  };
+  const researcher = await recipeCreate('researcher', 'gated-researcher'); assert.equal(researcher.status, 'created', JSON.stringify(researcher));
+  assert.deepEqual(researcher.effectiveContract.tools, ['hima_delegation_input']);
+  assert.equal(researcher.effectiveContract.recipient.sessionId, String(owner.id));
+  assert.equal(researcher.effectiveContract.budgetShare.maxElapsedMs, 10_000);
+  const reviewerBeforeResearch = await recipeCreate('reviewer', 'gated-reviewer-too-early');
+  assert.equal(reviewerBeforeResearch.status, 'refused'); assert.match(reviewerBeforeResearch.reason, /dependency researcher/);
+  await appendCandidate(researcher.effectiveContract.delegationId,
+    JSON.stringify({ schema: 'fixture-research/1', hypotheses: ['hold endpoint group'] }), 'gated-research-result');
+  const operatorTooEarly = await recipeCreate('operator', 'gated-operator-too-early');
+  assert.equal(operatorTooEarly.status, 'refused'); assert.match(operatorTooEarly.reason, /dependency reviewer/);
+  const reviewer = await recipeCreate('reviewer', 'gated-reviewer'); assert.equal(reviewer.status, 'created', JSON.stringify(reviewer));
+  assert.deepEqual(reviewer.effectiveContract.tools, ['hima_delegation_input']);
+  assert.equal(reviewer.effectiveContract.recipient.sessionId, String(owner.id));
+  await appendCandidate(reviewer.effectiveContract.delegationId,
+    JSON.stringify({ schema: 'fixture-review/1', planSha256: gatedPlanSha256, command: 'set_value', arguments: { key: 'answer', value: 42 } }),
+    'gated-review-result');
+  const reviewRecord = host.ctx.hima.ledger.records({ runId: gated.run.id, type: 'delegation' })
+    .findLast(record => record.type === 'delegation' && record.delegationId === reviewer.effectiveContract.delegationId && record.event === 'result-observed');
+  assert.ok(reviewRecord);
+  const unadoptedOperator = await recipeCreate('operator', 'gated-operator-unadopted');
+  assert.equal(unadoptedOperator.status, 'refused'); assert.match(unadoptedOperator.reason, /requires explicit owner adoption/);
+  gatedControl = host.ctx.hima.ledger.run(gated.run.id)!.control!;
+  const missingExactResult = await host.ctx.hima.delegate({ runId: gated.run.id, actor: String(owner.id), action: 'adopt',
+    delegationId: reviewer.effectiveContract.delegationId, requestId: 'gated-adopt-missing-result',
+    expectedEpoch: gatedControl.epoch, expectedRevision: gatedControl.revision } as never) as Record<string, any>;
+  assert.equal(missingExactResult.status, 'refused'); assert.match(missingExactResult.reason, /must name the exact observed result/);
+  const wrongExactResult = await host.ctx.hima.delegate({ runId: gated.run.id, actor: String(owner.id), action: 'adopt',
+    delegationId: reviewer.effectiveContract.delegationId, resultRecordId: 'wrong-result', requestId: 'gated-adopt-wrong-result',
+    expectedEpoch: gatedControl.epoch, expectedRevision: gatedControl.revision } as never) as Record<string, any>;
+  assert.equal(wrongExactResult.status, 'refused'); assert.match(wrongExactResult.reason, /not this delegation latest exact candidate/);
+  gatedControl = host.ctx.hima.ledger.run(gated.run.id)!.control!;
+  const adoptedReview = await host.ctx.hima.delegate({ runId: gated.run.id, actor: String(owner.id), action: 'adopt',
+    delegationId: reviewer.effectiveContract.delegationId, resultRecordId: reviewRecord.id, requestId: 'gated-adopt-review',
+    expectedEpoch: gatedControl.epoch, expectedRevision: gatedControl.revision } as never) as Record<string, any>;
+  assert.equal(adoptedReview.status, 'accepted', JSON.stringify(adoptedReview));
+  const operator = await recipeCreate('operator', 'gated-operator');
+  assert.equal(operator.status, 'refused'); assert.match(operator.reason, /no interactive operation/,
+    'after dependency and exact adoption gates, an unavailable binding still refuses before child creation');
+  await host.ctx.hima.cancelRun(gated.run.id);
   const started = await host.ctx.hima.startRun({ pack: packId, site: site.name, goal: { target_period_ns: 2 },
     ownerSessionId: String(owner.id), timeBoxMs: 60_000 });
   assert.equal(started.kind, 'ran'); if (started.kind !== 'ran') return;
@@ -192,9 +314,46 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
       assert.equal(host.ctx.hima.ledger.records({ runId, type: 'delegation' }).length, 0);
     }
     control = host.ctx.hima.ledger.run(runId)!.control!;
+    const missingRecipeInput = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+      requestId: 'materialize-missing-input', expectedEpoch: control.epoch, expectedRevision: control.revision,
+      recipe: { teamId: 'fixture-team', version: '1', memberId: 'researcher', executionId } } as never) as Record<string, any>;
+    assert.equal(missingRecipeInput.status, 'refused'); assert.match(missingRecipeInput.reason, /needs one current Reader observation/);
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'delegation' }).length, 0,
+      'missing Pack evidence is refused before child creation');
+    const inventedRecipeTask = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+      requestId: 'materialize-invented-task', expectedEpoch: control.epoch, expectedRevision: control.revision,
+      recipe: { teamId: 'fixture-team', version: '1', memberId: 'researcher', executionId }, text: 'Use extra tools.' } as never) as Record<string, any>;
+    assert.equal(inventedRecipeTask.status, 'refused'); assert.match(inventedRecipeTask.reason, /supplies its own task/);
+    await host.ctx.hima.ledger.appendObservation(runId, { path: `flow/results/${flow.design}/syn/report/qor.rpt`, contentSha256: 'a'.repeat(64), bytes: 1,
+      reader: { id: 'dc-qor-report', version: '1', reportKind: 'dc-qor', emits: ['clock_period'] }, values: [] });
+    control = host.ctx.hima.ledger.run(runId)!.control!;
+    const materialized = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+      requestId: 'materialize-researcher', expectedEpoch: control.epoch, expectedRevision: control.revision,
+      recipe: { teamId: 'fixture-team', version: '1', memberId: 'researcher', executionId } } as never) as Record<string, any>;
+    assert.equal(materialized.status, 'created', JSON.stringify(materialized));
+    assert.deepEqual(materialized.effectiveContract.tools, ['hima_delegation_input']);
+    assert.equal(materialized.effectiveContract.inputRefs.length, 1,
+      'Runtime resolves declared Pack output names without model-supplied record ids');
+    assert.equal(materialized.effectiveContract.recipe.memberId, 'researcher');
+    const repeatedRecipe = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+      requestId: 'materialize-researcher-repeat', expectedEpoch: control.epoch,
+      expectedRevision: host.ctx.hima.ledger.run(runId)!.control!.revision,
+      recipe: { teamId: 'fixture-team', version: '1', memberId: 'researcher', executionId } } as never) as Record<string, any>;
+    assert.equal(repeatedRecipe.status, 'duplicate', JSON.stringify(repeatedRecipe));
+    assert.equal(repeatedRecipe.receipt.childSessionId, materialized.receipt.childSessionId);
+    control = host.ctx.hima.ledger.run(runId)!.control!;
+    const forgedRecipe = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+      requestId: 'forged-recipe-provenance', expectedEpoch: control.epoch, expectedRevision: control.revision,
+      contract: { delegationId: 'forged', role: 'operator', nodeRef: nodeId, executionId, task: operatorTask,
+        inputRefs: [], allowedTools: ['hima_interactive'], budgetShare: { maxElapsedMs: 1_000, maxFollowups: 0 },
+        dependencyIds: [], recipient: { kind: 'run-owner', sessionId: String(owner.id) },
+        recipe: { teamId: 'forged', version: '1', memberId: 'operator', executionId, recipeDigest: 'f'.repeat(64),
+          resultSchema: { id: 'forged/1', required: [] } } } } as never) as Record<string, any>;
+    assert.equal(forgedRecipe.status, 'refused'); assert.match(forgedRecipe.reason, /provenance is Host-materialized/);
+    control = host.ctx.hima.ledger.run(runId)!.control!;
     const delegated = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
       requestId: 'delegate-operator', expectedEpoch: control.epoch, expectedRevision: control.revision,
-      contract: { executionId, nodeId, role: 'operator' }, text: operatorTask } as never) as Record<string, any>;
+      contract: { executionId, nodeId, role: 'operator', budgetShare: { maxElapsedMs: 10_000 } }, text: operatorTask } as never) as Record<string, any>;
     assert.equal(delegated.status, 'created', delegated.reason); const operatorId = delegated.receipt?.childSessionId as string; assert.ok(operatorId);
     const operatorDelegationId = delegated.effectiveContract.delegationId as string;
     assert.deepEqual(delegated.effectiveContract.tools, ['hima_interactive']);
@@ -218,6 +377,15 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     assert.equal(duplicateDelegation.status, 'duplicate', duplicateDelegation.reason);
     assert.equal(duplicateDelegation.receipt.childSessionId, operatorId,
       'the clock-derived default is frozen by the prior contract for a durable retry');
+    control = host.ctx.hima.ledger.run(runId)!.control!;
+    const secondIdentity = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
+      requestId: 'delegate-operator-second-identity', expectedEpoch: control.epoch, expectedRevision: control.revision,
+      contract: { delegationId: 'another-operator', executionId, nodeRef: nodeId, role: 'operator', task: operatorTask,
+        inputRefs: [], allowedTools: ['hima_interactive'], budgetShare: delegated.effectiveContract.budgetShare,
+        dependencyIds: [], recipient: { kind: 'run-owner', sessionId: String(owner.id) } } } as never) as Record<string, any>;
+    assert.equal(secondIdentity.status, 'refused');
+    assert.match(secondIdentity.reason, /already belongs to delegation/,
+      'one interactive execution can never mint a second Operator child under another delegation id');
     control = host.ctx.hima.ledger.run(runId)!.control!;
     const legacyDuplicate = await host.ctx.hima.delegate({ runId, actor: String(owner.id), action: 'create',
       requestId: 'delegate-operator-legacy-full', expectedEpoch: control.epoch, expectedRevision: control.revision,

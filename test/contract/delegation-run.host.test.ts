@@ -150,13 +150,19 @@ test('real Run delegation recovers a cold completed result, gates dependencies, 
   assert.deepEqual(retainedAfterFollowup.payload.inputRefs,request.contract.inputRefs);
   assert.match(retainedAfterFollowup.payload.text,/owner|parent/);
   assert.doesNotMatch(retainedAfterFollowup.payload.text,/Follow-up received/,'an old result record remains bound to its original completed turn');
+  control=host.ctx.hima.executionContext(runId).run.control!;
+  const refinedResult=await host.ctx.hima.delegate({runId,actor,action:'result',delegationId:'coder',requestId:'observe-refined-result',expectedEpoch:control.epoch,expectedRevision:control.revision}) as any;
+  assert.equal(refinedResult.status,'candidate',JSON.stringify(refinedResult));
+  const refinedRow=runDelegations((host.ctx.hima as any).deps(),runId).find(row=>row.delegationId==='coder');
+  assert.equal(refinedRow?.adoptedRecordId,undefined,
+    'a prior adoption never floats forward to a later follow-up result');
   await host.dispose();host=await bootInProcess(home.h);await host.ctx.hima.reconciled;await resumeTestAgent(host.ctx,actor,ownerModel);
   const retainedAfterRestart=await host.ctx.hima.delegationInput(reviewerId,{runId,recordId:resultRecord.id}) as any;
   assert.equal(retainedAfterRestart.kind,'record-fact',JSON.stringify(retainedAfterRestart));
   assert.equal(retainedAfterRestart.payload.outputIdentity,retainedHandoff.outputIdentity);
   assert.equal(retainedAfterRestart.payload.text,retainedAfterFollowup.payload.text,'Host restart reads the immutable handoff instead of the child latest turn');
   const reopened=runDelegations((host.ctx.hima as any).deps(),runId).find(row=>row.delegationId==='coder');
-  assert.equal(reopened?.state,'accepted','followup admission reopens tool authority for the exact retained child');
+  assert.equal(reopened?.state,'completed','the refined completed turn remains a new candidate, not an inherited adoption');
   control=host.ctx.hima.executionContext(runId).run.control!;
   const exhausted=await host.ctx.hima.delegate({runId,actor,action:'followup',delegationId:'coder',requestId:'refine-over-cap',text:'Do not spend another child turn.',expectedEpoch:control.epoch,expectedRevision:control.revision}) as any;
   assert.equal(exhausted.status,'refused');

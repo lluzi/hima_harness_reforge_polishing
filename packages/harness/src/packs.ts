@@ -482,6 +482,56 @@ export const packWorkshop = z.strictObject({
   });
 export type PackWorkshop = z.infer<typeof packWorkshop>;
 
+// A Pack may declare how the existing delegation Runtime composes a bounded Agent Team.  This is
+// method data, not an executor: the owner still materializes one member at a time through
+// hima_delegate, and the ordinary DelegationContract remains the only child-lifecycle interface.
+const teamRole = z.enum(['analyst', 'reviewer', 'researcher', 'coding', 'operator']);
+const teamResultSchema = z.strictObject({
+  id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9:._/-]{0,159}$/),
+  required: z.array(declaredName).max(32).default([]),
+});
+const teamMember = z.strictObject({
+  id: packId,
+  role: teamRole,
+  taskTemplate: z.string().trim().min(1).max(8000),
+  node: packId,
+  inputs: z.array(declaredName).max(32).default([]),
+  allowedTools: z.array(z.string().min(1)).max(32),
+  scopePolicy: z.enum(['declared-inputs-only', 'site-qualified-interactive-only']),
+  budgetShare: z.strictObject({
+    maxElapsedMs: z.number().int().positive(),
+    maxFollowups: z.number().int().nonnegative(),
+    maxTokensPerTurn: z.number().int().positive().optional(),
+  }),
+  dependencyRoles: z.array(packId).max(16).default([]),
+  resultSchema: teamResultSchema,
+  recipient: z.literal('run-owner'),
+  ownerAdoption: z.enum(['candidate-only', 'required']),
+  identity: z.literal('one-child-per-role-per-execution'),
+  followup: z.enum(['forbidden', 'reuse-same-child']),
+  cancellation: z.literal('request-stop-preserve-unknown'),
+  terminal: z.array(z.enum(['completed', 'cancelled', 'expired', 'uncertain', 'refused'])).min(1),
+  refusalConditions: z.array(z.string().trim().min(1).max(240)).min(1).max(32),
+  reviewedAction: z.strictObject({
+    fromRole: packId,
+    planInput: declaredName,
+    actionListField: declaredName,
+    command: z.string().min(1),
+    hostPlanHashArgument: declaredName,
+    planHashField: declaredName,
+    commandField: declaredName,
+    argumentsField: declaredName,
+  }).optional(),
+});
+export const packAgentTeam = z.strictObject({
+  id: packId,
+  version: z.string().min(1),
+  triggerNode: packId,
+  members: z.array(teamMember).min(1).max(16),
+});
+export type PackAgentTeam = z.infer<typeof packAgentTeam>;
+export type PackAgentTeamMember = z.infer<typeof teamMember>;
+
 /**
  * The part of a Pack's Campaign budget that the method itself owns. The defaults keep existing
  * Packs loadable while still putting a finite ceiling over generated research material.
@@ -608,6 +658,8 @@ export const packContract = z.strictObject({
    * harness's, which is what lets the harness know nothing about what gets written.
    */
   workshops: z.array(packWorkshop).default([]),
+  /** Optional method-declared Agent Team; omission keeps every historical Pack compatible. */
+  agentTeams: z.array(packAgentTeam).default([]),
   /** Campaign-wide research bounds. Every Workshop and every grown node shares this one pool. */
   budget: packBudget.default(defaultPackBudget),
   rules: z.array(z.string().min(1)).default([]),
@@ -1891,6 +1943,7 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
       declaredIn.set(node.id, graphSaid(loop));
     }
   }
+  validateAgentTeams(pack, declaredIn, broken);
   const growthPoints = graph.nodes.filter((node) => node.kind === 'explore' && node.parameters.growth === true);
   if (growthPoints.length > 1) broken(packFiles.graph, `declares ${String(growthPoints.length)} growth points; the first growth slice supports one top-level Explore position`);
   for (const [name, part] of Object.entries(graph.loops)) {
@@ -1982,6 +2035,78 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
     validateForkShape(part, loop, broken);
   }
   validateGenerationLimit(graph, broken);
+}
+
+/** Cross-check the static recipe only. Dispatch and dependency settlement stay explicit owner acts. */
+function validateAgentTeams(pack: Pack, declaredIn: ReadonlyMap<string, string>, broken: (file: string, why: string) => never): void {
+  const outputs = new Map(pack.contract.outputs.map((output) => [output.name, output]));
+  const nodes = new Map(graphsOf(pack).flatMap(({ graph }) => graph.nodes).map((node) => [node.id, node]));
+  const teamIds = new Set<string>();
+  for (const team of pack.contract.agentTeams) {
+    if (teamIds.has(team.id)) broken(packFiles.contract, `declares two Agent Team recipes called "${team.id}"`);
+    teamIds.add(team.id);
+    if (!declaredIn.has(team.triggerNode)) broken(packFiles.contract, `Agent Team "${team.id}" triggers at undeclared node "${team.triggerNode}"`);
+    const members = new Map(team.members.map((member) => [member.id, member]));
+    if (members.size !== team.members.length) broken(packFiles.contract, `Agent Team "${team.id}" declares a duplicate member id`);
+    if (new Set(team.members.map(member => member.role)).size !== team.members.length) broken(packFiles.contract, `Agent Team "${team.id}" declares more than one member for the same role`);
+    for (const member of team.members) {
+      if (!declaredIn.has(member.node)) broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" targets undeclared node "${member.node}"`);
+      for (const name of member.inputs) {
+        const output = outputs.get(name);
+        if (!output) broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" reads undeclared output "${name}"`);
+        if (output.reader === undefined) broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" reads output "${name}", which has no retained Reader observation`);
+      }
+      for (const dependency of member.dependencyRoles) if (!members.has(dependency)) {
+        broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" depends on unknown member "${dependency}"`);
+      }
+      if (member.role === 'operator') {
+        if (member.scopePolicy !== 'site-qualified-interactive-only' || member.allowedTools.length !== 1
+            || member.allowedTools[0] !== 'hima_interactive') {
+          broken(packFiles.contract, `Agent Team "${team.id}" Operator "${member.id}" must request only hima_interactive with site-qualified-interactive-only scope`);
+        }
+        const node = nodes.get(member.node);
+        const tool = node?.kind === 'act' && node.parameters.tool !== undefined
+          ? pack.contract.tools.find((candidate) => candidate.id === node.parameters.tool) : undefined;
+        if (!tool?.interactive) broken(packFiles.contract, `Agent Team "${team.id}" Operator "${member.id}" must target an interactive tool node`);
+        if (!member.reviewedAction) broken(packFiles.contract, `Agent Team "${team.id}" Operator "${member.id}" must declare its reviewedAction source`);
+      } else {
+        if (member.scopePolicy !== 'declared-inputs-only' || !member.allowedTools.includes('hima_delegation_input')) {
+          broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" must use declared-inputs-only scope and hima_delegation_input`);
+        }
+        if (member.allowedTools.some((tool) => ['read', 'glob', 'grep', 'write', 'edit', 'bash', 'terminal_open'].includes(tool))) {
+          broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" requests generic file or terminal access`);
+        }
+      }
+      if (member.followup === 'forbidden' && member.budgetShare.maxFollowups !== 0) {
+        broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" forbids follow-up but allocates follow-ups`);
+      }
+    }
+    const visiting = new Set<string>(); const visited = new Set<string>();
+    const visit = (id: string): void => {
+      if (visiting.has(id)) broken(packFiles.contract, `Agent Team "${team.id}" dependency roles form a cycle at "${id}"`);
+      if (visited.has(id)) return;
+      visiting.add(id); for (const dependency of members.get(id)!.dependencyRoles) visit(dependency);
+      visiting.delete(id); visited.add(id);
+    };
+    for (const id of members.keys()) visit(id);
+    for (const member of team.members) if (member.reviewedAction) {
+      if (!member.dependencyRoles.includes(member.reviewedAction.fromRole)) {
+        broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" reviewedAction source must be one of its dependencyRoles`);
+      }
+      const source = members.get(member.reviewedAction.fromRole)!;
+      if (!member.inputs.includes(member.reviewedAction.planInput)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed action planInput must be one of Operator "${member.id}" inputs`);
+      const targetNode = nodes.get(member.node); const targetTool = targetNode?.kind === 'act' && targetNode.parameters.tool
+        ? pack.contract.tools.find(candidate => candidate.id === targetNode.parameters.tool) : undefined;
+      if (!targetTool?.interactive?.commands.mutate.includes(member.reviewedAction.command)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed action command is not a mutation of Operator "${member.id}" tool`);
+      const commandArgs = targetTool?.interactive?.arguments[member.reviewedAction.command] ?? [];
+      const hashArg = commandArgs.find(argument => argument.name === member.reviewedAction!.hostPlanHashArgument);
+      if (hashArg?.type !== 'string') broken(packFiles.contract, `Agent Team "${team.id}" reviewed action hostPlanHashArgument must name a string argument of its mutation command`);
+      for (const field of [member.reviewedAction.planHashField, member.reviewedAction.commandField, member.reviewedAction.argumentsField]) {
+        if (!source.resultSchema.required.includes(field)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed action field "${field}" is not required by member "${source.id}" result schema`);
+      }
+      if (source.ownerAdoption !== 'required') broken(packFiles.contract, `Agent Team "${team.id}" reviewed action source "${source.id}" must require owner adoption`);
+    }
+  }
 }
 
 /**

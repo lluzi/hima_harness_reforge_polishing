@@ -1,4 +1,5 @@
 values:
+  xtop_experience_entries: { unit: count, description: Number of retained closure experience entries }
   xtop_stage_ok:
     unit: count
     description: One only when the named stage completed with logs and required non-empty artifacts.

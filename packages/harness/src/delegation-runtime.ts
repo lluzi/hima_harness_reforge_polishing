@@ -46,7 +46,8 @@ export function runDelegations(deps: FabricDeps, runId: string): RunDelegationVi
         const latest = terminal ?? latestLifecycle;
         const accepted = history.find(r => r.event === 'created');
         const result = history.filter(r => r.event === 'result-observed').at(-1);
-        const adopted = history.filter(r => r.event === 'result-adopted').at(-1);
+        const adopted = result === undefined ? undefined : history.filter(r => r.event === 'result-adopted'
+            && (r.payload as { resultRecordId?: unknown }).resultRecordId === result.id).at(-1);
         const state: RunDelegationView['state'] = !latest ? 'intent' : latest.event === 'created' ? 'accepted'
             : latest.event === 'cancelled' ? 'cancelled' : latest.event === 'deadline' ? 'expired'
             : latest.event === 'result-observed' || latest.event === 'result-adopted' ? 'completed'
@@ -101,7 +102,9 @@ export interface RunDelegationRequest {
     readonly expectedRevision: number;
     readonly requestId: string;
     readonly delegationId?: string;
+    readonly resultRecordId?: string;
     readonly contract?: unknown;
+    readonly recipe?: { readonly teamId: string; readonly version: string; readonly memberId: string; readonly executionId: string };
     readonly text?: string;
 }
 function authority(deps: FabricDeps, request: RunDelegationRequest): DelegationAuthority {
@@ -145,6 +148,14 @@ function authority(deps: FabricDeps, request: RunDelegationRequest): DelegationA
                         throw new Error('Input references must name retained facts in this Run.');
                 }
                 const existing = runDelegations(deps, run.id);
+                if (input.proposed.role === 'operator' && input.proposed.operator !== undefined) {
+                    const collision = existing.find(entry => entry.effective.role === 'operator'
+                        && entry.effective.operator?.runId === input.proposed.operator!.runId
+                        && entry.effective.operator.nodeId === input.proposed.operator!.nodeId
+                        && entry.effective.operator.executionId === input.proposed.operator!.executionId
+                        && entry.delegationId !== input.contract.delegationId);
+                    if (collision) throw new Error(`Operator execution already belongs to delegation ${collision.delegationId}; reuse that child.`);
+                }
                 if (existing.length >= 32)
                     throw new Error('This Run has exhausted its 32-delegation admission limit; reuse an authorized continuable child.');
                 for (const id of input.contract.dependencyIds) {
@@ -241,7 +252,7 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
             if (!latest?.control || latest.control.owner !== request.actor || latest.control.epoch !== request.expectedEpoch)
                 return { status: 'refused', artifacts: [], unknowns: [], reason: 'Delegation owner or epoch is stale.' };
             const requestDigest = identityOf({ runId: run.id, action: 'adopt', delegationId: found.delegationId,
-                actor: request.actor, expectedEpoch: request.expectedEpoch });
+                actor: request.actor, expectedEpoch: request.expectedEpoch, resultRecordId: request.resultRecordId });
             const all = records(deps, run.id);
             const prior = all.find(row => row.requestId === request.requestId);
             if (prior) return prior.requestDigest === requestDigest && prior.event === 'result-adopted'
@@ -252,10 +263,15 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
                 return { status: 'refused', artifacts: [], unknowns: [], reason: 'Re-read the active unheld Run before adopting a child result.' };
             const result = all.filter(row => row.delegationId === found.delegationId && row.event === 'result-observed').at(-1);
             if (!result) return { status: 'refused', artifacts: [], unknowns: [], reason: 'Only an exact observed child result can be adopted.' };
+            if (found.effective.recipe && request.resultRecordId === undefined)
+                return { status: 'refused', artifacts: [], unknowns: [], reason: 'Pack Agent Team adoption must name the exact observed result record.' };
+            if (request.resultRecordId !== undefined && request.resultRecordId !== result.id)
+                return { status: 'refused', artifacts: [], unknowns: [], reason: 'The requested result record is not this delegation latest exact candidate.' };
             const adopted = await deps.ledger.appendDelegation(run.id, { delegationId: found.delegationId,
                 parentSessionId: found.parentSessionId, childSessionId: found.childSessionId,
                 requestId: request.requestId, requestDigest, event: 'result-adopted',
-                payload: { resultRecordId: result.id, recipient: found.effective.recipient, candidateOnly: false } });
+                payload: json({ resultRecordId: result.id, recipient: found.effective.recipient, candidateOnly: false,
+                    ...(found.effective.recipe === undefined ? {} : { recipe: found.effective.recipe }) }) });
             await deps.ledger.advanceRun(run.id, { control: { ...latest.control, revision: latest.control.revision + 1 } });
             return { status: 'accepted', artifacts: [], unknowns: [], adoptedRecordId: adopted.id,
                 resultRecordId: result.id, recipient: found.effective.recipient };
@@ -264,7 +280,22 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
         return followupDelegation(ctx, { parentSessionId: found.parentSessionId, childSessionId: found.childSessionId, requestId: request.requestId, message: request.text ?? '' }, auth, signal);
     if (request.action === 'cancel')
         return cancelDelegation(ctx, { parentSessionId: found.parentSessionId, childSessionId: found.childSessionId, requestId: request.requestId }, auth);
+    const priorResultRequest = records(deps, run.id).find(row => row.requestId === request.requestId);
+    if (priorResultRequest) return priorResultRequest.delegationId === found.delegationId && priorResultRequest.event === 'result-observed'
+        ? { status: 'duplicate', artifacts: [], unknowns: [], resultRecordId: priorResultRequest.id }
+        : { status: 'refused', artifacts: [], unknowns: [], reason: 'Result request identity already names different intent.' };
     const result = await readDelegationResult(ctx, { effective: found.effective, requestDigest: found.requestDigest });
+    if (result.status === 'candidate' && found.effective.recipe) {
+        const text = result.output?.filter((block): block is Extract<(typeof result.output)[number],{type:'text'}> => block.type === 'text')
+            .map(block => block.text).join('\n') ?? '';
+        let payload: Record<string, unknown>;
+        try { payload = JSON.parse(text) as Record<string, unknown>; }
+        catch { return { status: 'refused', artifacts: [], unknowns: [], reason: `Agent Team member ${found.effective.recipe.memberId} must return one JSON object.` }; }
+        if (!payload || Array.isArray(payload) || payload.schema !== found.effective.recipe.resultSchema.id
+            || found.effective.recipe.resultSchema.required.some(field => !(field in payload))) {
+            return { status: 'refused', artifacts: [], unknowns: [], reason: `Agent Team result does not satisfy ${found.effective.recipe.resultSchema.id}.` };
+        }
+    }
     if (result.status === 'candidate' && found.state === 'accepted')
         await controlling(deps, run.id, async () => {
             const latest = deps.ledger.run(run.id);
@@ -286,7 +317,8 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
 /** Resolve the retained authority that lets exactly one Operator child use the qualified tool. */
 export function operatorInteractiveAuthority(deps: FabricDeps, childSessionId: string, target: {
     readonly runId: string; readonly nodeId: string; readonly executionId: string;
-}): { readonly authorityOwner: string; readonly expectedBindingDigest: string } | undefined {
+}): { readonly authorityOwner: string; readonly expectedBindingDigest: string;
+    readonly reviewedAction?: NonNullable<EffectiveDelegationContract['recipe']>['inlinePayload'] } | undefined {
     const run = deps.ledger.run(target.runId);
     const entry = runDelegations(deps, target.runId).find(row => row.childSessionId === childSessionId);
     const policy = delegationRuntimePolicy(deps, childSessionId);
@@ -296,5 +328,6 @@ export function operatorInteractiveAuthority(deps: FabricDeps, childSessionId: s
         || entry.effective.runRef?.runId !== target.runId || grant === undefined
         || grant.runId !== target.runId || grant.nodeId !== target.nodeId || grant.executionId !== target.executionId
         || grant.mutation !== 'qualified') return undefined;
-    return { authorityOwner: run.control.owner, expectedBindingDigest: grant.bindingDigest };
+    return { authorityOwner: run.control.owner, expectedBindingDigest: grant.bindingDigest,
+        ...(entry.effective.recipe?.inlinePayload === undefined ? {} : { reviewedAction: entry.effective.recipe.inlinePayload }) };
 }

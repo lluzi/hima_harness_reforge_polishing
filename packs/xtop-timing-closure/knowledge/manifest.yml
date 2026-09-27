@@ -10,6 +10,11 @@ documents:
     title: Endpoint feedback and strategy revision contract
     version: "1"
     mediaType: text/markdown
+  - id: timing-eco-agent-team
+    file: agent-team.md
+    title: Timing ECO Agent Team responsibilities and adoption boundary
+    version: "1"
+    mediaType: text/markdown
   - id: swerv28-source-flow
     file: source-flow.md
     title: Verified SWERV28 Foundation Flow and iterative timing closure

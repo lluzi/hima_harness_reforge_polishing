@@ -166,6 +166,19 @@ def tree_identity(root: Path):
 
 
 def read(report: Path, mode: str):
+    if mode == "history":
+        if report.is_symlink() or not report.is_file():
+            raise ValueError("closure experience is missing or is a symlink")
+        entries = []
+        for line in report.read_text().splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line, object_pairs_hook=unique)
+            required = {"iteration", "beforeMetrics", "afterMetrics", "endpointDelta", "generationFeedback", "plan", "selectedAsBest"}
+            if not isinstance(row, dict) or set(row) != required or not isinstance(row.get("iteration"), int):
+                raise ValueError("closure experience entry has malformed fields")
+            entries.append(row)
+        return [number("xtop_experience_entries", len(entries))]
     data = load(report)
     schema = data.get("schema")
     workspace = report.parents[2]

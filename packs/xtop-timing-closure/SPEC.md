@@ -61,17 +61,26 @@ the prior plan, then writes an exact JSON plan with diagnosis, competing hypothe
 actions, avoid-list and reasoning. The deterministic adapter validates fields, ranges and action
 whitelist before any licensed tool starts.
 
-`read-fix-plan` retains and hashes the plan before XTop. At interactive startup, deterministic Pack
-code validates the same plan and generates a fixed Tcl projection of its complete one-through-eight
-setup/hold action portfolio. The child has only the named typed catalog and calls
-`hima_apply_plan()` once; it receives no generic plan-path read and supplies no Tcl or action
-arguments. A hash-bound projection manifest is verified immediately before and after XTop; a changed
-plan/projection, repeat application or partial application fails closed and cannot be saved.
+`read-fix-plan` retains and hashes the plan before XTop. The Pack-declared Researcher and Reviewer
+narrow the bounded portfolio to one evidence-checked action, and the Campaign owner explicitly
+adopts that exact Reviewer result. Runtime supplies the adopted plan SHA-256 and typed action inline
+to the one Operator child for the execution. The child has no generic plan-path read or Tcl surface
+and calls `hima_apply_action(...)` once. A hash-bound plan/projection manifest is still verified
+immediately before and after XTop; changed identity, repeat application or partial application fails
+closed and cannot be saved.
 
 The deterministic projection preserves setup/hold sizing and buffer insertion exactly. Candidate save is refused before
 any successful mutation, verifies the unique logical/physical keep-route ECO pair before returning
 `DONE`, and removes only an empty failed-save directory so the single admitted retry is not poisoned.
 Any non-empty or partial candidate output is retained and blocks overwrite as uncertain evidence.
+
+## Agent Team
+
+`agentTeams.timing-eco-team` is method data, not an executor. The owner explicitly materializes the
+Researcher, then the Reviewer, adopts the exact Reviewer candidate, and only then materializes or
+resumes the Operator. Harness derives Run/execution/Ledger/binding identities, output record refs,
+effective tools, child budget and recipient. The recipe never begins or completes a node, opens XTop
+or adopts a result automatically. The full role contract is in `knowledge/agent-team.md`.
 
 ## Knowledge
 

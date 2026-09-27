@@ -7,6 +7,7 @@ allowedWrappers:
   - /data/eda/project/hima_harness/operator-admin/xtop-v1/xtop-operator-v1.sh
   - /data/eda/project/hima_harness/operator-admin/xtop-v2/xtop-operator-v2.sh
   - /data/eda/project/hima_harness/operator-admin/xtop-v3/xtop-operator-v3.sh
+  - /data/eda/project/hima_harness/operator-admin/xtop-v5/xtop-operator-v5.sh
   - /data/eda/project/hima_harness/operator-admin/xtop-v4/xtop-operator-v4.sh
 forbidden:
   - services

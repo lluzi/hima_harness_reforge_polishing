@@ -1,4 +1,4 @@
-foreach required {DESIGN TECH_LEF CELL_LEF_GLOB NETLIST DEF STA_DATA RUN_ROOT LIBRARY_TCL ACTIONS_TCL ACTION_COUNT ECO_PREFIX OPERATOR_IDENTITY} {
+foreach required {DESIGN TECH_LEF CELL_LEF_GLOB NETLIST DEF STA_DATA RUN_ROOT LIBRARY_TCL ACTIONS_TCL ACTION_COUNT PLAN_SHA256 ECO_PREFIX OPERATOR_IDENTITY} {
     if {![info exists env($required)]} { error "$required is required" }
 }
 set design $env(DESIGN)
@@ -60,26 +60,37 @@ proc hima_summary {mode} {
     if {$mode eq "hold"} { summarize_gba_violations -exclude_path -as_reference -hold; return }
     error "mode must be setup or hold"
 }
-proc hima_apply_plan {} {
+proc hima_apply_action {kind effort setup_target hold_target setup_margin hold_margin plan_sha256} {
     if {$::hima_plan_state ne "ready"} {
-        error "validated plan was already attempted; state=$::hima_plan_state"
-    }
-    if {![string is integer -strict $::env(ACTION_COUNT)] || $::env(ACTION_COUNT) < 1 || $::env(ACTION_COUNT) > 8} {
-        error "validated plan action count is outside one through eight"
+        error "reviewed action was already attempted; state=$::hima_plan_state"
     }
     set ::hima_plan_state applying
-    set apply_code [catch {source $::env(ACTIONS_TCL)} apply_result apply_options]
+    set apply_code [catch {
+        if {$plan_sha256 ne $::env(PLAN_SHA256)} { error "reviewed action plan hash differs from live retained plan" }
+        switch -- $kind {
+            setup-size { fix_setup_gba_violations -methods size_cell -effort $effort -setup_target $setup_target -hold_margin $hold_margin }
+            setup-buffer { fix_setup_gba_violations -methods insert_buffer -effort $effort -setup_target $setup_target -hold_margin $hold_margin }
+            hold-size { fix_hold_gba_violations -size_cell_only -size_rule nominal_keywords -hold_target $hold_target -setup_margin $setup_margin }
+            hold-buffer { fix_hold_gba_violations -effort $effort -hold_target $hold_target -setup_margin $setup_margin }
+            default { error "unsupported reviewed action kind" }
+        }
+        set receipt_path [file join $::operator_root selected-action.json]
+        if {![catch {file lstat $receipt_path receipt_stat}]} { error "selected-action receipt already exists" }
+        set receipt [open $receipt_path {WRONLY CREAT EXCL}]
+        puts $receipt [format {{"schema":"xtop-selected-action/1","planSha256":"%s","action":{"kind":"%s","effort":"%s","setupTargetNs":%s,"holdTargetNs":%s,"setupMarginNs":%s,"holdMarginNs":%s}}} $plan_sha256 $kind $effort $setup_target $hold_target $setup_margin $hold_margin]
+        close $receipt
+    } apply_result apply_options]
     if {$apply_code != 0} {
         set ::hima_plan_state uncertain
         return -options $apply_options $apply_result
     }
     set ::hima_plan_state applied
     incr ::hima_mutation_count
-    return "applied $::env(ACTION_COUNT) validated plan action(s)"
+    return "applied reviewed action kind=$kind"
 }
 proc hima_save_candidate {} {
     if {$::hima_plan_state eq "uncertain"} {
-        error "validated plan application is uncertain; candidate save is forbidden"
+        error "reviewed action application is uncertain; candidate save is forbidden"
     }
     if {$::hima_mutation_count < 1} {
         error "candidate requires at least one successful typed mutation"

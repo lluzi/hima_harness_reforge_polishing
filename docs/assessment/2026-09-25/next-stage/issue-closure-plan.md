@@ -183,6 +183,15 @@ path fails the acceptance.
   one fresh Campaign/Run/owner and a 180-minute wall-clock budget. It preserves Attempts 1–3 and may
   not introduce a second generation or duplicate effect.
 
+### Attempt 4 systemic disposition and current gate (2026-09-27)
+
+Attempt 4 is permanently parked at its retained `run-xtop-fix` hard blocker. Its two-Operator-child
+failure is treated as a Pack team-declaration defect, not another prompt retry. The current
+implementation adds a Pack-declared Timing ECO Agent Team and generic materialization through the
+existing delegation Runtime. Local/Host tests pass; v5 Site qualification, native Pack release and a
+new GUI kit remain required. No Attempt 4 hold may be cleared and no successor Campaign may start
+before those gates. See [the Agent Team recipe handoff](../../2026-09-27/issue52-agent-team-recipe-handoff.md).
+
 ## Wave 5 — #52 closure
 
 1. Independently review the Wave 4 handoff against the fixed identities and matrix.

@@ -47,6 +47,20 @@ export interface DelegationContract {
   readonly dependencyIds: readonly string[];
   readonly recipient: { readonly kind: 'parent' | 'run-owner'; readonly sessionId: string };
   readonly status: 'requested';
+  /** Pack/Runtime provenance when this contract was materialized from a method recipe. */
+  readonly recipe?: TeamRecipeBinding;
+}
+
+export interface TeamRecipeBinding {
+  readonly teamId: string;
+  readonly version: string;
+  readonly memberId: string;
+  readonly executionId: string;
+  readonly recipeDigest: string;
+  readonly resultSchema: { readonly id: string; readonly required: readonly string[] };
+  /** Exact adopted reviewer payload for an Operator; never caller supplied. */
+  readonly inlinePayload?: { readonly sourceResultRecordId: string; readonly adoptionRecordId: string;
+    readonly planSha256: string; readonly command: string; readonly arguments: Readonly<Record<string, string | number | boolean>> };
 }
 
 export interface EffectiveDelegationContract {
@@ -69,6 +83,7 @@ export interface EffectiveDelegationContract {
   /** Host-minted qualification for one existing interactive execution. Never model supplied. */
   readonly operator?: OperatorDelegationGrant;
   readonly unavailable: readonly string[];
+  readonly recipe?: TeamRecipeBinding;
 }
 
 export interface OperatorDelegationGrant {
@@ -222,6 +237,10 @@ const delegationContractSchema = z.strictObject({
   readScope:z.strictObject({root:z.string()}).optional(),writeScope:z.strictObject({root:z.string()}).optional(),
   budgetShare:z.strictObject({maxElapsedMs:z.number(),maxFollowups:z.number(),maxTokensPerTurn:z.number().optional(),maxTotalTokens:z.number().optional(),maxCost:z.number().optional()}),
   dependencyIds:z.array(z.string()).max(32),recipient:z.strictObject({kind:z.enum(['parent','run-owner']),sessionId:z.string()}),status:z.literal('requested'),
+  recipe:z.strictObject({teamId:z.string(),version:z.string(),memberId:z.string(),executionId:z.string(),recipeDigest:z.string().regex(/^[0-9a-f]{64}$/),
+    resultSchema:z.strictObject({id:z.string(),required:z.array(z.string())}),
+    inlinePayload:z.strictObject({sourceResultRecordId:z.string(),adoptionRecordId:z.string(),planSha256:z.string().regex(/^[0-9a-f]{64}$/),command:z.string(),arguments:z.record(z.string(),z.union([z.string(),z.number(),z.boolean()]))}).optional(),
+  }).optional(),
 });
 function assertContract(contract: DelegationContract): void {
   delegationContractSchema.parse(contract);
@@ -307,6 +326,7 @@ function effectiveContract(ctx: Context, parent: Agent, contract: DelegationCont
       ...(contract.budgetShare.maxTokensPerTurn === undefined ? {} : { maxTokensPerTurn: contract.budgetShare.maxTokensPerTurn }) },
     ...(contract.runRef === undefined ? {} : { runRef: contract.runRef }), ...(contract.nodeRef === undefined ? {} : { nodeRef: contract.nodeRef }),
     recipient: contract.recipient, ...(operatorGrant === undefined ? {} : { operator: operatorGrant }), unavailable,
+    ...(contract.recipe === undefined ? {} : { recipe: contract.recipe }),
   };
 }
 
@@ -348,6 +368,10 @@ const taskPrompt = (contract: DelegationContract, effective: EffectiveDelegation
   effective.operator === undefined ? 'Interactive typed commands: unavailable.'
     : `Interactive typed commands: ${effective.operator.commands.map((command) =>
       `${command.effect} ${command.name}(${command.arguments?.map((argument) => `${argument.name}: ${argument.type}${argument.choices === undefined ? '' : ` {${argument.choices.join('|')}}`}${argument.minimum === undefined && argument.maximum === undefined ? '' : ` [${argument.minimum ?? '-inf'}..${argument.maximum ?? '+inf'}]`}`).join(', ') ?? 'legacy positional arguments'})`).join('; ')}. Supply declared names inside command.args; the Host validates exact keys before dispatch.`,
+  effective.recipe === undefined ? 'Pack Agent Team recipe: unavailable; this is a manually declared delegation.'
+    : `Pack Agent Team recipe: ${effective.recipe.teamId}@${effective.recipe.version}/${effective.recipe.memberId}, execution ${effective.recipe.executionId}, result schema ${effective.recipe.resultSchema.id}.`,
+  effective.recipe?.inlinePayload === undefined ? 'Immutable reviewed action: none.'
+    : `Immutable reviewed action: ${JSON.stringify(effective.recipe.inlinePayload)}. Use exactly this plan hash, command and typed arguments; do not substitute another action.`,
   'Do not claim a Campaign action, verdict, tool result, or file change that the corresponding tool/session transcript does not record.',
 ].join('\n');
 

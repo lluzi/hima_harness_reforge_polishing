@@ -241,28 +241,42 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
         return host.ctx.hima.delegate({ runId, actor: ownerId, expectedEpoch: control.epoch,
           expectedRevision: control.revision, ...body } as never, AbortSignal.timeout(90_000)) as Promise<Record<string, any>>;
       };
-      const created = await delegate({ action: 'create', requestId: 'wave1-create-operator', contract: {
-        delegationId: 'qualified-operator', role: 'operator', nodeRef: 'run-xtop-fix', inputRefs: [],
-        allowedTools: ['hima_interactive', 'terminal_open', 'bash'], dependencyIds: [],
-        budgetShare: { maxElapsedMs: 20 * 60_000, maxFollowups: 1, maxTokensPerTurn: 5000 },
-        recipient: { kind: 'run-owner', sessionId: ownerId },
-        task: `Operate only exact Run ${runId}, node run-xtop-fix, execution ${begunOperator.id}. Use only hima_interactive. For request identity fields, supply this exact Run/node/execution; the Host refreshes delegated epoch/revision authority. Read the Host-provided typed command catalog in this task context and execute in order: open; hima_operator_identity; hima_summary for setup; hima_summary for hold; one argument-free hima_apply_plan call; hima_summary for setup; hima_summary for hold; hima_save_candidate; hima_close; close the exact toolSessionId. The Pack has already validated and projected the complete retained plan behind hima_apply_plan; do not read a plan path or supply Tcl/action arguments. Use unique requestId and commandId values, wait up to 60000 ms for each input, and observe a sent command before continuing. Report only typed receipts and limitations; this is candidate output until the owner adopts it.`,
-      } });
+      const materialize = (memberId: string, requestId: string) => delegate({ action: 'create', requestId,
+        recipe: { teamId: 'timing-eco-team', version: '1', memberId, executionId: begunOperator.id } });
+      const researcher = await materialize('researcher', 'wave1-create-researcher');
+      check.require('Pack recipe materialized one Timing Researcher', researcher.status === 'created', researcher);
+      const researcherAgent = host.ctx.get('agents')!.get(researcher.receipt.childSessionId as never); assert.ok(researcherAgent); await check.wait(researcherAgent.whenIdle());
+      let researcherResult = await delegate({ action: 'result', requestId: 'wave1-result-researcher', delegationId: researcher.effectiveContract.delegationId });
+      check.require('Timing Researcher returned one retained candidate', researcherResult.status === 'candidate', researcherResult);
+      const reviewer = await materialize('reviewer', 'wave1-create-reviewer');
+      check.require('Pack recipe materialized one dependent Timing Reviewer', reviewer.status === 'created', reviewer);
+      const reviewerAgent = host.ctx.get('agents')!.get(reviewer.receipt.childSessionId as never); assert.ok(reviewerAgent); await check.wait(reviewerAgent.whenIdle());
+      const reviewerResult = await delegate({ action: 'result', requestId: 'wave1-result-reviewer', delegationId: reviewer.effectiveContract.delegationId });
+      check.require('Timing Reviewer returned one retained candidate', reviewerResult.status === 'candidate', reviewerResult);
+      const reviewerRow = runDelegations((host.ctx.hima as unknown as { deps(): any }).deps(), runId)
+        .find(row => row.delegationId === reviewer.effectiveContract.delegationId); assert.ok(reviewerRow?.resultRecordId);
+      const reviewerAdopted = await delegate({ action: 'adopt', requestId: 'wave1-adopt-reviewer',
+        delegationId: reviewer.effectiveContract.delegationId, resultRecordId: reviewerRow.resultRecordId });
+      check.require('Run owner adopted the exact reviewed action candidate', reviewerAdopted.status === 'accepted', reviewerAdopted);
+      const created = await materialize('operator', 'wave1-create-operator');
       check.require('production binding minted one real Operator child with no raw terminal', created.status === 'created'
         && created.effectiveContract?.operator?.testOnly === false
         && JSON.stringify(created.effectiveContract?.tools) === JSON.stringify(['hima_interactive']), created);
       const operatorId = created.receipt.childSessionId as string;
       const operator = host.ctx.get('agents')!.get(operatorId as never); assert.ok(operator); await check.wait(operator.whenIdle());
-      let result = await delegate({ action: 'result', requestId: 'wave1-result-operator-1', delegationId: 'qualified-operator' });
+      let result = await delegate({ action: 'result', requestId: 'wave1-result-operator-1', delegationId: created.effectiveContract.delegationId });
       if (result.status !== 'candidate') {
-        const follow = await delegate({ action: 'followup', requestId: 'wave1-finish-operator', delegationId: 'qualified-operator',
+        const follow = await delegate({ action: 'followup', requestId: 'wave1-finish-operator', delegationId: created.effectiveContract.delegationId,
           text: 'Finish the exact typed sequence from retained interactive facts, close once, then return a concise final receipt summary.' });
         assert.equal(follow.status, 'accepted', JSON.stringify({ result, follow }));
         const resumed = host.ctx.get('agents')!.get(operatorId as never); if (resumed) await check.wait(resumed.whenIdle());
-        result = await delegate({ action: 'result', requestId: 'wave1-result-operator-2', delegationId: 'qualified-operator' });
+        result = await delegate({ action: 'result', requestId: 'wave1-result-operator-2', delegationId: created.effectiveContract.delegationId });
       }
       check.require('real Operator model returned a retained candidate result', result.status === 'candidate', result);
-      const adopted = await delegate({ action: 'adopt', requestId: 'wave1-adopt-operator', delegationId: 'qualified-operator' });
+      const operatorRow = runDelegations((host.ctx.hima as unknown as { deps(): any }).deps(), runId)
+        .find(row => row.delegationId === created.effectiveContract.delegationId); assert.ok(operatorRow?.resultRecordId);
+      const adopted = await delegate({ action: 'adopt', requestId: 'wave1-adopt-operator',
+        delegationId: created.effectiveContract.delegationId, resultRecordId: operatorRow.resultRecordId });
       check.require('Run owner explicitly adopted the exact Operator result', adopted.status === 'accepted', adopted);
       await check.until('qualified interactive execution finalizes', () => {
         const current = host.ctx.hima.executionContext(runId).executions.find(execution => execution.id === begunOperator.id);
@@ -338,7 +352,7 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
   const completedNodes = new Set(current.filter((record): record is NodeRecord => record.type === 'node' && record.state === 'done').map((record) => record.nodeId));
   const requiredNodes = ['prepare', 'read-preparation', 'export-baseline', 'read-baseline-export', 'extract-baseline',
     'read-baseline-extraction', 'analyze-baseline', 'read-baseline-timing', 'summarize-baseline', 'read-baseline-state',
-    'plan-fix', 'read-fix-plan', 'run-xtop-fix', 'read-xtop', 'apply-eco', 'read-innovus', 'extract-after',
+    'plan-fix', 'read-fix-plan', 'read-closure-experience', 'run-xtop-fix', 'read-xtop', 'apply-eco', 'read-innovus', 'extract-after',
     'read-after-extraction', 'analyze-after', 'read-after-timing', 'summarize-after', 'read-after-state',
     'compare-and-retain', 'read-iteration-result', 'evidence-gate'];
   check.require('the real owner completed the entire one-generation commercial reference chain',

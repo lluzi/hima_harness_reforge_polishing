@@ -13,7 +13,7 @@ import { writeLocalSite } from './support/site.ts';
 import { waitUntil } from './support/fabric.ts';
 
 const packId = 'xtop-timing-closure';
-const xtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/xtop-v4/xtop-operator-v4.sh';
+const xtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/xtop-v5/xtop-operator-v5.sh';
 
 test('the XTop closure Pack loads, fits its declared execution surface and passes its cheap data-contract tests', async (t) => {
   const h = await createHimaHome();
@@ -30,9 +30,15 @@ test('the XTop closure Pack loads, fits its declared execution surface and passe
   });
   const packDir = path.join(repoRoot, 'packs', packId);
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
-  assert.equal(packStage(packDir).stage, 'released');
-  assert.equal(pack.graph.nodes.length, 28);
-  assert.equal(pack.graph.edges.length, 28);
+  assert.ok(['none', 'tested', 'released'].includes(packStage(packDir).stage),
+    'method development may precede TEST/seal; release remains a separate gate');
+  assert.equal(pack.graph.nodes.length, 29);
+  assert.equal(pack.graph.edges.length, 29);
+  const team = pack.contract.agentTeams.find(candidate => candidate.id === 'timing-eco-team');
+  assert.ok(team);
+  assert.equal(team.triggerNode, 'run-xtop-fix');
+  assert.deepEqual(team.members.map(member => member.id), ['researcher', 'reviewer', 'operator']);
+  assert.deepEqual(team.members.find(member => member.id === 'operator')?.allowedTools, ['hima_interactive']);
   const check = checkPack(pack, loadSite(local.sitesDir, local.name));
   assert.equal(check.fit, true, check.errors.join('\n'));
   installPackMethod({ from: packDir, to: path.join(h.home, 'hima/packs', packId) });
@@ -50,12 +56,23 @@ test('the XTop closure Pack loads, fits its declared execution surface and passe
   assert.equal(tests.status, 0, `${tests.stdout}\n${tests.stderr}`);
 });
 
+test('Packs without an Agent Team recipe remain loadable and checkPack-compatible', async t => {
+  const h = await createHimaHome(); t.after(() => h.dispose());
+  const legacy = loadPack(path.join(repoRoot, 'packs'), 'opene902-timing-probe');
+  assert.deepEqual(legacy.contract.agentTeams, []);
+  const local = await writeLocalSite(h, { allowedReadRoots: [h.workspace], allowedWriteRoots: [h.workspace],
+    allowedWrappers: ['make'], bindings: { flowRoot: h.workspace, design: 'fixture', workspaceRoot: h.workspace },
+    licences: { 'Design-Compiler': 1 } });
+  const checked = checkPack(legacy, loadSite(local.sitesDir, local.name));
+  assert.equal(checked.fit, true, checked.errors.join('\n'));
+});
+
 test('run-xtop-fix keeps batch argv and exposes only the qualified typed Operator commands', async () => {
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
   const tool = pack.contract.tools.find((candidate) => candidate.id === 'run-xtop-fix');
   assert.ok(tool);
-  assert.match(tool.description, /reader-backed.*hima_apply_plan/is,
-    'the Pack exposes one deterministic typed command for the already retained plan portfolio');
+  assert.match(tool.description, /reader-backed.*owner-adopted reviewed/is,
+    'the Pack exposes one typed action selected from the retained plan');
   assert.match(tool.description, /no generic file access|must not.*read.*plan path/is,
     'the Pack never assigns an unreachable fix-plan path to an interactive-only Operator child');
   assert.equal(tool.interactive?.mode, 'hybrid');
@@ -63,19 +80,27 @@ test('run-xtop-fix keeps batch argv and exposes only the qualified typed Operato
   assert.deepEqual(tool.interactive?.argv, [xtopOperatorWrapper, '${WORKSPACE}', '${WORKSPACE}/flow/closure.py',
     '${WORKSPACE}/flow/templates/xtop-operator.tcl']);
   assert.deepEqual(tool.interactive?.commands, {
-    read: ['hima_operator_identity', 'hima_summary'], mutate: ['hima_apply_plan'],
+    read: ['hima_operator_identity', 'hima_summary'], mutate: ['hima_apply_action'],
     save: ['hima_save_candidate'], close: ['hima_close'],
   });
   assert.deepEqual(tool.interactive?.arguments, {
     hima_operator_identity: [],
     hima_summary: [{ name: 'mode', type: 'string', choices: ['setup', 'hold'] }],
-    hima_apply_plan: [],
+    hima_apply_action: [
+      { name: 'kind', type: 'string', choices: ['setup-size', 'setup-buffer', 'hold-size', 'hold-buffer'] },
+      { name: 'effort', type: 'string', choices: ['medium', 'high'] },
+      { name: 'setupTargetNs', type: 'number', minimum: -0.2, maximum: 0.2 },
+      { name: 'holdTargetNs', type: 'number', minimum: -0.2, maximum: 0.2 },
+      { name: 'setupMarginNs', type: 'number', minimum: -0.2, maximum: 0.2 },
+      { name: 'holdMarginNs', type: 'number', minimum: -0.2, maximum: 0.2 },
+      { name: 'planSha256', type: 'string' },
+    ],
     hima_save_candidate: [],
     hima_close: [],
   }, 'the retained Pack tells an Operator child the exact positional shape of every typed command');
   assert.equal(tool.interactive?.commands.read.includes('source'), false);
   assert.equal(tool.interactive?.commands.read.includes('exec'), false);
-  const wrapper = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v4.sh'), 'utf8');
+  const wrapper = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v5.sh'), 'utf8');
   assert.match(wrapper, /trap cleanup_container EXIT HUP INT TERM/);
   assert.match(wrapper, /podman run --rm -it \\\n+  --name "\$container_name"/);
   assert.match(wrapper, /podman rm -f -- "\$container_name"/);
@@ -89,13 +114,15 @@ test('run-xtop-fix keeps batch argv and exposes only the qualified typed Operato
     limits: { startupWaitMs: 1, callWaitMaxMs: 1, commandMaxMs: 1, sessionMaxMs: 1, idleMaxMs: 1 },
   };
   const encoded = encodeRetainedInteractiveCommand(tool, binding, { commandId: 'plan-1', protocolToken: 'Q'.repeat(32),
-    name: 'hima_apply_plan', args: {} });
+    name: 'hima_apply_action', args: { kind: 'hold-buffer', effort: 'high', setupTargetNs: 0,
+      holdTargetNs: 0, setupMarginNs: 0.02, holdMarginNs: 0.02, planSha256: 'a'.repeat(64) } });
   assert.equal(encoded.effect, 'mutation');
-  assert.match(encoded.text, /hima_apply_plan/);
+  assert.match(encoded.text, /hima_apply_action/);
   assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'source-1', protocolToken: 'S'.repeat(32),
     name: 'source', args: { arguments: ['/tmp/untrusted.tcl'] } }), /not classified/);
   assert.throws(() => encodeRetainedInteractiveCommand(tool, binding, { commandId: 'plan-extra', protocolToken: 'E'.repeat(32),
-    name: 'hima_apply_plan', args: { script: 'source /tmp/x' } }), /unexpected.*script/i,
+    name: 'hima_apply_action', args: { kind: 'hold-buffer', effort: 'high', setupTargetNs: 0,
+      holdTargetNs: 0, setupMarginNs: 0.02, holdMarginNs: 0.02, planSha256: 'a'.repeat(64), script: 'source /tmp/x' } }), /unexpected.*script/i,
   'the fixed plan command refuses any model-authored path or Tcl argument');
   const close = encodeRetainedInteractiveCommand(tool, binding, { commandId: 'close-1', protocolToken: 'C'.repeat(32),
     name: 'hima_close', args: {} });
@@ -107,9 +134,9 @@ test('run-xtop-fix keeps batch argv and exposes only the qualified typed Operato
   assert.deepEqual(saves, [], 'Operator retries retain only the admitted ECO output pair, never collision-prone named XTop workspaces');
   assert.match(template, /write_design_changes -format INNOVUS .* -output_dir \$::eco_output_dir -keep_route/,
     'hima_save_candidate still persists the declared logical/physical ECO pair');
-  assert.match(template, /proc hima_apply_plan \{\}/);
-  assert.match(template, /source \$::env\(ACTIONS_TCL\)/,
-    'the typed mutation executes only the deterministic validated plan projection');
+  assert.match(template, /proc hima_apply_action \{kind effort setup_target hold_target setup_margin hold_margin plan_sha256\}/);
+  assert.doesNotMatch(template, /proc hima_apply_plan/,
+    'the Operator applies one reviewed action rather than an entire model-selected portfolio');
   assert.match(template, /candidate requires at least one successful typed mutation/,
     'save fails before creating residue when the Operator skipped every mutation');
   assert.match(template, /file delete -force \$::eco_output_dir/,
@@ -150,13 +177,15 @@ set env(RUN_ROOT) ${JSON.stringify(root)}
 set env(LIBRARY_TCL) ${JSON.stringify(path.join(root, 'libraries.tcl'))}
 set env(ACTIONS_TCL) ${JSON.stringify(actions)}
 set env(ACTION_COUNT) 3
+set env(PLAN_SHA256) ${JSON.stringify('a'.repeat(64))}
 set env(ECO_PREFIX) operator_g001
 set env(OPERATOR_IDENTITY) fixture
 foreach name {set_parameter create_workspace link_reference_library create_design_definition set_site_map set_removable_fillers import_designs check_placement_readiness read_timing_data check_inst_reference_library check_inst_timing_library summarize_gba_violations} {
   proc $name args {}
 }
-proc fix_hold_gba_violations args { lappend ::fixes $args }
-proc fix_setup_gba_violations args { lappend ::fixes $args }
+set fail_fix 0
+proc fix_hold_gba_violations args { lappend ::fixes $args; if {$::fail_fix} { error partial-action-failure } }
+proc fix_setup_gba_violations args { lappend ::fixes $args; if {$::fail_fix} { error partial-action-failure } }
 set fixes {}
 set write_mode empty
 proc write_design_changes args {
@@ -169,13 +198,14 @@ proc write_design_changes args {
 }
 source ${JSON.stringify(template)}
 if {![catch {hima_save_candidate} message] || ![string match {*requires at least one successful typed mutation*} $message]} { error zero-mutation-save-was-not-refused }
-hima_apply_plan
-if {[llength $::fixes] != 3} { error plan-portfolio-was-not-fully-applied }
+if {![catch {hima_apply_action hold-size high 0 0 0.02 0.02 ${'b'.repeat(64)}} message] || ![string match {*plan hash differs*} $message]} { error changed-plan-hash-was-not-refused }
+if {[llength $::fixes] != 0 || $::hima_plan_state ne "uncertain"} { error changed-plan-hash-crossed-mutation-boundary }
+set ::hima_plan_state ready
+hima_apply_action hold-size high 0 0 0.02 0.02 ${'a'.repeat(64)}
+if {[llength $::fixes] != 1} { error reviewed-action-was-not-applied-once }
 if {[lsearch -exact [lindex $::fixes 0] -size_cell_only] < 0} { error hold-size-method-was-lost }
-if {[lsearch -exact [lindex $::fixes 1] -effort] < 0} { error hold-buffer-method-was-lost }
-if {[lsearch -exact [lindex $::fixes 2] -methods] < 0} { error setup-method-was-lost }
-if {![catch {hima_apply_plan} message] || ![string match {*already attempted; state=applied*} $message]} { error duplicate-plan-application-was-not-refused }
-if {[llength $::fixes] != 3} { error duplicate-plan-application-had-an-effect }
+if {![catch {hima_apply_action hold-size high 0 0 0.02 0.02 ${'a'.repeat(64)}} message] || ![string match {*already attempted; state=applied*} $message]} { error duplicate-action-application-was-not-refused }
+if {[llength $::fixes] != 1} { error duplicate-action-application-had-an-effect }
 if {![catch {hima_save_candidate} message] || ![string match {*no unique netlist and physical ECO pair*} $message]} { error empty-save-was-not-refused }
 if {[file exists [file join ${JSON.stringify(root)} eco_output]]} { error empty-save-residue-remained }
 file mkdir [file join ${JSON.stringify(root)} eco_output]
@@ -190,11 +220,10 @@ if {![catch {hima_save_candidate} message] || ![string match {*refusing an uncer
 set ::hima_plan_state ready
 set ::hima_mutation_count 0
 set ::fixes {}
-set env(ACTIONS_TCL) ${JSON.stringify(uncertainActions)}
-set env(ACTION_COUNT) 2
-if {![catch {hima_apply_plan} message] || ![string match {*partial-plan-failure*} $message]} { error partial-plan-failure-was-not-retained }
+set fail_fix 1
+if {![catch {hima_apply_action hold-buffer high 0 0 0.02 0.02 ${'a'.repeat(64)}} message] || ![string match {*partial-action-failure*} $message]} { error partial-action-failure-was-not-retained }
 if {$::hima_plan_state ne "uncertain" || [llength $::fixes] != 1} { error partial-plan-state-was-not-uncertain }
-if {![catch {hima_apply_plan} message] || ![string match {*already attempted; state=uncertain*} $message]} { error uncertain-plan-was-replayed }
+if {![catch {hima_apply_action hold-buffer high 0 0 0.02 0.02 ${'a'.repeat(64)}} message] || ![string match {*already attempted; state=uncertain*} $message]} { error uncertain-plan-was-replayed }
 if {![catch {hima_save_candidate} message] || ![string match {*application is uncertain*} $message]} { error uncertain-plan-was-saved }
 puts QUALIFIED
 `;
@@ -222,13 +251,13 @@ test('the admin generator binds qualification to linglong-swerv28 and the curren
   assert.equal(generated.status, 0, generated.stderr);
   const document = JSON.parse(await readFile(output, 'utf8'));
   assert.equal(document.bindings[0].site, 'linglong-swerv28');
-  assert.match(document.bindings[0].id, /^linglong-swerv28:xtop-operator-v4:/);
-  assert.equal(document.bindings[0].environment.id, 'linglong-swerv28:xtop-operator-v4');
+  assert.match(document.bindings[0].id, /^linglong-swerv28:xtop-operator-v5:/);
+  assert.equal(document.bindings[0].environment.id, 'linglong-swerv28:xtop-operator-v5');
   assert.equal(document.bindings[0].packDigest, pack.folder.digest(packDigestExcludes));
   assert.equal(document.bindings[0].commandsDigest, interactiveCommandsDigest(tool));
   assert.equal(document.bindings[0].mutation, 'qualified');
   const parsedEvidence = JSON.parse(evidence);
-  const wrapperBytes = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v4.sh'));
+  const wrapperBytes = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v5.sh'));
   const sourceBytes = await readFile(path.join(repoRoot, 'packs/xtop-timing-closure/flow/templates/xtop-operator.tcl'));
   const adapterBytes = await readFile(path.join(repoRoot, 'packs/xtop-timing-closure/flow/closure.py'));
   assert.equal(parsedEvidence.wrapper.path, xtopOperatorWrapper);
@@ -252,7 +281,7 @@ test('a real Host reads XTop physical evidence through its Pack observation node
   const variant = path.join(h.home, 'xtop-observe-variant', packId);
   await mkdir(path.dirname(variant), { recursive: true });
   await cp(path.join(repoRoot, 'packs', packId), variant, { recursive: true });
-  await rm(path.join(variant, 'VERSION.yml'));
+  await rm(path.join(variant, 'VERSION.yml'), { force: true });
   const originalGraph=await readFile(path.join(variant,'graph.yml'),'utf8');
   await writeFile(path.join(variant, 'graph.yml'),originalGraph
     .replace(/^entry: prepare$/m,'entry: host-read-physical')

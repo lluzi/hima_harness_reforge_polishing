@@ -33,7 +33,7 @@ assert.notEqual(run.control?.owner, run.control?.guideSessionId);
 
 const requiredNodes = ['prepare', 'read-preparation', 'export-baseline', 'read-baseline-export', 'extract-baseline',
   'read-baseline-extraction', 'analyze-baseline', 'read-baseline-timing', 'summarize-baseline', 'read-baseline-state',
-  'plan-fix', 'read-fix-plan', 'run-xtop-fix', 'read-xtop', 'apply-eco', 'read-innovus', 'extract-after',
+  'plan-fix', 'read-fix-plan', 'read-closure-experience', 'run-xtop-fix', 'read-xtop', 'apply-eco', 'read-innovus', 'extract-after',
   'read-after-extraction', 'analyze-after', 'read-after-timing', 'summarize-after', 'read-after-state',
   'compare-and-retain', 'read-iteration-result', 'evidence-gate', 'read-best-database', 'next-iteration'];
 const done = new Set(records.filter((record) => record.type === 'node' && record.state === 'done').map((record) => record.nodeId));

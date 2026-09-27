@@ -26,7 +26,7 @@ import z from '@deepseek-ai/schemastery';
 // stand on. What is registered is built in the two face modules, which face those seams themselves.
 import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-commands';
-import { hasEnded, Ledger, ledgerSpec, recordValidityOf, type RunRecord } from './ledger.js';
+import { hasEnded, Ledger, ledgerSpec, recordValidityOf, currentRecordsIn, type RunRecord } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { convergeOf, newCampaignProposalId, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
 import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs, ownedWaitedMs, timeBoxRemainingMs } from './budget.js';
@@ -46,9 +46,9 @@ import { handleHimaCommand, himaCommandDescription, versionLine } from './comman
 import { agentWorkspaceOf, himaTools, guideTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes, BadRequest, type LogTailView, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
-import { previewPackTransfer, applyPackTransfer } from './release.js';
+import { previewPackTransfer, applyPackTransfer, loadRunPack } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
-import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview } from './packs.js';
+import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview, outputPath } from './packs.js';
 import { strategyValue, strategyFrom, allowsRunArgument, badRunArgument, allowsTimeBoxMs, timeBoxMsBounds } from './run-arguments.js';
 import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, siteSaveIdentity, siteDiscoveryRequestSchema, type Site, type SiteDiscoveryResult, type SiteSaveIdentity, type SshTarget } from './sites.js';
 import { SshChannel, type Channel } from './channel.js';
@@ -101,7 +101,7 @@ export type { Site, SshTarget, Permit, SiteDiscovery, SiteDiscoveryRequest, Site
 // A HimaPack is data, and reading it is part of the bundle's surface: an operator inspects a pack
 // against a Site before starting a Campaign, and the contract suite reads the same answer.
 export { loadPack, installedPacks, checkPack, packOverview, packKnowledgeManifestOf, packKnowledgeManifest, normalizePackAuthorStatus, harnessVersion, flowDirName, workspaceFileName, packFiles, toolArgv, outputPath, boundInputs, strategyKnobsOf, resolveRule, resolveChooser, packReadersDir, packKnowledgeDir, growthProposal, validateGrowthGraph, withGrowthGraphs, runGraphsOf } from './packs.js';
-export type { Pack, PackContract, PackGraph, PackNode, PackEdge, PackTool, PackWorkshop, PackKnowledgeManifest, ContractOutput, PackCheck, PackOverview, PackAuthorStatus, ChooserCheck, KnowledgeCheck, WorkshopCheck, PackDataAt, GrowthProposal, GrowthGraph, GrowthGraphValidation } from './packs.js';
+export type { Pack, PackContract, PackGraph, PackNode, PackEdge, PackTool, PackWorkshop, PackAgentTeam, PackAgentTeamMember, PackKnowledgeManifest, ContractOutput, PackCheck, PackOverview, PackAuthorStatus, ChooserCheck, KnowledgeCheck, WorkshopCheck, PackDataAt, GrowthProposal, GrowthGraph, GrowthGraphValidation } from './packs.js';
 // The workshop (#62): the act node where the AI writes a script inside its declared directory and the
 // fabric runs it. On the surface because the contract suite asserts which three tools a workshop's
 // moment reaches and the live check opens one against the real model route.
@@ -377,7 +377,7 @@ export const HIMA_PRODUCT_CONTEXT = [
   'Lead with the engineering result, its conditions, what is missing, and the next useful action. Match the user language; use clear Chinese for Chinese requests. Preserve units, setup/hold, timing conditions and evidence precision. Internal ids and protocol names belong in expandable evidence, not default explanations.',
   'A saved summary is a reading aid, never authority to continue. On recovery re-read current Run, Job, human pauses and budget. Never lift a human hold from an old summary or a model instruction. Use the same persistent Run; uncertainty is not permission to repeat a tool effect.',
   'When current Hima context offers independent branch nodes, admit their licence-free Jobs up to the Site job cap before waiting; licence seats still bound commercial EDA. Never duplicate a node already working.',
-  'At a production-qualified interactive node, begin the node then delegate its exact execution to one role=operator child with hima_delegate. The child alone uses typed hima_interactive; inspect its retained candidate result and adopt it explicitly before completing the node. The Run owner cannot open the production interactive session directly.',
+  'When the retained Pack declares an Agent Team recipe, materialize each member explicitly with hima_delegate recipe identity; never invent its tools, inputs, budget or task. At a production-qualified interactive node, adopt the exact required Reviewer result before materializing the one Operator child for that execution. The child alone uses typed hima_interactive; inspect and adopt its retained candidate before completing the node. The Run owner cannot open the production interactive session directly.',
   'Answer product identity and installed-inventory questions from this context and the current Hima inventory below. Do not search source code, the filesystem or the web for those answers. Never claim readiness, a measured result or an installed item that the current inventory does not state.',
 ].join('\n');
 
@@ -878,6 +878,16 @@ export default class Hima extends Service {
     if(run?.control&&run.control.owner!==sessionId) {
       const delegated=operatorInteractiveAuthority(this.deps(),sessionId,request);
       if(!delegated)return {status:'refused',reason:'This conversation has no active Operator delegation for the exact Run execution.'};
+      if(request.action==='input'&&delegated.reviewedAction!==undefined) {
+        const command=request.command;
+        if(command.name===delegated.reviewedAction.command
+            &&identityOf(command.args)!==identityOf(delegated.reviewedAction.arguments))return {status:'refused',reason:'The Operator mutation differs from the immutable owner-adopted reviewed action.'};
+        if(!run.packId||!request.nodeId)return {status:'refused',reason:'The Operator target Pack/node identity is unavailable.'};
+        const pack=loadPack(this.config.packsDir,run.packId);const node=pack.graph.nodes.find(item=>item.id===request.nodeId);
+        const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
+        const mutations=new Set(tool?.interactive?.commands.mutate??[]);
+        if(mutations.has(command.name)&&command.name!==delegated.reviewedAction.command)return {status:'refused',reason:'The Operator requested a different mutation than the immutable owner-adopted reviewed action.'};
+      }
       request={...request,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,...delegated};
     }
     if(this.factStop.signal.aborted)return {status:'refused',reason:'The Host is stopping.'};
@@ -925,7 +935,13 @@ export default class Hima extends Service {
         artifacts:handoff.evidence.artifactRefs.map(({path:_path,...artifact})=>artifact),limitations:handoff.evidence.limitations},
         source:'durable-ledger-child-handoff',identity:handoff.outputIdentity,identityEncoding:'sha256-native-assistant-output'};
     }
-    const payload=record.type==='observation'?{reader:record.reader,contentSha256:record.contentSha256,bytes:record.bytes,values:record.values}
+    let observationMaterial:{text:string;truncated:boolean}|undefined;
+    if(record.type==='observation') {
+      const retained=await readReportMaterial(this.deps(),request.runId,record.id);
+      if(retained.kind==='read')observationMaterial={text:retained.text.slice(0,65536),truncated:retained.text.length>65536};
+    }
+    const payload=record.type==='observation'?{reader:record.reader,contentSha256:record.contentSha256,bytes:record.bytes,values:record.values,
+        ...(observationMaterial===undefined?{materialUnavailable:'No bounded retained report bytes are available.'}:{material:observationMaterial})}
       :record.type==='verdict'?{outcome:record.outcome,ruleId:record.ruleId,ruleVersion:record.ruleVersion,cites:record.cites,valuesAsRead:record.valuesAsRead,reason:record.reason}
       :record.type==='analysis'?{analysis:record.analysis}:undefined;
     if(payload===undefined)return {...base,kind:'unavailable',reason:'This record type has no bounded delegated material projection.'};
@@ -936,7 +952,83 @@ export default class Hima extends Service {
   async delegate(request:RunDelegationRequest,signal:AbortSignal=AbortSignal.timeout(30000)):Promise<object> {
     await authorizeProjectRun(this.guideDeps(),request.actor,request.runId);
     let normalizedRequest=request;
+    let materializedFromRecipe=false;
     let operatorGrant:import('./delegation.js').OperatorDelegationGrant|undefined;
+    if(request.action==='create'&&request.recipe!==undefined) {
+      if(request.contract!==undefined||request.text!==undefined)return {unknowns:[],status:'refused',artifacts:[],reason:'A Pack Agent Team recipe supplies its own task and contract; caller contract/text is not accepted.'};
+      const run=this.ledger.run(request.runId);
+      if(!run?.control)return {unknowns:[],status:'refused',artifacts:[],reason:'Agent Team materialization requires a controlled Run.'};
+      if(!run.packId)return {unknowns:[],status:'refused',artifacts:[],reason:'The controlled Run has no retained Pack identity.'};
+      if(!run.packDigest)return {unknowns:[],status:'refused',artifacts:[],reason:'The controlled Run has no retained Pack digest.'};
+      const pack=loadRunPack(this.config.packsDir,run.packId,run.packDigest);
+      const team=pack.contract.agentTeams.find(item=>item.id===request.recipe!.teamId&&item.version===request.recipe!.version);
+      const member=team?.members.find(item=>item.id===request.recipe!.memberId);
+      if(!team||!member)return {unknowns:[],status:'refused',artifacts:[],reason:'The retained Pack does not declare that Agent Team recipe/member version.'};
+      const execution=run.control.executions[request.recipe.executionId];
+      if(!execution||execution.nodeId!==member.node||execution.supersededBy||execution.phase!=='begun')return {unknowns:[],status:'refused',artifacts:[],reason:'The recipe member requires its exact freshly begun target execution.'};
+      if(team.triggerNode!==execution.nodeId)return {unknowns:[],status:'refused',artifacts:[],reason:'The recipe trigger node differs from the requested execution.'};
+      const records=currentRecordsIn(this.ledger.records({runId:run.id}));
+      const recipeSite=loadSite(this.config.sitesDir,run.siteId);
+      const inputRefs:string[]=[];const outputRecords=new Map<string,Extract<(typeof records)[number],{type:'observation'}>>();
+      for(const name of member.inputs) {
+        const output=pack.contract.outputs.find(item=>item.name===name)!;
+        const expectedPath=outputPath(output,recipeSite.bindings);
+        const matches=records.filter((item):item is Extract<typeof item,{type:'observation'}>=>item.type==='observation'
+          &&item.generation===execution.generation&&item.reader.id===output.reader
+          &&(item.path===expectedPath||item.path.endsWith(`/${expectedPath}`)));
+        if(matches.length!==1)return {unknowns:[],status:'refused',artifacts:[],reason:`Recipe input ${name} needs one current Reader observation; found ${matches.length}.`};
+        inputRefs.push(matches[0]!.id);outputRecords.set(name,matches[0]!);
+      }
+      const existing=runDelegations(this.deps(),run.id);const dependencyIds:string[]=[];
+      for(const dependency of member.dependencyRoles) {
+        const found=existing.find(row=>row.effective.recipe?.teamId===team.id&&row.effective.recipe.version===team.version
+          &&row.effective.recipe.memberId===dependency&&row.effective.recipe.executionId===execution.id);
+        if(!found?.resultRecordId)return {unknowns:[],status:'refused',artifacts:[],reason:`Recipe dependency ${dependency} has no exact observed candidate result.`};
+        const source=team.members.find(item=>item.id===dependency)!;
+        if(source.ownerAdoption==='required'&&!found.adoptedRecordId)return {unknowns:[],status:'refused',artifacts:[],reason:`Recipe dependency ${dependency} requires explicit owner adoption.`};
+        dependencyIds.push(found.delegationId);inputRefs.push(found.resultRecordId);
+      }
+      let inlinePayload:import('./delegation.js').TeamRecipeBinding['inlinePayload'];
+      if(member.reviewedAction) {
+        const source=existing.find(row=>row.effective.recipe?.teamId===team.id&&row.effective.recipe.version===team.version
+          &&row.effective.recipe.memberId===member.reviewedAction!.fromRole&&row.effective.recipe.executionId===execution.id)!;
+        const result=this.ledger.record(source.resultRecordId!);if(!result||result.type!=='delegation'||result.event!=='result-observed')return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action result record is unavailable.'};
+        let observed:ReturnType<typeof parseDelegationResultObservedPayload>;try{observed=parseDelegationResultObservedPayload(result.payload);}catch{return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action handoff is malformed.'};}
+        let payload:Record<string,unknown>;try{payload=JSON.parse(observed.handoff.output.text) as Record<string,unknown>;}catch{return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action must be one JSON object.'};}
+        const sourceMember=team.members.find(item=>item.id===member.reviewedAction!.fromRole)!;
+        if(payload.schema!==sourceMember.resultSchema.id||sourceMember.resultSchema.required.some(field=>!(field in payload)))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action does not satisfy its Pack result schema.'};
+        const planHash=payload[member.reviewedAction.planHashField];const command=payload[member.reviewedAction.commandField];const args=payload[member.reviewedAction.argumentsField];
+        const planRecord=outputRecords.get(member.reviewedAction.planInput);
+        if(typeof planHash!=='string'||planHash!==planRecord?.contentSha256)return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action plan SHA-256 differs from the current reader-backed fix plan.'};
+        if(typeof command!=='string'||!args||typeof args!=='object'||Array.isArray(args))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action command or arguments are malformed.'};
+        const node=pack.graph.nodes.find(item=>item.id===member.node);const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
+        const declaration=tool?.interactive?.arguments[command];if(command!==member.reviewedAction.command||!declaration||!Object.values(tool!.interactive!.commands).flat().includes(command))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action command is not the Pack recipe mutation.'};
+        const values=args as Record<string,unknown>;const actionDeclaration=declaration.filter(item=>item.name!==member.reviewedAction!.hostPlanHashArgument);
+        if(new Set([...Object.keys(values),...actionDeclaration.map(item=>item.name)]).size!==actionDeclaration.length)return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action arguments differ from the typed Pack command.'};
+        for(const item of actionDeclaration){const value=values[item.name];if(typeof value!==item.type||item.choices&&!item.choices.includes(value as never)||typeof value==='number'&&(item.minimum!==undefined&&value<item.minimum||item.maximum!==undefined&&value>item.maximum))return {unknowns:[],status:'refused',artifacts:[],reason:`Reviewed argument ${item.name} violates the typed Pack command.`};}
+        const retainedPlan=await readReportMaterial(this.deps(),run.id,planRecord.id);
+        if(retainedPlan.kind!=='read')return {unknowns:[],status:'refused',artifacts:[],reason:`The exact reviewed plan bytes are unavailable: ${retainedPlan.why}`};
+        let plan:Record<string,unknown>;try{plan=JSON.parse(retainedPlan.text) as Record<string,unknown>;}catch{return {unknowns:[],status:'refused',artifacts:[],reason:'The exact reviewed plan bytes are not JSON.'};}
+        const candidates=plan[member.reviewedAction.actionListField];
+        if(!Array.isArray(candidates)||!candidates.some(candidate=>candidate&&typeof candidate==='object'
+            &&actionDeclaration.every(item=>(candidate as Record<string,unknown>)[item.name]===values[item.name])))return {unknowns:[],status:'refused',artifacts:[],reason:'The owner-adopted reviewed action is not one action in the exact reader-backed fix plan.'};
+        const effectiveArguments={...values,[member.reviewedAction.hostPlanHashArgument]:planHash} as Record<string,string|number|boolean>;
+        inlinePayload={sourceResultRecordId:result.id,adoptionRecordId:source.adoptedRecordId!,planSha256:planHash,command,arguments:effectiveArguments};
+      }
+      const delegationId=`team-${team.id}-${member.id}-${identityOf({runId:run.id,executionId:execution.id}).slice(0,16)}`;
+      const priorRecipe=existing.find(row=>row.delegationId===delegationId);
+      const recipeDigest=identityOf({packDigest:run.packDigest,team,member});
+      const task=[member.taskTemplate,`Runtime inputs: ${inputRefs.join(', ')}.`,inlinePayload?`Immutable reviewed action: ${JSON.stringify(inlinePayload)}.`:''].filter(Boolean).join('\n');
+      normalizedRequest={...request,recipe:undefined,...(priorRecipe?.reservation.admittedRevision===undefined?{}:{expectedRevision:priorRecipe.reservation.admittedRevision}),contract:{delegationId,role:member.role,task,inputRefs,nodeRef:member.node,
+        allowedTools:member.allowedTools,budgetShare:member.budgetShare,dependencyIds,recipient:{kind:'run-owner',sessionId:run.control.owner},
+        recipe:{teamId:team.id,version:team.version,memberId:member.id,executionId:execution.id,recipeDigest,resultSchema:member.resultSchema,...(inlinePayload?{inlinePayload}:{})}}};
+      materializedFromRecipe=true;
+    }
+    request=normalizedRequest;
+    if(request.action==='create'&&request.contract&&typeof request.contract==='object'
+        &&(request.contract as Record<string,unknown>).recipe!==undefined&&!materializedFromRecipe) {
+      return {unknowns:[],status:'refused',artifacts:[],reason:'Delegation recipe provenance is Host-materialized and cannot be supplied in a manual contract.'};
+    }
     if(request.action==='create'&&request.contract&&typeof request.contract==='object'
         &&(request.contract as {role?:unknown}).role==='operator') {
       const raw=request.contract as Record<string,unknown>;
@@ -953,6 +1045,11 @@ export default class Hima extends Service {
       if(requestedExecutionId===undefined&&!legacyFull)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator contract requires the exact executionId; only the complete legacy nodeRef contract may resolve the unique begun execution.'};
       const run=this.ledger.run(request.runId);
       if(!run?.control)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation requires a controlled Run.'};
+      if(!materializedFromRecipe&&run.packId&&run.packDigest) {
+        const retained=loadRunPack(this.config.packsDir,run.packId,run.packDigest);
+        const required=retained.contract.agentTeams.some(team=>team.members.some(member=>member.role==='operator'&&member.node===nodeRef));
+        if(required)return {unknowns:[],status:'refused',artifacts:[],reason:'This Pack declares an Operator Agent Team recipe for the execution; materialize that recipe after its required Reviewer adoption.'};
+      }
       const delegationId=typeof raw.delegationId==='string'?raw.delegationId:`operator-${requestedExecutionId!}`;
       const existingDelegations=runDelegations(this.deps(),request.runId);
       const prior=existingDelegations.find(row=>row.delegationId===delegationId);
@@ -1004,7 +1101,8 @@ export default class Hima extends Service {
         budgetShare:{maxElapsedMs:suppliedBudget.maxElapsedMs===undefined?budgetDefault.maxElapsedMs:Math.min(suppliedBudget.maxElapsedMs as number,budgetCeiling),
           maxFollowups:suppliedBudget.maxFollowups===undefined?budgetDefault.maxFollowups:Math.min(suppliedBudget.maxFollowups as number,budgetDefault.maxFollowups),
           maxTokensPerTurn:suppliedBudget.maxTokensPerTurn===undefined?budgetDefault.maxTokensPerTurn:Math.min(suppliedBudget.maxTokensPerTurn as number,budgetDefault.maxTokensPerTurn??5_000)},
-        dependencyIds,recipient:{kind:'run-owner' as const,sessionId:run.control.owner}};
+        dependencyIds,recipient:{kind:'run-owner' as const,sessionId:run.control.owner},
+        ...(!materializedFromRecipe||raw.recipe===undefined?{}:{recipe:raw.recipe})};
       normalizedRequest={...request,...(prior?.reservation.admittedRevision===undefined?{}:{expectedRevision:prior.reservation.admittedRevision}),contract:normalizedContract};
       if(prior?.effective.operator) operatorGrant=prior.effective.operator;
       else {

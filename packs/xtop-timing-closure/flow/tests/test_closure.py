@@ -1110,8 +1110,9 @@ class ClosureContractTest(unittest.TestCase):
         text = startup.read_text()
         self.assertIn('proc hima_operator_identity {}', text)
         self.assertIn('proc hima_summary {mode}', text)
-        self.assertIn('proc hima_apply_plan {}', text)
-        self.assertIn('source $::env(ACTIONS_TCL)', text)
+        self.assertIn('proc hima_apply_action {kind effort setup_target hold_target setup_margin hold_margin plan_sha256}', text)
+        self.assertIn('PLAN_SHA256', text)
+        self.assertNotIn('proc hima_apply_plan', text)
         self.assertIn('proc hima_save_candidate {}', text)
         self.assertIn('candidate requires at least one successful typed mutation', text)
         self.assertIn('candidate write produced no unique netlist and physical ECO pair', text)
@@ -1140,6 +1141,11 @@ class ClosureContractTest(unittest.TestCase):
         with self.assertRaisesRegex(closure.Rejected, "projection.*changed|actions.*changed"):
             closure.verify_xtop_interactive_projection(self.workspace)
         actions.write_text(action_text)
+        selected = startup.parent / "selected-action.json"
+        selected.symlink_to(self.workspace / "flow" / "research" / "fix-plan.json")
+        with self.assertRaisesRegex(closure.Rejected, "selected-action receipt already exists"):
+            closure.xtop_interactive_startup(self.workspace)
+        selected.unlink()
         eco = startup.parent / "eco_output"
         eco.mkdir()
         (eco / ".partial").write_text("uncertain")
@@ -1172,12 +1178,18 @@ class ClosureContractTest(unittest.TestCase):
         physical = eco / "xtop_operator_g001_eco_physical_swerv_wrapper.txt"
         logical.write_text("ecoAddRepeater -cell BUFFD2 -net n1\n")
         physical.write_text("placeInstance eco_buffer_1 10 20 R0 -placed\n")
+        closure.atomic_json(root / "selected-action.json", {
+            "schema": "xtop-selected-action/1", "planSha256": closure.sha_file(plan_file),
+            "action": {name: plan["actions"][0][name] for name in
+                       ("kind", "effort", "setupTargetNs", "holdTargetNs", "setupMarginNs", "holdMarginNs")},
+        })
 
         result = closure.finalize_xtop_interactive(self.workspace)
 
         runtime = closure.load_runtime(self.workspace)
         self.assertEqual(result["status"], "passed")
         self.assertEqual(result["facts"]["mode"], "typed-interactive")
+        self.assertEqual(result["facts"]["selectedAction"]["sha256"], closure.sha_file(root / "selected-action.json"))
         self.assertEqual(runtime["pendingIteration"], 1)
         self.assertEqual(runtime["pendingEco"]["netlist"], str(logical))
         self.assertEqual(runtime["pendingEco"]["physical"], str(physical))
