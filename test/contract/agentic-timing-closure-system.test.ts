@@ -123,7 +123,7 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   const executionId = begin.receipt!.executionId!;
   const create = (memberId: string) => host.ctx.hima.delegate({ runId, actor, action: 'create', requestId: 'create-' + memberId,
     expectedEpoch: control().epoch, expectedRevision: control().revision,
-    recipe: { teamId: 'atcs-worker-01', version: '1', memberId, executionId } } as never) as Promise<any>;
+    recipe: { teamId: 'atcs-worker-01', version: '2', memberId, executionId } } as never) as Promise<any>;
   // Deterministic model stand-ins use the production Ledger handoff shape; no model-quality claim.
   const resultAndAdopt = async (child: any, value: any) => {
     const id = child.effectiveContract.delegationId;
@@ -214,6 +214,17 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
 
   const packDir = path.join(repoRoot, 'packs', packId);
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
+  const team = pack.contract.agentTeams.find(item => item.id === 'atcs-worker-01')!;
+  const researcher = team.members.find(item => item.id === 'researcher')!;
+  assert.equal(team.version, '2');
+  assert.equal(researcher.budgetShare.maxTokensPerTurn, 8000);
+  assert.equal(researcher.budgetShare.maxFollowups, 0);
+  assert.match(researcher.taskTemplate, /at most one hypothesis per declared action/);
+  for (const id of ['reviewer', 'operator']) {
+    const member = team.members.find(item => item.id === id)!;
+    assert.equal(member.budgetShare.maxTokensPerTurn, 5000);
+    assert.equal(member.budgetShare.maxFollowups, 0);
+  }
   assert.equal(packStage(packDir).stage, 'compiled');
   assert.equal(pack.graph.nodes.length, 106);
   // Final review (Minor): +2 edges -- check-setup-goal/check-hold-goal each gain
@@ -270,7 +281,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /agentic-timing-closure-system@0\.1\.1.*fit/s);
+    assert.match(throughHost.text, /agentic-timing-closure-system@0\.1\.2.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {
