@@ -30,8 +30,8 @@ test('the XTop closure Pack loads, fits its declared execution surface and passe
   });
   const packDir = path.join(repoRoot, 'packs', packId);
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
-  assert.ok(['none', 'tested', 'released'].includes(packStage(packDir).stage),
-    'method development may precede TEST/seal; release remains a separate gate');
+  assert.ok(['compiled', 'tested', 'released'].includes(packStage(packDir).stage),
+    `the qualified method must pass native author-record validation before TEST/seal: ${packStage(packDir).issue}`);
   assert.equal(pack.graph.nodes.length, 29);
   assert.equal(pack.graph.edges.length, 29);
   const team = pack.contract.agentTeams.find(candidate => candidate.id === 'timing-eco-team');
@@ -46,6 +46,9 @@ test('the XTop closure Pack loads, fits its declared execution surface and passe
   const check = checkPack(pack, loadSite(local.sitesDir, local.name));
   assert.equal(check.fit, true, check.errors.join('\n'));
   installPackMethod({ from: packDir, to: path.join(h.home, 'hima/packs', packId) });
+  // This isolated Host has no historical test Ledger. Exercise compiled admission,
+  // not a foreign TEST/seal whose Run is intentionally absent from this fixture.
+  for(const file of ['TEST.md','VERSION.yml'])await rm(path.join(h.home,'hima/packs',packId,file),{force:true});
   const host = await bootInProcess(h);
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);

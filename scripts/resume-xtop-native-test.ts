@@ -15,6 +15,7 @@ import {
   type ObservationRecord,
   type RunRecord,
 } from '@hima/harness';
+import { testRecordIssue } from '../packages/harness/lib/packs.js';
 import { bootInProcess, resumeTestAgent } from '../test/contract/support/boot-inprocess.ts';
 import { repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { guardInstalled, runLive, sha256, type LiveCheck } from './live-check-workshop.ts';
@@ -76,11 +77,15 @@ await runLive(NAME, 16, async (check: LiveCheck) => {
       ?'Report-only finalization cannot execute, resume or create a Run, Job, child or interactive operation.':undefined);
     check.observed.reportOnly={runId,status:initial.status,recordCount:before.length,control:initial.control};
     for(const stage of ['tested','released'] as const) {
+      const reached=()=>{
+        const checked=testRecordIssue(loadPack(path.join(homeRoot,'hima/packs'),PACK_ID),host.ctx.hima.ledger);
+        return packStage(installedPackDirectory).stage===stage&&checked?.run===runId&&checked.error===undefined;
+      };
       const instruction=stage==='tested'
         ?`/hima-test Reporting only for the already ended native test Run ${runId}. Do not resume the Run or create anything. Read its retained records and write TEST.md through the native test path. Preserve method bytes and report the exact ${initial.status} ending.`
         :`/hima-release ${PACK_ID}. Seal only the tested method using hima_pack_release; never handwrite VERSION.yml.`;
-      for(let attempt=0;attempt<3&&packStage(installedPackDirectory).stage!==stage;attempt++)await check.say(owner,instruction);
-      check.require(`report-only native pipeline reaches ${stage}`,packStage(installedPackDirectory).stage===stage,packStage(installedPackDirectory));
+      for(let attempt=0;attempt<3&&!reached();attempt++)await check.say(owner,instruction);
+      check.require(`report-only native pipeline reaches ${stage} for this exact Run`,reached(),packStage(installedPackDirectory));
     }
     assert.equal(JSON.stringify(host.ctx.hima.ledger.run(runId)),beforeRun,'report-only changed the ended Run');
     assert.deepEqual(host.ctx.hima.ledger.records({runId}).map(record=>record.id),before.map(record=>record.id),'report-only changed Run evidence');

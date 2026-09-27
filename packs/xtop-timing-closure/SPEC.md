@@ -74,7 +74,7 @@ any successful mutation, verifies the unique logical/physical keep-route ECO pai
 `DONE`, and removes only an empty failed-save directory so the single admitted retry is not poisoned.
 Any non-empty or partial candidate output is retained and blocks overwrite as uncertain evidence.
 
-## Agent Team
+### Agent Team
 
 `agentTeams.timing-eco-team` is method data, not an executor. The owner explicitly materializes the
 Researcher, then the Reviewer, adopts the exact Reviewer candidate, and only then materializes or

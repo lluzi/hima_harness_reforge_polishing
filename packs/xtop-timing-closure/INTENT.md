@@ -31,7 +31,7 @@ per-generation ECO prefix, independent iteration directories and like-for-like P
 adds endpoint fixed/remaining/entrant/regressed feedback and AI plan revision inside the existing
 Workshop and Fabric surfaces.
 
-## Agent Team
+### Agent Team
 
 The method declares its Timing Researcher, Timing Reviewer and XTop Operator roles. The Campaign
 owner remains the only Run owner and explicitly dispatches and adopts retained candidates. Harness

@@ -28,3 +28,18 @@ delegation/Run-creation tools are denied. It verifies that Run/control/evidence 
 remain unchanged. This does not resume the business Run, rerun a baseline, create another
 generation or alter any historical Attempt. Native TEST/seal remain unclaimed until this
 report-only stage passes.
+
+The first report-only pass was refused by the native author-record validator:
+`INTENT.md` had an extra root `## Agent Team` section; `SPEC.md` had the same
+format issue. Both now retain that content as `###` subsections within existing
+allowed sections. This is an author-record formatting correction, not a change
+to the method: `packDigestExcludes` excludes authoring records, and the digest
+remains `5cab1ddba6d2b6d35f27e2c5a1ddc05a8cd1b8758d1330c9c6c569dfd0cd78b1`.
+Only the current candidate's author folder receives this metadata correction;
+Run/control, historical method snapshots, reports and prior failed Homes are
+unchanged. The original failed report-only receipt is preserved separately.
+
+The report gate also now validates the TEST record against the exact current Run
+and Ledger, rather than accepting a format-valid historical TEST by stage alone.
+Pack focused tests pass 7/7; the isolated fixture removes only its copied foreign
+TEST/seal because its empty Ledger deliberately does not hold historical Runs.
