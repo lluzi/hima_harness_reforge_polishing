@@ -1139,6 +1139,12 @@ class ClosureContractTest(unittest.TestCase):
         actions.write_text(action_text + "puts tampered\n")
         with self.assertRaisesRegex(closure.Rejected, "projection.*changed|actions.*changed"):
             closure.verify_xtop_interactive_projection(self.workspace)
+        actions.write_text(action_text)
+        eco = startup.parent / "eco_output"
+        eco.mkdir()
+        (eco / ".partial").write_text("uncertain")
+        with self.assertRaisesRegex(closure.Rejected, "already contains uncertain evidence"):
+            closure.xtop_interactive_startup(self.workspace)
 
     def test_interactive_finalize_accepts_the_actual_xtop_keep_route_filenames(self):
         self.save_runtime()

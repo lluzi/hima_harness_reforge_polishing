@@ -13,7 +13,7 @@ import { writeLocalSite } from './support/site.ts';
 import { waitUntil } from './support/fabric.ts';
 
 const packId = 'xtop-timing-closure';
-const xtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/xtop-v3/xtop-operator-v3.sh';
+const xtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/xtop-v4/xtop-operator-v4.sh';
 
 test('the XTop closure Pack loads, fits its declared execution surface and passes its cheap data-contract tests', async (t) => {
   const h = await createHimaHome();
@@ -75,7 +75,7 @@ test('run-xtop-fix keeps batch argv and exposes only the qualified typed Operato
   }, 'the retained Pack tells an Operator child the exact positional shape of every typed command');
   assert.equal(tool.interactive?.commands.read.includes('source'), false);
   assert.equal(tool.interactive?.commands.read.includes('exec'), false);
-  const wrapper = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v3.sh'), 'utf8');
+  const wrapper = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v4.sh'), 'utf8');
   assert.match(wrapper, /trap cleanup_container EXIT HUP INT TERM/);
   assert.match(wrapper, /podman run --rm -it \\\n+  --name "\$container_name"/);
   assert.match(wrapper, /podman rm -f -- "\$container_name"/);
@@ -222,13 +222,13 @@ test('the admin generator binds qualification to linglong-swerv28 and the curren
   assert.equal(generated.status, 0, generated.stderr);
   const document = JSON.parse(await readFile(output, 'utf8'));
   assert.equal(document.bindings[0].site, 'linglong-swerv28');
-  assert.match(document.bindings[0].id, /^linglong-swerv28:xtop-operator-v3:/);
-  assert.equal(document.bindings[0].environment.id, 'linglong-swerv28:xtop-operator-v3');
+  assert.match(document.bindings[0].id, /^linglong-swerv28:xtop-operator-v4:/);
+  assert.equal(document.bindings[0].environment.id, 'linglong-swerv28:xtop-operator-v4');
   assert.equal(document.bindings[0].packDigest, pack.folder.digest(packDigestExcludes));
   assert.equal(document.bindings[0].commandsDigest, interactiveCommandsDigest(tool));
   assert.equal(document.bindings[0].mutation, 'qualified');
   const parsedEvidence = JSON.parse(evidence);
-  const wrapperBytes = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v3.sh'));
+  const wrapperBytes = await readFile(path.join(repoRoot, 'sites/linglong-swerv28/xtop-operator-v4.sh'));
   const sourceBytes = await readFile(path.join(repoRoot, 'packs/xtop-timing-closure/flow/templates/xtop-operator.tcl'));
   const adapterBytes = await readFile(path.join(repoRoot, 'packs/xtop-timing-closure/flow/closure.py'));
   assert.equal(parsedEvidence.wrapper.path, xtopOperatorWrapper);

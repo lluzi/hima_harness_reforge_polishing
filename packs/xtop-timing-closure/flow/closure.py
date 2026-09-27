@@ -697,6 +697,16 @@ def actions_tcl(plan, target: Path):
     return text
 
 
+def require_fresh_candidate_output(root: Path):
+    eco = root / "eco_output"
+    if eco.is_symlink() or eco.exists() and not eco.is_dir():
+        raise Rejected("candidate output is not a plain directory")
+    if eco.is_dir():
+        if any(eco.iterdir()):
+            raise Rejected("candidate output already contains uncertain evidence")
+        eco.rmdir()
+
+
 def validate_sourceable_eco(path: Path, role: str):
     """Refuse atomic/loadECO or route-destructive output where macro Tcl is required."""
     if path.is_symlink() or not path.is_file() or path.stat().st_size == 0:
@@ -721,6 +731,7 @@ def xtop(workspace: Path):
     next_iteration = int(runtime["iteration"]) + 1
     root = paths(workspace)["flow"] / "iterations" / f"g{next_iteration:03d}" / "XTOP"
     root.mkdir(parents=True, exist_ok=True)
+    require_fresh_candidate_output(root)
     (root / "logs").mkdir(parents=True, exist_ok=True)
     action_file = root / "actions.tcl"
     library_file = root / "libraries.tcl"
@@ -760,6 +771,7 @@ def xtop_interactive_startup(workspace: Path):
         raise Rejected("current export and PrimeTime timing data are required for the XTop Operator")
     root = paths(workspace)["flow"] / "iterations" / f"g{next_iteration:03d}" / "XTOP"
     root.mkdir(parents=True, exist_ok=True)
+    require_fresh_candidate_output(root)
     library_file = root / "libraries.tcl"
     action_file = root / "operator-actions.tcl"
     generate_xtop_libraries(profile, library_file)

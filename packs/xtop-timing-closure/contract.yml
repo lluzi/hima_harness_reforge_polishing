@@ -90,7 +90,7 @@ outputs:
 environment:
   wrappers:
     - /usr/bin/python3
-    - /data/eda/project/hima_harness/operator-admin/xtop-v3/xtop-operator-v3.sh
+    - /data/eda/project/hima_harness/operator-admin/xtop-v4/xtop-operator-v4.sh
 
 workspace:
   source: pack
@@ -157,7 +157,7 @@ tools:
       mode: hybrid
       adapter: hima-tcl-line-v1
       argv:
-        - /data/eda/project/hima_harness/operator-admin/xtop-v3/xtop-operator-v3.sh
+        - /data/eda/project/hima_harness/operator-admin/xtop-v4/xtop-operator-v4.sh
         - ${WORKSPACE}
         - ${WORKSPACE}/flow/closure.py
         - ${WORKSPACE}/flow/templates/xtop-operator.tcl
