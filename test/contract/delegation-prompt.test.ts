@@ -18,10 +18,13 @@ test('Agent Team task prompt makes the Pack result schema an explicit JSON-only 
     recipient: { kind: 'run-owner', sessionId: 'owner' }, unavailable: [],
     recipe: { teamId: 'timing-eco-team', version: '1', memberId: 'researcher', executionId: 'execution-1',
       recipeDigest: 'a'.repeat(64), resultSchema: { id: 'xtop-timing-research/1',
-        required: ['schema', 'hypotheses', 'evidenceRefs', 'limitations'] } },
+        required: ['schema', 'hypotheses', 'evidenceRefs', 'limitations'] },
+      reviewOutput: { command: 'hima_apply_action', arguments: ['kind', 'effort', 'setupTargetNs', 'holdTargetNs', 'setupMarginNs', 'holdMarginNs'] } },
   } as never;
   const prompt = delegationTaskPrompt(contract, effective);
   assert.match(prompt, /return exactly one JSON object and no prose or Markdown/);
   assert.match(prompt, /Set schema to "xtop-timing-research\/1"/);
   assert.match(prompt, /top-level fields: schema, hypotheses, evidenceRefs, limitations\./);
+  assert.match(prompt, /set command to "hima_apply_action"/);
+  assert.match(prompt, /arguments to one object with exactly these fields and no others: kind, effort, setupTargetNs, holdTargetNs, setupMarginNs, holdMarginNs\./);
 });

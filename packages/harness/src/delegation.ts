@@ -58,6 +58,8 @@ export interface TeamRecipeBinding {
   readonly executionId: string;
   readonly recipeDigest: string;
   readonly resultSchema: { readonly id: string; readonly required: readonly string[] };
+  /** Exact Pack-declared output vocabulary for the Reviewer whose result feeds an Operator. */
+  readonly reviewOutput?: { readonly command: string; readonly arguments: readonly string[] };
   /** Exact adopted reviewer payload for an Operator; never caller supplied. */
   readonly inlinePayload?: { readonly sourceResultRecordId: string; readonly adoptionRecordId: string;
     readonly planSha256: string; readonly command: string; readonly arguments: Readonly<Record<string, string | number | boolean>> };
@@ -239,6 +241,7 @@ const delegationContractSchema = z.strictObject({
   dependencyIds:z.array(z.string()).max(32),recipient:z.strictObject({kind:z.enum(['parent','run-owner']),sessionId:z.string()}),status:z.literal('requested'),
   recipe:z.strictObject({teamId:z.string(),version:z.string(),memberId:z.string(),executionId:z.string(),recipeDigest:z.string().regex(/^[0-9a-f]{64}$/),
     resultSchema:z.strictObject({id:z.string(),required:z.array(z.string())}),
+    reviewOutput:z.strictObject({command:z.string(),arguments:z.array(z.string())}).optional(),
     inlinePayload:z.strictObject({sourceResultRecordId:z.string(),adoptionRecordId:z.string(),planSha256:z.string().regex(/^[0-9a-f]{64}$/),command:z.string(),arguments:z.record(z.string(),z.union([z.string(),z.number(),z.boolean()]))}).optional(),
   }).optional(),
 });
@@ -372,6 +375,8 @@ export const delegationTaskPrompt = (contract: DelegationContract, effective: Ef
     : `Pack Agent Team recipe: ${effective.recipe.teamId}@${effective.recipe.version}/${effective.recipe.memberId}, execution ${effective.recipe.executionId}, result schema ${effective.recipe.resultSchema.id}.`,
   effective.recipe === undefined ? 'Agent Team result format: unavailable for this manually declared delegation.'
     : `Agent Team result format: return exactly one JSON object and no prose or Markdown. Set schema to ${JSON.stringify(effective.recipe.resultSchema.id)} and include these top-level fields: ${effective.recipe.resultSchema.required.join(', ')}.`,
+  effective.recipe?.reviewOutput === undefined ? 'Reviewed action output contract: unavailable for this member.'
+    : `Reviewed action output contract: set command to ${JSON.stringify(effective.recipe.reviewOutput.command)}. Set arguments to one object with exactly these fields and no others: ${effective.recipe.reviewOutput.arguments.join(', ')}. Copy their values from one exact action in the reader-backed plan.`,
   effective.recipe?.inlinePayload === undefined ? 'Immutable reviewed action: none.'
     : `Immutable reviewed action: ${JSON.stringify(effective.recipe.inlinePayload)}. Use exactly this plan hash, command and typed arguments; do not substitute another action.`,
   'Do not claim a Campaign action, verdict, tool result, or file change that the corresponding tool/session transcript does not record.',

@@ -81,7 +81,7 @@ export class LiveCheck {
     // four-generation real-EDA check: its caller declares a seven-hour harness envelope around a
     // six-hour Pack budget, so this utility must not silently replace that with the old 100-minute cap.
     const pilot = name === 'live-check-dtco-pilot';
-    const commercial = name === 'live-check-xtop-hima-arm';
+    const commercial = name === 'live-check-xtop-hima-arm' || name === 'resume-xtop-native-test';
     const longRunning = pilot || commercial;
     const maximumMs = longRunning ? 28_800_000 : finalization ? 300_000 : continuation ? 720_000
       : name === 'live-check-pipeline' ? 1_200_000

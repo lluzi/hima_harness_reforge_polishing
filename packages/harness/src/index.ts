@@ -999,6 +999,16 @@ export default class Hima extends Service {
         dependencyIds.push(found.delegationId);inputRefs.push(found.resultRecordId);
       }
       let inlinePayload:import('./delegation.js').TeamRecipeBinding['inlinePayload'];
+      let reviewOutput:import('./delegation.js').TeamRecipeBinding['reviewOutput'];
+      const operatorConsumer=team.members.find(item=>item.reviewedAction?.fromRole===member.id);
+      if(operatorConsumer?.reviewedAction) {
+        const node=pack.graph.nodes.find(item=>item.id===operatorConsumer.node);
+        const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
+        const declaration=tool?.interactive?.arguments[operatorConsumer.reviewedAction.command];
+        if(!declaration)return {unknowns:[],status:'refused',artifacts:[],reason:'The Pack Reviewer output contract has no matching typed Operator command.'};
+        reviewOutput={command:operatorConsumer.reviewedAction.command,
+          arguments:declaration.filter(item=>item.name!==operatorConsumer.reviewedAction!.hostPlanHashArgument).map(item=>item.name)};
+      }
       if(member.reviewedAction) {
         const source=existing.find(row=>row.effective.recipe?.teamId===team.id&&row.effective.recipe.version===team.version
           &&row.effective.recipe.memberId===member.reviewedAction!.fromRole&&row.effective.recipe.executionId===execution.id)!;
@@ -1032,6 +1042,7 @@ export default class Hima extends Service {
       normalizedRequest={...request,recipe:undefined,...(priorRecipe?.reservation.admittedRevision===undefined?{}:{expectedRevision:priorRecipe.reservation.admittedRevision}),contract:{delegationId,role:member.role,task,inputRefs,nodeRef:member.node,
         allowedTools:member.allowedTools,budgetShare:member.budgetShare,dependencyIds,recipient:{kind:'run-owner',sessionId:run.control.owner},
         recipe:{teamId:team.id,version:team.version,memberId:member.id,executionId:execution.id,recipeDigest,resultSchema:member.resultSchema,...(inlinePayload?{inlinePayload}:{})}}};
+      if(reviewOutput) normalizedRequest={...normalizedRequest,contract:{...(normalizedRequest.contract as object),recipe:{...((normalizedRequest.contract as {recipe:object}).recipe),reviewOutput}}};
       materializedFromRecipe=true;
     }
     request=normalizedRequest;
