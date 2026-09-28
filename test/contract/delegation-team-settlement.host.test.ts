@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { appendFile, copyFile, readFile, realpath, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
 import { parse, stringify } from 'yaml';
 import { createHash } from 'node:crypto';
-import { retainRunMaterial, runDelegations } from '@hima/harness';
+import { BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest, loadPack, packDigestExcludes, retainRunMaterial, runDelegations } from '@hima/harness';
 import { homePatchFile, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { repoRoot } from './support/dsh-home.ts';
@@ -198,4 +198,179 @@ test('a Team execution whose required member ended without a result settles fail
   const hybridCancel = await hybridDelegate({ action: 'cancel', delegationId: hybridReviewer.effectiveContract.delegationId, requestId: 'hybrid-cancel' });
   assert.equal(hybridCancel.status, 'accepted', JSON.stringify(hybridCancel));
   assert.equal(hybridControl().executions[hybridExecutionId]!.phase, 'begun');
+});
+
+test('a Team Reviewer may approve an Operator scope: typed mutations within its commands, plan hash and budget', async (t) => {
+  const priorBinding = process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
+  process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = 'scope-tcl-fixture';
+  t.after(() => { if (priorBinding === undefined) delete process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
+    else process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = priorBinding; });
+  const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local);
+  const { h, flow } = local;
+  let host: Awaited<ReturnType<typeof bootInProcess>> | undefined; let cleanupRunId: string | undefined;
+  t.after(async () => { if (host && cleanupRunId) await host.ctx.hima.cancelRun(cleanupRunId); await host?.dispose(); await h.dispose(); });
+  const packsDir = path.join(h.home, 'hima/packs');
+  const packId = 'team-scope';
+  await writePackVariant(packsDir, packId, [], [], timingProbePackId);
+  const contractFile = path.join(packsDir, packId, 'contract.yml');
+  const contract = parse(await readFile(contractFile, 'utf8')) as Record<string, any>;
+  const wrapper = await realpath('/usr/bin/tclsh');
+  contract.environment.wrappers = [wrapper];
+  contract.workspace.copy.push('interactive-repl.tcl');
+  const tool = contract.tools.find((candidate: { id: string }) => candidate.id === 'synth');
+  tool.licences = {};
+  tool.argv = [wrapper, '${WORKSPACE}/flow/interactive-repl.tcl'];
+  const hash = { name: 'planSha256', type: 'string' };
+  tool.interactive = { mode: 'interactive-only', adapter: 'hima-tcl-line-v1', argv: tool.argv, commands: {
+    read: ['get_value'], mutate: ['size_cell', 'insert_buffer', 'set_value'], save: ['save_state', 'close_session'],
+  }, arguments: {
+    get_value: [{ name: 'key', type: 'string' }],
+    size_cell: [{ name: 'instance', type: 'string' }, { name: 'master', type: 'string' }, hash],
+    insert_buffer: [{ name: 'net', type: 'string' }, { name: 'cell', type: 'string' }, hash],
+    set_value: [{ name: 'key', type: 'string' }, { name: 'value', type: 'number' }, hash],
+    save_state: [{ name: 'file', type: 'string' }], close_session: [],
+  } };
+  // The recipe allows two commands with a cap of five; set_value is a mutation of the tool but outside the recipe.
+  const scopeRecipe = { mode: 'scope', fromRole: 'reviewer', planInput: 'qorReport', hostPlanHashArgument: 'planSha256',
+    planHashField: 'planSha256', scopeField: 'scope', commands: ['size_cell', 'insert_buffer'], maxMutations: 5 };
+  const team = (reviewedAction: Record<string, unknown>) => [{ id: 'scope-team', version: '1', triggerNode: 'synthesize', members: [
+    member('reviewer', 'reviewer', { ownerAdoption: 'required',
+      resultSchema: { id: 'fixture-scope-review/1', required: ['schema', 'planSha256', 'scope'] } }),
+    member('operator', 'operator', { allowedTools: ['hima_interactive'], scopePolicy: 'site-qualified-interactive-only',
+      dependencyRoles: ['reviewer'], ownerAdoption: 'required', reviewedAction }),
+  ] }];
+
+  // The Pack declaration itself is held to the tool: each scope command is a mutation carrying the hash, within 1..200.
+  for (const [label, bad, pattern] of [
+    ['a read command', { ...scopeRecipe, commands: ['size_cell', 'get_value'] }, /not a mutation/],
+    ['a mutation without the hash argument', { ...scopeRecipe, hostPlanHashArgument: 'master' }, /hostPlanHashArgument/],
+    ['a cap above 200', { ...scopeRecipe, maxMutations: 201 }, /./],
+    ['a cap of zero', { ...scopeRecipe, maxMutations: 0 }, /./],
+    ['a scope field the Reviewer schema does not require', { ...scopeRecipe, scopeField: 'portfolio' }, /portfolio/],
+  ] as const) {
+    await writeFile(contractFile, stringify({ ...contract, agentTeams: team(bad) }));
+    assert.throws(() => loadPack(packsDir, packId), pattern, `a scope recipe with ${label} does not load`);
+  }
+  contract.agentTeams = team(scopeRecipe);
+  await writeFile(contractFile, stringify(contract));
+  const sourceTemplate = path.join(packsDir, packId, 'interactive-repl.tcl');
+  await copyFile(path.join(repoRoot, 'test/fixtures/interactive-job/scope-repl.tcl'), sourceTemplate);
+  await copyFile(sourceTemplate, path.join(flow.root, 'interactive-repl.tcl'));
+  const installed = loadPack(packsDir, packId);
+  const packDigest = installed.folder.digest(packDigestExcludes);
+  const declaredTool = installed.contract.tools.find((candidate) => candidate.id === 'synth')!;
+  const site = await writeLocalSite(h, { allowedReadRoots: [h.workspace, flow.root, path.dirname(wrapper)], allowedWriteRoots: [h.workspace],
+    allowedWrappers: [wrapper], bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot: h.workspace },
+    licences: {}, parallelJobs: 1 });
+  const adminDir = path.join(h.home, 'admin'); await mkdir(adminDir);
+  const environmentFile = path.join(adminDir, 'environment.json');
+  const environmentText = JSON.stringify({
+    schema: 'hima-interactive-environment/1', site: 'local', toolId: 'synth', pack: { id: packId, digest: packDigest },
+    adapter: { id: 'hima-tcl-line-v1', digest: BUILTIN_TCL_ADAPTER_DIGEST }, commandsDigest: interactiveCommandsDigest(declaredTool),
+    wrapper: { path: wrapper, sha256: createHash('sha256').update(await readFile(wrapper)).digest('hex') },
+    image: { reference: 'local/scope-test', digest: `sha256:${'0'.repeat(64)}` },
+    sourceTemplate: { path: 'interactive-repl.tcl', sha256: createHash('sha256').update(await readFile(sourceTemplate)).digest('hex') },
+    confinement: { rootFilesystem: 'read-only', dataRoot: '/', dataMount: 'read-only', privateWriteRoot: await realpath(h.workspace),
+      network: 'host-localhost-licence-only', capabilities: 'dropped-all', noNewPrivileges: true },
+    qualification: { status: 'passed', transcriptSha256: '1'.repeat(64), logicalEcoSha256: '2'.repeat(64),
+      physicalEcoSha256: '3'.repeat(64), xtopReady: true, identityQuery: true, mutation: true, save: true,
+      sourceWriteDenied: true, execWriteDenied: true, normalExit: true },
+  });
+  await writeFile(environmentFile, environmentText);
+  const bindingsFile = path.join(adminDir, 'bindings.json');
+  await writeFile(bindingsFile, JSON.stringify({ schema: 'hima-interactive-bindings/1', bindings: [{
+    id: 'scope-tcl-fixture', site: 'local', packDigest, toolId: 'synth', adapter: 'hima-tcl-line-v1',
+    adapterHash: BUILTIN_TCL_ADAPTER_DIGEST, commandsDigest: interactiveCommandsDigest(declaredTool),
+    environment: { id: 'scope-tcl-env', file: environmentFile, sha256: createHash('sha256').update(environmentText).digest('hex') },
+    mutation: 'qualified' }] }));
+  const scenario = await writeMomentScenario(h, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
+  await writeReplayOverlay(h.home, { file: scenario.file, overrideFile: scenario.override, childFiles: scenario.children });
+  await appendFile(homePatchFile(h.home), `\n- id: hima\n  config:\n    sitesDir: ${JSON.stringify(site.sitesDir)}\n    packsDir: ${JSON.stringify(packsDir)}\n    knowledgeDir: ${JSON.stringify(path.join(h.home, 'hima/knowledge/current'))}\n    interactiveBindingsFile: ${JSON.stringify(bindingsFile)}\n`);
+
+  host = await bootInProcess(h);
+  const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
+  const started = await host.ctx.hima.startRun({ pack: packId, site: site.name, goal: { target_period_ns: 2 },
+    ownerSessionId: actor, timeBoxMs: 120_000 });
+  assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
+  const runId = started.run.id; cleanupRunId = runId;
+  const control = () => host!.ctx.hima.ledger.run(runId)!.control!;
+  const plan = Buffer.from(`${JSON.stringify({ problem: 'synthetic setup path', editDomain: ['U1', 'n1'] })}\n`);
+  const planSha256 = createHash('sha256').update(plan).digest('hex');
+  const retained = await retainRunMaterial({ ledger: host.ctx.hima.ledger, packsDir }, runId, plan, planSha256); assert.ok(retained);
+  await host.ctx.hima.ledger.appendObservation(runId, { path: `flow/results/${flow.design}/syn/report/qor.rpt`,
+    contentSha256: planSha256, retainedPath: retained, bytes: plan.byteLength,
+    reader: { id: 'dc-qor-report', version: '1', reportKind: 'dc-qor', emits: ['clock_period'] }, values: [] });
+  const begun = await host.ctx.hima.executionAction({ runId, actor, action: 'begin', nodeId: 'synthesize',
+    requestId: 'begin', expectedEpoch: control().epoch, expectedRevision: control().revision });
+  assert.equal(begun.kind, 'accepted', JSON.stringify(begun)); const executionId = begun.receipt!.executionId!;
+  const delegate = (body: Record<string, unknown>) => host!.ctx.hima.delegate({ runId, actor,
+    expectedEpoch: control().epoch, expectedRevision: control().revision, ...body } as never) as Promise<Record<string, any>>;
+  const create = (memberId: string, requestId: string) =>
+    delegate({ action: 'create', requestId, recipe: { teamId: 'scope-team', version: '1', memberId, executionId } });
+  // Deterministic stand-in for the Reviewer's model turn, in the production Ledger handoff shape.
+  const reviewAndAdopt = async (delegationId: string, value: unknown, requestId: string) => {
+    const row = runDelegations((host!.ctx.hima as any).deps(), runId).find((item) => item.delegationId === delegationId)!;
+    const text = JSON.stringify(value);
+    const record = await host!.ctx.hima.ledger.appendDelegation(runId, { delegationId, parentSessionId: actor,
+      childSessionId: row.childSessionId, requestId, requestDigest: createHash('sha256').update(requestId).digest('hex'),
+      event: 'result-observed', payload: { candidate: true, source: 'native-live-session', handoff: {
+        outputIdentity: createHash('sha256').update(JSON.stringify([{ type: 'text', text }])).digest('hex'),
+        contract: { recordId: row.contractRecordId, requestDigest: row.requestDigest },
+        output: { text, content: [{ type: 'text', text }], truncated: false }, completedTurn: { turn: 1, endSeq: 1 },
+        unknowns: [], evidence: { artifactRefs: [], diffRefs: [], testRefs: [], limitations: ['synthetic review'] } } } });
+    const adopted = await delegate({ action: 'adopt', delegationId, resultRecordId: record.id, requestId: `adopt-${requestId}` });
+    assert.equal(adopted.status, 'accepted', JSON.stringify(adopted));
+  };
+
+  const reviewer = await create('reviewer', 'reviewer'); assert.equal(reviewer.status, 'created', JSON.stringify(reviewer));
+  assert.deepEqual(reviewer.effectiveContract.recipe.reviewOutput,
+    { scopeField: 'scope', commands: ['size_cell', 'insert_buffer'], maxMutations: 5 },
+    'the Reviewer learns the recipe commands and cap it may approve');
+  const reviewerId = reviewer.effectiveContract.delegationId as string;
+  const review = (scope: unknown, hashValue = planSha256) => ({ schema: 'fixture-scope-review/1', planSha256: hashValue, scope });
+  // A Reviewer maxMutations above the Pack recipe cap is not adopted into an Operator.
+  await reviewAndAdopt(reviewerId, review({ commands: ['size_cell', 'insert_buffer'], maxMutations: 6 }), 'review-over-cap');
+  const overCap = await create('operator', 'operator-over-cap');
+  assert.equal(overCap.status, 'refused', JSON.stringify(overCap)); assert.match(overCap.reason, /maxMutations/);
+  // A scope naming a mutation outside the Pack recipe is not adopted either.
+  await reviewAndAdopt(reviewerId, review({ commands: ['size_cell', 'set_value'], maxMutations: 3 }), 'review-outside-recipe');
+  const outsideRecipe = await create('operator', 'operator-outside-recipe');
+  assert.equal(outsideRecipe.status, 'refused', JSON.stringify(outsideRecipe)); assert.match(outsideRecipe.reason, /set_value/);
+  assert.equal(runDelegations((host.ctx.hima as any).deps(), runId).filter((row) => row.effective.role === 'operator').length, 0,
+    'a refused scope creates no Operator child');
+
+  await reviewAndAdopt(reviewerId, review({ commands: ['size_cell', 'insert_buffer'], maxMutations: 3 }), 'review');
+  const operator = await create('operator', 'operator'); assert.equal(operator.status, 'created', JSON.stringify(operator));
+  const payload = operator.effectiveContract.recipe.inlinePayload;
+  assert.deepEqual(payload.scope, { commands: ['size_cell', 'insert_buffer'], maxMutations: 3 });
+  assert.equal(payload.planSha256, planSha256);
+  assert.equal(payload.command, undefined, 'a scope is not one pinned action');
+  const operatorId = operator.receipt.childSessionId as string;
+  const interactive = (body: Record<string, unknown>) => host!.ctx.hima.interactive(operatorId, { runId, executionId,
+    nodeId: 'synthesize', ownerEpoch: control().epoch, controlRevision: control().revision, ...body }) as Promise<Record<string, any>>;
+  const opened = await interactive({ action: 'open', requestId: 'open' }); assert.equal(opened.status, 'opened', JSON.stringify(opened));
+  const toolSessionId = opened.session.toolSessionId as string;
+  await waitUntil('the scope REPL is ready', async () => (await host!.ctx.hima.interactiveSessions(actor, runId) as any)
+    .sessions.some((session: any) => session.toolSessionId === toolSessionId && session.status === 'ready'), 10_000, 25);
+  const input = (id: string, name: string, args: Record<string, unknown>) =>
+    interactive({ action: 'input', requestId: id, commandId: id, toolSessionId, command: { name, args }, waitMs: 1_000 });
+  const accepted = async (id: string, name: string, args: Record<string, unknown>) => {
+    const value = await input(id, name, args); assert.equal(value.status, 'completed', JSON.stringify(value)); return value;
+  };
+
+  const wrongHash = await input('wrong-hash', 'size_cell', { instance: 'U1', master: 'BUF4', planSha256: 'f'.repeat(64) });
+  assert.equal(wrongHash.status, 'refused', JSON.stringify(wrongHash)); assert.match(wrongHash.reason, /plan SHA-256/);
+  const outside = await input('outside', 'set_value', { key: 'k', value: 1, planSha256 });
+  assert.equal(outside.status, 'refused', JSON.stringify(outside)); assert.match(outside.reason, /scope/);
+  await accepted('read-before', 'get_value', { key: 'U1' });
+  await accepted('m1', 'size_cell', { instance: 'U1', master: 'BUF4', planSha256 });
+  await accepted('m2', 'insert_buffer', { net: 'n1', cell: 'BUF2', planSha256 });
+  await accepted('m3', 'size_cell', { instance: 'U1', master: 'BUF2', planSha256 });
+  const retry = await input('m3', 'size_cell', { instance: 'U1', master: 'BUF2', planSha256 });
+  assert.equal(retry.status, 'duplicate', 'retrying an accepted mutation is its receipt, not a fourth mutation');
+  const fourth = await input('m4', 'insert_buffer', { net: 'n1', cell: 'BUF4', planSha256 });
+  assert.equal(fourth.status, 'refused', JSON.stringify(fourth)); assert.match(fourth.reason, /at most 3 mutations/);
+  const read = await accepted('read-after', 'get_value', { key: 'U1' });
+  assert.match(JSON.stringify(read), /VALUE U1=BUF2/, 'read commands stay available after the mutation budget is spent');
+  await accepted('save', 'save_state', { file: path.join(h.workspace, 'scope-state.txt') });
 });

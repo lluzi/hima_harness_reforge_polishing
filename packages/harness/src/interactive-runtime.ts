@@ -424,9 +424,18 @@ class RunInteractiveAuthority implements InteractiveAuthority {
           && intent.record.replyToCommandId === view.activeCommand.commandId;
         if (!reply) return { kind: 'refused', reason: `interactive command ${view.activeCommand.commandId} still owns the single-writer lease (${view.activeCommand.state})` };
       }
+      let payload: ProtocolRecord = intent.record;
+      const budget = this.request.scopeMutationBudget;
+      if (intent.action === 'input' && budget !== undefined) {
+        // Counted from the Ledger under the Run lock, so a restart or a concurrent call cannot exceed it.
+        const admitted = protocolRecords(this.deps.fabric.ledger, run.id).filter((item) => item.payload.event === 'input-intent'
+          && item.payload.toolSessionId === intent.record.toolSessionId && item.payload.scopeMutation === true).length;
+        if (admitted >= budget) return { kind: 'refused', reason: `The owner-adopted reviewed scope admits at most ${budget} mutations in tool session ${intent.record.toolSessionId}; ${admitted} were already admitted.` };
+        payload = { ...intent.record, scopeMutation: true };
+      }
       const appended = await this.deps.fabric.ledger.appendInteractive(run.id, {
         executionId: intent.record.executionId, toolSessionId: intent.record.toolSessionId,
-        requestId: intent.record.requestId, event: intent.record.event, payload: intent.record as never,
+        requestId: intent.record.requestId, event: intent.record.event, payload: payload as never,
       });
       return { kind: 'reserved', reservationId: appended.id, qualification };
     });
