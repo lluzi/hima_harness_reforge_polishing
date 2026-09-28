@@ -3,7 +3,7 @@ kind: ssh
 workspaceRoot: /data/eda/project/hima_harness/atcs-runs
 permit: ./permit.yml
 bindings:
-  designStateManifest: /data/eda/project/hima_harness/atcs-inputs/designStateManifest.json
+  designStateManifest: /data/eda/project/hima_harness/atcs-inputs/designStateManifest-postroute-final.json
   analysisContract: /data/eda/project/hima_harness/atcs-inputs/analysisContract
   siteCapabilities: /data/eda/project/hima_harness/atcs-inputs/siteCapabilities-v4.json
   workspaceRoot: /data/eda/project/hima_harness/atcs-runs
