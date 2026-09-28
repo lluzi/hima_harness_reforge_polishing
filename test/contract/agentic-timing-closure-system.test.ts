@@ -523,3 +523,31 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   });
   assert.equal(tests.status, 0, `${tests.stdout}\n${tests.stderr}`);
 });
+
+test('the admin generator labels the ATCS binding with the installed wrapper version, not a fixed one', async (t) => {
+  // Issue #64 Task 7 fix round 1: the atcs-v10 binding came out as `linglong-atcs28:xtop-operator-v5`.
+  const h = await createHimaHome(); t.after(() => h.dispose());
+  const pack = loadPack(path.join(repoRoot, 'packs'), 'agentic-timing-closure-system');
+  const tool = pack.contract.tools.find((candidate) => candidate.id === 'xtop-operator')!;
+  const wrapper = tool.interactive!.argv[0]!;
+  const version = /atcs-v(\d+)\/atcs-xtop-operator-v\1\.sh$/.exec(wrapper)?.[1];
+  assert.ok(version, `the contract names an installed atcs-vN wrapper: ${wrapper}`);
+  const { packDigestExcludes } = await import('@hima/harness');
+  const template = await readFile(path.join(repoRoot, `sites/linglong-atcs28/xtop-operator-environment-v${version}.template.json`), 'utf8');
+  const evidence = template
+    .replace('<current-pack-digest>', pack.folder.digest(packDigestExcludes))
+    .replace('<current-adapter-digest>', BUILTIN_TCL_ADAPTER_DIGEST)
+    .replace('<current-commands-digest>', interactiveCommandsDigest(tool))
+    .replace('<passed-after-fresh-production-root-qualification>', 'passed')
+    .replaceAll('<64-lowercase-hex>', 'a'.repeat(64));
+  assert.equal(JSON.parse(evidence).wrapper.path, wrapper, 'the environment template names the contract wrapper');
+  const environment = path.join(h.home, 'xtop-operator-environment.json');
+  const output = path.join(h.home, 'interactive-bindings.json');
+  await writeFile(environment, evidence);
+  const generated = spawnSync(process.execPath, [path.join(repoRoot, 'scripts/generate-xtop-operator-binding.mjs'),
+    '--environment', environment, '--output', output], { cwd: repoRoot, encoding: 'utf8' });
+  assert.equal(generated.status, 0, generated.stderr);
+  const document = JSON.parse(await readFile(output, 'utf8'));
+  assert.equal(document.bindings[0].environment.id, `linglong-atcs28:xtop-operator-v${version}`);
+  assert.match(document.bindings[0].id, new RegExp(`^linglong-atcs28:xtop-operator-v${version}:`));
+});

@@ -24,16 +24,16 @@ const environmentFile = await realpath(environmentArg);
 const bytes = await readFile(environmentFile);
 const evidence = interactiveEnvironmentEvidence.parse(JSON.parse(bytes.toString('utf8')));
 const target = {
-  'linglong-swerv28/run-xtop-fix': {
-    packId: 'xtop-timing-closure', mode: 'hybrid', environmentId: 'linglong-swerv28:xtop-operator-v5',
-  },
-  'linglong-atcs28/xtop-operator': {
-    // Issue #64 Task 5: hybrid; the batch path is the Pack's operate-parked no-op, never XTop.
-    packId: 'agentic-timing-closure-system', mode: 'hybrid',
-    environmentId: 'linglong-atcs28:xtop-operator-v5',
-  },
+  'linglong-swerv28/run-xtop-fix': { packId: 'xtop-timing-closure', mode: 'hybrid' },
+  // Issue #64 Task 5: hybrid; the batch path is the Pack's operate-parked no-op, never XTop.
+  'linglong-atcs28/xtop-operator': { packId: 'agentic-timing-closure-system', mode: 'hybrid' },
 }[`${evidence.site}/${evidence.toolId}`];
 if (!target) throw new Error('unsupported Site / XTop Operator tool evidence');
+// The environment is labelled by the installed wrapper it qualifies (`...-v<N>.sh`), never a fixed
+// version (Issue #64 Task 7: the atcs-v10 binding was labelled xtop-operator-v5).
+const wrapperVersion = /-v(\d+)\.sh$/.exec(evidence.wrapper.path)?.[1];
+if (!wrapperVersion) throw new Error('the qualified wrapper path names no -v<N>.sh version');
+target.environmentId = `${evidence.site}:xtop-operator-v${wrapperVersion}`;
 const writeRoot = path.posix.resolve(evidence.confinement.privateWriteRoot);
 if (environmentFile === writeRoot || environmentFile.startsWith(`${writeRoot}/`)) {
   throw new Error('the administrator environment evidence must stay outside the production write root');
