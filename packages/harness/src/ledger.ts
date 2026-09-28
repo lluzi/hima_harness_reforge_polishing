@@ -546,6 +546,11 @@ export const resumedRecord = z.object({
   nodeId: z.string(),
   who: z.string().min(1),
   clears: z.string().optional(),
+  /** The person's control request whose effect this is, when one wrote it (#64 D2). */
+  requestId: z.string().optional(),
+  /** Records a person's "new work starts again at nodeId" supersedes: no longer current evidence,
+   *  exactly as a revision's `invalidates` (#64 D2). */
+  invalidates: z.array(z.string()).optional(),
 });
 
 /**
@@ -2237,14 +2242,15 @@ export interface RecordValidity { readonly valid: boolean; readonly invalidatedB
 export function recordValidityOf(records: readonly LedgerRecord[], recordId: string): RecordValidity {
   const revision = records.findLast((record): record is RevisionRecord =>
     record.type === 'revision' && record.event === 'applied' && (record.invalidates ?? []).includes(recordId));
-  return revision === undefined ? { valid: true } : { valid: false, invalidatedBy: revision.revisionId };
+  if (revision !== undefined) return { valid: false, invalidatedBy: revision.revisionId };
+  const restart = records.findLast((record): record is ResumedRecord => record.type === 'resumed' && (record.invalidates ?? []).includes(recordId));
+  return restart === undefined ? { valid: true } : { valid: false, invalidatedBy: `continue:${restart.requestId ?? restart.id}` };
 }
 
 /** The current evidence view. History remains in the input and can be paired with recordValidityOf. */
 export function currentRecordsIn(records: readonly LedgerRecord[]): LedgerRecord[] {
   const invalid = new Set(records
-    .filter((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied')
-    .flatMap((record) => record.invalidates ?? []));
+    .flatMap((record) => record.type === 'revision' && record.event === 'applied' || record.type === 'resumed' ? record.invalidates ?? [] : []));
   return records.filter((record) => !invalid.has(record.id));
 }
 

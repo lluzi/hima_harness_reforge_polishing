@@ -375,7 +375,7 @@ async function launchAndWait(
  * the Job was: a caller that has something to read before the node may be called `done` says so where
  * it launches, and the turn that picks that Job up again after a restart says the same thing.
  */
-type FinishJob = (ctx: Driving, node: PackNode, attempt: number, session: string, exitCode: number) => Promise<Step>;
+type FinishJob = (ctx: Driving, node: PackNode, attempt: number, session: string, exitCode: number, ending?: boolean) => Promise<Step>;
 
 /**
  * Wait for one act node's Job and settle the node from what became of it.
@@ -559,7 +559,7 @@ async function stoppedWithJob(ctx: Driving, node: PackNode, attempt: number, ses
   // generation it never observed. What the reader wrote is read back — or refused — exactly as it
   // would have been had no cancel crossed it, and only then does the node settle.
   const after = await jobStatus(ctx.deps, { run: ctx.runId, session });
-  if (after.state.state === 'finished') await finish(ctx, node, attempt, session, after.state.exitCode);
+  if (after.state.state === 'finished') await finish(ctx, node, attempt, session, after.state.exitCode, true);
   else await appendNode(ctx, node, 'blocked', attempt, { jobSession: session, reason: `job "${node.id}" is gone: tmux session ${session} has ended and it wrote no exit status` });
   return { kind: 'stopped' };
 }
@@ -621,7 +621,7 @@ function missingInputHint(ctx: Driving, node: PackNode, reason: string): string 
   const producers = workshopProducersOf(ctx.pack, node.parameters.observes).filter((producer) => producer.nodeId !== node.id);
   if (producers.length === 0) return '';
   const named = producers.map((producer) => `node ${producer.nodeId} (Workshop "${producer.workshop}")`).join(' or ');
-  return `; ${named} writes this input and must run again before this Reader can read it: continue ${producers[0]!.nodeId} to start new work there instead of re-reading`;
+  return `; ${named} writes this input and must run again before this Reader can read it: a person must continue ${producers[0]!.nodeId} to start new work there (the owner may instead revise its Workshop code); re-reading only blocks again`;
 }
 
 /** One node blocked, carrying why in words and the Job it was waiting on where there was one. */
@@ -647,38 +647,73 @@ async function settleFinished(ctx: Driving, node: PackNode, attempt: number, ses
 }
 
 /**
- * A Workshop Job that exited 0 is `done` only when the file its Workshop declares it produces is on
- * the Site (#64 D1). A Workshop's one entry execution is its result: an entry that only explored and
- * printed to stdout leaves nothing for the Reader downstream, and calling it `done` hands that Reader
- * a path it cannot resolve. So a missing output is a failed attempt with that reason, through the same
- * accounting as a non-zero exit — an Agent-owned Workshop stays in its coding loop and the owner opens
- * the next attempt; a moment-driven one spends its Retry allowance.
+ * A Workshop Job that exited 0 is `done` only when this execution wrote the file its Workshop declares
+ * it produces (#64 D1). A Workshop's one entry execution is its result: an entry that only explored
+ * and printed to stdout leaves nothing for the Reader downstream, and calling it `done` hands that
+ * Reader a path it cannot resolve — or, because one Campaign workspace serves every generation, a file
+ * an earlier generation left there. So a missing or older output is a failed attempt with that reason,
+ * through the same accounting as a non-zero exit: an Agent-owned Workshop stays in its coding loop and
+ * the owner opens the next attempt; a moment-driven one spends its Retry allowance.
  *
- * Only presence is asked. Whether what was written makes sense is the Reader's to say, and a question
- * the Site would not answer is a failed attempt naming why, never a `done` nobody verified.
+ * `ending` is a Job settled while its Run is being stopped (a cancel that lost the race, a spent time
+ * box): nothing will retry it, so the node records a plain `blocked` naming the output instead.
+ *
+ * Whether what was written makes sense is the Reader's to say. A question the Site would not answer,
+ * or a declaration that no longer resolves, is a failed attempt naming why, never a `done` nobody
+ * verified.
  */
-async function settleWorkshopFinished(ctx: Driving, node: PackNode, attempt: number, session: string, exitCode: number): Promise<Step> {
+async function settleWorkshopFinished(ctx: Driving, node: PackNode, attempt: number, session: string, exitCode: number, ending = false): Promise<Step> {
   if (exitCode !== 0 || node.kind !== 'act' || node.parameters.workshop === undefined) return settleFinished(ctx, node, attempt, session, exitCode);
-  const missing = await missingWorkshopOutput(ctx, node, session);
-  if (missing === undefined) return settleFinished(ctx, node, attempt, session, exitCode);
-  return settleFailedAttempt(ctx, node, attempt, { jobSession: session, exitCode, reason: missing });
+  const launched = ctx.deps.ledger.records({ runId: ctx.runId })
+    .findLast((r): r is JobRecord => r.type === 'job' && r.event === 'launched' && r.job.session === session);
+  const problem = await workshopOutputProblem({ site: ctx.site, pack: ctx.pack, bindings: ctx.bindings, workspace: ctx.workspace,
+    node, session, entryPath: launched?.workshop?.entry.path });
+  if (problem === undefined) return settleFinished(ctx, node, attempt, session, exitCode);
+  if (ending) return blockNode(ctx, node, attempt, problem, session);
+  return settleFailedAttempt(ctx, node, attempt, { jobSession: session, exitCode, reason: problem });
 }
 
-/** Why the declared output of this Workshop node is not on the Site after its Job, or undefined when it is. */
-async function missingWorkshopOutput(ctx: Driving, node: Extract<PackNode, { kind: 'act' }>, session: string): Promise<string | undefined> {
-  const declaration = ctx.pack.contract.workshops.find((workshop) => workshop.id === node.parameters.workshop);
-  const output = declaration === undefined ? undefined : ctx.pack.contract.outputs.find((candidate) => candidate.name === declaration.produces);
-  if (declaration === undefined || output === undefined) return undefined;
-  const relative = outputPath(output, ctx.bindings);
-  const at = pathsOf(ctx.site).join(ctx.workspace, relative);
-  const written = `Workshop output ${relative} was not written`;
-  const why = `the ${declaration.entry} Job of workshop "${declaration.id}" in tmux session ${session} exited 0`;
-  try {
-    if (!(await channelFor(ctx.site).absent(at))) return undefined;
-  } catch (err) {
-    return `${written} as far as site ${ctx.site.name} would say: ${why}, and whether ${at} exists could not be asked: ${(err as Error).message}`;
+/**
+ * Why this Workshop node's Job, which exited 0, did not produce its declared output — undefined when
+ * it did. Produced means the file is on the Site and is not older than the entry this execution ran
+ * (`test OUT -ot ENTRY`; equal timestamps pass): the entry is written for each execution, so an output
+ * older than it was left by earlier work. Fails closed: a declaration that no longer resolves, a path
+ * that cannot be formed, or a Site that will not answer is a reason, never a pass.
+ */
+export async function workshopOutputProblem(at: {
+  readonly site: Site; readonly pack: Pack; readonly bindings: Readonly<Record<string, string>>; readonly workspace: string;
+  readonly node: Extract<PackNode, { kind: 'act' }>; readonly session: string; readonly entryPath: string | undefined;
+}): Promise<string | undefined> {
+  const { site, pack, node, session } = at;
+  const declaration = pack.contract.workshops.find((workshop) => workshop.id === node.parameters.workshop);
+  const output = declaration === undefined ? undefined : pack.contract.outputs.find((candidate) => candidate.name === declaration.produces);
+  if (declaration === undefined || output === undefined) {
+    return `Workshop output of node ${node.id} cannot be verified: workshop "${node.parameters.workshop}" or the output it produces is no longer declared by this Pack`;
   }
-  return `${written}: ${why} but ${at} is not on site ${ctx.site.name}; the entry execution is the Workshop's result and must write its declared output "${output.name}"`;
+  let relative: string;
+  let file: string;
+  try {
+    relative = outputPath(output, at.bindings);
+    file = pathsOf(site).join(at.workspace, relative);
+  } catch (err) {
+    return `Workshop output "${output.name}" of node ${node.id} cannot be verified: ${(err as Error).message}`;
+  }
+  const why = `the ${declaration.entry} Job of workshop "${declaration.id}" in tmux session ${session} exited 0`;
+  const channel = channelFor(site);
+  try {
+    if (await channel.absent(file)) {
+      return `Workshop output ${relative} was not written: ${why} but ${file} is not on site ${site.name}; the entry execution is the Workshop's result and must write its declared output "${output.name}"`;
+    }
+    if (at.entryPath === undefined) return `Workshop output ${relative} cannot be verified as written by this execution: the launch of tmux session ${session} records no entry`;
+    const older = await channel.exec(['test', file, '-ot', at.entryPath]);
+    if (older.code === 0) {
+      return `Workshop output ${relative} was not written by this execution: ${why} but ${file} is older than its entry ${at.entryPath}, so it was left by earlier work; the entry execution must write its declared output "${output.name}" itself`;
+    }
+    if (older.code !== 1) return `Workshop output ${relative} cannot be verified as written by this execution: test exited ${older.code} on site ${site.name}${older.stderr.trim() === '' ? '' : `: ${older.stderr.trim()}`}`;
+  } catch (err) {
+    return `Workshop output ${relative} cannot be verified as written by this execution: ${why}, and site ${site.name} could not be asked about ${file}: ${(err as Error).message}`;
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -850,7 +885,7 @@ async function timeBoxReached(ctx: Driving, node: PackNode, attempt: number, ses
   }
   const after = await jobStatus(ctx.deps, { run: ctx.runId, session });
   if (after.state.state === 'finished') {
-    await finish(ctx, node, attempt, session, after.state.exitCode);
+    await finish(ctx, node, attempt, session, after.state.exitCode, true);
     return { kind: 'budget-exhausted' };
   }
   await appendNode(ctx, node, 'blocked', attempt, {
