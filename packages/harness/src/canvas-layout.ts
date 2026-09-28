@@ -320,6 +320,35 @@ function bezierApexY(y0: number, y1: number, y2: number, y3: number): number {
   return apex;
 }
 
+/** The highest point (smallest y) of a cubic whose two control points share one height `c` — the form
+ * every revisit arc takes — found exactly rather than sampled: with `c1 = c2 = c` the curve is `y(t) =
+ * y0 (1-t)^3 + 3c t (1-t) + y3 t^3`, whose turning points are the roots in (0, 1) of `(y3 - y0) t^2 +
+ * 2 (y0 - c) t + (c - y0) = 0`. */
+function arcApexY(y0: number, c: number, y3: number): number {
+  const at = (t: number) => y0 * (1 - t) ** 3 + 3 * c * t * (1 - t) + y3 * t ** 3;
+  const a = y3 - y0, b = 2 * (y0 - c), k = c - y0;
+  const roots = Math.abs(a) < 1e-9 ? (Math.abs(b) < 1e-9 ? [] : [-k / b])
+    : (b * b - 4 * a * k < 0 ? [] : [(-b - Math.sqrt(b * b - 4 * a * k)) / (2 * a), (-b + Math.sqrt(b * b - 4 * a * k)) / (2 * a)]);
+  return Math.min(y0, y3, ...roots.filter((t) => t > 0 && t < 1).map(at));
+}
+
+/** #64: the shared control height that makes a revisit arc from `y0` to `y3` peak exactly at `apex`
+ * (never above it). Two endpoints on the top lane give `c = apex`'s own old fixed lift, as before; an
+ * endpoint several lanes down — a back-edge leaving a staircase of Judges, or a lane under a wide
+ * fork — pulls its control points higher so that its apex still clears the top lane instead of
+ * cutting through the lanes above it. The apex falls as `c` falls, so a bisection between a height
+ * that stays below `apex` (`c = apex`: the curve is a weighted mean of `y0`, `c` and `y3`) and one
+ * that reaches it (the symmetric closed form, exact at `t = 0.5`) converges on it, keeping the side
+ * whose apex never rises past `apex`. */
+function arcControlFor(y0: number, y3: number, apex: number): number {
+  let reaches = (8 * apex - y0 - y3) / 6, clear = apex;
+  for (let i = 0; i < 60; i++) {
+    const mid = (reaches + clear) / 2;
+    if (arcApexY(y0, mid, y3) >= apex) clear = mid; else reaches = mid;
+  }
+  return clear;
+}
+
 /** Rule 4's edge forms, plus rule 5's lit rule (`state(from)` done/reconciled, except a revisit edge
  * which lights from `generation > 1` instead). The FAIL/UNDETERMINED-to-a-hung-node case is selected
  * by `isHungTarget` — the caller's own `hangNodeIds` membership test for `edge.to` — rather than the
@@ -340,14 +369,17 @@ function bezierApexY(y0: number, y1: number, y2: number, y3: number): number {
  * far ends bow into it. */
 function classifyEdge(
   edge: LayoutEdge, sx: number, sy: number, tx: number, ty: number,
-  generation: number | undefined, litFromSource: boolean, isHungTarget: boolean, arcY?: number,
+  generation: number | undefined, litFromSource: boolean, isHungTarget: boolean, arcApex?: number,
 ): PlacedEdge {
   if (edge.revisit) {
     const count = generation ?? 1;
-    // #63: `arcY` lifts both control points to one height above the lanes (`revisitArcY`), so an arc
-    // from a node in a lower lane still clears the top lane and nested arcs never share a curve.
-    const c1y = arcY ?? sy - 90;
-    const c2y = arcY ?? ty - 90;
+    // #63: `arcApex` is the height this arc peaks at above the lanes (one per nesting level,
+    // `revisitLevels`), so nested arcs never share a curve. #64: both control points are solved for
+    // that apex from the arc's own endpoints, so an arc from a node in a lower lane still clears the
+    // top lane rather than peaking short of it.
+    const shared = arcApex === undefined ? undefined : arcControlFor(sy - 18, ty - 18, arcApex);
+    const c1y = shared ?? sy - 90;
+    const c2y = shared ?? ty - 90;
     const apex = bezierApexY(sy - 18, c1y, c2y, ty - 18);
     // 34px above the apex is right for a loop's or a growth's own revisit arc, which sits well down
     // the canvas — but on the main spine (`PAD_Y = 72`, so the arc's own endpoints are already close
@@ -390,12 +422,17 @@ function classifyEdge(
 // #63: back-edge nesting and forward-edge routing, so a large graph's edges stay readable.
 
 /** How far above the top lane a level-0 revisit arc's control points sit (the mockup's own 90 from a
- * node's centre, i.e. 72 above its top edge), and how much higher each nesting level lifts it. */
+ * node's centre, i.e. 72 above its top edge), and how much higher each nesting level lifts it. An arc
+ * between two top-lane nodes peaks three quarters of that lift above the lane (`arcApexAbove`); an arc
+ * from lower lanes is solved to peak at the same height (`arcControlFor`). */
 const ARC_LIFT = 72, ARC_STEP = 16;
+const arcApexAbove = (top: number, level: number) => top - 0.75 * (ARC_LIFT + ARC_STEP * level);
 
-/** Each revisit edge's nesting level: 0 for an arc spanning no other arc, else one more than the
- * highest arc inside its span (an equal span counts as inside when declared earlier), so wider arcs
- * rise over narrower ones instead of drawing on the same curve. */
+/** Each revisit edge's nesting level: 0 for an arc whose span meets no narrower arc, else one more
+ * than the highest narrower arc inside or overlapping its span (an equal span counts as narrower when
+ * declared earlier), so wider arcs rise over narrower ones instead of drawing on the same curve. #64:
+ * an arc that only overlaps another (neither contains the other) takes its own level too — two arcs
+ * that peak at one height draw their flat tops along one line wherever those tops overlap. */
 function revisitLevels(edges: readonly LayoutEdge[], rankOf: (id: string) => number): Map<LayoutEdge, number> {
   const arcs = edges.filter((edge) => edge.revisit).map((edge, i) => {
     const a = rankOf(edge.from), b = rankOf(edge.to);
@@ -404,7 +441,8 @@ function revisitLevels(edges: readonly LayoutEdge[], rankOf: (id: string) => num
   arcs.sort((p, q) => (p.hi - p.lo) - (q.hi - q.lo) || p.i - q.i);
   const level = new Map<LayoutEdge, number>();
   arcs.forEach((arc, k) => {
-    const inner = arcs.slice(0, k).filter((other) => other.lo >= arc.lo && other.hi <= arc.hi).map((other) => level.get(other.edge)! + 1);
+    const inner = arcs.slice(0, k).filter((other) => (other.lo >= arc.lo && other.hi <= arc.hi) || (other.lo < arc.hi && arc.lo < other.hi))
+      .map((other) => level.get(other.edge)! + 1);
     level.set(arc.edge, inner.length > 0 ? Math.max(...inner) : 0);
   });
   return level;
@@ -418,7 +456,7 @@ const CORRIDOR = NODE / 2 + 2.5;
 /** The spacing between two routed edges' horizontal runs. */
 const TRACK = 6;
 
-/** Points along an M/L/Q/C path this module wrote, finely enough to test it against a glyph. */
+/** Points along an M/L/Q/C path this module wrote, 24 per segment: the places a chip may ride. */
 function samplePath(d: string): { x: number; y: number }[] {
   const tokens = d.match(/[MLQC]|-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/g) ?? [];
   const points: { x: number; y: number }[] = [];
@@ -444,9 +482,60 @@ function samplePath(d: string): { x: number; y: number }[] {
   return points;
 }
 
-/** Whether a point falls on a node's glyph (with a 2-unit margin) or on its label lines. */
-const onGlyph = (p: { x: number; y: number }, n: { x: number; y: number }) => Math.abs(p.x - n.x) < NODE / 2 + 2 && Math.abs(p.y - n.y) < NODE / 2 + 2;
-const onLabel = (p: { x: number; y: number }, n: { x: number; y: number }) => Math.abs(p.x - n.x) < FOOT_HALF_W && p.y > n.y + NODE / 2 && p.y < n.y + FOOT_BOTTOM;
+type Point = { readonly x: number; readonly y: number };
+type Box = { readonly left: number; readonly right: number; readonly top: number; readonly bottom: number };
+
+/** A node's glyph (with a 2-unit margin) and its label lines, as open boxes. */
+const glyphBox = (n: Point): Box => ({ left: n.x - NODE / 2 - 2, right: n.x + NODE / 2 + 2, top: n.y - NODE / 2 - 2, bottom: n.y + NODE / 2 + 2 });
+const labelBox = (n: Point): Box => ({ left: n.x - FOOT_HALF_W, right: n.x + FOOT_HALF_W, top: n.y + NODE / 2, bottom: n.y + FOOT_BOTTOM });
+
+/** Whether the straight segment `a`–`b` passes through the inside of `box` (Liang–Barsky clipping). */
+function segmentMeets(a: Point, b: Point, box: Box): boolean {
+  let enter = 0, leave = 1;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  for (const [p, q] of [[-dx, a.x - box.left], [dx, box.right - a.x], [-dy, a.y - box.top], [dy, box.bottom - a.y]] as const) {
+    if (p === 0) { if (q <= 0) return false; continue; }
+    const r = q / p;
+    if (p < 0) enter = Math.max(enter, r); else leave = Math.min(leave, r);
+  }
+  return enter < leave;
+}
+
+/** #64: an M/L/Q/C path this module wrote, as straight chords: a line is its own chord, and a curve
+ * is cut into chords at most 4 units long. Testing chords against a box is exact for a line however
+ * long it runs, where a fixed number of samples per segment steps right over a glyph's corner (a
+ * 1000-unit FAIL edge sampled 24 times steps 45 units, wider than the 40-unit glyph box). */
+function pathChords(d: string): [Point, Point][] {
+  const tokens = d.match(/[MLQC]|-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/g) ?? [];
+  const chords: [Point, Point][] = [];
+  let i = 0, command = '', cur: Point = { x: 0, y: 0 };
+  const num = () => Number(tokens[i++]);
+  while (i < tokens.length) {
+    if (/[MLQC]/.test(tokens[i]!)) command = tokens[i++]!;
+    const count = command === 'C' ? 3 : command === 'Q' ? 2 : 1;
+    const controls: Point[] = [];
+    for (let k = 0; k < count; k++) controls.push({ x: num(), y: num() });
+    const end = controls[controls.length - 1]!;
+    if (command === 'L') chords.push([cur, end]);
+    else if (command !== 'M') {
+      const polygon = [cur, ...controls];
+      const length = polygon.slice(1).reduce((sum, p, k) => sum + Math.hypot(p.x - polygon[k]!.x, p.y - polygon[k]!.y), 0);
+      const steps = Math.max(8, Math.ceil(length / 4));
+      let prev = cur;
+      for (let step = 1; step <= steps; step++) {
+        const t = step / steps, m = 1 - t;
+        const next = command === 'Q'
+          ? { x: m * m * cur.x + 2 * m * t * controls[0]!.x + t * t * end.x, y: m * m * cur.y + 2 * m * t * controls[0]!.y + t * t * end.y }
+          : { x: m * m * m * cur.x + 3 * m * m * t * controls[0]!.x + 3 * m * t * t * controls[1]!.x + t * t * t * end.x,
+            y: m * m * m * cur.y + 3 * m * m * t * controls[0]!.y + 3 * m * t * t * controls[1]!.y + t * t * t * end.y };
+        chords.push([prev, next]);
+        prev = next;
+      }
+    }
+    cur = end;
+  }
+  return chords;
+}
 
 /** An orthogonal polyline with its corners rounded, as an SVG path. */
 function roundedPath(points: readonly { x: number; y: number }[]): string {
@@ -484,7 +573,8 @@ function routeEdges(edges: PlacedEdge[], nodes: readonly PlacedNode[]): number {
     if (!s || !t || t.x <= s.x) return;
     const others = nodes.filter((n) => n !== s && n !== t);
     const steep = /^M [^A-Z]+ L [^A-Z]+$/.test(edge.path) && Math.abs(t.y - s.y) > t.x - s.x - NODE;
-    if (!steep && !samplePath(edge.path).some((p) => others.some((n) => onGlyph(p, n) || onLabel(p, n)))) return;
+    const boxes = others.flatMap((n) => [glyphBox(n), labelBox(n)]);
+    if (!steep && !pathChords(edge.path).some(([a, b]) => boxes.some((box) => segmentMeets(a, b, box)))) return;
     const xa = s.x + CORRIDOR, xb = Math.max(xa, t.x - CORRIDOR);
     const crossing = others.filter((n) => n.x + FOOT_HALF_W > xa && n.x - FOOT_HALF_W < xb);
     let best: { y: number; cost: number } | undefined;
@@ -519,7 +609,6 @@ const chipBox = (chip: { x: number; y: number; text: string }) => {
  * own path from the source end and takes the first point where its pill meets nothing already
  * there (or, when none is free, rule 4's own place). */
 function placeChips(edges: PlacedEdge[], nodes: readonly PlacedNode[]): void {
-  type Box = ReturnType<typeof chipBox>;
   const meets = (a: Box, b: Box) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
   const blocked: Box[] = nodes.flatMap((n) => [
     { left: n.x - NODE / 2, right: n.x + NODE / 2, top: n.y - NODE / 2, bottom: n.y + NODE / 2 },
@@ -666,7 +755,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
       const to = positions.get(edge.to)!;
       const level = localLevels.get(edge);
       return classifyEdge(edge, from.x, from.y, to.x, to.y, generation, litOf(edge.from), localHang.has(edge.to),
-        level === undefined ? undefined : localTop - ARC_LIFT - ARC_STEP * level);
+        level === undefined ? undefined : arcApexAbove(localTop, level));
     });
     return { positions, box, nodes, edges };
   }
@@ -729,7 +818,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     const to = finalPosition.get(edge.to) ?? { x: pass1X.get(edge.to) ?? X0, y: pass1Y.get(edge.to) ?? PAD_Y };
     const level = mainLevels.get(edge);
     return classifyEdge(edge, from.x, from.y, to.x, to.y, facts?.generation, litOf(edge.from), hang.has(edge.to),
-      level === undefined ? undefined : mainTop - ARC_LIFT - ARC_STEP * level);
+      level === undefined ? undefined : arcApexAbove(mainTop, level));
   });
 
   // Rule 7: each accepted growth, laid out below its parent node the same way an open loop is below
