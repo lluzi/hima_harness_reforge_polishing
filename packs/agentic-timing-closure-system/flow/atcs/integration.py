@@ -287,6 +287,7 @@ import fnmatch
 import math
 import re
 
+from . import contributions
 from . import core
 
 
@@ -1456,80 +1457,33 @@ def prepare_recipe_replay(plan, base_state_id, recipe, sessions, required_scenar
 
 # ---- XTop prediction (summarize_gba_violations) -------------------------------
 
-_GBA_HEADER_TOKENS = ("Count", "Worst", "TNS")
-
-
-def _number_token(token):
-    try:
-        value = float(token)
-    except ValueError:
-        return None
-    return value if math.isfinite(value) else None
-
-
 def parse_gba_summary(text, check=None):
-    """Per-scenario `summarize_gba_violations -exclude_path` table -> ``{"total", "scenarios"}``.
+    """One check's per-scenario `summarize_gba_violations` table -> ``{"total", "scenarios"}``.
 
-    Pinned to real XTop 2025.09 output (notes/real-summarize-sample.txt): a ``### <check>
-    summary ###`` section, a ``Scenario Count Worst TNS`` header -- or, with ``-with_reference
-    -with_delta``, ``Scenario Count Count0 D_Count | Worst Worst0 D_Worst | TNS TNS0 D_TNS`` --
-    a dashed rule, a ``total`` row, then one indented row per scenario. Columns are located by
-    header name, so only the current ``Count``/``Worst``/``TNS`` values are read. TNS is signed
-    (negative when violating); a clean scenario reads ``0.0000``.
-
-    With `check` (``setup``/``hold``), only that check's section is read when the text carries
-    section markers. Returns ``None`` for text without such a table (an XTop error, an empty
-    redirect) -- the caller then treats the prediction as unknown, never as zero.
+    A thin view over Task 4b's `atcs.contributions.parse_gain_summary`, the one parser of
+    XTop's summary text, pinned to real XTop 2025.09 output (plain and ``-with_reference
+    -with_delta`` layouts, ``### <check> summary ###`` sections, fail closed). Rows become
+    ``{"count", "wns", "tns"}`` from the current ``Count``/``Worst``/``TNS`` columns (TNS signed,
+    a clean scenario reads 0). Without `check`, the only section present is read. Returns
+    ``None`` when the text carries no readable section -- the caller then treats the
+    prediction as unknown, never as zero.
     """
     if not isinstance(text, str) or not text:
         return None
-    lines = text.replace("\r", "").split("\n")
-    if check is not None and any(line.strip().startswith("### ") for line in lines):
-        marker = f"### {check} summary ###"
-        starts = [i for i, line in enumerate(lines) if line.strip() == marker]
-        if not starts:
+    sections = contributions.parse_gain_summary(text)
+    if check is None:
+        if len(sections) != 1:
             return None
-        section = []
-        for line in lines[starts[0] + 1:]:
-            if line.strip().startswith("### "):
-                break
-            section.append(line)
-        lines = section
-    header = None
-    rows = []
-    for line in lines:
-        tokens = [token for token in line.split() if token != "|"]
-        if not tokens:
-            if rows:
-                break
-            continue
-        if header is None:
-            if tokens[0] == "Scenario" and all(name in tokens for name in _GBA_HEADER_TOKENS):
-                header = tokens
-            continue
-        if set(line.strip()) <= {"-"}:
-            continue
-        if len(tokens) != len(header):
-            if rows:
-                break
-            return None
-        rows.append(tokens)
-    if header is None or not rows:
+        check = next(iter(sections))
+    section = sections.get(check)
+    if section is None:
         return None
-    columns = {name: header.index(name) for name in _GBA_HEADER_TOKENS}
-    parsed = {"total": None, "scenarios": {}}
-    for tokens in rows:
-        count, wns, tns = (_number_token(tokens[columns[name]]) for name in _GBA_HEADER_TOKENS)
-        if count is None or wns is None or tns is None or count != int(count):
-            return None
-        entry = {"count": int(count), "wns": wns, "tns": tns}
-        if tokens[0] == "total":
-            parsed["total"] = entry
-        else:
-            parsed["scenarios"][tokens[0]] = entry
-    if parsed["total"] is None and not parsed["scenarios"]:
-        return None
-    return parsed
+
+    def row(values):
+        return {"count": values["count"], "wns": values["worst"], "tns": values["tns"]}
+
+    return {"total": row(section["total"]),
+            "scenarios": {name: row(values) for name, values in section["scenarios"].items()}}
 
 
 def _prediction(predict_text, required):

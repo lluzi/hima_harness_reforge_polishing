@@ -1396,6 +1396,36 @@ class PrepareRecipeReplayTests(unittest.TestCase):
                                               default_recipe(), recipe_sessions())
         self.assertEqual(ctx.exception.code, "identity-mismatch")
 
+    def test_a_real_task_4b_recipe_replays_as_sealed(self):
+        """Sessions sealed by `contributions.seal_session` and ranked by `composition.analyze`
+        (Task 4b, merged) feed the replay request unchanged: args as the toolkit logged them."""
+        sys.path.insert(0, str(TESTS_DIR))
+        from test_composition import _hold_gain, _session
+        import session_fixtures as sf
+        high = _session("w01", [("U1", "BUFX2"), ("U2", "BUFX2")], _hold_gain(0.030))
+        low = _session("w02", [("U3", "INVX2"), ("U1", "BUFX4")], _hold_gain(0.010))
+        facts = composition.analyze(sf.BASE_STATE_ID, [low, high], [])
+        sessions = {}
+        for contribution in (high, low):
+            base_ref = sf.make_base_ref(slot=contribution["taskId"], instances=("U1", "U2", "U3", "U4"))
+            sessions[contribution["taskId"]] = {
+                "contributionId": contribution["id"], "revision": contribution["revision"],
+                "namePrefix": base_ref["workspaceManifest"]["namePrefix"],
+                "editDomain": base_ref["workPackage"]["editDomain"],
+                "targetPins": base_ref["workPackage"]["targetPins"], "delta": contribution["delta"],
+            }
+        request = integration.prepare_recipe_replay(
+            {"batchId": "g1", "baseStateId": sf.BASE_STATE_ID, "reason": "ranked"}, sf.BASE_STATE_ID,
+            facts["recipe"], sessions)
+        self.assertEqual([(s["slot"], s["contributionId"]) for s in request["sessions"]],
+                         [("w01", high["id"]), ("w02", low["id"])])
+        self.assertEqual([step["tcl"] for step in request["steps"]], [
+            f"atcs_size_cell {{U1}} {{BUFX2}} {{{sf.PLAN}}}", f"atcs_size_cell {{U2}} {{BUFX2}} {{{sf.PLAN}}}",
+            f"atcs_size_cell {{U3}} {{INVX2}} {{{sf.PLAN}}}", None,
+        ])
+        self.assertEqual(request["steps"][3]["skip"], "shared-instance")
+        self.assertEqual(request["sessions"][0]["namePrefix"], "atcs_w01_r1_")
+
     def test_recipe_procedures_match_the_contract_argument_order(self):
         text = (FLOW_DIR.parent / "contract.yml").read_text(encoding="utf-8")
         for proc, names in integration.RECIPE_PROCS.items():
