@@ -32,7 +32,7 @@ import { convergeOf, newCampaignProposalId, resumeRun, startRun, type FabricDeps
 import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs, ownedWaitedMs, timeBoxRemainingMs } from './budget.js';
 import { controlling, identityOf, drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
-import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, type RunDelegationRequest } from './delegation-runtime.js';
+import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, settleStrandedTeamExecutions, type RunDelegationRequest } from './delegation-runtime.js';
 import { registerDelegationGuard, parseDelegationResultObservedPayload } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
 import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
@@ -707,6 +707,7 @@ export default class Hima extends Service {
       const sessions=await reconcileInteractiveState(this.interactiveDeps());
       for(const session of sessions)await reconcileInteractiveExecution(this.deps(),session.runId,session.executionId);
       await this.interactiveTimers!.reconcile();
+      for(const run of this.ledger.runs())if(run.control&&run.status==='running')await this.settleStrandedTeams(run.id);
       found = await reconcileRuns(this.deps());
     } catch (err) {
       // Only a fault outside any single Run reaches here — the ledger itself, or a host disposed
@@ -1148,7 +1149,13 @@ export default class Hima extends Service {
         operatorGrant={runId:run.id,nodeId:nodeRef as string,executionId:targetExecutionId!,...qualification};
       }
     }
-    const result=await operateRunDelegation(this.ctx,this.deps(),normalizedRequest,signal,{operatorGrant});this.syncDelegationDeadlines();return {'unknowns':[],...result};
+    const result=await operateRunDelegation(this.ctx,this.deps(),normalizedRequest,signal,{operatorGrant});this.syncDelegationDeadlines();
+    await this.settleStrandedTeams(request.runId);return {'unknowns':[],...result};
+  }
+  /** A delegation fact never fails the call that recorded it; the next trigger or restart settles again. */
+  private settleStrandedTeams(runId:string):Promise<void> {
+    return controlling(this.deps(),runId,async()=>{await settleStrandedTeamExecutions(this.deps(),runId);})
+      .catch(error=>this.ctx.logger.warn(`hima: Team execution settlement for ${runId} remains pending: ${String(error)}`));
   }
   async delegations(sessionId:string,runId:string):Promise<object> {
     await authorizeProjectRun(this.guideDeps(),sessionId,runId);
@@ -1166,7 +1173,7 @@ export default class Hima extends Service {
       const timer=setTimeout(()=>{
         this.delegationTimers.delete(key);
         this.ctx.get('agents')?.get(key as never)?.cancel({kind:'hook',reason:'The recorded delegation deadline expired.'});
-        void controlling(this.deps(),run.id,async()=>{const latest=runDelegations(this.deps(),run.id).find(d=>d.childSessionId===key);if(!latest||!['intent','accepted'].includes(latest.state))return;await this.ledger.appendDelegation(run.id,{delegationId:row.delegationId,parentSessionId:row.parentSessionId,childSessionId:key,requestId:`deadline:${row.delegationId}`,requestDigest:identityOf({deadlineAt:row.reservation.deadlineAt}),event:'deadline',payload:{reason:'Original child time allocation expired; new work is fenced.',stopObserved:this.ctx.get('agents')?.get(key as never)?.status==='idle'}});}).catch(error=>this.ctx.logger.warn(String(error)));
+        void controlling(this.deps(),run.id,async()=>{const latest=runDelegations(this.deps(),run.id).find(d=>d.childSessionId===key);if(!latest||!['intent','accepted'].includes(latest.state))return;await this.ledger.appendDelegation(run.id,{delegationId:row.delegationId,parentSessionId:row.parentSessionId,childSessionId:key,requestId:`deadline:${row.delegationId}`,requestDigest:identityOf({deadlineAt:row.reservation.deadlineAt}),event:'deadline',payload:{reason:'Original child time allocation expired; new work is fenced.',stopObserved:this.ctx.get('agents')?.get(key as never)?.status==='idle'}});}).then(()=>this.settleStrandedTeams(run.id)).catch(error=>this.ctx.logger.warn(String(error)));
       },Math.max(1,Date.parse(row.reservation.deadlineAt)-Date.now()));timer.unref();this.delegationTimers.set(key,timer);
     }
   }

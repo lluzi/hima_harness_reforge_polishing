@@ -99,6 +99,7 @@ import {
   timeBoxSpentAt,
   waitedMsOf,
   ownedWaitedMs,
+  nodeRecordsOfGeneration,
 } from './budget.js';
 import { closeLoop, loopGenerationLimit, openLoop, opensALoop, revisitInLoop } from './loops.js';
 import { openForkAt, runFork } from './forks.js';
@@ -116,11 +117,13 @@ import {
   launchWrittenWorkshop,
   exploreRecommendation,
   exploreEvidence,
+  settleFailedAttempt,
   type Driving,
   type FabricDeps,
   type Step,
 } from './node-turns.js';
 import { adoptHistoricalRun, cancelRun } from './recovery.js';
+import { settleStrandedTeamExecutions } from './delegation-runtime.js';
 
 /** The dependencies every fabric operation takes, declared with the turn that is handed them and
  *  named again here so a caller finds them beside `startRun`. */
@@ -1945,7 +1948,7 @@ function growthViews(deps: FabricDeps, pack: Pack, runId: string): GrowthView[] 
   });
 }
 
-function executionPack(deps: FabricDeps, run: RunRecord): Pack {
+export function executionPack(deps: FabricDeps, run: RunRecord): Pack {
   if (run.packId === undefined || run.packDigest === undefined) throw new RunStartError('the original Pack method identity is unavailable');
   const reference = loadRunPack(deps.packsDir, run.packId, run.packDigest);
   return withGrowthGraphs(reference, acceptedGrowthGraphs(deps, reference, run.id));
@@ -2181,6 +2184,10 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     }
     if (req.action === 'work' || req.action === 'complete' || req.action === 'write' || reading) return actOnExecution(deps, run, req, digest);
     if (req.action !== 'begin') return no('this execution operation is not implemented');
+    // The owner's next begin also settles a Team execution an earlier trigger had to leave begun.
+    // A settlement fault (a changed Site, say) leaves that execution to its other triggers, not begin itself.
+    const settled = await settleStrandedTeamExecutions(deps, run.id).catch((error: unknown) => { deps.log?.(`Team execution settlement remains pending: ${String(error)}`); return false; });
+    if (settled) { run = existingRun(deps.ledger, req.runId); control = run.control; }
     if (timeBoxSpent(run, ownedWaitedMs(run))) return no('the Campaign hard time box is exhausted; no new node execution may begin');
     const runtimePack = executionPack(deps, run);
     const requestedNode = req.nodeId === undefined ? undefined : positionOf(runtimePack, req.nodeId)?.node;
@@ -2319,6 +2326,31 @@ export function executionDriving(deps: FabricDeps, run: RunRecord, execution: No
 function unreleasedInteractiveIntents(deps:FabricDeps,runId:string,executionId:string) {
   const records=deps.ledger.records({runId,type:'interactive'}).filter(record=>record.type==='interactive'&&record.executionId===executionId);
   return records.filter(record=>record.type==='interactive'&&record.event==='open-intent'&&!records.some(outcome=>outcome.type==='interactive'&&outcome.requestId===record.requestId&&outcome.toolSessionId===record.toolSessionId&&outcome.seq>record.seq&&outcome.event==='open-released'));
+}
+
+/**
+ * Settle a begun execution that can no longer complete as one failed attempt, through the same
+ * `settleFailedAttempt` a failed Job takes: the Retry allowance decides between a fresh attempt and
+ * a Hard blocker. Only a current execution that has launched nothing qualifies. Like a failed Job
+ * observed during a hold, it settles regardless of pauses. Caller holds the Run's admission queue.
+ */
+export async function settleStrandedExecution(deps:FabricDeps,runId:string,executionId:string,reason:string):Promise<boolean> {
+  const run=existingRun(deps.ledger,runId);const execution=run.control?.executions[executionId];
+  if(run.status!=='running'||!execution||execution.supersededBy||execution.phase!=='begun'||execution.jobSession!==undefined
+    ||execution.generation!==(run.generation??1)||execution.loopId!==run.loop?.id||execution.loopGeneration!==run.loop?.generation
+    ||unreleasedInteractiveIntents(deps,runId,executionId).length>0)return false;
+  const ctx=executionDriving(deps,run,execution);const node=positionOf(ctx.pack,execution.nodeId)?.node;
+  if(!node)throw new RunStartError('the retained reference graph has no such node');
+  await updateExecution(deps,runId,executionId,{reason});
+  // A restart between the attempt record and the phase write finishes that settlement; it never
+  // spends a second retry for the same attempt.
+  const settled=nodeRecordsOfGeneration(deps.ledger,runId).findLast(record=>record.nodeId===execution.nodeId
+    &&record.attempt===execution.attempt&&record.branchId===execution.branchId&&record.seq>(execution.inputThroughSeq??-1)
+    &&(record.state==='retrying'||record.state==='blocked'));
+  const step:Step=settled===undefined?await settleFailedAttempt(ctx,node,execution.attempt,{reason})
+    :{kind:settled.state==='retrying'?'retrying':'hard-blocker'};
+  await recordExecutionResult(ctx,execution,step);
+  return true;
 }
 
 /** Reuse the exact Fabric input/method/hold checks before resolving an interactive Pack operation. */

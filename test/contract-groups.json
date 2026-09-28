@@ -28,6 +28,7 @@
     "test/contract/delegation.host.test.ts",
     "test/contract/delegation-input-native.host.test.ts",
     "test/contract/delegation-prompt.test.ts",
+    "test/contract/delegation-team-settlement.host.test.ts",
     "test/contract/dtco-feedback-ab-live-check.test.ts",
     "test/contract/experience-files.test.ts",
     "test/contract/experience-report.test.ts",

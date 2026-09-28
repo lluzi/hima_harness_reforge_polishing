@@ -661,7 +661,7 @@ interface FailedAttempt {
  * The allowance is counted from the records, over the attempts since the Run was last resumed, so a
  * resume really does grant a fresh allowance and a second process would count the same way.
  */
-async function settleFailedAttempt(ctx: Driving, node: PackNode, attempt: number, failure: FailedAttempt): Promise<Step> {
+export async function settleFailedAttempt(ctx: Driving, node: PackNode, attempt: number, failure: FailedAttempt): Promise<Step> {
   // An Agent-owned Workshop is a coding loop. A non-zero authored program is evidence for the next
   // revision, not a mechanical Site failure that needs a person to grant another retry. Keep the
   // node available and let the Run's existing research-write, attempt and time budgets bound it.

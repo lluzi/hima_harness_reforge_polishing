@@ -1,10 +1,11 @@
 // @hima-seam agent wrapped
 // Fabric's Run lock and Ledger own delegation admissions. Native child state is observed, not copied.
 import type { Context } from '@deepseek-ai/cordis';
-import { controlling, identityOf, executionContext, type FabricDeps } from './fabric.js';
+import { controlling, identityOf, executionContext, executionPack, settleStrandedExecution, type FabricDeps } from './fabric.js';
 import { timeBoxRemainingMs, ownedWaitedMs } from './budget.js';
 import { runExitFence } from './host-exit.js';
 import type { DelegationRecord, RunRecord } from './ledger.js';
+import { batchToolRefusal, positionOf } from './packs.js';
 import { createDelegation, followupDelegation, cancelDelegation, readDelegationResult, durableDelegationHandoff, parseDelegationResultObservedPayload, type DelegationContract, type EffectiveDelegationContract, type DelegationAuthority, type DelegationReservation, type DelegationRuntimePolicy, type DurableDelegationState, type OperatorDelegationGrant } from './delegation.js';
 const json = (value: unknown) => JSON.parse(JSON.stringify(value));
 type Creation = {
@@ -294,7 +295,11 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
             .map(block => block.text).join('\n') ?? '';
         let payload: Record<string, unknown>;
         try { payload = JSON.parse(text) as Record<string, unknown>; }
-        catch { return { status: 'refused', artifacts: [], unknowns: [], reason: `Agent Team member ${found.effective.recipe.memberId} must return one JSON object.` }; }
+        catch (error) {
+            const left = found.effective.budgetShare.maxFollowups - found.followups;
+            return { status: 'refused', artifacts: [], unknowns: [], reason: `Agent Team member ${found.effective.recipe.memberId} must return one JSON object: ${(error as Error).message}. `
+                + (left > 0 ? `${left} follow-up(s) to the same child remain.` : 'No follow-up remains; cancelling this delegation ends it without a result.') };
+        }
         if (!payload || Array.isArray(payload) || payload.schema !== found.effective.recipe.resultSchema.id
             || found.effective.recipe.resultSchema.required.some(field => !(field in payload))) {
             return { status: 'refused', artifacts: [], unknowns: [], reason: `Agent Team result does not satisfy ${found.effective.recipe.resultSchema.id}.` };
@@ -330,6 +335,47 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
             }
         });
     return result;
+}
+
+/**
+ * A Pack Agent Team execution at an interactive-only node finishes only through a Team Operator,
+ * which needs every role it transitively depends on. Team identities are fixed per execution, so once
+ * each such Team has lost one of those members without an observed result, nothing in this execution
+ * can produce it. Settle the execution as a failed attempt; the next begin gets fresh Team identities.
+ * Caller holds the Run's admission queue. Returns whether any execution settled.
+ */
+export async function settleStrandedTeamExecutions(deps: FabricDeps, runId: string): Promise<boolean> {
+    const run = deps.ledger.run(runId);
+    if (!run?.control || run.status !== 'running') return false;
+    const lost = runDelegations(deps, runId).filter(row => row.effective.recipe !== undefined && row.resultRecordId === undefined
+        && ['cancel-requested', 'cancelled', 'expired', 'refused', 'uncertain'].includes(row.state)
+        && run.control!.executions[row.effective.recipe.executionId]?.phase === 'begun');
+    if (lost.length === 0) return false;
+    const pack = executionPack(deps, run);
+    let settled = false;
+    for (const executionId of new Set(lost.map(row => row.effective.recipe!.executionId))) {
+        const nodeId = run.control.executions[executionId]!.nodeId;
+        const node = positionOf(pack, nodeId)?.node;
+        const tool = node?.kind === 'act' && node.parameters.tool !== undefined ? pack.contract.tools.find(item => item.id === node.parameters.tool) : undefined;
+        // A batch-capable node can still finish through `work`; only an interactive-only one needs the Operator.
+        if (tool === undefined || batchToolRefusal(tool) === undefined) continue;
+        const teams = pack.contract.agentTeams.flatMap(team => {
+            const operator = team.members.find(item => item.role === 'operator' && item.node === nodeId);
+            if (team.triggerNode !== nodeId || operator === undefined) return [];
+            const required = new Set<string>();
+            const visit = (id: string): void => { if (required.has(id)) return; required.add(id);
+                for (const dependency of team.members.find(item => item.id === id)?.dependencyRoles ?? []) visit(dependency); };
+            visit(operator.id);
+            return [lost.find(row => row.effective.recipe!.executionId === executionId && row.effective.recipe!.teamId === team.id
+                && row.effective.recipe!.version === team.version && required.has(row.effective.recipe!.memberId))];
+        });
+        if (teams.length === 0 || teams.some(row => row === undefined)) continue;
+        const stranding = teams[0]!; const recipe = stranding.effective.recipe!;
+        settled = await settleStrandedExecution(deps, runId, executionId, `Agent Team ${recipe.teamId} member ${recipe.memberId} delegation ${stranding.delegationId}`
+            + ` ended ${stranding.state} without an observed result${stranding.reason ? ` (${stranding.reason})` : ''};`
+            + ' its fixed Team identity cannot finish this execution, so it settles as a failed attempt') || settled;
+    }
+    return settled;
 }
 
 /** Resolve the retained authority that lets exactly one Operator child use the qualified tool. */
