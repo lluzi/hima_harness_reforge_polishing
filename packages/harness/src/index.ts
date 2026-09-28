@@ -32,7 +32,7 @@ import { convergeOf, newCampaignProposalId, resumeRun, startRun, type FabricDeps
 import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs, ownedWaitedMs, timeBoxRemainingMs } from './budget.js';
 import { controlling, identityOf, drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
-import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, settleStrandedTeamExecutions, type RunDelegationRequest } from './delegation-runtime.js';
+import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, settleStrandedTeamExecutions, unreservedDelegationMs, type RunDelegationRequest } from './delegation-runtime.js';
 import { registerDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
 import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
@@ -1151,8 +1151,9 @@ export default class Hima extends Service {
       if(prior) {
         budgetDefault=prior.contract.budgetShare;budgetCeiling=budgetDefault.maxElapsedMs;
       } else {
-        const allocatedMs=existingDelegations.reduce((total,row)=>total+row.effective.budgetShare.maxElapsedMs,0);
-        const totalAvailableMs=run.budget?Math.max(0,run.budget.timeBoxMs-allocatedMs):20*60_000;
+        // The same delegation time the admission charges: lane time not held by a live child or spent by an ended one.
+        const unreservedMs=unreservedDelegationMs(this.deps(),run,existingDelegations);
+        const totalAvailableMs=unreservedMs===undefined?20*60_000:Math.max(0,unreservedMs);
         const remainingMs=timeBoxRemainingMs(run,ownedWaitedMs(run))??20*60_000;
         // Leave admission-time clock drift outside the child share; authority re-reads the deadline.
         budgetCeiling=Math.min(20*60_000,totalAvailableMs,Math.max(0,remainingMs-1_000));

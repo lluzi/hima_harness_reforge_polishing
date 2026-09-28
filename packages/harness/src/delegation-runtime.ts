@@ -71,6 +71,59 @@ export function runDelegations(deps: FabricDeps, runId: string): RunDelegationVi
             ...(stopObserved === undefined ? {} : { stopObserved }) };
     });
 }
+// Delegation admission counts what a Run's children can still use, never the sum of everything it ever
+// admitted (#64 Task 2b). Two things are protected. Runaway creation: at most `liveDelegationLimit`
+// children may be running at once, and at most `lifetimeDelegationLimit` are admitted over the Run's
+// life, because a child that ends at once is charged almost no time and a create/cancel loop must still
+// stop. Time: each child's share fits what is left of the Run's own time box, so no child outlives its
+// Run; and together the children fit the box on each of the Site job lanes the Run was started with
+// (`budget.jobCap`). A child holding its reservation (running, or completed with a follow-up still allowed
+// before its deadline) is charged its whole share; one that has ended is charged the time it actually
+// held. On a one-lane Site whose children have not ended, this is exactly the former sum of shares.
+/** At most this many children of one Run may be running at once. */
+export const liveDelegationLimit = 32;
+/** At most this many children are admitted over one Run's whole life, ended ones included. */
+export const lifetimeDelegationLimit = 128;
+const deadlineOf = (entry: RunDelegationView) => Date.parse(entry.reservation.deadlineAt);
+/** May this child be working now: admitted or reopened, its stop not proven, and inside its own deadline. */
+function mayBeRunning(entry: RunDelegationView, now: number): boolean {
+    if (now >= deadlineOf(entry)) return false;
+    return entry.state === 'intent' || entry.state === 'accepted' || entry.state === 'uncertain'
+        || (entry.state === 'cancel-requested' && entry.stopObserved !== true);
+}
+/** Can this child still spend time: running, or completed with a follow-up still allowed before its deadline. */
+function holdsReservation(entry: RunDelegationView, now: number): boolean {
+    return mayBeRunning(entry, now) || (entry.state === 'completed' && now < deadlineOf(entry)
+        && entry.followups < entry.effective.budgetShare.maxFollowups);
+}
+/** What one child counts against its Run's delegation time: its whole share while it holds its
+ *  reservation, else the time from its admission to the record that ended it (never more than the share). */
+function chargedMs(deps: FabricDeps, entry: RunDelegationView, now: number): number {
+    const share = entry.effective.budgetShare.maxElapsedMs;
+    if (holdsReservation(entry, now)) return share;
+    const endedBy = entry.state === 'completed' ? entry.resultRecordId
+        : entry.state === 'cancelled' || entry.state === 'expired' || entry.state === 'refused'
+            || (entry.state === 'cancel-requested' && entry.stopObserved === true) ? entry.recordId : undefined;
+    const ended = endedBy === undefined ? undefined : deps.ledger.record(endedBy);
+    // Still `accepted`/`uncertain` past its deadline: it may have worked until then.
+    if (ended === undefined) return share;
+    return Math.min(share, Math.max(0, Date.parse(ended.at) - (deadlineOf(entry) - share)));
+}
+/** The Site job lanes the Run was started with; a Run without a readable cap keeps the one-lane rule. */
+const delegationLanes = (run: RunRecord): number => {
+    const cap = run.budget?.jobCap;
+    return typeof cap === 'number' && Number.isSafeInteger(cap) && cap > 0 ? cap : 1;
+};
+/** How many of these children may be running now. */
+export function runningDelegations(entries: readonly RunDelegationView[], now = Date.now()): number {
+    return entries.filter(entry => mayBeRunning(entry, now)).length;
+}
+/** The Run's delegation time not yet charged to a child: its time box on each of its job lanes, less every
+ *  child's charge. Undefined for a Run with no Budget, which admits no child share. */
+export function unreservedDelegationMs(deps: FabricDeps, run: RunRecord, entries: readonly RunDelegationView[] = runDelegations(deps, run.id), now = Date.now()): number | undefined {
+    if (!run.budget) return undefined;
+    return delegationLanes(run) * run.budget.timeBoxMs - entries.reduce((total, entry) => total + chargedMs(deps, entry, now), 0);
+}
 function policy(deps: FabricDeps, run: RunRecord, entry: RunDelegationView, admitCompletedFollowup = false): Pick<DelegationRuntimePolicy, 'toolsAllowed' | 'writesAllowed' | 'reason'> {
     if (run.control?.owner !== entry.parentSessionId || run.control.epoch !== entry.reservation.admittedEpoch)
         return { toolsAllowed: false, writesAllowed: false, reason: 'The parent owner epoch changed.' };
@@ -157,17 +210,21 @@ function authority(deps: FabricDeps, request: RunDelegationRequest): DelegationA
                         && entry.delegationId !== input.contract.delegationId);
                     if (collision) throw new Error(`Operator execution already belongs to delegation ${collision.delegationId}; reuse that child.`);
                 }
-                if (existing.length >= 32)
-                    throw new Error('This Run has exhausted its 32-delegation admission limit; reuse an authorized continuable child.');
+                const now = Date.now();
+                if (existing.length >= lifetimeDelegationLimit)
+                    throw new Error(`This Run has exhausted its ${lifetimeDelegationLimit}-delegation admission limit; reuse an authorized continuable child.`);
+                if (runningDelegations(existing, now) >= liveDelegationLimit)
+                    throw new Error(`This Run already has ${liveDelegationLimit} children that may be running; wait for one to end, cancel one, or reuse an authorized continuable child.`);
                 for (const id of input.contract.dependencyIds) {
                     const dep = existing.find(e => e.delegationId === id);
                     if (!dep || !rows().some(r => r.delegationId === id && r.event === 'result-observed'))
                         throw new Error('A required child result has not been observed.');
                 }
-                const allocated = existing.reduce((n, e) => n + e.effective.budgetShare.maxElapsedMs, 0);
                 const share = input.proposed.budgetShare.maxElapsedMs;
-                if (!run.budget || share > (timeBoxRemainingMs(run, ownedWaitedMs(run)) ?? 0) || allocated + share > run.budget.timeBoxMs)
-                    throw new Error('Child shares exceed the original remaining/total Run time budget.');
+                const remaining = timeBoxRemainingMs(run, ownedWaitedMs(run)) ?? 0;
+                const unreserved = unreservedDelegationMs(deps, run, existing, now) ?? 0;
+                if (!run.budget || share > remaining || share > unreserved)
+                    throw new Error(`Child shares exceed the original remaining/total Run time budget: this share is ${share} ms; ${remaining} ms of the Run's time box remain and ${Math.max(0, unreserved)} ms of its delegation time (the time box on each of ${delegationLanes(run)} Site job lanes) are unreserved.`);
                 const reservation: DelegationReservation = { reservationId: `delegation:${run.id}:${input.contract.delegationId}`, deadlineAt: new Date(Date.now() + share).toISOString(), admittedEpoch: run.control!.epoch, admittedRevision: run.control!.revision };
                 await append({ delegationId: input.contract.delegationId, parentSessionId: input.contract.parentSessionId, childSessionId: input.proposed.childSessionId }, 'create-intent', request.requestId, input.requestDigest, { contract: input.contract, effective: input.proposed, reservation });
                 await changed();
@@ -200,6 +257,9 @@ function authority(deps: FabricDeps, request: RunDelegationRequest): DelegationA
                     throw new Error(currentPolicy.reason);
                 if (entry.followups >= entry.effective.budgetShare.maxFollowups)
                     throw new Error('The child follow-up allowance is exhausted.');
+                // Reopening a completed child makes it run again, so it takes a running place like a new child.
+                if (entry.state === 'completed' && runningDelegations(runDelegations(deps, run.id)) >= liveDelegationLimit)
+                    throw new Error(`This Run already has ${liveDelegationLimit} children that may be running; wait for one to end or cancel one before reopening this child.`);
                 const row = await append(entry, 'followup-intent', input.requestId, input.requestDigest, { actor: request.actor });
                 await changed();
                 return { kind: 'reserved', reservationId: row.id };

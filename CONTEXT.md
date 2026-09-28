@@ -124,6 +124,10 @@ _Avoid_: Run、Campaign
 承载 Campaign 作业的客户 EDA 运行环境，由 HimaGuide 通过客户已有的系统访问权限发现并保存为可检查的安全配置。
 _Avoid_: 一台服务器（作为完整定义）
 
+**Job cap**:
+Site 声明的 `capacity.parallelJobs`，在 Run 启动时复制到其 Budget；它同时限制该 Site 同时运行的 Job 数，并决定 Run 的总委派时间上限：业务 Subagent 的时间份额合计不超过时间盒 × Job cap（每条并行通道一个时间盒）。
+_Avoid_: 每个 Run 独立的并发配置、委派数量上限（后者按正在运行的 child 计）
+
 **Matched Comparison**:
 在流程、设置和工具完全一致、唯一变量为新增 Cell 时，对原方案和采用新 Cell 的方案进行的可比物理实现；最终数据库中的实际采用和更高 Fmax 构成足够的业务证据链。
 _Avoid_: 重复性统计试验、噪声估计、仅 Cell 级指标、改变其他设置的对比
