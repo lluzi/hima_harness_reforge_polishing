@@ -1487,6 +1487,38 @@ class ExtractStarrcToolkitEnvTest(unittest.TestCase):
         self.assertIn("linux64_starrc/lib", payload["detail"])
         self.assertFalse((workspace / "state" / "extract.json").exists())
 
+    def test_extract_discovers_the_toolkit_through_edashell_when_no_starrchome_is_declared(self):
+        """The production Site declares no starrcHome: `_cmd_extract` must probe through the Site's own
+        edaShell and prefix StarXtract with the discovered toolkit's libraries (review finding)."""
+        workspace = self.workspace
+        merge_id = "m" + "5" * 19
+        corners_path = self._write_single_corner_implement(workspace, merge_id)
+        starrc_home = workspace / "discovered-toolkit"
+        (starrc_home / "linux64_starrc" / "lib").mkdir(parents=True)
+        capture = workspace / "captured-invocation.txt"
+        wrapper = workspace / "probe-wrapper.sh"
+        wrapper.write_text(
+            '#!/bin/sh\ncase "$1" in *"command -v StarXtract"*) echo "' + str(starrc_home) + '"; exit 0;; esac\n'
+            'printf %s "$1" >> ' + str(capture) + '\nexit 0\n', encoding="utf-8",
+        )
+        wrapper.chmod(0o755)
+        site_profile_path = workspace / "site-profile.json"
+        _write_json(site_profile_path, {
+            "edaShell": [str(wrapper)], "design": "top",
+            "techLef": str(workspace / "tech.lef"), "cellLefGlob": str(workspace / "cells" / "*.lef"),
+        })
+        impl_root = workspace / "implementations" / merge_id
+        _write_text(impl_root / "starrc" / CORNER / f"top.{CORNER}.spef", "*SPEF IEEE 1481-1999\n")
+
+        result = _run("extract", workspace, corners_path, site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        recorded = capture.read_text(encoding="utf-8")
+        self.assertTrue(
+            recorded.startswith(f'LD_LIBRARY_PATH="{starrc_home}/linux64_starrc/lib:${{LD_LIBRARY_PATH:-}}" '),
+            recorded,
+        )
+        self.assertIn("StarXtract", recorded)
+
     def test_extract_prefixes_the_starxtract_invocation_with_the_declared_toolkits_ld_library_path(self):
         workspace = self.workspace
         merge_id = "m" + "4" * 19
