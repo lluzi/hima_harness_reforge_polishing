@@ -1,10 +1,11 @@
 # linglong-atcs28 Site administration
 
-Current candidate (Issue 63, Pack 0.1.4): `atcs-xtop-operator-v7.sh` (v6 plus the Pack 0.1.4 StarRC
-toolkit-library fix identities, under `operator-admin/atcs-v7/`). Previous candidate (Pack 0.1.3): `atcs-xtop-operator-v6.sh` and
+Current candidate (Issue 63, Pack 0.1.6): `atcs-xtop-operator-v8.sh` (v7 plus the Pack 0.1.6 PT path-group and
+capped-list WNS fix identities, under `operator-admin/atcs-v8/`). Previous candidate (Pack 0.1.4):
+`atcs-xtop-operator-v7.sh` under `operator-admin/atcs-v7/`. Previous candidate (Pack 0.1.3): `atcs-xtop-operator-v6.sh` and
 `xtop-operator-environment-v6.template.json` under `operator-admin/atcs-v6/`. v6 is the qualified v5
 wrapper with only the `atcs-v6` paths and the new pinned `atcs_cli.py`/flow identities (honest no-fix
-capture); the verifier and Site profile bytes are unchanged. The Permit now reads `atcs-v6` only.
+capture); the verifier and Site profile bytes are unchanged. The Permit now reads `atcs-v8` only.
 
 Previous qualification candidate: `atcs-xtop-operator-v5.sh`, administrator-owned
 `verify-worker-startup.py`, and `xtop-operator-environment-v5.template.json`. v1–v4 remain historical
