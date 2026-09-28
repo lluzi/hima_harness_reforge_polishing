@@ -355,6 +355,12 @@ proc split_net {args} {
 proc move_cell {args} {
     stub_record move_cell {*}$args
     stub_gate move_cell
+    # Real XTop's pointf is "(x,y)" (move_cell.1 example; Task 7: "{x y}" is refused).
+    set to [lindex $args [expr {[lsearch -exact $args -to] + 1}]]
+    if {![regexp {^\([-+0-9.eE]+,[-+0-9.eE]+\)$} $to]} {
+        puts "Error: Value for 'move_cell:to' is not a valid 'pointf'."
+        error ""
+    }
     stub_act [stub_names [lindex $args end]]
     return 1
 }
@@ -1414,15 +1420,28 @@ class ObservedEffectConfinementTest(unittest.TestCase):
 
     def test_an_insert_that_xtop_names_differently_is_kept_and_flagged(self):
         session = Session(self, observe="full").run(
-            "set ::stub_insert_hier u_core/\n"
+            f"set ::stub_insert_hier u_core/{PREFIX}z\n"
             f"T ins {{atcs_insert_buffer N1 UOUT/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
             "set ::stub_insert_hier {}\n"
             f"T ok {{atcs_insert_buffer N1 U3/A BUFX2 {PREFIX}b2 {PREFIX}n2 {PLAN}}}\n"
         )
         self.assertEqual(session.outcome("ins")[0], "OK", session.stdout)
         self.assertIs(session.ops[0]["matchesRequest"], False)
-        self.assertEqual(session.ops[0]["after"], {"instances": {f"u_core/{PREFIX}b1": "BUFX2"}})
+        self.assertEqual(session.ops[0]["after"], {"instances": {f"u_core/{PREFIX}z{PREFIX}b1": "BUFX2"}})
         self.assertIs(session.ops[1]["matchesRequest"], True)
+
+    def test_an_insert_placed_in_its_loads_module_matches_the_request(self):
+        # Real XTop (Task 7, w01): `insert_buffer -new_cell_names atcs_w01_r1_chain_d0` on a load pin
+        # inside swerv_dbg created swerv_dbg/atcs_w01_r1_chain_d0: the new cell lands in the loads'
+        # module under the requested leaf name.
+        for observe in ("fast", "full"):
+            session = Session(self, observe=observe).run(
+                "set ::stub_insert_hier u_core/\n"
+                f"T ins {{atcs_insert_buffer N1 UOUT/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
+            )
+            self.assertEqual(session.outcome("ins")[0], "OK", session.stdout)
+            self.assertEqual(session.ops[0]["after"], {"instances": {f"u_core/{PREFIX}b1": "BUFX2"}})
+            self.assertIs(session.ops[0]["matchesRequest"], True, observe)
 
     def test_removable_fillers_are_exempt_and_logged(self):
         full = Session(self, observe="full").run(
@@ -1525,6 +1544,15 @@ class CommittedFixTest(unittest.TestCase):
         self.assertIn("U1=BUFX4", session.cells_line())
         self.assertFalse((session.root / "tainted.json").exists())
 
+    def test_move_sends_xtops_pointf(self):
+        # Real XTop (Task 7, w03): `move_cell -to {2.26 328.6}` is refused ("not a valid 'pointf'");
+        # the man page's form is `-to {(x,y)}`.
+        session = Session(self).run(f"T mv {{atcs_move_cell U3 2.26 28.6 {PLAN}}}\n")
+        self.assertEqual(session.outcome("mv")[0], "OK", session.stdout)
+        (move,) = session.calls_to("move_cell")
+        self.assertEqual(move[1:3], ["-to", "(2.26,28.6)"])
+        self.assertEqual(session.ops[0]["status"], "kept")
+
     def test_a_fix_that_may_insert_cells_needs_each_pin_net_in_the_domain(self):
         # Task 7 w01: a hold fix on a target pin whose net was outside the domain inserted a delay
         # cell there; XTop could not undo it, so the session was tainted. The toolkit now refuses such
@@ -1618,7 +1646,7 @@ class KnowledgeSurfaceTest(unittest.TestCase):
                 for check in gain["checks"].values():
                     self.assertIn("-exclude_path", check["command"].split())
             (move,) = session.calls_to("move_cell")
-            self.assertEqual(move[1:], ["-to", "10.5 20", "cell:U3"])
+            self.assertEqual(move[1:], ["-to", "(10.5,20)", "cell:U3"])
             self.assertEqual([op["status"] for op in session.ops if op["cmd"] == "move_cell"], ["kept"])
 
 

@@ -1189,6 +1189,26 @@ class XtopSessionAdmissionTests(unittest.TestCase):
         contribution = _seal_session(log, {**BEFORE, "atcs_w01_r1_b1": "DELAY1"})
         self.assertEqual(_codes(contribution), ["trace-mismatch"])
 
+    def test_a_kept_insert_placed_in_its_loads_module_matches_its_request(self):
+        # Real XTop (Task 7, w01): the new cell is created in the load pin's module,
+        # swerv_dbg/atcs_w01_r1_chain_d0, under the requested leaf name.
+        log = sf.SessionLog()
+        seq = log.insert("N1", ["u_core/U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"], gain=IMPROVES)
+        line = log.ops[seq - 1]
+        line["before"]["instances"] = {"u_core/atcs_w01_r1_b1": None}
+        line["after"]["instances"] = {"u_core/atcs_w01_r1_b1": "DELAY1"}
+        contribution = _seal_session(log, {**BEFORE, "u_core/atcs_w01_r1_b1": "DELAY1"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+
+    def test_a_kept_insert_with_another_leaf_name_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        seq = log.insert("N1", ["u_core/U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"], gain=IMPROVES)
+        line = log.ops[seq - 1]
+        line["before"]["instances"] = {"u_core/atcs_w01_r1_b1x": None}
+        line["after"]["instances"] = {"u_core/atcs_w01_r1_b1x": "DELAY1"}
+        contribution = _seal_session(log, {**BEFORE, "u_core/atcs_w01_r1_b1x": "DELAY1"})
+        self.assertIn("trace-mismatch", _codes(contribution))
+
     def test_a_kept_size_whose_logged_master_differs_from_the_request_is_a_trace_mismatch(self):
         log = sf.SessionLog()
         log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)

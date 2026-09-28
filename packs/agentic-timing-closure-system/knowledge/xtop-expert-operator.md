@@ -27,7 +27,7 @@
 | `atcs_insert_dummy` | `insert_dummy_cell` | `insert_dummy_cell.1` (178) |
 | `atcs_split_load` | `split_load -pin_group ...` | `split_load.1` (304) |
 | `atcs_split_net` | `split_net -rule wire_length\|cap -segment 2..16` | `split_net.1` (305) |
-| `atcs_move_cell` | `move_cell -to {x y}`, the point inside an `editDomain.regions` box | `move_cell.1` (201) |
+| `atcs_move_cell` | `move_cell -to {(x,y)}`: the cell origin in microns, inside an `editDomain.regions` box; XTop legalizes it to a nearby site | `move_cell.1` (201) |
 | `atcs_remove_buffer` | `remove_buffer`, every net of the buffer in the domain | `remove_buffer.1` (225) |
 | `atcs_fix_hold_pins` | `fix_hold_gba_violations ... -only_pins` | `fix_hold_gba_violations.1` (112) |
 | `atcs_fix_setup_pins` | `fix_setup_gba_violations ... -only_pins` | `fix_setup_gba_violations.1` (114) |

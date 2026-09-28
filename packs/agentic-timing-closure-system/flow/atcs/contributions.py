@@ -1477,6 +1477,18 @@ def _net_log(lines):
     return kept, sorted(undone), sorted(set(discarded)), problems
 
 
+def _requested_instance(state, name):
+    """The instance a request named: ``name`` itself, or the single ``<module path>/name`` in ``state``.
+
+    Real XTop creates a new cell in its load pins' module under the requested leaf name
+    (Issue #64 Task 7: ``swerv_dbg/atcs_w01_r1_chain_d0``). ``None`` when none or several match.
+    """
+    if name in state:
+        return name
+    found = [key for key in state if isinstance(key, str) and key.endswith("/" + name)]
+    return found[0] if len(found) == 1 else None
+
+
 def _request_problem(line):
     """Why a kept typed request's own logged effect is not what it asked for, or ``None``."""
     cmd, args = line["cmd"], line["args"]
@@ -1492,8 +1504,11 @@ def _request_problem(line):
             return f"exchange_cell changed {stray} outside {sorted(n for n in allowed if n)}"
     elif cmd in ("insert_buffer", "insert_dummy_cell", "split_load"):
         names = args.get("newInstances") if cmd != "insert_dummy_cell" else [args.get("newInstance")]
-        missing = [name for name in names or [None]
-                   if not _is_nonempty_string(name) or after.get(name) is None or before.get(name) is not None]
+        missing = []
+        for name in names or [None]:
+            placed = _requested_instance(after, name) if _is_nonempty_string(name) else None
+            if placed is None or after.get(placed) is None or before.get(placed) is not None:
+                missing.append(name)
         if line.get("matchesRequest") is not True or missing:
             return f"{cmd} did not create its named instances {missing or names}"
     elif cmd == "remove_buffer":

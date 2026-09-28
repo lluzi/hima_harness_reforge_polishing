@@ -620,6 +620,17 @@ proc atcs_forget {seq} {
     unset ::atcs_op($seq)
 }
 
+# The instance a request named: `name` itself, or the one `<module path>/name` in `state` (real XTop
+# creates a new cell in its load pins' module under the requested leaf name, Issue #64 Task 7). A
+# removal names an existing instance, which is found as given. "" when none or more than one match.
+proc atcs_request_instance {state name} {
+    if {[dict exists $state $name]} { return $name }
+    set found {}
+    foreach key [dict keys $state] {
+        if {[string match "*/$name" $key] && [lindex [split $key /] end] eq $name} { lappend found $key }
+    }
+    return [expr {[llength $found] == 1 ? [lindex $found 0] : ""}]
+}
 # One mutation. `kind`:
 #   exact    (size_cell) the delta must be exactly `expected`
 #   request  (inserts, split_load, remove) an empty delta fails; "matchesRequest"
@@ -689,7 +700,9 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
         if {$kind eq "request"} {
             set matches 1
             dict for {name master} $expected {
-                if {![dict exists $after $name] || [dict get $after $name] ne $master} { set matches 0 }
+                if {[atcs_request_instance $after $name] eq "" || [dict get $after [atcs_request_instance $after $name]] ne $master} {
+                    set matches 0
+                }
             }
             lappend extra matchesRequest [atcs_jbool $matches]
         }
@@ -900,7 +913,8 @@ proc atcs_split_net {net master rule segments plan_sha256} {
     return [atcs_mutate atcs_split_net split_net $args_json $plan_sha256 \
         [list split_net [get_nets -exact $net] -lib_cell $master -rule $rule -segment $segments] fix]
 }
-# Absolute moves only: the target point must lie in an edit-domain region. A
+# Absolute moves only: the target point must lie in an edit-domain region. XTop's point is "(x,y)"
+# (move_cell.1; real XTop refuses "{x y}" as "not a valid 'pointf'", Issue #64 Task 7). A
 # -delta move is not offered, because no documented attribute reads a cell's
 # location to resolve its target.
 proc atcs_move_cell {instance x y plan_sha256} {
@@ -911,7 +925,7 @@ proc atcs_move_cell {instance x y plan_sha256} {
     atcs_require_point $x $y
     set args_json [atcs_jobj [list instance [atcs_js $instance] x $x y $y planSha256 [atcs_js $plan_sha256]]]
     return [atcs_mutate atcs_move_cell move_cell $args_json $plan_sha256 \
-        [list move_cell -to [list $x $y] [get_cells -exact $instance]] move {} {} $instance]
+        [list move_cell -to "($x,$y)" [get_cells -exact $instance]] move {} {} $instance]
 }
 proc atcs_remove_buffer {instance plan_sha256} {
     atcs_begin_mutation $plan_sha256
