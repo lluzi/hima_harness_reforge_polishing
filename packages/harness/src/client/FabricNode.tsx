@@ -20,8 +20,10 @@ const HALF = NODE / 2;
  *  one node's own pitch (90 units) rather than reading into its neighbour's, at any zoom, because the
  *  text scales with the same transform as the pitch does. Not a measured width (no DOM to measure
  *  against in a pure layout pass); a hair conservative is what a canvas that must never overlap a
- *  reader's next node wants. */
-const LABEL_CHAR_WIDTH_PX = 6.5;
+ *  reader's next node wants. #63: 6.5 was not conservative — on the Catsights acceptance run a
+ *  12-character id ("check-obser…") drew about 90 px wide and ran into its neighbour's label. At 7
+ *  the budget is 11 characters (about 82 px drawn), which leaves a gap at the 90-unit pitch. */
+const LABEL_CHAR_WIDTH_PX = 7;
 const LABEL_PADDING_PX = 8;
 const LABEL_MAX_CHARS = Math.floor((PITCH - LABEL_PADDING_PX) / LABEL_CHAR_WIDTH_PX);
 

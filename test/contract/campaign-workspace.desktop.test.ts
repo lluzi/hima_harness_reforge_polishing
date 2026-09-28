@@ -1,5 +1,6 @@
 // @hima-seam llm-replay direct
-// L3 acceptance (#41 task 9): the seven Campaign workspace states, light and dark, on Catsights.
+// L3 acceptance (#41 task 9): the seven Campaign workspace states, light and dark, on Catsights,
+// plus state 8 (#63): a 106-node reference graph drawn in lanes.
 // Screenshots are the acceptance artefacts; this file also proves each state's own marker contract
 // so a broken render fails loud rather than only looking wrong in a picture nobody re-checks.
 import { test, type TestContext } from 'node:test';
@@ -621,6 +622,51 @@ async function bootFiftyOneNodeGraph(t: TestContext, theme: 'light' | 'dark', re
   return { d, h, packSource };
 }
 
+/** States 7 and 8 share one path from a booted window to a Campaign's Live graph: accept the notice,
+ *  open the workspace, start the owner conversation, install the Pack from `packSource` through the
+ *  Pack owner, fill the Goal and the local Site, confirm, and wait for the graph to draw at least
+ *  `minNodes` nodes. */
+async function openConfiguredGraph(d: BootedDriver, h: { readonly workspace: string }, browser: Inspector,
+  opts: { packId: string; packSource: string; reviewedFile: string; goal: Record<string, string>; minNodes: number }): Promise<void> {
+  await d.open('/');
+  await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
+  await browser.markText('button', 'Continue', 'notice-continue'); assert.ok((await d.click('notice-continue')).ok);
+  const host = await d.host(); assert.ok(host.ok); const cookie = await d.cookie();
+  const workspace = await api(host, cookie, '/api/workspace/create', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'client-request', rpcId: 'graph-workspace', method: 'workspace/create', payload: { args: { request: { path: h.workspace } } } }) });
+  assert.equal((await workspace.json() as { result: { ok: boolean } }).result.ok, true);
+  await browser.wait(`document.querySelector('[role="treegrid"], [role="tree"]')?.textContent.includes('workspace') || [...document.querySelectorAll('[role="row"]')].some(e=>e.textContent.trim()==='workspace')`);
+  await browser.markText('button', 'New Session', 'new-owner-session'); assert.ok((await d.click('new-owner-session')).ok);
+  await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
+  await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`);
+  await browser.send('Input.insertText', { text: 'Keep this conversation as the Campaign Agent.' });
+  await browser.evaluate(`(() => { const e=[...document.querySelectorAll('button')].find(e=>e.getBoundingClientRect().height>0 && /start|send/i.test([e.textContent,e.getAttribute('aria-label')].join(' '))); if(!e) throw new Error('no visible new-session start control'); e.setAttribute('data-hima-control','start-owner-session'); })()`);
+  assert.ok((await d.click('start-owner-session')).ok);
+  await browser.wait(`document.body.innerText.includes('Campaign Agent conversation is ready')`, 15_000);
+  assert.ok((await d.click('open-workbench')).ok);
+  assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
+
+  assert.ok((await d.wait('config-empty-pack', 'No HimaPack is installed', 10_000)).ok);
+  assert.ok((await d.click('studio-pack-owner')).ok);
+  assert.ok((await d.fill('owner-pack', opts.packId)).ok);
+  assert.ok((await d.fill('owner-location', opts.packSource)).ok);
+  assert.ok((await d.click('owner-review')).ok);
+  assert.ok((await d.wait('pack-review', opts.reviewedFile, 12_000)).ok);
+  assert.ok((await d.click('owner-confirm')).ok);
+  assert.ok((await d.wait('pack-owner-message', 'Confirmed files verified and written', 12_000)).ok);
+  assert.ok((await d.click('studio-pack-owner')).ok);
+
+  await browser.wait(`!!document.querySelector('[data-hima-control="config-pack"] option[value=${JSON.stringify(opts.packId)}]')`, 10_000);
+  assert.ok((await d.fill('config-pack', opts.packId)).ok);
+  const [first] = Object.keys(opts.goal);
+  await browser.wait(`!!document.querySelector('[data-hima-control="config-goal-${first}"]')`);
+  for (const [name, value] of Object.entries(opts.goal)) assert.ok((await d.fill(`config-goal-${name}`, value)).ok);
+  assert.ok((await d.fill('config-site', 'local')).ok);
+  await waitForConfigurationReady(d, opts.packId, 'local', 30_000);
+  assert.ok((await d.click('config-confirm')).ok);
+  await browser.wait(`Number(document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-nodes'))>=${opts.minNodes}`, 20_000);
+}
+
 test('state 7: a fifty-one node graph fits to width, scaled and label-hidden', async (t) => {
   if (windowUnavailable(t)) return;
   await bothThemes(t, async (theme) => {
@@ -631,43 +677,8 @@ test('state 7: a fifty-one node graph fits to width, scaled and label-hidden', a
     let browser: Inspector | undefined;
     try {
       browser = await inspectWindow(port);
-      await d.open('/');
-      await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
-      await browser.markText('button', 'Continue', 'notice-continue'); assert.ok((await d.click('notice-continue')).ok);
-      const host = await d.host(); assert.ok(host.ok); const cookie = await d.cookie();
-      const workspace = await api(host, cookie, '/api/workspace/create', { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ type: 'client-request', rpcId: 'graph-51-workspace', method: 'workspace/create', payload: { args: { request: { path: h.workspace } } } }) });
-      assert.equal((await workspace.json() as { result: { ok: boolean } }).result.ok, true);
-      await browser.wait(`document.querySelector('[role="treegrid"], [role="tree"]')?.textContent.includes('workspace') || [...document.querySelectorAll('[role="row"]')].some(e=>e.textContent.trim()==='workspace')`);
-      await browser.markText('button', 'New Session', 'new-owner-session'); assert.ok((await d.click('new-owner-session')).ok);
-      await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
-      await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`);
-      await browser.send('Input.insertText', { text: 'Keep this conversation as the Campaign Agent.' });
-      await browser.evaluate(`(() => { const e=[...document.querySelectorAll('button')].find(e=>e.getBoundingClientRect().height>0 && /start|send/i.test([e.textContent,e.getAttribute('aria-label')].join(' '))); if(!e) throw new Error('no visible new-session start control'); e.setAttribute('data-hima-control','start-owner-session'); })()`);
-      assert.ok((await d.click('start-owner-session')).ok);
-      await browser.wait(`document.body.innerText.includes('Campaign Agent conversation is ready')`, 15_000);
-      assert.ok((await d.click('open-workbench')).ok);
-      assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
-
-      assert.ok((await d.wait('config-empty-pack', 'No HimaPack is installed', 10_000)).ok);
-      assert.ok((await d.click('studio-pack-owner')).ok);
-      assert.ok((await d.fill('owner-pack', 'custom-cell-fmax-dtco')).ok);
-      assert.ok((await d.fill('owner-location', booted.packSource)).ok);
-      assert.ok((await d.click('owner-review')).ok);
-      assert.ok((await d.wait('pack-review', 'knowledge/manifest.yml', 12_000)).ok);
-      assert.ok((await d.click('owner-confirm')).ok);
-      assert.ok((await d.wait('pack-owner-message', 'Confirmed files verified and written', 12_000)).ok);
-      assert.ok((await d.click('studio-pack-owner')).ok);
-
-      await browser.wait(`!!document.querySelector('[data-hima-control="config-pack"] option[value="custom-cell-fmax-dtco"]')`, 10_000);
-      assert.ok((await d.fill('config-pack', 'custom-cell-fmax-dtco')).ok);
-      await browser.wait(`!!document.querySelector('[data-hima-control="config-goal-target_period_ns"]')`);
-      assert.ok((await d.fill('config-goal-target_period_ns', '0.5')).ok);
-      assert.ok((await d.fill('config-goal-target_fmax_improvement_pct', '5')).ok);
-      assert.ok((await d.fill('config-site', 'local')).ok);
-      await waitForConfigurationReady(d, 'custom-cell-fmax-dtco', 'local', 30_000);
-      assert.ok((await d.click('config-confirm')).ok);
-      await browser.wait(`Number(document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-nodes'))>=48`, 20_000);
+      await openConfiguredGraph(d, h, browser, { packId: 'custom-cell-fmax-dtco', packSource: booted.packSource, reviewedFile: 'knowledge/manifest.yml',
+        goal: { target_period_ns: '0.5', target_fmax_improvement_pct: '5' }, minNodes: 48 });
       const width = await widenDockPane(browser);
       t.diagnostic(`state 7 (${theme}) dock pane width after drag: ${String(width)}px`);
       assert.ok(width >= 700, `dock pane widened to at least 700px: ${String(width)}`);
@@ -732,6 +743,100 @@ test('state 7: a fifty-one node graph fits to width, scaled and label-hidden', a
       })()`);
       assert.ok(goalInBounds.ok, `the Goal roundel should sit inside the canvas: ${JSON.stringify(goalInBounds)}`);
       await capture(d, browser, `graph-51-node-${theme}`);
+    } finally {
+      await finish(d, browser);
+      await h.dispose();
+    }
+  });
+});
+
+
+// ---------------------------------------------------------------------------------------------
+// State 8 (#63): the 106-node agentic-timing-closure-system reference graph, in lanes.
+// ---------------------------------------------------------------------------------------------
+
+/** The shipped ATCS Pack, copied to a local variant whose only changes are the Site-facing ones the
+ *  ATCS contract test already makes (local wrappers for the Site's EDA launchers); its graph.yml is
+ *  the shipped file byte for byte, which is this state's own subject. */
+async function bootAtcsGraph(t: TestContext, theme: 'light' | 'dark', remoteDebuggingPort: number) {
+  const { createHimaHome } = await import('./support/dsh-home.ts');
+  const { cp, readFile, realpath } = await import('node:fs/promises');
+  const { parse, stringify } = await import('yaml');
+  const h = await createHimaHome();
+  const packSource = path.join(h.home, 'l3-atcs', 'agentic-timing-closure-system');
+  await cp(path.join(repoRoot, 'packs/agentic-timing-closure-system'), packSource, { recursive: true });
+  const contract = parse(await readFile(path.join(packSource, 'contract.yml'), 'utf8')) as { environment: { wrappers: string[] }; tools: { argv: string[]; interactive?: { argv: string[] } }[] };
+  const wrapper = await realpath('/usr/bin/tclsh');
+  contract.environment.wrappers = [wrapper, 'python3', '/usr/bin/python3'];
+  for (const tool of contract.tools) if (tool.interactive) { tool.argv = [wrapper, '${WORKSPACE}/flow/atcs-repl.tcl']; tool.interactive.argv = tool.argv; }
+  await writeFile(path.join(packSource, 'contract.yml'), stringify(contract));
+  const inputsRoot = path.join(h.home, 'l3-atcs-inputs'); await mkdir(path.join(inputsRoot, 'analysis'), { recursive: true });
+  await writeFile(path.join(inputsRoot, 'manifest.json'), '{}\n'); await writeFile(path.join(inputsRoot, 'caps.json'), '{}\n');
+  const replayDir = path.join(h.home, 'atcs-graph-replay'); await mkdir(replayDir);
+  const replayFile = path.join(replayDir, 'session.jsonl'), replayOverride = path.join(replayDir, 'replay.override.json');
+  await writeFile(replayFile, `${JSON.stringify({ version: 0, type: 'session', id: 'session-atcs-graph', createdAt: 0, cwd: '{{cwd}}' })}\n`);
+  const say = (text: string): ReplayEntry => ({ kind: 'chunks', chunks: [
+    { type: 'block-start', index: 0, blockType: 'text' },
+    { type: 'block-end', index: 0, block: { type: 'text', text } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ] });
+  await writeFile(replayOverride, `${JSON.stringify([say('Campaign Agent conversation is ready.')], null, 2)}\n`);
+  await writeLocalSite(h, { allowedReadRoots: [packSource, inputsRoot, h.workspace], allowedWriteRoots: [h.workspace],
+    allowedWrappers: [wrapper, 'python3', '/usr/bin/python3'], licences: { xtop: 1, innovus: 1, primetime: 1, starrc: 1 },
+    bindings: { designStateManifest: path.join(inputsRoot, 'manifest.json'), analysisContract: path.join(inputsRoot, 'analysis'),
+      siteCapabilities: path.join(inputsRoot, 'caps.json'), workspaceRoot: h.workspace } });
+  await writeReplayOverlay(h.home, { file: replayFile, overrideFile: replayOverride });
+  const d = await bootDriver(t, { existing: h, remoteDebuggingPort, theme, window: WINDOW,
+    model: { replay: { file: replayFile, override: replayOverride, children: [] } },
+    env: { HIMA_TEST_LEGACY_AUTO_DRIVE: '0', HIMA_TEST_SILENT_AGENT: '1' } });
+  if (!d) { await h.dispose(); return undefined; }
+  return { d, h, packSource };
+}
+
+test('state 8: the 106-node ATCS reference graph opens in lanes with no overlapping nodes or labels', async (t) => {
+  if (windowUnavailable(t)) return;
+  await bothThemes(t, async (theme) => {
+    const port = await freePort();
+    const booted = await bootAtcsGraph(t, theme, port);
+    if (!booted) return;
+    const { d, h } = booted;
+    let browser: Inspector | undefined;
+    try {
+      browser = await inspectWindow(port);
+      await openConfiguredGraph(d, h, browser, { packId: 'agentic-timing-closure-system', packSource: booted.packSource, reviewedFile: 'graph.yml',
+        goal: { target_setup_wns_ns: '0', target_hold_wns_ns: '0' }, minNodes: 106 });
+      const width = await widenDockPane(browser);
+      assert.ok(width >= 700, `dock pane widened to at least 700px: ${String(width)}`);
+      await browser.wait(`document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-scale') !== '1.00'`, 20_000).catch(() => undefined);
+      await browser.evaluate('new Promise((resolve) => setTimeout(resolve, 400))');
+      // Measured on screen as the canvas opens (labels visible): every node's own square hit area and
+      // every id label, in client pixels, across all 106 nodes (off-screen ones included).
+      const measured = await browser.evaluate<{ scale: number; nodes: number; rows: number; glyphOverlaps: string[]; labelOverlaps: string[] }>(`(() => {
+        const graph = document.querySelector('[data-hima-region="campaign-graph"]');
+        const nodes = [...graph.querySelectorAll('[data-hima-region^="campaign-node-"]')];
+        const glyphs = nodes.map((n) => ({ id: n.getAttribute('data-hima-region').slice('campaign-node-'.length), r: n.querySelector('[data-hima-control^="node-"]').getBoundingClientRect() }));
+        const labels = nodes.map((n) => ({ id: n.getAttribute('data-hima-region').slice('campaign-node-'.length), r: n.querySelector('.hima-node-label').getBoundingClientRect() }));
+        const meet = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+        const glyphOverlaps = [], labelOverlaps = [];
+        for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+          if (meet(glyphs[i].r, glyphs[j].r)) glyphOverlaps.push(glyphs[i].id + ' / ' + glyphs[j].id);
+          if (meet(labels[i].r, labels[j].r) || meet(labels[i].r, glyphs[j].r) || meet(labels[j].r, glyphs[i].r)) labelOverlaps.push(labels[i].id + ' / ' + labels[j].id);
+        }
+        const rows = new Set(glyphs.map((g) => Math.round(g.r.top)));
+        return { scale: Number(graph.getAttribute('data-hima-state-scale')), nodes: nodes.length, rows: rows.size, glyphOverlaps, labelOverlaps };
+      })()`);
+      t.diagnostic(`state 8 (${theme}): ${JSON.stringify({ ...measured, glyphOverlaps: measured.glyphOverlaps.slice(0, 5), labelOverlaps: measured.labelOverlaps.slice(0, 5), counts: [measured.glyphOverlaps.length, measured.labelOverlaps.length] })}`);
+      await capture(d, browser, `atcs-graph-open-${theme}`);
+      assert.ok((await d.click('canvas-fit')).ok);
+      await browser.wait(`Number(document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-scale')) < 0.6`, 10_000);
+      await browser.evaluate('new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+      await capture(d, browser, `atcs-graph-fit-${theme}`);
+
+      assert.equal(measured.nodes, 106);
+      assert.ok(measured.scale >= 0.6, `the canvas opens at a readable scale: ${String(measured.scale)}`);
+      assert.deepEqual(measured.glyphOverlaps, [], 'no two node glyphs overlap on screen');
+      assert.deepEqual(measured.labelOverlaps, [], 'no node label runs into another label or glyph on screen');
+      assert.ok(measured.rows >= 3, `the graph spreads over several lanes: ${String(measured.rows)}`);
     } finally {
       await finish(d, browser);
       await h.dispose();

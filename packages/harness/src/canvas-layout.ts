@@ -410,9 +410,11 @@ function revisitLevels(edges: readonly LayoutEdge[], rankOf: (id: string) => num
   return level;
 }
 
-/** Scene units a vertical edge segment runs in: halfway between two half-rank columns, 22.5 units
- * from every node centre, which is past any glyph's own 18-unit half-width. */
-const CORRIDOR = PITCH / 4;
+/** How far from a node's centre a routed edge's vertical run sits: just past the glyph's own 18-unit
+ * half-width and its 2-unit margin. An edge leaves its source on the right of that column and enters
+ * its target on the left of that one, so a run leaving rank r and one entering rank r + 0.5 (45 units
+ * on) keep 4 units apart instead of drawing as one line. */
+const CORRIDOR = NODE / 2 + 2.5;
 /** The spacing between two routed edges' horizontal runs. */
 const TRACK = 6;
 
@@ -490,7 +492,9 @@ function routeEdges(edges: PlacedEdge[], nodes: readonly PlacedNode[]): number {
       if (crossing.some((n) => Math.abs(y - n.y) < NODE / 2 + 2 && n.x + NODE / 2 + 2 > xa && n.x - NODE / 2 - 2 < xb)) continue;
       if (runs.some((run) => run.from < xb + CORRIDOR && xa - CORRIDOR < run.to && Math.abs(run.y - y) < TRACK)) continue;
       const labels = crossing.filter((n) => y > n.y + NODE / 2 && y < n.y + FOOT_BOTTOM).length
-        + others.filter((n) => ([[xa, s.y], [xb, t.y]] as const).some(([x, end]) => Math.abs(x - n.x) < FOOT_HALF_W && Math.min(end, y) < n.y + FOOT_BOTTOM && Math.max(end, y) > n.y + NODE / 2)).length;
+        // The vertical runs are counted against every label they cross, the edge's own source and
+        // target included: a track above the source leaves it clear of its own id and caption.
+        + nodes.filter((n) => ([[xa, s.y], [xb, t.y]] as const).some(([x, end]) => Math.abs(x - n.x) < FOOT_HALF_W && Math.min(end, y) < n.y + FOOT_BOTTOM && Math.max(end, y) > n.y + NODE / 2)).length;
       const cost = Math.abs(y - s.y) + Math.abs(y - t.y) + 4 * ROW * labels;
       if (best === undefined || cost < best.cost) best = { y, cost };
     }
@@ -597,7 +601,8 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
 
   // #63: nested revisit arcs rise above the level-0 arc's own height, so the lanes move down by the
   // extra rise (a cubic's apex sits three quarters of the way to its control points) and the highest
-  // arc still stays on the canvas. A graph with at most one level of arcs draws exactly as before.
+  // arc still stays on the canvas. A graph with at most one level of arcs keeps its lanes where they
+  // were (only a badge with no room above its arc now sits on the arc's own apex).
   const mainLevels = revisitLevels(graph.edges, (id) => rankMap.get(id) ?? 0);
   const topExtra = 0.75 * ARC_STEP * Math.max(0, ...mainLevels.values());
   const pass1X = new Map(graph.nodes.map((node) => [node.id, X0 + (rankMap.get(node.id) ?? 0) * PITCH]));
@@ -697,7 +702,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     // clearance) measured against where the spine's own deepest row would otherwise sit
     // (`PAD_Y + (maxRow - minRow) * ROW`) — clamped to never go negative, since a frame that already
     // sits above the spine's own bottom needs no extra shift at all.
-    const spineBottom = PAD_Y + (maxRow - minRow) * ROW;
+    const spineBottom = PAD_Y + topExtra + (maxRow - minRow) * ROW;
     const frameBottom = placed.box.y + placed.box.height + 24;
     const extra = Math.max(0, frameBottom - spineBottom);
     loopShift.push({ exploreRank, extra });
