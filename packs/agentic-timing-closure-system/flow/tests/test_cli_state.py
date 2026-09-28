@@ -81,12 +81,22 @@ def _site_profile_path(root, xtop_scenarios=None):
     `techLef`/`cellLefGlob` are also included (I3, final review: `replay-prepare`
     now reads these three the same way `prepare-workers` already did) as plain,
     non-empty placeholder strings -- the fake no-op wrapper never actually launches
-    XTop, so nothing here needs to resolve to a real file on disk."""
+    XTop, so nothing here needs to resolve to a real file on disk.
+
+    Issue 63: `starrcHome` is declared here too (a toolkit dir with a real
+    `linux64_starrc/lib` on disk), so `extract`'s StarXtract-toolkit resolution
+    finds it directly -- the fake no-op wrapper (`exit 0`, no stdout) can't answer
+    the `discover_starrc_toolkit` probe, so every extract-driving test needs this
+    declared override to keep resolving the toolkit at all.
+    """
     wrapper = _no_op_wrapper(root)
+    starrc_home = root / "starrc-toolkit"
+    (starrc_home / "linux64_starrc" / "lib").mkdir(parents=True, exist_ok=True)
     path = root / "site-profile.json"
     profile = {
         "edaShell": [str(wrapper)], "design": "top",
         "techLef": str(root / "tech.lef"), "cellLefGlob": str(root / "cells" / "*.lef"),
+        "starrcHome": str(starrc_home),
     }
     if xtop_scenarios is not None:
         profile.update(_xtop_site_config(root, xtop_scenarios))
@@ -1429,6 +1439,91 @@ class ExtractStarrcTemplateTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
         payload = json.loads(result.stderr)
         self.assertEqual(payload["code"], "invalid-input")
+
+
+class ExtractStarrcToolkitEnvTest(unittest.TestCase):
+    """Issue 63: `extract`'s StarXtract invocation must carry the StarRC toolkit's
+    `LD_LIBRARY_PATH` prefix (the retained failure: `error while loading shared
+    libraries: libtbb.so.12`, because the Site's `edarun` wrapper forwards no such
+    value on its own), and must fail closed -- before StarXtract ever runs -- when
+    no toolkit can be resolved (no declared `starrcHome`, and the discovery probe
+    through `edaShell` finds nothing)."""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+
+    def _write_single_corner_implement(self, workspace, merge_id):
+        def_path = workspace / "def" / "design.def"
+        _write_text(def_path, "DEF placeholder\n")
+        _write_json(workspace / "state" / "implement.json", {
+            "mergeCommitId": merge_id, "design": "top",
+            "def": {"path": "def/design.def", "sha256": core.file_sha256(def_path)},
+        })
+        corners_path = workspace / "corners.json"
+        _write_json(corners_path, {"corners": {CORNER: str(STARRC_TEMPLATE_PATH)}})
+        return corners_path
+
+    def test_extract_fails_closed_before_running_starxtract_when_no_toolkit_resolves(self):
+        workspace = self.workspace
+        merge_id = "m" + "3" * 19
+        corners_path = self._write_single_corner_implement(workspace, merge_id)
+
+        # A site profile whose edaShell is a no-op wrapper (`exit 0`, no stdout --
+        # never answers the discover_starrc_toolkit probe) and declares no
+        # starrcHome override: no toolkit can be resolved at all.
+        wrapper = _no_op_wrapper(workspace)
+        site_profile_path = workspace / "site-profile.json"
+        _write_json(site_profile_path, {
+            "edaShell": [str(wrapper)], "design": "top",
+            "techLef": str(workspace / "tech.lef"), "cellLefGlob": str(workspace / "cells" / "*.lef"),
+        })
+
+        result = _run("extract", workspace, corners_path, site_profile_path)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "missing-input")
+        self.assertIn("starrcHome", payload["detail"])
+        self.assertIn("linux64_starrc/lib", payload["detail"])
+        self.assertFalse((workspace / "state" / "extract.json").exists())
+
+    def test_extract_prefixes_the_starxtract_invocation_with_the_declared_toolkits_ld_library_path(self):
+        workspace = self.workspace
+        merge_id = "m" + "4" * 19
+        corners_path = self._write_single_corner_implement(workspace, merge_id)
+
+        capture = workspace / "captured-invocation.txt"
+        wrapper = workspace / "record-wrapper.sh"
+        wrapper.write_text(
+            '#!/bin/sh\nprintf %s "$1" >> ' + str(capture) + '\nexit 0\n', encoding="utf-8",
+        )
+        wrapper.chmod(0o755)
+
+        starrc_home = workspace / "starrc-toolkit"
+        (starrc_home / "linux64_starrc" / "lib").mkdir(parents=True)
+
+        site_profile_path = workspace / "site-profile.json"
+        _write_json(site_profile_path, {
+            "edaShell": [str(wrapper)], "design": "top",
+            "techLef": str(workspace / "tech.lef"), "cellLefGlob": str(workspace / "cells" / "*.lef"),
+            "starrcHome": str(starrc_home),
+        })
+
+        # The recording wrapper never actually runs StarXtract -- pre-create the exact
+        # SPEF path `compile_starrc_task` will look for, as `ExtractStarrcTemplateTest` does.
+        impl_root = workspace / "implementations" / merge_id
+        _write_text(impl_root / "starrc" / CORNER / f"top.{CORNER}.spef", "*SPEF IEEE 1481-1999\n")
+
+        result = _run("extract", workspace, corners_path, site_profile_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        recorded = capture.read_text(encoding="utf-8")
+        self.assertTrue(
+            recorded.startswith(f'LD_LIBRARY_PATH="{starrc_home}/linux64_starrc/lib:${{LD_LIBRARY_PATH:-}}" '),
+            recorded,
+        )
+        expected_cmd_path = impl_root / "starrc" / CORNER / f"{CORNER}.cmd"
+        self.assertTrue(recorded.endswith(f"StarXtract -clean {expected_cmd_path}"), recorded)
 
 
 class PhysicalBaselineInnovusTest(unittest.TestCase):

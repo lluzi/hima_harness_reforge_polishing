@@ -274,6 +274,65 @@ def shell_line(command, shell_env=None):
     return prefix + shlex.join([str(x) for x in command])
 
 
+def shell_env_value(value) -> str:
+    """One assignment's right-hand side, quoted so the container's shell evaluates it as written
+    (same convention as `closure.py`'s `shell_env_value`).
+
+    Double quotes preserve an inner `${...}` expansion, which is how an inherited value is kept;
+    `shlex.join`/single-quoting would instead freeze that expansion as literal text.
+    """
+    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def discover_starrc_toolkit(site_profile):
+    """The StarRC toolkit root, asked of the container that will run StarXtract.
+
+    Resolved by walking up from the binary to the directory that actually holds
+    `linux64_starrc`, rather than by counting levels: the toolkit root is the one a given
+    install puts its platform directory under, and a fixed count would silently pick the
+    wrong directory when it differs. Asked inside the container (through the Site's own
+    `edaShell`) because that is where the tool resolves; a path computed on the host says
+    nothing about what the tool's own environment will look like. Returns `None` when
+    `site_profile` has no usable `edaShell`, or when the probe fails or finds nothing --
+    never raises, so callers can fail closed with their own message.
+    """
+    eda_shell = site_profile.get("edaShell") if isinstance(site_profile, dict) else None
+    if not isinstance(eda_shell, list) or not eda_shell or not all(isinstance(x, str) and x for x in eda_shell):
+        return None
+    probe = ('b=$(command -v StarXtract) || exit 1; d=$(dirname "$b"); '
+             'while [ "$d" != / ]; do [ -d "$d/linux64_starrc/lib" ] && { echo "$d"; exit 0; }; '
+             'd=$(dirname "$d"); done; exit 1')
+    try:
+        proc = subprocess.run(eda_shell + [probe], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    found = proc.stdout.decode("utf-8", "replace").strip().splitlines()
+    return Path(found[-1]) if proc.returncode == 0 and found else None
+
+
+def starrc_shell_env(toolkit):
+    """The in-container environment StarXtract needs, as `shell_line`-ready assignment pairs.
+
+    StarXtract resolves `libtbb.so.12` only when the toolkit's own library directories are on
+    the loader search path (Issue 63: the Site's `edarun` wrapper forwards no such value on its
+    own). The inherited value is appended in the same shell, preserving whatever the
+    container's own EDA init put there. Returns `[]` when `toolkit` is falsy or neither library
+    directory actually exists, so a caller can fail closed instead of running StarXtract with an
+    empty prefix.
+    """
+    if not toolkit:
+        return []
+    toolkit = Path(toolkit)
+    roots = [candidate for candidate in (toolkit / "linux64_starrc" / "lib",
+                                        toolkit / "linux64_starrc" / "lib" / "shlib")
+             if candidate.is_dir()]
+    if not roots:
+        return []
+    entries = ":".join(str(root) for root in roots) + ":${LD_LIBRARY_PATH:-}"
+    return [("LD_LIBRARY_PATH", shell_env_value(entries))]
+
+
 def run_tool(site_profile, command, cwd, log_path, shell_env=None):
     """Run one EDA command through the Site wrapper named in `site_profile["edaShell"]`.
 

@@ -1049,6 +1049,110 @@ class RunToolTest(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "missing-input")
 
 
+class StarrcToolkitEnvTest(unittest.TestCase):
+    """Issue 63: StarXtract fails `error while loading shared libraries: libtbb.so.12`
+    on a Site whose `edarun` wrapper runs `bash -lc` with no shell_env -- the container's
+    own EDA init never puts the StarRC toolkit's `linux64_starrc/lib` on
+    `LD_LIBRARY_PATH`. `discover_starrc_toolkit`/`starrc_shell_env` mirror the already-
+    qualified `xtop-timing-closure` Pack's `closure.py` behaviour (probe through the
+    Site's own `edaShell`, walk up from the resolved binary to the directory holding
+    `linux64_starrc/lib`), so `extract`'s StarXtract invocation carries the same
+    LD_LIBRARY_PATH prefix `cworst_T.log` needed.
+    """
+
+    def setUp(self):
+        self.tmp = _tmp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def test_starrc_shell_env_prefixes_with_both_lib_dirs_and_preserves_inherited_value(self):
+        toolkit = self.tmp / "toolkit"
+        (toolkit / "linux64_starrc" / "lib" / "shlib").mkdir(parents=True)
+        env = adapters.starrc_shell_env(toolkit)
+        self.assertEqual(len(env), 1)
+        name, value = env[0]
+        self.assertEqual(name, "LD_LIBRARY_PATH")
+        self.assertEqual(
+            value,
+            f'"{toolkit}/linux64_starrc/lib:{toolkit}/linux64_starrc/lib/shlib:${{LD_LIBRARY_PATH:-}}"',
+        )
+
+    def test_starrc_shell_env_is_empty_when_neither_lib_dir_exists(self):
+        toolkit = self.tmp / "toolkit-with-nothing"
+        toolkit.mkdir()
+        self.assertEqual(adapters.starrc_shell_env(toolkit), [])
+
+    def test_starrc_shell_env_keeps_a_space_in_the_toolkit_path_as_one_shell_word(self):
+        toolkit = self.tmp / "tool kit"
+        (toolkit / "linux64_starrc" / "lib").mkdir(parents=True)
+        env = adapters.starrc_shell_env(toolkit)
+        name, value = env[0]
+        line = adapters.shell_line(["StarXtract", "-clean", "cmd"], env)
+        # One shell word despite the embedded space: the assignment is double-quoted,
+        # and shlex.join would otherwise have single-quoted (and thus frozen literal)
+        # the ${LD_LIBRARY_PATH:-} expansion.
+        self.assertIn(f'LD_LIBRARY_PATH="{toolkit}/linux64_starrc/lib:${{LD_LIBRARY_PATH:-}}" ', line)
+        self.assertTrue(line.endswith("StarXtract -clean cmd"))
+
+    def test_run_tool_carries_the_starrc_shell_env_prefix_into_the_recorded_invocation(self):
+        capture = self.tmp / "captured.txt"
+        wrapper = self.tmp / "record-wrapper.sh"
+        wrapper.write_text(
+            '#!/bin/sh\nprintf %s "$1" >> ' + str(capture) + '\nexit 0\n', encoding="utf-8",
+        )
+        wrapper.chmod(0o755)
+        toolkit = self.tmp / "toolkit"
+        (toolkit / "linux64_starrc" / "lib").mkdir(parents=True)
+
+        adapters.run_tool(
+            {"edaShell": [str(wrapper)]}, ["StarXtract", "-clean", "cworst_T.cmd"],
+            cwd=self.tmp, log_path=self.tmp / "log.txt", shell_env=adapters.starrc_shell_env(toolkit),
+        )
+        recorded = capture.read_text(encoding="utf-8")
+        self.assertTrue(
+            recorded.startswith(f'LD_LIBRARY_PATH="{toolkit}/linux64_starrc/lib:${{LD_LIBRARY_PATH:-}}" '),
+            recorded,
+        )
+        self.assertTrue(recorded.endswith("StarXtract -clean cworst_T.cmd"), recorded)
+
+    def test_discover_starrc_toolkit_walks_up_from_the_probed_binary_through_edashell(self):
+        toolkit = self.tmp / "toolkit"
+        bin_dir = toolkit / "support" / "bin"
+        bin_dir.mkdir(parents=True)
+        (toolkit / "linux64_starrc" / "lib").mkdir(parents=True)
+        star_xtract = bin_dir / "StarXtract"
+        star_xtract.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        star_xtract.chmod(0o755)
+
+        wrapper = self.tmp / "probe-wrapper.sh"
+        wrapper.write_text('#!/bin/sh\nexec sh -c "$1"\n', encoding="utf-8")
+        wrapper.chmod(0o755)
+
+        import os
+        old_path = os.environ.get("PATH", "")
+        os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+        try:
+            found = adapters.discover_starrc_toolkit({"edaShell": [str(wrapper)]})
+        finally:
+            os.environ["PATH"] = old_path
+
+        self.assertIsNotNone(found)
+        self.assertEqual(str(found), str(toolkit))
+
+    def test_discover_starrc_toolkit_returns_none_when_the_probe_fails(self):
+        wrapper = self.tmp / "failing-probe-wrapper.sh"
+        wrapper.write_text('#!/bin/sh\nexec sh -c "$1"\n', encoding="utf-8")
+        wrapper.chmod(0o755)
+        import os
+        old_path = os.environ.get("PATH", "")
+        # A PATH holding no StarXtract at all -- `command -v StarXtract` fails inside the probe.
+        os.environ["PATH"] = str(self.tmp)
+        try:
+            found = adapters.discover_starrc_toolkit({"edaShell": [str(wrapper)]})
+        finally:
+            os.environ["PATH"] = old_path
+        self.assertIsNone(found)
+
+
 def _write_json(path, obj):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(obj), encoding="utf-8")

@@ -2000,6 +2000,21 @@ def _cmd_extract(workspace, args):
             "identity-mismatch", f"DEF at {def_path} no longer matches implement.json's recorded sha256",
         )
 
+    # Issue 63: the Site's `edarun` wrapper (`edaShell`) forwards no LD_LIBRARY_PATH of its
+    # own, so a bare StarXtract invocation fails `error while loading shared libraries:
+    # libtbb.so.12` -- resolved once per call (declared `starrcHome` override, else probed
+    # through the Site's own edaShell) and failed closed here, before StarXtract ever runs,
+    # rather than letting every corner repeat the same doomed invocation.
+    declared_toolkit = site_profile.get("starrcHome") if isinstance(site_profile, dict) else None
+    starrc_toolkit = Path(declared_toolkit) if declared_toolkit else adapters.discover_starrc_toolkit(site_profile)
+    starrc_env = adapters.starrc_shell_env(starrc_toolkit) if starrc_toolkit else []
+    if not starrc_toolkit or not starrc_env:
+        raise core.AtcsError(
+            "missing-input",
+            "StarRC toolkit root cannot be resolved: declare starrcHome in the site profile, or "
+            "have StarXtract on PATH (via edaShell) under a toolkit holding linux64_starrc/lib",
+        )
+
     output_root = workspace / "implementations" / merge_id
     spef_out = {}
     for corner, template in templates.items():
@@ -2011,7 +2026,7 @@ def _cmd_extract(workspace, args):
         cmd_path.write_text(task["cmdText"], encoding="utf-8")
         Path(task["workDir"]).mkdir(parents=True, exist_ok=True)
         log_path = Path(task["cmdPath"]).with_suffix(".log")
-        adapters.run_tool(site_profile, task["command"], cwd=cmd_path.parent, log_path=log_path)
+        adapters.run_tool(site_profile, task["command"], cwd=cmd_path.parent, log_path=log_path, shell_env=starrc_env)
         spef_path = Path(task["spefPath"])
         if not spef_path.is_file():
             raise adapters.AdapterToolError(f"StarRC produced no SPEF for corner {corner!r}", log_path)
