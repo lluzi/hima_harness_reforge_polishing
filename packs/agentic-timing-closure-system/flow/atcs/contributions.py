@@ -929,6 +929,51 @@ def seal(base_ref, result_refs, operation_trace):
     return core.stamp("contribution", body)
 
 
+def seal_parked(base_ref, reason):
+    """Seal the `no-fix` of a slot that ran no session at all (Issue #64 Task 5).
+
+    A slot the plan parked, or an active slot whose worker request was
+    inadmissible, still runs its branch, as a no-op: its operate node opened
+    no XTop session, so there are no dumps, trace or readings to seal. The
+    Contribution is an admissible `no-fix` carrying `parked: true`, no
+    operations and no `beforeDumpSha256`; its diagnosis is `reason` (for a
+    parked slot, the plan's own reason, the package's `problem`). The same
+    identity checks as `seal` bind it to the slot's prepared workspace.
+    """
+    manifest = core.require(base_ref, "workspaceManifest", "base_ref")
+    work_package = core.require(base_ref, "workPackage", "base_ref")
+    state_id = core.require(base_ref, "stateId", "base_ref")
+    if manifest.get("baseStateId") != state_id or work_package.get("baseStateId") != state_id:
+        raise core.AtcsError("base-mismatch", f"parked slot's manifest or package is not based on {state_id!r}")
+    if manifest.get("workPackageId") != work_package.get("id"):
+        raise core.AtcsError("base-mismatch", "parked slot's workspaceManifest names another work package")
+    if not isinstance(reason, str) or not reason.strip():
+        raise core.AtcsError("missing-input", "a slot that ran no session needs the reason it ran none")
+    predicted, validation_level = _predicted_measures({})
+    body = {
+        "taskId": core.require(manifest, "taskId", "workspaceManifest"),
+        "revision": core.require(manifest, "revision", "workspaceManifest"),
+        "baseStateId": state_id,
+        "kind": "no-fix",
+        "parked": True,
+        "operations": [],
+        "script": None,
+        "beforeDumpSha256": None,
+        "delta": actual_delta({}, {}),
+        "touches": {"instances": [], "nets": [], "regions": [], "checks": [], "cones": []},
+        "preconditions": [],
+        "dependencies": [],
+        "atomicGroups": [],
+        "predicted": predicted,
+        "validationLevel": validation_level,
+        "diagnosis": f"parked: {reason.strip()}",
+        "admissible": True,
+        "refusals": [],
+        "outOfScope": [],
+    }
+    return core.stamp("contribution", body)
+
+
 def _script_sha256(path):
     try:
         return core.file_sha256(path)

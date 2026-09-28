@@ -105,7 +105,7 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 
 `NN` 必须在方法编译时展开为有界 slots 或经现有受控委派结果引用实现，不假设 Harness 支持任意动态 output 名。产物入口可更新，历史原件和所引用的版本不得覆盖。模型不能直接写出 `finalEvaluation` 中的测量值。
 
-**编译决策：worker slots 与 Workshop 目录**（本任务固定，供后续 FABRIC/Workshop 编译直接引用，不再作为开放问题）：worker slots 精确为 3 个：`workerManifest01`、`workerManifest02`、`workerManifest03`；`workerRequest01`、`workerRequest02`、`workerRequest03`；`workerResult01`、`workerResult02`、`workerResult03`。`NN` 在编译时展开为这三个有界 slots，不存在第四个或动态命名的 worker 产物。对应的 Workshop 目录固定为 `research/diagnose`、`research/plan`、`research/worker-01`、`research/worker-02`、`research/worker-03`、`research/compose`、`research/next`。每个 Workshop 的 argv 固定为 `[python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']`：三个操作数分别是本次生成的程序、Campaign 根和本次私有代码目录，不按猜测的父目录层数反推路径。
+**编译决策：worker slots 与 Workshop 目录**（本任务固定，供后续 FABRIC/Workshop 编译直接引用，不再作为开放问题）：worker slots 精确为 6 个（Issue #64 Task 5 由 3 个扩为 6 个并行 fork 分支）：`workerRequest01`..`workerRequest06`；`workerResult01`..`workerResult06`；准备结果统一记录在 `workerManifests`（`state/workers.json`）。`NN` 在编译时展开为这六个有界 slots，不存在第七个或动态命名的 worker 产物；Strategy 旋钮 `workerSlots`（1..6，默认 6）之上的 slot 与计划停放（parked）的 slot 以无操作分支运行。对应的 Workshop 目录固定为 `research/diagnose`、`research/plan`、`research/worker-01`..`research/worker-06`、`research/compose`、`research/next`。每个 Workshop 的 argv 固定为 `[python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']`：三个操作数分别是本次生成的程序、Campaign 根和本次私有代码目录，不按猜测的父目录层数反推路径。
 
 **Tools、wrappers 与实际启动路径**：
 
@@ -153,6 +153,7 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 | `tc_request_invalid_count` | count | typed 请求结构/引用/范围的失败项；覆盖 `observationRequest`、`work-package` 等请求类产物，也覆盖 `next-decision` 本身的 schema/结构失败项（例如 `action` 不在允许枚举内、缺必需字段、引用的 state/observation/budget 不可解析） | 合法性报告完整才可为 0；对应产物未经过完整合法性校验则 unknown |
 | `tc_pending_research_count` | count | 当前实际未完成研究数 | 不是必须等于 0 才可封批 |
 | `tc_ready_contribution_count` | count | 合同有效、可进入当前集成的提交数 | 有效 no-fix 不计作修复贡献 |
+| `tc_worker_refusal_count` | count | 单个 worker 槽位已封存 Contribution 的拒绝项数（`refusals[]`；不可接纳的 Contribution 至少计 1）；worker fork 的 join `check-worker-results` 以此逐分支判定 | 可接纳的 xtop-session、no-fix 与 parked no-fix 为 0 |
 | `tc_replay_mismatch_count` | count | 预期局部变化与实际变化不符的项 | 实际 diff 可取得时才可为 0 |
 | `tc_unresolved_conflict_count` | count | 当前选择组合中未解决的冲突/依赖 | 不是整个研究池所有冲突数 |
 | `tc_out_of_scope_edit_count` | count | 实际修改越出允许编辑域的项 | 影响范围未知另行说明，不当零 |
@@ -279,7 +280,7 @@ post-route-only 出现无法本地解决的 Residual Case 时，可形成所需�
 
 Python 研究程序在 admitted Workshop 目录中读声明资料、计算并产出计划/派生分析；不直接启动未登记商业进程。工具交互在已 admitted 节点的真实 Operator session 中完成，多条 manual/query 不必拆成多张图节点。
 
-Workshop 文件合同统一为 `language: python`、`entry: entry.py`、`argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']`。三个操作数分别是本次生成的程序、Campaign 根和本次私有代码目录；不得按猜测的父目录层数反推路径。静态 directory 分别为 `research/diagnose`、`research/plan`、`research/worker-01`、`research/worker-02`、`research/worker-03`、`research/compose`、`research/next`。worker 变体（`worker-01`..`worker-03`）在方法编译时展开对应静态 reads/produces，`research-worker-01`/`02`/`03` 的输出准确指向 `workerRequest01`/`02`/`03`。不把 Harness 提供的保留变量重复声明为业务 inputs。
+Workshop 文件合同统一为 `language: python`、`entry: entry.py`、`argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']`。三个操作数分别是本次生成的程序、Campaign 根和本次私有代码目录；不得按猜测的父目录层数反推路径。静态 directory 分别为 `research/diagnose`、`research/plan`、`research/worker-01`..`research/worker-06`、`research/compose`、`research/next`。worker 变体（`worker-01`..`worker-06`）在方法编译时展开对应静态 reads/produces，`research-worker-NN` 的输出准确指向 `workerRequestNN`。不把 Harness 提供的保留变量重复声明为业务 inputs。
 
 **每个 Workshop 的产出如何变成 Semantics 声明的 value**（编译决策，闭合“Workshop 产出未必是 typed value”这条自检）：`diagnose-and-observe` 的 `observationRequest` 由请求 Reader 校验产出 `tc_request_invalid_count`；`plan-campaign` 的 `campaignPlan` 与 `research-worker` 的 `workerRequestNN`/其研究结果一起，由计划/收集 Reader 核验产出 `tc_pending_research_count` 与 `tc_ready_contribution_count`（后者读 `contributionIndex` 中 Contribution 的 `admissible` 字段）；`compose-contributions` 的 `integrationPlan` 连同 `compositionFacts` 由确定重放 Reader 产出 `tc_unresolved_conflict_count`、`tc_replay_mismatch_count`、`tc_out_of_scope_edit_count` 与 `tc_selected_contribution_count`（`integrationPlan.select` 的长度）；`evaluate-next-investment` 的 `nextDecision` 由请求 Reader 产出 `tc_next_action`（`action` 字段编码）、`tc_stop_required`，以及 `tc_request_invalid_count`（`next-decision` 自身的 schema/结构失败项，只有其合法性校验完整才可为 0）——`request-admissible` 因此能读到一个 `nextDecision` 真正产出的值，`tc_next_action` 为 unknown 时这条路由是可达的。不存在未经声明 Reader 直接消费的 Workshop 输出。
 

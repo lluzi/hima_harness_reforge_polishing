@@ -442,7 +442,7 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
             sys.path.remove(str(flow_dir))
         root = Path("/campaign")
         written = {str(path.relative_to(root)) for path in cli._paths(root).values()}
-        written |= {str(cli._contribution_path(root, slot).relative_to(root)) for slot in ("w01", "w02", "w03")}
+        written |= {str(cli._contribution_path(root, slot).relative_to(root)) for slot in cli.workspaces.TASK_IDS}
         declared = re.findall(r"^    path: (\S+)$", CONTRACT_PATH.read_text(encoding="utf-8"), re.M)
         tool_written = [path for path in declared if path.split("/")[0] in ("state", "accepted", "apr")]
         self.assertTrue(tool_written)
@@ -467,6 +467,10 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
         nodes, edges = graph_nodes_and_edges(GRAPH_PATH.read_text(encoding="utf-8"))
         first = {node: rules[0] for node, (kind, rules) in nodes.items() if kind == "judge" and rules}
         pass_to = {src: dst for src, dst, outcome in edges if outcome == "PASS"}
+        then = {}
+        for src, dst, outcome in edges:
+            if outcome is None:
+                then.setdefault(src, []).append(dst)
         chains = [
             ["replay-consistent-mismatch", "replay-consistent-scope"],
             ["final-evidence-ready-coverage", "final-evidence-ready-identity",
@@ -482,6 +486,10 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
                 seen, node = [first[start]], start
                 while len(seen) < len(chain):
                     node = pass_to.get(node)
+                    # Issue #64 Task 5: a re-read before the next Judge (required after the worker
+                    # fork's join, packs.ts `exploreAfter`) is a pass-through act, not a break.
+                    while node in nodes and nodes[node][0] == "act" and len(then.get(node, [])) == 1:
+                        node = then[node][0]
                     if node not in first:
                         break
                     seen.append(first[node])

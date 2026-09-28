@@ -1,7 +1,7 @@
-id: atcs-worker-result-01
+id: atcs-worker-result-05
 version: "1"
 file: tools/read-atcs.py
-argv: [/usr/bin/python3, '${READER}', 'worker-result', '${REPORT}', '${OUT}', '${WORKSPACE}', w01]
+argv: [/usr/bin/python3, '${READER}', 'worker-result', '${REPORT}', '${OUT}', '${WORKSPACE}', w05]
 reportKind: atcs-contribution/1
 emits:
   - tc_worker_refusal_count

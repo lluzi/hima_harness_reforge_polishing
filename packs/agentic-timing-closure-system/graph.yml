@@ -7,7 +7,14 @@
 #   Explore node with a chooser has at most one outgoing edge, so each domain route has its own Explore;
 # - an Explore node weighs the last Judge of its Generation, which must list at least two rules whose
 #   verdicts all cite the Generation's latest reading (hence the two-rule routing Judges and re-reads);
-# - there is no `converge` block: SPEC disables score-based convergence; the budget ending is the Runtime's.
+# - there is no `converge` block: SPEC disables score-based convergence; the budget ending is the Runtime's;
+# - `prepare-workers` forks into six worker branches joined at the judge `check-worker-results`
+#   (Issue #64 Task 5). A branch holds act nodes only, and because the join sits upstream of every
+#   Explore node once the Run loops, the Harness requires each Explore's own Judge to follow a fresh
+#   unbranched reading directly (packs.ts `exploreAfter`): a routing Judge that follows another Judge
+#   first re-reads the output it judges (the `reread-*` nodes before route-* and gm-*). The goal-met
+#   re-reads are of finalEvaluation, whose values every gm-* rule requires (artifact-ready reads
+#   tc_final_setup_wns_ns too), so every verdict still cites the Generation's latest reading.
 id: agentic-timing-closure-system
 version: "0.1.10"
 entry: bind-inputs
@@ -101,7 +108,15 @@ nodes:
       arguments:
         ANALYSIS_CONTRACT: { from: input, name: analysisContract }
 
-  # 4. Plan, prepare three bounded slots, run them sequentially.
+  # 4. Plan six bounded slots, blockers first, and run them as six parallel fork branches.
+  #    The Run's workerSlots knob is bound on every way into the plan; the campaign-plan Reader
+  #    refuses overlapping slots, an uncovered worst setup/hold check and an active slot above the knob.
+  - id: bind-worker-slots
+    kind: act
+    parameters:
+      tool: worker-slots
+      arguments:
+        WORKER_SLOTS: { from: strategy, name: workerSlots }
   - id: plan
     kind: act
     parameters: { workshop: plan-campaign }
@@ -118,15 +133,16 @@ nodes:
       arguments:
         SITE_CAPABILITIES: { from: input, name: siteCapabilities }
 
+  # Each branch is one slot's pure act chain and holds one Site Job at a time: its Workshop, its
+  # Reader, its operate node (the worker Team Operator's interactive XTop session, or for a parked
+  # slot the batch operate-parked no-op), its capture and its result Reader. Every slot reads and
+  # writes its own paths (worker-request-wNN.json, contribution-wNN.json).
   - id: research-worker-01
     kind: act
     parameters: { workshop: research-worker-01 }
   - id: read-worker-request-01
     kind: act
     parameters: { observes: workerRequest01 }
-  - id: check-worker-request-01
-    kind: judge
-    parameters: { rules: [request-admissible] }
   - id: operate-worker-01
     kind: act
     parameters: { tool: xtop-operator, arguments: { SLOT: w01 } }
@@ -143,9 +159,6 @@ nodes:
   - id: read-worker-request-02
     kind: act
     parameters: { observes: workerRequest02 }
-  - id: check-worker-request-02
-    kind: judge
-    parameters: { rules: [request-admissible] }
   - id: operate-worker-02
     kind: act
     parameters: { tool: xtop-operator, arguments: { SLOT: w02 } }
@@ -162,9 +175,6 @@ nodes:
   - id: read-worker-request-03
     kind: act
     parameters: { observes: workerRequest03 }
-  - id: check-worker-request-03
-    kind: judge
-    parameters: { rules: [request-admissible] }
   - id: operate-worker-03
     kind: act
     parameters: { tool: xtop-operator, arguments: { SLOT: w03 } }
@@ -174,6 +184,60 @@ nodes:
   - id: read-worker-result-03
     kind: act
     parameters: { observes: workerResult03 }
+
+  - id: research-worker-04
+    kind: act
+    parameters: { workshop: research-worker-04 }
+  - id: read-worker-request-04
+    kind: act
+    parameters: { observes: workerRequest04 }
+  - id: operate-worker-04
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: w04 } }
+  - id: capture-worker-04
+    kind: act
+    parameters: { tool: capture-contribution, arguments: { SLOT: w04 } }
+  - id: read-worker-result-04
+    kind: act
+    parameters: { observes: workerResult04 }
+
+  - id: research-worker-05
+    kind: act
+    parameters: { workshop: research-worker-05 }
+  - id: read-worker-request-05
+    kind: act
+    parameters: { observes: workerRequest05 }
+  - id: operate-worker-05
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: w05 } }
+  - id: capture-worker-05
+    kind: act
+    parameters: { tool: capture-contribution, arguments: { SLOT: w05 } }
+  - id: read-worker-result-05
+    kind: act
+    parameters: { observes: workerResult05 }
+
+  - id: research-worker-06
+    kind: act
+    parameters: { workshop: research-worker-06 }
+  - id: read-worker-request-06
+    kind: act
+    parameters: { observes: workerRequest06 }
+  - id: operate-worker-06
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: w06 } }
+  - id: capture-worker-06
+    kind: act
+    parameters: { tool: capture-contribution, arguments: { SLOT: w06 } }
+  - id: read-worker-result-06
+    kind: act
+    parameters: { observes: workerResult06 }
+
+  # The join: every branch's sealed result, judged on its own reading. Both outcomes collect; a
+  # refused slot is excluded from the ranked recipe by composition, not by the route.
+  - id: check-worker-results
+    kind: judge
+    parameters: { rules: [worker-result-admissible] }
 
   # 5. Collect, compose, replay from the common base, reconcile.
   - id: collect
@@ -336,30 +400,45 @@ nodes:
     kind: judge
     parameters: { rules: [continue-or-wait] }
 
+  - id: reread-next-decision-observe
+    kind: act
+    parameters: { observes: nextDecision }
   - id: route-observe
     kind: judge
     parameters: { rules: [next-action-observe, continue-or-wait] }
   - id: revisit-observe
     kind: explore
     parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
+  - id: reread-next-decision-research
+    kind: act
+    parameters: { observes: nextDecision }
   - id: route-research
     kind: judge
     parameters: { rules: [next-action-research, continue-or-wait] }
   - id: revisit-research
     kind: explore
     parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
+  - id: reread-next-decision-compose
+    kind: act
+    parameters: { observes: nextDecision }
   - id: route-compose
     kind: judge
     parameters: { rules: [next-action-compose, continue-or-wait] }
   - id: revisit-compose
     kind: explore
     parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
+  - id: reread-next-decision-revise
+    kind: act
+    parameters: { observes: nextDecision }
   - id: route-revise
     kind: judge
     parameters: { rules: [next-action-revise, continue-or-wait] }
   - id: revisit-revise
     kind: explore
     parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
+  - id: reread-next-decision-implement
+    kind: act
+    parameters: { observes: nextDecision }
   - id: route-implement
     kind: judge
     parameters: { rules: [next-action-implement, continue-or-wait] }
@@ -406,15 +485,27 @@ nodes:
   - id: gm-coverage
     kind: judge
     parameters: { rules: [final-evidence-ready-coverage, final-evidence-ready-identity] }
+  - id: reread-final-evaluation-identity
+    kind: act
+    parameters: { observes: finalEvaluation }
   - id: gm-identity
     kind: judge
     parameters: { rules: [final-evidence-ready-identity, final-evidence-ready-coverage] }
+  - id: reread-final-evaluation-failures
+    kind: act
+    parameters: { observes: finalEvaluation }
   - id: gm-constraint-failures
     kind: judge
     parameters: { rules: [required-constraints-pass-failures, required-constraints-pass-unknowns] }
+  - id: reread-final-evaluation-unknowns
+    kind: act
+    parameters: { observes: finalEvaluation }
   - id: gm-constraint-unknowns
     kind: judge
     parameters: { rules: [required-constraints-pass-unknowns, required-constraints-pass-failures] }
+  - id: reread-final-evaluation-setup
+    kind: act
+    parameters: { observes: finalEvaluation }
   - id: gm-setup
     kind: judge
     parameters:
@@ -422,6 +513,9 @@ nodes:
       bind:
         target_setup_wns_ns: { from: goal, name: target_setup_wns_ns }
         target_hold_wns_ns: { from: goal, name: target_hold_wns_ns }
+  - id: reread-final-evaluation-hold
+    kind: act
+    parameters: { observes: finalEvaluation }
   - id: gm-hold
     kind: judge
     parameters:
@@ -429,9 +523,15 @@ nodes:
       bind:
         target_setup_wns_ns: { from: goal, name: target_setup_wns_ns }
         target_hold_wns_ns: { from: goal, name: target_hold_wns_ns }
+  - id: reread-final-evaluation-artifact
+    kind: act
+    parameters: { observes: finalEvaluation }
   - id: gm-artifact
     kind: judge
     parameters: { rules: [artifact-ready, final-evidence-ready-coverage] }
+  - id: reread-final-evaluation-gate
+    kind: act
+    parameters: { observes: finalEvaluation }
   - id: goal-met-gate
     kind: judge
     parameters:
@@ -474,37 +574,52 @@ edges:
   - { from: check-observation-request, to: retry-diagnose, outcome: FAIL }
   - { from: retry-diagnose, to: diagnose, revisit: true }
   - { from: observe-query, to: risk-query }
-  - { from: risk-query, to: plan }
+  - { from: risk-query, to: bind-worker-slots }
+  - { from: bind-worker-slots, to: plan }
 
   - { from: plan, to: read-campaign-plan }
   - { from: read-campaign-plan, to: check-campaign-plan }
   - { from: check-campaign-plan, to: prepare-workers, outcome: PASS }
   - { from: check-campaign-plan, to: decide-next, outcome: FAIL }
   - { from: prepare-workers, to: research-worker-01 }
+  - { from: prepare-workers, to: research-worker-02 }
+  - { from: prepare-workers, to: research-worker-03 }
+  - { from: prepare-workers, to: research-worker-04 }
+  - { from: prepare-workers, to: research-worker-05 }
+  - { from: prepare-workers, to: research-worker-06 }
 
   - { from: research-worker-01, to: read-worker-request-01 }
-  - { from: read-worker-request-01, to: check-worker-request-01 }
-  - { from: check-worker-request-01, to: operate-worker-01, outcome: PASS }
-  - { from: check-worker-request-01, to: wait-for-person, outcome: FAIL }
+  - { from: read-worker-request-01, to: operate-worker-01 }
   - { from: operate-worker-01, to: capture-worker-01 }
   - { from: capture-worker-01, to: read-worker-result-01 }
-  - { from: read-worker-result-01, to: collect }
-
+  - { from: read-worker-result-01, to: check-worker-results }
   - { from: research-worker-02, to: read-worker-request-02 }
-  - { from: read-worker-request-02, to: check-worker-request-02 }
-  - { from: check-worker-request-02, to: operate-worker-02, outcome: PASS }
-  - { from: check-worker-request-02, to: research-worker-03, outcome: FAIL }
+  - { from: read-worker-request-02, to: operate-worker-02 }
   - { from: operate-worker-02, to: capture-worker-02 }
   - { from: capture-worker-02, to: read-worker-result-02 }
-  - { from: read-worker-result-02, to: research-worker-03 }
-
+  - { from: read-worker-result-02, to: check-worker-results }
   - { from: research-worker-03, to: read-worker-request-03 }
-  - { from: read-worker-request-03, to: check-worker-request-03 }
-  - { from: check-worker-request-03, to: operate-worker-03, outcome: PASS }
-  - { from: check-worker-request-03, to: collect, outcome: FAIL }
+  - { from: read-worker-request-03, to: operate-worker-03 }
   - { from: operate-worker-03, to: capture-worker-03 }
   - { from: capture-worker-03, to: read-worker-result-03 }
-  - { from: read-worker-result-03, to: collect }
+  - { from: read-worker-result-03, to: check-worker-results }
+  - { from: research-worker-04, to: read-worker-request-04 }
+  - { from: read-worker-request-04, to: operate-worker-04 }
+  - { from: operate-worker-04, to: capture-worker-04 }
+  - { from: capture-worker-04, to: read-worker-result-04 }
+  - { from: read-worker-result-04, to: check-worker-results }
+  - { from: research-worker-05, to: read-worker-request-05 }
+  - { from: read-worker-request-05, to: operate-worker-05 }
+  - { from: operate-worker-05, to: capture-worker-05 }
+  - { from: capture-worker-05, to: read-worker-result-05 }
+  - { from: read-worker-result-05, to: check-worker-results }
+  - { from: research-worker-06, to: read-worker-request-06 }
+  - { from: read-worker-request-06, to: operate-worker-06 }
+  - { from: operate-worker-06, to: capture-worker-06 }
+  - { from: capture-worker-06, to: read-worker-result-06 }
+  - { from: read-worker-result-06, to: check-worker-results }
+  - { from: check-worker-results, to: collect, outcome: PASS }
+  - { from: check-worker-results, to: collect, outcome: FAIL }
 
   - { from: collect, to: read-contribution-index }
   - { from: read-contribution-index, to: compose-facts }
@@ -573,20 +688,25 @@ edges:
   - { from: check-next-decision, to: check-continue, outcome: PASS }
   - { from: check-next-decision, to: revisit-next-decision, outcome: FAIL }
   - { from: revisit-next-decision, to: decide-next, revisit: true }
-  - { from: check-continue, to: route-observe, outcome: PASS }
+  - { from: check-continue, to: reread-next-decision-observe, outcome: PASS }
+  - { from: reread-next-decision-observe, to: route-observe }
   - { from: check-continue, to: wait-for-person, outcome: FAIL }
 
   - { from: route-observe, to: revisit-observe, outcome: PASS }
-  - { from: route-observe, to: route-research, outcome: FAIL }
+  - { from: route-observe, to: reread-next-decision-research, outcome: FAIL }
+  - { from: reread-next-decision-research, to: route-research }
   - { from: revisit-observe, to: diagnose, revisit: true }
   - { from: route-research, to: revisit-research, outcome: PASS }
-  - { from: route-research, to: route-compose, outcome: FAIL }
-  - { from: revisit-research, to: plan, revisit: true }
+  - { from: route-research, to: reread-next-decision-compose, outcome: FAIL }
+  - { from: reread-next-decision-compose, to: route-compose }
+  - { from: revisit-research, to: bind-worker-slots, revisit: true }
   - { from: route-compose, to: revisit-compose, outcome: PASS }
-  - { from: route-compose, to: route-revise, outcome: FAIL }
+  - { from: route-compose, to: reread-next-decision-revise, outcome: FAIL }
+  - { from: reread-next-decision-revise, to: route-revise }
   - { from: revisit-compose, to: collect, revisit: true }
   - { from: route-revise, to: revisit-revise, outcome: PASS }
-  - { from: route-revise, to: route-implement, outcome: FAIL }
+  - { from: route-revise, to: reread-next-decision-implement, outcome: FAIL }
+  - { from: reread-next-decision-implement, to: route-implement }
   - { from: revisit-revise, to: compose-facts, revisit: true }
   - { from: route-implement, to: revisit-implement, outcome: PASS }
   - { from: route-implement, to: route-earlier-apr, outcome: FAIL }
@@ -605,19 +725,26 @@ edges:
   - { from: reread-acceptance, to: reread-final-evaluation }
   - { from: route-goal-met, to: wait-for-person, outcome: FAIL }
   - { from: reread-final-evaluation, to: gm-coverage }
-  - { from: gm-coverage, to: gm-identity, outcome: PASS }
+  - { from: gm-coverage, to: reread-final-evaluation-identity, outcome: PASS }
+  - { from: reread-final-evaluation-identity, to: gm-identity }
   - { from: gm-coverage, to: revisit-next-decision, outcome: FAIL }
-  - { from: gm-identity, to: gm-constraint-failures, outcome: PASS }
+  - { from: gm-identity, to: reread-final-evaluation-failures, outcome: PASS }
+  - { from: reread-final-evaluation-failures, to: gm-constraint-failures }
   - { from: gm-identity, to: revisit-next-decision, outcome: FAIL }
-  - { from: gm-constraint-failures, to: gm-constraint-unknowns, outcome: PASS }
+  - { from: gm-constraint-failures, to: reread-final-evaluation-unknowns, outcome: PASS }
+  - { from: reread-final-evaluation-unknowns, to: gm-constraint-unknowns }
   - { from: gm-constraint-failures, to: revisit-next-decision, outcome: FAIL }
-  - { from: gm-constraint-unknowns, to: gm-setup, outcome: PASS }
+  - { from: gm-constraint-unknowns, to: reread-final-evaluation-setup, outcome: PASS }
+  - { from: reread-final-evaluation-setup, to: gm-setup }
   - { from: gm-constraint-unknowns, to: revisit-next-decision, outcome: FAIL }
-  - { from: gm-setup, to: gm-hold, outcome: PASS }
+  - { from: gm-setup, to: reread-final-evaluation-hold, outcome: PASS }
+  - { from: reread-final-evaluation-hold, to: gm-hold }
   - { from: gm-setup, to: revisit-next-decision, outcome: FAIL }
-  - { from: gm-hold, to: gm-artifact, outcome: PASS }
+  - { from: gm-hold, to: reread-final-evaluation-artifact, outcome: PASS }
+  - { from: reread-final-evaluation-artifact, to: gm-artifact }
   - { from: gm-hold, to: revisit-next-decision, outcome: FAIL }
-  - { from: gm-artifact, to: goal-met-gate, outcome: PASS }
+  - { from: gm-artifact, to: reread-final-evaluation-gate, outcome: PASS }
+  - { from: reread-final-evaluation-gate, to: goal-met-gate }
   - { from: gm-artifact, to: revisit-next-decision, outcome: FAIL }
   - { from: goal-met-gate, to: close-on-goal, outcome: PASS }
   - { from: goal-met-gate, to: revisit-next-decision, outcome: FAIL }

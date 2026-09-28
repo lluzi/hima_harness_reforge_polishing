@@ -28,7 +28,8 @@ const target = {
     packId: 'xtop-timing-closure', mode: 'hybrid', environmentId: 'linglong-swerv28:xtop-operator-v5',
   },
   'linglong-atcs28/xtop-operator': {
-    packId: 'agentic-timing-closure-system', mode: 'interactive-only',
+    // Issue #64 Task 5: hybrid; the batch path is the Pack's operate-parked no-op, never XTop.
+    packId: 'agentic-timing-closure-system', mode: 'hybrid',
     environmentId: 'linglong-atcs28:xtop-operator-v5',
   },
 }[`${evidence.site}/${evidence.toolId}`];

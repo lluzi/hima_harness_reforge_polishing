@@ -39,6 +39,14 @@ values:
       Sealed, admissible `fix` contributions in the current
       `contributionIndex` (an admissible `no-fix` contribution is never
       counted as a ready fix).
+  tc_worker_refusal_count:
+    unit: count
+    description: >-
+      Refusals on one worker slot's sealed Contribution (`refusals[]`; an
+      inadmissible Contribution counts at least 1). 0 for an admissible
+      xtop-session, no-fix or parked no-fix. Emitted by every
+      `atcs-worker-result-NN` Reader, so the worker fork's join
+      (`check-worker-results`) judges each branch's own sealed result.
   tc_replay_mismatch_count:
     unit: count
     description: Steps in an `integration-state` whose expected and actual replayed effect disagreed.
