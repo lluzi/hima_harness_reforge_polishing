@@ -1050,23 +1050,75 @@ def compile_xtop_operator_task(workspace_manifest, design, tech_lef, cell_lef_gl
     return {"tcl": tcl, "env": env, "tclPath": str(tcl_path), "argv": argv, "ecoPrefix": eco_prefix}
 
 
-def compile_xtop_analysis_manual_task(workspace_manifest, edit_domain, operator_tcl_path, ops_log_path):
-    """One `xtop-analysis-manual.tcl` task binding `edit_domain` for this worker's whole session.
+DEFAULT_OPERATOR_MAX_MUTATIONS = 1
+"""Mutation budget of an Operator session whose work package names none.
 
-    `edit_domain`: ``{"instances": [...], "nets": [...]}`` (a work
-    package's own `editDomain`, minus `regions` -- this task's typed
-    procedures only gate instances and nets, matching `xtop-operator.tcl`'s
-    `atcs_size_cell`/`atcs_insert_buffer`/`atcs_delete_buffer`).
+Task 4 (#64) adds `scope.maxMutations` to the work package; until a package
+carries it, a session keeps today's one-reviewed-mutation bound.
+"""
+OPERATOR_MAX_MUTATIONS_CAP = 200
+OPERATOR_OBSERVE_MODES = ("fast", "full")
+
+
+def _operator_regions(edit_domain):
+    """`editDomain.regions` (``[[x1, y1, x2, y2], ...]``, finite numbers, x1<=x2, y1<=y2) or refuse."""
+    regions = []
+    for region in (edit_domain or {}).get("regions") or []:
+        if (not isinstance(region, (list, tuple)) or len(region) != 4
+                or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in region)
+                or region[0] > region[2] or region[1] > region[3]):
+            raise core.AtcsError("invalid-input", f"editDomain region must be [x1, y1, x2, y2] with x1<=x2, y1<=y2: "
+                                                  f"{region!r}")
+        regions.append(list(region))
+    return regions
+
+
+def compile_xtop_analysis_manual_task(workspace_manifest, edit_domain, operator_tcl_path, ops_log_path,
+                                      target_pins=None, max_mutations=None, observe=None):
+    """One `xtop-analysis-manual.tcl` task binding one worker's edit domain and budget for its whole session.
+
+    `edit_domain`: ``{"instances", "nets", "regions"}`` (a work package's own
+    `editDomain`); regions bound `atcs_move_cell` targets. `target_pins`: the
+    work package's `targetPins` -- with the pins of domain instances, the only
+    pins `atcs_fix_*_pins` may name in `-only_pins`. `max_mutations`: the work
+    package's `scope.maxMutations` (1..200), the Tcl-side mutation budget that
+    backs the Host's scope count; ``None`` means
+    `DEFAULT_OPERATOR_MAX_MUTATIONS`. `observe`: ``"fast"`` (default; XTop ECO
+    bookkeeping plus the domain's own objects) or ``"full"`` (adds whole-design
+    cell and net snapshots per mutation, for cross-checking the fast path). All
+    are baked as Tcl list literals (`::EDIT_DOMAIN_*`, `::ATCS_MAX_MUTATIONS`,
+    `::ATCS_OBSERVE`) above the template text and are never re-read or widened
+    mid-session.
     """
     name_prefix = workspace_manifest.get("namePrefix")
     if not name_prefix:
         raise core.AtcsError("missing-input", "workspace manifest has no namePrefix")
+    if max_mutations is None:
+        max_mutations = DEFAULT_OPERATOR_MAX_MUTATIONS
+    if (isinstance(max_mutations, bool) or not isinstance(max_mutations, int)
+            or not 1 <= max_mutations <= OPERATOR_MAX_MUTATIONS_CAP):
+        raise core.AtcsError(
+            "invalid-input", f"maxMutations must be an integer 1..{OPERATOR_MAX_MUTATIONS_CAP}, got {max_mutations!r}",
+        )
+    if observe is None:
+        observe = "fast"
+    if observe not in OPERATOR_OBSERVE_MODES:
+        raise core.AtcsError("invalid-input", f"observe must be one of {OPERATOR_OBSERVE_MODES}, got {observe!r}")
     instances = list((edit_domain or {}).get("instances") or [])
     nets = list((edit_domain or {}).get("nets") or [])
-    globals_ = {"EDIT_DOMAIN_INSTANCES": instances, "EDIT_DOMAIN_NETS": nets}
+    regions = _operator_regions(edit_domain)
+    pins = list(target_pins or [])
+    globals_ = {
+        "EDIT_DOMAIN_INSTANCES": instances, "EDIT_DOMAIN_NETS": nets, "EDIT_DOMAIN_PINS": pins,
+        "EDIT_DOMAIN_REGIONS": [repr(v) if isinstance(v, float) else str(v) for region in regions for v in region],
+        "ATCS_MAX_MUTATIONS": [str(max_mutations)], "ATCS_OBSERVE": [observe],
+    }
     env = {"OPERATOR_TCL": str(operator_tcl_path), "OPS_LOG": str(ops_log_path), "NAME_PREFIX": name_prefix}
     tcl = compile_task("xtop-analysis-manual.tcl", env=env, globals_=globals_)
-    return {"tcl": tcl, "env": env, "editDomain": {"instances": instances, "nets": nets}}
+    return {
+        "tcl": tcl, "env": env, "editDomain": {"instances": instances, "nets": nets, "regions": regions},
+        "targetPins": pins, "maxMutations": max_mutations, "observe": observe,
+    }
 
 
 def compile_xtop_replay_task(design, tech_lef, cell_lef_glob, netlist, def_path, steps, output_root,
