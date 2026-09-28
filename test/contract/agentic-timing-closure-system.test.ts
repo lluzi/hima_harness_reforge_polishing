@@ -196,7 +196,7 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   assert.equal(joined.contributions[0].operations[0].toMaster, 'BUF2');
   assert.equal((await readFile(path.join(slotRoot, 'ops.jsonl'), 'utf8')).trim().split('\n').length, 1);
 });
-const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v5/atcs-xtop-operator-v5.sh';
+const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v6/atcs-xtop-operator-v6.sh';
 
 test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the local Site, and passes its Python contract tests', async (t) => {
   const h = await createHimaHome();

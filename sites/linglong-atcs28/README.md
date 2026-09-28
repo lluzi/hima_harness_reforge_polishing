@@ -1,6 +1,11 @@
 # linglong-atcs28 Site administration
 
-Current qualification candidate: `atcs-xtop-operator-v5.sh`, administrator-owned
+Current candidate (Issue 63, Pack 0.1.3): `atcs-xtop-operator-v6.sh` and
+`xtop-operator-environment-v6.template.json` under `operator-admin/atcs-v6/`. v6 is the qualified v5
+wrapper with only the `atcs-v6` paths and the new pinned `atcs_cli.py`/flow identities (honest no-fix
+capture); the verifier and Site profile bytes are unchanged. The Permit now reads `atcs-v6` only.
+
+Previous qualification candidate: `atcs-xtop-operator-v5.sh`, administrator-owned
 `verify-worker-startup.py`, and `xtop-operator-environment-v5.template.json`. v1–v4 remain historical
 unqualified candidates. v5 pins the verifier and a Site profile outside the Campaign, hashes source
 before importing it, independently regenerates both Tcl files in a read-only administrator snapshot,
