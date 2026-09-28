@@ -1342,14 +1342,18 @@ class PrepareRecipeReplayTests(unittest.TestCase):
     def test_a_plan_without_select_replays_every_ranked_session(self):
         self.assertEqual(len(prepare_default()["sessions"]), 2)
 
-    def test_merged_auto_finish_uses_the_brief_strings_hold_then_setup(self):
-        request = prepare_default()
+    def test_merged_auto_finish_is_the_control_arms_exact_qualified_sequence(self):
+        """The two arms differ only by the expert recipe: merged auto-finish includes the
+        qualified hold size-only line (`-size_cell_only -size_rule nominal_keywords`)."""
+        request = prepare_default(setupMargin=0.03, holdMargin=0.01)
         self.assertTrue(request["autoFinish"])
         self.assertEqual(request["autoFinishTcl"], [
-            "fix_hold_gba_violations -effort high -hold_target 0.0 -setup_margin 0.02",
-            "fix_setup_gba_violations -methods size_cell -effort high -setup_target 0.0 -hold_margin 0.02",
-            "fix_setup_gba_violations -methods insert_buffer -effort high -setup_target 0.0 -hold_margin 0.02",
+            "fix_setup_gba_violations -methods size_cell -effort high -setup_target 0.0 -hold_margin 0.01",
+            "fix_setup_gba_violations -methods insert_buffer -effort high -setup_target 0.0 -hold_margin 0.01",
+            "fix_hold_gba_violations -size_cell_only -size_rule nominal_keywords -hold_target 0.0 -setup_margin 0.03",
+            "fix_hold_gba_violations -effort high -hold_target 0.0 -setup_margin 0.03",
         ])
+        self.assertEqual(request["autoFinishTcl"], request["controlTcl"])
 
     def test_control_arm_is_the_old_flows_qualified_plain_auto_fix(self):
         request = prepare_default(setupMargin=0.03, holdMargin=0.01)
@@ -1377,6 +1381,14 @@ class PrepareRecipeReplayTests(unittest.TestCase):
                                                  "regions": [[0, 0, 10, 10]]})
         self.assertEqual(sessions[1]["domain"], {"instances": ["U3"], "nets": ["N3"], "pins": [], "regions": []})
         self.assertNotIn("domain", prepare_default())
+
+    def test_an_inverted_session_region_is_refused(self):
+        """The one region rule of work packages and Operator sessions: x1<=x2 and y1<=y2."""
+        sessions = recipe_sessions()
+        sessions["w01"]["editDomain"]["regions"] = [[10, 0, 0, 10]]
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.prepare_recipe_replay(recipe_plan(), BASE_STATE_ID, default_recipe(), sessions)
+        self.assertEqual(ctx.exception.code, "invalid-recipe")
 
     def test_a_slot_ranked_twice_is_refused(self):
         recipe = default_recipe()
@@ -1445,41 +1457,46 @@ class PrepareRecipeReplayTests(unittest.TestCase):
         self.assertNotIn("atcs_undo", integration.RECIPE_PROCS)
 
 
-class ParseGbaSummaryTests(unittest.TestCase):
+def real_sections(text):
+    """`{setup, hold}` texts of one real XTop summary report, as each arm's predict/*.rpt holds them."""
+    setup_at, hold_at = text.index("### setup summary ###"), text.index("### hold summary ###")
+    return {"setup": text[setup_at:hold_at], "hold": text[hold_at:]}
+
+
+class PredictionReadsRealSummariesTests(unittest.TestCase):
+    """Each arm's prediction reads its `summarize_gba_violations -exclude_path` reports through the
+    one shared parser (`contributions.parse_gain_summary`), pinned to real XTop output."""
+
+    def _prediction(self, predict_text):
+        request = integration.prepare_recipe_replay(
+            recipe_plan(), BASE_STATE_ID, default_recipe(), recipe_sessions(), required_scenarios=REAL_SCENARIOS)
+        _, state = reconcile_default(merged_kw={"predict_text": predict_text}, request=request)
+        return state["arms"]["merged"]["prediction"]
+
     def test_reads_the_real_plain_layout_per_scenario(self):
-        setup = integration.parse_gba_summary(REAL_PRE_OPT, "setup")
-        self.assertEqual(setup["total"], {"count": 12, "wns": -0.0387, "tns": -0.116})
-        self.assertEqual(setup["scenarios"]["func_ssg_rcworst_m40"], {"count": 12, "wns": -0.0387, "tns": -0.116})
-        self.assertEqual(setup["scenarios"]["func_ffg_cbest_125"], {"count": 0, "wns": 0.0, "tns": 0.0})
-        self.assertEqual(sorted(setup["scenarios"]), REAL_SCENARIOS)
-        hold = integration.parse_gba_summary(REAL_PRE_OPT, "hold")
-        self.assertEqual(hold["total"], {"count": 70, "wns": -0.1542, "tns": -3.9661})
-        self.assertEqual(hold["scenarios"]["func_ffg_cbest_m40"], {"count": 55, "wns": -0.0704, "tns": -0.7199})
+        prediction = self._prediction(real_sections(REAL_PRE_OPT))
+        self.assertEqual(prediction["setup"]["func_ssg_rcworst_m40"], {"count": 12, "worst": -0.0387, "tns": -0.116})
+        self.assertEqual(prediction["setup"]["func_ffg_cbest_125"], {"count": 0, "worst": 0.0, "tns": 0.0})
+        self.assertEqual(sorted(prediction["hold"]), REAL_SCENARIOS)
+        self.assertEqual(prediction["hold"]["func_ffg_cbest_m40"], {"count": 55, "worst": -0.0704, "tns": -0.7199})
+        self.assertEqual((prediction["worstSetupWns"], prediction["worstHoldWns"]), (-0.0387, -0.1542))
 
     def test_reads_the_current_columns_of_the_real_delta_layout(self):
-        hold = integration.parse_gba_summary(REAL_POST_OPT, "hold")
-        self.assertEqual(hold["total"], {"count": 66, "wns": -0.1542, "tns": -3.7707})
-        self.assertEqual(hold["scenarios"]["func_ffg_cbest_125"], {"count": 42, "wns": -0.0764, "tns": -0.6846})
-        self.assertEqual(sorted(hold["scenarios"]), REAL_SCENARIOS)
-        setup = integration.parse_gba_summary(REAL_POST_OPT, "setup")
-        self.assertEqual(setup["scenarios"]["func_ssg_rcworst_m40"], {"count": 12, "wns": -0.0387, "tns": -0.116})
-
-    def test_a_single_section_file_parses_without_naming_the_check(self):
-        hold_only = REAL_PRE_OPT[REAL_PRE_OPT.index("### hold summary ###"):]
-        self.assertEqual(integration.parse_gba_summary(hold_only)["total"]["tns"], -3.9661)
-        self.assertEqual(integration.parse_gba_summary(hold_only, "hold")["total"]["tns"], -3.9661)
-        self.assertIsNone(integration.parse_gba_summary(hold_only, "setup"))
+        prediction = self._prediction(real_sections(REAL_POST_OPT))
+        row = prediction["hold"]["func_ffg_cbest_125"]
+        self.assertEqual((row["count"], row["worst"], row["tns"]), (42, -0.0764, -0.6846))
+        self.assertEqual(prediction["holdTns"], -7.8307)
 
     def test_tolerates_carriage_returns(self):
-        parsed = integration.parse_gba_summary(REAL_PRE_OPT.replace("\n", "\r\n"), "setup")
-        self.assertEqual(parsed["total"]["wns"], -0.0387)
+        sections = {check: text.replace("\n", "\r\n") for check, text in real_sections(REAL_PRE_OPT).items()}
+        self.assertEqual(self._prediction(sections)["worstSetupWns"], -0.0387)
 
-    def test_text_without_the_table_is_none(self):
-        self.assertIsNone(integration.parse_gba_summary("Error: no timing data\n"))
-        self.assertIsNone(integration.parse_gba_summary(""))
-        self.assertIsNone(integration.parse_gba_summary(None))
+    def test_text_without_the_table_is_an_unknown_prediction(self):
         eco_actions_only = REAL_POST_OPT[:REAL_POST_OPT.index("### setup summary ###")]
-        self.assertIsNone(integration.parse_gba_summary(eco_actions_only))
+        for text in ("Error: no timing data\n", "", None, eco_actions_only):
+            with self.subTest(text=text):
+                prediction = self._prediction({"setup": text, "hold": real_sections(REAL_PRE_OPT)["hold"]})
+                self.assertIn("setup", prediction["unknown"])
 
 
 NETLIST_ECO = "ecoAddRepeater -term {U3/A} -cell BUFX2 -name atcs_w02_r1_b1\necoChangeCell -inst U1 -cell BUFX2\n"
@@ -1619,6 +1636,59 @@ class ReconcileRecipeTests(unittest.TestCase):
         self.assertEqual(state["chosen"]["arm"], "merged")
         self.assertIn("tie", state["chosen"]["reason"])
 
+    def test_merged_with_better_hold_but_worse_setup_wns_is_not_chosen(self):
+        """Never worse than plain auto-fix: a merged arm that loses setup WNS is refused even
+        when its hold WNS gain makes its worst-of-both slack better."""
+        _, state = reconcile_default(merged_kw={"setup": {"s1": (1, -0.03, -0.03), "s2": (0, 0.0, 0.0)},
+                                                "hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.01, -0.01)}})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIn("setup WNS", state["chosen"]["reason"])
+
+    def test_merged_with_better_setup_but_worse_hold_wns_is_not_chosen(self):
+        _, state = reconcile_default(merged_kw={"setup": {"s1": (0, 0.0, 0.0), "s2": (0, 0.0, 0.0)},
+                                                "hold": {"s1": (0, 0.0, 0.0), "s2": (2, -0.06, -0.06)}})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIn("hold WNS", state["chosen"]["reason"])
+
+    def test_a_wns_loss_within_one_rounding_step_is_no_worse(self):
+        _, state = reconcile_default(merged_kw={"setup": {"s1": (1, -0.0201, -0.0201), "s2": (0, 0.0, 0.0)},
+                                                "hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.04, -0.04)}})
+        self.assertEqual(state["chosen"]["arm"], "merged")
+
+    def test_merged_no_worse_on_wns_and_worse_on_tns_only_is_not_chosen(self):
+        _, state = reconcile_default(merged_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (4, -0.05, -0.20)}})
+        self.assertEqual(state["chosen"]["arm"], "control")
+
+    def test_equal_wns_with_one_tns_better_and_the_other_worse_is_not_chosen(self):
+        """No TNS trade-off when both WNS tie: a hold TNS gain does not buy a setup TNS loss."""
+        _, state = reconcile_default(merged_kw={"setup": {"s1": (2, -0.02, -0.03), "s2": (0, 0.0, 0.0)},
+                                                "hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.05, -0.05)}})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIn("setup TNS", state["chosen"]["reason"])
+
+    def test_a_better_wns_chooses_merged_even_with_a_worse_tns(self):
+        """WNS first: merged better on hold WNS and no worse on setup WNS is kept, whatever its TNS."""
+        _, state = reconcile_default(merged_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (3, -0.04, -0.20)}})
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertIn("hold WNS", state["chosen"]["reason"])
+
+    def test_equal_wns_and_a_tns_loss_within_the_tns_tolerance_is_no_worse(self):
+        _, state = reconcile_default(merged_kw={"setup": {"s1": (1, -0.02, -0.01), "s2": (0, 0.0, 0.0)},
+                                                "hold": {"s1": (0, 0.0, 0.0), "s2": (2, -0.05, -0.0805)}})
+        self.assertEqual(state["chosen"]["arm"], "merged")
+
+    def test_a_check_whose_fail_reason_read_failed_is_unread_not_empty(self):
+        request = prepare_default()
+        merged = arm_evidence("merged", receipts=merged_receipts(request), session_deltas=matching_session_deltas())
+        merged["result"]["failReasons"] = {"setup": 0, "hold": 1}
+        merged["failReasonText"] = {"setup": "no_setup_gain 3\n", "hold": "Error: unknown option\n"}
+        state = integration.reconcile_recipe(request, {"merged": merged, "control": arm_evidence("control")})
+        self.assertEqual(state["arms"]["merged"]["failReasons"], {"setup": {"no_setup_gain": 3}})
+        self.assertEqual(state["arms"]["merged"]["failReasonsUnread"], ["hold"])
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertEqual(state["failReasons"], {"arm": "merged", "setup": {"no_setup_gain": 3}, "unread": ["hold"]})
+        self.assertEqual(state["arms"]["control"]["failReasonsUnread"], [])
+
     def test_equal_worst_slack_is_broken_by_tns(self):
         _, state = reconcile_default(control_kw={"setup": {"s1": (3, -0.02, -0.05), "s2": (0, 0.0, 0.0)}})
         self.assertEqual(state["chosen"]["arm"], "merged")
@@ -1635,11 +1705,7 @@ class ReconcileRecipeTests(unittest.TestCase):
         request = integration.prepare_recipe_replay(
             recipe_plan(), BASE_STATE_ID, default_recipe(), recipe_sessions(), required_scenarios=REAL_SCENARIOS)
 
-        def sections(text):
-            setup_at, hold_at = text.index("### setup summary ###"), text.index("### hold summary ###")
-            return {"setup": text[setup_at:hold_at], "hold": text[hold_at:]}
-
-        post, pre = sections(REAL_POST_OPT), sections(REAL_PRE_OPT)
+        post, pre = real_sections(REAL_POST_OPT), real_sections(REAL_PRE_OPT)
         _, state = reconcile_default(merged_kw={"predict_text": post}, control_kw={"predict_text": pre},
                                      request=request)
         self.assertEqual(state["chosen"]["arm"], "merged")
@@ -1655,7 +1721,7 @@ class ReconcileRecipeTests(unittest.TestCase):
     def test_predictions_of_both_arms_are_recorded_per_scenario(self):
         _, state = reconcile_default()
         merged = state["arms"]["merged"]["prediction"]
-        self.assertEqual(merged["setup"]["s1"], {"count": 1, "wns": -0.02, "tns": -0.02})
+        self.assertEqual(merged["setup"]["s1"], {"count": 1, "worst": -0.02, "tns": -0.02})
         self.assertEqual(merged["worstSetupWns"], -0.02)
         self.assertEqual(merged["worstHoldWns"], -0.05)
         self.assertEqual(state["arms"]["control"]["prediction"]["hold"]["s2"]["tns"], -0.08)

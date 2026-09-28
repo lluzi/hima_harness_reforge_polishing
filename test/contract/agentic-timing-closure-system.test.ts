@@ -332,11 +332,21 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual(operatorNode('bind-worker-slots').parameters,
     { tool: 'worker-slots', arguments: { WORKER_SLOTS: { from: 'strategy', name: 'workerSlots' } } });
   assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.to === 'plan').map(edge => edge.from), ['bind-worker-slots']);
+  // Issue #64 Task 6: the `autoFinish` knob (0/1, default 1) reaches `replay-prepare` as its 4th argument.
+  assert.deepEqual(operatorNode('replay-prepare').parameters.arguments.AUTO_FINISH, { from: 'strategy', name: 'autoFinish' });
+  const replayPrepare = pack.contract.tools.find(item => item.id === 'replay-prepare')!;
+  assert.ok(replayPrepare.inputs.includes('AUTO_FINISH'));
+  assert.equal(replayPrepare.argv[replayPrepare.argv.length - 1], '${AUTO_FINISH}');
   assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.to === 'bind-worker-slots').map(edge => [edge.from, edge.revisit === true]).sort(),
     [['revisit-research', true], ['risk-query', false]]);
   const planner = pack.contract.workshops.find(item => item.id === 'plan-campaign')!;
-  for (const words of [/parked/, /workerSlots/, /worst setup check and the worst hold check/, /targetPins/, /share no instance/, /check key in the slot.s targets/, /may share edit-domain nets/]) {
+  for (const words of [/parked/, /workerSlots/, /worst setup check and the worst hold check/, /targetPins/, /share no instance/, /check key in the slot.s targets/, /share no edit-domain net/, /fail reasons/]) {
     assert.match(planner.purpose, words, `plan-campaign purpose states ${words}`);
+  }
+  assert.doesNotMatch(planner.purpose, /may share edit-domain nets/, 'US8: active slots are disjoint in nets as well as instances');
+  // US10/US34: the prior batch's post-auto-finish fail reasons reach the next generation's research.
+  for (const workshop of pack.contract.workshops.filter(item => item.id === 'plan-campaign' || /^research-worker-\d\d$/.test(item.id))) {
+    assert.ok(workshop.reads.includes('residualCases'), `${workshop.id} reads the residual cases and their batch fail reasons`);
   }
   // A parked slot's operate node is the batch no-op `operate-parked`, never an XTop session; an active
   // slot's stays the Team Operator's interactive session.

@@ -872,7 +872,7 @@ class XtopSessionRecipeTests(unittest.TestCase):
                         targets=["func_ss|hold|U2/D"], target_pins=["U2/D"])
         worst = ["func_ss|hold|U1/D"]
 
-        ranked = composition.analyze(BASE_STATE_ID, [bulk, covers], [], worst_checks=worst)["recipe"]
+        ranked = composition.analyze(BASE_STATE_ID, [bulk, covers], [], worst_keys=worst)["recipe"]
         self.assertEqual([entry["contribution"] for entry in ranked["sessions"]], [covers["id"], bulk["id"]])
         self.assertEqual(ranked["sessions"][0]["blockerCoverage"], 1)
         self.assertEqual(ranked["sessions"][0]["coveredChecks"], worst)
@@ -964,7 +964,7 @@ class XtopSessionRecipeTests(unittest.TestCase):
         covers = _session("w01", [("U1", "BUFX2")], _hold_gain(0.005), targets=[], target_pins=["U1/D"])
         bulk = _session("w02", [("U2", "BUFX2")], _hold_gain(0.040), targets=[], target_pins=["U2/D"])
         key = "func_ss|hold|U1/D@**async_default**"
-        ranked = composition.analyze(BASE_STATE_ID, [bulk, covers], [], worst_checks=[key],
+        ranked = composition.analyze(BASE_STATE_ID, [bulk, covers], [], worst_keys=[key],
                                      worst_endpoints={key: "U1/D"})["recipe"]
         self.assertEqual([entry["contribution"] for entry in ranked["sessions"]], [covers["id"], bulk["id"]])
         self.assertEqual(ranked["sessions"][0]["coveredChecks"], [key])

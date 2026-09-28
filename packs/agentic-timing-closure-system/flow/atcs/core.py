@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import time
@@ -276,3 +277,17 @@ def is_tcl_unsafe(value, allow_brackets=False):
     """
     charset = UNSAFE_TCL_CHARS_IN_BRACES if allow_brackets else UNSAFE_TCL_CHARS
     return any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F or ch in charset for ch in value)
+
+
+def region_box(value):
+    """``[x1, y1, x2, y2]`` as floats when `value` is an edit-domain region, else None.
+
+    A region is four finite, non-boolean numbers with ``x1 <= x2`` and ``y1 <= y2``. The one rule
+    every work package, Operator session and replay applies to `editDomain.regions`; comparing
+    the returned boxes compares regions by value (``0`` equals ``0.0``).
+    """
+    if (not isinstance(value, (list, tuple)) or len(value) != 4
+            or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in value)
+            or value[0] > value[2] or value[1] > value[3]):
+        return None
+    return [float(v) for v in value]

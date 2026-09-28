@@ -44,11 +44,11 @@ test('a reviewed scope reaches the Reviewer as its output contract and the Opera
       resultSchema: { id: 'atcs-worker-review/2', required: ['schema', 'planSha256', 'scope'] }, ...recipe },
   }) as never;
   const reviewer = delegationTaskPrompt(contract, effective({
-    reviewOutput: { scopeField: 'scope', commands: ['atcs_size_cell', 'atcs_undo'], maxMutations: 40 } }));
+    reviewOutput: { mode: 'scope', scopeField: 'scope', commands: ['atcs_size_cell', 'atcs_undo'], maxMutations: 40 } }));
   assert.match(reviewer, /set scope to one object with exactly the fields commands and maxMutations/);
   assert.match(reviewer, /chosen from: atcs_size_cell, atcs_undo\. maxMutations is an integer from 1 to 40/);
   const planSha256 = 'b'.repeat(64);
-  const operator = delegationTaskPrompt(contract, effective({ inlinePayload: { sourceResultRecordId: 'run-1#000002',
+  const operator = delegationTaskPrompt(contract, effective({ inlinePayload: { mode: 'scope', sourceResultRecordId: 'run-1#000002',
     adoptionRecordId: 'run-1#000003', planSha256, planHashArgument: 'planSha256',
     scope: { commands: ['atcs_size_cell'], maxMutations: 3 } } }));
   assert.match(operator, new RegExp(`carry planSha256 = ${planSha256}; the Host admits at most 3 mutations`));

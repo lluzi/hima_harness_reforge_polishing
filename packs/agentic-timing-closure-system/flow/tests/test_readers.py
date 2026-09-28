@@ -359,6 +359,15 @@ class WorkPackageReaderTest(unittest.TestCase):
         values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
         self.assertEqual(values[0]["value"], 0)
 
+    def test_regions_are_compared_by_value_not_by_spelling(self):
+        """`0` and `0.0` are the same coordinate: an integer region the Workshop copied from a
+        prepared float region is not drift."""
+        prepared = self._valid_candidate(editDomain={"instances": ["U1"], "nets": [], "regions": [[0.0, 0.0, 10.5, 20.0]]})
+        request = self._valid_candidate(editDomain={"instances": ["U1"], "nets": [], "regions": [[0, 0, 10.5, 20]]})
+        report = self._write_envelope(request, prepared=prepared)
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertEqual(values[0]["value"], 0)
+
     def test_a_request_drifting_from_its_prepared_package_is_invalid(self):
         """Review fix round 1: the session Tcl is baked from `state/workers.json[slot].workPackage`,
         so a request whose domain, pins, observation or scope differs would review one scope and run
@@ -622,8 +631,7 @@ class CampaignPlanReaderTest(unittest.TestCase):
         core.write_artifact(self.workspace / "state" / "observation.json", observation)
 
     def _write_worker_slots(self, count):
-        _, body = atcs_cli._cmd_worker_slots(str(self.workspace), [str(count)])
-        core.write_artifact(self.workspace / "state" / "worker-slots.json", body)
+        self.assertEqual(atcs_cli.main(["worker-slots", str(self.workspace), str(count)]), 0)
 
     def _valid_package(self, task_id):
         """An active package: slot wNN owns instance U<N> and targets its pin U<N>/A (disjoint)."""
@@ -717,6 +725,19 @@ class CampaignPlanReaderTest(unittest.TestCase):
         packages = self._six()
         packages["w05"]["editDomain"]["instances"].append("U2")
         self.assertGreaterEqual(self._count(packages), 1)
+
+    def test_an_edit_domain_net_shared_by_two_active_slots_is_counted(self):
+        """US8: active slots' edit domains are disjoint in nets as well as instances."""
+        packages = self._six()
+        self.assertEqual(self._count(packages), 0)
+        packages["w02"]["editDomain"]["nets"].append("n_shared")
+        packages["w05"]["editDomain"]["nets"].append("n_shared")
+        self.assertEqual(self._count(packages), 1)
+
+    def test_a_net_named_by_a_parked_slot_is_not_shared(self):
+        packages = self._six(parked=("w06",))
+        packages["w02"]["editDomain"]["nets"].append("n_only")
+        self.assertEqual(self._count(packages), 0)
 
     def test_a_target_pin_owner_shared_by_two_active_slots_is_counted(self):
         packages = self._six()
@@ -1199,6 +1220,22 @@ class EvaluationReaderTest(unittest.TestCase):
         self.assertEqual(by_type["tc_final_hold_wns_ns"]["mode"], "hold")
         self.assertEqual(by_type["tc_fixed_check_count"]["value"], 3)
 
+    def _guarantee_value(self, extra):
+        obj = core.stamp("evaluation", dict({"candidateId": "m" * 20, "finalSetupWns": core.known(0.0)}, **extra))
+        report = self.workspace / "flow" / "records" / "evaluation.json"
+        core.write_artifact(report, obj)
+        values = read_atcs.read("evaluation", report, self.workspace)
+        return {v["type"]: v for v in values}["tc_batch_guarantee_unevidenced"]["value"]
+
+    def test_an_unevidenced_batch_guarantee_is_a_reader_value(self):
+        """A recipe batch whose merged arm was chosen only because control was unusable is
+        reported with the final evaluation."""
+        self.assertEqual(self._guarantee_value({"batchGuarantee": {
+            "evidenced": False, "arm": "merged", "reason": "control arm unusable"}}), 1)
+        self.assertEqual(self._guarantee_value({"batchGuarantee": {
+            "evidenced": True, "arm": "merged", "reason": "compared"}}), 0)
+        self.assertEqual(self._guarantee_value({}), 0, "a batch with no recipe guarantee has none unevidenced")
+
     def test_unknown_final_wns_is_never_zero(self):
         obj = core.stamp("evaluation", {
             "candidateId": "m" * 20,
@@ -1676,6 +1713,7 @@ class SemanticsCoverageTest(unittest.TestCase):
         "tc_applicable_constraint_unknown_count", "tc_fixed_check_count", "tc_missing_prior_check_count",
         "tc_refresh_count", "tc_accepted_artifact_ready", "tc_stop_required", "tc_next_action",
         "tc_selected_contribution_count", "tc_worker_refusal_count", "tc_presta_gate_net_count",
+        "tc_batch_guarantee_unevidenced",
     }
 
     def _load_yaml_light(self, path):

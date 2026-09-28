@@ -219,8 +219,11 @@ class ExpertScopeWorkPackageTest(unittest.TestCase):
 
     def test_the_session_adapter_admits_the_package_budget_and_modes(self):
         from atcs import adapters
-        self.assertLessEqual(workspaces.SCOPE_MAX_MUTATIONS, adapters.OPERATOR_MAX_MUTATIONS_CAP)
-        self.assertEqual(workspaces.OBSERVE_MODES, adapters.OPERATOR_OBSERVE_MODES)
+        for observe in workspaces.OBSERVE_MODES:
+            task = adapters.compile_xtop_analysis_manual_task(
+                {"namePrefix": "atcs_w01_r1_"}, {"instances": [], "nets": []}, "/ws/operator.tcl", "/ws/ops.jsonl",
+                max_mutations=workspaces.SCOPE_MAX_MUTATIONS, observe=observe)
+            self.assertEqual((task["maxMutations"], task["observe"]), (workspaces.SCOPE_MAX_MUTATIONS, observe))
 
     def test_a_full_expert_package_is_stamped_with_its_scope(self):
         package = self._package(observe="full",

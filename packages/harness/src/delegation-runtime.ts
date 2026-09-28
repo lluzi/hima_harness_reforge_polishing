@@ -367,7 +367,7 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
         // A Reviewer feeding a scope Operator is gated here, before result-observed, so a bad scope
         // leaves the child accepted: it can be followed up, or cancelled so the execution settles.
         const reviewOutput = found.effective.recipe.reviewOutput;
-        const scopeProblem = reviewOutput !== undefined && 'scopeField' in reviewOutput
+        const scopeProblem = reviewOutput?.mode === 'scope'
             ? reviewedScopeProblem(payload[reviewOutput.scopeField], reviewOutput) : undefined;
         if (scopeProblem !== undefined) {
             const left = found.effective.budgetShare.maxFollowups - found.followups;
@@ -412,8 +412,8 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
  * transitively depends on. Team identities are fixed per execution, so once each such Team has lost
  * one of those members without an observed result, nothing in this execution can produce it. Settle
  * the execution as a failed attempt; the next begin gets fresh Team identities. This holds whatever
- * the tool's mode: a hybrid tool's batch path may be a Pack's no-op for executions that run no Team
- * (ATCS #64 Task 5), never a way to finish one whose Team is stranded. An execution with no lost
+ * the tool's mode: a hybrid tool's batch path may be a Pack's no-op for executions that run no Team,
+ * never a way to finish one whose Team is stranded. An execution with no lost
  * Team delegation is never touched here. Caller holds the Run's admission queue. Returns whether any
  * execution settled.
  */

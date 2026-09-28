@@ -168,6 +168,7 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 | `tc_applicable_constraint_unknown_count` | count | 必需约束中证据不充分的项 | 不能被 failure=0 覆盖 |
 | `tc_fixed_check_count` | count | 同一身份 check 明确负转非负的数量 | 从报告消失不计 fixed |
 | `tc_missing_prior_check_count` | count | 需要对比而无法再次定位/观察的旧 checks | 与结构替换 lineage 分开解释 |
+| `tc_batch_guarantee_unevidenced` | count | 配方批次（Issue #64）只因 control arm 不可用才选 merged、XTop 未证明其不劣于 plain auto-fix 时为 1（`evaluation.batchGuarantee.evidenced: false`） | 两 arm 已比较或非配方批次为 0；随最终评估报告，不参与路由 |
 | `tc_refresh_count` | count | 已完成的实际完整物理刷新次数 | 与研究次数、generation 分开 |
 | `tc_accepted_artifact_ready` | count | 对应选择的实际 DB/恢复材料核验完备为 1 | 存在同名文件不足以为 1 |
 | `tc_stop_required` | count | 当前研究合同内必须等待外部输入/范围条件成立为 1 | 配套明确 reason；不是全局不可行证明 |

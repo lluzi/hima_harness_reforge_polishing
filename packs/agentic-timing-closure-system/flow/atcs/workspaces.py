@@ -138,7 +138,6 @@ M3 reconciles them.
 from __future__ import annotations
 
 import json
-import math
 import time
 from pathlib import Path
 
@@ -234,10 +233,7 @@ def _expert_problems(obj):
             problems.append("editDomain.regions must be a list of [x1, y1, x2, y2] boxes")
         else:
             for region in regions:
-                if (not isinstance(region, list) or len(region) != 4
-                        or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
-                               for v in region)
-                        or region[0] > region[2] or region[1] > region[3]):
+                if not isinstance(region, list) or core.region_box(region) is None:
                     problems.append(f"editDomain region {region!r} is not [x1, y1, x2, y2] with x1<=x2, y1<=y2")
     return problems
 
@@ -245,6 +241,23 @@ def _expert_problems(obj):
 def is_parked(package):
     """True for a parked package: `parked` is exactly `true`."""
     return isinstance(package, dict) and package.get("parked") is True
+
+
+def prepared_slot_parked(entry):
+    """Whether the `state/workers.json` slot entry `entry` is a parked slot.
+
+    `prepare-workers` marks an entry ``parked: true`` exactly when its `workPackage` is parked;
+    an entry where the two disagree is refused (``identity-mismatch``) rather than read either way.
+    """
+    entry = entry if isinstance(entry, dict) else {}
+    marked, package_parked = entry.get("parked") is True, is_parked(entry.get("workPackage"))
+    if marked != package_parked:
+        raise core.AtcsError(
+            "identity-mismatch",
+            f"state/workers.json marks the slot parked={marked} but its prepared package is "
+            f"{'parked' if package_parked else 'active'}",
+        )
+    return marked
 
 
 def slot_number(task_id):
@@ -271,9 +284,14 @@ def bound_view(package):
     def names(value):
         return sorted(json.dumps(item, sort_keys=True) for item in value) if isinstance(value, list) else repr(value)
 
+    regions = domain.get("regions") or []
+    if isinstance(regions, list):
+        # By value: `[0, 0, 1, 1]` and `[0.0, 0.0, 1.0, 1.0]` are the same box.
+        regions = [core.region_box(region) or region for region in regions]
     return {
-        "parked": package.get("parked") is True,
-        "editDomain": {key: names(domain.get(key) or []) for key in ("instances", "nets", "regions")},
+        "parked": is_parked(package),
+        "editDomain": {"instances": names(domain.get("instances") or []), "nets": names(domain.get("nets") or []),
+                       "regions": names(regions)},
         "targetPins": names(package.get("targetPins")),
         "observe": package.get("observe", "fast"),
         "scope": {"commands": names(scope.get("commands")), "maxMutations": repr(scope.get("maxMutations"))},

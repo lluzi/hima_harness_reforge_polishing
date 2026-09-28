@@ -72,6 +72,7 @@ SPEC_VALUE_NAMES = [
     "tc_applicable_constraint_unknown_count",
     "tc_fixed_check_count",
     "tc_missing_prior_check_count",
+    "tc_batch_guarantee_unevidenced",
     "tc_refresh_count",
     "tc_accepted_artifact_ready",
     "tc_stop_required",

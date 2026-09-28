@@ -8,15 +8,17 @@
 #   ::ATCS_ARM merged   000.dump; per ranked session (RECIPE_TCL): its kept
 #                       commands through the toolkit procedures, confined to
 #                       that session's own edit domain, name prefix and plan
-#                       hash, as its worker session was, then NNN.dump; set_dont_touch on every instance the applied
-#                       commands changed; auto-finish (AUTO_FIX_TCL, hold then
-#                       setup; empty when autoFinish is off); auto.dump; the
-#                       final summaries; one Innovus ECO pair into eco/.
+#                       hash, as its worker session was, then NNN.dump;
+#                       set_dont_touch on every instance the applied commands
+#                       changed; auto-finish (AUTO_FIX_TCL: the control arm's
+#                       plain auto-fix; empty when autoFinish is off);
+#                       auto.dump; the final summaries and fail reasons; one
+#                       Innovus ECO pair into eco/.
 #   ::ATCS_ARM control  000.dump; the old flow's qualified plain auto-fix
-#                       (AUTO_FIX_TCL); auto.dump; the final summaries; one
-#                       Innovus ECO pair into eco-control/.
+#                       (AUTO_FIX_TCL); auto.dump; the final summaries and fail
+#                       reasons; one Innovus ECO pair into eco-control/.
 #
-# Best effort (user amendment 2026-09-28): a recipe command the composition
+# Best effort: a recipe command the composition
 # marked skip is never sent; a command that errors or that the toolkit refuses
 # is recorded as skipped with its reason, and the replay continues. Each
 # auto-fix line is attempted once and its code recorded. The Pack chooses the
@@ -27,18 +29,22 @@
 #                 {"stepId","slot","status":"applied"|"skipped","attempted",
 #                  ["reason"],["seq"]} (seq = this run's ops.jsonl line)
 #   DUMP_DIR      000.dump, 001.dump .. (one per session), auto.dump
-#   PREDICT_DIR   setup.rpt, hold.rpt: summarize_gba_violations -exclude_path
+#   PREDICT_DIR   setup.rpt, hold.rpt: summarize_gba_violations -exclude_path;
+#                 setup-fail-reasons.rpt, hold-fail-reasons.rpt: the same with
+#                 -with_top_n FAIL_REASON_TOP_N -with_fail_reason, after auto-fix
 #   ARM_RESULT    {"arm","complete":true,"tainted","protected","protectMissing","protectCode",
 #                  "protectResult","autoFix":[{command,code,result}],
-#                  "predict":{"setup","hold"},"exportCode","exportResult"},
+#                  "predict":{"setup","hold"},"failReasons":{"setup","hold"},
+#                  "exportCode","exportResult"},
 #                 written last: its absence means the run never finished.
 #
 # Required env vars: RECIPE_TCL AUTO_FIX_TCL AUTO_PREFIX RECEIPTS_LOG DUMP_DIR
-#                    PREDICT_DIR ARM_RESULT (plus xtop-operator.tcl's own)
+#                    PREDICT_DIR ARM_RESULT FAIL_REASON_TOP_N (plus xtop-operator.tcl's own)
 ########################################################################
-foreach required {RECIPE_TCL AUTO_FIX_TCL AUTO_PREFIX RECEIPTS_LOG DUMP_DIR PREDICT_DIR ARM_RESULT} {
+foreach required {RECIPE_TCL AUTO_FIX_TCL AUTO_PREFIX RECEIPTS_LOG DUMP_DIR PREDICT_DIR ARM_RESULT FAIL_REASON_TOP_N} {
     if {![info exists env($required)]} { error "$required is required" }
 }
+atcs_int FAIL_REASON_TOP_N $env(FAIL_REASON_TOP_N) 1 100
 if {![info exists ::ATCS_ARM] || [lsearch -exact {merged control} $::ATCS_ARM] < 0} {
     error "ATCS_ARM must be merged or control"
 }
@@ -146,6 +152,12 @@ atcs_dump_cells [file join $env(DUMP_DIR) auto.dump]
 
 set predict_setup [catch {redirect -file [file join $env(PREDICT_DIR) setup.rpt] {summarize_gba_violations -exclude_path -setup}}]
 set predict_hold [catch {redirect -file [file join $env(PREDICT_DIR) hold.rpt] {summarize_gba_violations -exclude_path -hold}}]
+# What auto-fix left unfixed, and why (the atcs_gain probe's fail-reason reading, without a reference).
+set fail_reason_codes {}
+foreach check {setup hold} {
+    lappend fail_reason_codes $check [catch {redirect -file [file join $env(PREDICT_DIR) $check-fail-reasons.rpt] \
+        [list summarize_gba_violations -exclude_path -with_top_n $env(FAIL_REASON_TOP_N) -with_fail_reason -$check]}]
+}
 
 if {$::ATCS_ARM eq "merged"} {
     file mkdir eco
@@ -160,6 +172,7 @@ fconfigure $fh -encoding utf-8
 puts $fh [atcs_jobj [list arm [atcs_js $::ATCS_ARM] complete true tainted [atcs_js $::atcs_tainted] \
     protected [atcs_jarr $protected] protectMissing [atcs_jarr $protect_missing] protectCode $protect_code protectResult [atcs_js [atcs_clip $protect_result 2000]] \
     autoFix "\[[join $auto_fix ,]\]" predict [atcs_jobj [list setup $predict_setup hold $predict_hold]] \
+    failReasons [atcs_jobj $fail_reason_codes] \
     exportCode $export_code exportResult [atcs_js [atcs_clip $export_result 2000]]]]
 close $fh
 exit 0
