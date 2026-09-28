@@ -82,3 +82,52 @@ test('execution facts coalesce to one queued wake-up while human controls stay i
     await host.dispose(); await home.h.dispose();
   }
 });
+
+test('a human clearing a blocked node queues a wake-up turn for the idle owner without any person message', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0.01, failures: 9 });
+  assert.ok(home);
+  const host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  let maintenance: Promise<void> | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    // Holds the owner in its idle phase so the queued turn stays observable instead of calling a model.
+    maintenance = owner.runMaintenance((signal) => new Promise<void>((resolve) => {
+      signal.addEventListener('abort', () => resolve(), { once: true });
+    }));
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 },
+      ownerSessionId: String(owner.id), retryAllowance: 1 });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    runId = started.run.id;
+    const nodeId = started.run.currentNode!;
+    let request = 0;
+    const act = (action: 'begin' | 'work' | 'continue', fields: { executionId?: string; nodeId?: string; origin?: 'human' | 'agent' } = {}) => {
+      const control = host.ctx.hima.ledger.run(runId!)!.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), expectedEpoch: control.epoch,
+        expectedRevision: control.revision, requestId: `clear-${++request}`, action, ...fields });
+    };
+    const begun = await act('begin', { nodeId });
+    const executionId = begun.receipt?.executionId;
+    assert.ok(executionId);
+    assert.equal((await act('work', { executionId })).kind, 'accepted');
+    await waitUntil('the node is blocked for a person', () =>
+      host.ctx.hima.ledger.run(runId!)!.control!.paused.includes(nodeId));
+    owner.inbox.clear();
+
+    const cleared = await act('continue', { nodeId, origin: 'human' });
+    assert.equal(cleared.kind, 'accepted', cleared.reason);
+    assert.deepEqual(cleared.context.run.control?.paused, []);
+    assert.equal(cleared.notification?.status, 'queued', 'the person is told the owner was notified');
+    assert.equal(owner.inbox.nextTurn.length, 1, 'the clearance is an ordinary follow-up turn that wakes an idle owner');
+    assert.match(messageText(owner.inbox.nextTurn[0]!), new RegExp(`user continued node ${nodeId}`));
+    assert.equal(owner.status, 'idle', 'nothing but the queued notification is needed to start the owner');
+
+    owner.cancel({ kind: 'hook', reason: 'clearance notification test complete' });
+    await maintenance;
+    maintenance = undefined;
+  } finally {
+    if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
+});

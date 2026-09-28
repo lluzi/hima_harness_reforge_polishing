@@ -103,6 +103,7 @@
     "test/contract/view.test.ts",
     "test/contract/workbench-address.test.ts",
     "test/contract/workshop.host.test.ts",
+    "test/contract/workshop-recovery.host.test.ts",
     "test/contract/xtop-timing-closure.test.ts"
   ],
   "desktop": [
