@@ -44,6 +44,11 @@ from atcs import refresh  # noqa: E402
 
 READ_ATCS_PATH = PACK_DIR / "tools" / "read-atcs.py"
 
+# Issue #64 Task 4: every work package carries the expert Operator's scope (the Task 3 toolkit
+# mutations, at the recipe cap) and its target pins.
+EXPERT_SCOPE = {"commands": ["atcs_size_cell", "atcs_insert_buffer", "atcs_fix_hold_pins", "atcs_undo"],
+                "maxMutations": 120}
+
 _spec = importlib.util.spec_from_file_location("read_atcs", READ_ATCS_PATH)
 read_atcs = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(read_atcs)
@@ -233,6 +238,7 @@ class SubprocessIdentityTest(unittest.TestCase):
             "targets": [], "editDomain": {"instances": [], "nets": [], "regions": []},
             "protected": {"instances": [], "nets": []}, "mayAffect": [],
             "actions": ["size_cell"], "budget": {"xtopMinutes": 5, "queries": 1, "attempts": 1},
+            "targetPins": [], "scope": dict(EXPERT_SCOPE),
         }
         envelope = {"candidate": candidate, "baseState": design, "siteCapabilities": {}}
         report = self.workspace / "flow" / "records" / "work-package.json"
@@ -271,6 +277,8 @@ class WorkPackageReaderTest(unittest.TestCase):
             "mayAffect": [],
             "actions": ["size_cell"],
             "budget": {"xtopMinutes": 30, "queries": 5, "attempts": 3},
+            "targetPins": ["U1/A"],
+            "scope": dict(EXPERT_SCOPE),
         }
         candidate.update(overrides)
         return candidate
@@ -302,21 +310,41 @@ class WorkPackageReaderTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             read_atcs.read("worker-request", report, self.workspace, extra=["w02"])
 
-    def test_bounded_worker_admits_only_declared_sizing_candidates(self):
+    def test_an_expert_worker_request_needs_no_pinned_action_list(self):
+        """Issue #64 Task 4: the Team's Reviewer approves a scope, not one of a list of
+        sizing actions, so a request is admitted on its package alone."""
         report = self._write_envelope(self._valid_candidate())
-        envelope = json.loads(report.read_text())
-        envelope["actions"] = [{"instance": "U1", "toMaster": "BUF2"}]
-        report.write_text(json.dumps(envelope))
         values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
-        self.assertEqual(values[0]["value"], 0)
-        envelope["actions"][0]["instance"] = "OUTSIDE"
-        report.write_text(json.dumps(envelope))
-        with self.assertRaisesRegex(ValueError, "outside"):
-            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 0}])
 
-    def test_bounded_worker_without_action_authority_is_refused(self):
-        report = self._write_envelope(self._valid_candidate())
-        with self.assertRaisesRegex(ValueError, "sizing candidates"):
+    def test_a_scope_command_outside_the_toolkit_mutations_is_invalid(self):
+        for command in ("atcs_ref", "atcs_export_changes", "size_cell", "exec"):
+            with self.subTest(command=command):
+                scope = {"commands": ["atcs_size_cell", command, "atcs_undo"], "maxMutations": 120}
+                report = self._write_envelope(self._valid_candidate(scope=scope))
+                values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+                self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_a_request_without_scope_or_target_pins_is_invalid(self):
+        for key in ("scope", "targetPins"):
+            with self.subTest(key=key):
+                candidate = self._valid_candidate()
+                del candidate[key]
+                report = self._write_envelope(candidate)
+                values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+                self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_slot_w06_is_accepted_and_w07_is_refused(self):
+        report = self._write_envelope(self._valid_candidate(taskId="w06"))
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w06"])
+        self.assertEqual(values[0]["value"], 0)
+        report = self._write_envelope(self._valid_candidate(taskId="w07"))
+        with self.assertRaisesRegex(ValueError, "w07"):
+            read_atcs.read("worker-request", report, self.workspace, extra=["w07"])
+
+    def test_a_target_pin_whose_owner_is_not_in_the_netlist_is_refused(self):
+        report = self._write_envelope(self._valid_candidate(targetPins=["OUTSIDE/A"]))
+        with self.assertRaisesRegex(ValueError, "not a hierarchical pin"):
             read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
 
     def test_tampered_base_state_is_refused(self):
@@ -334,7 +362,8 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
     """T63 real failure: w01 admitted actions naming a bare LEAF instance name
     from a hierarchical post-route netlist (`g96219`, declared inside a
     sub-module, not directly under `top`) -- XTop, opened at `top`, could not
-    find it. A worker action `instance` must be a full `/`-separated
+    find it. The expert Operator names edit-domain instances and target pins
+    exactly (Issue #64 Task 4), so every one must be a full `/`-separated
     hierarchical path from the base netlist's own top module."""
 
     HIER_NETLIST = (
@@ -352,7 +381,7 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
         self.workspace = _make_workspace(self.tmp.name)
         self.design = _build_design_state(self.workspace, netlist_text=self.HIER_NETLIST)
 
-    def _write_envelope(self, instance, domain):
+    def _write_envelope(self, instance, domain, target_pins=None):
         candidate = {
             "taskId": "w01",
             "baseStateId": self.design["id"],
@@ -363,12 +392,13 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
             "mayAffect": [],
             "actions": ["size_cell"],
             "budget": {"xtopMinutes": 30, "queries": 5, "attempts": 3},
+            "targetPins": [instance + "/A1"] if target_pins is None else target_pins,
+            "scope": dict(EXPERT_SCOPE),
         }
         envelope = {
             "candidate": candidate,
             "baseState": self.design,
             "siteCapabilities": {},
-            "actions": [{"instance": instance, "toMaster": "CKAN2D4BWP35P140HVT"}],
         }
         report = self.workspace / "flow" / "records" / "worker-request.json"
         _write(report, json.dumps(envelope))
@@ -390,6 +420,23 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
         report = self._write_envelope("wrong_sub/g96219", domain=["wrong_sub/g96219"])
         with self.assertRaisesRegex(ValueError, "not a hierarchical instance"):
             read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+
+    def test_a_bare_leaf_target_pin_is_refused(self):
+        report = self._write_envelope("u_sub/g96219", domain=["u_sub/g96219"], target_pins=["g96219/A1"])
+        with self.assertRaisesRegex(ValueError, "not a hierarchical pin"):
+            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+
+    def test_a_pin_on_a_module_instance_is_refused(self):
+        """A target pin names a leaf cell's pin; `u_sub` is a module instance, not a cell."""
+        report = self._write_envelope("u_sub/g96219", domain=["u_sub/g96219"], target_pins=["u_sub/X"])
+        with self.assertRaisesRegex(ValueError, "not a hierarchical pin"):
+            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+
+    def test_a_full_hierarchical_target_pin_outside_the_domain_is_admitted(self):
+        """Target pins are the blockers' endpoints; they need not be edit-domain cells."""
+        report = self._write_envelope("u_sub/g96219", domain=[], target_pins=["u_sub/g96219/A1"])
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertEqual(values[0]["value"], 0)
 
     def test_escaped_identifier_instance_works(self):
         """`g96219` is declared in the netlist as the Verilog escaped
@@ -415,12 +462,13 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
             "mayAffect": [],
             "actions": ["size_cell"],
             "budget": {"xtopMinutes": 30, "queries": 5, "attempts": 3},
+            "targetPins": ["u_sub/g96219/A1"],
+            "scope": dict(EXPERT_SCOPE),
         }
         envelope = {
             "candidate": candidate,
             "baseState": design,
             "siteCapabilities": {},
-            "actions": [{"instance": "u_sub/g96219", "toMaster": "CKAN2D4BWP35P140HVT"}],
         }
         report = self.workspace / "flow" / "records" / "worker-request-escaped.json"
         _write(report, json.dumps(envelope))
@@ -475,6 +523,7 @@ class CampaignPlanReaderTest(unittest.TestCase):
             "targets": ["func_ssg_rcworst_m40|hold|X"], "editDomain": {"instances": ["U1"], "nets": [], "regions": []},
             "protected": {"instances": [], "nets": []}, "mayAffect": [], "actions": ["size_cell"],
             "budget": {"xtopMinutes": 30, "queries": 5, "attempts": 3},
+            "targetPins": ["U1/A"], "scope": dict(EXPERT_SCOPE),
         }
 
     def _write_envelope(self, work_packages, reason="close the campaign's targeted checks", site_capabilities=None):

@@ -11,8 +11,9 @@ reader's own `argv` (see `readers/*.yml`) is::
 so this script's own `sys.argv` is
 ``[read-atcs.py, <kind>, <report path>, <out path>, <workspace path>, <extra...>]``
 — `<kind>` selects which artifact shape below is read; a worker-slot reader
-appends one literal `w01`/`w02`/`w03` as `<extra[0]>` to cross-check the
-artifact's own `taskId` against the slot the reader declaration is bound to.
+appends one literal slot `w01`..`w06` as `<extra[0]>` to cross-check the
+artifact's own `taskId` against the slot the reader declaration is bound to
+(any other slot is refused).
 
 Harness contract (`.superpowers/sdd/pack-mechanics.md` §1.13,
 `packages/harness/src/semantics.ts:319-353` `validateReading`): this script
@@ -100,7 +101,12 @@ from pathlib import Path
 #
 #   work-package           {"candidate": {...unstamped work-package fields...},
 #   worker-request          "baseState": {...a stamped "design-state" artifact...},
-#                            "siteCapabilities": {"pgVerification": bool, ...}}
+#                            "siteCapabilities": {"pgVerification": bool, ...}
+#                            [, "sessionPlan": ...]}
+#                           (Issue #64 Task 4: the candidate carries the expert Operator's
+#                            `scope`, `targetPins`, optional `observe` and `editDomain.regions`;
+#                            the worker Team's Reviewer approves a scope from it, so there is no
+#                            top-level `actions` list any more.)
 #
 #   campaign-plan           {"candidate": {"workPackages": {"w01": {...}, "w02": {...},
 #                             "w03": {...}}, "reason": "<str>"},
@@ -403,6 +409,33 @@ def _is_hierarchical_instance(hierarchy, top, instance_path):
     return True
 
 
+def _is_hierarchical_pin(hierarchy, top, pin_path):
+    """True when `pin_path` is ``<instance path>/<pin>`` on a leaf cell reached from `top`.
+
+    The owner must be a hierarchical instance (`_is_hierarchical_instance`)
+    whose declared type is not itself a user module: a target pin is a
+    cell's pin, never a module port. The pin name itself is not resolved
+    (the netlist does not declare library pins).
+    """
+    if not isinstance(pin_path, str) or not pin_path:
+        return False
+    segments = _split_instance_path(pin_path)
+    if segments is None or len(segments) < 2 or any(segment == "" for segment in segments):
+        return False
+    current_module = top
+    for index, segment in enumerate(segments[:-1]):
+        instances = hierarchy.get(current_module)
+        if instances is None or segment not in instances:
+            return False
+        instance_type = instances[segment]
+        if index == len(segments) - 2:
+            return instance_type not in hierarchy
+        if instance_type not in hierarchy:
+            return False
+        current_module = instance_type
+    return False
+
+
 def _resolve_id_in_workspace(workspace, artifact_id, exclude_dirnames=("hima-readers",)):
     """Best-effort: find a JSON file under `workspace` whose own `id` matches.
 
@@ -551,6 +584,15 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
     request's `tc_request_invalid_count` to 0. `workspaces.request_invalid_
     count` (never `validate_work_package`, which raises) is the one helper
     this handler defers to for the actual count, per this task's brief.
+
+    Issue #64 Task 4: that count covers the expert Operator fields (`scope`
+    commands within the toolkit mutations and keeping `atcs_undo`,
+    `scope.maxMutations` at the recipe cap, `targetPins`, `observe`,
+    `editDomain.regions`). A slot argument outside `workspaces.TASK_IDS`
+    (w01..w06) is refused, and every edit-domain instance and target pin
+    must resolve as a full hierarchical path in the verified base netlist
+    (the pin's owner a leaf cell), or the read is refused. There is no
+    top-level `actions` list any more: the worker Team approves a scope.
     """
     core = mods["core"]
     workspaces_mod = mods["workspaces"]
@@ -570,38 +612,38 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
     _verify_identity(base_state, "design-state", core)
     _verify_design_state_refs(base_state, workspace, core)
 
+    if expected_task_id is not None and expected_task_id not in workspaces_mod.TASK_IDS:
+        raise ValueError(f"worker slot {expected_task_id!r} is not one of {workspaces_mod.TASK_IDS}")
     if expected_task_id is not None and candidate.get("taskId") != expected_task_id:
         raise ValueError(f"candidate.taskId must be {expected_task_id!r}, got {candidate.get('taskId')!r}")
 
     count = workspaces_mod.request_invalid_count(candidate, base_state, site_capabilities)
-    if expected_task_id == "w01":
-        actions = envelope.get("actions")
-        domain = (candidate.get("editDomain") or {}).get("instances") or []
-        if not isinstance(actions, list) or not 1 <= len(actions) <= 3:
-            raise ValueError("worker actions must contain one to three sizing candidates")
-        for action in actions:
-            if not isinstance(action, dict) or set(action) != {"instance", "toMaster"}:
-                raise ValueError("worker action must have exactly instance and toMaster")
-            if action["instance"] not in domain:
-                raise ValueError("worker action instance is outside the admitted edit domain")
-            if (not isinstance(action["toMaster"], str) or not action["toMaster"]
-                    or core.is_tcl_unsafe(action["toMaster"]) or "*" in action["toMaster"] or "?" in action["toMaster"]):
-                raise ValueError("worker action master is not a safe cell name")
-        # T63 real-run failure: a worker action naming a bare LEAF instance
-        # name (no hierarchy) is not resolvable against the actual post-route
-        # netlist, whose leaf cells live inside deeply nested modules — see
-        # `read-atcs.py`'s module docstring / this task's brief for the real
-        # `g96219` example. Every action instance must be a full `/`-separated
-        # hierarchical path from `base_state["top"]`, walked directly against
-        # the sha-verified base netlist (never trusted from the candidate).
+    # T63 real-run failure: a bare LEAF instance name (no hierarchy) is not
+    # resolvable against the actual post-route netlist, whose leaf cells live
+    # inside deeply nested modules (the real `g96219` example). The expert
+    # Operator names edit-domain instances and target pins exactly
+    # (`get_cells -exact`/`get_pins -exact`), so every one must be a full
+    # `/`-separated hierarchical path from `base_state["top"]`, walked directly
+    # against the sha-verified base netlist (never trusted from the candidate).
+    # Names the package validation already counted as unsafe are left to that count.
+    edit_domain = candidate.get("editDomain") if isinstance(candidate.get("editDomain"), dict) else {}
+    instances = [name for name in (edit_domain.get("instances") or []) if isinstance(name, str)]
+    pins = candidate.get("targetPins") if isinstance(candidate.get("targetPins"), list) else []
+    pins = [pin for pin in pins if isinstance(pin, str) and "/" in pin]
+    if instances or pins:
         netlist_path = _safe_join(workspace, base_state["netlist"]["path"], "worker-request.netlist")
         hierarchy = _netlist_hierarchy(netlist_path)
         top = base_state.get("top")
-        for action in actions:
-            name = action["instance"]
+        for name in instances:
             if not _is_hierarchical_instance(hierarchy, top, name):
                 raise ValueError(
-                    f"worker action instance {name!r} is not a hierarchical instance under top {top!r} "
+                    f"editDomain instance {name!r} is not a hierarchical instance under top {top!r} "
+                    "in the base netlist"
+                )
+        for pin in pins:
+            if not _is_hierarchical_pin(hierarchy, top, pin):
+                raise ValueError(
+                    f"targetPin {pin!r} is not a hierarchical pin of a leaf cell under top {top!r} "
                     "in the base netlist"
                 )
     return [_emit_count("tc_request_invalid_count", count)]

@@ -27,8 +27,8 @@ once as a single `AtcsError("invalid-work-package", "<problem 1>; <problem
 2>; ...")`; a package with no problems is stamped (`core.stamp`) and
 returned as a ``work-package`` artifact body. Checks performed:
 
-- `taskId` must be one of `TASK_IDS` (`"w01"`, `"w02"`, `"w03"` — the three
-  bounded worker slots).
+- `taskId` must be one of `TASK_IDS` (`"w01"` .. `"w06"` — the six
+  bounded worker slots, Issue #64).
 - `baseStateId` must equal `base_state["id"]`.
 - Every entry of `actions` must be one of `ACTION_KINDS`.
 - `"pg_local_adjust"` in `actions` is only admissible when
@@ -36,10 +36,38 @@ returned as a ``work-package`` artifact body. Checks performed:
 - No `editDomain` instance or net may also appear in `protected` (a worker
   is never allowed to plan edits against something the package itself
   declares off-limits).
-- `problem`, `targets`, `editDomain`, `protected`, `mayAffect`, `actions`
-  and `budget` must all be present (a missing key is `"missing field:
-  <key>"`, not a raw `KeyError`, per this Pack's fail-closed rule for
-  Site/plan-supplied evidence).
+- `problem`, `targets`, `editDomain`, `protected`, `mayAffect`, `actions`,
+  `budget`, `targetPins` and `scope` must all be present (a missing key is
+  `"missing field: <key>"`, not a raw `KeyError`, per this Pack's
+  fail-closed rule for Site/plan-supplied evidence).
+
+Expert Operator fields (Issue #64 Task 4)
+-----------------------------------------
+
+The slot's XTop expert Operator session (`flow/templates/xtop-operator.tcl`)
+is bound by four more fields, all baked into the session Tcl by
+`prepare-workers` (`adapters.compile_xtop_analysis_manual_task`):
+
+- `scope` is exactly ``{"commands": [...], "maxMutations": n}``. `commands`
+  is a non-empty list of distinct names from `MUTATE_COMMANDS` (the Task 3
+  toolkit's mutations, the same list as `contract.yml`
+  `xtop-operator.interactive.commands.mutate`) and must keep `atcs_undo`,
+  because the expert loop undoes every trial XTop's gain does not support.
+  It is the widest set the slot's Reviewer should approve from.
+  `maxMutations` must equal `SCOPE_MAX_MUTATIONS`, the worker Teams' recipe
+  cap: it becomes the session's Tcl-side budget (`::ATCS_MAX_MUTATIONS`),
+  which only backs the Host. The budget that binds is the Reviewer's approved
+  `scope.maxMutations` (1..recipe cap), which the Host counts per approved
+  execution; a Tcl budget below it would refuse mutations the Reviewer
+  approved, one above it could never be reached.
+- `targetPins` is a list of distinct full hierarchical pin paths
+  (``<instance path>/<pin>``, no wildcard, Tcl-safe): the blockers' endpoint
+  pins, the only pins besides domain-instance pins a targeted fix may name.
+  The worker-request Reader resolves each owner against the base netlist.
+- `observe` is optional, one of `OBSERVE_MODES` (default `fast`).
+- `editDomain.regions` is a list of ``[x1, y1, x2, y2]`` boxes of finite
+  numbers with ``x1 <= x2`` and ``y1 <= y2``: the only targets of
+  `atcs_move_cell`.
 
 `request_invalid_count(obj, base_state, site_capabilities)` runs the exact
 same checks and returns how many problems were found (`0` only when
@@ -69,7 +97,7 @@ Revision allocation is idempotent and race-safe:
 - `taskId` is restricted to `TASK_IDS` *before* any path is built, so a
   hostile or malformed `taskId` (e.g. containing `".."`) can never make the
   computed root escape `campaign_root` — the only paths ever constructed
-  are `<campaign_root>/workspaces/w0{1,2,3}/r<int>/`.
+  are `<campaign_root>/workspaces/w0{1..6}/r<int>/`.
 - Revisions are allocated by trying `r1`, `r2`, ... in order and creating
   each candidate directory with a bare `Path.mkdir()` (no `exist_ok`),
   which is an atomic, OS-level create: if two threads race for the same
@@ -91,6 +119,7 @@ M3 reconciles them.
 """
 from __future__ import annotations
 
+import math
 import time
 from pathlib import Path
 
@@ -99,7 +128,24 @@ from . import core
 
 ACTION_KINDS = ("size_cell", "insert_buffer", "delete_buffer", "pg_local_adjust")
 
-TASK_IDS = ("w01", "w02", "w03")
+TASK_IDS = ("w01", "w02", "w03", "w04", "w05", "w06")
+
+MUTATE_COMMANDS = (
+    "atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load",
+    "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins",
+    "atcs_undo",
+)
+"""The Task 3 toolkit's mutation procedures, in `contract.yml` order."""
+
+SCOPE_MAX_MUTATIONS = 120
+"""The worker Teams' recipe cap (`reviewedAction.maxMutations`) and every session's Tcl-side budget.
+
+An expert loop needs dozens of trials and each `atcs_undo` counts, so 120
+leaves room for about 60 trials each followed by its undo; it stays below
+the Harness ceiling of 200 so a runaway loop still stops.
+"""
+
+OBSERVE_MODES = ("fast", "full")
 
 _MANIFEST_WAIT_ATTEMPTS = 50
 _MANIFEST_WAIT_INTERVAL_SECONDS = 0.01
@@ -112,7 +158,66 @@ _REQUIRED_WORK_PACKAGE_FIELDS = (
     "mayAffect",
     "actions",
     "budget",
+    "targetPins",
+    "scope",
 )
+
+
+def _is_safe_name(name):
+    return (isinstance(name, str) and bool(name) and not core.is_tcl_unsafe(name, allow_brackets=True)
+            and "*" not in name and "?" not in name)
+
+
+def _expert_problems(obj):
+    """Problems in the expert Operator fields `scope`, `targetPins`, `observe` and `editDomain.regions`."""
+    problems = []
+    if "scope" in obj:
+        scope = obj["scope"]
+        if not isinstance(scope, dict) or set(scope) != {"commands", "maxMutations"}:
+            problems.append("scope must be an object with exactly commands and maxMutations")
+        else:
+            commands = scope["commands"]
+            if not isinstance(commands, list) or not commands:
+                problems.append("scope.commands must be a non-empty list")
+            else:
+                for command in commands:
+                    if command not in MUTATE_COMMANDS:
+                        problems.append(f"scope command {command!r} is not a toolkit mutation {MUTATE_COMMANDS}")
+                if len(set(map(repr, commands))) != len(commands):
+                    problems.append("scope.commands names a command more than once")
+                if "atcs_undo" not in commands:
+                    problems.append("scope.commands must keep atcs_undo: the expert loop undoes every trial without gain")
+            budget = scope["maxMutations"]
+            if isinstance(budget, bool) or not isinstance(budget, int) or budget != SCOPE_MAX_MUTATIONS:
+                problems.append(
+                    f"scope.maxMutations must be the recipe cap {SCOPE_MAX_MUTATIONS} (the Reviewer's budget binds), "
+                    f"got {budget!r}"
+                )
+    if "targetPins" in obj:
+        pins = obj["targetPins"]
+        if not isinstance(pins, list):
+            problems.append("targetPins must be a list")
+        else:
+            for pin in pins:
+                if not _is_safe_name(pin) or "/" not in pin or pin.startswith("/") or pin.endswith("/"):
+                    problems.append(f"targetPin {pin!r} is not a safe <instance path>/<pin> name")
+            if len(set(map(repr, pins))) != len(pins):
+                problems.append("targetPins names a pin more than once")
+    if "observe" in obj and obj["observe"] not in OBSERVE_MODES:
+        problems.append(f"observe must be one of {OBSERVE_MODES}, got {obj['observe']!r}")
+    edit_domain = obj.get("editDomain")
+    if isinstance(edit_domain, dict) and "regions" in edit_domain:
+        regions = edit_domain["regions"]
+        if not isinstance(regions, list):
+            problems.append("editDomain.regions must be a list of [x1, y1, x2, y2] boxes")
+        else:
+            for region in regions:
+                if (not isinstance(region, list) or len(region) != 4
+                        or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
+                               for v in region)
+                        or region[0] > region[2] or region[1] > region[3]):
+                    problems.append(f"editDomain region {region!r} is not [x1, y1, x2, y2] with x1<=x2, y1<=y2")
+    return problems
 
 
 def _collect_problems(obj, base_state, site_capabilities):
@@ -173,6 +278,7 @@ def _collect_problems(obj, base_state, site_capabilities):
     if "pg_local_adjust" in actions and not pg_verification:
         problems.append("action pg_local_adjust requires siteCapabilities.pgVerification")
 
+    problems.extend(_expert_problems(obj))
     return problems
 
 

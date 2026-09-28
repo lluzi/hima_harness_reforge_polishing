@@ -16,7 +16,7 @@ import { himaCommand } from './support/command.ts';
 import { writeLocalSite } from './support/site.ts';
 
 const packId = 'agentic-timing-closure-system';
-test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Contribution collector', async t => {
+test('ATCS worker Team approves an expert Operator scope; the Operator mutates only inside it, and the collector seals the result', async t => {
   process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
   process.env.HIMA_TEST_SILENT_AGENT = '1';
   const prior = process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
@@ -98,10 +98,10 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
     'import test_cli_state as f; from atcs import core,state,workspaces',
     'w=Path(sys.argv[3]); manifest=f._make_baseline_manifest(w)',
     'base=state.design_state(manifest); core.write_artifact(w/"state/working-state.json",base)',
-    'raw={"taskId":"w01","baseStateId":base["id"],"problem":"synthetic sizing","targets":[],"editDomain":{"instances":["U1"],"nets":[],"regions":[]},"protected":{"instances":[],"nets":[]},"mayAffect":[],"actions":["size_cell"],"budget":{"xtopMinutes":1,"queries":1,"attempts":1}}',
+    'raw={"taskId":"w01","baseStateId":base["id"],"problem":"synthetic sizing","targets":[],"editDomain":{"instances":["U1"],"nets":[],"regions":[]},"protected":{"instances":[],"nets":[]},"mayAffect":[],"actions":["size_cell"],"budget":{"xtopMinutes":1,"queries":1,"attempts":1},"targetPins":["U1/A"],"scope":{"commands":list(workspaces.MUTATE_COMMANDS),"maxMutations":workspaces.SCOPE_MAX_MUTATIONS}}',
     'package=workspaces.validate_work_package(raw,base,{"pgVerification":False}); slot=workspaces.prepare(package,str(w),base)',
     'f._write_json(w/"state/workers.json",{"requiredSlots":["w01"],"workers":{"w01":{"root":slot["root"],"opsLog":str(w/slot["root"]/"ops.jsonl"),"workspaceManifest":slot,"workPackage":package}}})',
-    'f._write_json(w/"research/requests/worker-request-w01.json",{"candidate":raw,"baseState":base,"siteCapabilities":{"pgVerification":False},"actions":[{"instance":"U1","toMaster":"BUF2"}]})',
+    'f._write_json(w/"research/requests/worker-request-w01.json",{"candidate":raw,"baseState":base,"siteCapabilities":{"pgVerification":False}})',
   ].join('\n'), path.join(repoRoot, 'packs', packId, 'flow'),
     path.join(repoRoot, 'packs', packId, 'flow/tests'), workspace], { encoding: 'utf8' });
   assert.equal(seeded.status, 0, seeded.stderr);
@@ -111,6 +111,8 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   const read = spawnSync('python3', [path.join(repoRoot, 'packs', packId, 'tools/read-atcs.py'),
     'worker-request', planPath, readerOut, workspace, 'w01'], { encoding: 'utf8' });
   assert.equal(read.status, 0, read.stderr);
+  assert.deepEqual(JSON.parse(await readFile(readerOut, 'utf8')).values,
+    [{ type: 'tc_request_invalid_count', unit: 'count', value: 0 }], 'the expert request is admitted');
   const retained = await retainRunMaterial({ ledger: host.ctx.hima.ledger, packsDir }, runId, planBytes, planHash);
   assert.ok(retained);
   await host.ctx.hima.ledger.appendObservation(runId, { path: planPath, contentSha256: planHash,
@@ -123,7 +125,7 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   const executionId = begin.receipt!.executionId!;
   const create = (memberId: string) => host.ctx.hima.delegate({ runId, actor, action: 'create', requestId: 'create-' + memberId,
     expectedEpoch: control().epoch, expectedRevision: control().revision,
-    recipe: { teamId: 'atcs-worker-01', version: '3', memberId, executionId } } as never) as Promise<any>;
+    recipe: { teamId: 'atcs-worker-01', version: '4', memberId, executionId } } as never) as Promise<any>;
   // Deterministic model stand-ins use the production Ledger handoff shape; no model-quality claim.
   const resultAndAdopt = async (child: any, value: any) => {
     const id = child.effectiveContract.delegationId;
@@ -146,8 +148,10 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   await resultAndAdopt(researcher, { schema: 'atcs-worker-research/1', hypotheses: ['synthetic sizing'],
     evidenceRefs: researcher.effectiveContract.inputRefs, limitations: ['no EDA'] });
   const reviewer = await create('reviewer'); assert.equal(reviewer.status, 'created', JSON.stringify(reviewer));
-  await resultAndAdopt(reviewer, { schema: 'atcs-worker-review/1', planSha256: planHash, command: 'atcs_size_cell',
-    arguments: { instance: 'U1', toMaster: 'BUF2' }, evidenceRefs: reviewer.effectiveContract.inputRefs, limitations: ['no EDA'] });
+  // The Reviewer approves a scope: two of the recipe's mutations and a budget below the recipe cap.
+  await resultAndAdopt(reviewer, { schema: 'atcs-worker-review/2', planSha256: planHash,
+    scope: { commands: ['atcs_size_cell', 'atcs_undo'], maxMutations: 2 },
+    evidenceRefs: reviewer.effectiveContract.inputRefs, limitations: ['no EDA'] });
   const operator = await create('operator'); assert.equal(operator.status, 'created', JSON.stringify(operator));
   const operatorId = operator.receipt.childSessionId;
   const interactive = (body: any) => host.ctx.hima.interactive(operatorId, { runId, executionId,
@@ -161,6 +165,14 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
     assert.equal(value.status, 'completed', JSON.stringify(value)); return value;
   };
   await send('atcs_dump_cells', { path: path.join(slotRoot, 'before.dump') }, 'before');
+  // Outside the approved scope, or under another plan hash, the Host refuses before the tool sees it.
+  const outsideScope = await interactive({ action: 'input', requestId: 'outside', commandId: 'outside', toolSessionId,
+    command: { name: 'atcs_remove_buffer', args: { instance: 'U1', planSha256: planHash } }, waitMs: 0 });
+  assert.equal(outsideScope.status, 'refused', JSON.stringify(outsideScope));
+  assert.match(outsideScope.reason, /outside the immutable owner-adopted reviewed scope/);
+  const staleHash = await interactive({ action: 'input', requestId: 'stale', commandId: 'stale', toolSessionId,
+    command: { name: 'atcs_size_cell', args: { instance: 'U1', toMaster: 'BUF2', planSha256: 'f'.repeat(64) } }, waitMs: 0 });
+  assert.equal(staleHash.status, 'refused', JSON.stringify(staleHash));
   await send('atcs_size_cell', { instance: 'U1', toMaster: 'BUF2', planSha256: planHash }, 'mutation');
   const duplicate = await interactive({ action: 'input', requestId: 'mutation', commandId: 'mutation', toolSessionId,
     command: { name: 'atcs_size_cell', args: { instance: 'U1', toMaster: 'BUF2', planSha256: planHash } }, waitMs: 0 });
@@ -169,8 +181,8 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   await send('atcs_export_changes', {}, 'export');
   await send('atcs_close', {}, 'exit');
   await waitUntil('ATCS synthetic Operator is ready', () => control().executions[executionId]?.phase === 'ready', 5000, 25);
-  await resultAndAdopt(operator, { schema: 'atcs-worker-receipts/1', planSha256: planHash, mutationReceipt: 'mutation',
-    limitations: ['synthetic Tcl; no commercial qualification'] });
+  await resultAndAdopt(operator, { schema: 'atcs-worker-session/1', planSha256: planHash, mutationReceipts: ['mutation'],
+    stopReason: 'no-candidate-gains', limitations: ['synthetic Tcl; no commercial qualification'] });
   const completed = await host.ctx.hima.executionAction({ runId, actor, action: 'complete', executionId,
     requestId: 'complete', expectedEpoch: control().epoch, expectedRevision: control().revision });
   assert.equal(completed.kind, 'accepted', JSON.stringify(completed));
@@ -214,17 +226,61 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
 
   const packDir = path.join(repoRoot, 'packs', packId);
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
-  const team = pack.contract.agentTeams.find(item => item.id === 'atcs-worker-01')!;
+  // Issue #64 Task 4: every worker slot's Team is v4 in Harness scope mode. The Reviewer approves
+  // `{scope: {commands, maxMutations}, planSha256}` within the recipe; the Operator runs the expert loop.
+  const operatorTool = pack.contract.tools.find(item => item.id === 'xtop-operator')!;
+  const mutations = operatorTool.interactive!.commands.mutate;
+  const toolkit = spawnSync('python3', ['-c', 'import json,sys; sys.path.insert(0, sys.argv[1]); from atcs import workspaces; '
+    + 'print(json.dumps([list(workspaces.MUTATE_COMMANDS), workspaces.SCOPE_MAX_MUTATIONS, list(workspaces.TASK_IDS)]))',
+  path.join(packDir, 'flow')], { encoding: 'utf8' });
+  assert.equal(toolkit.status, 0, toolkit.stderr);
+  const [packageCommands, recipeCap, slots] = JSON.parse(toolkit.stdout) as [string[], number, string[]];
+  assert.deepEqual(packageCommands, mutations, 'the work package scope admits exactly the toolkit mutations');
+  assert.deepEqual(slots, ['w01', 'w02', 'w03', 'w04', 'w05', 'w06']);
+  const operateNodes = (pack.graph.nodes as any[]).map(node => node.id as string).filter(id => /^operate-worker-\d\d$/.test(id));
+  assert.ok(operateNodes.length >= 3, 'the graph operates worker slots');
+  const workerTeams = pack.contract.agentTeams.filter(item => item.id.startsWith('atcs-worker-'));
+  assert.deepEqual(workerTeams.map(item => item.triggerNode).sort(), operateNodes.sort(),
+    'every operate-worker node has exactly one worker Team');
+  const team01 = workerTeams.find(item => item.id === 'atcs-worker-01')!;
+  const slotless = (value: unknown, slot: string) => JSON.stringify(value).replaceAll(`-${slot}`, '-NN')
+    .replaceAll(`Request${slot}`, 'RequestNN').replaceAll(`w${slot}`, 'wNN');
+  for (const team of workerTeams) {
+    const slot = team.id.slice(-2);
+    assert.equal(team.triggerNode, `operate-worker-${slot}`);
+    assert.equal(slotless(team, slot), slotless(team01, '01'), `${team.id} is Team 01 for slot w${slot}`);
+  }
+  const team = team01;
+  assert.equal(team.version, '4');
   const researcher = team.members.find(item => item.id === 'researcher')!;
-  assert.equal(team.version, '3');
+  const reviewer = team.members.find(item => item.id === 'reviewer')!;
+  const operatorMember = team.members.find(item => item.id === 'operator')!;
   assert.equal(researcher.budgetShare.maxTokensPerTurn, 8000);
   assert.equal(researcher.budgetShare.maxFollowups, 1);
-  assert.match(researcher.taskTemplate, /at most one hypothesis per declared action/);
-  for (const [id, followups] of [['reviewer', 1], ['operator', 0]] as const) {
-    const member = team.members.find(item => item.id === id)!;
+  assert.match(researcher.taskTemplate, /targetPins/);
+  assert.match(researcher.taskTemplate, /fail reason/);
+  for (const [member, followups] of [[reviewer, 1], [operatorMember, 0]] as const) {
     assert.equal(member.budgetShare.maxTokensPerTurn, 5000);
     assert.equal(member.budgetShare.maxFollowups, followups);
   }
+  assert.deepEqual(reviewer.resultSchema, { id: 'atcs-worker-review/2',
+    required: ['schema', 'planSha256', 'scope', 'evidenceRefs', 'limitations'] });
+  assert.match(reviewer.taskTemplate, /atcs_undo/);
+  assert.deepEqual(operatorMember.reviewedAction, { mode: 'scope', fromRole: 'reviewer', planInput: 'workerRequest01',
+    commands: mutations, maxMutations: recipeCap, hostPlanHashArgument: 'planSha256', planHashField: 'planSha256',
+    scopeField: 'scope' });
+  assert.equal(recipeCap, 120, 'the recipe cap leaves room for dozens of trials and their undos, below the Harness 200');
+  assert.deepEqual(operatorMember.resultSchema, { id: 'atcs-worker-session/1',
+    required: ['schema', 'planSha256', 'mutationReceipts', 'stopReason', 'limitations'] });
+  // The Operator template is the knowledge file's expert loop, in order.
+  let step = 0;
+  for (const word of ['before.dump', 'atcs_ref', 'atcs_paths', 'atcs_fail_reasons', 'atcs_gain', 'atcs_undo', 'after.dump',
+    'atcs_export_changes', 'atcs_close']) {
+    const found = operatorMember.taskTemplate.indexOf(word, step);
+    assert.ok(found >= 0, `the Operator template runs the expert loop in order; ${word} is missing after offset ${step}`);
+    step = found + word.length;
+  }
+  assert.ok(pack.contract.knowledge.some(item => item.file === 'xtop-expert-operator.md'));
   assert.equal(packStage(packDir).stage, 'compiled');
   assert.equal(pack.graph.nodes.length, 106);
   // Final review (Minor): +2 edges -- check-setup-goal/check-hold-goal each gain
