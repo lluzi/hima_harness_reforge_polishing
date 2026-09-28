@@ -1365,13 +1365,16 @@ class XtopSessionFixRound1Tests(unittest.TestCase):
         self.assertAlmostEqual(contribution["valueDetail"]["tnsGain"]["setup"], -0.784)
         self.assertAlmostEqual(contribution["valueDetail"]["tnsGain"]["hold"], 0.900)
 
-    def test_an_opposite_tns_loss_is_refused_and_never_hidden_in_the_target_tns_gain(self):
+    def test_an_opposite_tns_loss_is_admitted_and_charged_to_the_rank_tns_gain(self):
+        # Controller decision: only an opposite WNS loss refuses; an opposite TNS loss is charged to rank.
         log = sf.SessionLog(reference=REAL_REF)
         log.size("U1", "BUFX1", "BUFX2",
                  gain=(((-0.0387, -0.116), (-0.0387, -0.500)), ((-0.150, -3.900), (-0.150, -3.000))))
         contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
-        self.assertEqual(_codes(contribution), ["breaks-opposite-check"])
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
         self.assertAlmostEqual(contribution["valueDetail"]["targetTnsGain"], 0.900)
+        self.assertAlmostEqual(contribution["valueDetail"]["tnsGain"]["setup"], -0.384)
+        self.assertAlmostEqual(contribution["valueDetail"]["rankTnsGain"], 0.516)
 
     def test_an_opposite_check_within_rounding_is_not_broken(self):
         log = sf.SessionLog(reference=REAL_REF)

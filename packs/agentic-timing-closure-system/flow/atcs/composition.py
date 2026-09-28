@@ -234,8 +234,10 @@ batch:
   see `worst_checks` -- the session targets, by check key in its
   ``targets`` or by endpoint pin in its ``targetPins``) descending, then
   ``value`` (the predicted WNS gain of its worst target check, ns)
-  descending, then ``valueDetail.targetTnsGain`` descending (the target
-  checks' TNS gain only; unknown counts as 0), then ``id`` ascending. ``rank`` starts at 1.
+  descending, then ``valueDetail.rankTnsGain`` descending (the target
+  checks' TNS gain plus the opposite checks' signed TNS change, so an
+  opposite TNS loss lowers the rank; unknown counts as 0), then ``id``
+  ascending. A session's recipe ``tnsGain`` is that ``rankTnsGain``. ``rank`` starts at 1.
 - **Skip, never refuse.** Walking sessions in rank order, a command is
   marked ``skip: "shared-instance"`` (with ``sharedWith: [{"instance",
   "contribution", "rank"}]``) when any of its ``instances`` was touched by a
@@ -667,7 +669,7 @@ def _recipe(sessions, excluded, worst, identity_excluded=()):
     ranked = []
     for contribution in sessions:
         covered = _coverage(contribution, worst)
-        tns_gain = (contribution.get("valueDetail") or {}).get("targetTnsGain")
+        tns_gain = (contribution.get("valueDetail") or {}).get("rankTnsGain")
         ranked.append((len(covered), _number(contribution.get("value")), _number(tns_gain), contribution, covered))
     ranked.sort(key=lambda item: (-item[0], -item[1], -item[2], item[3]["id"]))
 
@@ -711,7 +713,7 @@ def _recipe(sessions, excluded, worst, identity_excluded=()):
         })
 
     return {
-        "rankedBy": ["blockerCoverage desc", "value desc", "tnsGain desc", "id asc"],
+        "rankedBy": ["blockerCoverage desc", "value desc", "rankTnsGain desc", "id asc"],
         "worstChecks": sorted(worst),
         "sessions": entries,
         "excluded": sorted(

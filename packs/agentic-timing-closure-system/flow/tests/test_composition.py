@@ -945,6 +945,19 @@ class XtopSessionRecipeTests(unittest.TestCase):
         self.assertEqual([entry["contribution"] for entry in recipe["sessions"]], [b["id"], a["id"]])
         self.assertAlmostEqual(recipe["sessions"][0]["tnsGain"], 0.30)
 
+    def test_an_opposite_tns_loss_is_admitted_but_ranks_below_an_equal_session_without_it(self):
+        clean = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.10))
+        setup_loss = ((-0.020, -0.100), (-0.020, -0.150))  # setup WNS unchanged, setup TNS 0.05 worse
+        lossy = _session("w02", [("U2", "BUFX2")], (setup_loss, _hold_gain(0.010, 0.10)[1]))
+        self.assertTrue(lossy["admissible"], lossy["refusals"])
+        self.assertAlmostEqual(lossy["valueDetail"]["targetTnsGain"], clean["valueDetail"]["targetTnsGain"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [lossy, clean], [])["recipe"]
+        self.assertEqual([entry["contribution"] for entry in recipe["sessions"]], [clean["id"], lossy["id"]])
+        self.assertAlmostEqual(recipe["sessions"][1]["tnsGain"], 0.05)
+        self.assertEqual(recipe["rankedBy"],
+                         ["blockerCoverage desc", "value desc", "rankTnsGain desc", "id asc"])
+
     def test_worst_checks_are_the_worst_failing_check_per_scenario_and_mode(self):
         observation = {"checks": {
             "a|setup|P1": {"slack": core.known(-0.01)}, "a|setup|P2": {"slack": core.known(-0.05)},

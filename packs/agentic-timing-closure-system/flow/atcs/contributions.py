@@ -987,8 +987,9 @@ def _script_sha256(path):
 # - ``no-predicted-gain``: kept commands whose predicted target slack got
 #   worse, did not improve at all, or cannot be read;
 # - ``breaks-opposite-check``: kept commands whose predicted non-target
-#   check (setup for a hold repair, and so on) got worse in WNS or TNS by
-#   more than one rounding step, or cannot be read.
+#   check (setup for a hold repair, and so on) got worse in WNS by more
+#   than one rounding step, or cannot be read. A TNS loss there is charged
+#   to the rank (``valueDetail.rankTnsGain``) instead.
 #
 # Typed requests (size/exchange/insert/remove) must show exactly their
 # requested effect in their own logged delta; fixes, splits, moves and
@@ -1296,12 +1297,15 @@ def _session_value(target_checks, reference, predicted):
 
     - ``value`` = ``wnsGain`` of the target check whose reference WNS is
       worst (ties: hold before setup); ``targetTnsGain`` sums the target
-      checks' ``tnsGain`` and breaks ranking ties. An opposite check's TNS
-      never enters it.
+      checks' ``tnsGain``; ``rankTnsGain`` = ``targetTnsGain`` plus every
+      opposite check's ``tnsGain`` (signed), and breaks ranking ties -- an
+      opposite TNS loss lowers the rank instead of refusing (controller
+      decision, user amendment: repairs are valued, not all-or-nothing).
     - ``no-predicted-gain``: a target WNS is unknown or got worse, or no
       target WNS and not ``targetTnsGain`` improved.
     - ``breaks-opposite-check``: an opposite check's WNS or TNS is unknown,
-      or got worse by more than `_OPPOSITE_TOLERANCE` (one rounding step).
+      or its WNS got worse by more than `_OPPOSITE_TOLERANCE` (one rounding
+      step). Its TNS change only enters ``rankTnsGain``.
 
     Returns ``(value, detail, refusals)``, ``refusals`` a list of
     ``(code, detail)``.
@@ -1320,8 +1324,12 @@ def _session_value(target_checks, reference, predicted):
                   if core.is_known(reference[f"xtop{c.capitalize()}Wns"])]
     worst = min(known_refs)[1] if known_refs else None
     value = wns_gain.get(worst, 0.0) if worst is not None else 0.0
+    opposite_tns = [tns_gain[check] for check in opposite if check in tns_gain]
+    rank_tns_gain = (round(target_tns_gain + sum(opposite_tns), 9)
+                     if target_tns_gain is not None and len(opposite_tns) == len(opposite) else None)
     detail = {"targetChecks": list(target_checks), "oppositeChecks": opposite, "worstCheck": worst,
-              "wnsGain": wns_gain, "tnsGain": tns_gain, "targetTnsGain": target_tns_gain}
+              "wnsGain": wns_gain, "tnsGain": tns_gain, "targetTnsGain": target_tns_gain,
+              "rankTnsGain": rank_tns_gain}
 
     refusals = []
     missing_wns = [check for check in target_checks if check not in wns_gain]
@@ -1336,8 +1344,7 @@ def _session_value(target_checks, reference, predicted):
 
     for check in opposite:
         unknown = [metric for metric, gains in (("WNS", wns_gain), ("TNS", tns_gain)) if check not in gains]
-        broken = {metric: gains[check] for metric, gains in (("WNS", wns_gain), ("TNS", tns_gain))
-                  if check in gains and gains[check] < -_OPPOSITE_TOLERANCE}
+        broken = {"WNS": wns_gain[check]} if wns_gain.get(check, 0) < -_OPPOSITE_TOLERANCE else {}
         if unknown:
             refusals.append(("breaks-opposite-check", f"opposite {check} {unknown} cannot be read"))
         elif broken:
@@ -1582,7 +1589,8 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
     else:
         value, value_detail = 0.0, {"targetChecks": target_checks,
                                     "oppositeChecks": [c for c in SESSION_CHECKS if c not in target_checks],
-                                    "worstCheck": None, "wnsGain": {}, "tnsGain": {}, "targetTnsGain": None}
+                                    "worstCheck": None, "wnsGain": {}, "tnsGain": {}, "targetTnsGain": None,
+                                    "rankTnsGain": None}
 
     diagnosis = result_refs.get("diagnosis")
     if not (isinstance(diagnosis, str) and diagnosis.strip()) and not commands:
