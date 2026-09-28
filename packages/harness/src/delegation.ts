@@ -58,12 +58,45 @@ export interface TeamRecipeBinding {
   readonly executionId: string;
   readonly recipeDigest: string;
   readonly resultSchema: { readonly id: string; readonly required: readonly string[] };
-  /** Exact Pack-declared output vocabulary for the Reviewer whose result feeds an Operator. */
-  readonly reviewOutput?: { readonly command: string; readonly arguments: readonly string[] };
+  /**
+   * Exact Pack-declared output vocabulary for the Reviewer whose result feeds an Operator: one
+   * typed action, or (scope mode) the recipe commands and mutation cap a scope may approve.
+   */
+  readonly reviewOutput?: { readonly command: string; readonly arguments: readonly string[] }
+    | { readonly scopeField: string; readonly commands: readonly string[]; readonly maxMutations: number };
   /** Exact adopted reviewer payload for an Operator; never caller supplied. */
-  readonly inlinePayload?: { readonly sourceResultRecordId: string; readonly adoptionRecordId: string;
-    readonly planSha256: string; readonly command: string; readonly arguments: Readonly<Record<string, string | number | boolean>> };
+  readonly inlinePayload?: ReviewedActionPayload | ReviewedScopePayload;
 }
+
+/**
+ * Why a Reviewer's `scope` value is not one the Pack recipe allows, or undefined when it is: one
+ * object with exactly `commands` (a non-empty distinct subset of the recipe commands) and
+ * `maxMutations` (an integer from 1 to the recipe cap).
+ */
+export function reviewedScopeProblem(scope: unknown, recipe: { readonly commands: readonly string[]; readonly maxMutations: number }): string | undefined {
+  if (!scope || typeof scope !== 'object' || Array.isArray(scope)) return 'the reviewed scope must be one object with commands and maxMutations';
+  const { commands, maxMutations, ...extra } = scope as Record<string, unknown>;
+  if (Object.keys(extra).length > 0) return `the reviewed scope accepts only commands and maxMutations; unexpected ${Object.keys(extra).join(', ')}`;
+  if (!Array.isArray(commands) || commands.length === 0 || commands.some(item => typeof item !== 'string') || new Set(commands).size !== commands.length) {
+    return 'the reviewed scope commands must be a non-empty list of distinct command names';
+  }
+  const outside = (commands as string[]).filter(command => !recipe.commands.includes(command));
+  if (outside.length > 0) return `the reviewed scope names commands outside the Pack recipe scope (${recipe.commands.join(', ')}): ${outside.join(', ')}`;
+  if (typeof maxMutations !== 'number' || !Number.isInteger(maxMutations) || maxMutations < 1 || maxMutations > recipe.maxMutations) {
+    return `the reviewed scope maxMutations must be an integer from 1 to the Pack recipe cap ${recipe.maxMutations}`;
+  }
+  return undefined;
+}
+
+export interface ReviewedActionPayload { readonly sourceResultRecordId: string; readonly adoptionRecordId: string;
+  readonly planSha256: string; readonly command: string; readonly arguments: Readonly<Record<string, string | number | boolean>> }
+/**
+ * An owner-adopted reviewed scope: each Operator mutation names one of `scope.commands`, carries
+ * `planSha256` in its `planHashArgument`, and at most `scope.maxMutations` are admitted per approved execution, across its tool sessions.
+ */
+export interface ReviewedScopePayload { readonly sourceResultRecordId: string; readonly adoptionRecordId: string;
+  readonly planSha256: string; readonly planHashArgument: string;
+  readonly scope: { readonly commands: readonly string[]; readonly maxMutations: number } }
 
 export interface EffectiveDelegationContract {
   readonly delegationId: string;
@@ -241,8 +274,11 @@ const delegationContractSchema = z.strictObject({
   dependencyIds:z.array(z.string()).max(32),recipient:z.strictObject({kind:z.enum(['parent','run-owner']),sessionId:z.string()}),status:z.literal('requested'),
   recipe:z.strictObject({teamId:z.string(),version:z.string(),memberId:z.string(),executionId:z.string(),recipeDigest:z.string().regex(/^[0-9a-f]{64}$/),
     resultSchema:z.strictObject({id:z.string(),required:z.array(z.string())}),
-    reviewOutput:z.strictObject({command:z.string(),arguments:z.array(z.string())}).optional(),
-    inlinePayload:z.strictObject({sourceResultRecordId:z.string(),adoptionRecordId:z.string(),planSha256:z.string().regex(/^[0-9a-f]{64}$/),command:z.string(),arguments:z.record(z.string(),z.union([z.string(),z.number(),z.boolean()]))}).optional(),
+    reviewOutput:z.union([z.strictObject({command:z.string(),arguments:z.array(z.string())}),
+      z.strictObject({scopeField:z.string(),commands:z.array(z.string()),maxMutations:z.number().int().min(1).max(200)})]).optional(),
+    inlinePayload:z.union([z.strictObject({sourceResultRecordId:z.string(),adoptionRecordId:z.string(),planSha256:z.string().regex(/^[0-9a-f]{64}$/),command:z.string(),arguments:z.record(z.string(),z.union([z.string(),z.number(),z.boolean()]))}),
+      z.strictObject({sourceResultRecordId:z.string(),adoptionRecordId:z.string(),planSha256:z.string().regex(/^[0-9a-f]{64}$/),planHashArgument:z.string(),
+        scope:z.strictObject({commands:z.array(z.string()).min(1),maxMutations:z.number().int().min(1).max(200)})})]).optional(),
   }).optional(),
 });
 function assertContract(contract: DelegationContract): void {
@@ -376,9 +412,13 @@ export const delegationTaskPrompt = (contract: DelegationContract, effective: Ef
   effective.recipe === undefined ? 'Agent Team result format: unavailable for this manually declared delegation.'
     : `Agent Team result format: return exactly one JSON object and no prose or Markdown. Set schema to ${JSON.stringify(effective.recipe.resultSchema.id)} and include these top-level fields: ${effective.recipe.resultSchema.required.join(', ')}.`,
   effective.recipe?.reviewOutput === undefined ? 'Reviewed action output contract: unavailable for this member.'
-    : `Reviewed action output contract: set command to ${JSON.stringify(effective.recipe.reviewOutput.command)}. Set arguments to one object with exactly these fields and no others: ${effective.recipe.reviewOutput.arguments.join(', ')}. Copy their values from one exact action in the reader-backed plan.`,
+    : 'scopeField' in effective.recipe.reviewOutput
+      ? `Reviewed scope output contract: set ${effective.recipe.reviewOutput.scopeField} to one object with exactly the fields commands and maxMutations and no others. commands is a non-empty list of distinct names chosen from: ${effective.recipe.reviewOutput.commands.join(', ')}. maxMutations is an integer from 1 to ${effective.recipe.reviewOutput.maxMutations}; every accepted mutation counts, including undo.`
+      : `Reviewed action output contract: set command to ${JSON.stringify(effective.recipe.reviewOutput.command)}. Set arguments to one object with exactly these fields and no others: ${effective.recipe.reviewOutput.arguments.join(', ')}. Copy their values from one exact action in the reader-backed plan.`,
   effective.recipe?.inlinePayload === undefined ? 'Immutable reviewed action: none.'
-    : `Immutable reviewed action: ${JSON.stringify(effective.recipe.inlinePayload)}. Use exactly this plan hash, command and typed arguments; do not substitute another action.`,
+    : 'scope' in effective.recipe.inlinePayload
+      ? `Immutable reviewed scope: ${JSON.stringify(effective.recipe.inlinePayload)}. Each mutation must be one of scope.commands and carry ${effective.recipe.inlinePayload.planHashArgument} = ${effective.recipe.inlinePayload.planSha256}; the Host admits at most ${effective.recipe.inlinePayload.scope.maxMutations} mutations in this approved execution, across tool sessions, and refuses the rest. Read commands are unaffected.`
+      : `Immutable reviewed action: ${JSON.stringify(effective.recipe.inlinePayload)}. Use exactly this plan hash, command and typed arguments; do not substitute another action.`,
   'Do not claim a Campaign action, verdict, tool result, or file change that the corresponding tool/session transcript does not record.',
 ].join('\n');
 

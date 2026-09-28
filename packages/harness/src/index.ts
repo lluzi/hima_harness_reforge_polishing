@@ -33,7 +33,7 @@ import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs, ownedW
 import { controlling, identityOf, drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, settleStrandedTeamExecutions, type RunDelegationRequest } from './delegation-runtime.js';
-import { registerDelegationGuard, parseDelegationResultObservedPayload } from './delegation.js';
+import { registerDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
 import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
 import { interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
@@ -879,7 +879,10 @@ export default class Hima extends Service {
     }
     if(run?.control&&run.control.owner!==sessionId) {
       if(!delegated)return {status:'refused',reason:'This conversation has no active Operator delegation for the exact Run execution.'};
-      if(request.action==='input'&&delegated.reviewedAction!==undefined) {
+      // A reviewed scope is enforced at runtime admission against the Run's retained Pack classification.
+      const reviewedScope=delegated.reviewedAction!==undefined&&'scope' in delegated.reviewedAction?{...delegated.reviewedAction.scope,
+        planHashArgument:delegated.reviewedAction.planHashArgument,planSha256:delegated.reviewedAction.planSha256}:undefined;
+      if(request.action==='input'&&delegated.reviewedAction!==undefined&&!('scope' in delegated.reviewedAction)) {
         const command=request.command;
         if(command.name===delegated.reviewedAction.command
             &&identityOf(command.args)!==identityOf(delegated.reviewedAction.arguments))return {status:'refused',reason:'The Operator mutation differs from the immutable owner-adopted reviewed action.'};
@@ -889,7 +892,8 @@ export default class Hima extends Service {
         const mutations=new Set(tool?.interactive?.commands.mutate??[]);
         if(mutations.has(command.name)&&command.name!==delegated.reviewedAction.command)return {status:'refused',reason:'The Operator requested a different mutation than the immutable owner-adopted reviewed action.'};
       }
-      request={...request,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,...delegated};
+      request={...request,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,...delegated,
+        ...(reviewedScope===undefined?{}:{reviewedScope})};
     }
     if(this.factStop.signal.aborted)return {status:'refused',reason:'The Host is stopping.'};
     const result=await operateInteractive(this.interactiveDeps(),request);
@@ -1017,7 +1021,13 @@ export default class Hima extends Service {
       let inlinePayload:import('./delegation.js').TeamRecipeBinding['inlinePayload'];
       let reviewOutput:import('./delegation.js').TeamRecipeBinding['reviewOutput'];
       const operatorConsumer=team.members.find(item=>item.reviewedAction?.fromRole===member.id);
-      if(operatorConsumer?.reviewedAction) {
+      if(operatorConsumer?.reviewedAction?.mode==='scope') {
+        const reviewed=operatorConsumer.reviewedAction;
+        const node=pack.graph.nodes.find(item=>item.id===operatorConsumer.node);
+        const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
+        if(reviewed.commands.some(command=>!tool?.interactive?.arguments[command]))return {unknowns:[],status:'refused',artifacts:[],reason:'The Pack Reviewer output contract has no matching typed Operator command.'};
+        reviewOutput={scopeField:reviewed.scopeField,commands:reviewed.commands,maxMutations:reviewed.maxMutations};
+      } else if(operatorConsumer?.reviewedAction) {
         const node=pack.graph.nodes.find(item=>item.id===operatorConsumer.node);
         const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
         const declaration=tool?.interactive?.arguments[operatorConsumer.reviewedAction.command];
@@ -1033,6 +1043,21 @@ export default class Hima extends Service {
         let payload:Record<string,unknown>;try{payload=JSON.parse(observed.handoff.output.text) as Record<string,unknown>;}catch{return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action must be one JSON object.'};}
         const sourceMember=team.members.find(item=>item.id===member.reviewedAction!.fromRole)!;
         if(payload.schema!==sourceMember.resultSchema.id||sourceMember.resultSchema.required.some(field=>!(field in payload)))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action does not satisfy its Pack result schema.'};
+        if(member.reviewedAction.mode==='scope') {
+          const reviewed=member.reviewedAction;
+          const planHash=payload[reviewed.planHashField];const scope=payload[reviewed.scopeField];
+          if(typeof planHash!=='string'||planHash!==outputRecords.get(reviewed.planInput)?.contentSha256)return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed scope plan SHA-256 differs from the current reader-backed plan.'};
+          // Second guard: the Reviewer result gate already refused this; a Ledger result that bypassed it still cannot pass.
+          const problem=reviewedScopeProblem(scope,reviewed);
+          if(problem!==undefined)return {unknowns:[],status:'refused',artifacts:[],reason:`${problem[0]!.toUpperCase()}${problem.slice(1)}.`};
+          const {commands,maxMutations}=scope as {commands:string[];maxMutations:number};
+          const node=pack.graph.nodes.find(item=>item.id===member.node);const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
+          const untyped=commands.filter(command=>!tool?.interactive?.commands.mutate.includes(command)
+            ||!tool.interactive.arguments[command]?.some(item=>item.name===reviewed.hostPlanHashArgument&&item.type==='string'));
+          if(untyped.length>0)return {unknowns:[],status:'refused',artifacts:[],reason:`The reviewed scope names commands that are not hash-bearing mutations of the Operator tool: ${untyped.join(', ')}.`};
+          inlinePayload={sourceResultRecordId:result.id,adoptionRecordId:source.adoptedRecordId!,planSha256:planHash,
+            planHashArgument:reviewed.hostPlanHashArgument,scope:{commands,maxMutations}};
+        } else {
         const planHash=payload[member.reviewedAction.planHashField];const command=payload[member.reviewedAction.commandField];const args=payload[member.reviewedAction.argumentsField];
         const planRecord=outputRecords.get(member.reviewedAction.planInput);
         if(typeof planHash!=='string'||planHash!==planRecord?.contentSha256)return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action plan SHA-256 differs from the current reader-backed fix plan.'};
@@ -1050,11 +1075,12 @@ export default class Hima extends Service {
             &&actionDeclaration.every(item=>(candidate as Record<string,unknown>)[item.name]===values[item.name])))return {unknowns:[],status:'refused',artifacts:[],reason:'The owner-adopted reviewed action is not one action in the exact reader-backed fix plan.'};
         const effectiveArguments={...values,[member.reviewedAction.hostPlanHashArgument]:planHash} as Record<string,string|number|boolean>;
         inlinePayload={sourceResultRecordId:result.id,adoptionRecordId:source.adoptedRecordId!,planSha256:planHash,command,arguments:effectiveArguments};
+        }
       }
       const delegationId=`team-${team.id}-${member.id}-${identityOf({runId:run.id,executionId:execution.id}).slice(0,16)}`;
       const priorRecipe=existing.find(row=>row.delegationId===delegationId);
       const recipeDigest=identityOf({packDigest:run.packDigest,team,member});
-      const task=[member.taskTemplate,`Runtime inputs: ${inputRefs.join(', ')}.`,inlinePayload?`Immutable reviewed action: ${JSON.stringify(inlinePayload)}.`:''].filter(Boolean).join('\n');
+      const task=[member.taskTemplate,`Runtime inputs: ${inputRefs.join(', ')}.`,inlinePayload?`${'scope' in inlinePayload?'Immutable reviewed scope':'Immutable reviewed action'}: ${JSON.stringify(inlinePayload)}.`:''].filter(Boolean).join('\n');
       normalizedRequest={...request,recipe:undefined,...(priorRecipe?.reservation.admittedRevision===undefined?{}:{expectedRevision:priorRecipe.reservation.admittedRevision}),contract:{delegationId,role:member.role,task,inputRefs,nodeRef:member.node,
         allowedTools:member.allowedTools,budgetShare:member.budgetShare,dependencyIds,recipient:{kind:'run-owner',sessionId:run.control.owner},
         recipe:{teamId:team.id,version:team.version,memberId:member.id,executionId:execution.id,recipeDigest,resultSchema:member.resultSchema,...(inlinePayload?{inlinePayload}:{})}}};

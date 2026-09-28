@@ -48,7 +48,9 @@ const openReleasedRecord = z.strictObject({ ...common, event: z.literal('open-re
 const inputIntentRecord = z.strictObject({ ...common, event: z.literal('input-intent'), commandId: plainId, inputDigest: sha256,
   requestDigest: sha256, protocolToken,
   inputBytes: z.number().int().nonnegative(), submit: z.boolean(), effect: z.enum(['read', 'mutation', 'reply', 'close']),
-  replyToCommandId: plainId.optional(), cursorBefore: z.number().int().nonnegative(), commandDeadlineAt: z.string() });
+  replyToCommandId: plainId.optional(), cursorBefore: z.number().int().nonnegative(), commandDeadlineAt: z.string(),
+  // Present only on a mutation admitted against an Operator's owner-adopted reviewed scope budget.
+  scopeMutation: z.literal(true).optional() });
 const inputOutcomeRecord = z.strictObject({ ...common, event: z.enum(['input-sent', 'input-uncertain', 'command-completed', 'command-failed']), commandId: plainId,
   inputDigest: sha256, cursorAfter: z.number().int().nonnegative().optional(), reason: z.string().optional() });
 const signalRecord = z.strictObject({ ...common, event: z.enum(['signal-intent', 'signal-delivered', 'signal-uncertain']),
@@ -99,6 +101,13 @@ export interface InteractiveAddress {
   readonly authorityOwner?: string;
   /** Host-only pin from the Operator delegation receipt. */
   readonly expectedBindingDigest?: string;
+  /**
+   * Host-only: the Operator's owner-adopted reviewed scope. Admission holds every mutation the
+   * retained Pack classifies as `mutate` to these commands and plan hash, and counts the scope
+   * mutations already recorded for this execution and actor, across tool sessions, against `maxMutations`.
+   */
+  readonly reviewedScope?: { readonly commands: readonly string[]; readonly maxMutations: number;
+    readonly planHashArgument: string; readonly planSha256: string };
 }
 
 export interface InteractiveSession {

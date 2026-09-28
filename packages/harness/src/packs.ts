@@ -512,7 +512,9 @@ const teamMember = z.strictObject({
   cancellation: z.literal('request-stop-preserve-unknown'),
   terminal: z.array(z.enum(['completed', 'cancelled', 'expired', 'uncertain', 'refused'])).min(1),
   refusalConditions: z.array(z.string().trim().min(1).max(240)).min(1).max(32),
-  reviewedAction: z.strictObject({
+  reviewedAction: z.union([z.strictObject({
+    // Absent means "action": the Reviewer approves exactly one typed action from the plan.
+    mode: z.literal('action').optional(),
     fromRole: packId,
     planInput: declaredName,
     actionListField: declaredName,
@@ -521,7 +523,17 @@ const teamMember = z.strictObject({
     planHashField: declaredName,
     commandField: declaredName,
     argumentsField: declaredName,
-  }).optional(),
+  }), z.strictObject({
+    // The Reviewer approves a scope: a subset of `commands` and a mutation budget up to `maxMutations`.
+    mode: z.literal('scope'),
+    fromRole: packId,
+    planInput: declaredName,
+    commands: z.array(z.string().min(1)).min(1).max(32),
+    maxMutations: z.number().int().min(1).max(200),
+    hostPlanHashArgument: declaredName,
+    planHashField: declaredName,
+    scopeField: declaredName,
+  })]).optional(),
 });
 export const packAgentTeam = z.strictObject({
   id: packId,
@@ -2097,11 +2109,25 @@ function validateAgentTeams(pack: Pack, declaredIn: ReadonlyMap<string, string>,
       if (!member.inputs.includes(member.reviewedAction.planInput)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed action planInput must be one of Operator "${member.id}" inputs`);
       const targetNode = nodes.get(member.node); const targetTool = targetNode?.kind === 'act' && targetNode.parameters.tool
         ? pack.contract.tools.find(candidate => candidate.id === targetNode.parameters.tool) : undefined;
-      if (!targetTool?.interactive?.commands.mutate.includes(member.reviewedAction.command)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed action command is not a mutation of Operator "${member.id}" tool`);
-      const commandArgs = targetTool?.interactive?.arguments[member.reviewedAction.command] ?? [];
-      const hashArg = commandArgs.find(argument => argument.name === member.reviewedAction!.hostPlanHashArgument);
+      const reviewed = member.reviewedAction;
+      if (reviewed.mode === 'scope') {
+        if (new Set(reviewed.commands).size !== reviewed.commands.length) broken(packFiles.contract, `Agent Team "${team.id}" reviewed scope names a command more than once`);
+        for (const command of reviewed.commands) {
+          if (!targetTool?.interactive?.commands.mutate.includes(command)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed scope command "${command}" is not a mutation of Operator "${member.id}" tool`);
+          const hashArg = (targetTool.interactive.arguments[command] ?? []).find(argument => argument.name === reviewed.hostPlanHashArgument);
+          if (hashArg?.type !== 'string') broken(packFiles.contract, `Agent Team "${team.id}" reviewed scope hostPlanHashArgument must name a string argument of mutation command "${command}"`);
+        }
+        for (const field of [reviewed.planHashField, reviewed.scopeField]) {
+          if (!source.resultSchema.required.includes(field)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed scope field "${field}" is not required by member "${source.id}" result schema`);
+        }
+        if (source.ownerAdoption !== 'required') broken(packFiles.contract, `Agent Team "${team.id}" reviewed scope source "${source.id}" must require owner adoption`);
+        continue;
+      }
+      if (!targetTool?.interactive?.commands.mutate.includes(reviewed.command)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed action command is not a mutation of Operator "${member.id}" tool`);
+      const commandArgs = targetTool?.interactive?.arguments[reviewed.command] ?? [];
+      const hashArg = commandArgs.find(argument => argument.name === reviewed.hostPlanHashArgument);
       if (hashArg?.type !== 'string') broken(packFiles.contract, `Agent Team "${team.id}" reviewed action hostPlanHashArgument must name a string argument of its mutation command`);
-      for (const field of [member.reviewedAction.planHashField, member.reviewedAction.commandField, member.reviewedAction.argumentsField]) {
+      for (const field of [reviewed.planHashField, reviewed.commandField, reviewed.argumentsField]) {
         if (!source.resultSchema.required.includes(field)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed action field "${field}" is not required by member "${source.id}" result schema`);
       }
       if (source.ownerAdoption !== 'required') broken(packFiles.contract, `Agent Team "${team.id}" reviewed action source "${source.id}" must require owner adoption`);
