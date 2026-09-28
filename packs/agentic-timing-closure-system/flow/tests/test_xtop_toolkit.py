@@ -392,7 +392,11 @@ proc undo {args} {
     stub_record undo {*}$args
     if {$::stub_undo_broken} { return "" }
     if {[llength $::actions] == 0} { error "Error: no ECO checkpoint to undo" }
-    if {[lindex $::actions end 3]} { error "" }
+    if {[lindex $::actions end 3]} {
+        # Real XTop's reply to undoing a fix flow (Task 7): printed, code 1, empty result.
+        puts "Error: The committed actions cannot be undone."
+        error ""
+    }
     array unset ::cells
     array unset ::pin_net
     array set ::cells [lindex $::actions end 0]
@@ -1586,6 +1590,7 @@ class CommittedFixTest(unittest.TestCase):
         status, message = session.outcome("undo")
         self.assertEqual(status, "ERR")
         self.assertIn("failed and changed nothing", message)
+        self.assertIn("Error: The committed actions cannot be undone.", session.stdout)
         self.assertEqual([op["status"] for op in session.ops], ["kept", "error", "kept"])
         self.assertEqual(session.outcome("next")[0], "OK", session.stdout)
         self.assertIn("U1=BUFX4", session.cells_line())

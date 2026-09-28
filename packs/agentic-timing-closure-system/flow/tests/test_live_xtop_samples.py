@@ -147,5 +147,60 @@ class LiveSessionValueTest(unittest.TestCase):
         codes = {r["code"] for r in contribution["refusals"]}
         self.assertIn("breaks-opposite-check", codes)
 
+
+def _seal_run3(slot, instances, before, after, targets):
+    import tempfile
+    from session_fixtures import make_base_ref
+    base_ref = make_base_ref(slot=slot, instances=instances, nets=(), targets=targets, target_pins=[])
+    with tempfile.TemporaryDirectory() as tmp:
+        paths = {}
+        for name, mapping in (("before.dump", before), ("after.dump", after)):
+            paths[name] = str(Path(tmp) / name)
+            Path(paths[name]).write_text("".join(f"{k} {v}\n" for k, v in mapping.items()))
+        result_refs = {"beforeDump": paths["before.dump"], "afterDump": paths["after.dump"],
+                       "evidence": {"taintedJson": None, "transcriptTaint": "clean", "ecoOutput": True},
+                       "fillerPatterns": ["FILL*", "DCAP*"], "requiredScenarios": REQUIRED}
+        return contributions.seal_session(base_ref, result_refs, getattr(live, f"RUN3_OPS_JSONL_{slot.upper()}"),
+                                          getattr(live, f"RUN3_GAIN_JSONL_{slot.upper()}"))
+
+
+class LiveOpsLinesTest(unittest.TestCase):
+    """Review fix: the capture reads the real run-3 ops lines, verbatim."""
+
+    def test_the_hierarchical_insert_matches_its_request(self):
+        insert = json.loads(live.RUN3_OPS_JSONL_W01.splitlines()[0])
+        self.assertEqual(insert["after"], {"instances": {"swerv_dbg/atcs_w01_r1_chain_d0": "DEL050MD1BWP30P140"}})
+        self.assertIs(insert["matchesRequest"], True)
+        self.assertIsNone(contributions._request_problem(insert))
+
+    def test_w01_seals_the_kept_hold_fix_after_the_undone_insert(self):
+        ff, driver = "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_", "FE_OFC18592_FE_OCPN9799_rst_l"
+        before = {ff: "SDFCNQARD1BWP40P140HVT", driver: "INVD12BWP30P140ULVT"}
+        after = {**before, "swerv_dbg/atcs_w01_r1_eco_cell_0": "DEL050MD1BWP30P140",
+                 "swerv_dbg/atcs_w01_r1_eco_cell_1": "DEL100MD1BWP30P140"}
+        contribution = _seal_run3("w01", (ff, driver), before, after,
+                                  ["func_ssg_rcworst_m40|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**"])
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual([c["seq"] for c in contribution["commands"]], [3])
+        self.assertEqual(contribution["session"]["undone"], [1])
+        self.assertAlmostEqual(contribution["value"], 0.0344, places=9)  # ssg_125 hold -0.1799 -> -0.1455
+
+    def test_w03_keeps_the_fix_the_move_undo_restored_and_the_refused_undo_changed_nothing(self):
+        lines = [json.loads(line) for line in live.RUN3_OPS_JSONL_W03.splitlines()]
+        self.assertEqual([(l["seq"], l["cmd"], l["status"]) for l in lines], [
+            (1, "size_cell", "kept"), (2, "undo", "kept"), (3, "fix_setup_gba_violations", "kept"),
+            (4, "move_cell", "kept"), (5, "undo", "kept"), (6, "undo", "error")])
+        self.assertEqual(lines[3]["xtop"]["command"][:26], "move_cell -to (2.26,328.6)")
+        self.assertEqual(lines[3]["verified"], "eco-actions")
+        self.assertEqual((lines[5]["undoes"], lines[5]["xtop"]["code"]), (3, 1))
+        buf, gate = "rm_assigns_buf_ifu_axi_araddr_4", "swerv_ifu/mem_ctl/g37835"
+        contribution = _seal_run3("w03", (buf, gate), {buf: "BUFFD1BWP40P140HVT", gate: "IOA21D4BWP35P140LVT"},
+                                  {buf: "BUFFD4BWP30P140ULVT", gate: "IOA21D4BWP35P140ULVT"},
+                                  ["func_ssg_rcworst_125|setup|ifu_axi_araddr[4]"])
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual([c["seq"] for c in contribution["commands"]], [3])
+        self.assertEqual(contribution["session"]["undone"], [1, 4])
+        self.assertAlmostEqual(contribution["value"], 0.0023, places=9)
+
 if __name__ == "__main__":
     unittest.main()
