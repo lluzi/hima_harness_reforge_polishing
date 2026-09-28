@@ -406,6 +406,12 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
   return [`HimaHarness: ${versionLine()}.`, packLine, siteLine, campaignLine].join('\n');
 }
 
+/** The tool an act node of `pack` runs, when `nodeId` names one. */
+function nodeTool(pack: import('./packs.js').Pack, nodeId: string): import('./packs.js').PackTool | undefined {
+  const node = pack.graph.nodes.find(item => item.id === nodeId);
+  return node?.kind === 'act' && node.parameters.tool ? pack.contract.tools.find(item => item.id === node.parameters.tool) : undefined;
+}
+
 /**
  * `SiteHeadView.readiness`, and the one rule `Hima.preparation`'s own site readiness calls this to
  * compute too, so the two answers cannot disagree: `local` is always ready; an `ssh` Site with no
@@ -419,12 +425,6 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
  * caller has not yet re-discovered against is therefore not detected by this function or by
  * `GET /hima/api/sites`; only a `discoverSshSite` call that recomputes and compares can see it.
  */
-/** The tool an act node of `pack` runs, when `nodeId` names one. */
-function nodeTool(pack: import('./packs.js').Pack, nodeId: string): import('./packs.js').PackTool | undefined {
-  const node = pack.graph.nodes.find(item => item.id === nodeId);
-  return node?.kind === 'act' && node.parameters.tool ? pack.contract.tools.find(item => item.id === node.parameters.tool) : undefined;
-}
-
 function siteHeadReadiness(site: Site): SiteHeadView['readiness'] {
   if (site.kind === 'local') return 'ready';
   if (site.discovery === undefined) return 'needs-discovery';

@@ -1214,10 +1214,12 @@ def seal_batch(state, request, facts, contributions):
 # with its reason and the replay continues. `reconcile_recipe` then refuses an
 # unsafe arm (incomplete run, tainted toolkit session, out-of-domain replay change,
 # no single ECO pair, or a `FORMATVERSION`/`dbNetFreeWires`/`editDelete -net`
-# line), and keeps merged only when its XTop prediction is no worse than control's
-# on both worst WNS -- so the refreshed batch is never worse than plain auto-fix by
-# XTop's own estimate. PrimeTime after
-# the refresh stays the only convergence judge.
+# line), and chooses by XTop's prediction, WNS first: control when merged is worse
+# on setup or hold WNS (1e-4); merged when it is better on one WNS; with both WNS
+# equal, merged only when it is no worse on setup and hold TNS (1e-3) and better
+# on one, or all four tie -- so the refreshed batch is never worse than plain
+# auto-fix by XTop's own estimate. PrimeTime after the refresh stays the only
+# convergence judge.
 
 RECIPE_PROCS = {
     "atcs_size_cell": ("instance", "toMaster", "planSha256"),
@@ -1499,26 +1501,39 @@ def _prediction(predict_text, required):
 
 
 PREDICTION_TOLERANCE = 1e-4
-"""One rounding step of XTop's 4-decimal summary: a difference within it is no difference."""
+"""One rounding step of XTop's 4-decimal WNS: a WNS difference within it is no difference."""
+
+TNS_TOLERANCE = 1e-3
+"""A TNS difference within it is no difference (TNS sums many 4-decimal rows)."""
 
 
 def _compare_predictions(merged, control):
-    """``(merged_chosen, detail)``: merged only if it is no worse than control on worst setup WNS
-    and worst hold WNS, and strictly better on at least one of the four WNS/TNS measures or equal
-    on all of them (a tie goes to merged)."""
+    """``(merged_chosen, detail)``, WNS first, then TNS without trade-offs.
+
+    1. Merged worse than control on worst setup WNS or worst hold WNS (by more than
+       `PREDICTION_TOLERANCE`): control.
+    2. Else merged better on at least one worst WNS: merged.
+    3. Else (both WNS equal): merged only if it is no worse on setup TNS and hold TNS (within
+       `TNS_TOLERANCE`) and better on at least one, or all four tie; otherwise control.
+    """
     keys = (("worstSetupWns", "setup WNS"), ("worstHoldWns", "hold WNS"),
             ("setupTns", "setup TNS"), ("holdTns", "hold TNS"))
     diffs = {label: round(merged[key] - control[key], 6) for key, label in keys}
     detail = "; ".join(f"{label} merged {merged[key]} vs control {control[key]}" for key, label in keys)
-    worse = [label for label in ("setup WNS", "hold WNS") if diffs[label] < -PREDICTION_TOLERANCE]
+    wns, tns = ("setup WNS", "hold WNS"), ("setup TNS", "hold TNS")
+    worse = [label for label in wns if diffs[label] < -PREDICTION_TOLERANCE]
     if worse:
         return False, f"merged is worse on {' and '.join(worse)} ({detail})"
-    better = [label for label, diff in diffs.items() if diff > PREDICTION_TOLERANCE]
+    better = [label for label in wns if diffs[label] > PREDICTION_TOLERANCE]
     if better:
-        return True, f"merged is no worse on WNS and better on {', '.join(better)} ({detail})"
-    if all(abs(diff) <= PREDICTION_TOLERANCE for diff in diffs.values()):
-        return True, f"tie ({detail}); merged kept"
-    return False, f"merged is better on nothing and worse on TNS ({detail})"
+        return True, f"merged is no worse on WNS and better on {' and '.join(better)} ({detail})"
+    worse = [label for label in tns if diffs[label] < -TNS_TOLERANCE]
+    if worse:
+        return False, f"WNS equal; merged is worse on {' and '.join(worse)} ({detail})"
+    better = [label for label in tns if diffs[label] > TNS_TOLERANCE]
+    if better:
+        return True, f"WNS equal; merged is no worse on TNS and better on {' and '.join(better)} ({detail})"
+    return True, f"tie ({detail}); merged kept"
 
 
 # ---- ECO pair safety -----------------------------------------------------------
@@ -1606,11 +1621,15 @@ def _arm_view(arm, evidence, request, session_accounts):
     if arm == "merged":
         problems.extend(session_accounts["problems"])
     fail_text = evidence.get("failReasonText") if isinstance(evidence.get("failReasonText"), dict) else {}
+    fail_codes = (result or {}).get("failReasons") if isinstance((result or {}).get("failReasons"), dict) else {}
+    # A check whose fail-reason read returned a non-zero Tcl code was not read: unread, never `{}`.
+    unread = [check for check in ("setup", "hold") if fail_codes.get(check, 0) not in (0, "0")]
     view = {
         "safe": not problems, "problems": problems, "missingPair": missing, "eco": pair,
         "prediction": _prediction(evidence.get("predictText"), request.get("requiredScenarios") or []),
         "failReasons": {check: contributions.parse_fail_reasons(fail_text[check]) for check in ("setup", "hold")
-                        if isinstance(fail_text.get(check), str)},
+                        if isinstance(fail_text.get(check), str) and check not in unread},
+        "failReasonsUnread": unread,
         "toolFailure": evidence.get("toolFailure"),
         "autoFix": (result or {}).get("autoFix") or [],
     }
@@ -1758,9 +1777,10 @@ def reconcile_recipe(request, arms):
     `FORMATVERSION` / `dbNetFreeWires` / `editDelete -net` line, or (merged) a receipt is
     unattributable or a session's replay changed an instance outside its own edit domain.
     Choice: a safe arm over an unsafe one; with both safe, XTop's predictions over the required
-    scenarios: merged only if it is no worse than control on worst setup WNS and on worst hold
-    WNS (within `PREDICTION_TOLERANCE`), and strictly better on at least one of setup/hold WNS or
-    TNS (TNS summed over scenarios), else control; a tie on all four goes to merged. An unknown
+    scenarios (`_compare_predictions`): control when merged is worse on worst setup or hold WNS
+    (`PREDICTION_TOLERANCE`); merged when it is better on one WNS; with both WNS equal, merged
+    only when it is no worse on setup and hold TNS (summed over scenarios, `TNS_TOLERANCE`) and
+    better on one, or all four tie; otherwise control. An unknown
     prediction of either arm keeps control (both run the same summary command, so plain auto-fix
     is the conservative pick).
     Merged chosen only because control is unusable is sealed ``guarantee.evidenced: false`` with
@@ -1769,8 +1789,9 @@ def reconcile_recipe(request, arms):
     ``missing-input`` (the merged pair is missing) or ``eco-refused``.
 
     ``failReasons`` is the chosen arm's post-auto-finish ``summarize_gba_violations
-    -with_fail_reason`` reading, ``{arm, setup?: {reason: count}, hold?: {...}}`` (a check whose
-    reading is missing is absent); ``arms.*.failReasons`` holds both arms'. They are what plain
+    -with_fail_reason`` reading, ``{arm, setup?: {reason: count}, hold?: {...}, unread?: [check]}``
+    (a check whose report is missing is absent; one whose read returned a non-zero code is listed
+    in ``unread``); ``arms.*.failReasons`` / ``failReasonsUnread`` hold both arms'. They are what plain
     auto-fix left unfixed and why, for the residual and the next generation's research.
 
     Recorded, never blocking: skipped commands (per session), a session replay delta that
@@ -1826,7 +1847,9 @@ def reconcile_recipe(request, arms):
         "warnings": warnings,
         "arms": views,
         "chosen": {"arm": chosen_arm, "reason": reason, "eco": views[chosen_arm]["eco"]},
-        "failReasons": {"arm": chosen_arm, **views[chosen_arm]["failReasons"]},
+        "failReasons": {"arm": chosen_arm, **views[chosen_arm]["failReasons"],
+                        **({"unread": views[chosen_arm]["failReasonsUnread"]}
+                           if views[chosen_arm]["failReasonsUnread"] else {})},
         "guarantee": {"evidenced": evidenced, "arm": chosen_arm, "reason": reason},
         "newNets": new_nets,
     }

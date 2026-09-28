@@ -1659,10 +1659,35 @@ class ReconcileRecipeTests(unittest.TestCase):
         _, state = reconcile_default(merged_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (4, -0.05, -0.20)}})
         self.assertEqual(state["chosen"]["arm"], "control")
 
-    def test_merged_better_on_one_tns_and_worse_on_the_other_is_chosen(self):
+    def test_equal_wns_with_one_tns_better_and_the_other_worse_is_not_chosen(self):
+        """No TNS trade-off when both WNS tie: a hold TNS gain does not buy a setup TNS loss."""
         _, state = reconcile_default(merged_kw={"setup": {"s1": (2, -0.02, -0.03), "s2": (0, 0.0, 0.0)},
                                                 "hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.05, -0.05)}})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIn("setup TNS", state["chosen"]["reason"])
+
+    def test_a_better_wns_chooses_merged_even_with_a_worse_tns(self):
+        """WNS first: merged better on hold WNS and no worse on setup WNS is kept, whatever its TNS."""
+        _, state = reconcile_default(merged_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (3, -0.04, -0.20)}})
         self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertIn("hold WNS", state["chosen"]["reason"])
+
+    def test_equal_wns_and_a_tns_loss_within_the_tns_tolerance_is_no_worse(self):
+        _, state = reconcile_default(merged_kw={"setup": {"s1": (1, -0.02, -0.01), "s2": (0, 0.0, 0.0)},
+                                                "hold": {"s1": (0, 0.0, 0.0), "s2": (2, -0.05, -0.0805)}})
+        self.assertEqual(state["chosen"]["arm"], "merged")
+
+    def test_a_check_whose_fail_reason_read_failed_is_unread_not_empty(self):
+        request = prepare_default()
+        merged = arm_evidence("merged", receipts=merged_receipts(request), session_deltas=matching_session_deltas())
+        merged["result"]["failReasons"] = {"setup": 0, "hold": 1}
+        merged["failReasonText"] = {"setup": "no_setup_gain 3\n", "hold": "Error: unknown option\n"}
+        state = integration.reconcile_recipe(request, {"merged": merged, "control": arm_evidence("control")})
+        self.assertEqual(state["arms"]["merged"]["failReasons"], {"setup": {"no_setup_gain": 3}})
+        self.assertEqual(state["arms"]["merged"]["failReasonsUnread"], ["hold"])
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertEqual(state["failReasons"], {"arm": "merged", "setup": {"no_setup_gain": 3}, "unread": ["hold"]})
+        self.assertEqual(state["arms"]["control"]["failReasonsUnread"], [])
 
     def test_equal_worst_slack_is_broken_by_tns(self):
         _, state = reconcile_default(control_kw={"setup": {"s1": (3, -0.02, -0.05), "s2": (0, 0.0, 0.0)}})

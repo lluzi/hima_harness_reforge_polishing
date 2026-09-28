@@ -54,8 +54,10 @@ The Operator is a trial-and-measure expert, not the executor of one pinned actio
 probabilistic: XTop's gain shows whether it helped against the session reference. Keep what the gain
 shows helps, undo what does not. The merge later ranks sessions by value (blocker coverage first, then
 XTop's predicted gain) and replays them best-effort before auto-finish, and a plain auto-fix control
-arm guards the batch: the merged batch is kept only when XTop predicts it no worse than control on
-both worst setup and worst hold WNS. So a short, clean kept log beats many marginal edits. XTop's gain only screens
+arm guards the batch. XTop's prediction decides, WNS first: control when merged is worse on worst
+setup or hold WNS (by more than 1e-4); merged when it is better on one WNS; with both WNS equal,
+merged only when it is no worse on setup and hold TNS (1e-3) and better on one, or all four tie.
+So a short, clean kept log beats many marginal edits. XTop's gain only screens
 trials; only refreshed PrimeTime judges convergence.
 
 ### The expert loop

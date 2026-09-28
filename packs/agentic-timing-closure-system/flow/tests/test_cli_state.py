@@ -3189,11 +3189,13 @@ class RecordExperienceComposedTest(unittest.TestCase):
     def test_a_recipe_batch_predicts_from_the_chosen_arms_xtop_summary(self):
         entry = self._recipe_entry({"worstSetupWns": 0.0, "worstHoldWns": -0.03})
         self.assertAlmostEqual(core.value_of(entry["predicted"]), -0.03)  # min(0.0, -0.03) - 0.0
+        self.assertEqual(entry["conditions"]["predictionModel"], "xtop")
 
     def test_an_unknown_chosen_arm_prediction_is_an_unknown_prediction(self):
         entry = self._recipe_entry({"unknown": "no readable hold table"})
         self.assertFalse(core.is_known(entry["predicted"]))
         self.assertIn("no readable hold table", entry["predicted"]["unknown"])
+        self.assertEqual(entry["conditions"]["predictionModel"], "unknown")
 
     def test_measured_negative_delta_is_hurt(self):
         reason_path = self._write_candidate(parent_min_wns=0.05, candidate_setup_wns=0.01, candidate_hold_wns=0.01)
