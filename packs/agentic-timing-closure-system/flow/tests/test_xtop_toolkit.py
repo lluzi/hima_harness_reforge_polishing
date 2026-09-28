@@ -142,9 +142,17 @@ set ::stub_remove_extra {}
 set ::stub_insert_hier ""
 set ::stub_insert_removes {}
 set ::stub_undo_broken 0
+# Real XTop (Issue #64 Task 7, qual-issue64-chain-20260928): a fix flow's actions are committed and
+# `undo` refuses them ("Error: The committed actions cannot be undone."); set ::stub_fix_committed 1
+# to model it. Most mechanism tests below use a fix as a vehicle for an arbitrary effect and keep 0.
+set ::stub_fix_committed 0
+# Real XTop: `summarize_gba_violations -with_fail_reason` fails until a fix or optimize flow has run.
+set ::stub_fix_ran 0
 set ::stub_fail {}
 set ::stub_noop {}
-proc stub_act {touched} { lappend ::actions [list [array get ::cells] [array get ::pin_net] $touched] }
+proc stub_act {touched {committed 0}} {
+    lappend ::actions [list [array get ::cells] [array get ::pin_net] $touched $committed]
+}
 proc stub_gate {name} {
     if {[lsearch -exact $::stub_fail $name] >= 0} { error "XTop stub refused $name" }
     return [expr {[lsearch -exact $::stub_noop $name] >= 0}]
@@ -360,15 +368,16 @@ proc remove_buffer {args} {
 proc stub_fix {name words} {
     stub_record $name {*}$words
     stub_gate $name
+    set ::stub_fix_ran 1
     set touched {}
     foreach {inst master} $::stub_fix_effect { lappend touched $inst }
     if {[llength $touched] == 0 && $::stub_fix_actions == 0} { return 0 }
-    stub_act $touched
+    stub_act $touched $::stub_fix_committed
     foreach {inst master} $::stub_fix_effect {
         if {$master eq ""} { unset ::cells($inst) } else { set ::cells($inst) $master }
     }
     foreach {pin net} $::stub_fix_pins { set ::pin_net($pin) $net }
-    for {set k 1} {$k < $::stub_fix_actions} {incr k} { stub_act {} }
+    for {set k 1} {$k < $::stub_fix_actions} {incr k} { stub_act {} $::stub_fix_committed }
     return 3
 }
 proc fix_hold_gba_violations {args} { return [stub_fix fix_hold_gba_violations $args] }
@@ -377,6 +386,7 @@ proc undo {args} {
     stub_record undo {*}$args
     if {$::stub_undo_broken} { return "" }
     if {[llength $::actions] == 0} { error "Error: no ECO checkpoint to undo" }
+    if {[lindex $::actions end 3]} { error "" }
     array unset ::cells
     array unset ::pin_net
     array set ::cells [lindex $::actions end 0]
@@ -387,6 +397,10 @@ proc undo {args} {
 proc summarize_gba_violations {args} {
     stub_record summarize_gba_violations {*}$args
     stub_gate summarize_gba_violations
+    if {[lsearch -exact $args -with_fail_reason] >= 0 && !$::stub_fix_ran} {
+        puts "Error: No fail reason since no fix or optimize flow have run yet."
+        error ""
+    }
     return "WNS \"delta\"\t-0.010 for $args"
 }
 proc redirect {args} {
@@ -1451,8 +1465,9 @@ class ReadProceduresTest(unittest.TestCase):
         probe = [gain for gain in session.gains if gain["kind"] == "probe"]
         self.assertEqual(len(probe), 1)
         command = probe[0]["checks"]["hold"]["command"]
+        # No fix has run in this session, so XTop has no fail reasons to report yet (Task 7, real XTop).
         self.assertEqual(command, "summarize_gba_violations -with_delta -with_reference -exclude_path "
-                                  "-with_top_n 7 -with_fail_reason -hold")
+                                  "-with_top_n 7 -hold")
         (setup_analysis,) = session.calls_to("analyze_setup_path_violations")
         self.assertEqual(setup_analysis[1:], ["-top", "5", "-detail_info"])
         (get_paths,) = session.calls_to("get_paths")
@@ -1465,6 +1480,77 @@ class ReadProceduresTest(unittest.TestCase):
         self.assertEqual([call[0] for call in session.calls if call[0] in MUTATING_XTOP], [])
         self.assertEqual(session.ops, [])
 
+
+    def test_the_probe_asks_for_fail_reasons_only_after_a_fix_ran(self):
+        # Real XTop, Task 7 (qual-issue64-chain-20260928, w01..w03): before any fix or optimize flow,
+        # `-with_fail_reason` fails ("No fail reason since no fix or optimize flow have run yet.");
+        # `-with_top_n` alone works. After a fix the probe carries the fail reasons.
+        session = Session(self).run(
+            "T before {atcs_gain setup 5}\n"
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            "T after_size {atcs_gain setup 5}\n"
+            "set ::stub_fix_effect {U1 BUFX4}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            "T after_fix {atcs_gain hold 5}\n"
+        )
+        for tag in ("before", "size", "after_size", "fix", "after_fix"):
+            self.assertEqual(session.outcome(tag)[0], "OK", tag + session.stdout + session.stderr)
+        probes = [gain for gain in session.gains if gain["kind"] == "probe"]
+        self.assertEqual([next(iter(probe["checks"].values()))["command"] for probe in probes], [
+            "summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n 5 -setup",
+            "summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n 5 -setup",
+            "summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n 5 -with_fail_reason -hold",
+        ])
+        self.assertTrue(all(next(iter(probe["checks"].values()))["code"] == 0 for probe in probes))
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class CommittedFixTest(unittest.TestCase):
+    """Real XTop commits a fix flow's actions (Task 7): `undo` cannot revert a targeted fix."""
+
+    def test_undo_of_a_committed_fix_fails_changes_nothing_and_does_not_taint(self):
+        session = Session(self).run(
+            "set ::stub_fix_committed 1\nset ::stub_fix_effect {U1 BUFX4}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            f"T undo {{atcs_undo {PLAN}}}\n"
+            f"T next {{atcs_size_cell U2 INVX2 {PLAN}}}\n"
+            'puts "CELLS:[stub_cells]"\n'
+        )
+        self.assertEqual(session.outcome("fix")[0], "OK", session.stdout)
+        status, message = session.outcome("undo")
+        self.assertEqual(status, "ERR")
+        self.assertIn("failed and changed nothing", message)
+        self.assertEqual([op["status"] for op in session.ops], ["kept", "error", "kept"])
+        self.assertEqual(session.outcome("next")[0], "OK", session.stdout)
+        self.assertIn("U1=BUFX4", session.cells_line())
+        self.assertFalse((session.root / "tainted.json").exists())
+
+    def test_a_fix_that_may_insert_cells_needs_each_pin_net_in_the_domain(self):
+        # Task 7 w01: a hold fix on a target pin whose net was outside the domain inserted a delay
+        # cell there; XTop could not undo it, so the session was tainted. The toolkit now refuses such
+        # a fix before XTop: hold fixes (unless size-only) and setup fixes that may insert or split.
+        domain = {"instances": ["U1", "U2", "U3"], "nets": ["N1"], "regions": []}
+        session = Session(self, domain=domain, target_pins=["U9/D"]).run(
+            "set ::stub_fix_committed 1\n"
+            f"T hold {{{HOLD} U9/D high 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            f"T setup_insert {{{SETUP} U9/D {{size_cell insert_buffer}} 0 0 high 0.0 0.02 {PLAN}}}\n"
+            f"T setup_split {{{SETUP} U9/D split_net 0 0 high 0.0 0.02 {PLAN}}}\n"
+            "set ::stub_fix_effect {U1 BUFX4}\n"
+            f"T hold_size {{{HOLD} U9/D omit 0.0 0.02 1 0 0 0 -1 {{}} {PLAN}}}\n"
+            "set ::stub_fix_effect {U1 BUFX2}\n"
+            f"T setup_size {{{SETUP} U9/D size_cell 0 0 high 0.0 0.02 {PLAN}}}\n"
+            "set ::stub_fix_effect {U2 INVX2}\n"
+            f"T hold_domain_net {{{HOLD} U1/A high 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+        )
+        for tag in ("hold", "setup_insert", "setup_split"):
+            status, message = session.outcome(tag)
+            self.assertEqual(status, "ERR", tag)
+            self.assertIn("U9/D is on net N2 outside the edit domain", message)
+        for tag in ("hold_size", "setup_size", "hold_domain_net"):
+            self.assertEqual(session.outcome(tag)[0], "OK", tag + session.stdout)
+        self.assertEqual(len(session.calls_to("fix_hold_gba_violations")), 2)
+        self.assertEqual(len(session.calls_to("fix_setup_gba_violations")), 1)
+        self.assertEqual([op["seq"] for op in session.ops], [1, 2, 3])
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class KnowledgeSurfaceTest(unittest.TestCase):

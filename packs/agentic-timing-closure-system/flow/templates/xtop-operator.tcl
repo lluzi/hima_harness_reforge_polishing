@@ -122,6 +122,7 @@ set ::atcs_mutations 0
 set ::atcs_plan_sha256 ""
 set ::atcs_tainted ""
 set ::atcs_reference_captured 0
+set ::atcs_fix_ran 0
 set ::atcs_kept {}
 set ::atcs_stack {}
 set ::atcs_session_instances {}
@@ -345,6 +346,18 @@ proc atcs_require_domain_pin {pin} {
     error "out-of-scope pin: $pin"
 }
 # Removing an instance merges its nets: every one of them must be in the domain.
+# XTop commits a fix flow's actions: `undo` cannot revert them ("The committed actions cannot be
+# undone.", real XTop, Issue #64 Task 7). A fix that may insert cells places them on the nets of its
+# -only_pins pins, so each such net must already be in the domain, or an out-of-domain insertion could
+# only taint the session.
+proc atcs_require_pin_nets {pins} {
+    foreach pin $pins {
+        set net [atcs_pin_net $pin]
+        if {![atcs_net_in_domain $net]} {
+            error "out-of-scope pin: $pin is on net $net outside the edit domain; a fix that may insert cells there cannot be undone"
+        }
+    }
+}
 proc atcs_require_instance_nets {name} {
     foreach net [atcs_instance_nets $name] {
         if {![atcs_net_in_domain $net]} { error "out-of-scope net: $net (on $name)" }
@@ -620,6 +633,9 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
     atcs_commit_mutation $plan_sha256
     if {[catch {
         lassign [atcs_call $command] code result
+        if {$code == 0 && [lsearch -exact {fix_hold_gba_violations fix_setup_gba_violations} $cmd] >= 0} {
+            set ::atcs_fix_ran 1
+        }
         set post [atcs_observe_after $pre]
         set c0 [dict get $pre count]
         set c1 [dict get $post count]
@@ -720,11 +736,16 @@ proc atcs_ref {} {
     if {$::atcs_reference_captured} { return "session reference already captured; it is never moved" }
     return [atcs_capture_reference]
 }
+# XTop keeps fail reasons only once a fix or optimize flow has run in the session: before that,
+# `-with_fail_reason` fails ("No fail reason since no fix or optimize flow have run yet.", real
+# XTop, Issue #64 Task 7), while `-with_top_n` alone lists the worst endpoints.
 proc atcs_gain {check top_n} {
     atcs_choice check $check {setup hold}
     atcs_int topN $top_n 1 100
     atcs_ensure_reference
-    set entry [atcs_summarize $check [list -with_delta -with_reference -exclude_path -with_top_n $top_n -with_fail_reason]]
+    set options [list -with_delta -with_reference -exclude_path -with_top_n $top_n]
+    if {$::atcs_fix_ran} { lappend options -with_fail_reason }
+    set entry [atcs_summarize $check $options]
     atcs_append [atcs_gain_path] [atcs_jobj [list seq $::atcs_seq kind [atcs_js probe] topN $top_n \
         checks [atcs_jobj [list $check [atcs_summary_json $entry]]]]]
     lassign $entry command code result text
@@ -921,6 +942,7 @@ proc atcs_fix_hold_pins {pins effort hold_target setup_margin size_cell_only use
     if {$effort eq "omit" && !$size_cell_only} { error "effort may be omitted only with sizeCellOnly" }
     if {$fix_timing_window && $size_cell_only} { error "fix_timing_window cannot be combined with size_cell_only" }
     if {$fix_timing_window && $effort ne "low"} { error "fix_timing_window works only with low effort, got $effort" }
+    if {!$size_cell_only} { atcs_require_pin_nets $pins }
     set command [list fix_hold_gba_violations]
     if {$effort ne "omit"} { lappend command -effort $effort }
     # The frozen Pack's qualified hold-size string: -size_cell_only -size_rule nominal_keywords.
@@ -957,6 +979,9 @@ proc atcs_fix_setup_pins {pins methods remove_buffer_only size_down_only effort 
     }
     if {!$remove_buffer_only && !$size_down_only && [llength $methods] == 0} {
         error "name methods, removeBufferOnly or sizeDownOnly"
+    }
+    if {[lsearch -exact $methods insert_buffer] >= 0 || [lsearch -exact $methods split_net] >= 0} {
+        atcs_require_pin_nets $pins
     }
     set command [list fix_setup_gba_violations]
     if {[llength $methods] > 0} { lappend command -methods $methods }
