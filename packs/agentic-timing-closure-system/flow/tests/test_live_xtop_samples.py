@@ -135,6 +135,21 @@ class LiveSessionValueTest(unittest.TestCase):
         contribution = _seal_live_w03(required=["func_ffg_cbest_m40", "func_ffg_cbest_125"])
         self.assertIn("no-predicted-gain", {r["code"] for r in contribution["refusals"]})
 
+    def test_a_target_scenario_worsening_breaks_the_target_check(self):
+        # Re-review (fix round 2): ssg_125 setup improves but ssg_m40's target-check (setup) WNS gets
+        # 0.02 ns worse; the session must not be admitted on its best scenario alone.
+        lines = live.LIVE_GAIN_JSONL_W03.splitlines()
+        last_mutation = max(i for i, line in enumerate(lines) if '"kind":"mutation"' in line)
+        good = "  func_ssg_rcworst_m40      281       281         +0    |    -0.1567    -0.1567    +0.0000"
+        worse = "  func_ssg_rcworst_m40      281       281         +0    |    -0.1767    -0.1567    -0.0200"
+        self.assertIn(good, lines[last_mutation])
+        lines[last_mutation] = lines[last_mutation].replace(good, worse, 1)
+        contribution = _seal_live_w03(gain_text="\n".join(lines) + "\n")
+        refusals = {r["code"]: r["detail"] for r in contribution["refusals"]}
+        self.assertIn("breaks-target-check", refusals)
+        self.assertIn("func_ssg_rcworst_m40", refusals["breaks-target-check"])
+        self.assertNotIn("no-predicted-gain", refusals)
+
     def test_an_opposite_scenario_worsening_breaks_the_opposite_check(self):
         text = live.LIVE_GAIN_JSONL_W03
         worse = "  func_ssg_rcworst_125     4587      4587         +0    |    -0.1801    -0.1799    -0.0002"

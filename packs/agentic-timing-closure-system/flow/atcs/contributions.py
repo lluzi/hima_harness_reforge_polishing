@@ -1032,6 +1032,9 @@ def _script_sha256(path):
 # - ``no-predicted-gain``: kept commands with which no violating required
 #   scenario improves on a target check (WNS first, then TNS), or none can
 #   be read;
+# - ``breaks-target-check``: kept commands with which a required scenario's
+#   target check got worse in WNS by more than one rounding step, whatever
+#   another scenario gained;
 # - ``breaks-opposite-check``: kept commands with which a required
 #   scenario's non-target check (setup for a hold repair, and so on) got
 #   worse in WNS by more than one rounding step, or cannot be read. A TNS
@@ -1416,6 +1419,8 @@ def _session_value(target_checks, reference, predicted, gain_summary=None, requi
       best target check by the same order (ties: hold before setup); 0.0 when none can be read.
     - ``no-predicted-gain``: no violating required scenario improves on any target check (WNS
       first, then TNS), including when none can be read.
+    - ``breaks-target-check``: a required scenario's target-check WNS got worse by more than
+      `_OPPOSITE_TOLERANCE`, even though another scenario improved (fix round 2).
     - ``breaks-opposite-check``: a required scenario's opposite-check row cannot be read, or its WNS
       got worse by more than `_OPPOSITE_TOLERANCE` (one rounding step).
     - ``wnsGain``/``tnsGain``/``targetTnsGain``/``rankTnsGain`` keep the ``total``-row reading:
@@ -1467,6 +1472,12 @@ def _session_value(target_checks, reference, predicted, gain_summary=None, requi
             refusals.append(("no-predicted-gain", "no violating required scenario improves on target "
                                                   f"{list(target_checks)}: {scenario_gains}"))
     detail["improvingScenarios"] = improving
+    # A repair is not admitted on its best scenario alone: its own check must not get worse elsewhere.
+    for check in target_checks:
+        worse = {name: gain["wnsGain"] for name, gain in sorted(scenario_gains[check].items())
+                 if gain is not None and gain["wnsGain"] < -_OPPOSITE_TOLERANCE}
+        if worse:
+            refusals.append(("breaks-target-check", f"target {check} WNS got worse in {worse}"))
 
     for check in opposite:
         unknown = sorted(name for name, gain in scenario_gains[check].items() if gain is None)

@@ -1111,7 +1111,8 @@ class XtopSessionAdmissionTests(unittest.TestCase):
                  gain=(((-0.020, -0.100), (-0.020, -0.100)), ((-0.070, -1.200), (-0.090, -1.500))))
         contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
         self.assertFalse(contribution["admissible"])
-        self.assertEqual(_codes(contribution), ["no-predicted-gain"])
+        # Its only scenario got worse on the target check: no gain, and the target check breaks.
+        self.assertEqual(_codes(contribution), ["breaks-target-check", "no-predicted-gain"])
 
     def test_no_gain_at_all_is_refused_no_predicted_gain(self):
         log = sf.SessionLog()
