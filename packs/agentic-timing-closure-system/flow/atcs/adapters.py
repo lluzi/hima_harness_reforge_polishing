@@ -1356,7 +1356,8 @@ def read_replay_arm(arm_root, arm, request, workspace=None):
     """Read one finished (or failed) arm back for `atcs.integration.reconcile_recipe`.
 
     Returns ``{arm, result, receipts, badReceiptLines, sessionDeltas, autoDelta, totalDelta,
-    predictText, eco}``. Dump deltas come from the real cell dumps
+    predictText, eco, keptNewNets}`` (``keptNewNets``: the nets the merged arm's kept toolkit
+    lines created -- their logged ``newNets`` and requested ``args.newNets``). Dump deltas come from the real cell dumps
     (`atcs.contributions.actual_delta`); ``eco`` lists every ``atcs_batch_netlist_*`` /
     ``atcs_batch_physical_*`` file with its path (relative to `workspace` when given), sha256
     and text. Anything absent reads as ``None``/empty -- `reconcile_recipe` decides what that
@@ -1405,6 +1406,21 @@ def read_replay_arm(arm_root, arm, request, workspace=None):
     auto_delta = contributions_module.actual_delta(previous, final) if previous is not None and final else None
     total_delta = contributions_module.actual_delta(base, final) if base is not None and final else None
 
+    kept_new_nets = []
+    ops_path = root / "ops.jsonl"
+    if arm == "merged" and ops_path.is_file():
+        for raw_line in ops_path.read_text(encoding="utf-8").splitlines():
+            try:
+                line = json.loads(raw_line) if raw_line.strip() else None
+            except ValueError:
+                continue
+            if not isinstance(line, dict) or line.get("status") != "kept" or line.get("cmd") == "undo":
+                continue
+            args = line.get("args") if isinstance(line.get("args"), dict) else {}
+            for net in list(line.get("newNets") or []) + list(args.get("newNets") or []):
+                if isinstance(net, str) and net and net not in kept_new_nets:
+                    kept_new_nets.append(net)
+
     predict_text = {}
     for check in ("setup", "hold"):
         path = root / "predict" / f"{check}.rpt"
@@ -1423,7 +1439,7 @@ def read_replay_arm(arm_root, arm, request, workspace=None):
     return {
         "arm": arm, "root": rel(root), "result": result, "receipts": receipts, "badReceiptLines": bad_lines,
         "sessionDeltas": session_deltas, "autoDelta": auto_delta, "totalDelta": total_delta,
-        "predictText": predict_text, "eco": eco,
+        "predictText": predict_text, "eco": eco, "keptNewNets": sorted(kept_new_nets),
     }
 
 

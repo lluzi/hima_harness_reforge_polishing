@@ -1332,6 +1332,16 @@ class PrepareRecipeReplayTests(unittest.TestCase):
             self.assertTrue(step["skip"].startswith("invalid-entry:"), step)
             self.assertIsNone(step["tcl"])
 
+    def test_plan_select_filters_the_recipe_and_records_unselected_sessions(self):
+        request = prepare_default(select=["c1"])
+        self.assertEqual([s["slot"] for s in request["sessions"]], ["w01"])
+        self.assertEqual({step["slot"] for step in request["steps"]}, {"w01"})
+        self.assertIn({"contribution": "c2", "taskId": "w02", "codes": ["not-selected"]}, request["excluded"])
+        self.assertEqual(request["sessions"][0]["dumpIndex"], 1)
+
+    def test_a_plan_without_select_replays_every_ranked_session(self):
+        self.assertEqual(len(prepare_default()["sessions"]), 2)
+
     def test_merged_auto_finish_uses_the_brief_strings_hold_then_setup(self):
         request = prepare_default()
         self.assertTrue(request["autoFinish"])
@@ -1494,7 +1504,7 @@ def eco_files(netlist=NETLIST_ECO, physical=PHYSICAL_ECO, arm="merged"):
 
 def arm_evidence(arm, *, setup=None, hold=None, complete=True, tainted="", eco=None, receipts=None,
                  session_deltas=None, auto_delta=None, total_delta=None, protected=None, export_code=0,
-                 tool_failure=None, predict_text=None):
+                 tool_failure=None, predict_text=None, kept_new_nets=None):
     setup = setup if setup is not None else {"s1": (1, -0.02, -0.02), "s2": (0, 0.0, 0.0)}
     hold = hold if hold is not None else {"s1": (0, 0.0, 0.0), "s2": (2, -0.05, -0.08)}
     result = None
@@ -1511,6 +1521,7 @@ def arm_evidence(arm, *, setup=None, hold=None, complete=True, tainted="", eco=N
                                         "hold": gba_summary("hold", hold) if hold != "missing" else None},
         "eco": eco if eco is not None else eco_files(arm=arm),
         "toolFailure": tool_failure,
+        "keptNewNets": list(kept_new_nets or []),
     }
 
 
@@ -1649,6 +1660,44 @@ class ReconcileRecipeTests(unittest.TestCase):
         self.assertEqual(merged["worstHoldWns"], -0.05)
         self.assertEqual(state["arms"]["control"]["prediction"]["hold"]["s2"]["tns"], -0.08)
 
+    def test_a_safe_control_with_an_unknown_prediction_is_chosen(self):
+        _, state = reconcile_default(control_kw={"hold": "missing"})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIn("control prediction unknown", state["chosen"]["reason"])
+        self.assertTrue(state["guarantee"]["evidenced"])
+
+    def test_a_compared_choice_is_an_evidenced_guarantee(self):
+        _, state = reconcile_default()
+        self.assertEqual(state["guarantee"], {"evidenced": True, "arm": "merged",
+                                              "reason": state["chosen"]["reason"]})
+        self.assertFalse([w for w in state["warnings"] if w["kind"] == "guaranteeUnevidenced"])
+
+    def test_new_nets_are_empty_when_the_chosen_arm_inserted_nothing(self):
+        _, state = reconcile_default()
+        self.assertEqual(state["newNets"], [])
+        self.assertNotIn("newNetsUnknown", state)
+
+    def test_new_nets_are_the_expert_nets_when_auto_finish_inserted_nothing(self):
+        total = {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {"atcs_w02_r1_b1": "BUFX2"}, "removed": {}}
+        _, state = reconcile_default(merged_kw={"total_delta": total, "kept_new_nets": ["atcs_w02_r1_n1"]})
+        self.assertEqual(state["newNets"], ["atcs_w02_r1_n1"])
+
+    def test_new_nets_are_unknown_when_auto_fix_inserted_instances(self):
+        auto = {"mastersChanged": {}, "added": {"atcs_b1_auto_eco_1": "BUFX2"}, "removed": {}}
+        total = {"mastersChanged": {}, "added": {"atcs_b1_auto_eco_1": "BUFX2"}, "removed": {}}
+        _, state = reconcile_default(merged_kw={"auto_delta": auto, "total_delta": total})
+        self.assertIsNone(state["newNets"])
+        self.assertIn("auto-fix", state["newNetsUnknown"])
+        _, state = reconcile_default(control_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (0, 0.0, 0.0)},
+                                                 "total_delta": total})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIsNone(state["newNets"])
+
+    def test_filler_insertions_are_not_new_nets(self):
+        total = {"mastersChanged": {}, "added": {"FILL_9": "FILL4"}, "removed": {}}
+        _, state = reconcile_default(merged_kw={"total_delta": total})
+        self.assertEqual(state["newNets"], [])
+
     def test_an_unknown_merged_prediction_falls_back_to_control(self):
         _, state = reconcile_default(merged_kw={"hold": "missing"})
         self.assertEqual(state["chosen"]["arm"], "control")
@@ -1668,6 +1717,11 @@ class ReconcileRecipeTests(unittest.TestCase):
         self.assertFalse(state["arms"]["control"]["safe"])
         self.assertEqual(state["arms"]["control"]["toolFailure"]["detail"], "tool exited 7")
         self.assertIn("control", state["chosen"]["reason"])
+        # Nothing shows the merged batch is at least as good as plain auto-fix: sealed as such.
+        self.assertEqual(state["guarantee"]["evidenced"], False)
+        warnings = [w for w in state["warnings"] if w["kind"] == "guaranteeUnevidenced"]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("control", warnings[0]["reason"])
 
     def test_a_missing_merged_pair_with_no_usable_control_is_missing_input(self):
         with self.assertRaises(core.AtcsError) as ctx:
@@ -1771,7 +1825,15 @@ class SealRecipeBatchTests(unittest.TestCase):
         self.assertEqual(merge_commit["autoDelta"], auto)
         self.assertEqual(merge_commit["operations"], [])
         self.assertEqual(merge_commit["newNets"], [])
+        self.assertEqual(merge_commit["guarantee"], state["guarantee"])
         self.assertEqual(merge_commit["contributions"], [{"id": "c1", "revision": 1}, {"id": "c2", "revision": 3}])
+
+    def test_unknown_new_nets_are_sealed_unknown(self):
+        auto = {"mastersChanged": {}, "added": {"atcs_b1_auto_eco_1": "BUFX2"}, "removed": {}}
+        request, state = reconcile_default(merged_kw={"auto_delta": auto, "total_delta": auto})
+        merge_commit = integration.seal_batch(state, request, self._facts(), self._contributions())
+        self.assertIsNone(merge_commit["newNets"])
+        self.assertTrue(merge_commit["newNetsUnknown"])
 
     def test_a_control_choice_credits_no_contribution(self):
         request, state = reconcile_default(control_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (0, 0.0, 0.0)}})

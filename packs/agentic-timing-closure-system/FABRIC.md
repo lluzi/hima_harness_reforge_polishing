@@ -212,6 +212,11 @@ Known gaps carried from earlier tasks:
 - G19 (Task 12) `presta` compares the batch's new nets against the working state's SPEF, so
   `tc_unqualified_rc_net_count > 0` for every batch containing `insert_buffer`; such batches always
   route to the next decision and are implemented only by an explicit implement decision.
+  Issue #64 Task 6: a recipe batch (merged or control arm, auto-fix included) seals its new nets only
+  when every added instance is accounted for, else `newNets: null` with `newNetsUnknown`; its
+  pre-check records `predictive: false` whenever a new net is unknown or unqualified and never
+  gates (`presta-model-qualified` reads `tc_presta_gate_net_count`, 0 for a recipe batch), so the
+  batch proceeds to `implement` and refreshed PrimeTime judges it.
 - G20 (Task 12; final review batch B: refreshed for accuracy) `parse_path_detail` is unverified
   against a real PT per-arc report; the earlier-APR route now depends on it (via `residual`'s own
   `pt-query.tcl` evidence gathering, `_collect_residual_evidence`). `pt-query.tcl` gained a

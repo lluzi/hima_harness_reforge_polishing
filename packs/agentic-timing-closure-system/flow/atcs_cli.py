@@ -106,7 +106,7 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 9 | `compose-facts` | plan(the SAME admitted integration-plan envelope row 10 reads; absent on the first pass -- see "Task 12c fix round" below) | `composition.analyze` (`baseStateId` from `state/working-state.json`; `resolutions` from the admitted plan, `[]` on the first pass; `worst_checks` from `state/observation.json` when it observes that state, for the xtop-session recipe's blocker coverage) | `state/composition-facts.json` |
 | 10 | `replay-prepare` | baseState(`state/working-state.json`), plan(the admitted integration-plan envelope `{"plan":...,"facts":...}` -- see "Task 12c fix round" below), siteProfile; baseState, plan, siteProfile, autoFinish(optional knob `0`/`1`, overrides `plan.autoFinish`) | recipe batch (`composition-facts.recipe`, Issue #64 Task 6): `integration.prepare_recipe_replay` then `adapters.compile_recipe_replay_task` + `run_tool` for the merged and control arms at once (`integrations/<batchId>/{merged,control}/`); legacy `fix` selection: `integration.validate_plan` + `integration.prepare_replay` then `adapters.compile_xtop_replay_task` + `run_tool` (best-effort) | `state/replay-request.json` |
 | 11 | `reconcile` | (none -- edit domains come from `state/workers.json`, see "Task 12c fix round" below) | recipe batch: `adapters.read_replay_arm` (x2) + `integration.reconcile_recipe` (safety, choice); legacy: `integration.reconcile` | `state/integration-state.json` |
-| 12 | `presta` | baseState(`state/working-state.json`), scenariosContract, siteProfile | `integration.seal_batch` (read-only re-derivation, for `newNets`) + `adapters.compile_pt_presta_task` + `run_tool`, `verification.precheck_evidence` | `state/presta.json` (the stamped `precheckEvidence` artifact) |
+| 12 | `presta` | baseState(`state/working-state.json`), scenariosContract, siteProfile | `integration.seal_batch` (read-only re-derivation, for `newNets`) + `adapters.compile_pt_presta_task` + `run_tool`, `verification.precheck_evidence` (a recipe batch also seals `batchKind: "recipe"` and whether the pre-check is `predictive`; it never gates) | `state/presta.json` (the stamped `precheckEvidence` artifact) |
 | 13 | `implement` | currentDesignState(`state/working-state.json`), siteProfile | `integration.seal_batch` then `adapters.compile_innovus_eco_task` + `run_tool` (a recipe batch sources the chosen ECO pair, copied under `implementations/<mergeId>/eco/` only if its sha256 still matches the seal; refuses `stale-base` unless the sealed merge commit's own `parentStateId` equals `currentDesignState["id"]`; refuses `write-once` if `implementations/<mergeId>/`'s own outputs already exist -- C2, final review) | `state/implement.json` |
 | 14 | `extract` | corners, siteProfile | `adapters.compile_starrc_task` + `run_tool` (per corner) | `state/extract.json` |
 | 15 | `sta` | querySpec, scenariosContract, baseDesignState(`state/working-state.json`), siteProfile, maxPaths(`{from: strategy}`, an upper cap -- I10, final review, same rule as `observe`'s) | `_verified_state_sdc_path` (SDC from `baseDesignState`'s own recorded `sdc[0]`, sha256-verified -- no separate `sdc` argv any more, see "Fix round 2" below) + `state.design_state` (built FIRST, from the implemented outputs -- C5, final review), `adapters.compile_pt_scenario_task` + `run_tool` (per scenario), `state.capture` (each observation labeled with the candidate's OWN new state id, never `baseDesignState`'s), `refresh.record_refresh` (once, on completion) | `state/sta.json` (also archived verbatim to `implementations/<mergeId>/sta.json`, and appends `state/refresh-ledger.json`) |
@@ -1796,6 +1796,8 @@ def _run_replay_arms(site_profile, task):
             adapters.run_tool(site_profile, arm_task["argv"], cwd=arm_task["root"], log_path=arm_task["logPath"])
         except adapters.AdapterToolError as exc:
             return {"detail": exc.detail, "log": str(exc.log_path)}
+        except Exception as exc:  # noqa: BLE001 -- any failure is this arm's evidence, never the other's
+            return {"detail": f"{type(exc).__name__}: {exc}", "log": str(arm_task["logPath"])}
         return None
 
     with ThreadPoolExecutor(max_workers=len(task["arms"])) as pool:
@@ -1996,7 +1998,13 @@ def _cmd_presta(workspace, args):
         "predictedBaseNetlistHoldWns": predicted.get("hold", {}).get("wns"),
     })
 
-    body = verification.precheck_evidence(merge_commit, str(spef_net_names_path))
+    predictive = None
+    if merge_commit.get("eco") is not None:
+        # Issue #64 Task 6: a recipe batch's pre-check never gates it; it only states whether
+        # it is predictive -- every new net known and qualified against the base SPEF.
+        qualification = verification.presta_qualification(merge_commit.get("newNets"), spef_net_names)
+        predictive = core.is_known(qualification["count"]) and core.value_of(qualification["count"]) == 0
+    body = verification.precheck_evidence(merge_commit, str(spef_net_names_path), predictive=predictive)
     return _paths(workspace)["presta"], body
 
 
@@ -2938,7 +2946,19 @@ def _cmd_evaluate(workspace, args):
     # would have to launch itself.
     baseline_unconstrained = _baseline_unconstrained_counts(workspace)
     body = verification.assemble(plan, receipts, prior_observation, baseline_physical, baseline_unconstrained)
-    return _paths(workspace)["evaluation"], body
+    return _paths(workspace)["evaluation"], _with_batch_guarantee(body, merge_commit)
+
+
+def _with_batch_guarantee(evaluation, merge_commit):
+    """The evaluation, carrying a recipe batch's sealed never-worse-than-auto-fix `guarantee`
+    (Issue #64 Task 6) as `batchGuarantee` -- so an unevidenced one (merged chosen only because
+    the control arm was unusable) is reported with the result. Other batches: unchanged."""
+    guarantee = merge_commit.get("guarantee") if isinstance(merge_commit, dict) else None
+    if not isinstance(guarantee, dict):
+        return evaluation
+    body = {key: value for key, value in evaluation.items() if key not in ("schema", "id")}
+    body["batchGuarantee"] = guarantee
+    return core.stamp("evaluation", body)
 
 
 def _cmd_adopt(workspace, args):
@@ -3451,6 +3471,16 @@ def _selected_predicted_min_wns(collected, merge_commit):
     decides which pair of predicted keys that one contribution contributes
     from -- this function never re-derives that precedence itself.
     """
+    choice = merge_commit.get("choice") if isinstance(merge_commit.get("choice"), dict) else None
+    if choice is not None:
+        # Issue #64 Task 6: a recipe batch's prediction is its chosen arm's own XTop summary.
+        prediction = ((merge_commit.get("arms") or {}).get(choice.get("arm")) or {}).get("prediction") or {}
+        if "unknown" in prediction:
+            return core.unknown(f"chosen {choice.get('arm')} arm prediction unknown: {prediction['unknown']}"), "unknown"
+        values = [prediction.get(key) for key in ("worstSetupWns", "worstHoldWns")]
+        if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values):
+            return core.known(min(values)), "xtop"
+        return core.unknown(f"chosen {choice.get('arm')} arm has no worst setup/hold prediction"), "unknown"
     selected_ids = {entry.get("id") for entry in (merge_commit.get("contributions") or [])}
     contributions_by_id = {c.get("id"): c for c in collected.get("contributions", [])}
     per_contribution = []

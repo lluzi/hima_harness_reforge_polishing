@@ -1362,7 +1362,9 @@ def prepare_recipe_replay(plan, base_state_id, recipe, sessions, required_scenar
 
     - `plan`: the admitted integration plan (``batchId``, ``baseStateId``, ``reason``; optional
       ``autoFinish`` (default true) and ``setupMargin``/``holdMargin`` (default 0.02 ns)).
-    - `recipe`: `composition-facts.recipe` -- ``sessions`` in rank order, each ``{rank,
+    - `recipe`: `composition-facts.recipe` -- ``sessions`` in rank order (filtered by
+      ``plan.select`` when the plan names one; an unselected session is recorded in
+      ``excluded`` with code ``not-selected``), each ``{rank,
       contribution, taskId, commands: [{seq, proc, args, instances, skip}]}``.
     - `sessions`: ``{taskId: {contributionId, revision, namePrefix, editDomain, targetPins,
       delta}}`` -- each worker slot's admitted work package and sealed Contribution.
@@ -1388,11 +1390,22 @@ def prepare_recipe_replay(plan, base_state_id, recipe, sessions, required_scenar
     if not isinstance(recipe, dict) or not isinstance(recipe.get("sessions"), list):
         raise core.AtcsError("invalid-recipe", "recipe must be an object with a sessions list")
     sessions = sessions if isinstance(sessions, dict) else {}
+    select = plan.get("select")
+    if select is not None and not isinstance(select, list):
+        raise core.AtcsError("invalid-recipe", "plan.select must be a list of contribution ids when given")
+    excluded = list(recipe.get("excluded") or [])
+    ranked_sessions = []
+    for ranked in recipe["sessions"]:
+        if select is not None and isinstance(ranked, dict) and ranked.get("contribution") not in select:
+            excluded.append({"contribution": ranked.get("contribution"), "taskId": ranked.get("taskId"),
+                             "codes": ["not-selected"]})
+            continue
+        ranked_sessions.append(ranked)
 
     request_sessions = []
     steps = []
     seen_slots = set()
-    for index, ranked in enumerate(recipe["sessions"], start=1):
+    for index, ranked in enumerate(ranked_sessions, start=1):
         if not isinstance(ranked, dict) or not isinstance(ranked.get("commands"), list):
             raise core.AtcsError("invalid-recipe", f"recipe session #{index} must carry a commands list")
         slot = ranked.get("taskId")
@@ -1450,7 +1463,7 @@ def prepare_recipe_replay(plan, base_state_id, recipe, sessions, required_scenar
         "removableFillers": list(removable_fillers or []),
         "sessions": request_sessions,
         "steps": steps,
-        "excluded": list(recipe.get("excluded") or []),
+        "excluded": excluded,
     }
     return core.stamp("replay-request", body)
 
@@ -1691,28 +1704,59 @@ def _merged_sessions(request, evidence):
 
 
 def choose_arm(merged, control):
-    """``(arm, reason)`` -- see `reconcile_recipe`. Raises when neither arm is usable."""
+    """``(arm, reason, evidenced)`` -- see `reconcile_recipe`. Raises when neither arm is usable.
+
+    `evidenced` is whether XTop's own prediction shows the chosen batch is no worse than plain
+    auto-fix: true when the control arm itself is chosen, or when both predictions were
+    compared; false when merged is chosen only because the control arm is unusable.
+    """
     if not merged["safe"] and not control["safe"]:
         code = "missing-input" if merged["missingPair"] else "eco-refused"
         raise core.AtcsError(
             code, f"no usable ECO pair: merged {merged['problems']}; control {control['problems']}",
         )
     if not control["safe"]:
-        return "merged", f"control arm unusable ({'; '.join(control['problems'])}); merged arm is safe"
+        return ("merged", f"control arm unusable ({'; '.join(control['problems'])}); merged arm is safe but "
+                          "not compared against plain auto-fix", False)
     if not merged["safe"]:
-        return "control", f"merged arm refused ({'; '.join(merged['problems'])}); control arm is safe"
+        return "control", f"merged arm refused ({'; '.join(merged['problems'])}); control arm is safe", True
     merged_prediction, control_prediction = merged["prediction"], control["prediction"]
     if "unknown" in merged_prediction:
-        return "control", f"merged prediction unknown ({merged_prediction['unknown']}); plain auto-fix kept"
+        return "control", f"merged prediction unknown ({merged_prediction['unknown']}); plain auto-fix kept", True
     if "unknown" in control_prediction:
-        return "merged", f"control prediction unknown ({control_prediction['unknown']}); merged arm is safe"
+        return ("control", f"control prediction unknown ({control_prediction['unknown']}); both arms use the "
+                           "same summary command, so plain auto-fix is kept", True)
     merged_key, control_key = _prediction_key(merged_prediction), _prediction_key(control_prediction)
     detail = (f"worst WNS / setup+hold WNS / TNS: merged {list(merged_key)} vs control {list(control_key)}")
     if merged_key == control_key:
-        return "merged", f"tie ({detail}); merged kept"
+        return "merged", f"tie ({detail}); merged kept", True
     if merged_key > control_key:
-        return "merged", f"merged predicts better ({detail})"
-    return "control", f"control predicts better ({detail})"
+        return "merged", f"merged predicts better ({detail})", True
+    return "control", f"control predicts better ({detail})", True
+
+
+def _chosen_new_nets(chosen_arm, evidence, fillers):
+    """``(newNets, unknownReason)`` for the chosen arm's refresh (presta's qualification input).
+
+    Known only when every instance the arm added is accounted for: none added (sizing and
+    removals create no net), or merged with auto-finish adding none, so every new net is one a
+    kept expert command logged. Auto-fix names its own nets inside XTop, and this Pack does not
+    read them back from the ECO files, so an arm whose auto-fix added instances has unknown
+    new nets -- presta never claims a qualification it does not have.
+    """
+    evidence = evidence if isinstance(evidence, dict) else {}
+    total = evidence.get("totalDelta")
+    if not isinstance(total, dict):
+        return None, f"{chosen_arm} arm has no base-to-final dump delta"
+    added = _delta_without_fillers(total, fillers)["added"]
+    if not added:
+        return [], None
+    auto = evidence.get("autoDelta")
+    auto_added = _delta_without_fillers(auto, fillers)["added"] if isinstance(auto, dict) else None
+    if chosen_arm == "merged" and auto_added == {}:
+        return sorted(set(evidence.get("keptNewNets") or [])), None
+    return None, (f"auto-fix in the {chosen_arm} arm inserted {len(added)} instance(s); XTop named their nets "
+                  "and this Pack does not read them back from the ECO files")
 
 
 def reconcile_recipe(request, arms):
@@ -1729,8 +1773,11 @@ def reconcile_recipe(request, arms):
     unattributable or a session's replay changed an instance outside its own edit domain.
     Choice: a safe arm over an unsafe one; with both safe, the better XTop prediction over the
     required scenarios -- worst of setup/hold WNS, then setup+hold worst WNS, then total TNS
-    (sum over scenarios) -- with a tie going to merged; an unknown merged prediction keeps
-    control, an unknown control prediction keeps merged. Neither arm usable raises
+    (sum over scenarios) -- with a tie going to merged; an unknown prediction of either arm keeps
+    control (both run the same summary command, so plain auto-fix is the conservative pick).
+    Merged chosen only because control is unusable is sealed ``guarantee.evidenced: false`` with
+    a ``guaranteeUnevidenced`` warning. ``newNets`` is the chosen arm's new nets when every added
+    instance is accounted for, else ``None`` with ``newNetsUnknown``. Neither arm usable raises
     ``missing-input`` (the merged pair is missing) or ``eco-refused``.
 
     Recorded, never blocking: skipped commands (per session), a session replay delta that
@@ -1744,7 +1791,7 @@ def reconcile_recipe(request, arms):
     arms = arms if isinstance(arms, dict) else {}
     sessions = _merged_sessions(request, arms.get("merged"))
     views = {arm: _arm_view(arm, arms.get(arm), request, sessions) for arm in ARMS}
-    chosen_arm, reason = choose_arm(views["merged"], views["control"])
+    chosen_arm, reason, evidenced = choose_arm(views["merged"], views["control"])
 
     merged_evidence = arms.get("merged") if isinstance(arms.get("merged"), dict) else {}
     auto_delta = merged_evidence.get("autoDelta")
@@ -1760,8 +1807,15 @@ def reconcile_recipe(request, arms):
                          "detail": "auto-finish changed set_dont_touch-protected expert repairs"})
     if views["merged"].get("protectCode") not in (None, 0, "0"):
         warnings.append({"kind": "protectFailed", "detail": "set_dont_touch returned an error"})
+    protect_missing = list(((merged_evidence.get("result") or {}).get("protectMissing")) or [])
+    if protect_missing:
+        warnings.append({"kind": "protectMissing", "instances": protect_missing,
+                         "detail": "changed instances that no longer existed when set_dont_touch ran"})
+    if not evidenced:
+        warnings.append({"kind": "guaranteeUnevidenced", "reason": reason})
 
     chosen_evidence = arms.get(chosen_arm) if isinstance(arms.get(chosen_arm), dict) else {}
+    new_nets, new_nets_unknown = _chosen_new_nets(chosen_arm, chosen_evidence, request.get("removableFillers") or [])
     applied = {step_id: slot for slot, account in sessions["accounts"].items() for step_id in account["applied"]}
     body = {
         "mode": "recipe",
@@ -1776,7 +1830,11 @@ def reconcile_recipe(request, arms):
         "warnings": warnings,
         "arms": views,
         "chosen": {"arm": chosen_arm, "reason": reason, "eco": views[chosen_arm]["eco"]},
+        "guarantee": {"evidenced": evidenced, "arm": chosen_arm, "reason": reason},
+        "newNets": new_nets,
     }
+    if new_nets_unknown is not None:
+        body["newNetsUnknown"] = new_nets_unknown
     return core.stamp("integration-state", body)
 
 
@@ -1823,7 +1881,7 @@ def _seal_recipe_batch(state, request, facts, contributions):
         "operations": [],
         "innovusEcoTcl": "",
         "sourceMap": {},
-        "newNets": [],
+        "newNets": state.get("newNets"),
         "eco": {role: {"path": eco[role]["path"], "sha256": eco[role]["sha256"]} for role in _ECO_ROLES},
         "choice": {"arm": chosen["arm"], "reason": chosen.get("reason")},
         "arms": {arm: {"eco": (arms.get(arm) or {}).get("eco"), "safe": (arms.get(arm) or {}).get("safe"),
@@ -1834,8 +1892,11 @@ def _seal_recipe_batch(state, request, facts, contributions):
         "protected": state.get("protected") or [],
         "protectedChanged": state.get("protectedChanged") or [],
         "warnings": state.get("warnings") or [],
+        "guarantee": state.get("guarantee"),
         "autoFinish": request.get("autoFinish"),
         "setupMargin": request.get("setupMargin"),
         "holdMargin": request.get("holdMargin"),
     }
+    if state.get("newNets") is None:
+        body["newNetsUnknown"] = state.get("newNetsUnknown") or "new nets were not derived"
     return core.stamp("merge-commit", body)

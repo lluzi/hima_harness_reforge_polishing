@@ -771,7 +771,7 @@ def _recipe_command(seq, proc, args, instances, skip=None):
             "skip": skip}
 
 
-def _recipe_request(batch_id="b1", auto_finish=True):
+def _recipe_request(batch_id="b1", auto_finish=True, extra_w02=()):
     """Two ranked sessions over the toolkit's stub design (test_xtop_toolkit.STUB_XTOP):
     w01 resizes U1 (applied), resizes U2 to its own master (the toolkit refuses it) and
     splits N2 (XTop fails it); w02 inserts a buffer on N1 (applied) and carries one
@@ -794,6 +794,7 @@ def _recipe_request(batch_id="b1", auto_finish=True):
                             skip="shared-instance"),
             _recipe_command(3, "atcs_size_cell",
                             {"instance": "U2", "toMaster": "INVX2", "planSha256": RECIPE_PLAN_B}, ["U2"]),
+            *extra_w02,
         ]},
     ], "excluded": []}
     sessions = {
@@ -1049,6 +1050,27 @@ class RecipeReplayTclshTest(unittest.TestCase):
         self.assertTrue(state["sessions"]["w01"]["deltaMatches"])
         self.assertTrue(state["sessions"]["w02"]["deltaMatches"])
         self.assertEqual(state["sessions"]["w02"]["skipped"][0]["reason"], "recipe:shared-instance")
+
+    def test_the_expert_nets_of_kept_commands_are_read_back(self):
+        _, _, arms = self._run_both(self.EVEN, self.EVEN)
+        self.assertEqual(arms["merged"]["keptNewNets"], ["atcs_w02_r1_n1"])
+        self.assertEqual(arms["control"]["keptNewNets"], [])
+
+    def test_a_changed_instance_that_no_longer_exists_is_not_protected_and_is_recorded(self):
+        self.request = _recipe_request(extra_w02=[_recipe_command(
+            4, "atcs_remove_buffer", {"instance": "atcs_w02_r1_b1", "planSha256": RECIPE_PLAN_B},
+            ["atcs_w02_r1_b1"])])
+        self.task = adapters.compile_recipe_replay_task(
+            "top", str(self.tmp / "tech.lef"), str(self.tmp / "cells.lef"), str(self.tmp / "netlist.v"),
+            str(self.tmp / "design.def"), self.request, str(self.output_root), _xtop_context(self.tmp),
+        )
+        merged = self._run_arm("merged", *self.EVEN, "UOUT BUFX4")
+        dont_touch = next(words for words in merged if words[0] == "set_dont_touch")
+        self.assertEqual(dont_touch[1:], ["cell:U1", "true"])
+        result = json.loads(Path(self.task["arms"]["merged"]["armResult"]).read_text())
+        self.assertEqual(result["protected"], ["U1"])
+        self.assertEqual(result["protectMissing"], ["atcs_w02_r1_b1"])
+        self.assertEqual(result["protectCode"], 0)
 
     def test_control_runs_plain_auto_fix_only_into_eco_control(self):
         _, control, arms = self._run_both(self.EVEN, self.EVEN)

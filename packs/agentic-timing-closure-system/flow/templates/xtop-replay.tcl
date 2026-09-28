@@ -28,7 +28,7 @@
 #                  ["reason"],["seq"]} (seq = this run's ops.jsonl line)
 #   DUMP_DIR      000.dump, 001.dump .. (one per session), auto.dump
 #   PREDICT_DIR   setup.rpt, hold.rpt: summarize_gba_violations -exclude_path
-#   ARM_RESULT    {"arm","complete":true,"tainted","protected","protectCode",
+#   ARM_RESULT    {"arm","complete":true,"tainted","protected","protectMissing","protectCode",
 #                  "protectResult","autoFix":[{command,code,result}],
 #                  "predict":{"setup","hold"},"exportCode","exportResult"},
 #                 written last: its absence means the run never finished.
@@ -115,11 +115,20 @@ proc atcs_replay_read_lines {path} {
 atcs_dump_cells [file join $env(DUMP_DIR) 000.dump]
 source $env(RECIPE_TCL)
 
+# Only instances that still exist are protected (a later command may have removed
+# one); a missing name is recorded rather than failing the whole protection.
 set protected {}
+set protect_missing {}
 set protect_code 0
 set protect_result ""
 if {$::ATCS_ARM eq "merged"} {
-    set protected [atcs_replay_protected]
+    foreach name [atcs_replay_protected] {
+        if {[sizeof_collection [get_cells -quiet -exact $name]] == 1} {
+            lappend protected $name
+        } else {
+            lappend protect_missing $name
+        }
+    }
     if {[llength $protected] > 0} {
         set protect_code [catch {set_dont_touch [get_cells -exact $protected] true} protect_result]
     }
@@ -149,7 +158,7 @@ if {$::ATCS_ARM eq "merged"} {
 set fh [open $env(ARM_RESULT) w]
 fconfigure $fh -encoding utf-8
 puts $fh [atcs_jobj [list arm [atcs_js $::ATCS_ARM] complete true tainted [atcs_js $::atcs_tainted] \
-    protected [atcs_jarr $protected] protectCode $protect_code protectResult [atcs_js [atcs_clip $protect_result 2000]] \
+    protected [atcs_jarr $protected] protectMissing [atcs_jarr $protect_missing] protectCode $protect_code protectResult [atcs_js [atcs_clip $protect_result 2000]] \
     autoFix "\[[join $auto_fix ,]\]" predict [atcs_jobj [list setup $predict_setup hold $predict_hold]] \
     exportCode $export_code exportResult [atcs_js [atcs_clip $export_result 2000]]]]
 close $fh

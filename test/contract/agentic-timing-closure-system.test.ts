@@ -45,7 +45,7 @@ test('ATCS worker Team approves an expert Operator scope; the Operator mutates o
   await cp(path.join(repoRoot, 'test/fixtures/interactive-job/atcs-repl.tcl'), path.join(variant, 'flow/atcs-repl.tcl'));
   const site = await writeLocalSite(h, {
     allowedReadRoots: [h.workspace, path.dirname(wrapper)], allowedWriteRoots: [h.workspace],
-    allowedWrappers: [wrapper, 'python3', '/usr/bin/python3'], licences: { xtop: 1, innovus: 1, primetime: 1, starrc: 1 },
+    allowedWrappers: [wrapper, 'python3', '/usr/bin/python3'], licences: { xtop: 2, innovus: 1, primetime: 1, starrc: 1 },
     bindings: { designStateManifest: path.join(h.workspace, 'manifest.json'),
       analysisContract: path.join(h.workspace, 'analysis'), siteCapabilities: path.join(h.workspace, 'caps.json'),
       workspaceRoot: h.workspace },
@@ -221,7 +221,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
       siteCapabilities: path.join(h.workspace, 'siteCapabilities.json'),
       workspaceRoot: h.workspace,
     },
-    licences: { innovus: 1, primetime: 1, starrc: 1, xtop: 1 },
+    licences: { innovus: 1, primetime: 1, starrc: 1, xtop: 2 },
   });
 
   const packDir = path.join(repoRoot, 'packs', packId);

@@ -1315,6 +1315,51 @@ class PrestaPredictedLabelTest(TwoRoundFlowTest):
         self.assertAlmostEqual(core.value_of(predicted["predictedBaseNetlistHoldWns"]), 0.03)
 
 
+class RecipePrestaTest(TwoRoundFlowTest):
+    """Issue #64 Task 6 review: a recipe batch whose auto-fix inserted instances seals unknown
+    new nets; `presta` records a non-predictive pre-check that does not gate the batch, and never
+    claims a qualification it does not have."""
+
+    def test_two_round_flow_uses_adopted_state_id(self):
+        self.skipTest("inherited from TwoRoundFlowTest -- already covered there, not this class's own case")
+
+    def test_unknown_new_nets_make_a_non_predictive_pre_check_that_does_not_gate(self):
+        import test_integration_recovery as tir
+        workspace = self.workspace
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        self.assertEqual(_run("baseline", workspace, workspace / "manifest.json").returncode, 0)
+        base_state = json.loads((workspace / "state" / "working-state.json").read_text())
+        request = integration.prepare_recipe_replay(
+            tir.recipe_plan(batch_id="batch-recipe", base_state_id=base_state["id"]), base_state["id"],
+            tir.default_recipe(), tir.recipe_sessions(), required_scenarios=["s1", "s2"])
+        auto = {"mastersChanged": {}, "added": {"atcs_b_auto_eco_1": "BUFX2"}, "removed": {}}
+        arms = {"merged": tir.arm_evidence("merged", receipts=tir.merged_receipts(request),
+                                           session_deltas=tir.matching_session_deltas(),
+                                           auto_delta=auto, total_delta=auto),
+                "control": tir.arm_evidence("control")}
+        state = integration.reconcile_recipe(request, arms)
+        self.assertIsNone(state["newNets"])
+        facts = core.stamp("composition-facts", {"baseStateId": base_state["id"], "considered": [],
+                                                 "duplicates": [], "conflicts": [], "order": []})
+        core.write_artifact(workspace / "state" / "composition-facts.json", facts)
+        core.write_artifact(workspace / "state" / "replay-request.json", request)
+        core.write_artifact(workspace / "state" / "integration-state.json", state)
+        _write_json(workspace / "state" / "contributions-collected.json", {"contributions": [
+            tir.make_contribution("c1"), tir.make_contribution("c2", task_id="w02", revision=3)]})
+        report_root = workspace / "integrations" / "batch-recipe" / "presta"
+        _write_text(report_root / REQUIRED_SCENARIOS[0] / "global_timing.rpt",
+                    fixtures.global_report("0.05", "0.00", "0", "0.03", "0.00", "0"))
+        result = _run("presta", workspace, workspace / "state" / "working-state.json",
+                      _scenarios_contract_path(workspace), _site_profile_path(workspace))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        evidence = json.loads((workspace / "state" / "presta.json").read_text())
+        self.assertEqual(evidence["batchKind"], "recipe")
+        self.assertIs(evidence["predictive"], False)
+        self.assertIsNone(evidence["newNets"])
+        self.assertIn("auto-fix", evidence["newNetsUnknown"])
+
+
 class StaMaxPathsTest(TwoRoundFlowTest):
     """I10 (final review): `sta` now takes `MAX_PATHS` from the Strategy the same way
     `observe` does -- the Site/Workshop-authored `query-spec.json`'s own `maxPaths` is
@@ -3713,7 +3758,8 @@ class RecipeReplayCliTest(unittest.TestCase):
         })
         _write_json(self.workspace / "state" / "composition-facts.json", self.facts)
         self.plan_path = self.workspace / "integration-plan.json"
-        _write_json(self.plan_path, {"plan": {"batchId": "gen-1", "baseStateId": base_id, "select": [],
+        _write_json(self.plan_path, {"plan": {"batchId": "gen-1", "baseStateId": base_id,
+                                              "select": [contribution["id"]],
                                               "resolutions": [], "deferred": [], "reason": "ranked recipe"},
                                      "facts": self.facts})
 
@@ -3857,6 +3903,47 @@ class RecipeReplayCliTest(unittest.TestCase):
         state = json.loads((self.workspace / "state" / "integration-state.json").read_text())
         self.assertEqual(state["chosen"]["arm"], "control")
         self.assertIn("FORMATVERSION", state["chosen"]["reason"])
+
+    def test_an_unexpected_error_in_one_arm_is_recorded_and_the_other_arm_still_runs(self):
+        calls = []
+
+        def fake_run_tool(site_profile, command, cwd, log_path, shell_env=None):
+            calls.append(Path(cwd).name)
+            if Path(cwd).name == "control":
+                raise RuntimeError("wrapper vanished")
+            return log_path
+
+        original = atcs_cli.adapters.run_tool
+        atcs_cli.adapters.run_tool = fake_run_tool
+        try:
+            task = {"arms": {arm: {"argv": ["xtop"], "root": str(self.workspace / arm),
+                                   "logPath": str(self.workspace / arm / "log")} for arm in ("merged", "control")}}
+            failures = atcs_cli._run_replay_arms({}, task)
+        finally:
+            atcs_cli.adapters.run_tool = original
+        self.assertEqual(sorted(calls), ["control", "merged"])
+        self.assertIsNone(failures["merged"])
+        self.assertIn("RuntimeError: wrapper vanished", failures["control"]["detail"])
+
+    def test_record_experience_reads_the_chosen_arms_prediction(self):
+        merge_commit = {"choice": {"arm": "control", "reason": "r"}, "arms": {
+            "merged": {"prediction": {"worstSetupWns": -0.01, "worstHoldWns": -0.02}},
+            "control": {"prediction": {"worstSetupWns": 0.0, "worstHoldWns": -0.03}}}, "contributions": []}
+        value, model = atcs_cli._selected_predicted_min_wns({"contributions": []}, merge_commit)
+        self.assertEqual((value, model), (core.known(-0.03), "xtop"))
+        merge_commit["arms"]["control"]["prediction"] = {"unknown": "no readable hold table"}
+        value, model = atcs_cli._selected_predicted_min_wns({"contributions": []}, merge_commit)
+        self.assertFalse(core.is_known(value))
+        self.assertIn("no readable hold table", value["unknown"])
+
+    def test_the_evaluation_surfaces_the_batch_guarantee(self):
+        body = core.stamp("evaluation", {"candidateId": "m1", "finalSetupWns": core.known(0.0)})
+        merge_commit = {"guarantee": {"evidenced": False, "arm": "merged", "reason": "control arm unusable"},
+                        "warnings": [{"kind": "guaranteeUnevidenced", "reason": "control arm unusable"}]}
+        surfaced = atcs_cli._with_batch_guarantee(body, merge_commit)
+        self.assertEqual(surfaced["batchGuarantee"], merge_commit["guarantee"])
+        self.assertEqual(surfaced["id"], core.digest({k: v for k, v in surfaced.items() if k != "id"}))
+        self.assertIs(atcs_cli._with_batch_guarantee(body, {"operations": []}), body)
 
     def test_reconcile_refuses_when_no_arm_left_an_eco_pair(self):
         self.assertEqual(self._prepare().returncode, 0)
