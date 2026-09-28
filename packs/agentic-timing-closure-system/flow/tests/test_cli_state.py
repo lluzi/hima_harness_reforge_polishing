@@ -1749,20 +1749,93 @@ class CaptureContributionComposedTest(unittest.TestCase):
         self.assertTrue(contribution["admissible"], contribution.get("refusals"))
         self.assertEqual(contribution["diagnosis"], "no admissible fix found within budget")
 
-    def test_no_fix_contribution_without_a_diagnosis_is_inadmissible(self):
+    def test_empty_ops_log_without_a_summary_diagnosis_gets_a_deterministic_one(self):
+        """Issue 63: an explicit `summary.json` diagnosis is not the only honest path
+        to a `no-fix` Contribution any more -- byte-identical dumps plus an empty
+        (present but empty) ops trace and no explicit diagnosis now compose a
+        deterministic diagnosis (evidence, never model prose) instead of refusing."""
         manifest = self._seed_workers()
         root = self.workspace / manifest["root"]
         (root / "before.dump").write_text("U1 BUFX1\n", encoding="utf-8")
         (root / "after.dump").write_text("U1 BUFX1\n", encoding="utf-8")
         (root / "ops.jsonl").write_text("", encoding="utf-8")
-        # No summary.json at all -- no diagnosis.
+        # No summary.json at all -- no explicit diagnosis.
 
         result = _run("capture-contribution", self.workspace, "w01")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         contribution = json.loads((self.workspace / "state" / "contribution-w01.json").read_text())
         self.assertEqual(contribution["kind"], "no-fix")
-        self.assertFalse(contribution["admissible"])
-        self.assertTrue(any(r["code"] == "no-diagnosis" for r in contribution["refusals"]))
+        self.assertTrue(contribution["admissible"], contribution.get("refusals"))
+        before_sha = core.file_sha256(root / "before.dump")
+        self.assertIn(before_sha, contribution["diagnosis"])
+        self.assertIn("ops trace empty", contribution["diagnosis"])
+
+    def test_missing_ops_log_with_identical_dumps_is_an_admissible_no_fix(self):
+        """Issue 63 retained failure: a real Operator session that made no mutation
+        never writes ops.jsonl at all (xtop-operator.tcl's atcs_log_op only appends
+        on a successful mutation) -- so 'ops.jsonl absent' must be as honest a
+        no-fix signal as 'ops.jsonl present but empty', not a missing-input refusal."""
+        manifest = self._seed_workers()
+        root = self.workspace / manifest["root"]
+        (root / "before.dump").write_text("U1 BUFX1\n", encoding="utf-8")
+        (root / "after.dump").write_text("U1 BUFX1\n", encoding="utf-8")
+        # No ops.jsonl file at all -- not even an empty one.
+
+        result = _run("capture-contribution", self.workspace, "w01")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        contribution = json.loads((self.workspace / "state" / "contribution-w01.json").read_text())
+        self.assertEqual(contribution["kind"], "no-fix")
+        self.assertTrue(contribution["admissible"], contribution.get("refusals"))
+        self.assertIn("ops trace empty", contribution["diagnosis"])
+
+    def test_missing_ops_log_with_identical_dumps_surfaces_adapter_errors(self):
+        """The deterministic diagnosis includes the first few verbatim
+        HIMA-ADAPTER-ERROR lines from the slot's own XTop transcript, when one
+        exists, bounded to <= 5 lines and <= 300 chars each."""
+        manifest = self._seed_workers()
+        root = self.workspace / manifest["root"]
+        (root / "before.dump").write_text("U1 BUFX1\n", encoding="utf-8")
+        (root / "after.dump").write_text("U1 BUFX1\n", encoding="utf-8")
+        (root / "xtop_log_00.txt").write_text(
+            "some normal line\n"
+            "HIMA-ADAPTER-ERROR:1 Error: Library cell 'DFQD2BWP12T' not found.\n"
+            "another normal line\n",
+            encoding="utf-8",
+        )
+
+        result = _run("capture-contribution", self.workspace, "w01")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        contribution = json.loads((self.workspace / "state" / "contribution-w01.json").read_text())
+        self.assertIn("HIMA-ADAPTER-ERROR", contribution["diagnosis"])
+        self.assertIn("DFQD2BWP12T", contribution["diagnosis"])
+
+    def test_missing_ops_log_with_differing_dumps_is_still_refused(self):
+        """Counterexample: a real design change with no ops trace at all is still
+        a missing-input refusal, not an honest no-fix -- only byte-identical
+        dumps license the no-fix path."""
+        manifest = self._seed_workers()
+        root = self.workspace / manifest["root"]
+        (root / "before.dump").write_text("U1 BUFX1\n", encoding="utf-8")
+        (root / "after.dump").write_text("U1 BUFX2\n", encoding="utf-8")
+        # No ops.jsonl file -- but the dumps genuinely differ.
+
+        result = _run("capture-contribution", self.workspace, "w01")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "missing-input")
+
+    def test_a_dump_missing_is_still_missing_input_even_with_no_ops_log(self):
+        """Counterexample: a genuinely missing dump is still refused before any
+        no-fix reasoning is attempted."""
+        manifest = self._seed_workers()
+        root = self.workspace / manifest["root"]
+        (root / "before.dump").write_text("U1 BUFX1\n", encoding="utf-8")
+        # No after.dump, no ops.jsonl.
+
+        result = _run("capture-contribution", self.workspace, "w01")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "missing-input")
 
 
 class PolicyTest(unittest.TestCase):

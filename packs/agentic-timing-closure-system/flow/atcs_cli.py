@@ -1248,6 +1248,44 @@ def _cmd_prepare_workers(workspace, args):
     return _paths(workspace)["workers"], {"workers": index, "requiredSlots": ["w01"]}
 
 
+_NO_FIX_ADAPTER_ERROR_MARKER = "HIMA-ADAPTER-ERROR"
+_NO_FIX_ADAPTER_ERROR_MAX_LINES = 5
+_NO_FIX_ADAPTER_ERROR_MAX_CHARS = 300
+
+
+def _no_fix_diagnosis(root, before_dump, dump_sha256):
+    """Deterministic evidence for an honest no-fix Contribution (Issue 63) -- never
+    model prose. States the sha256 that was actually checked (before.dump and
+    after.dump are byte-identical, so either one's digest names the same
+    bytes), plus, when the slot root holds an XTop transcript
+    (``xtop_log_*.txt``) naming a `HIMA-ADAPTER-ERROR`, the first few such
+    lines verbatim (bounded: <= `_NO_FIX_ADAPTER_ERROR_MAX_LINES` lines, each
+    truncated to `_NO_FIX_ADAPTER_ERROR_MAX_CHARS` chars) -- the closest thing
+    to "why" a fail-closed diagnosis is allowed to assert.
+    """
+    del before_dump  # named bytes only; the digest already identifies them
+    parts = [
+        f"Operator session produced no design change: before/after dumps identical "
+        f"(sha256 {dump_sha256}); ops trace empty"
+    ]
+    error_lines = []
+    for log_path in sorted(root.glob("xtop_log_*.txt")):
+        try:
+            text = log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if _NO_FIX_ADAPTER_ERROR_MARKER in line:
+                error_lines.append(line.strip()[:_NO_FIX_ADAPTER_ERROR_MAX_CHARS])
+                if len(error_lines) >= _NO_FIX_ADAPTER_ERROR_MAX_LINES:
+                    break
+        if len(error_lines) >= _NO_FIX_ADAPTER_ERROR_MAX_LINES:
+            break
+    if error_lines:
+        parts.append("XTop transcript errors: " + " | ".join(error_lines))
+    return "; ".join(parts)
+
+
 def _cmd_capture_contribution(workspace, args):
     """Compose `base_ref`/`result_refs` from `state/workers.json` and the slot's own workspace (G2).
 
@@ -1261,20 +1299,32 @@ def _cmd_capture_contribution(workspace, args):
     - ``before.dump`` / ``after.dump`` -- cell dumps the Operator must write
       (via the session's own ``atcs_dump_cells`` typed procedure, already
       defined by ``xtop-operator.tcl``) immediately before and after its
-      edits, at exactly these two fixed names.
+      edits, at exactly these two fixed names. Both are always required.
     - ``ops.jsonl`` -- the same typed-procedure trace path already recorded
-      as `state/workers.json[slot]["opsLog"]`.
+      as `state/workers.json[slot]["opsLog"]`. Issue 63: a real Operator
+      session that made no mutation never writes this file at all
+      (``xtop-operator.tcl``'s ``atcs_log_op`` only appends on a successful
+      mutation) -- so an ABSENT ops.jsonl is treated exactly like a
+      PRESENT-BUT-EMPTY one, and only when `before.dump`/`after.dump` are
+      byte-identical (proof no design change actually happened): this
+      composes an honest `no-fix` Contribution with a deterministic
+      diagnosis (`_no_fix_diagnosis`) instead of refusing outright. When the
+      dumps differ instead, an absent/empty ops.jsonl still refuses
+      (`missing-input`) exactly as before -- a real change with no recorded
+      trace is not a no-fix, it is untrusted.
     - ``summary.json`` (optional) -- ``{"xtopSetupWns", "xtopHoldWns",
       "diagnosis", "cones", "dependencies"}``, all optional; a numeric
       ``xtopSetupWns``/``xtopHoldWns`` becomes a known Measure, anything
       absent stays `unknown` (`contributions._predicted_measures`'s own
       default). ``diagnosis`` is required content (not a file name) for a
-      `no-fix` slot -- `contributions.seal` refuses one without it.
+      `no-fix` slot -- `contributions.seal` refuses one without it. An
+      explicit `summary.json` diagnosis always wins over the deterministic
+      one computed here.
 
-    All three required files missing is `missing-input` (exit 2), matching
-    "no subcommand reads files that no subcommand writes": every one of
-    them is written by the Operator session `prepare-workers` itself set up
-    for this exact slot and root.
+    Both dumps missing, or one dump missing, is `missing-input` (exit 2) as
+    before, matching "no subcommand reads files that no subcommand writes":
+    every one of them is written by the Operator session `prepare-workers`
+    itself set up for this exact slot and root.
     """
     (slot,) = args
     if slot not in workspaces.TASK_IDS:
@@ -1304,9 +1354,25 @@ def _cmd_capture_contribution(workspace, args):
         ops_log_path = workspace / ops_log_path
     before_dump = root / "before.dump"
     after_dump = root / "after.dump"
-    for required_path, label in ((before_dump, "before.dump"), (after_dump, "after.dump"), (ops_log_path, "ops.jsonl")):
+    for required_path, label in ((before_dump, "before.dump"), (after_dump, "after.dump")):
         if not required_path.is_file():
             raise InputError("missing-input", f"Operator output not found for slot {slot!r}: {label} at {required_path}")
+
+    ops_log_exists = ops_log_path.is_file()
+    operation_trace = _read_text(str(ops_log_path)) if ops_log_exists else ""
+    ops_trace_empty = not operation_trace.strip()
+    no_fix_evidence = (not ops_log_exists) or ops_trace_empty
+    dump_sha256 = None
+    if no_fix_evidence:
+        before_sha256 = core.file_sha256(before_dump)
+        after_sha256 = core.file_sha256(after_dump)
+        if before_sha256 != after_sha256:
+            # A real change happened but left no trace -- still refuse, exactly as
+            # for the pre-existing "ops.jsonl missing" case.
+            raise InputError(
+                "missing-input", f"Operator output not found for slot {slot!r}: ops.jsonl at {ops_log_path}"
+            )
+        dump_sha256 = before_sha256
 
     summary = _read_json_or_default(root / "summary.json", {})
     predicted = {}
@@ -1315,12 +1381,15 @@ def _cmd_capture_contribution(workspace, args):
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             predicted[key] = core.known(value)
 
+    diagnosis = summary.get("diagnosis")
+    if no_fix_evidence and not (isinstance(diagnosis, str) and diagnosis.strip()):
+        diagnosis = _no_fix_diagnosis(root, before_dump, dump_sha256)
+
     result_refs = {
         "beforeDump": str(before_dump), "afterDump": str(after_dump), "script": None,
-        "predicted": predicted, "diagnosis": summary.get("diagnosis"),
+        "predicted": predicted, "diagnosis": diagnosis,
         "cones": summary.get("cones", []), "dependencies": summary.get("dependencies", []),
     }
-    operation_trace = _read_text(str(ops_log_path))
     body = contributions.seal(base_ref, result_refs, operation_trace)
     _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
     return _contribution_path(workspace, slot), body
