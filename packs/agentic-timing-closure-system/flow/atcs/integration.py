@@ -1194,8 +1194,8 @@ def seal_batch(state, request, facts, contributions):
 # Recipe replay (Issue #64 Task 6): the generation's one XTop replay
 # ---------------------------------------------------------------------------
 #
-# A `replay-request` with ``"mode": "recipe"`` replays Task 4b's ranked recipe
-# (`composition-facts.recipe`, notes/t4b-recipe.md) in two XTop processes started
+# A `replay-request` with ``"mode": "recipe"`` replays the ranked recipe
+# (`composition-facts.recipe`, `atcs.composition`) in two XTop processes started
 # together from the same base (`templates/xtop-replay.tcl`, one run per arm):
 #
 # - **merged**: `000.dump`; per ranked session, in rank order, its commands through
@@ -1209,7 +1209,7 @@ def seal_batch(state, request, facts, contributions):
 #   `auto.dump`; the same summaries; `write_design_changes ... -output_dir
 #   eco-control -keep_route`.
 #
-# Replay is best effort (user amendment 2026-09-28): a command the recipe marks
+# Replay is best effort: a command the recipe marks
 # `skip`, or one that errors or that the toolkit refuses, is recorded as skipped
 # with its reason and the replay continues. `reconcile_recipe` then refuses an
 # unsafe arm (incomplete run, tainted toolkit session, out-of-domain replay change,
@@ -1563,7 +1563,7 @@ def _delta_without_fillers(delta, patterns):
 
 
 def _eco_pair(evidence_eco, arm):
-    """``(pair, texts, problems, missing)`` for one arm's `write_design_changes` output."""
+    """``(pair, problems, missing)`` for one arm's `write_design_changes` output (pair None when missing)."""
     evidence_eco = evidence_eco if isinstance(evidence_eco, dict) else {}
     pair, texts, problems, missing = {}, {}, [], False
     for role in _ECO_ROLES:

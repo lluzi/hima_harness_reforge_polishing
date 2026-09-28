@@ -8,15 +8,17 @@
 #   ::ATCS_ARM merged   000.dump; per ranked session (RECIPE_TCL): its kept
 #                       commands through the toolkit procedures, confined to
 #                       that session's own edit domain, name prefix and plan
-#                       hash, as its worker session was, then NNN.dump; set_dont_touch on every instance the applied
-#                       commands changed; auto-finish (AUTO_FIX_TCL, hold then
-#                       setup; empty when autoFinish is off); auto.dump; the
-#                       final summaries; one Innovus ECO pair into eco/.
+#                       hash, as its worker session was, then NNN.dump;
+#                       set_dont_touch on every instance the applied commands
+#                       changed; auto-finish (AUTO_FIX_TCL: the control arm's
+#                       plain auto-fix; empty when autoFinish is off);
+#                       auto.dump; the final summaries and fail reasons; one
+#                       Innovus ECO pair into eco/.
 #   ::ATCS_ARM control  000.dump; the old flow's qualified plain auto-fix
-#                       (AUTO_FIX_TCL); auto.dump; the final summaries; one
-#                       Innovus ECO pair into eco-control/.
+#                       (AUTO_FIX_TCL); auto.dump; the final summaries and fail
+#                       reasons; one Innovus ECO pair into eco-control/.
 #
-# Best effort (user amendment 2026-09-28): a recipe command the composition
+# Best effort: a recipe command the composition
 # marked skip is never sent; a command that errors or that the toolkit refuses
 # is recorded as skipped with its reason, and the replay continues. Each
 # auto-fix line is attempted once and its code recorded. The Pack chooses the

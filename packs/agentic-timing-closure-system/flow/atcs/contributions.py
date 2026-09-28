@@ -1343,8 +1343,7 @@ def _session_value(target_checks, reference, predicted):
       worst (ties: hold before setup); ``targetTnsGain`` sums the target
       checks' ``tnsGain``; ``rankTnsGain`` = ``targetTnsGain`` plus every
       opposite check's ``tnsGain`` (signed), and breaks ranking ties -- an
-      opposite TNS loss lowers the rank instead of refusing (controller
-      decision, user amendment: repairs are valued, not all-or-nothing).
+      opposite TNS loss lowers the rank; it never refuses the session.
     - ``no-predicted-gain``: a target WNS is unknown or got worse, or no
       target WNS and not ``targetTnsGain`` improved.
     - ``breaks-opposite-check``: an opposite check's WNS or TNS is unknown,
@@ -1520,7 +1519,7 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
     def refuse(code, detail):
         refusals.append({"code": code, "detail": detail})
 
-    # Taint: any one signal refuses the slot (notes/t3-toolkit-surface.md, capture rule 1, 2, 5).
+    # Taint: tainted.json, an uncertain line, or a missing or unclean ATCS:taint: line refuses the slot.
     if evidence.get("taintedJson") is not None:
         refuse("tainted", f"tainted.json: {core.canonical(evidence['taintedJson']).decode('utf-8')}")
     for line in lines:

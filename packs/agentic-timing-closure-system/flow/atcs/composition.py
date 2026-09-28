@@ -25,8 +25,7 @@ among legacy contributions, never drops a contribution and never invents a
 fix. It only produces the facts (§7.3's conflict/interaction graph) that
 the Workshop's AI judgment turns into an `integration-plan`, which M5 then
 replays. The one deterministic ranking it does make is the ``recipe`` over
-``xtop-session`` Contributions (see that section below), per the user's
-2026-09-28 amendment to Issue #64.
+``xtop-session`` Contributions (see that section below).
 
 `analyze` is deterministic **with respect to which facts are found**, but
 also with respect to input list order: `analyze(base_state_id,
@@ -213,8 +212,8 @@ those ids are appended afterward using that same `(is-no-fix, id)`
 ordering, so `order` stays total and deterministic even though
 `dependency-cycle` also flags them as a conflict.
 
-`xtop-session` Contributions: the ranked recipe (Issue #64, user amendment 2026-09-28)
----------------------------------------------------------------------------------------
+`xtop-session` Contributions: the ranked recipe (Issue #64)
+------------------------------------------------------------
 
 Parallel expert sessions are not code changes that must all be kept
 verbatim; each is a probable repair. So a considered ``kind:
