@@ -482,8 +482,12 @@ class RunInteractiveAuthority implements InteractiveAuthority {
       if (!run) throw new Error(`unknown Run ${this.request.runId}`);
       const refused = validateControl(run, this.request, 'open');
       if (refused) throw new Error(refused);
+      // A Job opened inside a fork belongs to its execution's branch, exactly as a batch launch does
+      // (`claimSlotAndLaunch`); later records of the same Job read the branch back off this launch.
+      const branchId = run.control?.executions[this.request.executionId]?.branchId;
       await this.deps.fabric.ledger.appendJob(run.id, { event: 'launched', job,
-        nodeId: this.request.nodeId, ...(Object.keys(this.derived.licences).length === 0 ? {} : { licences: { ...this.derived.licences } }) });
+        nodeId: this.request.nodeId, ...(branchId === undefined ? {} : { branchId }),
+        ...(Object.keys(this.derived.licences).length === 0 ? {} : { licences: { ...this.derived.licences } }) });
       await advance(this.deps.fabric.ledger, run.id, { jobs: 1 });
     });
   }
@@ -491,9 +495,14 @@ class RunInteractiveAuthority implements InteractiveAuthority {
   async recordJobStop(job: InteractiveJobIdentity, outcome: { readonly wasRunning: boolean; readonly observedGone: boolean }): Promise<void> {
     if (!outcome.wasRunning || !outcome.observedGone) return;
     await controlling(this.deps.fabric, this.request.runId, async () => {
-      const ended = this.deps.fabric.ledger.records({ runId: this.request.runId, type: 'job' })
-        .some((record) => record.type === 'job' && record.job.session === job.session && record.event !== 'launched');
-      if (!ended) await this.deps.fabric.ledger.appendJob(this.request.runId, { event: 'killed', job, nodeId: this.request.nodeId });
+      // A Job belongs where it was launched: the branch is read back off the launch, as `jobs.ts`
+      // `belongsTo` does for the `finished`/`killed` records of a batch Job.
+      const records = this.deps.fabric.ledger.records({ runId: this.request.runId, type: 'job' })
+        .filter((record): record is JobRecord => record.type === 'job' && record.job.session === job.session);
+      const ended = records.some((record) => record.event !== 'launched');
+      const branchId = records.find((record) => record.event === 'launched')?.branchId;
+      if (!ended) await this.deps.fabric.ledger.appendJob(this.request.runId, { event: 'killed', job, nodeId: this.request.nodeId,
+        ...(branchId === undefined ? {} : { branchId }) });
     });
   }
 }
