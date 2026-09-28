@@ -24,10 +24,10 @@ import { recordNode } from './ledger.js';
 import type { JobRecord, NodeState, RunFork, RunRecord, WorkspaceRecord } from './ledger.js';
 import { openJobsOfRun } from './job-cap.js';
 import { advance, endBudgetExhausted, attemptOf, attemptOfSession, currentAttemptOf, waitedMsOf } from './budget.js';
-import { killDidNotTake, type Driving, type FabricDeps } from './node-turns.js';
+import { killDidNotTake, workshopOutputProblem, type Driving, type FabricDeps } from './node-turns.js';
 import { SiteUnreadableError } from './errors.js';
 import { counted } from './words.js';
-import { drive, controlling, reconcileAppliedRevisions, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
+import { drive, controlling, executionPack, reconcileAppliedRevisions, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
 import { owesAnExperience, owesRunAssets, writeExperience } from './experience.js';
 import { closeInterruptedMoments } from './moments.js';
 
@@ -732,8 +732,10 @@ async function cancelFencedRun(deps: FabricDeps, runId: string): Promise<CancelR
     const after = await jobStatus(deps, { run: run.id, session });
     if (after.state.state === 'finished') {
       const exitCode = after.state.exitCode;
-      const why = exitCode === 0 ? {} : { reason: `job "${launch.job.name}" in tmux session ${session} exited ${exitCode}` };
-      await settle(at, exitCode === 0 ? 'done' : 'blocked', { jobSession: session, ...why });
+      // A Workshop's exit 0 is its result only with the declared output this execution wrote (#64 D1).
+      const unproduced = exitCode === 0 ? await workshopOutputOf(deps, moved, launch, at) : undefined;
+      const why = exitCode === 0 ? unproduced === undefined ? {} : { reason: unproduced } : { reason: `job "${launch.job.name}" in tmux session ${session} exited ${exitCode}` };
+      await settle(at, exitCode === 0 && unproduced === undefined ? 'done' : 'blocked', { jobSession: session, ...why });
     } else {
       await settle(at, 'blocked', { jobSession: session, reason: `the cancel found tmux session ${session} already gone, and it wrote no exit status` });
     }
@@ -746,6 +748,23 @@ async function cancelFencedRun(deps: FabricDeps, runId: string): Promise<CancelR
   }
   // A person asked this Run to stop, and every Job it had open has been seen to stop.
   return { kind: 'cancelled', run: await ended(), stopped };
+}
+
+/** Why a finished Workshop Job a cancel found did not produce its declared output, or undefined when
+ *  it did or the Job was not a Workshop's. Fails closed like the drive's own check. */
+async function workshopOutputOf(deps: FabricDeps, run: RunRecord, launch: JobRecord, nodeId: string | undefined): Promise<string | undefined> {
+  if (launch.event !== 'launched' || launch.workshop === undefined) return undefined;
+  try {
+    // The method the Run executes, with its accepted growth graphs, as the drive's own check reads it.
+    const pack = run.control === undefined ? packOf(deps, run) : executionPack(deps, run);
+    const node = positionOf(pack, nodeId)?.node;
+    if (node?.kind !== 'act' || node.parameters.workshop === undefined) return `Workshop output of node ${nodeId ?? '(unknown)'} cannot be verified: the retained method no longer declares that Workshop node`;
+    const site = loadSite(deps.sitesDir, launch.siteId);
+    return await workshopOutputProblem({ site, pack, bindings: boundInputs(pack, site), workspace: launch.job.workspace,
+      node, session: launch.job.session, entryPath: launch.workshop.entry.path });
+  } catch (err) {
+    return `Workshop output of node ${nodeId ?? '(unknown)'} cannot be verified: ${(err as Error).message}`;
+  }
 }
 
 /**

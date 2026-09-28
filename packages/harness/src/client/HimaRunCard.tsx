@@ -700,7 +700,7 @@ export function RevisionSection({ view }: { view: RunView }): ReactElement | nul
   if (!view.revisions?.length) return null;
   return <Section title='Revisions · history retained' region='run-revisions'>
     {view.revisions.map(revision => <details key={revision.recordId} className="hima-block" data-hima-region={`revision-${revision.revisionId}`}>
-      <summary data-hima-control={`revision-expand-${revision.revisionId}`}>Version {revision.version} · {revision.revisionId}</summary>
+      <summary data-hima-control={`revision-expand-${revision.revisionId}`}>{revision.revisionId.startsWith('continue:') ? 'Restart' : `Version ${revision.version}`} · {revision.revisionId}</summary>
       <p className="hima-muted">Changed: {revision.changedNodes.join(', ')}<br />Rerun affected nodes: {revision.affectedNodes.join(', ')}</p>
       <p>{revision.invalidatedRecordIds.length} earlier records excluded from current evidence · {revision.reusedRecordIds.length} records reused</p>
       <p className="hima-muted">Superseded code remains readable under Code, inputs & knowledge. A new result requires the affected nodes to execute again.</p>
