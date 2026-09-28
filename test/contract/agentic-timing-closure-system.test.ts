@@ -196,7 +196,7 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   assert.equal(joined.contributions[0].operations[0].toMaster, 'BUF2');
   assert.equal((await readFile(path.join(slotRoot, 'ops.jsonl'), 'utf8')).trim().split('\n').length, 1);
 });
-const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v8/atcs-xtop-operator-v8.sh';
+const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v9/atcs-xtop-operator-v9.sh';
 
 test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the local Site, and passes its Python contract tests', async (t) => {
   const h = await createHimaHome();
@@ -320,7 +320,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /agentic-timing-closure-system@0\.1\.8.*fit/s);
+    assert.match(throughHost.text, /agentic-timing-closure-system@0\.1\.9.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {

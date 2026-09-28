@@ -9,7 +9,7 @@
 #   verdicts all cite the Generation's latest reading (hence the two-rule routing Judges and re-reads);
 # - there is no `converge` block: SPEC disables score-based convergence; the budget ending is the Runtime's.
 id: agentic-timing-closure-system
-version: "0.1.8"
+version: "0.1.9"
 entry: bind-inputs
 nodes:
   # 1. Bind and verify inputs; strict scope.

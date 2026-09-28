@@ -1,11 +1,15 @@
 # linglong-atcs28 Site administration
 
-Current candidate (Issue 63, Pack 0.1.6): `atcs-xtop-operator-v8.sh` (v7 plus the Pack 0.1.6 PT path-group and
-capped-list WNS fix identities, under `operator-admin/atcs-v8/`). Previous candidate (Pack 0.1.4):
+Current candidate (Issue 63, Pack 0.1.8): `atcs-xtop-operator-v9.sh` under `operator-admin/atcs-v9/`, installed
+sha `259c67b3...`. Like every wrapper file here it is a template: install it by editing the *installed* previous
+wrapper (paths, `adapter_sha256`, `flow_digest`), never by copying this file, and check that no `<REPLACE-...>`
+value remains outside comments. Retired: `atcs-v8` was installed from this template with its placeholders
+unfilled, so every operator session refused at the adapter check (Run 789b90d8); it stays on the Site as
+evidence and no Permit or contract names it. Previous candidate (Pack 0.1.4):
 `atcs-xtop-operator-v7.sh` under `operator-admin/atcs-v7/`. Previous candidate (Pack 0.1.3): `atcs-xtop-operator-v6.sh` and
 `xtop-operator-environment-v6.template.json` under `operator-admin/atcs-v6/`. v6 is the qualified v5
 wrapper with only the `atcs-v6` paths and the new pinned `atcs_cli.py`/flow identities (honest no-fix
-capture); the verifier and Site profile bytes are unchanged. The Permit now reads `atcs-v8` only.
+capture); the verifier and Site profile bytes are unchanged. The Permit now reads `atcs-v9` only.
 
 Previous qualification candidate: `atcs-xtop-operator-v5.sh`, administrator-owned
 `verify-worker-startup.py`, and `xtop-operator-environment-v5.template.json`. v1–v4 remain historical
