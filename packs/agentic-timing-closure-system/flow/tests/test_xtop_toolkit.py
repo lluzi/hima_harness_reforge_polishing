@@ -102,17 +102,25 @@ XTOP_SURFACE = {
                              "format", "keep_route", "last_n", "output_dir", "reorder", "strong_force", "version",
                              "write_atomic_cmd"},
     "save_workspace": {"as", "overwrite"},
+    "count_eco_actions": {"last_n", "types"},
+    "get_eco_cells": {"last_n", "show_remove_cell_max_num", "types"},
 }
 
-# Stricter than the surface: the only flags each targeted-fix procedure may emit (Task 3 brief).
-FIX_HOLD_FLAGS = {"effort", "hold_target", "setup_margin", "size_cell_only", "use_dummy_cell", "fix_timing_window",
-                  "max_cluster_loader_count", "max_delay_cell_length", "delay_cell_list", "only_pins"}
-FIX_SETUP_FLAGS = {"methods", "remove_buffer_only", "size_down_only", "setup_target", "hold_margin", "only_pins"}
+# Stricter than the surface: the only flags each targeted-fix procedure may emit (Task 3 brief,
+# widened by the controller toward the frozen Pack's qualified strings, closure.py ~681-690).
+FIX_HOLD_FLAGS = {"effort", "hold_target", "setup_margin", "size_cell_only", "size_rule", "use_dummy_cell",
+                  "fix_timing_window", "max_cluster_loader_count", "max_delay_cell_length", "delay_cell_list",
+                  "only_pins"}
+FIX_SETUP_FLAGS = {"methods", "remove_buffer_only", "size_down_only", "effort", "setup_target", "hold_margin",
+                   "only_pins"}
 
 _OPTION_WORD = re.compile(r"^-([a-z_]+)$")
 
 # An in-memory design standing in for XTop. Objects are tagged names ("cell:U1",
 # "pin:U1/A", "net:N1"); every XTop command the toolkit may call records its words.
+# ECO bookkeeping: every edit pushes actions (the state before it plus the cells it
+# touched); `count_eco_actions` counts them, `get_eco_cells -last_n` reads their cells
+# and `undo` pops one, restoring its saved state.
 STUB_XTOP = r"""
 proc stub_record {args} {
     set fh [open $::env(STUB_CALLS) a]
@@ -126,16 +134,17 @@ foreach stub_name {set_parameter create_workspace link_reference_library create_
 }
 array set ::cells {U1 BUFX1 U2 INVX1 U3 BUFX2 UOUT BUFX1 U9 DFFX1}
 array set ::pin_net {U1/A N1 U1/Y N2 U2/A N2 U2/Y N4 U3/A N1 U3/Y N3 UOUT/A N1 UOUT/Y N9 U9/D N2 U9/Q N9}
-set ::undo_stack {}
+set ::actions {}
 set ::stub_fix_effect {}
 set ::stub_fix_pins {}
+set ::stub_fix_actions 1
 set ::stub_remove_extra {}
 set ::stub_insert_hier ""
-set ::stub_exchange_effect {}
+set ::stub_insert_removes {}
 set ::stub_undo_broken 0
 set ::stub_fail {}
 set ::stub_noop {}
-proc stub_push {} { lappend ::undo_stack [list [array get ::cells] [array get ::pin_net]] }
+proc stub_act {touched} { lappend ::actions [list [array get ::cells] [array get ::pin_net] $touched] }
 proc stub_gate {name} {
     if {[lsearch -exact $::stub_fail $name] >= 0} { error "XTop stub refused $name" }
     return [expr {[lsearch -exact $::stub_noop $name] >= 0}]
@@ -145,6 +154,11 @@ proc stub_strip {obj} {
     regsub {^(cell|pin|net):} $obj {} name
     return $name
 }
+proc stub_names {collection} {
+    set out {}
+    foreach obj $collection { lappend out [stub_strip $obj] }
+    return $out
+}
 proc stub_opts {valued words} {
     set opts [dict create]
     set pos {}
@@ -153,7 +167,7 @@ proc stub_opts {valued words} {
         if {[regexp {^-[a-z_]+$} $w]} {
             if {[lsearch -exact $valued $w] >= 0} {
                 incr i
-                dict set opts $w [lindex $words $i]
+                dict lappend opts $w [lindex $words $i]
             } else {
                 dict set opts $w 1
             }
@@ -162,6 +176,12 @@ proc stub_opts {valued words} {
         }
     }
     return [list $opts $pos]
+}
+proc stub_one {opts name} { return [lindex [dict get $opts $name] 0] }
+proc stub_nets {} {
+    set nets {}
+    foreach {p n} [array get ::pin_net] { lappend nets $n }
+    return [lsort -unique $nets]
 }
 proc get_cells {args} {
     stub_record get_cells {*}$args
@@ -172,7 +192,7 @@ proc get_cells {args} {
         return $r
     }
     if {[dict exists $o -of_objects]} {
-        set p [stub_strip [dict get $o -of_objects]]
+        set p [stub_strip [stub_one $o -of_objects]]
         set owner [join [lrange [split $p /] 0 end-1] /]
         if {[info exists ::cells($owner)]} { return [list "cell:$owner"] }
         return {}
@@ -186,35 +206,41 @@ proc get_pins {args} {
     stub_record get_pins {*}$args
     lassign [stub_opts {-of_objects -filter} $args] o pos
     if {[dict exists $o -of_objects]} {
-        set owner [stub_strip [dict get $o -of_objects]]
+        set owner [stub_strip [stub_one $o -of_objects]]
         set r {}
         foreach p [lsort [array names ::pin_net]] {
             if {[join [lrange [split $p /] 0 end-1] /] eq $owner} { lappend r "pin:$p" }
         }
         return $r
     }
-    set n [stub_strip [lindex $pos 0]]
-    if {[info exists ::pin_net($n)]} { return [list "pin:$n"] }
-    if {[dict exists $o -quiet]} { return {} }
-    error "get_pins: no pin named $n"
+    set r {}
+    foreach n [lindex $pos 0] {
+        set n [stub_strip $n]
+        if {[info exists ::pin_net($n)]} {
+            lappend r "pin:$n"
+        } elseif {![dict exists $o -quiet]} {
+            error "get_pins: no pin named $n"
+        }
+    }
+    return $r
 }
 proc get_nets {args} {
     stub_record get_nets {*}$args
     lassign [stub_opts {-of_objects -filter} $args] o pos
     if {[dict exists $o -of_objects]} {
-        set p [stub_strip [dict get $o -of_objects]]
+        set p [stub_strip [stub_one $o -of_objects]]
         if {[info exists ::pin_net($p)]} { return [list "net:$::pin_net($p)"] }
         return {}
     }
     if {[dict exists $o -hierarchical]} {
         set r {}
-        foreach n [lsort -unique [lsort [array get ::pin_net]]] {
-            if {[lsearch -exact [array names ::pin_net] $n] < 0} { lappend r "net:$n" }
-        }
+        foreach n [stub_nets] { lappend r "net:$n" }
         return $r
     }
-    if {[string match "net:*" [lindex $pos 0]]} { return [lindex $pos 0] }
-    error "get_nets: unsupported $args"
+    set n [stub_strip [lindex $pos 0]]
+    if {[lsearch -exact [stub_nets] $n] >= 0} { return [list "net:$n"] }
+    if {[dict exists $o -quiet]} { return {} }
+    error "get_nets: no net named $n"
 }
 proc get_attribute {obj attr args} {
     stub_record get_attribute $obj $attr {*}$args
@@ -230,78 +256,113 @@ proc foreach_in_collection {iter_var collection body} {
     upvar 1 $iter_var i
     foreach i $collection { uplevel 1 $body }
 }
+proc count_eco_actions {args} {
+    stub_record count_eco_actions {*}$args
+    stub_gate count_eco_actions
+    return [llength $::actions]
+}
+proc get_eco_cells {args} {
+    stub_record get_eco_cells {*}$args
+    stub_gate get_eco_cells
+    lassign [stub_opts {-last_n -types -show_remove_cell_max_num} $args] o pos
+    set n [stub_one $o -last_n]
+    set r {}
+    foreach entry [lrange $::actions end-[expr {$n - 1}] end] {
+        foreach c [lindex $entry 2] {
+            if {[info exists ::cells($c)] && [lsearch -exact $r "cell:$c"] < 0} { lappend r "cell:$c" }
+        }
+    }
+    return $r
+}
 proc size_cell {args} {
     stub_record size_cell {*}$args
     if {[stub_gate size_cell]} { return "size_cell accepted" }
     lassign [stub_opts {-design -location} $args] o pos
-    stub_push
-    foreach c [lindex $pos 0] { set ::cells([stub_strip $c]) [lindex $pos 1] }
-    return "Info: sized \"[lindex $pos 0]\"\tto [lindex $pos 1]\n"
+    set names [stub_names [lindex $pos 0]]
+    stub_act $names
+    foreach c $names { set ::cells($c) [lindex $pos 1] }
+    return "Info: sized \"$names\"\tto [lindex $pos 1]\n"
 }
 proc exchange_cell {args} {
     stub_record exchange_cell {*}$args
     stub_gate exchange_cell
-    stub_push
+    set touched {}
+    foreach {inst master} $::stub_exchange_effect { lappend touched $inst }
+    stub_act $touched
     foreach {inst master} $::stub_exchange_effect {
         if {$master eq ""} { unset ::cells($inst) } else { set ::cells($inst) $master }
     }
     return 1
 }
+set ::stub_exchange_effect {}
 proc insert_buffer {args} {
     stub_record insert_buffer {*}$args
     if {[stub_gate insert_buffer]} { return 1 }
     lassign [stub_opts {-design -new_cell_names -new_net_names -locations} $args] o pos
-    stub_push
-    foreach n [dict get $o -new_cell_names] l [lindex $pos 1] { set ::cells($::stub_insert_hier$n) $l }
+    set names {}
+    foreach n [stub_one $o -new_cell_names] { lappend names $::stub_insert_hier$n }
+    stub_act $names
+    foreach n $names l [lindex $pos 1] { set ::cells($n) $l }
+    foreach f $::stub_insert_removes { unset ::cells($f) }
     return 1
 }
 proc insert_dummy_cell {args} {
     stub_record insert_dummy_cell {*}$args
     stub_gate insert_dummy_cell
     lassign [stub_opts {-design -new_cell_name -location} $args] o pos
-    stub_push
-    set ::cells([dict get $o -new_cell_name]) [lindex $pos 1]
+    set n [stub_one $o -new_cell_name]
+    stub_act [list $n]
+    set ::cells($n) [lindex $pos 1]
     return 1
 }
 proc split_load {args} {
     stub_record split_load {*}$args
     stub_gate split_load
     lassign [stub_opts {-design -new_cell_names -new_net_names -locations -pin_group -lib_cell} $args] o pos
-    stub_push
-    foreach n [dict get $o -new_cell_names] { set ::cells($n) [dict get $o -lib_cell] }
+    if {[llength [dict get $o -pin_group]] != [llength [stub_one $o -new_cell_names]]} {
+        error "split_load: one -pin_group per new cell"
+    }
+    stub_act [stub_one $o -new_cell_names]
+    foreach n [stub_one $o -new_cell_names] { set ::cells($n) [stub_one $o -lib_cell] }
     return 1
 }
 proc split_net {args} {
     stub_record split_net {*}$args
     stub_gate split_net
     lassign [stub_opts {-design -scenario -lib_cell -rule -segment} $args] o pos
-    stub_push
-    for {set k 1} {$k < [dict get $o -segment]} {incr k} {
-        set ::cells([format "%seco_sn%d" $::env(NAME_PREFIX) $k]) [dict get $o -lib_cell]
+    set names {}
+    for {set k 1} {$k < [stub_one $o -segment]} {incr k} {
+        lappend names [format "%seco_sn%d" $::env(NAME_PREFIX) $k]
     }
+    stub_act $names
+    foreach n $names { set ::cells($n) [stub_one $o -lib_cell] }
     return 1
 }
 proc move_cell {args} {
     stub_record move_cell {*}$args
     stub_gate move_cell
-    stub_push
+    stub_act [stub_names [lindex $args end]]
     return 1
 }
 proc remove_buffer {args} {
     stub_record remove_buffer {*}$args
     stub_gate remove_buffer
-    stub_push
-    foreach c [concat [lindex $args end] $::stub_remove_extra] { unset ::cells([stub_strip $c]) }
+    stub_act {}
+    foreach c [concat [stub_names [lindex $args end]] $::stub_remove_extra] { unset ::cells($c) }
     return 1
 }
 proc stub_fix {name words} {
     stub_record $name {*}$words
     stub_gate $name
-    stub_push
+    set touched {}
+    foreach {inst master} $::stub_fix_effect { lappend touched $inst }
+    if {[llength $touched] == 0 && $::stub_fix_actions == 0} { return 0 }
+    stub_act $touched
     foreach {inst master} $::stub_fix_effect {
         if {$master eq ""} { unset ::cells($inst) } else { set ::cells($inst) $master }
     }
     foreach {pin net} $::stub_fix_pins { set ::pin_net($pin) $net }
+    for {set k 1} {$k < $::stub_fix_actions} {incr k} { stub_act {} }
     return 3
 }
 proc fix_hold_gba_violations {args} { return [stub_fix fix_hold_gba_violations $args] }
@@ -309,12 +370,12 @@ proc fix_setup_gba_violations {args} { return [stub_fix fix_setup_gba_violations
 proc undo {args} {
     stub_record undo {*}$args
     if {$::stub_undo_broken} { return "" }
-    if {[llength $::undo_stack] == 0} { error "Error: no ECO checkpoint to undo" }
+    if {[llength $::actions] == 0} { error "Error: no ECO checkpoint to undo" }
     array unset ::cells
     array unset ::pin_net
-    array set ::cells [lindex $::undo_stack end 0]
-    array set ::pin_net [lindex $::undo_stack end 1]
-    set ::undo_stack [lrange $::undo_stack 0 end-1]
+    array set ::cells [lindex $::actions end 0]
+    array set ::pin_net [lindex $::actions end 1]
+    set ::actions [lrange $::actions 0 end-1]
     return ""
 }
 proc summarize_gba_violations {args} {
@@ -324,7 +385,6 @@ proc summarize_gba_violations {args} {
 }
 proc redirect {args} {
     stub_record redirect {*}[lrange $args 0 end-1]
-    lassign [stub_opts {-variable -file -channel} [lrange $args 0 end-2]] o pos
     set target [lindex $args end-1]
     set code [catch {uplevel #0 [lindex $args end]} r]
     upvar #0 $target captured
@@ -355,8 +415,9 @@ proc T {tag script} {
 }
 """
 
-DOMAIN = {"instances": ["U1", "U2", "U3"], "nets": ["N1", "N2"], "regions": []}
+DOMAIN = {"instances": ["U1", "U2", "U3"], "nets": ["N1", "N2", "N3"], "regions": [[0, 0, 100, 100]]}
 TARGET_PINS = ["U9/D"]
+INITIAL_CELLS = "CELLS:U1=BUFX1 U2=INVX1 U3=BUFX2 U9=DFFX1 UOUT=BUFX1"
 
 
 def _tmp():
@@ -410,6 +471,13 @@ def _contract_arguments():
     return result
 
 
+def _contract_choices(proc, argument):
+    block = _xtop_operator_block()
+    line = next(item for item in block.splitlines() if item.startswith(f"        {proc}: ["))
+    match = re.search(rf"\{{ name: {argument}, type: string, choices: \[([^\]]*)\]", line)
+    return [item.strip() for item in match.group(1).split(",")]
+
+
 def _snake(name):
     return re.sub(r"([A-Z])", lambda m: "_" + m.group(1).lower(), name)
 
@@ -417,7 +485,7 @@ def _snake(name):
 class Session:
     """One rendered worker session under a stub XTop, run to completion by `tclsh`."""
 
-    def __init__(self, test, domain=None, target_pins=None, max_mutations=10):
+    def __init__(self, test, domain=None, target_pins=None, max_mutations=10, observe=None):
         self.tmp = _tmp()
         test.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         for name in ("tech.lef", "cells.lef", "netlist.v", "design.def"):
@@ -433,6 +501,7 @@ class Session:
         self.analysis = adapters.compile_xtop_analysis_manual_task(
             manifest, DOMAIN if domain is None else domain, self.root / "operator.tcl", self.root / "ops.jsonl",
             target_pins=TARGET_PINS if target_pins is None else target_pins, max_mutations=max_mutations,
+            observe=observe,
         )
         self.calls_path = self.tmp / "calls.txt"
 
@@ -480,9 +549,22 @@ class Session:
     def calls_to(self, command):
         return [call for call in self.calls if call[0] == command]
 
+    def cells_line(self):
+        return next(line for line in self.stdout.splitlines() if line.startswith("CELLS:"))
+
 
 MUTATING_XTOP = {"size_cell", "exchange_cell", "insert_buffer", "insert_dummy_cell", "split_load", "split_net",
                  "move_cell", "remove_buffer", "fix_hold_gba_violations", "fix_setup_gba_violations", "undo"}
+HOLD = "atcs_fix_hold_pins"
+SETUP = "atcs_fix_setup_pins"
+
+
+def _flags(call):
+    return {match.group(1) for word in call if (match := _OPTION_WORD.match(word))}
+
+
+def _after(call, flag):
+    return call[call.index(flag) + 1]
 
 
 # ---------------------------------------------------------------------------
@@ -511,6 +593,17 @@ class ToolkitContractTest(unittest.TestCase):
             [("instance", "string"), ("toMaster", "string"), ("planSha256", "string")],
         )
 
+    def test_fix_effort_choices(self):
+        self.assertEqual(_contract_choices(SETUP, "effort"), ["medium", "high"])
+        self.assertEqual(_contract_choices(HOLD, "effort"),
+                         ["omit", "low", "medium", "high", "ultra_high", "extreme_high"])
+
+    def test_move_cell_is_absolute_only(self):
+        self.assertEqual(
+            _contract_arguments()["atcs_move_cell"],
+            [("instance", "string"), ("x", "number"), ("y", "number"), ("planSha256", "string")],
+        )
+
     @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
     def test_contract_arguments_are_the_tcl_procedure_arguments_in_order(self):
         session = Session(self)
@@ -526,14 +619,14 @@ class ToolkitContractTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# The adapter bakes the work package's pins and mutation budget into the session.
+# The adapter bakes the work package's pins, regions, budget and observation mode.
 # ---------------------------------------------------------------------------
 
 
 class AnalysisTaskBudgetTest(unittest.TestCase):
-    def _compile(self, **kwargs):
+    def _compile(self, domain=DOMAIN, **kwargs):
         return adapters.compile_xtop_analysis_manual_task(
-            {"namePrefix": PREFIX}, DOMAIN, "/ws/operator.tcl", "/ws/ops.jsonl", **kwargs,
+            {"namePrefix": PREFIX}, domain, "/ws/operator.tcl", "/ws/ops.jsonl", **kwargs,
         )
 
     def test_bakes_target_pins_and_budget(self):
@@ -558,6 +651,26 @@ class AnalysisTaskBudgetTest(unittest.TestCase):
     def test_refuses_an_unsafe_target_pin(self):
         with self.assertRaises(core.AtcsError):
             self._compile(target_pins=["U9/D; exec rm"])
+
+    def test_bakes_regions_as_flat_boxes(self):
+        task = self._compile(domain={"instances": [], "nets": [], "regions": [[0, 0, 10.5, 20], [30, 40, 50, 60]]})
+        self.assertIn("set ::EDIT_DOMAIN_REGIONS {0 0 10.5 20 30 40 50 60}", task["tcl"])
+        self.assertEqual(task["editDomain"]["regions"], [[0, 0, 10.5, 20], [30, 40, 50, 60]])
+
+    def test_refuses_a_malformed_region(self):
+        for bad in ([0, 0, 10], [10, 0, 0, 10], [0, 0, "x", 1], [0, 0, float("inf"), 1], [0, True, 1, 1]):
+            with self.assertRaises(core.AtcsError, msg=repr(bad)) as ctx:
+                self._compile(domain={"instances": [], "nets": [], "regions": [bad]})
+            self.assertEqual(ctx.exception.code, "invalid-input")
+
+    def test_observation_mode_defaults_to_fast_and_accepts_full(self):
+        self.assertIn("set ::ATCS_OBSERVE {fast}", self._compile()["tcl"])
+        task = self._compile(observe="full")
+        self.assertIn("set ::ATCS_OBSERVE {full}", task["tcl"])
+        self.assertEqual(task["observe"], "full")
+        with self.assertRaises(core.AtcsError) as ctx:
+            self._compile(observe="everything")
+        self.assertEqual(ctx.exception.code, "invalid-input")
 
 
 # ---------------------------------------------------------------------------
@@ -591,10 +704,12 @@ class DomainConfinementTest(unittest.TestCase):
         "dummy": f"atcs_insert_dummy UOUT/Y BUFX1 {PREFIX}d1 {PLAN}",
         "split_load": f"atcs_split_load N9 {{{{UOUT/Y}}}} BUFX2 {PREFIX}s1 {PREFIX}sn1 {PLAN}",
         "split_net": f"atcs_split_net N9 BUFX2 wire_length 2 {PLAN}",
-        "move": f"atcs_move_cell UOUT delta 1.0 0 {PLAN}",
+        "move": f"atcs_move_cell UOUT 1.0 0 {PLAN}",
+        "move_outside": f"atcs_move_cell U3 150 20 {PLAN}",
         "remove": f"atcs_remove_buffer UOUT {PLAN}",
-        "fix_hold": f"atcs_fix_hold_pins UOUT/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}",
-        "fix_setup": f"atcs_fix_setup_pins UOUT/A size_cell 0 0 0.0 0.02 {PLAN}",
+        "remove_mixed_nets": f"atcs_remove_buffer U2 {PLAN}",
+        "fix_hold": f"{HOLD} UOUT/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}",
+        "fix_setup": f"{SETUP} UOUT/A size_cell 0 0 medium 0.0 0.02 {PLAN}",
     }
 
     def test_every_mutation_refuses_an_out_of_domain_object_without_mutating(self):
@@ -606,9 +721,18 @@ class DomainConfinementTest(unittest.TestCase):
             status, message = session.outcome(tag)
             self.assertEqual(status, "ERR", tag)
             self.assertIn("out-of-scope", message, tag)
+        self.assertIn("N4", session.outcome("remove_mixed_nets")[1])
         self.assertEqual([call for call in session.calls if call[0] in MUTATING_XTOP], [])
         self.assertEqual(session.ops, [])
-        self.assertIn("CELLS:U1=BUFX1 U2=INVX1 U3=BUFX2 U9=DFFX1 UOUT=BUFX1", session.stdout)
+        self.assertEqual(session.cells_line(), INITIAL_CELLS)
+
+    def test_move_needs_an_edit_region(self):
+        session = Session(self, domain={"instances": ["U3"], "nets": [], "regions": []}).run(
+            f"T move {{atcs_move_cell U3 10 20 {PLAN}}}\n"
+        )
+        status, message = session.outcome("move")
+        self.assertEqual(status, "ERR")
+        self.assertIn("out-of-scope", message)
 
     def test_new_names_must_use_the_workspace_name_prefix(self):
         session = Session(self).run(
@@ -637,6 +761,32 @@ class DomainConfinementTest(unittest.TestCase):
         self.assertIn("planSha256", message)
         self.assertEqual(len(session.calls_to("size_cell")), 1)
 
+    def test_size_cell_to_the_current_master_is_refused(self):
+        session = Session(self, max_mutations=1).run(
+            f"T same {{atcs_size_cell U1 BUFX1 {PLAN}}}\n"
+            f"T other {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+        )
+        status, message = session.outcome("same")
+        self.assertEqual(status, "ERR")
+        self.assertIn("already", message)
+        self.assertEqual(session.outcome("other")[0], "OK")
+        self.assertEqual(len(session.calls_to("size_cell")), 1)
+
+    def test_mutations_pass_exact_collections_not_name_patterns(self):
+        session = Session(self).run(
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            f"T rm {{atcs_remove_buffer U3 {PLAN}}}\n"
+            f"T fix {{{HOLD} {{U9/D U1/A}} medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+        )
+        (size,) = session.calls_to("size_cell")
+        self.assertEqual(size[1:], ["cell:U1", "BUFX2"])
+        (remove,) = session.calls_to("remove_buffer")
+        self.assertEqual(remove[1:], ["cell:U3"])
+        (fix,) = session.calls_to("fix_hold_gba_violations")
+        self.assertEqual(_after(fix, "-only_pins"), "pin:U9/D pin:U1/A")
+        exact_lookups = [call for call in session.calls_to("get_cells") if "-exact" in call]
+        self.assertTrue(exact_lookups)
+
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class MutationTraceTest(unittest.TestCase):
@@ -652,9 +802,11 @@ class MutationTraceTest(unittest.TestCase):
         self.assertEqual(op["before"], {"instances": {"U1": "BUFX1"}})
         self.assertEqual(op["after"], {"instances": {"U1": "BUFX2"}})
         self.assertEqual(op["status"], "kept")
+        self.assertEqual(op["ecoActions"], 1)
+        self.assertEqual(op["observe"], "fast")
         self.assertEqual(op["xtop"]["code"], 0)
         self.assertIn("sized", op["xtop"]["result"])
-        self.assertEqual(op["xtop"]["command"], "size_cell U1 BUFX2")
+        self.assertEqual(op["xtop"]["command"], "size_cell cell:U1 BUFX2")
 
         gains = session.gains
         self.assertEqual([gain["kind"] for gain in gains], ["reference", "mutation"])
@@ -667,7 +819,6 @@ class MutationTraceTest(unittest.TestCase):
             self.assertIn("-with_reference", command)
             self.assertTrue(command.endswith(f"-{check}"), command)
             self.assertIn("captured:", gains[1]["checks"][check]["text"])
-        # The reference is captured once, before the first mutation reaches XTop.
         order = [call[0] for call in session.calls if call[0] in ("summarize_gba_violations", "size_cell")]
         self.assertEqual(order[:3], ["summarize_gba_violations", "summarize_gba_violations", "size_cell"])
 
@@ -690,21 +841,21 @@ class MutationTraceTest(unittest.TestCase):
         )
         self.assertEqual(session.outcome("ins")[0], "OK", session.stdout)
         call = session.calls_to("insert_buffer")[0]
-        self.assertIn("-new_cell_names", call)
-        self.assertEqual(call[call.index("-new_cell_names") + 1], f"{PREFIX}b1 {PREFIX}b2")
-        self.assertEqual(call[call.index("-new_net_names") + 1], f"{PREFIX}n1 {PREFIX}n2")
+        self.assertEqual(_after(call, "-new_cell_names"), f"{PREFIX}b1 {PREFIX}b2")
+        self.assertEqual(_after(call, "-new_net_names"), f"{PREFIX}n1 {PREFIX}n2")
+        self.assertEqual(call[-2:], ["pin:UOUT/A pin:U3/A", "DELAY1 BUFX2"])
         op = session.ops[0]
         self.assertEqual(op["args"]["masters"], ["DELAY1", "BUFX2"])
         self.assertEqual(op["args"]["loadPins"], ["UOUT/A", "U3/A"])
         self.assertEqual(op["before"], {"instances": {f"{PREFIX}b1": None, f"{PREFIX}b2": None}})
         self.assertEqual(op["after"], {"instances": {f"{PREFIX}b1": "DELAY1", f"{PREFIX}b2": "BUFX2"}})
-        # A cell this session created is inside its domain.
+        self.assertIs(op["matchesRequest"], True)
         self.assertEqual(session.outcome("size_new")[0], "OK", session.stdout)
 
     def test_xtop_error_without_change_is_logged_and_raised(self):
         session = Session(self).run(
             "set ::stub_fail {size_cell}\n"
-            f"T size {{atcs_size_cell U1 NOSUCHCELL {PLAN}}}\n"
+            f"T size {{atcs_size_cell U1 BUFX4 {PLAN}}}\n"
         )
         status, message = session.outcome("size")
         self.assertEqual(status, "ERR")
@@ -712,7 +863,7 @@ class MutationTraceTest(unittest.TestCase):
         self.assertEqual(len(session.ops), 1)
         self.assertEqual(session.ops[0]["status"], "error")
         self.assertEqual(session.ops[0]["xtop"]["code"], 1)
-        self.assertEqual(session.ops[0]["after"], session.ops[0]["before"])
+        self.assertEqual(session.ops[0]["ecoActions"], 0)
         self.assertEqual([gain["kind"] for gain in session.gains], ["reference"])
 
     def test_accepted_command_that_changed_nothing_is_not_kept(self):
@@ -733,17 +884,93 @@ class MutationTraceTest(unittest.TestCase):
         self.assertIn('"delta"', session.gains[1]["checks"]["setup"]["text"])
         self.assertIn("\t", session.ops[0]["xtop"]["result"])
 
-    def test_snapshot_mutation_logs_the_observed_delta(self):
-        session = Session(self).run(
-            f"T split {{atcs_split_net N1 BUFX2 wire_length 3 {PLAN}}}\n"
-        )
+    def test_split_net_logs_the_cells_xtop_reports(self):
+        session = Session(self).run(f"T split {{atcs_split_net N1 BUFX2 wire_length 3 {PLAN}}}\n")
         self.assertEqual(session.outcome("split")[0], "OK", session.stdout)
         op = session.ops[0]
         self.assertEqual(op["cmd"], "split_net")
         self.assertEqual(op["before"], {"instances": {f"{PREFIX}eco_sn1": None, f"{PREFIX}eco_sn2": None}})
         self.assertEqual(op["after"], {"instances": {f"{PREFIX}eco_sn1": "BUFX2", f"{PREFIX}eco_sn2": "BUFX2"}})
         call = session.calls_to("split_net")[0]
-        self.assertEqual(call[1:], ["N1", "-lib_cell", "BUFX2", "-rule", "wire_length", "-segment", "3"])
+        self.assertEqual(call[1:], ["net:N1", "-lib_cell", "BUFX2", "-rule", "wire_length", "-segment", "3"])
+
+    def test_split_load_repeats_the_pin_group_flag(self):
+        session = Session(self).run(
+            f"T sl {{atcs_split_load N2 {{{{U2/A}} {{U9/D}}}} BUFX2 {{{PREFIX}s1 {PREFIX}s2}} "
+            f"{{{PREFIX}sn1 {PREFIX}sn2}} {PLAN}}}\n"
+        )
+        self.assertEqual(session.outcome("sl")[0], "OK", session.stdout)
+        (call,) = session.calls_to("split_load")
+        groups = [call[i + 1] for i, word in enumerate(call) if word == "-pin_group"]
+        self.assertEqual(groups, ["pin:U2/A", "pin:U9/D"])
+
+    def test_fast_observation_never_walks_the_whole_design(self):
+        session = Session(self).run(
+            f"set ::stub_fix_effect {{U1 BUFX4}}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            f"T undo {{atcs_undo {PLAN}}}\n"
+            f"T ins {{atcs_insert_buffer N1 UOUT/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
+        )
+        for tag in ("fix", "undo", "ins"):
+            self.assertEqual(session.outcome(tag)[0], "OK", tag + session.stdout)
+        walks = [call for call in session.calls if call[0] in ("get_cells", "get_nets") and "-hierarchical" in call]
+        self.assertEqual(walks, [])
+        self.assertTrue(session.calls_to("count_eco_actions"))
+        self.assertTrue(session.calls_to("get_eco_cells"))
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class TaintAndFailureTest(unittest.TestCase):
+    def test_an_error_after_the_xtop_call_logs_uncertain_and_taints(self):
+        session = Session(self).run(
+            "set ::stub_fail {get_eco_cells}\n"
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            "set ::stub_fail {}\n"
+            f"T next {{atcs_size_cell U2 INVX2 {PLAN}}}\n"
+            "T export {atcs_export_changes}\n"
+            f'T dump {{atcs_dump_cells "{Path("/dev/null")}"}}\n'
+        )
+        status, message = session.outcome("size")
+        self.assertEqual(status, "ERR")
+        self.assertIn("tainted", message)
+        self.assertEqual(session.ops[-1]["status"], "uncertain")
+        self.assertIn("get_eco_cells", session.ops[-1]["error"])
+        self.assertIn("tainted", session.outcome("next")[1])
+        status, message = session.outcome("export")
+        self.assertEqual(status, "ERR")
+        self.assertIn("tainted", message)
+        self.assertEqual(session.calls_to("write_design_changes"), [])
+        self.assertEqual(session.outcome("dump")[0], "OK")
+        marker = json.loads((session.root / "tainted.json").read_text(encoding="utf-8"))
+        self.assertIn("get_eco_cells", marker["reason"])
+
+    def test_an_ops_log_that_cannot_be_written_taints_the_session(self):
+        session = Session(self).run(
+            f"T first {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            "set ::env(OPS_LOG) /nonexistent-atcs-dir/ops.jsonl\n"
+            f"T second {{atcs_size_cell U2 INVX2 {PLAN}}}\n"
+            f"T third {{atcs_size_cell U3 BUFX4 {PLAN}}}\n"
+        )
+        self.assertEqual(session.outcome("first")[0], "OK")
+        status, message = session.outcome("second")
+        self.assertEqual(status, "ERR")
+        self.assertIn("ops.jsonl write failed", message)
+        self.assertIn("tainted", session.outcome("third")[1])
+        self.assertEqual(len(session.calls_to("size_cell")), 2)
+
+    def test_a_gain_line_that_cannot_be_written_taints_but_keeps_the_edit_logged(self):
+        session = Session(self).run(
+            "T ref {atcs_ref}\n"
+            "file delete [file join [file dirname $env(OPS_LOG)] gain.jsonl]\n"
+            "file mkdir [file join [file dirname $env(OPS_LOG)] gain.jsonl]\n"
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            f"T next {{atcs_size_cell U2 INVX2 {PLAN}}}\n"
+        )
+        status, message = session.outcome("size")
+        self.assertEqual(status, "ERR")
+        self.assertIn("gain.jsonl", message)
+        self.assertEqual(session.ops[0]["status"], "kept")
+        self.assertIn("tainted", session.outcome("next")[1])
 
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
@@ -792,14 +1019,14 @@ class UndoTest(unittest.TestCase):
         undo_lines = [op for op in session.ops if op["cmd"] == "undo"]
         self.assertEqual([(op["seq"], op["undoes"]) for op in undo_lines], [(3, 2), (4, 1)])
         self.assertEqual(undo_lines[0]["status"], "kept")
+        self.assertEqual(undo_lines[0]["discards"], [])
         self.assertEqual(undo_lines[0]["args"], {"planSha256": PLAN})
         self.assertEqual(undo_lines[0]["after"], {"instances": {f"{PREFIX}b1": None}})
         self.assertEqual(undo_lines[1]["after"], {"instances": {"U1": "BUFX1"}})
         self.assertEqual(len(session.calls_to("undo")), 2)
         self.assertEqual([gain["kind"] for gain in session.gains],
                          ["reference", "mutation", "mutation", "undo", "undo"])
-        cells_line = next(line for line in session.stdout.splitlines() if line.startswith("CELLS:"))
-        self.assertNotIn(f"{PREFIX}b1", cells_line)
+        self.assertEqual(session.cells_line(), INITIAL_CELLS)
 
     def test_an_undone_new_cell_leaves_the_session_domain(self):
         session = Session(self).run(
@@ -826,18 +1053,59 @@ class UndoTest(unittest.TestCase):
         self.assertEqual(session.ops[-1]["cmd"], "undo")
         self.assertEqual(session.ops[-1]["undoes"], 1)
         self.assertEqual(session.ops[-1]["status"], "uncertain")
-        status, message = session.outcome("next")
-        self.assertEqual(status, "ERR")
-        self.assertIn("tainted", message)
+        self.assertIn("tainted", session.outcome("next")[1])
         self.assertEqual(session.outcome("read")[0], "OK")
 
-    def test_snapshot_mutation_undo_restores_the_whole_delta(self):
+    def test_a_move_undo_is_verified_by_eco_bookkeeping(self):
         session = Session(self).run(
+            f"T mv {{atcs_move_cell U3 10 20 {PLAN}}}\n"
+            "set ::stub_undo_broken 1\n"
+            f"T undo {{atcs_undo {PLAN}}}\n"
+        )
+        self.assertEqual(session.outcome("mv")[0], "OK", session.stdout)
+        self.assertEqual(session.ops[0]["verified"], "eco-actions")
+        self.assertEqual(session.outcome("undo")[0], "ERR")
+        self.assertEqual(session.ops[-1]["status"], "uncertain")
+
+    def test_undo_after_a_fix_that_changed_nothing_is_routine(self):
+        session = Session(self).run(
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            f"T fix {{{SETUP} U1/A size_cell 0 0 medium 0.0 0.02 {PLAN}}}\n"
+            f"T undo {{atcs_undo {PLAN}}}\n"
+            f"T next {{atcs_size_cell U2 INVX2 {PLAN}}}\n"
+            'puts "CELLS:[stub_cells]"\n'
+        )
+        self.assertEqual(session.outcome("fix")[0], "OK", session.stdout)
+        self.assertEqual(session.ops[1]["status"], "no-change")
+        self.assertEqual(session.ops[1]["ecoActions"], 1)
+        self.assertEqual(session.outcome("undo")[0], "OK", session.stdout)
+        undo = session.ops[2]
+        self.assertEqual((undo["undoes"], undo["discards"], undo["undoCalls"]), (1, [2], 2))
+        self.assertEqual(session.outcome("next")[0], "OK", session.stdout)
+        self.assertIn("U1=BUFX1", session.cells_line())
+
+    def test_undo_of_a_multi_action_fix_undoes_every_action(self):
+        session = Session(self).run(
+            "set ::stub_fix_actions 3\nset ::stub_fix_effect {U1 BUFX4}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            f"T undo {{atcs_undo {PLAN}}}\n"
+            'puts "CELLS:[stub_cells]"\n'
+        )
+        self.assertEqual(session.outcome("fix")[0], "OK", session.stdout)
+        self.assertEqual(session.ops[0]["ecoActions"], 3)
+        self.assertEqual(session.outcome("undo")[0], "OK", session.stdout)
+        self.assertEqual(session.ops[1]["undoCalls"], 3)
+        self.assertEqual(session.ops[1]["after"], {"instances": {"U1": "BUFX1"}})
+        self.assertEqual(session.cells_line(), INITIAL_CELLS)
+
+    def test_full_observation_undo_restores_the_whole_delta(self):
+        session = Session(self, observe="full").run(
             f"set ::stub_fix_effect {{U1 BUFX4 {PREFIX}eco_1 DELAY1}}\n"
-            f"T fix {{atcs_fix_hold_pins U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
             f"T undo {{atcs_undo {PLAN}}}\n"
         )
         self.assertEqual(session.outcome("fix")[0], "OK", session.stdout)
+        self.assertEqual(session.ops[0]["observe"], "full")
         self.assertEqual(session.ops[0]["before"], {"instances": {"U1": "BUFX1", f"{PREFIX}eco_1": None}})
         self.assertEqual(session.ops[0]["after"], {"instances": {"U1": "BUFX4", f"{PREFIX}eco_1": "DELAY1"}})
         self.assertEqual(session.outcome("undo")[0], "OK", session.stdout)
@@ -847,54 +1115,63 @@ class UndoTest(unittest.TestCase):
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class TargetedFixTest(unittest.TestCase):
-    def _flags(self, call):
-        return {match.group(1) for word in call if (match := _OPTION_WORD.match(word))}
-
     def test_fix_hold_emits_only_whitelisted_flags_and_domain_pins(self):
         session = Session(self).run(
             "set ::stub_fix_effect {U1 BUFX4}\n"
-            f"T fix {{atcs_fix_hold_pins {{U9/D U1/A}} high 0.01 0.02 1 1 0 4 3 {{DELAY1 DELAY2}} {PLAN}}}\n"
+            f"T fix {{{HOLD} {{U9/D U1/A}} high 0.01 0.02 0 1 0 4 3 {{DELAY1 DELAY2}} {PLAN}}}\n"
         )
         self.assertEqual(session.outcome("fix")[0], "OK", session.stdout)
         (call,) = session.calls_to("fix_hold_gba_violations")
-        self.assertLessEqual(self._flags(call), FIX_HOLD_FLAGS)
-        self.assertEqual(call[call.index("-only_pins") + 1], "U9/D U1/A")
-        self.assertEqual(call[call.index("-effort") + 1], "high")
-        self.assertEqual(call[call.index("-hold_target") + 1], "0.01")
-        self.assertEqual(call[call.index("-setup_margin") + 1], "0.02")
-        self.assertEqual(call[call.index("-max_cluster_loader_count") + 1], "4")
-        self.assertEqual(call[call.index("-max_delay_cell_length") + 1], "3")
-        self.assertEqual(call[call.index("-delay_cell_list") + 1], "DELAY1 DELAY2")
-        self.assertIn("-size_cell_only", call)
+        self.assertLessEqual(_flags(call), FIX_HOLD_FLAGS)
+        self.assertEqual(_after(call, "-only_pins"), "pin:U9/D pin:U1/A")
+        self.assertEqual(_after(call, "-effort"), "high")
+        self.assertEqual(_after(call, "-hold_target"), "0.01")
+        self.assertEqual(_after(call, "-setup_margin"), "0.02")
+        self.assertEqual(_after(call, "-max_cluster_loader_count"), "4")
+        self.assertEqual(_after(call, "-max_delay_cell_length"), "3")
+        self.assertEqual(_after(call, "-delay_cell_list"), "DELAY1 DELAY2")
         self.assertIn("-use_dummy_cell", call)
-        self.assertNotIn("-fix_timing_window", call)
+        self.assertNotIn("-size_cell_only", call)
+        self.assertNotIn("-size_rule", call)
         self.assertEqual(session.ops[0]["cmd"], "fix_hold_gba_violations")
         self.assertEqual(session.ops[0]["status"], "kept")
 
-    def test_fix_hold_omits_optional_flags_at_their_sentinels(self):
+    def test_hold_size_only_uses_the_qualified_nominal_rule_and_may_omit_effort(self):
         session = Session(self).run(
-            f"set ::stub_fix_effect {{U1 BUFX4}}\n"
-            f"T fix {{atcs_fix_hold_pins U1/A low 0.0 0.02 0 0 1 0 -1 {{}} {PLAN}}}\n"
+            "set ::stub_fix_effect {U1 BUFX4}\n"
+            f"T fix {{{HOLD} U1/A omit 0.0 0.02 1 0 0 0 -1 {{}} {PLAN}}}\n"
         )
         self.assertEqual(session.outcome("fix")[0], "OK", session.stdout)
         (call,) = session.calls_to("fix_hold_gba_violations")
-        self.assertEqual(self._flags(call), {"effort", "hold_target", "setup_margin", "fix_timing_window", "only_pins"})
+        self.assertEqual(_flags(call), {"size_cell_only", "size_rule", "hold_target", "setup_margin", "only_pins"})
+        self.assertEqual(_after(call, "-size_rule"), "nominal_keywords")
+        self.assertEqual(call.index("-size_rule"), call.index("-size_cell_only") + 1)
+
+    def test_fix_hold_omits_optional_flags_at_their_sentinels(self):
+        session = Session(self).run(
+            "set ::stub_fix_effect {U1 BUFX4}\n"
+            f"T fix {{{HOLD} U1/A low 0.0 0.02 0 0 1 0 -1 {{}} {PLAN}}}\n"
+        )
+        self.assertEqual(session.outcome("fix")[0], "OK", session.stdout)
+        (call,) = session.calls_to("fix_hold_gba_violations")
+        self.assertEqual(_flags(call), {"effort", "hold_target", "setup_margin", "fix_timing_window", "only_pins"})
 
     def test_fix_hold_refusals(self):
         refused = {
-            "window_and_size_only": f"atcs_fix_hold_pins U1/A low 0.0 0.02 1 0 1 0 -1 {{}} {PLAN}",
-            "window_needs_low_effort": f"atcs_fix_hold_pins U1/A high 0.0 0.02 0 0 1 0 -1 {{}} {PLAN}",
-            "cluster_high": f"atcs_fix_hold_pins U1/A medium 0.0 0.02 0 0 0 7 -1 {{}} {PLAN}",
-            "cluster_fraction": f"atcs_fix_hold_pins U1/A medium 0.0 0.02 0 0 0 2.5 -1 {{}} {PLAN}",
-            "delay_len_high": f"atcs_fix_hold_pins U1/A medium 0.0 0.02 0 0 0 0 6 DELAY1 {PLAN}",
-            "delay_len_without_list": f"atcs_fix_hold_pins U1/A medium 0.0 0.02 0 0 0 0 2 {{}} {PLAN}",
-            "delay_list_without_len": f"atcs_fix_hold_pins U1/A medium 0.0 0.02 0 0 0 0 -1 DELAY1 {PLAN}",
-            "effort": f"atcs_fix_hold_pins U1/A turbo 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}",
-            "target_range": f"atcs_fix_hold_pins U1/A medium 0.5 0.02 0 0 0 0 -1 {{}} {PLAN}",
-            "margin_nan": f"atcs_fix_hold_pins U1/A medium 0.0 NaN 0 0 0 0 -1 {{}} {PLAN}",
-            "flag_word": f"atcs_fix_hold_pins U1/A medium 0.0 0.02 yes 0 0 0 -1 {{}} {PLAN}",
-            "no_pins": f"atcs_fix_hold_pins {{}} medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}",
-            "option_as_pin": f"atcs_fix_hold_pins -effort medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}",
+            "window_and_size_only": f"{HOLD} U1/A low 0.0 0.02 1 0 1 0 -1 {{}} {PLAN}",
+            "window_needs_low_effort": f"{HOLD} U1/A high 0.0 0.02 0 0 1 0 -1 {{}} {PLAN}",
+            "omit_needs_size_only": f"{HOLD} U1/A omit 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}",
+            "cluster_high": f"{HOLD} U1/A medium 0.0 0.02 0 0 0 7 -1 {{}} {PLAN}",
+            "cluster_fraction": f"{HOLD} U1/A medium 0.0 0.02 0 0 0 2.5 -1 {{}} {PLAN}",
+            "delay_len_high": f"{HOLD} U1/A medium 0.0 0.02 0 0 0 0 6 DELAY1 {PLAN}",
+            "delay_len_without_list": f"{HOLD} U1/A medium 0.0 0.02 0 0 0 0 2 {{}} {PLAN}",
+            "delay_list_without_len": f"{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 DELAY1 {PLAN}",
+            "effort": f"{HOLD} U1/A turbo 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}",
+            "target_range": f"{HOLD} U1/A medium 0.5 0.02 0 0 0 0 -1 {{}} {PLAN}",
+            "margin_nan": f"{HOLD} U1/A medium 0.0 NaN 0 0 0 0 -1 {{}} {PLAN}",
+            "flag_word": f"{HOLD} U1/A medium 0.0 0.02 yes 0 0 0 -1 {{}} {PLAN}",
+            "no_pins": f"{HOLD} {{}} medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}",
+            "option_as_pin": f"{HOLD} -effort medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}",
         }
         session = Session(self).run("".join(f"T {tag} {{{command}}}\n" for tag, command in refused.items()))
         for tag in refused:
@@ -905,27 +1182,30 @@ class TargetedFixTest(unittest.TestCase):
     def test_fix_setup_emits_only_whitelisted_flags(self):
         session = Session(self).run(
             "set ::stub_fix_effect {U1 BUFX4}\n"
-            f"T fix {{atcs_fix_setup_pins {{U9/D}} {{size_cell insert_buffer}} 0 0 -0.01 0.02 {PLAN}}}\n"
-            f"T rb {{atcs_fix_setup_pins U1/A {{}} 1 0 0.0 0.02 {PLAN}}}\n"
+            f"T fix {{{SETUP} {{U9/D}} {{size_cell insert_buffer}} 0 0 high -0.01 0.02 {PLAN}}}\n"
+            "set ::stub_fix_effect {U1 BUFX2}\n"
+            f"T rb {{{SETUP} U1/A {{}} 1 0 medium 0.0 0.02 {PLAN}}}\n"
         )
         self.assertEqual(session.outcome("fix")[0], "OK", session.stdout)
         self.assertEqual(session.outcome("rb")[0], "OK", session.stdout)
         first, second = session.calls_to("fix_setup_gba_violations")
-        self.assertLessEqual(self._flags(first), FIX_SETUP_FLAGS)
-        self.assertEqual(first[first.index("-methods") + 1], "size_cell insert_buffer")
-        self.assertEqual(first[first.index("-setup_target") + 1], "-0.01")
-        self.assertEqual(first[first.index("-hold_margin") + 1], "0.02")
-        self.assertEqual(first[first.index("-only_pins") + 1], "U9/D")
-        self.assertEqual(self._flags(second), {"remove_buffer_only", "setup_target", "hold_margin", "only_pins"})
+        self.assertLessEqual(_flags(first), FIX_SETUP_FLAGS)
+        self.assertEqual(_after(first, "-methods"), "size_cell insert_buffer")
+        self.assertEqual(_after(first, "-effort"), "high")
+        self.assertEqual(_after(first, "-setup_target"), "-0.01")
+        self.assertEqual(_after(first, "-hold_margin"), "0.02")
+        self.assertEqual(_after(first, "-only_pins"), "pin:U9/D")
+        self.assertEqual(_flags(second), {"remove_buffer_only", "effort", "setup_target", "hold_margin", "only_pins"})
 
     def test_fix_setup_refusals(self):
         refused = {
-            "method": f"atcs_fix_setup_pins U1/A remove_buffer 0 0 0.0 0.02 {PLAN}",
-            "nothing": f"atcs_fix_setup_pins U1/A {{}} 0 0 0.0 0.02 {PLAN}",
-            "rb_and_methods": f"atcs_fix_setup_pins U1/A size_cell 1 0 0.0 0.02 {PLAN}",
-            "rb_and_down": f"atcs_fix_setup_pins U1/A {{}} 1 1 0.0 0.02 {PLAN}",
-            "target_range": f"atcs_fix_setup_pins U1/A size_cell 0 0 -0.3 0.02 {PLAN}",
-            "pin": f"atcs_fix_setup_pins UOUT/A size_cell 0 0 0.0 0.02 {PLAN}",
+            "method": f"{SETUP} U1/A remove_buffer 0 0 medium 0.0 0.02 {PLAN}",
+            "nothing": f"{SETUP} U1/A {{}} 0 0 medium 0.0 0.02 {PLAN}",
+            "rb_and_methods": f"{SETUP} U1/A size_cell 1 0 medium 0.0 0.02 {PLAN}",
+            "rb_and_down": f"{SETUP} U1/A {{}} 1 1 medium 0.0 0.02 {PLAN}",
+            "target_range": f"{SETUP} U1/A size_cell 0 0 medium -0.3 0.02 {PLAN}",
+            "low_effort": f"{SETUP} U1/A size_cell 0 0 low 0.0 0.02 {PLAN}",
+            "pin": f"{SETUP} UOUT/A size_cell 0 0 medium 0.0 0.02 {PLAN}",
         }
         session = Session(self).run("".join(f"T {tag} {{{command}}}\n" for tag, command in refused.items()))
         for tag in refused:
@@ -934,86 +1214,112 @@ class TargetedFixTest(unittest.TestCase):
 
     def test_fix_without_any_domain_pin_is_refused(self):
         session = Session(self, domain={"instances": [], "nets": []}, target_pins=[]).run(
-            f"T fix {{atcs_fix_hold_pins U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
         )
         status, message = session.outcome("fix")
         self.assertEqual(status, "ERR")
         self.assertIn("out-of-scope", message)
 
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class ObservedEffectConfinementTest(unittest.TestCase):
+    """Edits whose full effect XTop decides are judged after the call, in both observation modes."""
+
+    def _both(self):
+        return (Session(self), Session(self, observe="full"))
+
     def test_an_out_of_domain_effect_is_undone_and_refused(self):
-        session = Session(self).run(
-            "set ::stub_fix_effect {U1 BUFX4 UOUT BUFX4}\n"
-            f"T fix {{atcs_fix_hold_pins U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
-            f"T undo {{atcs_undo {PLAN}}}\n"
-            'puts "CELLS:[stub_cells]"\n'
-        )
-        status, message = session.outcome("fix")
-        self.assertEqual(status, "ERR")
-        self.assertIn("out-of-domain", message)
-        self.assertIn("UOUT", message)
-        op = session.ops[0]
-        self.assertEqual(op["status"], "reverted")
-        self.assertEqual(op["outOfDomain"], ["UOUT"])
-        self.assertEqual(len(session.calls_to("undo")), 1)
-        cells_line = next(line for line in session.stdout.splitlines() if line.startswith("CELLS:"))
-        self.assertIn("U1=BUFX1", cells_line)
-        self.assertIn("UOUT=BUFX1", cells_line)
-        # A reverted mutation is not on the undo stack.
-        self.assertIn("nothing to undo", session.outcome("undo")[1])
+        for session in self._both():
+            session.run(
+                "set ::stub_fix_actions 2\nset ::stub_fix_effect {U1 BUFX4 UOUT BUFX4}\n"
+                f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+                f"T undo {{atcs_undo {PLAN}}}\n"
+                'puts "CELLS:[stub_cells]"\n'
+            )
+            status, message = session.outcome("fix")
+            self.assertEqual(status, "ERR")
+            self.assertIn("out-of-domain", message)
+            self.assertIn("UOUT", message)
+            op = session.ops[0]
+            self.assertEqual(op["status"], "reverted")
+            self.assertEqual(op["outOfDomain"], ["UOUT"])
+            self.assertEqual(len(session.calls_to("undo")), 2)
+            self.assertEqual(session.cells_line(), INITIAL_CELLS)
+            self.assertIn("nothing to undo", session.outcome("undo")[1])
 
     def test_a_new_cell_without_the_name_prefix_is_out_of_domain(self):
-        session = Session(self).run(
-            "set ::stub_fix_effect {eco_foreign_1 BUFX2}\n"
-            f"T fix {{atcs_fix_setup_pins U1/A size_cell 0 0 0.0 0.02 {PLAN}}}\n"
-        )
-        self.assertEqual(session.outcome("fix")[0], "ERR")
-        self.assertEqual(session.ops[0]["outOfDomain"], ["eco_foreign_1"])
+        for session in self._both():
+            session.run(
+                "set ::stub_fix_effect {eco_foreign_1 BUFX2}\n"
+                f"T fix {{{SETUP} U1/A size_cell 0 0 medium 0.0 0.02 {PLAN}}}\n"
+            )
+            self.assertEqual(session.outcome("fix")[0], "ERR")
+            self.assertEqual(session.ops[0]["outOfDomain"], ["eco_foreign_1"])
 
     def test_an_out_of_domain_effect_that_undo_cannot_restore_taints_the_session(self):
         session = Session(self).run(
             "set ::stub_fix_effect {UOUT BUFX4}\nset ::stub_undo_broken 1\n"
-            f"T fix {{atcs_fix_hold_pins U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
             f"T next {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
         )
         self.assertEqual(session.outcome("fix")[0], "ERR")
         self.assertEqual(session.ops[0]["status"], "uncertain")
         self.assertIn("tainted", session.outcome("next")[1])
 
-
-@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
-class ObservedEffectConfinementTest(unittest.TestCase):
-    """Edits whose full effect XTop decides are judged on the observed design, nets included."""
-
     def test_a_new_cell_on_an_existing_out_of_domain_net_is_undone(self):
-        session = Session(self).run(
-            f"set ::stub_fix_effect {{{PREFIX}eco_9 BUFX2}}\n"
-            f"set ::stub_fix_pins {{{PREFIX}eco_9/A N9 {PREFIX}eco_9/Y NEWN}}\n"
-            f"T fix {{atcs_fix_hold_pins U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
-        )
-        status, message = session.outcome("fix")
-        self.assertEqual(status, "ERR")
-        self.assertIn(f"{PREFIX}eco_9@N9", message)
-        self.assertEqual(session.ops[0]["status"], "reverted")
-        self.assertEqual(session.ops[0]["outOfDomain"], [f"{PREFIX}eco_9@N9"])
+        for session in self._both():
+            session.run(
+                f"set ::stub_fix_effect {{{PREFIX}eco_9 BUFX2}}\n"
+                f"set ::stub_fix_pins {{{PREFIX}eco_9/A N9 {PREFIX}eco_9/Y {PREFIX}econ_1}}\n"
+                f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            )
+            status, message = session.outcome("fix")
+            self.assertEqual(status, "ERR")
+            self.assertIn(f"{PREFIX}eco_9@N9", message)
+            self.assertEqual(session.ops[0]["status"], "reverted")
 
     def test_a_net_created_by_a_kept_edit_joins_the_domain_until_undone(self):
+        cases = ((Session(self), f"{PREFIX}econ_1"), (Session(self, observe="full"), "NEWN"))
+        for session, new_net in cases:
+            session.run(
+                f"set ::stub_fix_effect {{{PREFIX}eco_7 BUFX2}}\n"
+                f"set ::stub_fix_pins {{{PREFIX}eco_7/A N1 {PREFIX}eco_7/Y {new_net}}}\n"
+                f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+                f"T split {{atcs_split_net {new_net} BUFX2 cap 2 {PLAN}}}\n"
+                f"T u1 {{atcs_undo {PLAN}}}\nT u2 {{atcs_undo {PLAN}}}\n"
+                f"T again {{atcs_split_net {new_net} BUFX2 cap 2 {PLAN}}}\n"
+            )
+            for tag in ("fix", "split", "u1", "u2"):
+                self.assertEqual(session.outcome(tag)[0], "OK", tag + session.stdout)
+            self.assertEqual(session.ops[0]["newNets"], [new_net])
+            status, message = session.outcome("again")
+            self.assertEqual(status, "ERR")
+            self.assertIn(f"out-of-scope net: {new_net}", message)
+
+    def test_fast_mode_refuses_a_new_net_it_cannot_prove_new(self):
         session = Session(self).run(
             f"set ::stub_fix_effect {{{PREFIX}eco_7 BUFX2}}\n"
             f"set ::stub_fix_pins {{{PREFIX}eco_7/A N1 {PREFIX}eco_7/Y NEWN}}\n"
-            f"T fix {{atcs_fix_hold_pins U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
-            f"T split {{atcs_split_net NEWN BUFX2 cap 2 {PLAN}}}\n"
-            f"T u1 {{atcs_undo {PLAN}}}\nT u2 {{atcs_undo {PLAN}}}\n"
-            f"T again {{atcs_split_net NEWN BUFX2 cap 2 {PLAN}}}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
         )
-        for tag in ("fix", "split", "u1", "u2"):
-            self.assertEqual(session.outcome(tag)[0], "OK", tag + session.stdout)
-        self.assertEqual(session.ops[0]["newNets"], ["NEWN"])
-        status, message = session.outcome("again")
-        self.assertEqual(status, "ERR")
-        self.assertIn("out-of-scope net: NEWN", message)
+        self.assertEqual(session.outcome("fix")[0], "ERR")
+        self.assertEqual(session.ops[0]["outOfDomain"], [f"{PREFIX}eco_7@NEWN"])
 
-    def test_remove_buffer_that_takes_an_out_of_domain_cell_with_it_is_undone(self):
-        session = Session(self).run(
+    def test_removing_a_domain_instance_on_an_out_of_domain_net_is_undone(self):
+        for session in self._both():
+            session.run(
+                "set ::stub_fix_effect {U2 {}}\n"
+                f"T fix {{{SETUP} U1/A {{}} 1 0 medium 0.0 0.02 {PLAN}}}\n"
+                'puts "CELLS:[stub_cells]"\n'
+            )
+            status, message = session.outcome("fix")
+            self.assertEqual(status, "ERR")
+            self.assertIn("U2@N4", message)
+            self.assertEqual(session.ops[0]["status"], "reverted")
+            self.assertEqual(session.cells_line(), INITIAL_CELLS)
+
+    def test_full_mode_sees_an_out_of_domain_cell_removed_as_a_side_effect(self):
+        session = Session(self, observe="full").run(
             "set ::stub_remove_extra {UOUT}\n"
             f"T rm {{atcs_remove_buffer U3 {PLAN}}}\n"
             'puts "CELLS:[stub_cells]"\n'
@@ -1022,11 +1328,10 @@ class ObservedEffectConfinementTest(unittest.TestCase):
         self.assertEqual(status, "ERR")
         self.assertIn("UOUT", message)
         self.assertEqual(session.ops[0]["status"], "reverted")
-        self.assertIn("U3=BUFX2", session.stdout)
-        self.assertIn("UOUT=BUFX1", session.stdout)
+        self.assertEqual(session.cells_line(), INITIAL_CELLS)
 
     def test_an_insert_that_xtop_names_differently_is_kept_and_flagged(self):
-        session = Session(self).run(
+        session = Session(self, observe="full").run(
             "set ::stub_insert_hier u_core/\n"
             f"T ins {{atcs_insert_buffer N1 UOUT/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
             "set ::stub_insert_hier {}\n"
@@ -1037,19 +1342,21 @@ class ObservedEffectConfinementTest(unittest.TestCase):
         self.assertEqual(session.ops[0]["after"], {"instances": {f"u_core/{PREFIX}b1": "BUFX2"}})
         self.assertIs(session.ops[1]["matchesRequest"], True)
 
-    def test_an_ops_log_that_cannot_be_written_taints_the_session(self):
-        session = Session(self).run(
-            f"T first {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
-            "set ::env(OPS_LOG) /nonexistent-atcs-dir/ops.jsonl\n"
-            f"T second {{atcs_size_cell U2 INVX2 {PLAN}}}\n"
-            f"T third {{atcs_size_cell U3 BUFX4 {PLAN}}}\n"
+    def test_removable_fillers_are_exempt_and_logged(self):
+        full = Session(self, observe="full").run(
+            "set ::cells(FILL_1) FILL4\nset ::stub_insert_removes {FILL_1}\n"
+            f"T ins {{atcs_insert_buffer N1 UOUT/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
         )
-        self.assertEqual(session.outcome("first")[0], "OK")
-        status, message = session.outcome("second")
-        self.assertEqual(status, "ERR")
-        self.assertIn("ops.jsonl write failed", message)
-        self.assertIn("tainted", session.outcome("third")[1])
-        self.assertEqual(len(session.calls_to("size_cell")), 2)
+        self.assertEqual(full.outcome("ins")[0], "OK", full.stdout)
+        self.assertEqual(full.ops[0]["fillers"], ["FILL_1"])
+        self.assertEqual(full.ops[0]["after"], {"instances": {f"{PREFIX}b1": "BUFX2"}})
+        fast = Session(self).run(
+            "set ::cells(FILL_9) FILL2\nset ::stub_fix_effect {U1 BUFX4 FILL_9 FILL4}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+        )
+        self.assertEqual(fast.outcome("fix")[0], "OK", fast.stdout)
+        self.assertEqual(fast.ops[0]["fillers"], ["FILL_9"])
+        self.assertEqual(fast.ops[0]["after"], {"instances": {"U1": "BUFX4"}})
 
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
@@ -1095,55 +1402,61 @@ class ReadProceduresTest(unittest.TestCase):
 class KnowledgeSurfaceTest(unittest.TestCase):
     """Every XTop command and option the toolkit emits is on the knowledge pack's command surface."""
 
+    SCRIPT = (
+        "T ref {atcs_ref}\n"
+        "T gain {atcs_gain setup 10}\n"
+        "T paths {atcs_paths setup 5 {U9/D}}\n"
+        "T reasons {atcs_fail_reasons {U1/A} {legal_fail_no_space_on_row} {size_cell}}\n"
+        "T c1 {atcs_candidates size_cell U1}\nT c2 {atcs_candidates insert_buffer U1/Y}\n"
+        "T c3 {atcs_candidates exchange_cell U2}\n"
+        f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+        f"set ::stub_exchange_effect {{U2 INVX2}}\nT exch {{atcs_exchange_cell U2 INVX2 {PLAN}}}\n"
+        f"T ins {{atcs_insert_buffer N1 UOUT/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
+        f"T dummy {{atcs_insert_dummy U1/A BUFX1 {PREFIX}d1 {PLAN}}}\n"
+        f"T sl {{atcs_split_load N2 {{{{U2/A}} {{U9/D}}}} BUFX2 {{{PREFIX}s1 {PREFIX}s2}} "
+        f"{{{PREFIX}sn1 {PREFIX}sn2}} {PLAN}}}\n"
+        f"T sn {{atcs_split_net N1 BUFX2 cap 2 {PLAN}}}\n"
+        f"T mv {{atcs_move_cell U3 10.5 20 {PLAN}}}\n"
+        f"T rm {{atcs_remove_buffer U3 {PLAN}}}\n"
+        "set ::stub_fix_effect {U1 BUFX4}\n"
+        f"T fh {{{HOLD} U1/A low 0.0 0.02 0 1 1 2 1 DELAY1 {PLAN}}}\n"
+        "set ::stub_fix_effect {U1 BUFX1}\n"
+        f"T fh2 {{{HOLD} U1/A omit 0.0 0.02 1 0 0 0 -1 {{}} {PLAN}}}\n"
+        "set ::stub_fix_effect {U1 BUFX2}\n"
+        f"T fs {{{SETUP} U1/A {{split_net}} 0 1 high 0.0 0.02 {PLAN}}}\n"
+        f"T undo {{atcs_undo {PLAN}}}\n"
+        f'T dump {{atcs_dump_cells "{Path("/dev/null")}"}}\n'
+        "T export {atcs_export_changes}\n"
+    )
+    TAGS = ("ref", "gain", "paths", "reasons", "c1", "c2", "c3", "size", "exch", "ins", "dummy", "sl", "sn",
+            "mv", "rm", "fh", "fh2", "fs", "undo", "dump", "export")
+
     def test_a_full_expert_session_stays_on_the_documented_surface(self):
-        session = Session(self, max_mutations=20).run(
-            "T ref {atcs_ref}\n"
-            "T gain {atcs_gain setup 10}\n"
-            "T paths {atcs_paths setup 5 {U9/D}}\n"
-            "T reasons {atcs_fail_reasons {U1/A} {legal_fail_no_space_on_row} {size_cell}}\n"
-            "T c1 {atcs_candidates size_cell U1}\nT c2 {atcs_candidates insert_buffer U1/Y}\n"
-            "T c3 {atcs_candidates exchange_cell U2}\n"
-            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
-            f"set ::stub_exchange_effect {{U2 INVX2}}\nT exch {{atcs_exchange_cell U2 INVX2 {PLAN}}}\n"
-            f"T ins {{atcs_insert_buffer N1 UOUT/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
-            f"T dummy {{atcs_insert_dummy U1/A BUFX1 {PREFIX}d1 {PLAN}}}\n"
-            f"T sl {{atcs_split_load N2 {{{{U2/A}} {{U9/D}}}} BUFX2 {{{PREFIX}s1 {PREFIX}s2}} "
-            f"{{{PREFIX}sn1 {PREFIX}sn2}} {PLAN}}}\n"
-            f"T sn {{atcs_split_net N1 BUFX2 cap 2 {PLAN}}}\n"
-            f"T mv {{atcs_move_cell U3 to 10.5 20 {PLAN}}}\n"
-            f"T rm {{atcs_remove_buffer U3 {PLAN}}}\n"
-            f"set ::stub_fix_effect {{U1 BUFX4}}\n"
-            f"T fh {{atcs_fix_hold_pins U1/A low 0.0 0.02 0 1 1 2 1 DELAY1 {PLAN}}}\n"
-            f"set ::stub_fix_effect {{U1 BUFX1}}\n"
-            f"T fs {{atcs_fix_setup_pins U1/A {{split_net}} 0 1 0.0 0.02 {PLAN}}}\n"
-            f"T undo {{atcs_undo {PLAN}}}\n"
-            f'T dump {{atcs_dump_cells "{Path("/dev/null")}"}}\n'
-            "T export {atcs_export_changes}\n",
-        )
-        for tag in ("ref", "gain", "paths", "reasons", "c1", "c2", "c3", "size", "exch", "ins", "dummy", "sl", "sn",
-                    "mv", "rm", "fh", "fs", "undo", "dump", "export"):
-            self.assertEqual(session.outcome(tag)[0], "OK", tag + "\n" + session.stdout + session.stderr)
-        emitted = set()
-        for call in session.calls:
-            command = call[0]
-            self.assertIn(command, XTOP_SURFACE, f"{command} is not on the knowledge-pack command surface")
-            for word in call[1:]:
-                match = _OPTION_WORD.match(word)
-                if match:
-                    self.assertIn(match.group(1), XTOP_SURFACE[command], f"{command} -{match.group(1)}")
-            emitted.add(command)
-        for command in ("size_cell", "exchange_cell", "insert_buffer", "insert_dummy_cell", "split_load",
-                        "split_net", "move_cell", "remove_buffer", "fix_hold_gba_violations",
-                        "fix_setup_gba_violations", "undo", "summarize_gba_violations", "get_paths",
-                        "analyze_setup_path_violations", "report_fail_reasons", "get_failed_pins",
-                        "list_size_cell_candidates", "list_insert_buffer_candidates",
-                        "list_exchange_cell_candidates"):
-            self.assertIn(command, emitted)
-        self.assertEqual([op["seq"] for op in session.ops], list(range(1, len(session.ops) + 1)))
-        (move,) = session.calls_to("move_cell")
-        self.assertEqual(move[1:], ["-to", "10.5 20", "U3"])
-        self.assertEqual([op["status"] for op in session.ops if op["cmd"] == "move_cell"], ["kept"])
-        self.assertEqual([op.get("verified") for op in session.ops if op["cmd"] == "move_cell"], ["xtop-return"])
+        for observe in ("fast", "full"):
+            session = Session(self, max_mutations=20, observe=observe).run(self.SCRIPT)
+            for tag in self.TAGS:
+                self.assertEqual(session.outcome(tag)[0], "OK", f"{observe} {tag}\n{session.stdout}{session.stderr}")
+            emitted = set()
+            for call in session.calls:
+                command = call[0]
+                self.assertIn(command, XTOP_SURFACE, f"{command} is not on the knowledge-pack command surface")
+                for word in call[1:]:
+                    match = _OPTION_WORD.match(word)
+                    if match:
+                        self.assertIn(match.group(1), XTOP_SURFACE[command], f"{command} -{match.group(1)}")
+                emitted.add(command)
+            for command in ("size_cell", "exchange_cell", "insert_buffer", "insert_dummy_cell", "split_load",
+                            "split_net", "move_cell", "remove_buffer", "fix_hold_gba_violations",
+                            "fix_setup_gba_violations", "undo", "summarize_gba_violations", "get_paths",
+                            "analyze_setup_path_violations", "report_fail_reasons", "get_failed_pins",
+                            "list_size_cell_candidates", "list_insert_buffer_candidates",
+                            "list_exchange_cell_candidates", "count_eco_actions"):
+                self.assertIn(command, emitted, observe)
+            self.assertEqual("get_eco_cells" in emitted, observe == "fast")
+            self.assertEqual([op["seq"] for op in session.ops], list(range(1, len(session.ops) + 1)))
+            (move,) = session.calls_to("move_cell")
+            self.assertEqual(move[1:], ["-to", "10.5 20", "cell:U3"])
+            self.assertEqual([op["status"] for op in session.ops if op["cmd"] == "move_cell"], ["kept"])
 
 
 if __name__ == "__main__":

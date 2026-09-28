@@ -7,10 +7,10 @@
 # procedures) -- it never duplicates that setup.
 #
 # `atcs.adapters.compile_xtop_analysis_manual_task` bakes
-# `::EDIT_DOMAIN_INSTANCES` / `::EDIT_DOMAIN_NETS` / `::EDIT_DOMAIN_PINS`
-# and `::ATCS_MAX_MUTATIONS` in as validated Tcl list literals (this
-# worker's own `work-package.editDomain`, `targetPins` and
-# `scope.maxMutations`, fixed for the whole session -- never re-read or
+# `::EDIT_DOMAIN_INSTANCES` / `NETS` / `PINS` / `REGIONS`, `::ATCS_MAX_MUTATIONS`
+# and `::ATCS_OBSERVE` in as validated Tcl list literals (this worker's own
+# `work-package.editDomain`, `targetPins`, `scope.maxMutations` and
+# `observe`, fixed for the whole session -- never re-read or
 # widened mid-session) immediately above this file's own text; every
 # mutation procedure of the XTop expert toolkit in `xtop-operator.tcl`
 # refuses a target outside that domain and refuses once the budget is used.
@@ -23,6 +23,8 @@ foreach required {OPERATOR_TCL OPS_LOG NAME_PREFIX} {
 if {![info exists ::EDIT_DOMAIN_INSTANCES]} { set ::EDIT_DOMAIN_INSTANCES {} }
 if {![info exists ::EDIT_DOMAIN_NETS]} { set ::EDIT_DOMAIN_NETS {} }
 if {![info exists ::EDIT_DOMAIN_PINS]} { set ::EDIT_DOMAIN_PINS {} }
+if {![info exists ::EDIT_DOMAIN_REGIONS]} { set ::EDIT_DOMAIN_REGIONS {} }
 if {![info exists ::ATCS_MAX_MUTATIONS]} { set ::ATCS_MAX_MUTATIONS 1 }
+if {![info exists ::ATCS_OBSERVE]} { set ::ATCS_OBSERVE fast }
 if {![file readable $env(OPERATOR_TCL)]} { error "OPERATOR_TCL is not readable: $env(OPERATOR_TCL)" }
 source $env(OPERATOR_TCL)
