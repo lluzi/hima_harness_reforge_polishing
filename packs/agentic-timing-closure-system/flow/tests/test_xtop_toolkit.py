@@ -1451,8 +1451,8 @@ class ReadProceduresTest(unittest.TestCase):
         probe = [gain for gain in session.gains if gain["kind"] == "probe"]
         self.assertEqual(len(probe), 1)
         command = probe[0]["checks"]["hold"]["command"]
-        self.assertEqual(command, "summarize_gba_violations -with_delta -with_reference -with_top_n 7 "
-                                  "-with_fail_reason -hold")
+        self.assertEqual(command, "summarize_gba_violations -with_delta -with_reference -exclude_path "
+                                  "-with_top_n 7 -with_fail_reason -hold")
         (setup_analysis,) = session.calls_to("analyze_setup_path_violations")
         self.assertEqual(setup_analysis[1:], ["-top", "5", "-detail_info"])
         (get_paths,) = session.calls_to("get_paths")
@@ -1523,6 +1523,14 @@ class KnowledgeSurfaceTest(unittest.TestCase):
             # Fast mode always reads get_eco_cells; full mode reads it for ECO actions that change no master.
             self.assertIn("get_eco_cells", emitted, observe)
             self.assertEqual([op["seq"] for op in session.ops], list(range(1, len(session.ops) + 1)))
+            # Reference and every reading share the qualified flow's option set (real reports use -exclude_path).
+            summaries = session.calls_to("summarize_gba_violations")
+            self.assertTrue(summaries)
+            for call in summaries:
+                self.assertIn("-exclude_path", call, call)
+            for gain in session.gains:
+                for check in gain["checks"].values():
+                    self.assertIn("-exclude_path", check["command"].split())
             (move,) = session.calls_to("move_cell")
             self.assertEqual(move[1:], ["-to", "10.5 20", "cell:U3"])
             self.assertEqual([op["status"] for op in session.ops if op["cmd"] == "move_cell"], ["kept"])

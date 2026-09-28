@@ -1634,7 +1634,7 @@ class CliCollectContributionIndexTest(unittest.TestCase):
     read envelope exactly: partial completion is reported via `pending`,
     never a missing-input refusal (see `_cmd_collect`'s own docstring)."""
 
-    def test_collect_succeeds_with_no_contributions_yet_and_reports_all_three_pending(self):
+    def test_collect_succeeds_with_no_contributions_yet_and_reports_every_slot_pending(self):
         workspace = _tmp()
         self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
         result = subprocess.run([sys.executable, str(CLI_PATH), "collect", str(workspace)],
@@ -1642,10 +1642,11 @@ class CliCollectContributionIndexTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         body = json.loads((workspace / "state" / "contributions-collected.json").read_text())
         self.assertEqual(body["contributions"], [])
-        self.assertEqual(sorted(entry["slot"] for entry in body["pending"]), ["w01", "w02", "w03"])
+        # Issue #64 Task 4: six declared slots.
+        self.assertEqual(sorted(entry["slot"] for entry in body["pending"]), ["w01", "w02", "w03", "w04", "w05", "w06"])
         self.assertTrue(all(entry.get("reason") for entry in body["pending"]))
 
-    def test_collect_reports_one_pending_when_two_of_three_slots_sealed(self):
+    def test_collect_reports_the_rest_pending_when_two_slots_sealed(self):
         from atcs import contributions as contributions_module
 
         workspace = _tmp()
@@ -1671,7 +1672,7 @@ class CliCollectContributionIndexTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         body = json.loads((workspace / "state" / "contributions-collected.json").read_text())
         self.assertEqual(len(body["contributions"]), 2)
-        self.assertEqual([entry["slot"] for entry in body["pending"]], ["w03"])
+        self.assertEqual([entry["slot"] for entry in body["pending"]], ["w03", "w04", "w05", "w06"])
         del contributions_module  # imported only to document the shape's producer module
 
 
