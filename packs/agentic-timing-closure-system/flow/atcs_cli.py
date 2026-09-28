@@ -2159,7 +2159,7 @@ def _bounded_parent_violator_recheck(
         if len(parts) != 3:
             notes.append(f"{key}: malformed check key")
             continue
-        scenario, mode, endpoint = parts
+        scenario, mode, key_endpoint = parts
         entry = checks.get(key) or {}
         startpoint = entry.get("startpoint")
         if not isinstance(startpoint, str) or not startpoint:
@@ -2171,6 +2171,14 @@ def _bounded_parent_violator_recheck(
         if mode not in ("setup", "hold"):
             notes.append(f"{key}: unrecognized mode {mode!r}")
             continue
+        # The check key's own third component may itself carry a
+        # "@<path group>" suffix (atcs.reports.parse_path_report, a reserved PT
+        # path group such as **async_default**) -- that suffixed form is never a
+        # real PT pin name, so the entry's own recorded literal endpoint
+        # (`"endpoint"`, PT's own pin name) is used for the actual query
+        # whenever it is present, falling back to the check key's own
+        # component only for an older-shaped entry that never recorded one.
+        endpoint = entry.get("endpoint") if isinstance(entry.get("endpoint"), str) else key_endpoint
         by_scenario.setdefault(scenario, []).append(
             {"checkKey": key, "startpoint": startpoint, "endpoint": endpoint, "mode": mode}
         )
@@ -2843,7 +2851,7 @@ def _collect_residual_evidence(workspace, working_state, scenarios_contract, sit
             notes.append(reason)
             check_details[key] = _unknown_evidence(reason)
             continue
-        scenario, mode, endpoint = parts
+        scenario, mode, key_endpoint = parts
         entry = checks.get(key) or {}
         startpoint = entry.get("startpoint")
         if not isinstance(startpoint, str) or not startpoint:
@@ -2856,6 +2864,14 @@ def _collect_residual_evidence(workspace, working_state, scenarios_contract, sit
             notes.append(reason)
             check_details[key] = _unknown_evidence(reason)
             continue
+        # The check key's own third component may itself carry a
+        # "@<path group>" suffix (atcs.reports.parse_path_report, a reserved PT
+        # path group such as **async_default**) -- never a real PT pin name -- so
+        # the entry's own recorded literal endpoint (`"endpoint"`, PT's own
+        # pin name) is used for the actual query whenever present, falling
+        # back to the check key's own component only for an older-shaped
+        # entry that never recorded one.
+        endpoint = entry.get("endpoint") if isinstance(entry.get("endpoint"), str) else key_endpoint
         by_scenario.setdefault(scenario, []).append(
             {"checkKey": key, "startpoint": startpoint, "endpoint": endpoint, "mode": mode}
         )

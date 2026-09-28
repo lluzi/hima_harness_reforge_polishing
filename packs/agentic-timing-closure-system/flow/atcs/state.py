@@ -151,10 +151,17 @@ Builds an ``observation-set`` artifact body. For every scenario present in
 from `source_refs["scenarios"]` is recorded in `missingScenarios` instead
 of being parsed. Every path row from every parsed setup/hold report becomes
 one `checks[<checkKey>]` entry keyed by `core.check_key(scenario, mode,
-endpoint)`; `atcs.reports.parse_path_report` already collapses duplicate
-endpoints within a single report to their worst slack (or refuses the
-report outright when the duplicates disagree on path group), so no further
-dedup is needed here.
+row["endpoint"])`; `atcs.reports.parse_path_report` already collapses
+same-endpoint/same-path-group repeats within a single report to their
+worst slack, and already folds a genuinely different path group on the
+same literal endpoint into a distinguishing `row["endpoint"]` of its own
+(so the two land in two different `checks[...]` entries, never one), so no
+further dedup is needed here. Each entry also carries the row's own
+`row["rawEndpoint"]` (PT's literal endpoint pin name, always unsuffixed)
+as its own `"endpoint"` field — the value a later targeted re-query
+(`atcs.adapters.compile_pt_query_task`) must use, since the check key's own
+third component may itself carry a `"@<path group>"` suffix that PT's own
+`-to` argument would never recognize as a real pin name.
 `coverage.complete` is `True` only when `missingScenarios` is empty and
 every parsed scenario's setup and hold path reports were both `complete`;
 `coverage.reasons` lists every contributing gap. `sources[]` lists every
@@ -504,6 +511,7 @@ def capture(source_refs, query_spec):
                 "startpoint": row["startpoint"],
                 "pathGroup": row["pathGroup"],
                 "violated": row["violated"],
+                "endpoint": row["rawEndpoint"],
             }
         for row in hold_result["paths"]:
             key = core.check_key(name, "hold", row["endpoint"])
@@ -512,6 +520,7 @@ def capture(source_refs, query_spec):
                 "startpoint": row["startpoint"],
                 "pathGroup": row["pathGroup"],
                 "violated": row["violated"],
+                "endpoint": row["rawEndpoint"],
             }
 
         setup_summary = dict(global_timing["setup"])

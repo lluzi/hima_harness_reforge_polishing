@@ -29,13 +29,12 @@ task (M2-M8, Readers) builds on:
   `unknown()`, `is_known()` and `value_of()` are the only way code should
   construct or unwrap one.
 - `check_key()` — the canonical `"<scenario>|<mode>|<endpoint>"` string used
-  everywhere a specific timing check needs to be named. Note this key does
-  **not** include the path group: two path-report rows for the same
-  scenario/mode/endpoint but *different* path groups collide on purpose
-  (see `atcs.reports.parse_path_report`, which refuses such reports as
-  `AtcsError("duplicate-check", ...)` rather than silently keeping one —
-  same-endpoint/same-path-group repeats, the shape a real `-nworst>1`
-  report produces, are instead collapsed to the worst slack).
+  everywhere a specific timing check needs to be named. A check is
+  identified by *(endpoint, path group)*: `atcs.reports.parse_path_report`
+  folds a reserved PT path group (``**async_default**`` and friends) into
+  its returned ``"endpoint"`` as ``"<endpoint>@<path group>"``, so a
+  removal/recovery check and a data setup/hold check on one register never
+  collide, and the key never depends on report order.
 
 Fail-closed is the rule for every helper here: a missing, truncated,
 duplicated, non-finite or identity-mismatched input yields `unknown` with a

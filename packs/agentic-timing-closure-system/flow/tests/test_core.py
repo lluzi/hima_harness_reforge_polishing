@@ -355,13 +355,71 @@ class ParsePathReportTest(unittest.TestCase):
         self.assertEqual(result["paths"][0]["endpoint"], "epA")
         self.assertEqual(core.value_of(result["paths"][0]["slack"]), -0.3)
 
-    def test_duplicate_endpoint_different_group_raises(self):
-        # Two rows for the same endpoint that disagree on path group are
-        # genuinely ambiguous (this Pack's check key omits path group) and
-        # still refuse the whole report.
+    def test_duplicate_endpoint_two_clock_groups_still_raises(self):
+        # One endpoint under two different real clock groups would need two
+        # keys with no order-independent way to tell which is which; the
+        # real corpus never shows it, so it stays refused.
         text = fixtures.path_report(
             [("epA", -0.1), ("epA", -0.3)], "setup", groups=["core_clock", "other_clock"]
         )
+        with self.assertRaises(core.AtcsError) as ctx:
+            reports.parse_path_report(text, "setup", max_paths=10)
+        self.assertEqual(ctx.exception.code, "duplicate-check")
+
+    def test_real_block_shape_removal_check_and_clock_check_on_one_endpoint(self):
+        # Retained failure (GitHub issue #63): the real hold.rpt reports one
+        # endpoint once as a removal check in `**async_default**` (/CDN) and,
+        # repeated per `-nworst`, as the data hold check in `core_clock`
+        # (/SE). Two checks on one register: both kept, worst slack per
+        # group, and each key is the same whichever group the report lists
+        # first, so baseline and candidate reports key the check alike.
+        endpoint = "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_"
+        rows = [(endpoint, -0.05), (endpoint, -0.4), (endpoint, -0.2)]
+        groups = ["**async_default**", "core_clock", "core_clock"]
+        keyed = []
+        for order in (rows, rows[::-1]):
+            order_groups = groups if order is rows else groups[::-1]
+            text = fixtures.path_report(order, "hold", groups=order_groups)
+            result = reports.parse_path_report(text, "hold", max_paths=10)
+            self.assertTrue(result["complete"])
+            by_group = {row["pathGroup"]: row for row in result["paths"]}
+            self.assertEqual(set(by_group), {"**async_default**", "core_clock"})
+            removal, clocked = by_group["**async_default**"], by_group["core_clock"]
+            self.assertEqual(removal["endpoint"], f"{endpoint}@**async_default**")
+            self.assertEqual(removal["rawEndpoint"], endpoint)
+            self.assertEqual(core.value_of(removal["slack"]), -0.05)
+            self.assertEqual(clocked["endpoint"], endpoint)
+            self.assertEqual(clocked["rawEndpoint"], endpoint)
+            self.assertEqual(core.value_of(clocked["slack"]), -0.4)
+            keyed.append({row["endpoint"] for row in result["paths"]})
+        self.assertEqual(keyed[0], keyed[1])
+
+    def test_reserved_group_alone_keeps_its_suffixed_key(self):
+        # The key must not depend on whether the endpoint's clock-group check
+        # is also present: a removal check alone keys exactly as it does
+        # beside the clock-group check.
+        text = fixtures.path_report([("epA", -0.2)], "hold", groups=["**async_default**"])
+        result = reports.parse_path_report(text, "hold", max_paths=10)
+        self.assertEqual([row["endpoint"] for row in result["paths"]], ["epA@**async_default**"])
+        self.assertEqual(result["paths"][0]["rawEndpoint"], "epA")
+
+    def test_duplicate_endpoint_unknown_group_still_raises(self):
+        # A repeated endpoint where at least one of the colliding rows has
+        # no parseable `Path Group:` line at all stays the genuinely
+        # ambiguous case: an unresolved group can never prove the rows are
+        # the same check or two distinct ones.
+        text = """  Startpoint: U_START_0
+  Endpoint: epA
+  Path Group: core_clock
+  Path Type: max
+  slack (VIOLATED) -0.1
+
+  Startpoint: U_START_1
+  Endpoint: epA
+  Path Type: max
+  slack (VIOLATED) -0.3
+
+"""
         with self.assertRaises(core.AtcsError) as ctx:
             reports.parse_path_report(text, "setup", max_paths=10)
         self.assertEqual(ctx.exception.code, "duplicate-check")

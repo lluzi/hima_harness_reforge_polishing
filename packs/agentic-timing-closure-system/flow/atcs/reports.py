@@ -96,23 +96,41 @@ Three report kinds are parsed:
   a malformed report — and raises `AtcsError("malformed-report", ...)`.
 
   This Pack's check key (`atcs.core.check_key`) is
-  ``"<scenario>|<mode>|<endpoint>"`` and deliberately does **not** include
-  the path group. This Pack's own default query breadth
-  (`atcs.adapters.DEFAULT_NWORST = 20`) means a real `setup.rpt`/`hold.rpt`
-  routinely reports several of an endpoint's worst-`N` paths, all sharing
-  one path group — confirmed against the real Foundation/B_lazy corpus
-  (``docs/assessment/2026-09-26/atcs-qualification/corpus-preflight.md``:
-  every duplicated endpoint's repeats shared exactly one path group, zero
-  exceptions across four scenarios). Refusing every such report as this
-  Pack's own default configuration is guaranteed to produce would leave M1
-  observation permanently non-functional, so `parse_path_report` instead
+  ``"<scenario>|<mode>|<endpoint>"``, where the ``<endpoint>`` component is
+  this function's own returned ``"endpoint"`` field, not necessarily PT's
+  literal endpoint pin name (see below). A check is identified by
+  *(endpoint, path group)*, not endpoint alone: PT legitimately reports two
+  different checks on the same physical register when it carries two
+  different check types on it (e.g. a removal/recovery check in
+  ``**async_default**`` and a data setup/hold check in a real clock group,
+  confirmed against the real Foundation/B_lazy corpus — see
+  ``docs/assessment/2026-09-26/atcs-qualification/corpus-preflight.md``).
+  This Pack's own default query breadth (`atcs.adapters.DEFAULT_NWORST =
+  20`) also means a real `setup.rpt`/`hold.rpt` routinely reports several of
+  an endpoint's worst-`N` paths *within one path group* — confirmed
+  against the same corpus: every duplicated endpoint/group pair's repeats
+  shared exactly one path group, zero exceptions. `parse_path_report`
   keeps the *worst* (most negative) slack among same-endpoint/same-path-
-  group repeats — this Pack's check key only ever needs the one slack that
-  can matter for a Goal/violation count, and the worst is it. A repeated
-  endpoint whose rows disagree on path *group*, though, is the genuinely
-  ambiguous case the original design meant to catch (which group's slack
-  is "the" check's value is not decidable from the report alone) and still
-  refuses the whole report as `AtcsError("duplicate-check", <endpoint>)`.
+  group repeats (as before), and now keeps *both* checks, as two separate
+  rows, when the same endpoint recurs under a genuinely different path
+  group.
+
+  The returned ``"endpoint"`` depends only on the row's own (endpoint, path
+  group), never on report order or on which other rows are present, so a
+  check keeps one key across the baseline and every candidate report: a row
+  in a real clock group keeps PT's literal endpoint name (byte-identical to
+  the single-group output), and a row in one of PT's reserved ``**...**``
+  groups (``**async_default**`` removal/recovery, ``**clock_gating_default**``,
+  ``**default**``) is always ``"<literal endpoint>@<path group>"``. The
+  literal PT endpoint name, which a targeted `report_timing -to <endpoint>`
+  re-query needs, is always carried unsuffixed as ``"rawEndpoint"``.
+
+  A repeated endpoint is still refused outright as
+  `AtcsError("duplicate-check", <endpoint>)` when two different rows would
+  land on one key (the same endpoint under two different real clock groups,
+  not seen in the real corpus) or when at least one colliding row has no
+  parseable `Path Group:` line (recorded as ``"unknown"``): neither can be
+  keyed without guessing which check is which.
   `mode` must be `"setup"` or `"hold"`; a row's `Path Type` (`max` for
   setup, `min` for hold) is cross-checked against `mode` and a mismatch
   raises `AtcsError("identity-mismatch", ...)` — a real PT report never
@@ -281,7 +299,8 @@ def parse_path_report(text, mode, max_paths):
     truncated = False
     order = []
     kept = {}
-    kept_groups = {}
+    # endpoint_groups[<literal endpoint>] = the path groups already kept for it
+    endpoint_groups = {}
 
     for index, block in enumerate(blocks):
         is_last = index == total_blocks - 1
@@ -313,16 +332,26 @@ def parse_path_report(text, mode, max_paths):
         group_match = _PATH_GROUP_RE.search(block)
         path_group = group_match.group(1) if group_match else "unknown"
 
-        if endpoint in kept:
-            if path_group != kept_groups[endpoint]:
-                raise core.AtcsError("duplicate-check", endpoint)
-            if raw_slack >= kept[endpoint]["_rawSlack"]:
+        reserved_group = path_group.startswith("**") and path_group.endswith("**")
+        key = f"{endpoint}@{path_group}" if reserved_group else endpoint
+        groups_for_endpoint = endpoint_groups.setdefault(endpoint, set())
+        if path_group in groups_for_endpoint:
+            if raw_slack >= kept[key]["_rawSlack"]:
                 # a less-critical repeat from the tool's own -nworst>1
-                # listing of this endpoint's worst paths -- the one already
-                # kept is at least as bad, so this row contributes nothing.
+                # listing of this endpoint's worst paths in this same path
+                # group -- the one already kept is at least as bad, so this
+                # row contributes nothing.
                 continue
         else:
-            order.append(endpoint)
+            if groups_for_endpoint and (
+                path_group == "unknown" or "unknown" in groups_for_endpoint or key in kept
+            ):
+                # Two different checks that would share one key (two real
+                # clock groups on one endpoint), or a repeat whose path
+                # group is unresolved: neither can be keyed without guessing.
+                raise core.AtcsError("duplicate-check", endpoint)
+            groups_for_endpoint.add(path_group)
+            order.append(key)
 
         # `violated` is PT's own classification fact for this row (every row
         # here is one PT itself labeled VIOLATED -- a `slack (MET)` row never
@@ -341,17 +370,17 @@ def parse_path_report(text, mode, max_paths):
             core.unknown("precision-limited: re-query with more significant digits")
             if precision_limited else core.known(raw_slack)
         )
-        kept[endpoint] = {
-            "endpoint": endpoint,
+        kept[key] = {
+            "endpoint": key,
+            "rawEndpoint": endpoint,
             "startpoint": startpoint_match.group(1),
             "pathGroup": path_group,
             "slack": slack_measure,
             "violated": True,
             "_rawSlack": raw_slack,
         }
-        kept_groups[endpoint] = path_group
 
-    paths = [{k: v for k, v in kept[endpoint].items() if k != "_rawSlack"} for endpoint in order]
+    paths = [{k: v for k, v in kept[key].items() if k != "_rawSlack"} for key in order]
     complete = (not truncated) and total_blocks < max_paths
     return {"paths": paths, "complete": complete}
 
