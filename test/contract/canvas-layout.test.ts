@@ -1,8 +1,11 @@
 // L1: the canvas layout is a pure function of the reference graph, execution facts and Run view.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutCanvas, fitToWidth, labelsVisibleAt, PITCH, ROW, X0, PAD_Y } from '@hima/harness';
-import type { LayoutGraph } from '@hima/harness';
+import { readdirSync, existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { layoutCanvas, fitToWidth, labelsVisibleAt, loadPack, PITCH, ROW, NODE, X0, PAD_Y } from '@hima/harness';
+import type { LayoutGraph, CanvasScene, PlacedNode } from '@hima/harness';
 import { goalSaid, sceneInputs, jobFolded, absentSaid, cardPosition, TABS_BY_KIND, pickOwnedRun, recordEndedSeenAt } from '@hima/harness';
 import type { RunView, RunHeadView } from '@hima/harness';
 import type { ExecutionContext } from '@hima/harness';
@@ -48,7 +51,9 @@ test('a fork fans into symmetric branch rows that meet at their join', () => {
     edges: [{ from: 'impl', to: 'route-a' }, { from: 'impl', to: 'route-b' }, { from: 'route-a', to: 'sign-off' }, { from: 'route-b', to: 'sign-off' }] };
   const scene = layoutCanvas(graph, { fork: { node: 'impl', join: 'sign-off', branches: [{ id: 'a', nodes: ['route-a'] }, { id: 'b', nodes: ['route-b'] }] } });
   const rows = Object.fromEntries(scene.nodes.map((n) => [n.id, n.row]));
-  assert.equal(rows['route-a'], -0.3); assert.equal(rows['route-b'], 0.3); assert.equal(rows['sign-off'], 0); assert.equal(rows.impl, 0);
+  // #63: one full lane per branch (`i - (n - 1) / 2`), not 0.6 of a row — at +/-0.3 rows the two
+  // branches sat 58 units apart and route-a's own label ran into route-b's glyph.
+  assert.equal(rows['route-a'], -0.5); assert.equal(rows['route-b'], 0.5); assert.equal(rows['sign-off'], 0); assert.equal(rows.impl, 0);
   assert.equal(scene.nodes.find((n) => n.id === 'route-a')!.rank, scene.nodes.find((n) => n.id === 'route-b')!.rank);
 });
 
@@ -256,6 +261,146 @@ test('two nodes hung at the same rank stack onto rows 1 and 2, in declaration or
     assert.ok(!seen.has(key), `two nodes share the pixels at ${key}`);
     seen.add(key);
   }
+});
+
+// #63: the agentic-timing-closure-system reference graph (106 nodes, 143 edges, chained Judges,
+// revisit back-edges, three worker chains) drew as one straight, crammed line. These read the real
+// shipped graph.yml through the same `sceneInputs` + `layoutCanvas` pair the Live canvas calls.
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const packsDir = path.join(repoRoot, 'packs');
+const shippedScene = (packId: string): CanvasScene => {
+  const { graph, facts } = sceneInputs(loadPack(packsDir, packId).graph);
+  return layoutCanvas(graph, facts);
+};
+const shippedPackIds = readdirSync(packsDir).filter((id) => existsSync(path.join(packsDir, id, 'graph.yml')));
+
+/** What a node paints: its 36-unit glyph plus the id and caption lines `FabricNode` draws under it
+ *  (13 px text on baselines HALF + 20 and HALF + 35, so the caption's descenders end near HALF + 39),
+ *  each line truncated to the `PITCH - 8` label budget and centred on the node. Derived from the
+ *  renderer's own figures, not from the layout under test. */
+const footprint = (n: PlacedNode) => ({ left: n.x - (PITCH - 8) / 2, right: n.x + (PITCH - 8) / 2, top: n.y - NODE / 2, bottom: n.y + NODE / 2 + 39 });
+const overlaps = (a: ReturnType<typeof footprint>, b: ReturnType<typeof footprint>) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+/** Points along an SVG path `d` built from M/L/C/Q commands (the only ones `layoutCanvas` emits),
+ *  sampled finely enough that a curve cannot skip across a 36-unit glyph between two samples. */
+function samplePath(d: string): { x: number; y: number }[] {
+  const tokens = d.match(/[MLCQ]|-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/g) ?? [];
+  const points: { x: number; y: number }[] = [];
+  let i = 0; let cmd = ''; let cur = { x: 0, y: 0 };
+  const num = () => Number(tokens[i++]);
+  while (i < tokens.length) {
+    if (/[MLCQ]/.test(tokens[i]!)) cmd = tokens[i++]!;
+    if (cmd === 'M' || cmd === 'L') {
+      const next = { x: num(), y: num() };
+      if (cmd === 'L') for (let s = 1; s <= 40; s++) points.push({ x: cur.x + (next.x - cur.x) * s / 40, y: cur.y + (next.y - cur.y) * s / 40 });
+      else points.push(next);
+      cur = next;
+    } else if (cmd === 'C') {
+      const c1 = { x: num(), y: num() }, c2 = { x: num(), y: num() }, end = { x: num(), y: num() };
+      for (let s = 1; s <= 40; s++) {
+        const t = s / 40, m = 1 - t;
+        points.push({ x: m * m * m * cur.x + 3 * m * m * t * c1.x + 3 * m * t * t * c2.x + t * t * t * end.x,
+          y: m * m * m * cur.y + 3 * m * m * t * c1.y + 3 * m * t * t * c2.y + t * t * t * end.y });
+      }
+      cur = end;
+    } else if (cmd === 'Q') {
+      const c = { x: num(), y: num() }, end = { x: num(), y: num() };
+      for (let s = 1; s <= 40; s++) {
+        const t = s / 40, m = 1 - t;
+        points.push({ x: m * m * cur.x + 2 * m * t * c.x + t * t * end.x, y: m * m * cur.y + 2 * m * t * c.y + t * t * end.y });
+      }
+      cur = end;
+    } else throw new Error(`unexpected path command in ${d}`);
+  }
+  return points;
+}
+
+test('the 106-node ATCS reference graph spreads into lanes where no two nodes or their labels overlap', () => {
+  const scene = shippedScene('agentic-timing-closure-system');
+  assert.equal(scene.nodes.length, 106);
+  const rows = new Set(scene.nodes.map((n) => n.row));
+  assert.ok(rows.size >= 3, `expected several lanes, got rows ${[...rows].join(', ')}`);
+  for (let i = 0; i < scene.nodes.length; i++) {
+    for (let j = i + 1; j < scene.nodes.length; j++) {
+      const a = scene.nodes[i]!, b = scene.nodes[j]!;
+      assert.ok(!overlaps(footprint(a), footprint(b)), `${a.id} (${a.x},${a.y}) and ${b.id} (${b.x},${b.y}) overlap`);
+    }
+  }
+  for (const n of scene.nodes) {
+    const box = footprint(n);
+    assert.ok(box.left >= 0 && box.right <= scene.width && box.top >= 0 && box.bottom <= scene.height, `${n.id} sits inside the scene`);
+  }
+});
+
+test('the ATCS worker chains run side by side in their own lanes, feeding the collect join', () => {
+  const scene = shippedScene('agentic-timing-closure-system');
+  const at = (id: string) => scene.nodes.find((n) => n.id === id)!;
+  const chain = (worker: string) => ['research-worker', 'read-worker-request', 'check-worker-request', 'operate-worker', 'capture-worker', 'read-worker-result'].map((stem) => at(`${stem}-${worker}`));
+  const one = chain('01'), three = chain('03');
+  const span = (nodes: PlacedNode[]) => ({ min: Math.min(...nodes.map((n) => n.x)), max: Math.max(...nodes.map((n) => n.x)) });
+  assert.ok(span(one).min < span(three).max && span(three).min < span(one).max, 'worker 01 and worker 03 overlap in x (parallel, not end to end)');
+  assert.notEqual(one[3]!.y, three[3]!.y, 'the two operate nodes sit in different lanes');
+  // A worker chain that no static edge enters (worker 02, dispatched by the team) is pulled up
+  // against the chain it feeds (its result opens worker 03) rather than parked at the entry column.
+  assert.equal(at('read-worker-result-02').rank, at('research-worker-03').rank - 1, 'worker 02 ends one rank before worker 03 starts');
+  assert.equal(at('apr-run').rank, at('extract').rank - 1, 'the earlier-APR detour sits right before the extract it feeds');
+});
+
+for (const packId of shippedPackIds) {
+  test(`the shipped ${packId} graph keeps its nodes apart and no forward edge runs through another node's glyph`, () => {
+    const scene = shippedScene(packId);
+    const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+    const half = NODE / 2 + 2;
+    for (let i = 0; i < scene.nodes.length; i++) {
+      for (let j = i + 1; j < scene.nodes.length; j++) {
+        const a = scene.nodes[i]!, b = scene.nodes[j]!;
+        assert.ok(!overlaps(footprint(a), footprint(b)), `${a.id} and ${b.id} overlap`);
+      }
+    }
+    for (const edge of scene.edges) {
+      if (edge.kind === 'revisit') continue;
+      for (const p of samplePath(edge.path)) {
+        for (const n of scene.nodes) {
+          if (n.id === edge.from || n.id === edge.to) continue;
+          assert.ok(!(Math.abs(p.x - n.x) < half && Math.abs(p.y - n.y) < half),
+            `${edge.from} -> ${edge.to} passes through ${n.id} at (${p.x.toFixed(0)},${p.y.toFixed(0)})`);
+        }
+      }
+      assert.ok(byId.has(edge.from) && byId.has(edge.to));
+    }
+  });
+}
+
+test('the ATCS outcome chips sit clear of one another and of every node\'s glyph and labels', () => {
+  const scene = shippedScene('agentic-timing-closure-system');
+  // `FabricCanvas`'s own chip pill: `text.length * 6.5 + 16` wide, 18 tall, centred on the chip point.
+  const chips = scene.edges.flatMap((e) => e.chip === undefined ? [] : [{ edge: `${e.from} -> ${e.to}`, left: e.chip.x - (e.chip.text.length * 6.5 + 16) / 2, right: e.chip.x + (e.chip.text.length * 6.5 + 16) / 2, top: e.chip.y - 9, bottom: e.chip.y + 9 }]);
+  assert.ok(chips.length > 60);
+  for (let i = 0; i < chips.length; i++) {
+    for (let j = i + 1; j < chips.length; j++) assert.ok(!overlaps(chips[i]!, chips[j]!), `the chips of ${chips[i]!.edge} and ${chips[j]!.edge} overlap`);
+    for (const n of scene.nodes) {
+      const glyph = { left: n.x - NODE / 2, right: n.x + NODE / 2, top: n.y - NODE / 2, bottom: n.y + NODE / 2 };
+      const labels = { ...footprint(n), top: n.y + NODE / 2 };
+      assert.ok(!overlaps(chips[i]!, glyph) && !overlaps(chips[i]!, labels), `the chip of ${chips[i]!.edge} covers ${n.id}`);
+    }
+  }
+});
+
+test('the ATCS revisit arcs nest by span above the lanes instead of drawing over one another', () => {
+  const scene = shippedScene('agentic-timing-closure-system');
+  const arcs = scene.edges.filter((e) => e.kind === 'revisit');
+  assert.equal(arcs.length, 9);
+  const apex = (d: string) => Math.min(...samplePath(d).map((p) => p.y));
+  const top = Math.min(...scene.nodes.map((n) => n.y)) - NODE / 2;
+  for (const arc of arcs) {
+    assert.ok(apex(arc.path) >= 0, `${arc.from} -> ${arc.to} stays on the canvas`);
+    assert.ok(apex(arc.path) < top, `${arc.from} -> ${arc.to} rises above the top lane`);
+  }
+  const spanOf = (e: typeof arcs[number]) => Math.abs(scene.nodes.find((n) => n.id === e.from)!.x - scene.nodes.find((n) => n.id === e.to)!.x);
+  const widest = arcs.reduce((a, b) => (spanOf(b) > spanOf(a) ? b : a));
+  const narrowest = arcs.reduce((a, b) => (spanOf(b) < spanOf(a) ? b : a));
+  assert.ok(apex(widest.path) < apex(narrowest.path), 'a wider back-edge rises higher than a narrow one');
 });
 
 // #41 task 6: the node card's own words — a Job folded to what a person reads on its Job tab, and

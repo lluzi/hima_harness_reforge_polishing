@@ -147,7 +147,7 @@ function hangNodeIds(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[],
  * it still counts as a predecessor for whatever comes after it, so its fractional rank propagates to
  * its own successors exactly like any other node's integer rank does (finding 1). Only `computeRow`
  * treats a hung node specially by excluding it from the row-0 spine — this pass never excludes it. */
-function computeRank(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], hang: ReadonlySet<string>): Map<string, number> {
+function computeRank(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], hang: ReadonlySet<string>, entry: string): Map<string, number> {
   const ids = nodes.map((node) => node.id);
   const idSet = new Set(ids);
   const relevant = edges.filter((edge) => !edge.revisit && idSet.has(edge.from) && idSet.has(edge.to));
@@ -180,7 +180,29 @@ function computeRank(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[],
     }
   }
   for (const id of ids) if (!rank.has(id)) rank.set(id, 0); // a cycle among non-revisit edges: not a well-formed reference graph, but never left rankless
+  pullUnanchored(queue, relevant, entry, hang, rank);
   return rank;
+}
+
+/** #63: a node the entry cannot reach through forward edges — a chain HimaFabric enters only through
+ * a revisit edge or its own dispatch (a team worker, an earlier-APR detour) — has no forward
+ * predecessor to rank it from, so rule 1 alone parks the whole chain at the entry's own column however
+ * far downstream it rejoins, and every edge out of it spans the canvas. Such a node instead sits as
+ * late as its successors allow: one rank before its nearest successor (a half rank before a hung
+ * one), walked in reverse Kahn order so a whole unanchored chain slides up against the join it feeds.
+ * A node the entry reaches keeps rule 1's rank exactly, and a pulled node never moves left of it. */
+function pullUnanchored(order: readonly string[], edges: readonly LayoutEdge[], entry: string, hang: ReadonlySet<string>, rank: Map<string, number>): void {
+  const successors = new Map<string, string[]>();
+  for (const edge of edges) successors.set(edge.from, [...(successors.get(edge.from) ?? []), edge.to]);
+  const anchored = new Set<string>([entry]);
+  for (const id of order) if (anchored.has(id)) for (const to of successors.get(id) ?? []) anchored.add(to);
+  for (let i = order.length - 1; i >= 0; i--) {
+    const id = order[i]!;
+    const next = successors.get(id) ?? [];
+    if (anchored.has(id) || next.length === 0) continue;
+    const latest = Math.min(...next.map((to) => (rank.get(to) ?? 0) - (hang.has(to) ? 0.5 : 1)));
+    if (latest > (rank.get(id) ?? 0)) rank.set(id, latest);
+  }
 }
 
 /** Rule 2's fork case, absent `facts.fork`: "an act with ≥2 unlabelled outgoing edges" is the fork;
@@ -188,7 +210,7 @@ function computeRank(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[],
  * incoming edges (the join CONTEXT.md and the plan's Global Constraints both name). Not exercised by
  * a fixture in this task's test file — every fork test supplies `facts.fork` — but rule 2 asks for it
  * unconditionally, so a Pack whose Run view never sends `facts.fork` still gets a fanned-out fork. */
-function autoDetectForkBranches(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[]): { id: string; nodes: string[] }[] | undefined {
+function autoDetectForkBranches(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[]): { node: string; branches: { id: string; nodes: string[] }[] } | undefined {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   for (const candidate of nodes) {
     if (candidate.kind !== 'act') continue;
@@ -217,41 +239,61 @@ function autoDetectForkBranches(nodes: readonly LayoutNode[], edges: readonly La
       }
       chains.push(chain);
     }
-    if (joinId !== undefined) return chains.map((chainNodes, i) => ({ id: heads[i]!, nodes: chainNodes }));
+    if (joinId !== undefined) return { node: candidate.id, branches: chains.map((chainNodes, i) => ({ id: heads[i]!, nodes: chainNodes })) };
   }
   return undefined;
 }
 
-/** Rule 2's row: 0 on the spine; 1 for a hung node; for a fork's branch `i` of `n`,
- * `(i - (n - 1) / 2) * 0.6` for every node the branch lists — the fork and its join are never listed,
- * so they keep row 0 ("the join returns to row 0").
+/** A node's footprint around its centre, in scene units: the 36-unit glyph plus the id and caption
+ * lines `FabricNode` draws under it (13 px text on baselines `NODE / 2 + 20` and `+ 35`), each line
+ * truncated to the `PITCH - 8` label budget. Two nodes whose footprints meet overlap on screen. */
+const FOOT_HALF_W = (PITCH - 8) / 2, FOOT_TOP = NODE / 2, FOOT_BOTTOM = NODE / 2 + 39;
+
+/** Rule 2's row (#63: lanes). Every node takes the first row, from its preferred row downward, where
+ * its footprint meets no node already placed; nodes are placed by rank, then declaration order.
  *
- * More than one hung node can share the same rank — two nodes reached only by dynamic routing off
- * the same (or no) predecessor, or two nodes HimaFabric hung off one FAIL/UNDETERMINED source — and
- * `rank` alone (this module's own `x`) does not tell them apart. Row 1 for all of them would then
- * put two nodes on the very same pixels, so nodes sharing a rank are stacked: the first one (in the
- * graph's own declaration order, i.e. `nodes`'s own order) still takes row 1, the next takes row 2,
- * and so on. Two hung nodes at *different* ranks both still take row 1 — different `x` already keeps
- * them apart, and stacking rows only where a collision would otherwise happen is what "declaration
- * order" below is scoped to. */
+ * - The preferred row continues the lowest home row among the node's forward predecessors (the entry
+ *   and any node without one prefer row 0), so a chain stays in its lane and a join returns to the
+ *   highest lane it gathers.
+ * - A hung node (FAIL/UNDETERMINED-only or dynamically routed, `hangNodeIds`) keeps its source's home:
+ *   it lands a row down because its half-rank neighbour already holds that row, and whatever follows
+ *   it returns to the lane it detoured from.
+ * - A fork's branch `i` of `n` prefers the fork's own row `+ (i - (n - 1) / 2)` — one full lane per
+ *   branch, symmetric about the fork, so parallel branches never share a lane; the join returns to
+ *   the fork's row.
+ *
+ * Only a real collision moves a node: a linear graph stays on row 0, and a node at a half rank never
+ * shares a row with a neighbour half a pitch away, since their labels would run into each other. */
 function computeRow(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], hang: ReadonlySet<string>, rank: ReadonlyMap<string, number>, fork: LayoutFacts['fork'] | undefined): Map<string, number> {
-  const row = new Map<string, number>(nodes.map((node) => [node.id, 0]));
-  const hungByRank = new Map<number, string[]>();
-  for (const node of nodes) {
-    if (!hang.has(node.id)) continue;
-    const r = rank.get(node.id) ?? 0;
-    const list = hungByRank.get(r) ?? [];
-    list.push(node.id);
-    hungByRank.set(r, list);
+  const detected = fork === undefined ? autoDetectForkBranches(nodes, edges) : { node: fork.node, branches: fork.branches };
+  const branchOffset = new Map<string, number>();
+  const n = detected?.branches.length ?? 0;
+  detected?.branches.forEach((branch, i) => { for (const id of branch.nodes) branchOffset.set(id, i - (n - 1) / 2); });
+
+  const ids = new Set(nodes.map((node) => node.id));
+  const predecessors = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (edge.revisit || !ids.has(edge.from) || !ids.has(edge.to)) continue;
+    predecessors.set(edge.to, [...(predecessors.get(edge.to) ?? []), edge.from]);
   }
-  for (const ids of hungByRank.values()) ids.forEach((id, i) => row.set(id, i + 1));
-  const branches = fork?.branches ?? autoDetectForkBranches(nodes, edges);
-  if (branches) {
-    const n = branches.length;
-    branches.forEach((branch, i) => {
-      const r = (i - (n - 1) / 2) * 0.6;
-      for (const id of branch.nodes) row.set(id, r);
-    });
+  const declared = new Map(nodes.map((node, i) => [node.id, i]));
+  const order = [...nodes].sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0) || declared.get(a.id)! - declared.get(b.id)!);
+
+  const row = new Map<string, number>();
+  const home = new Map<string, number>();
+  const placed: { x: number; y: number }[] = [];
+  const free = (x: number, y: number) => placed.every((p) => Math.abs(p.x - x) >= 2 * FOOT_HALF_W || Math.abs(p.y - y) >= (FOOT_TOP + FOOT_BOTTOM) / ROW);
+  for (const node of order) {
+    const x = (rank.get(node.id) ?? 0) * PITCH;
+    const homes = (predecessors.get(node.id) ?? []).map((from) => home.get(from)).filter((h): h is number => h !== undefined);
+    const inherited = homes.length > 0 ? Math.min(...homes) : 0;
+    const offset = branchOffset.get(node.id);
+    const forkRow = offset === undefined || detected === undefined ? undefined : (row.get(detected.node) ?? 0) + offset;
+    let r = forkRow ?? inherited;
+    while (!free(x, r)) r += 1;
+    row.set(node.id, r);
+    placed.push({ x, y: r });
+    home.set(node.id, forkRow !== undefined ? (home.get(detected!.node) ?? 0) : hang.has(node.id) ? inherited : r);
   }
   return row;
 }
@@ -298,32 +340,39 @@ function bezierApexY(y0: number, y1: number, y2: number, y3: number): number {
  * far ends bow into it. */
 function classifyEdge(
   edge: LayoutEdge, sx: number, sy: number, tx: number, ty: number,
-  generation: number | undefined, litFromSource: boolean, isHungTarget: boolean,
+  generation: number | undefined, litFromSource: boolean, isHungTarget: boolean, arcY?: number,
 ): PlacedEdge {
   if (edge.revisit) {
     const count = generation ?? 1;
-    const c1y = sy - 90;
-    const c2y = ty - 90;
+    // #63: `arcY` lifts both control points to one height above the lanes (`revisitArcY`), so an arc
+    // from a node in a lower lane still clears the top lane and nested arcs never share a curve.
+    const c1y = arcY ?? sy - 90;
+    const c2y = arcY ?? ty - 90;
     const apex = bezierApexY(sy - 18, c1y, c2y, ty - 18);
     // 34px above the apex is right for a loop's or a growth's own revisit arc, which sits well down
     // the canvas — but on the main spine (`PAD_Y = 72`, so the arc's own endpoints are already close
     // to the top) that same 34px overshoots above y = 0 and off the canvas entirely. Below 12px there
     // is no longer room for the badge, so fall back to the brief's own fixed spine offset (`PAD_Y -
     // 52`), which sits safely inside the scene for every spine-level arc; a subgraph's own arc is far
-    // enough down that `apex - 34` never needs the fallback.
-    const badgeY = apex - 34 >= 12 ? apex - 34 : PAD_Y - 52;
+    // enough down that `apex - 34` never needs the fallback. #63: the fallback is the arc's own apex
+    // (never above 12px) rather than one fixed height, so nested arcs each carry their own badge.
+    const badgeY = apex - 34 >= 12 ? apex - 34 : Math.max(12, apex);
     return {
       from: edge.from, to: edge.to, kind: 'revisit', lit: count > 1,
       path: `M ${sx} ${sy - 18} C ${sx} ${c1y}, ${tx} ${c2y}, ${tx} ${ty - 18}`,
       badge: { x: (sx + tx) / 2, y: badgeY, count },
     };
   }
-  if ((edge.outcome === 'FAIL' || edge.outcome === 'UNDETERMINED') && isHungTarget) {
+  // #63: the curve drops into the hung target from above, so it is kept for a target in a lower lane;
+  // a hung target the lanes placed level with or above its source takes the ordinary form below.
+  if ((edge.outcome === 'FAIL' || edge.outcome === 'UNDETERMINED') && isHungTarget && ty > sy) {
     const outcome = edge.outcome;
     return {
       from: edge.from, to: edge.to, kind: 'outcome', outcome, lit: litFromSource,
       path: `M ${sx + 18} ${sy} C ${sx + 22} ${sy}, ${tx} ${ty - 30}, ${tx} ${ty - 18}`,
-      chip: { x: tx, y: ty + 34, text: outcome },
+      // #63: on the curve's own midpoint (t = 0.5 of the cubic above), not under the target, where
+      // it covered the target's own id and caption.
+      chip: { x: (sx + tx) / 2 + 10.5, y: (sy + ty) / 2 - 13.5, text: outcome },
     };
   }
   if (edge.outcome !== undefined) {
@@ -335,6 +384,163 @@ function classifyEdge(
     };
   }
   return { from: edge.from, to: edge.to, kind: 'dependency', lit: litFromSource, path: `M ${sx + 18} ${sy} L ${tx - 18} ${ty}` };
+}
+
+// ---------------------------------------------------------------------------------------------------
+// #63: back-edge nesting and forward-edge routing, so a large graph's edges stay readable.
+
+/** How far above the top lane a level-0 revisit arc's control points sit (the mockup's own 90 from a
+ * node's centre, i.e. 72 above its top edge), and how much higher each nesting level lifts it. */
+const ARC_LIFT = 72, ARC_STEP = 16;
+
+/** Each revisit edge's nesting level: 0 for an arc spanning no other arc, else one more than the
+ * highest arc inside its span (an equal span counts as inside when declared earlier), so wider arcs
+ * rise over narrower ones instead of drawing on the same curve. */
+function revisitLevels(edges: readonly LayoutEdge[], rankOf: (id: string) => number): Map<LayoutEdge, number> {
+  const arcs = edges.filter((edge) => edge.revisit).map((edge, i) => {
+    const a = rankOf(edge.from), b = rankOf(edge.to);
+    return { edge, i, lo: Math.min(a, b), hi: Math.max(a, b) };
+  });
+  arcs.sort((p, q) => (p.hi - p.lo) - (q.hi - q.lo) || p.i - q.i);
+  const level = new Map<LayoutEdge, number>();
+  arcs.forEach((arc, k) => {
+    const inner = arcs.slice(0, k).filter((other) => other.lo >= arc.lo && other.hi <= arc.hi).map((other) => level.get(other.edge)! + 1);
+    level.set(arc.edge, inner.length > 0 ? Math.max(...inner) : 0);
+  });
+  return level;
+}
+
+/** Scene units a vertical edge segment runs in: halfway between two half-rank columns, 22.5 units
+ * from every node centre, which is past any glyph's own 18-unit half-width. */
+const CORRIDOR = PITCH / 4;
+/** The spacing between two routed edges' horizontal runs. */
+const TRACK = 6;
+
+/** Points along an M/L/Q/C path this module wrote, finely enough to test it against a glyph. */
+function samplePath(d: string): { x: number; y: number }[] {
+  const tokens = d.match(/[MLQC]|-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/g) ?? [];
+  const points: { x: number; y: number }[] = [];
+  let i = 0, command = '', x = 0, y = 0;
+  const num = () => Number(tokens[i++]);
+  while (i < tokens.length) {
+    if (/[MLQC]/.test(tokens[i]!)) command = tokens[i++]!;
+    const controls: { x: number; y: number }[] = [];
+    const count = command === 'C' ? 3 : command === 'Q' ? 2 : 1;
+    for (let k = 0; k < count; k++) controls.push({ x: num(), y: num() });
+    const end = controls[controls.length - 1]!;
+    if (command !== 'M') {
+      for (let step = 1; step <= 24; step++) {
+        const t = step / 24, m = 1 - t;
+        if (command === 'L') points.push({ x: x + (end.x - x) * t, y: y + (end.y - y) * t });
+        else if (command === 'Q') points.push({ x: m * m * x + 2 * m * t * controls[0]!.x + t * t * end.x, y: m * m * y + 2 * m * t * controls[0]!.y + t * t * end.y });
+        else points.push({ x: m * m * m * x + 3 * m * m * t * controls[0]!.x + 3 * m * t * t * controls[1]!.x + t * t * t * end.x,
+          y: m * m * m * y + 3 * m * m * t * controls[0]!.y + 3 * m * t * t * controls[1]!.y + t * t * t * end.y });
+      }
+    }
+    x = end.x; y = end.y;
+  }
+  return points;
+}
+
+/** Whether a point falls on a node's glyph (with a 2-unit margin) or on its label lines. */
+const onGlyph = (p: { x: number; y: number }, n: { x: number; y: number }) => Math.abs(p.x - n.x) < NODE / 2 + 2 && Math.abs(p.y - n.y) < NODE / 2 + 2;
+const onLabel = (p: { x: number; y: number }, n: { x: number; y: number }) => Math.abs(p.x - n.x) < FOOT_HALF_W && p.y > n.y + NODE / 2 && p.y < n.y + FOOT_BOTTOM;
+
+/** An orthogonal polyline with its corners rounded, as an SVG path. */
+function roundedPath(points: readonly { x: number; y: number }[]): string {
+  const kept = points.filter((p, i) => i === 0 || p.x !== points[i - 1]!.x || p.y !== points[i - 1]!.y)
+    .filter((p, i, all) => i === 0 || i === all.length - 1 || !((all[i - 1]!.x === p.x && p.x === all[i + 1]!.x) || (all[i - 1]!.y === p.y && p.y === all[i + 1]!.y)));
+  let d = `M ${kept[0]!.x} ${kept[0]!.y}`;
+  for (let i = 1; i < kept.length; i++) {
+    const p = kept[i]!, next = kept[i + 1];
+    if (next === undefined) { d += ` L ${p.x} ${p.y}`; break; }
+    const prev = kept[i - 1]!;
+    const r = Math.min(6, Math.hypot(p.x - prev.x, p.y - prev.y) / 2, Math.hypot(next.x - p.x, next.y - p.y) / 2);
+    const inX = Math.sign(p.x - prev.x), inY = Math.sign(p.y - prev.y), outX = Math.sign(next.x - p.x), outY = Math.sign(next.y - p.y);
+    d += ` L ${p.x - inX * r} ${p.y - inY * r} Q ${p.x} ${p.y} ${p.x + outX * r} ${p.y + outY * r}`;
+  }
+  return d;
+}
+
+/** A forward edge whose own straight line or curve would cross another node's glyph or label, or
+ * whose straight line climbs steeper than it runs, is redrawn orthogonally instead: out of its source into the corridor just past it, along the free
+ * horizontal track nearest its two ends, and into the corridor just before its target. Vertical runs
+ * sit in corridors, which no glyph reaches; the track avoids every glyph, prefers to avoid labels,
+ * and keeps `TRACK` apart from an earlier routed edge's run over the same stretch. An edge whose own
+ * line is already clear keeps it, so a small graph draws exactly as it did. Returns the lowest y a
+ * track took, for the scene's height. */
+function routeEdges(edges: PlacedEdge[], nodes: readonly PlacedNode[]): number {
+  const at = new Map(nodes.map((n) => [n.id, n]));
+  const runs: { from: number; to: number; y: number }[] = [];
+  let lowest = -Infinity;
+  if (nodes.length === 0) return lowest;
+  const top = Math.min(...nodes.map((n) => n.y)) - NODE / 2 - 3 * TRACK;
+  const bottom = Math.max(...nodes.map((n) => n.y)) + FOOT_BOTTOM + 16 * TRACK;
+  edges.forEach((edge, index) => {
+    if (edge.kind !== 'dependency' && edge.kind !== 'outcome') return;
+    const s = at.get(edge.from), t = at.get(edge.to);
+    if (!s || !t || t.x <= s.x) return;
+    const others = nodes.filter((n) => n !== s && n !== t);
+    const steep = /^M [^A-Z]+ L [^A-Z]+$/.test(edge.path) && Math.abs(t.y - s.y) > t.x - s.x - NODE;
+    if (!steep && !samplePath(edge.path).some((p) => others.some((n) => onGlyph(p, n) || onLabel(p, n)))) return;
+    const xa = s.x + CORRIDOR, xb = Math.max(xa, t.x - CORRIDOR);
+    const crossing = others.filter((n) => n.x + FOOT_HALF_W > xa && n.x - FOOT_HALF_W < xb);
+    let best: { y: number; cost: number } | undefined;
+    for (let y = top; y <= bottom; y += TRACK) {
+      if (crossing.some((n) => Math.abs(y - n.y) < NODE / 2 + 2 && n.x + NODE / 2 + 2 > xa && n.x - NODE / 2 - 2 < xb)) continue;
+      if (runs.some((run) => run.from < xb + CORRIDOR && xa - CORRIDOR < run.to && Math.abs(run.y - y) < TRACK)) continue;
+      const labels = crossing.filter((n) => y > n.y + NODE / 2 && y < n.y + FOOT_BOTTOM).length
+        + others.filter((n) => ([[xa, s.y], [xb, t.y]] as const).some(([x, end]) => Math.abs(x - n.x) < FOOT_HALF_W && Math.min(end, y) < n.y + FOOT_BOTTOM && Math.max(end, y) > n.y + NODE / 2)).length;
+      const cost = Math.abs(y - s.y) + Math.abs(y - t.y) + 4 * ROW * labels;
+      if (best === undefined || cost < best.cost) best = { y, cost };
+    }
+    if (best === undefined) return;
+    const y = best.y;
+    runs.push({ from: xa, to: xb, y });
+    lowest = Math.max(lowest, y);
+    edges[index] = { ...edge, path: roundedPath([{ x: s.x + NODE / 2, y: s.y }, { x: xa, y: s.y }, { x: xa, y }, { x: xb, y }, { x: xb, y: t.y }, { x: t.x - NODE / 2, y: t.y }]) };
+  });
+  placeChips(edges, nodes);
+  return lowest;
+}
+
+/** A chip's own pill, as `FabricCanvas` draws it: `text.length * 6.5 + 16` wide, 18 tall. */
+const chipBox = (chip: { x: number; y: number; text: string }) => {
+  const half = (chip.text.length * 6.5 + 16) / 2;
+  return { left: chip.x - half, right: chip.x + half, top: chip.y - 9, bottom: chip.y + 9 };
+};
+
+/** Every outcome chip clear of every other chip and of every node's glyph and labels. A straight
+ * edge's chip keeps rule 4's own place over its midpoint; a curved or routed edge's chip rides its
+ * own path from the source end and takes the first point where its pill meets nothing already
+ * there (or, when none is free, rule 4's own place). */
+function placeChips(edges: PlacedEdge[], nodes: readonly PlacedNode[]): void {
+  type Box = ReturnType<typeof chipBox>;
+  const meets = (a: Box, b: Box) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  const blocked: Box[] = nodes.flatMap((n) => [
+    { left: n.x - NODE / 2, right: n.x + NODE / 2, top: n.y - NODE / 2, bottom: n.y + NODE / 2 },
+    { left: n.x - FOOT_HALF_W, right: n.x + FOOT_HALF_W, top: n.y + NODE / 2, bottom: n.y + FOOT_BOTTOM },
+  ]);
+  const straight = (edge: PlacedEdge) => /^M [^A-Z]+ L [^A-Z]+$/.test(edge.path);
+  // A straight edge's chip first tries rule 4's own place over its midpoint, then stacks above it (a
+  // Judge whose PASS and FAIL both reach one node shares that midpoint); a curved or routed edge's
+  // chip rides its own path from the source end. Either takes the first spot its pill meets nothing
+  // already placed, and keeps rule 4's own place only when no spot is free.
+  const place = (index: number) => {
+    const edge = edges[index]!;
+    const chip = edge.chip!;
+    const along = samplePath(edge.path).filter((_, i, all) => i >= all.length * 0.15).map((p) => ({ ...chip, x: p.x, y: p.y }));
+    // Where the path itself is crowded (a staircase of FAIL detours), the pill may sit a little off
+    // its line, near the path's own midpoint, rather than on another chip or node.
+    const middle = along[Math.floor(along.length / 2)] ?? chip;
+    const near = [0, 14, -14, 28, -28, 42, -42].flatMap((dy) => [0, 24, -24, 48, -48].map((dx) => ({ ...chip, x: middle.x + dx, y: middle.y + dy })));
+    const candidates = (straight(edge) ? [0, 1, 2, 3].map((k) => ({ ...chip, y: chip.y - 20 * k })).concat(along) : along).concat(near);
+    const placed = candidates.find((candidate) => !blocked.some((box) => meets(chipBox(candidate), box))) ?? chip;
+    blocked.push(chipBox(placed));
+    edges[index] = { ...edge, chip: placed };
+  };
+  edges.forEach((edge, index) => { if (edge.chip !== undefined && straight(edge)) place(index); });
+  edges.forEach((edge, index) => { if (edge.chip !== undefined && !straight(edge)) place(index); });
 }
 
 /** The bounding box of a set of node centres, padded 24px past each node's own half-width — rule 6's
@@ -367,7 +573,7 @@ function boundingFrame(
  * Goal and sizes the scene, including the extra height an open loop or a growth adds below the spine. */
 export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasScene {
   const hang = hangNodeIds(graph.nodes, graph.edges, graph.entry);
-  const rankMap = computeRank(graph.nodes, graph.edges, hang);
+  const rankMap = computeRank(graph.nodes, graph.edges, hang, graph.entry);
   const rowMap = computeRow(graph.nodes, graph.edges, hang, rankMap, facts?.fork);
 
   const rows = graph.nodes.map((node) => rowMap.get(node.id) ?? 0);
@@ -389,8 +595,13 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     return undefined;
   };
 
+  // #63: nested revisit arcs rise above the level-0 arc's own height, so the lanes move down by the
+  // extra rise (a cubic's apex sits three quarters of the way to its control points) and the highest
+  // arc still stays on the canvas. A graph with at most one level of arcs draws exactly as before.
+  const mainLevels = revisitLevels(graph.edges, (id) => rankMap.get(id) ?? 0);
+  const topExtra = 0.75 * ARC_STEP * Math.max(0, ...mainLevels.values());
   const pass1X = new Map(graph.nodes.map((node) => [node.id, X0 + (rankMap.get(node.id) ?? 0) * PITCH]));
-  const pass1Y = new Map(graph.nodes.map((node) => [node.id, PAD_Y + ((rowMap.get(node.id) ?? 0) - minRow) * ROW]));
+  const pass1Y = new Map(graph.nodes.map((node) => [node.id, PAD_Y + topExtra + ((rowMap.get(node.id) ?? 0) - minRow) * ROW]));
 
   // Rule 6: every explore node that opens a loop, processed low rank to high rank so an earlier
   // open loop's height is already known when a later one's anchor position is computed — "the spine
@@ -421,7 +632,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
    * 7, via `shiftBefore`) instead of drifting from the main spine's own y. */
   function placeSubgraph(subgraph: LayoutSubgraph, baseRank: number, baseRow: number, frameId: string, generation: number | undefined) {
     const localHang = hangNodeIds(subgraph.nodes, subgraph.edges, subgraph.entry);
-    const localRank = computeRank(subgraph.nodes, subgraph.edges, localHang);
+    const localRank = computeRank(subgraph.nodes, subgraph.edges, localHang, subgraph.entry);
     const localRow = computeRow(subgraph.nodes, subgraph.edges, localHang, localRank, undefined);
     const rankOf = (id: string) => baseRank + (localRank.get(id) ?? 0);
     const rowOf = (id: string) => baseRow + (localRow.get(id) ?? 0);
@@ -429,10 +640,10 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     for (const node of subgraph.nodes) {
       positions.set(node.id, {
         x: X0 + rankOf(node.id) * PITCH,
-        y: PAD_Y + (rowOf(node.id) - minRow) * ROW + shiftBefore(rankOf(node.id)),
+        y: PAD_Y + topExtra + (rowOf(node.id) - minRow) * ROW + shiftBefore(rankOf(node.id)),
       });
     }
-    const anchor = { x: X0 + baseRank * PITCH, y: PAD_Y + (baseRow - minRow) * ROW + shiftBefore(baseRank) };
+    const anchor = { x: X0 + baseRank * PITCH, y: PAD_Y + topExtra + (baseRow - minRow) * ROW + shiftBefore(baseRank) };
     const box = boundingFrame([...positions.values()], anchor);
     const nodes: PlacedNode[] = subgraph.nodes.map((node) => {
       const p = positions.get(node.id)!;
@@ -443,10 +654,14 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
         frame: frameId,
       };
     });
+    const localLevels = revisitLevels(subgraph.edges, (id) => localRank.get(id) ?? 0);
+    const localTop = Math.min(...[...positions.values()].map((p) => p.y)) - NODE / 2;
     const edges: PlacedEdge[] = subgraph.edges.map((edge) => {
       const from = positions.get(edge.from)!;
       const to = positions.get(edge.to)!;
-      return classifyEdge(edge, from.x, from.y, to.x, to.y, generation, litOf(edge.from), localHang.has(edge.to));
+      const level = localLevels.get(edge);
+      return classifyEdge(edge, from.x, from.y, to.x, to.y, generation, litOf(edge.from), localHang.has(edge.to),
+        level === undefined ? undefined : localTop - ARC_LIFT - ARC_STEP * level);
     });
     return { positions, box, nodes, edges };
   }
@@ -503,10 +718,13 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   });
   const finalPosition = new Map(mainNodes.map((node) => [node.id, { x: node.x, y: node.y }]));
 
+  const mainTop = mainNodes.length > 0 ? Math.min(...mainNodes.map((node) => node.y)) - NODE / 2 : PAD_Y - NODE / 2;
   const mainEdges: PlacedEdge[] = graph.edges.map((edge) => {
     const from = finalPosition.get(edge.from) ?? { x: pass1X.get(edge.from) ?? X0, y: pass1Y.get(edge.from) ?? PAD_Y };
     const to = finalPosition.get(edge.to) ?? { x: pass1X.get(edge.to) ?? X0, y: pass1Y.get(edge.to) ?? PAD_Y };
-    return classifyEdge(edge, from.x, from.y, to.x, to.y, facts?.generation, litOf(edge.from), hang.has(edge.to));
+    const level = mainLevels.get(edge);
+    return classifyEdge(edge, from.x, from.y, to.x, to.y, facts?.generation, litOf(edge.from), hang.has(edge.to),
+      level === undefined ? undefined : mainTop - ARC_LIFT - ARC_STEP * level);
   });
 
   // Rule 7: each accepted growth, laid out below its parent node the same way an open loop is below
@@ -542,7 +760,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   // node's own caption and the Goal's own label — "next-period" running straight into "clock period
   // at m…" (PLS design review) — and a node's caption already reads to the right of its own shape,
   // so the roundel needs the extra half-pitch of clearance a bare node-to-node gap does not.
-  const goal = { x: X0 + (maxRank + 1.5) * PITCH, y: PAD_Y - minRow * ROW + shiftBefore(maxRank + 1) };
+  const goal = { x: X0 + (maxRank + 1.5) * PITCH, y: PAD_Y + topExtra - minRow * ROW + shiftBefore(maxRank + 1) };
   const allFrames = [...loopFrames, ...growthFrames];
   const allNodes = [...mainNodes, ...loopNodes, ...growthNodes];
   // Finding 2: the Goal roundel's own column (`goal.x + 96`) is only ever wide enough for the main
@@ -556,12 +774,16 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     ...allNodes.map((node) => node.x + NODE / 2 + 24),
   );
   const openFrameExtra = loopShift.reduce((sum, entry) => sum + entry.extra, 0) + growthFrames.reduce((sum, frame) => sum + frame.height + 24, 0);
-  const height = (maxRow - minRow + 1) * ROW + 2 * PAD_Y + openFrameExtra;
+  const allEdges = [...mainEdges, ...loopEdges, ...growthEdges];
+  const lowestTrack = routeEdges(allEdges, allNodes);
+  // The lowest node's own labels still need their room below it, and a routed edge's track can run
+  // below the lowest node — the scene keeps a margin past whichever reaches further.
+  const height = Math.max((maxRow - minRow + 1) * ROW + 2 * PAD_Y + openFrameExtra + topExtra, lowestTrack + PAD_Y);
 
   return {
     width, height, goal,
     nodes: allNodes,
-    edges: [...mainEdges, ...loopEdges, ...growthEdges],
+    edges: allEdges,
     frames: allFrames,
   };
 }

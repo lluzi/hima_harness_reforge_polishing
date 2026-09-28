@@ -207,7 +207,9 @@ function MiniReferenceGraph({ graph }: { graph: PreparationView['referenceGraph'
   // that case (a flat figure, not a per-edge apex computation — nothing here needs the exact bezier
   // curve `layoutCanvas` draws, only room enough that it is never cut off).
   const hasRevisit = scene.edges.some((edge) => edge.kind === 'revisit');
-  const top = hasRevisit ? Math.min(...scene.nodes.map((node) => node.y)) - 70 : Math.min(...ys) - MINI_GRAPH_Y_MARGIN;
+  // #63: nested revisit arcs over a long graph rise higher still (the lanes move down to make room
+  // and the highest arc tops out at the scene's own y = 0), so the band also reaches the scene top.
+  const top = hasRevisit ? Math.min(0, Math.min(...scene.nodes.map((node) => node.y)) - 70) : Math.min(...ys) - MINI_GRAPH_Y_MARGIN;
   const bottom = Math.max(...ys) + MINI_GRAPH_Y_MARGIN;
   const left = 0;
   const right = scene.goal.x + MINI_GRAPH_X_MARGIN;
