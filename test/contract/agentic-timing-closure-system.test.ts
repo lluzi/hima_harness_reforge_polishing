@@ -123,7 +123,7 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   const executionId = begin.receipt!.executionId!;
   const create = (memberId: string) => host.ctx.hima.delegate({ runId, actor, action: 'create', requestId: 'create-' + memberId,
     expectedEpoch: control().epoch, expectedRevision: control().revision,
-    recipe: { teamId: 'atcs-worker-01', version: '2', memberId, executionId } } as never) as Promise<any>;
+    recipe: { teamId: 'atcs-worker-01', version: '3', memberId, executionId } } as never) as Promise<any>;
   // Deterministic model stand-ins use the production Ledger handoff shape; no model-quality claim.
   const resultAndAdopt = async (child: any, value: any) => {
     const id = child.effectiveContract.delegationId;
@@ -216,14 +216,14 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
   const team = pack.contract.agentTeams.find(item => item.id === 'atcs-worker-01')!;
   const researcher = team.members.find(item => item.id === 'researcher')!;
-  assert.equal(team.version, '2');
+  assert.equal(team.version, '3');
   assert.equal(researcher.budgetShare.maxTokensPerTurn, 8000);
-  assert.equal(researcher.budgetShare.maxFollowups, 0);
+  assert.equal(researcher.budgetShare.maxFollowups, 1);
   assert.match(researcher.taskTemplate, /at most one hypothesis per declared action/);
-  for (const id of ['reviewer', 'operator']) {
+  for (const [id, followups] of [['reviewer', 1], ['operator', 0]] as const) {
     const member = team.members.find(item => item.id === id)!;
     assert.equal(member.budgetShare.maxTokensPerTurn, 5000);
-    assert.equal(member.budgetShare.maxFollowups, 0);
+    assert.equal(member.budgetShare.maxFollowups, followups);
   }
   assert.equal(packStage(packDir).stage, 'compiled');
   assert.equal(pack.graph.nodes.length, 106);
@@ -301,12 +301,26 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.match(decider.purpose, /observationRef is the `id` \(20 lowercase hex\) of the observation/);
   assert.match(decider.purpose, /budgetRef is a non-empty string/);
 
+  // A Team member whose reply is not exactly one JSON object is refused before result-observed, and its
+  // delegation id is fixed per execution, so without one same-child follow-up the Team can never
+  // complete and the execution stays begun (Issue 63: a reviewer reply missing one closing bracket).
+  const workerTeam = pack.contract.agentTeams.find((t: { id: string }) => t.id === 'atcs-worker-01');
+  for (const role of ['researcher', 'reviewer']) {
+    const member = workerTeam.members.find((m: { id: string }) => m.id === role);
+    assert.equal(member.followup, 'reuse-same-child', `${role} allows one repair follow-up`);
+    assert.equal(member.budgetShare.maxFollowups, 1, `${role} allocates exactly one follow-up`);
+    assert.match(member.taskTemplate, /If the owner returns a refusal of your reply, answer with the corrected single JSON object only/);
+  }
+  // The owner must know to use that follow-up, or it escalates a formatting refusal to a person.
+  const teamKnowledge = await readFile(path.join(repoRoot, 'packs', packId, 'knowledge/agent-team.md'), 'utf8');
+  assert.match(teamKnowledge, /The recipe allows one\nfollow-up to the same child/);
+
   installPackMethod({ from: packDir, to: path.join(h.home, 'hima/packs', packId) });
   const host = await bootInProcess(h);
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /agentic-timing-closure-system@0\.1\.7.*fit/s);
+    assert.match(throughHost.text, /agentic-timing-closure-system@0\.1\.8.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {
