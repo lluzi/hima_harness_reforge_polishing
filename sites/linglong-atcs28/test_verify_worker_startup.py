@@ -54,9 +54,9 @@ class VerifierTest(unittest.TestCase):
         compiled = adapters.compile_xtop_site_context(self.profile, ["slow"])
         context_root = self.w / "research/observe/g1"
         context_root.mkdir(parents=True)
-        library = context_root / "library.tcl"
+        library = self.library = context_root / "library.tcl"
         library.write_text(compiled["libraryTcl"])
-        timing = context_root / "sta_data"
+        timing = self.timing = context_root / "sta_data"
         timing.mkdir()
         (timing / "slow_data_finish").write_text("synthetic timing\n")
         self.context = core.stamp("xtop-context", {"designStateId": self.base["id"], "requiredScenarios": ["slow"],
@@ -65,31 +65,49 @@ class VerifierTest(unittest.TestCase):
             "libraryFiles": compiled["libraryFiles"], "siteMap": compiled["siteMap"],
             "removableFillers": compiled["removableFillers"], "ecoParameters": compiled["ecoParameters"]})
         core.write_artifact(self.w / "state/xtop-context.json", self.context)
-        package = workspaces.validate_work_package({"taskId": "w01", "baseStateId": self.base["id"],
-            "problem": "synthetic", "targets": [], "editDomain": {"instances": ["U1"], "nets": [], "regions": []},
-            "protected": {"instances": [], "nets": []}, "mayAffect": [], "actions": ["size_cell"],
-            "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1}}, self.base, self.profile)
+        self.prepare_slot("w01")
+
+    def prepare_slot(self, slot, parked=False):
+        """Prepare one slot exactly as `prepare-workers` does (Issue #64: w01..w06, expert fields)."""
+        if parked:
+            raw = {"taskId": slot, "baseStateId": self.base["id"], "parked": True, "problem": "no blocker"}
+        else:
+            raw = {"taskId": slot, "baseStateId": self.base["id"],
+                "problem": "synthetic", "targets": [], "editDomain": {"instances": ["U1"], "nets": ["n1"],
+                "regions": [[0, 0, 10.5, 20]]}, "protected": {"instances": [], "nets": []}, "mayAffect": [],
+                "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+                "targetPins": ["U2/D"], "scope": {"commands": list(workspaces.MUTATE_COMMANDS),
+                "maxMutations": workspaces.SCOPE_MAX_MUTATIONS}, "observe": "full"}
+        package = workspaces.validate_work_package(raw, self.base, self.profile)
         manifest = workspaces.prepare(package, str(self.w), self.base)
         self.slot = self.w / manifest["root"]
-        runtime_context = dict(self.context)
-        runtime_context["libraryTcl"] = {**self.context["libraryTcl"], "path": str(library)}
-        runtime_context["staData"] = {**self.context["staData"], "path": str(timing)}
-        operator = adapters.compile_xtop_operator_task(manifest, "top", self.profile["techLef"],
-            self.profile["cellLefGlob"], str(self.w / "net.v"), str(self.w / "design.def"), str(self.slot), runtime_context)
-        (self.slot / "operator.tcl").write_text(operator["tcl"])
-        manual = adapters.compile_xtop_analysis_manual_task(manifest, package["editDomain"],
-            self.slot / "operator.tcl", self.slot / "ops.jsonl")
-        self.manual = self.slot / "xtop-analysis-manual.tcl"
-        self.manual.write_text(manual["tcl"])
-        self.index = {"workers": {"w01": {"workspaceManifest": manifest, "workPackage": package,
-            "workPackageId": package["id"], "manifestId": manifest["id"],
-            "root": manifest["root"], "namePrefix": manifest["namePrefix"], "sessionTcl": str(self.manual),
-            "sessionTclSha256": core.file_sha256(self.manual), "opsLog": str(self.slot / "ops.jsonl")}}}
+        entry = {"workspaceManifest": manifest, "workPackage": package, "workPackageId": package["id"],
+            "manifestId": manifest["id"], "root": manifest["root"], "namePrefix": manifest["namePrefix"]}
+        if parked:
+            entry["parked"] = True
+        else:
+            runtime_context = dict(self.context)
+            runtime_context["libraryTcl"] = {**self.context["libraryTcl"], "path": str(self.library)}
+            runtime_context["staData"] = {**self.context["staData"], "path": str(self.timing)}
+            operator = adapters.compile_xtop_operator_task(manifest, "top", self.profile["techLef"],
+                self.profile["cellLefGlob"], str(self.w / "net.v"), str(self.w / "design.def"), str(self.slot),
+                runtime_context)
+            (self.slot / "operator.tcl").write_text(operator["tcl"])
+            # The same call `prepare-workers` makes (atcs_cli._cmd_prepare_workers).
+            manual = adapters.compile_xtop_analysis_manual_task(manifest, package["editDomain"],
+                self.slot / "operator.tcl", self.slot / "ops.jsonl", target_pins=package.get("targetPins"),
+                max_mutations=package["scope"].get("maxMutations"), observe=package.get("observe"))
+            self.manual = self.slot / "xtop-analysis-manual.tcl"
+            self.manual.write_text(manual["tcl"])
+            entry.update(sessionTcl=str(self.manual), sessionTclSha256=core.file_sha256(self.manual),
+                         opsLog=str(self.slot / "ops.jsonl"))
+        self.index = getattr(self, "index", {"workers": {}})
+        self.index["workers"][slot] = entry
         self.index_path = self.w / "state/workers.json"
         self.index_path.write_text(json.dumps(self.index))
 
-    def run_verifier(self):
-        return subprocess.run([sys.executable, "-I", str(VERIFIER), "--workspace", str(self.w), "--slot", "w01",
+    def run_verifier(self, slot="w01"):
+        return subprocess.run([sys.executable, "-I", str(VERIFIER), "--workspace", str(self.w), "--slot", slot,
             "--flow", self.expected_flow, "--profile", str(self.profile_path),
             "--profile-hash", core.file_sha256(self.profile_path), "--admin-root", str(self.admin)],
             capture_output=True, text=True)
@@ -100,6 +118,35 @@ class VerifierTest(unittest.TestCase):
         receipt = json.loads(result.stdout)
         self.assertTrue(Path(receipt["startup"]).is_relative_to(self.admin))
         self.assertEqual(receipt["slotRoot"], str(self.slot))
+
+    def test_expert_session_fields_are_regenerated_identically(self):
+        # Issue #64 Task 4: the session Tcl bakes targetPins, scope.maxMutations and observe.
+        text = self.manual.read_text()
+        self.assertIn("set ::EDIT_DOMAIN_PINS {U2/D}", text)
+        self.assertIn("set ::ATCS_MAX_MUTATIONS {120}", text)
+        self.assertIn("set ::ATCS_OBSERVE {full}", text)
+        result = self.run_verifier()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        startup = Path(json.loads(result.stdout)["startup"]).read_text()
+        for line in ("set ::EDIT_DOMAIN_PINS {U2/D}", "set ::ATCS_MAX_MUTATIONS {120}", "set ::ATCS_OBSERVE {full}"):
+            self.assertIn(line, startup)
+
+    def test_sixth_slot_is_verified(self):
+        self.prepare_slot("w06")
+        result = self.run_verifier("w06")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["slotRoot"], str(self.slot))
+
+    def test_seventh_slot_is_refused(self):
+        result = self.run_verifier("w07")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unknown slot", result.stderr)
+
+    def test_parked_slot_is_refused(self):
+        self.prepare_slot("w04", parked=True)
+        result = self.run_verifier("w04")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("parked", result.stderr)
 
     def test_changed_helper_is_refused_without_executing_it(self):
         sentinel = self.root / "executed"

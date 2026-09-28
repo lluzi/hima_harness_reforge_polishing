@@ -49,9 +49,18 @@ def verify_database_tree(directory, workspace, write_root, read_roots):
         else:
             plain(path, workspace)
 
+def compile_session(adapters, manifest, package, operator_path, ops):
+    """The slot's session Tcl, compiled with exactly the arguments `prepare-workers` passes (Issue #64 Task 4:
+    the expert Operator's target pins, Tcl-side mutation budget and observation mode are baked in)."""
+    scope = package.get("scope")
+    return adapters.compile_xtop_analysis_manual_task(manifest, package["editDomain"], operator_path, ops,
+        target_pins=package.get("targetPins"),
+        max_mutations=scope.get("maxMutations") if isinstance(scope, dict) else None,
+        observe=package.get("observe"))
+
 def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_root):
     workspace = plain(workspace)
-    if slot not in ("w01", "w02", "w03"):
+    if slot not in ("w01", "w02", "w03", "w04", "w05", "w06"):
         raise ValueError("unknown slot")
     profile_path = plain(profile_path)
     if profile_path.is_relative_to(workspace) or file_hash(profile_path) != profile_hash:
@@ -81,6 +90,8 @@ def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_roo
     entry = workers["workers"][slot]
     manifest = entry["workspaceManifest"]
     package = entry["workPackage"]
+    if entry.get("parked") is not None or workspaces.is_parked(package):
+        raise ValueError("slot is parked: its plan runs no XTop session there")
     revision = manifest.get("revision")
     if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
         raise ValueError("invalid worker revision")
@@ -140,7 +151,7 @@ def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_roo
     ops = root / "ops.jsonl"
     if entry.get("opsLog") != str(ops) or entry.get("sessionTcl") != str(manual_path):
         raise ValueError("worker output/startup path mismatch")
-    manual = adapters.compile_xtop_analysis_manual_task(manifest, package["editDomain"], operator_path, ops)
+    manual = compile_session(adapters, manifest, package, operator_path, ops)
     if (operator_path.read_text() != operator["tcl"] or manual_path.read_text() != manual["tcl"]
             or file_hash(manual_path) != entry.get("sessionTclSha256")):
         raise ValueError("generated Tcl differs from independent regeneration")
@@ -151,8 +162,7 @@ def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_roo
     trusted_operator = snapshot / "operator.tcl"
     trusted_operator.write_text(operator["tcl"])
     trusted_manual = snapshot / "startup.tcl"
-    trusted_manual.write_text(adapters.compile_xtop_analysis_manual_task(
-        manifest, package["editDomain"], trusted_operator, ops)["tcl"])
+    trusted_manual.write_text(compile_session(adapters, manifest, package, trusted_operator, ops)["tcl"])
     print(json.dumps({"startup": str(trusted_manual), "slotRoot": str(root), "flow": expected_flow}), flush=True)
 
 if __name__ == "__main__":
