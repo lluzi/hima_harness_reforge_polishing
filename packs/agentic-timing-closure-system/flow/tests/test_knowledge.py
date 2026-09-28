@@ -278,7 +278,9 @@ class ExpertOperatorKnowledgeTest(unittest.TestCase):
 
     def test_domain_nets_are_xtop_names_not_primetime_names(self):
         # Task 7, real XTop: the pin's net was the module's local net, not PrimeTime's flattened name.
-        self.assertIn("`editDomain.nets`\n  are XTop's names", self.sections["Applies when"])
+        applies = " ".join(self.sections["Applies when"].split())
+        self.assertIn("`editDomain.nets` are XTop's names", applies)
+        self.assertIn("swerv_dbg/rst_l", applies)
 
     def test_the_ladders_run_in_expert_order(self):
         _in_order(self, self.subsections["Hold ladder"].lower(),

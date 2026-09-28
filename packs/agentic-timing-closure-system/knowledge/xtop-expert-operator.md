@@ -39,10 +39,9 @@
 ## Applies when
 
 - The plan Workshop clusters the blockers into slot work packages: `targetPins` (instance pins,
-  `<instance path>/<pin>`, not primary ports), a disjoint
-  `editDomain`, and a `scope` whose commands name the moves the cluster may need. `editDomain.nets`
-  are XTop's names: a pin inside a module sits on that module's local net (`swerv_dbg/rst_l`), not on
-  the flattened name PrimeTime prints on the path (`FE_OCPN9798_rst_l`; Task 7, real XTop).
+  `<instance path>/<pin>`, not primary ports), a disjoint `editDomain`, and a `scope` whose commands
+  name the moves the cluster may need. `editDomain.nets` are XTop's names: a pin inside a module sits on
+  its local net (`swerv_dbg/rst_l`), not PrimeTime's flattened one (`FE_OCPN9798_rst_l`; Task 7).
 - A research Workshop writes a slot's worker request, and the worker Team runs: the Researcher
   proposes ladder moves with falsifiers, the Reviewer sizes the scope (commands and a mutation
   budget), the Operator runs the loop below in its interactive `xtop-operator` session. The Team's
@@ -59,25 +58,22 @@ XTop's predicted gain) and replays them best-effort before auto-finish, and a pl
 arm guards the batch. XTop's prediction decides, WNS first: control when merged is worse on worst
 setup or hold WNS (by more than 1e-4); merged when it is better on one WNS; with both WNS equal,
 merged only when it is no worse on setup and hold TNS (1e-3) and better on one, or all four tie.
-So a short, clean kept log beats many marginal edits. XTop's gain only screens
-trials; only refreshed PrimeTime judges convergence.
+So a short, clean kept log beats many marginal edits. XTop's gain only screens trials; only refreshed
+PrimeTime judges convergence.
 
 ### The expert loop
 
-1. `atcs_dump_cells before.dump`, then `atcs_ref` once: the setup and hold reference that every gain
-   is read against.
+1. `atcs_dump_cells before.dump`, then `atcs_ref` once: the setup and hold reference of every gain.
 2. Diagnose the target pins before changing anything. `atcs_paths` (check, topN, endPoints = the
    target pins) gives the paths and XTop's analyze report of their causes. `atcs_fail_reasons` says
    why auto-fix left them. `atcs_candidates` gives the legal masters and buffers for the path's cells.
 3. Choose one move from the failing check's ladder, steered by the fail-reason table. Change one
    principal variable per trial (method, master, margin or pin set), or the gain cannot be attributed.
-4. Trial it: one manual ECO, carrying the plan hash. A targeted fix is not a trial: XTop commits a
-   fix's actions and `atcs_undo` cannot revert them ("The committed actions cannot be undone", Task 7).
-   Send `atcs_fix_hold_pins` or `atcs_fix_setup_pins` only as a move to keep, after the manual trials.
-   A fix that may insert cells (hold without `sizeCellOnly`, setup with `insert_buffer` or
-   `split_net`) needs each pin's net in the domain; the toolkit refuses it otherwise.
-5. `atcs_gain` for the target check and for the opposite check. The toolkit also logs both after
-   every kept mutation.
+4. Trial it: one manual ECO, with the plan hash. A targeted fix is no trial: XTop commits its actions
+   and `atcs_undo` cannot revert them ("The committed actions cannot be undone", Task 7). Send
+   `atcs_fix_hold_pins` or `atcs_fix_setup_pins` only as a keep, after the manual trials; one that may
+   insert (hold without `sizeCellOnly`, setup `insert_buffer`/`split_net`) needs its pins' nets in the domain.
+5. `atcs_gain` for the target and the opposite check; the toolkit also logs both after each kept mutation.
 6. Keep the trial only if the target slack improved and the opposite check did not break. Otherwise
    `atcs_undo` at once, before the next trial.
 7. Stop when the budget is spent (every mutation and every undo counts), when no candidate on the
@@ -93,7 +89,7 @@ are free, before sending. Read every refusal and choose again; never resend the 
 tainted session (an `uncertain` line) refuses every further mutation: dump, close and report it.
 
 The Reviewer's budget must fit the loop: the planned trials, one undo for each, plus a margin for
-toolkit refusals. A token budget of one or two mutations cannot run it.
+toolkit refusals; a token budget of one or two mutations cannot run it.
 
 ### Hold ladder
 
@@ -103,8 +99,7 @@ toolkit refusals. A token budget of one or two mutations cannot run it.
 2. Dummy load for a very small violation: `atcs_insert_dummy`, or `useDummyCell 1`.
 3. Delay or buffer chain at the sink: `atcs_insert_buffer` with several masters, or
    `maxDelayCellLength` 1..5 with a `delayCellList` that mixes delay and normal buffers.
-4. Loader clustering when several close loaders fail together: `maxClusterLoaderCount` 1..6; the
-   User Guide suggests trying 4.
+4. Loader clustering when close loaders fail together: `maxClusterLoaderCount` 1..6 (the User Guide: try 4).
 5. Timing window when `break_setup` dominates: `fixTimingWindow 1` at effort `low` only, never with
    `sizeCellOnly` (XTop documents both incompatibilities; the toolkit refuses them).
 

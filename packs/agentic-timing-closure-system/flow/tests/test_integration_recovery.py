@@ -1681,7 +1681,7 @@ class ReconcileRecipeTests(unittest.TestCase):
         request = prepare_default()
         merged = arm_evidence("merged", receipts=merged_receipts(request), session_deltas=matching_session_deltas())
         merged["result"]["failReasons"] = {"setup": 0, "hold": 1}
-        merged["failReasonText"] = {"setup": "no_setup_gain 3\n", "hold": "Error: unknown option\n"}
+        merged["failReasonText"] = {"setup": "### setup top 3 endpoints ###\n  Slack    Scenario                Name       Fail Reason      \n------------------------------------------------------------\n-0.0100    func_ss                 U0/D      no_setup_gain:100%\n-0.0100    func_ss                 U1/D      no_setup_gain:100%\n-0.0100    func_ss                 U2/D      no_setup_gain:100%\n", "hold": "Error: unknown option\n"}
         state = integration.reconcile_recipe(request, {"merged": merged, "control": arm_evidence("control")})
         self.assertEqual(state["arms"]["merged"]["failReasons"], {"setup": {"no_setup_gain": 3}})
         self.assertEqual(state["arms"]["merged"]["failReasonsUnread"], ["hold"])

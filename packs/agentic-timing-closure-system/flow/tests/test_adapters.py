@@ -849,8 +849,9 @@ proc redirect {args} {
     if {$code} { error $r }
     return ""
 }
-set ::stub_fail_reasons_setup "no_setup_gain 3\nlegal_fail_no_space_on_row 1"
-set ::stub_fail_reasons_hold "break_setup 2\nno_hold_gain 5"
+# The probe tables in real XTop's layout (live_session_samples.LIVE_PROBE_SETUP): one endpoint row per reason.
+set ::stub_fail_reasons_setup "### setup top 4 endpoints ###\n  Slack    Scenario                Name       Fail Reason      \n------------------------------------------------------------\n-0.0100    func_ss                 U0/D      no_setup_gain:100%\n-0.0100    func_ss                 U1/D      no_setup_gain:100%\n-0.0100    func_ss                 U2/D      no_setup_gain:100%\n-0.0100    func_ss                 U3/D      legal_fail_no_space_on_row:100%\n"
+set ::stub_fail_reasons_hold "### hold top 7 endpoints ###\n  Slack    Scenario                Name       Fail Reason      \n------------------------------------------------------------\n-0.0100    func_ss                 U0/D      break_setup:100%\n-0.0100    func_ss                 U1/D      break_setup:100%\n-0.0100    func_ss                 U2/D      no_hold_gain:100%\n-0.0100    func_ss                 U3/D      no_hold_gain:100%\n-0.0100    func_ss                 U4/D      no_hold_gain:100%\n-0.0100    func_ss                 U5/D      no_hold_gain:100%\n-0.0100    func_ss                 U6/D      no_hold_gain:100%\n"
 proc summarize_gba_violations {args} {
     stub_record summarize_gba_violations {*}$args
     if {[lsearch -exact $args -with_fail_reason] >= 0} {
