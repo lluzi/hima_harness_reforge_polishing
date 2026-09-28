@@ -347,9 +347,12 @@ proc atcs_require_domain_pin {pin} {
 }
 # Removing an instance merges its nets: every one of them must be in the domain.
 # XTop commits a fix flow's actions: `undo` cannot revert them ("The committed actions cannot be
-# undone.", real XTop, Issue #64 Task 7). A fix that may insert cells places them on the nets of its
-# -only_pins pins, so each such net must already be in the domain, or an out-of-domain insertion could
-# only taint the session.
+# undone.", real XTop, Issue #64 Task 7). A fix that may insert cells (a hold fix unless it is
+# size-only without a dummy cell; a setup fix with insert_buffer or split_net) must have each
+# -only_pins pin's net in the domain, or an out-of-domain insertion could only taint the session.
+# For a hold fix that is the net the delay or dummy cell goes on. For setup insert_buffer/split_net
+# the check is necessary but not sufficient: XTop may buffer or split an upstream net of the path
+# through a pin's cell, which only the after-call observation (and the capture's dump delta) sees.
 proc atcs_require_pin_nets {pins} {
     foreach pin $pins {
         set net [atcs_pin_net $pin]
@@ -962,7 +965,7 @@ proc atcs_fix_hold_pins {pins effort hold_target setup_margin size_cell_only use
     if {$effort eq "omit" && !$size_cell_only} { error "effort may be omitted only with sizeCellOnly" }
     if {$fix_timing_window && $size_cell_only} { error "fix_timing_window cannot be combined with size_cell_only" }
     if {$fix_timing_window && $effort ne "low"} { error "fix_timing_window works only with low effort, got $effort" }
-    if {!$size_cell_only} { atcs_require_pin_nets $pins }
+    if {!$size_cell_only || $use_dummy_cell} { atcs_require_pin_nets $pins }
     set command [list fix_hold_gba_violations]
     if {$effort ne "omit"} { lappend command -effort $effort }
     # The frozen Pack's qualified hold-size string: -size_cell_only -size_rule nominal_keywords.

@@ -1610,6 +1610,12 @@ class CommittedFixTest(unittest.TestCase):
             "set ::stub_fix_effect {U2 INVX2}\n"
             f"T hold_domain_net {{{HOLD} U1/A high 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
         )
+        # Review fix: size-only with a dummy cell still inserts (`-use_dummy_cell`).
+        dummy = Session(self, domain=domain, target_pins=["U9/D"]).run(
+            f"T hold_size_dummy {{{HOLD} U9/D omit 0.0 0.02 1 1 0 0 -1 {{}} {PLAN}}}\n")
+        self.assertEqual(dummy.outcome("hold_size_dummy")[0], "ERR", dummy.stdout)
+        self.assertIn("U9/D is on net N2 outside the edit domain", dummy.outcome("hold_size_dummy")[1])
+        self.assertEqual(dummy.calls_to("fix_hold_gba_violations"), [])
         for tag in ("hold", "setup_insert", "setup_split"):
             status, message = session.outcome(tag)
             self.assertEqual(status, "ERR", tag)

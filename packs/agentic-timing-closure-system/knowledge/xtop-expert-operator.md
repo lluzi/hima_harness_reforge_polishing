@@ -72,7 +72,7 @@ PrimeTime judges convergence.
 4. Trial it: one manual ECO, with the plan hash. A targeted fix is no trial: XTop commits its actions
    and `atcs_undo` cannot revert them ("The committed actions cannot be undone", Task 7). Send
    `atcs_fix_hold_pins` or `atcs_fix_setup_pins` only as a keep, after the manual trials; one that may
-   insert (hold without `sizeCellOnly`, setup `insert_buffer`/`split_net`) needs its pins' nets in the domain.
+   insert (hold unless `sizeCellOnly` without `useDummyCell`, setup `insert_buffer`/`split_net`) needs its pins' nets in the domain.
 5. `atcs_gain` for the target and the opposite check; the toolkit also logs both after each kept mutation.
 6. Keep the trial only if the target slack improved and the opposite check did not break. Otherwise
    `atcs_undo` at once, before the next trial.
