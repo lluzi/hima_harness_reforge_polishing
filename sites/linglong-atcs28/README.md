@@ -168,9 +168,12 @@ real documents into it. `sites/linglong-atcs28/inputs/` holds a template for eac
    write root (`atcs-runs`), mode `0755`.
 5. Run a bounded real XTop qualification session under a fresh child of
    `/data/eda/project/hima_harness/atcs-runs` (never inside `xtop-timing-closure-runs`, the frozen
-   Pack's own root) that exercises `atcs_query_paths`/`atcs_query_cells` (read), `atcs_size_cell`
+   Pack's own root) that exercises the XTop expert toolkit's reads (`atcs_ref`, `atcs_gain`,
+   `atcs_paths`, `atcs_fail_reasons`, `atcs_candidates`), at least `atcs_size_cell` and `atcs_undo`
    (mutate), `atcs_dump_cells`/`atcs_export_changes` (save) and `atcs_close`, confirming source/exec
-   writes stay denied and the session exits normally.
+   writes stay denied and the session exits normally. The #64 upgrade replaced the earlier
+   `atcs_query_paths`/`atcs_query_cells`/`atcs_delete_buffer` procedures; the command classification
+   (and so `commandsDigest`) changed with it.
 6. After ATCS-03 changes the Pack contract to the v2 wrapper path, fill
    `xtop-operator-environment-v2.template.json` from the exact qualification, then use
    `scripts/generate-xtop-operator-binding.mjs` to generate the Host's `interactive-bindings.json`.

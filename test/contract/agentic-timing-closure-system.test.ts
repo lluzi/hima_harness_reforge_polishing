@@ -271,6 +271,21 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   for (const forbiddenCommand of ['source', 'exec', 'sh', 'bash']) {
     assert.equal(commandNames.includes(forbiddenCommand), false, `interactive catalog exposes ${forbiddenCommand}`);
   }
+  // Issue #64 Task 3: the XTop expert toolkit. Reads never carry the plan hash; every mutation takes
+  // it last, so a reviewed scope can name any of them.
+  assert.deepEqual(interactiveTool.interactive.commands.read,
+    ['atcs_ref', 'atcs_gain', 'atcs_paths', 'atcs_fail_reasons', 'atcs_candidates']);
+  assert.deepEqual(interactiveTool.interactive.commands.mutate, [
+    'atcs_size_cell', 'atcs_exchange_cell', 'atcs_insert_buffer', 'atcs_insert_dummy', 'atcs_split_load',
+    'atcs_split_net', 'atcs_move_cell', 'atcs_remove_buffer', 'atcs_fix_hold_pins', 'atcs_fix_setup_pins', 'atcs_undo']);
+  for (const command of interactiveTool.interactive.commands.mutate) {
+    assert.deepEqual(interactiveTool.interactive.arguments[command]?.at(-1), { name: 'planSha256', type: 'string' },
+      `${command} takes planSha256 last`);
+  }
+  for (const command of interactiveTool.interactive.commands.read) {
+    assert.equal((interactiveTool.interactive.arguments[command] ?? []).some(item => item.name === 'planSha256'), false,
+      `${command} is a read`);
+  }
   const qualifiedWrapper = path.join(atcs28SourceDir, 'atcs-xtop-operator-v5.sh');
   const shellSyntax = spawnSync('/bin/bash', ['-n', qualifiedWrapper], { encoding: 'utf8' });
   assert.equal(shellSyntax.status, 0, shellSyntax.stderr);

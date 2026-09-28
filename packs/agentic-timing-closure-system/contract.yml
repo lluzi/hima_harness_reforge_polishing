@@ -314,8 +314,9 @@ tools:
     file: flow/templates/xtop-operator.tcl
     description: >-
       One worker slot's qualified XTop Operator session in its private workspace, driven only through
-      the typed atcs_* procedures; every mutation is gated by the slot's edit domain and logged to its
-      ops.jsonl. Interactive only: there is no batch path.
+      the typed atcs_* XTop expert toolkit; every mutation is gated by the slot's edit domain and
+      mutation budget, logged to its ops.jsonl and followed by the XTop gain in gain.jsonl; atcs_undo
+      reverts the last kept mutation. Interactive only: there is no batch path.
     inputs: [WORKSPACE, SLOT]
     licences: { xtop: 1 }
     interactive:
@@ -323,16 +324,27 @@ tools:
       adapter: hima-tcl-line-v1
       argv: [/data/eda/project/hima_harness/operator-admin/atcs-v9/atcs-xtop-operator-v9.sh, '${WORKSPACE}', '${SLOT}']
       commands:
-        read: [atcs_query_paths, atcs_query_cells]
-        mutate: [atcs_size_cell, atcs_insert_buffer, atcs_delete_buffer]
+        read: [atcs_ref, atcs_gain, atcs_paths, atcs_fail_reasons, atcs_candidates]
+        mutate: [atcs_size_cell, atcs_exchange_cell, atcs_insert_buffer, atcs_insert_dummy, atcs_split_load, atcs_split_net, atcs_move_cell, atcs_remove_buffer, atcs_fix_hold_pins, atcs_fix_setup_pins, atcs_undo]
         save: [atcs_dump_cells, atcs_export_changes]
         close: [atcs_close]
       arguments:
-        atcs_query_paths: []
-        atcs_query_cells: [{ name: object_spec, type: string }, { name: attr_name, type: string }]
+        atcs_ref: []
+        atcs_gain: [{ name: check, type: string, choices: [setup, hold] }, { name: topN, type: number, minimum: 1, maximum: 100 }]
+        atcs_paths: [{ name: check, type: string, choices: [setup, hold] }, { name: topN, type: number, minimum: 1, maximum: 100 }, { name: endPoints, type: string }]
+        atcs_fail_reasons: [{ name: pins, type: string }, { name: reasons, type: string }, { name: methods, type: string }]
+        atcs_candidates: [{ name: kind, type: string, choices: [size_cell, insert_buffer, exchange_cell] }, { name: object, type: string }]
         atcs_size_cell: [{ name: instance, type: string }, { name: toMaster, type: string }, { name: planSha256, type: string }]
-        atcs_insert_buffer: [{ name: net, type: string }, { name: load_pins, type: string }, { name: new_instance, type: string }, { name: new_net, type: string }, { name: master, type: string }]
-        atcs_delete_buffer: [{ name: instance, type: string }]
+        atcs_exchange_cell: [{ name: instance, type: string }, { name: cells, type: string }, { name: planSha256, type: string }]
+        atcs_insert_buffer: [{ name: net, type: string }, { name: loadPins, type: string }, { name: masters, type: string }, { name: newInstances, type: string }, { name: newNets, type: string }, { name: planSha256, type: string }]
+        atcs_insert_dummy: [{ name: pin, type: string }, { name: master, type: string }, { name: newInstance, type: string }, { name: planSha256, type: string }]
+        atcs_split_load: [{ name: net, type: string }, { name: pinGroups, type: string }, { name: master, type: string }, { name: newInstances, type: string }, { name: newNets, type: string }, { name: planSha256, type: string }]
+        atcs_split_net: [{ name: net, type: string }, { name: master, type: string }, { name: rule, type: string, choices: [wire_length, cap] }, { name: segments, type: number, minimum: 2, maximum: 16 }, { name: planSha256, type: string }]
+        atcs_move_cell: [{ name: instance, type: string }, { name: x, type: number, minimum: -1000000, maximum: 1000000 }, { name: y, type: number, minimum: -1000000, maximum: 1000000 }, { name: planSha256, type: string }]
+        atcs_remove_buffer: [{ name: instance, type: string }, { name: planSha256, type: string }]
+        atcs_fix_hold_pins: [{ name: pins, type: string }, { name: effort, type: string, choices: [omit, low, medium, high, ultra_high, extreme_high] }, { name: holdTarget, type: number, minimum: -0.2, maximum: 0.2 }, { name: setupMargin, type: number, minimum: -0.2, maximum: 0.2 }, { name: sizeCellOnly, type: boolean }, { name: useDummyCell, type: boolean }, { name: fixTimingWindow, type: boolean }, { name: maxClusterLoaderCount, type: number, minimum: 0, maximum: 6 }, { name: maxDelayCellLength, type: number, minimum: -1, maximum: 5 }, { name: delayCellList, type: string }, { name: planSha256, type: string }]
+        atcs_fix_setup_pins: [{ name: pins, type: string }, { name: methods, type: string }, { name: removeBufferOnly, type: boolean }, { name: sizeDownOnly, type: boolean }, { name: effort, type: string, choices: [medium, high] }, { name: setupTarget, type: number, minimum: -0.2, maximum: 0.2 }, { name: holdMargin, type: number, minimum: -0.2, maximum: 0.2 }, { name: planSha256, type: string }]
+        atcs_undo: [{ name: planSha256, type: string }]
         atcs_dump_cells: [{ name: path, type: string }]
         atcs_export_changes: []
         atcs_close: []
