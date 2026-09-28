@@ -629,16 +629,27 @@ proc atcs_forget {seq} {
     unset ::atcs_op($seq)
 }
 
-# The instance a request named: `name` itself, or the one `<module path>/name` in `state` (real XTop
-# creates a new cell in its load pins' module under the requested leaf name, Issue #64 Task 7). A
-# removal names an existing instance, which is found as given. "" when none or more than one match.
-proc atcs_request_instance {state name} {
+# The instance a request named: `name` itself, or `<module>/name` for one of `modules`, the modules
+# that own the request's load pins (real XTop creates a new cell in its load pins' module under the
+# requested leaf name, Issue #64 Task 7: swerv_dbg/atcs_w01_r1_chain_d0). A removal names an existing
+# instance, which is found as given. "" when none matches.
+proc atcs_request_instance {state name modules} {
     if {[dict exists $state $name]} { return $name }
     set found {}
-    foreach key [dict keys $state] {
-        if {[string match "*/$name" $key] && [lindex [split $key /] end] eq $name} { lappend found $key }
+    foreach module [lsort -unique $modules] {
+        if {$module ne "" && [dict exists $state "$module/$name"]} { lappend found "$module/$name" }
     }
     return [expr {[llength $found] == 1 ? [lindex $found 0] : ""}]
+}
+# The module path owning each pin's cell ("" at the top level).
+proc atcs_pin_modules {pins} {
+    set modules {}
+    foreach pin $pins {
+        set owner [atcs_pin_owner $pin]
+        if {$owner eq ""} { set owner [join [lrange [split $pin /] 0 end-1] /] }
+        lappend modules [join [lrange [split $owner /] 0 end-1] /]
+    }
+    return [lsort -unique $modules]
 }
 # One mutation. `kind`:
 #   exact    (size_cell) the delta must be exactly `expected`
@@ -647,7 +658,8 @@ proc atcs_request_instance {state name} {
 #   fix      (fixes, split_net, exchange) an empty delta is a legal no-change
 #   move     (move_cell) masters cannot show it: kept when XTop returned 0 and
 #            added an ECO action, with no master change
-proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {named_nets {}} {move_instance ""}} {
+proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {named_nets {}} {move_instance ""}
+                  {load_modules {}}} {
     atcs_ensure_reference
     set pre [atcs_observe_before]
     atcs_commit_mutation $plan_sha256
@@ -708,7 +720,8 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
         if {$kind eq "request"} {
             set matches 1
             dict for {name master} $expected {
-                if {[atcs_request_instance $after $name] eq "" || [dict get $after [atcs_request_instance $after $name]] ne $master} {
+                set placed [atcs_request_instance $after $name $load_modules]
+                if {$placed eq "" || [dict get $after $placed] ne $master} {
                     set matches 0
                 }
             }
@@ -867,7 +880,7 @@ proc atcs_insert_buffer {net load_pins masters new_instances new_nets plan_sha25
         newInstances [atcs_jarr $new_instances] newNets [atcs_jarr $new_nets] planSha256 [atcs_js $plan_sha256]]]
     return [atcs_mutate atcs_insert_buffer insert_buffer $args_json $plan_sha256 \
         [list insert_buffer -new_cell_names $new_instances -new_net_names $new_nets \
-            [get_pins -exact $load_pins] $masters] request $expected $new_nets]
+            [get_pins -exact $load_pins] $masters] request $expected $new_nets "" [atcs_pin_modules $load_pins]]
 }
 proc atcs_insert_dummy {pin master new_instance plan_sha256} {
     atcs_begin_mutation $plan_sha256
@@ -880,7 +893,7 @@ proc atcs_insert_dummy {pin master new_instance plan_sha256} {
         planSha256 [atcs_js $plan_sha256]]]
     return [atcs_mutate atcs_insert_dummy insert_dummy_cell $args_json $plan_sha256 \
         [list insert_dummy_cell -new_cell_name $new_instance [get_pins -exact $pin] $master] \
-        request [dict create $new_instance $master]]
+        request [dict create $new_instance $master] {} "" [atcs_pin_modules [list $pin]]]
 }
 proc atcs_split_load {net pin_groups master new_instances new_nets plan_sha256} {
     atcs_begin_mutation $plan_sha256
@@ -909,7 +922,8 @@ proc atcs_split_load {net pin_groups master new_instances new_nets plan_sha256} 
     lappend command -lib_cell $master -new_cell_names $new_instances -new_net_names $new_nets
     set args_json [atcs_jobj [list net [atcs_js $net] pinGroups "\[[join $groups_json ,]\]" master [atcs_js $master] \
         newInstances [atcs_jarr $new_instances] newNets [atcs_jarr $new_nets] planSha256 [atcs_js $plan_sha256]]]
-    return [atcs_mutate atcs_split_load split_load $args_json $plan_sha256 $command request $expected $new_nets]
+    return [atcs_mutate atcs_split_load split_load $args_json $plan_sha256 $command request $expected $new_nets "" \
+        [atcs_pin_modules [concat {*}$groups]]]
 }
 proc atcs_split_net {net master rule segments plan_sha256} {
     atcs_begin_mutation $plan_sha256

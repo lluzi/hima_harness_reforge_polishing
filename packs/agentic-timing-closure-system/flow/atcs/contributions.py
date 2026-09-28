@@ -1531,15 +1531,22 @@ def _net_log(lines):
     return kept, sorted(undone), sorted(set(discarded)), problems
 
 
-def _requested_instance(state, name):
-    """The instance a request named: ``name`` itself, or the single ``<module path>/name`` in ``state``.
+def _pin_module(pin):
+    """The module path that owns a ``<instance path>/<pin>``'s cell ("" at the top level)."""
+    owner = pin.rsplit("/", 1)[0] if isinstance(pin, str) and "/" in pin else ""
+    return owner.rsplit("/", 1)[0] if "/" in owner else ""
 
-    Real XTop creates a new cell in its load pins' module under the requested leaf name
-    (Issue #64 Task 7: ``swerv_dbg/atcs_w01_r1_chain_d0``). ``None`` when none or several match.
+
+def _requested_instance(state, name, modules):
+    """The instance a request named: ``name`` itself, or ``<module>/name`` for one of ``modules``.
+
+    ``modules`` are the modules owning the request's load pins: real XTop creates a new cell in its
+    load pins' module under the requested leaf name (Issue #64 Task 7: ``swerv_dbg/atcs_w01_r1_chain_d0``).
+    ``None`` when none matches.
     """
     if name in state:
         return name
-    found = [key for key in state if isinstance(key, str) and key.endswith("/" + name)]
+    found = sorted({f"{module}/{name}" for module in modules if module and f"{module}/{name}" in state})
     return found[0] if len(found) == 1 else None
 
 
@@ -1558,9 +1565,16 @@ def _request_problem(line):
             return f"exchange_cell changed {stray} outside {sorted(n for n in allowed if n)}"
     elif cmd in ("insert_buffer", "insert_dummy_cell", "split_load"):
         names = args.get("newInstances") if cmd != "insert_dummy_cell" else [args.get("newInstance")]
+        if cmd == "insert_buffer":
+            loads = args.get("loadPins") or []
+        elif cmd == "insert_dummy_cell":
+            loads = [args.get("pin")]
+        else:
+            loads = [pin for group in args.get("pinGroups") or [] if isinstance(group, list) for pin in group]
+        modules = {_pin_module(pin) for pin in loads if isinstance(pin, str)}
         missing = []
         for name in names or [None]:
-            placed = _requested_instance(after, name) if _is_nonempty_string(name) else None
+            placed = _requested_instance(after, name, modules) if _is_nonempty_string(name) else None
             if placed is None or after.get(placed) is None or before.get(placed) is not None:
                 missing.append(name)
         if line.get("matchesRequest") is not True or missing:

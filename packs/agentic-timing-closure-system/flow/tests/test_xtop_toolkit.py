@@ -1456,14 +1456,21 @@ class ObservedEffectConfinementTest(unittest.TestCase):
         # Real XTop (Task 7, w01): `insert_buffer -new_cell_names atcs_w01_r1_chain_d0` on a load pin
         # inside swerv_dbg created swerv_dbg/atcs_w01_r1_chain_d0: the new cell lands in the loads'
         # module under the requested leaf name.
+        domain = {"instances": ["U1", "U2", "U3", "u_core/U5"], "nets": ["N1", "N2", "N3"], "regions": []}
         for observe in ("fast", "full"):
-            session = Session(self, observe=observe).run(
+            session = Session(self, observe=observe, domain=domain).run(
+                "set ::cells(u_core/U5) BUFX1\nset ::pin_net(u_core/U5/A) N1\n"
                 "set ::stub_insert_hier u_core/\n"
-                f"T ins {{atcs_insert_buffer N1 UOUT/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
+                f"T ins {{atcs_insert_buffer N1 u_core/U5/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
+                # Review fix: only the load pins' own module matches; another module does not.
+                "set ::stub_insert_hier u_other/\n"
+                f"T elsewhere {{atcs_insert_buffer N1 u_core/U5/A BUFX2 {PREFIX}b2 {PREFIX}n2 {PLAN}}}\n"
             )
             self.assertEqual(session.outcome("ins")[0], "OK", session.stdout)
             self.assertEqual(session.ops[0]["after"], {"instances": {f"u_core/{PREFIX}b1": "BUFX2"}})
             self.assertIs(session.ops[0]["matchesRequest"], True, observe)
+            self.assertEqual(session.outcome("elsewhere")[0], "OK", session.stdout)
+            self.assertIs(session.ops[1]["matchesRequest"], False, observe)
 
     def test_removable_fillers_are_exempt_and_logged(self):
         full = Session(self, observe="full").run(

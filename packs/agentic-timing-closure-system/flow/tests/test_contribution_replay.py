@@ -1200,6 +1200,15 @@ class XtopSessionAdmissionTests(unittest.TestCase):
         contribution = _seal_session(log, {**BEFORE, "u_core/atcs_w01_r1_b1": "DELAY1"})
         self.assertTrue(contribution["admissible"], contribution["refusals"])
 
+    def test_a_kept_insert_in_another_module_than_its_loads_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        seq = log.insert("N1", ["U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"], gain=IMPROVES)
+        line = log.ops[seq - 1]
+        line["before"]["instances"] = {"u_core/atcs_w01_r1_b1": None}
+        line["after"]["instances"] = {"u_core/atcs_w01_r1_b1": "DELAY1"}
+        contribution = _seal_session(log, {**BEFORE, "u_core/atcs_w01_r1_b1": "DELAY1"})
+        self.assertIn("trace-mismatch", _codes(contribution))
+
     def test_a_kept_insert_with_another_leaf_name_is_a_trace_mismatch(self):
         log = sf.SessionLog()
         seq = log.insert("N1", ["u_core/U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"], gain=IMPROVES)
