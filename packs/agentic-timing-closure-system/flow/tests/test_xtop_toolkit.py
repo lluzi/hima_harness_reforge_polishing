@@ -421,16 +421,21 @@ proc summarize_gba_violations {args} {
 proc redirect {args} {
     stub_record redirect {*}[lrange $args 0 end-1]
     set target [lindex $args end-1]
+    set ::stub_out ""
     set code [catch {uplevel #0 [lindex $args end]} r]
     upvar #0 $target captured
-    set captured "captured: $r\n"
+    set captured [expr {$::stub_out ne "" ? $::stub_out : "captured: $r\n"}]
+    set ::stub_out ""
     if {$code} { error $r }
     return ""
 }
 proc get_paths {args} { stub_record get_paths {*}$args; return [list path:1 path:2] }
 proc analyze_setup_path_violations {args} { stub_record analyze_setup_path_violations {*}$args; return "SETUP-ANALYSIS" }
 proc analyze_hold_path_violations {args} { stub_record analyze_hold_path_violations {*}$args; return "HOLD-ANALYSIS" }
-proc report_fail_reasons {args} { stub_record report_fail_reasons {*}$args; return "REASONS" }
+# Real XTop prints the report and returns "" (Task 7 fix round 1); `redirect -variable` captures it.
+set ::stub_out ""
+set ::stub_reasons_report "REASONS"
+proc report_fail_reasons {args} { stub_record report_fail_reasons {*}$args; append ::stub_out $::stub_reasons_report; return "" }
 proc get_failed_pins {args} { stub_record get_failed_pins {*}$args; return [list pin:U1/A pin:U2/A] }
 proc list_size_cell_candidates {args} { stub_record list_size_cell_candidates {*}$args; return "BUFX2 BUFX4" }
 proc list_insert_buffer_candidates {args} { stub_record list_insert_buffer_candidates {*}$args; return "BUFX2" }
@@ -1532,6 +1537,22 @@ class ReadProceduresTest(unittest.TestCase):
         self.assertEqual([call[0] for call in session.calls if call[0] in MUTATING_XTOP], [])
         self.assertEqual(session.ops, [])
 
+
+    def test_fail_reasons_return_what_xtop_prints(self):
+        # Real XTop (Task 7 fix round 1): report_fail_reasons prints its report and returns "", so the
+        # toolkit read {"report":""}. It now captures the printed report.
+        import live_session_samples as live
+        text = live.LIVE_REPORT_FAIL_REASONS_AFTER_FIX
+        session = Session(self).run(
+            f"set ::stub_reasons_report {{{text}}}\n"
+            "T reasons {atcs_fail_reasons {U1/A U2/A} {} {}}\n"
+        )
+        self.assertEqual(session.outcome("reasons")[0], "OK", session.stdout + session.stderr)
+        line = next(line for line in session.stdout.splitlines() if line.startswith("reasons:OK:"))
+        reply = json.loads(line[len("reasons:OK:"):])
+        self.assertIn("break_hold_of_driver   ####################....................      1  50.0%", reply["report"])
+        self.assertIn("rm_assigns_buf_ifu_axi_araddr_5/Z", reply["report"])
+        self.assertEqual(session.calls_to("redirect")[-1][1], "-variable")
 
     def test_the_probe_asks_for_fail_reasons_only_after_a_fix_ran(self):
         # Real XTop, Task 7 (qual-issue64-chain-20260928, w01..w03): before any fix or optimize flow,

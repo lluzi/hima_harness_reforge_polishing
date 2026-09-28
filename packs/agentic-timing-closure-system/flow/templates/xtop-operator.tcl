@@ -814,8 +814,12 @@ proc atcs_fail_reasons {pins reasons methods} {
     if {[llength $methods] > 0} { set method_option [list -methods $methods] }
     set pairs {}
     if {[llength $pins] > 0} {
+        # report_fail_reasons prints its report and returns "" (real XTop, Issue #64 Task 7): capture it.
+        # Before any fix or optimize flow it prints an empty table (XTop keeps no fail reasons yet).
         set command [concat [list report_fail_reasons] $method_option [list -stats -verbose -pins $pins]]
-        lappend pairs report [atcs_js [uplevel #0 $command]]
+        set ::atcs_capture ""
+        set result [uplevel #0 [list redirect -variable ::atcs_capture $command]]
+        lappend pairs report [atcs_js [expr {$::atcs_capture ne "" ? $::atcs_capture : $result}]]
     }
     if {[llength $reasons] > 0} {
         set failed [uplevel #0 [concat [list get_failed_pins] $method_option [list -reasons $reasons]]]
