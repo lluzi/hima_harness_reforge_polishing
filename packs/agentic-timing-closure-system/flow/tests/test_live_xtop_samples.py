@@ -65,6 +65,12 @@ class LiveFailReasonTest(unittest.TestCase):
         self.assertEqual(contributions.parse_fail_reasons(live.LIVE_PROBE_SETUP), {"not_only_pin": 10})
         self.assertEqual(contributions.parse_fail_reasons(live.LIVE_PROBE_HOLD), {"not_only_pin": 10})
 
+    def test_every_reason_of_a_multi_reason_endpoint_counts(self):
+        # Run 3 replay arm: `break_setup:66% port_net:16% no_annotated_data_net:16%` in one cell.
+        self.assertEqual(contributions.parse_fail_reasons(live.LIVE_ARM_HOLD_FAIL_REASONS), {
+            "break_setup": 4, "port_net": 20, "no_annotated_data_net": 14, "legal_fail_no_space_on_row": 6,
+            "break_setup_of_driver": 1})
+
     def test_a_top_n_table_without_the_fail_reason_column_names_no_reason(self):
         self.assertEqual(contributions.parse_fail_reasons(live.LIVE_TOP_N_BEFORE_FIX_SETUP), {})
 

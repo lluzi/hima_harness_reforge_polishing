@@ -374,7 +374,7 @@ proc remove_buffer {args} {
 proc stub_fix {name words} {
     stub_record $name {*}$words
     stub_gate $name
-    set ::stub_fix_ran 1
+    set ::stub_fix_ran [expr {$name eq "fix_hold_gba_violations" ? "hold" : "setup"}]
     set touched {}
     foreach {inst master} $::stub_fix_effect { lappend touched $inst }
     if {[llength $touched] == 0 && $::stub_fix_actions == 0} { return 0 }
@@ -403,8 +403,13 @@ proc undo {args} {
 proc summarize_gba_violations {args} {
     stub_record summarize_gba_violations {*}$args
     stub_gate summarize_gba_violations
-    if {[lsearch -exact $args -with_fail_reason] >= 0 && !$::stub_fix_ran} {
+    if {[lsearch -exact $args -with_fail_reason] >= 0 && $::stub_fix_ran eq "0"} {
         puts "Error: No fail reason since no fix or optimize flow have run yet."
+        error ""
+    }
+    # Real XTop (Task 7 run 3): fail reasons belong to the last fix flow's check only.
+    if {[lsearch -exact $args -with_fail_reason] >= 0 && [lsearch -exact $args -$::stub_fix_ran] < 0} {
+        puts "Error: Last flow is '${::stub_fix_ran}_gba', mismatched with current summary."
         error ""
     }
     return "WNS \"delta\"\t-0.010 for $args"
@@ -1539,6 +1544,24 @@ class ReadProceduresTest(unittest.TestCase):
         ])
         self.assertTrue(all(next(iter(probe["checks"].values()))["code"] == 0 for probe in probes))
 
+
+    def test_the_probe_asks_for_fail_reasons_of_the_last_fix_flows_check_only(self):
+        # Real XTop, Task 7 run 3: after a hold flow, `-with_fail_reason -setup` fails ("Last flow is
+        # 'hold_gba', mismatched with current summary."); the other check is probed without them.
+        session = Session(self).run(
+            "set ::stub_fix_effect {U1 BUFX4}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            "T hold {atcs_gain hold 5}\nT setup {atcs_gain setup 5}\n"
+            "set ::stub_fix_effect {U1 BUFX2}\n"
+            f"T sfix {{{SETUP} U1/A size_cell 0 0 high 0.0 0.02 {PLAN}}}\n"
+            "T hold2 {atcs_gain hold 5}\nT setup2 {atcs_gain setup 5}\n"
+        )
+        for tag in ("fix", "hold", "setup", "sfix", "hold2", "setup2"):
+            self.assertEqual(session.outcome(tag)[0], "OK", tag + session.stdout + session.stderr)
+        commands = [next(iter(g["checks"].values()))["command"] for g in session.gains if g["kind"] == "probe"]
+        base = "summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n 5"
+        self.assertEqual(commands, [f"{base} -with_fail_reason -hold", f"{base} -setup",
+                                    f"{base} -hold", f"{base} -with_fail_reason -setup"])
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class CommittedFixTest(unittest.TestCase):

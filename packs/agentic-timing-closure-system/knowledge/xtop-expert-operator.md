@@ -17,7 +17,7 @@
 | Procedure | XTop command it emits | Man page (row) |
 | --- | --- | --- |
 | `atcs_ref` | `summarize_gba_violations -as_reference -exclude_path`, captured by `redirect -variable` | `summarize_gba_violations.1` (314), `redirect.1` (221) |
-| `atcs_gain` | `summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n`, plus `-with_fail_reason` once a fix has run (before that XTop has none) | `summarize_gba_violations.1` (314) |
+| `atcs_gain` | `summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n`, plus `-with_fail_reason` for the check of the last fix flow (XTop keeps none for the other check or before a fix) | `summarize_gba_violations.1` (314) |
 | `atcs_paths` | `get_paths`; `analyze_setup_path_violations` / `analyze_hold_path_violations -detail_info` | `get_paths.1` (149), `analyze_setup_path_violations.1` (16), `analyze_hold_path_violations.1` (12) |
 | `atcs_fail_reasons` | `report_fail_reasons -stats -verbose -pins`; `get_failed_pins -reasons` | `report_fail_reasons.1` (245), `get_failed_pins.1` (132) |
 | `atcs_candidates` | `list_size_cell_candidates`, `list_insert_buffer_candidates`, `list_exchange_cell_candidates` | `list_size_cell_candidates.1` (188), `list_insert_buffer_candidates.1` (185), `list_exchange_cell_candidates.1` (183) |

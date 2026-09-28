@@ -122,7 +122,7 @@ set ::atcs_mutations 0
 set ::atcs_plan_sha256 ""
 set ::atcs_tainted ""
 set ::atcs_reference_captured 0
-set ::atcs_fix_ran 0
+set ::atcs_fix_ran ""
 set ::atcs_kept {}
 set ::atcs_stack {}
 set ::atcs_session_instances {}
@@ -650,9 +650,8 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
     atcs_commit_mutation $plan_sha256
     if {[catch {
         lassign [atcs_call $command] code result
-        if {$code == 0 && [lsearch -exact {fix_hold_gba_violations fix_setup_gba_violations} $cmd] >= 0} {
-            set ::atcs_fix_ran 1
-        }
+        if {$code == 0 && $cmd eq "fix_hold_gba_violations"} { set ::atcs_fix_ran hold }
+        if {$code == 0 && $cmd eq "fix_setup_gba_violations"} { set ::atcs_fix_ran setup }
         set post [atcs_observe_after $pre]
         set c0 [dict get $pre count]
         set c1 [dict get $post count]
@@ -755,15 +754,16 @@ proc atcs_ref {} {
     if {$::atcs_reference_captured} { return "session reference already captured; it is never moved" }
     return [atcs_capture_reference]
 }
-# XTop keeps fail reasons only once a fix or optimize flow has run in the session: before that,
-# `-with_fail_reason` fails ("No fail reason since no fix or optimize flow have run yet.", real
-# XTop, Issue #64 Task 7), while `-with_top_n` alone lists the worst endpoints.
+# XTop keeps fail reasons only for the check of the last fix flow in the session: before any fix,
+# `-with_fail_reason` fails ("No fail reason since no fix or optimize flow have run yet."), and
+# after a hold fix it fails for setup ("Last flow is 'hold_gba', mismatched with current summary.",
+# real XTop, Issue #64 Task 7). `-with_top_n` alone always lists the worst endpoints.
 proc atcs_gain {check top_n} {
     atcs_choice check $check {setup hold}
     atcs_int topN $top_n 1 100
     atcs_ensure_reference
     set options [list -with_delta -with_reference -exclude_path -with_top_n $top_n]
-    if {$::atcs_fix_ran} { lappend options -with_fail_reason }
+    if {$::atcs_fix_ran eq $check} { lappend options -with_fail_reason }
     set entry [atcs_summarize $check $options]
     atcs_append [atcs_gain_path] [atcs_jobj [list seq $::atcs_seq kind [atcs_js probe] topN $top_n \
         checks [atcs_jobj [list $check [atcs_summary_json $entry]]]]]

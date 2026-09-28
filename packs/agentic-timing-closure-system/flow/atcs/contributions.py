@@ -1315,7 +1315,7 @@ def parse_fail_reasons(text):
     """``{reason: endpoints}``: how many rows of the probe's top-N endpoint tables name each fail reason.
 
     Only a ``### <check> top N endpoints ###`` table whose header has a ``Fail Reason`` column is
-    read; its rows end in ``<reason>:<percent>%`` cells (comma-separated when there are several).
+    read; its rows end in ``<reason>:<percent>%`` cells, several of them space-separated.
     Best effort and informational: a table without that column names no reason.
     """
     counts = {}
@@ -1335,11 +1335,13 @@ def parse_fail_reasons(text):
             continue
         if not with_reasons or set(line) == {"-"}:
             continue
+        # Several reasons share the cell, space-separated (`break_setup:66% port_net:16%`, Task 7 run 3).
         reasons = set()
-        for cell in line.split()[-1].split(","):
-            match = _FAIL_REASON_CELL.match(cell)
-            if match:
-                reasons.add(match.group(1))
+        for token in line.split():
+            for cell in token.split(","):
+                match = _FAIL_REASON_CELL.match(cell)
+                if match:
+                    reasons.add(match.group(1))
         for reason in reasons:
             counts[reason] = counts.get(reason, 0) + 1
     return counts
