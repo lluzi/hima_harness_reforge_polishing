@@ -45,18 +45,24 @@ const member = (branch: Branch, id: 'researcher' | 'reviewer' | 'operator', extr
   refusalConditions: ['missing-evidence'], ...extra,
 });
 
+/** Each member's time share; the Researcher and Reviewer may keep one follow-up, as the ATCS workers do. */
+interface Shares { readonly shareMs: number; readonly advisorFollowups: number }
+const defaultShares: Shares = { shareMs: 30_000, advisorFollowups: 0 };
+const shareOf = (shares: Shares, followups: number) => ({
+  budgetShare: { maxElapsedMs: shares.shareMs, maxFollowups: followups }, followup: followups === 0 ? 'forbidden' : 'reuse-same-child' });
+
 /** One Team per branch, each triggered by that branch's own interactive node. */
-const teamOf = (branch: Branch) => ({ id: branch.team, version: '1', triggerNode: branch.operate, members: [
-  member(branch, 'researcher', { resultSchema: { id: 'fixture-research/1', required: ['schema', 'hypotheses'] } }),
-  member(branch, 'reviewer', { dependencyRoles: ['researcher'],
+const teamOf = (branch: Branch, shares: Shares) => ({ id: branch.team, version: '1', triggerNode: branch.operate, members: [
+  member(branch, 'researcher', { resultSchema: { id: 'fixture-research/1', required: ['schema', 'hypotheses'] }, ...shareOf(shares, shares.advisorFollowups) }),
+  member(branch, 'reviewer', { dependencyRoles: ['researcher'], ...shareOf(shares, shares.advisorFollowups),
     resultSchema: { id: 'fixture-review/1', required: ['schema', 'planSha256', 'command', 'arguments'] } }),
-  member(branch, 'operator', { allowedTools: ['hima_interactive'], scopePolicy: 'site-qualified-interactive-only',
+  member(branch, 'operator', { ...shareOf(shares, 0), allowedTools: ['hima_interactive'], scopePolicy: 'site-qualified-interactive-only',
     dependencyRoles: ['reviewer'], resultSchema: { id: 'fixture-operator/1', required: ['schema'] },
     reviewedAction: { fromRole: 'reviewer', planInput: branch.output, actionListField: 'actions', command: 'atcs_size_cell',
       hostPlanHashArgument: 'planSha256', planHashField: 'planSha256', commandField: 'command', argumentsField: 'arguments' } }),
 ] });
 
-async function writeForkPack(packsDir: string, tclsh: string): Promise<string> {
+async function writeForkPack(packsDir: string, tclsh: string, shares: Shares): Promise<string> {
   const dir = path.join(packsDir, packId);
   await mkdir(path.join(dir, 'flow'), { recursive: true });
   await mkdir(path.join(dir, 'readers'), { recursive: true });
@@ -95,7 +101,7 @@ async function writeForkPack(packsDir: string, tclsh: string): Promise<string> {
       { id: 'capture', file: 'flow/capture.sh', description: 'Seal one branch slot\'s operation log.',
         inputs: ['WORKSPACE', 'SLOT'], argv: ['sh', '${WORKSPACE}/flow/capture.sh', '${WORKSPACE}/research/branch-${SLOT}'] },
     ],
-    agentTeams: branches.map(teamOf),
+    agentTeams: branches.map((branch) => teamOf(branch, shares)),
     rules: ['plan-has-action'],
     strategy: { width: { type: 'number', unit: 'count', min: 1, max: 4, default: 2 } },
     words: { width: { label: 'fork width', unit: 'count' } },
@@ -194,7 +200,7 @@ interface Driven {
 }
 
 /** A booted Host with one Run of the fixture Pack started on a local Site declaring `parallelJobs` slots. */
-async function forkedCampaign(t: TestContext, parallelJobs: number, check: (driven: Driven) => Promise<void>): Promise<void> {
+async function forkedCampaign(t: TestContext, parallelJobs: number, check: (driven: Driven) => Promise<void>, shares: Shares = defaultShares): Promise<void> {
   const prior = process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
   process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = 'fork-team-local';
   t.after(() => { if (prior === undefined) delete process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
@@ -204,7 +210,7 @@ async function forkedCampaign(t: TestContext, parallelJobs: number, check: (driv
   const workspaceRoot = await realpath(h.workspace);
   const tclsh = await realpath('/usr/bin/tclsh');
   const packsDir = path.join(h.home, 'hima/packs');
-  await writeForkPack(packsDir, tclsh);
+  await writeForkPack(packsDir, tclsh, shares);
   const bindingsFile = await writeBinding(h.home, packsDir, tclsh, workspaceRoot);
   // Two XTop seats, so only the Job cap under test decides how many interactive Jobs fit at once.
   const site = await writeLocalSite(h, { allowedReadRoots: [workspaceRoot, flow.root, path.dirname(tclsh)], allowedWriteRoots: [workspaceRoot],
@@ -499,4 +505,30 @@ test('under a Site cap of one, the second branch\'s interactive open is refused 
     assert.deepEqual(interactiveJobs('killed').map((record) => [record.nodeId, record.branchId]), [[second.operate, second.workshop]],
       'the killed record of a branch\'s interactive Job carries that branch');
   });
+});
+
+test('two parallel Teams whose shares together exceed the time box are admitted on the Site\'s two lanes, each Operator keeping its declared share', async (t) => {
+  // #64 Task 2b. Six 50 s shares in a 180 s box: 300 s in series, but the Run was started on two job lanes (360 s).
+  // The Researchers and Reviewers keep a follow-up, so their whole share stays reserved after their results.
+  const shares: Shares = { shareMs: 50_000, advisorFollowups: 1 };
+  await forkedCampaign(t, 2, async (driven) => {
+    const owner = ownerCalls(driven);
+    const { operatorOf } = await teamsReady(driven, owner);
+    const all = runDelegations((driven.host.ctx.hima as any).deps(), driven.runId);
+    assert.equal(all.length, 6, 'both branches\' Teams are admitted in full');
+    for (const branch of branches) {
+      const operator = all.find((row) => row.childSessionId === operatorOf.get(branch.id))!;
+      assert.equal(operator.effective.budgetShare.maxElapsedMs, shares.shareMs,
+        `the Host-materialized Operator of branch ${branch.id} keeps its declared share rather than a remainder of shares summed in series`);
+    }
+    // A share longer than what is left of the box is still refused, even with lane time unreserved.
+    const control = owner.control();
+    const plan = owner.records().find((record) => record.type === 'observation' && record.reader.id === 'plan-file')!;
+    const tooLong = await driven.host.ctx.hima.delegate({ runId: driven.runId, actor: driven.actor, action: 'create', requestId: 'too-long',
+      expectedEpoch: control.epoch, expectedRevision: control.revision, contract: { delegationId: 'too-long', role: 'researcher', task: 'Too long.',
+        inputRefs: [plan.id], allowedTools: ['hima_delegation_input'], budgetShare: { maxElapsedMs: 181_000, maxFollowups: 0 }, dependencyIds: [],
+        recipient: { kind: 'run-owner', sessionId: driven.actor } } } as never) as Record<string, any>;
+    assert.equal(tooLong.status, 'refused', JSON.stringify(tooLong));
+    assert.match(tooLong.reason, /Child shares exceed/);
+  }, shares);
 });
