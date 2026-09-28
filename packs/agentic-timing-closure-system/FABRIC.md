@@ -55,7 +55,8 @@ helper from `flow/atcs_cli.py`.
   constraint failures → constraint unknowns → setup Goal → hold Goal); every Explore is entered
   from a Judge listing at least two rules; every tool's argv arity equals the "Extra args" column
   of `atcs_cli.py`'s documented subcommand table.
-- `test/contract/agentic-timing-closure-system.test.ts` — node/edge count assertion only.
+- `test/contract/agentic-timing-closure-system.test.ts` — node/edge count assertion only (Issue
+  #64 Task 5: 132 nodes, 172 edges).
 
 How the reference graph expresses SPEC behaviour 1–9:
 
@@ -64,9 +65,11 @@ How the reference graph expresses SPEC behaviour 1–9:
   `physical-baseline` → `risk` → `residual` (PT path-detail evidence for the baseline's failing
   checks) → the owner's first decision, `evaluate-next-investment`, taken on the baseline itself.
 - Research: `diagnose-and-observe` → `request-admissible` (FAIL revisits the Workshop) →
-  `observe-query` → `risk` → `plan-campaign` → `request-admissible` → `prepare-workers` → slots 01,
-  02, 03 in sequence (Workshop → request reading → `request-admissible`, FAIL skips the slot → XTop
-  Operator → `capture-contribution` → result reading) → `collect`.
+  `observe-query` → `risk` → `bind-worker-slots` (the `workerSlots` knob) → `plan-campaign` →
+  `request-admissible` → `prepare-workers`, which forks six parallel branches, one per slot w01..w06
+  (Workshop → request reading → operate: the Team Operator's XTop session, or the `operate-parked`
+  no-op → `capture-contribution` → result reading), joined at `check-worker-results`
+  (`worker-result-admissible`, both outcomes) → `collect`.
 - Composition: `compose-facts` (no resolutions) → `compose-contributions` → `request-admissible` on
   the one integration-plan document → `compose-facts` again with the admitted plan's resolutions →
   `composition-ready` → `replay-prepare` → `reconcile` → `replay-consistent-mismatch` →
@@ -96,11 +99,33 @@ Local Host/Tcl fixtures prove the mechanism; commercial qualification remains a 
 approves `{scope: {commands, maxMutations}, planSha256}` within the recipe (the eleven `xtop-operator`
 mutations, cap 120); the Operator runs the expert loop of `knowledge/xtop-expert-operator.md`. Work
 packages carry `scope` (Tcl-side budget = the recipe cap; the Reviewer's budget is the Host's),
-`targetPins`, `observe` and `editDomain.regions`, for slots w01..w06. Gap until Task 5: the graph
-declares operate-worker-01..03 only, and a Team must trigger at a declared interactive node, so Teams
-04..06 (Team 01 with the slot number changed), their request outputs, Readers and research Workshops
-land with Task 5's nodes; the campaign-plan Reader still counts w01..w03 while `prepare-workers`
-requires all six packages.
+`targetPins`, `observe` and `editDomain.regions`, for slots w01..w06.
+
+2026-09-28 Issue #64 Task 5: the ATCS workers run as six fork branches. `prepare-workers` forks into
+`research-worker-NN → read-worker-request-NN → operate-worker-NN → capture-worker-NN →
+read-worker-result-NN` for NN = 01..06, and the branches join at the judge `check-worker-results`,
+which leads to `collect` on PASS and on FAIL. Each branch is a pure act chain holding one Site Job at a
+time and reading and writing its own paths; Teams 04..06 are Team 01 with the slot number changed.
+Proving tests: `test/contract/agentic-timing-closure-system.test.ts` ("ATCS forks six worker
+branches: slot w01's Team runs its expert session, parked slots pass as no-ops, and the join collects
+every slot" drives the real fork in the in-process Host, from `prepare-workers` to `collect`; the Pack
+test asserts the fork shape with `forkFrom`), `test/contract/fork-interactive-team.host.test.ts`
+(concurrent interactive Team branches) and `flow/tests/test_worker_slots.py`. The campaign plan is
+blockers first: the campaign-plan Reader counts every instance two active slots claim (edit domain or
+target-pin owner), every worst setup or hold check of a required scenario (read from
+`state/observation.json` with `composition.worst_check_endpoints`, required scenarios from
+`state/policy.json`) that no active slot covers by `composition.covers` -- the one rule the recipe's
+`blockerCoverage` also uses: the check key in `targets` (a top-level port), or the key's or PT's raw
+endpoint in `targetPins` -- an observation of another design-state, and every active
+slot above the `workerSlots` Strategy knob (1..6, default 6), which `bind-worker-slots` stamps into
+`state/worker-slots.json` on every way into the plan. A parked slot's package is exactly `{taskId,
+baseStateId, parked: true, problem}`; its branch still runs: `prepare-workers` gives it a workspace but
+no session, its operate node is the `xtop-operator` tool's batch path (`mode: hybrid`, `operate-parked`),
+which opens no XTop session, and `capture-contribution` seals a `parked` no-fix. `operate-parked` also
+skips an active slot whose worker request is inadmissible (the branch holds no Judge), and refuses any
+other active slot. `collect` requires all six slots. The join judges `tc_worker_refusal_count` (new,
+emitted by every worker-result Reader). Delegation shares follow Task 2b (Researcher and Reviewer 10
+min, Operator 20 min).
 
 Every tool and reader `contract.yml` names is held in this folder (tools run `flow/atcs_cli.py` or
 the Site's XTop Operator wrapper; readers run `tools/read-atcs.py`). None of the gaps below is
@@ -108,10 +133,15 @@ closed by a hidden loop or background process.
 
 Schema limits and how the graph expresses them:
 
-- G1 Historical imported graph: worker slots ran sequentially, and every round ran all three before
-  `collect`. The current bounded graph schedules w01 only, with a native Team and direct collect;
-  the three-worker parallel optimization remains deferred. The original limitation below is retained
-  as source history: a batch
+- G1 Resolved by Issue #64 Task 5 (six parallel branches, above). A join upstream of every Explore
+  node makes `loadPack`'s `exploreAfter` require each Explore's own two-rule Judge to follow a fresh
+  unbranched reading directly, so the Pack re-reads before each routing Judge that follows another
+  Judge: `nextDecision` before `route-observe`..`route-implement` and `finalEvaluation` before
+  `gm-identity`..`goal-met-gate` (12 `reread-*` act nodes). The runtime check (`exploreEvidence`) was
+  already satisfied without them; the rule is stricter than the runtime, and a generic Harness change
+  that keeps "fresh reading" across a Judge chain would remove them. A batch still waits for every
+  slot (`requiredSlots` is all six). History: worker slots ran sequentially, and every round ran all
+  three before `collect`; the original limitation below is retained as source history: a batch
   can never seal while a slot is still researching, the opposite of SPEC Constraint 7's dynamic
   batching (`pending` is non-empty only for a skipped or stale slot), and a slot with nothing worth
   fixing still costs an XTop Operator session to end as a no-fix. A variant forking the three slot
@@ -127,9 +157,13 @@ Schema limits and how the graph expresses them:
   cap is refused, not queued). The one Harness change was attribution: interactive launches now carry
   their execution's `branchId`. The legacy auto-drive `driveBranch` path remains unexercised for
   Workshops and interactive nodes; ATCS runs owner-driven.
-- G2 A worker request that fails `request-admissible` skips its slot to the next one: there is no
-  per-slot revise loop, so that slot contributes nothing this round until a later research revisit
-  re-plans it.
+- G2 A branch holds no Judge, so an inadmissible worker request (its Reader reading is not 0) is
+  skipped by the owner with the `operate-parked` no-op and seals a `parked` no-fix naming why. That
+  no-fix carries the refusal `inadmissible-request`, so the skip shows at the join as that branch's
+  `worker-result-admissible` FAIL (the join still collects). There is no per-slot revise loop, so the
+  slot contributes nothing this round until a later research revisit re-plans it. `prepare-workers`
+  removes an earlier skip receipt (`parked.json`) from every root it (re)prepares, since `prepare`
+  reuses the root of an identical package.
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.
@@ -227,8 +261,13 @@ Known gaps carried from earlier tasks:
 - G21 (Task 12) Side files left by an EDA run that fails mid-way are untested.
 - G22 (Task 9) Adoption is single-writer; `designStateId` honesty rests on `sta` building the
   design-state from the implemented DB, which M6 does not cross-check.
-- G23 (Tasks 15, 17) The XTop Operator is `interactive-only`; its settlement in a real Run is
-  unproven. Task 15's Site wrapper (`sites/linglong-atcs28/atcs-xtop-operator.sh`, contract
+- G23 (Tasks 15, 17) The XTop Operator runs an active slot only interactively (since Issue #64 Task 5
+  the tool is `hybrid`: its batch path is the Pack's `operate-parked` no-op, never XTop, which still
+  holds the tool's `xtop: 1` licence for its few seconds); its settlement in a real Run is unproven.
+  A stranded worker Team (a required member ended without a result) settles its operate execution
+  `failed` whatever the tool mode (Harness fix "settle stranded Team executions regardless of tool
+  mode", `test/contract/delegation-team-settlement.host.test.ts`); the owner begins the node again
+  for fresh Team identities (`knowledge/agent-team.md`). Task 15's Site wrapper (`sites/linglong-atcs28/atcs-xtop-operator.sh`, contract
   `<wrapper> <workspace> <slot>`) and the administrator's interactive binding still need L4
   qualification.
 - G24 (Task 15) `checkPack` is fit against `linglong-atcs28` and the local Site; against the frozen

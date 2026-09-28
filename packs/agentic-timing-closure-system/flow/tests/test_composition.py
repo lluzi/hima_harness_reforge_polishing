@@ -958,6 +958,35 @@ class XtopSessionRecipeTests(unittest.TestCase):
         self.assertEqual(recipe["rankedBy"],
                          ["blockerCoverage desc", "value desc", "rankTnsGain desc", "id asc"])
 
+    def test_a_reserved_group_blocker_is_covered_by_its_raw_endpoint(self):
+        """Issue #64 Task 5 fix round 1: a check in a reserved PT path group is keyed `<pin>@<group>`;
+        the recipe covers it by PT's raw endpoint, exactly as the campaign-plan Reader does."""
+        covers = _session("w01", [("U1", "BUFX2")], _hold_gain(0.005), targets=[], target_pins=["U1/D"])
+        bulk = _session("w02", [("U2", "BUFX2")], _hold_gain(0.040), targets=[], target_pins=["U2/D"])
+        key = "func_ss|hold|U1/D@**async_default**"
+        ranked = composition.analyze(BASE_STATE_ID, [bulk, covers], [], worst_checks=[key],
+                                     worst_endpoints={key: "U1/D"})["recipe"]
+        self.assertEqual([entry["contribution"] for entry in ranked["sessions"]], [covers["id"], bulk["id"]])
+        self.assertEqual(ranked["sessions"][0]["coveredChecks"], [key])
+
+    def test_one_coverage_rule_for_the_plan_and_the_recipe(self):
+        covered = composition.covers
+        self.assertTrue(covered("s|setup|out_port", "out_port", ["s|setup|out_port"], []),
+                        "a top-level port endpoint is covered by the check key in targets")
+        self.assertTrue(covered("s|setup|U1/D", "U1/D", [], ["U1/D"]))
+        self.assertTrue(covered("s|hold|U1/D@**async_default**", "U1/D", [], ["U1/D"]))
+        self.assertFalse(covered("s|hold|U1/D@**async_default**", None, [], ["U1/D"]))
+        self.assertFalse(covered("s|setup|U1/D", "U1/D", ["s|hold|U1/D"], ["U1/Q"]))
+
+    def test_worst_check_endpoints_name_each_worst_checks_raw_pt_endpoint(self):
+        observation = {"checks": {
+            "a|setup|P1@**default**": {"slack": core.known(-0.05), "endpoint": "P1"},
+            "a|setup|P2": {"slack": core.known(-0.01), "endpoint": "P2"},
+            "a|hold|P3": {"slack": core.known(-0.02)},
+        }}
+        self.assertEqual(composition.worst_check_endpoints(observation),
+                         {"a|setup|P1@**default**": "P1", "a|hold|P3": None})
+
     def test_worst_checks_are_the_worst_failing_check_per_scenario_and_mode(self):
         observation = {"checks": {
             "a|setup|P1": {"slack": core.known(-0.01)}, "a|setup|P2": {"slack": core.known(-0.05)},

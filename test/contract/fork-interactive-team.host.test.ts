@@ -429,7 +429,7 @@ test('two fork branches each hold an interactive Job driven by their own Team at
     for (const branch of branches) await settleOperate(branch);
     for (const branch of branches) {
       const ops = (await readFile(path.join(slot(branch), 'ops.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
-      assert.deepEqual(ops.map((op) => op.toMaster), [branch.toMaster], `branch ${branch.id}'s REPL applied only its own reviewed action`);
+      assert.deepEqual(ops.map((op) => op.args.toMaster), [branch.toMaster], `branch ${branch.id}'s REPL applied only its own reviewed action`);
     }
 
     // The join waits for both captures: one captured branch leaves the judge unavailable.
@@ -443,7 +443,7 @@ test('two fork branches each hold an interactive Job driven by their own Team at
     assert.deepEqual(context().available, ['judge']);
     for (const branch of branches) {
       const captured = (await readFile(path.join(slot(branch), 'captured.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
-      assert.deepEqual(captured.map((op) => op.toMaster), [branch.toMaster]);
+      assert.deepEqual(captured.map((op) => op.args.toMaster), [branch.toMaster]);
     }
     await node('judge');
     assert.equal(context().run.fork, undefined, 'the join closed the fork');

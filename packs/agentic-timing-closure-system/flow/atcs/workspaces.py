@@ -73,6 +73,20 @@ is bound by four more fields, all baked into the session Tcl by
   numbers with ``x1 <= x2`` and ``y1 <= y2``: the only targets of
   `atcs_move_cell`.
 
+Parked slots (Issue #64 Task 5)
+------------------------------
+
+The six slots run as parallel fork branches, and every branch runs whether
+or not its slot has work. A slot the campaign plan parks (or one above the
+Run's `workerSlots` knob) carries a *parked* package instead: exactly
+``{"taskId", "baseStateId", "parked": true, "problem": "<why>"}``, with a
+non-empty reason and no work field at all. `validate_work_package` stamps it
+like any other package; `prepare-workers` prepares its workspace but no XTop
+session, its operate node is the `operate-parked` no-op and its capture seals
+a `parked` no-fix. `parked` present with any value other than ``true`` is a
+problem. `is_parked` names such a package and `slot_number` a slot's index
+(w01 is 1), which the `workerSlots` knob is compared against.
+
 `request_invalid_count(obj, base_state, site_capabilities)` runs the exact
 same checks and returns how many problems were found (`0` only when
 validation completed and found none). It never raises for invalid
@@ -123,6 +137,7 @@ M3 reconciles them.
 """
 from __future__ import annotations
 
+import json
 import math
 import time
 from pathlib import Path
@@ -150,6 +165,9 @@ the Harness ceiling of 200 so a runaway loop still stops.
 """
 
 OBSERVE_MODES = ("fast", "full")
+
+PARKED_FIELDS = ("taskId", "baseStateId", "parked", "problem")
+"""The whole of a parked package: its identity and why the plan parked the slot."""
 
 _MANIFEST_WAIT_ATTEMPTS = 50
 _MANIFEST_WAIT_INTERVAL_SECONDS = 0.01
@@ -224,10 +242,76 @@ def _expert_problems(obj):
     return problems
 
 
+def is_parked(package):
+    """True for a parked package: `parked` is exactly `true`."""
+    return isinstance(package, dict) and package.get("parked") is True
+
+
+def slot_number(task_id):
+    """The 1-based index of slot `task_id` in `TASK_IDS` (w01 is 1)."""
+    return TASK_IDS.index(task_id) + 1
+
+
+PREPARED_BINDING_FIELDS = ("parked", "editDomain", "targetPins", "observe", "scope")
+"""The package fields a worker request must copy from the package `prepare-workers` prepared."""
+
+
+def bound_view(package):
+    """`PREPARED_BINDING_FIELDS` of `package`, normalised for comparison (order-insensitive sets).
+
+    A slot's session Tcl is baked from its prepared package, and the worker Team reviews the
+    request; a request whose field differs from the prepared one, in either direction, would have
+    one scope reviewed and another enforced. The worker-request Reader and `operate-parked` both
+    compare through this one view.
+    """
+    package = package if isinstance(package, dict) else {}
+    domain = package.get("editDomain") if isinstance(package.get("editDomain"), dict) else {}
+    scope = package.get("scope") if isinstance(package.get("scope"), dict) else {}
+
+    def names(value):
+        return sorted(json.dumps(item, sort_keys=True) for item in value) if isinstance(value, list) else repr(value)
+
+    return {
+        "parked": package.get("parked") is True,
+        "editDomain": {key: names(domain.get(key) or []) for key in ("instances", "nets", "regions")},
+        "targetPins": names(package.get("targetPins")),
+        "observe": package.get("observe", "fast"),
+        "scope": {"commands": names(scope.get("commands")), "maxMutations": repr(scope.get("maxMutations"))},
+    }
+
+
+def _base_state_problems(obj, base_state):
+    if "baseStateId" not in obj:
+        return ["missing field: baseStateId"]
+    base_state_id = base_state.get("id") if isinstance(base_state, dict) else None
+    if obj["baseStateId"] != base_state_id:
+        return [f"baseStateId {obj['baseStateId']!r} does not match base state id {base_state_id!r}"]
+    return []
+
+
+def _parked_problems(obj, base_state):
+    """Problems in a parked package: its identity, a stated reason and no work field."""
+    problems = []
+    if obj.get("taskId") not in TASK_IDS:
+        problems.append(f"taskId must be one of {TASK_IDS}, got {obj.get('taskId')!r}")
+    problems.extend(_base_state_problems(obj, base_state))
+    reason = obj.get("problem")
+    if not isinstance(reason, str) or not reason.strip():
+        problems.append("a parked package states why the slot is parked in problem")
+    extra = sorted(key for key in obj if key not in PARKED_FIELDS)
+    if extra:
+        problems.append(f"a parked package carries no work fields, got {extra}")
+    return problems
+
+
 def _collect_problems(obj, base_state, site_capabilities):
     """Return every `work-package` validation problem found in `obj` (never raises)."""
     problems = []
     obj = obj if isinstance(obj, dict) else {}
+    if "parked" in obj:
+        if is_parked(obj):
+            return _parked_problems(obj, base_state)
+        problems.append(f"parked must be true when present, got {obj['parked']!r}")
     site_capabilities = site_capabilities if isinstance(site_capabilities, dict) else {}
     pg_verification = bool(site_capabilities.get("pgVerification", False))
 
@@ -239,15 +323,7 @@ def _collect_problems(obj, base_state, site_capabilities):
     if task_id not in TASK_IDS:
         problems.append(f"taskId must be one of {TASK_IDS}, got {task_id!r}")
 
-    if "baseStateId" not in obj:
-        problems.append("missing field: baseStateId")
-    else:
-        base_state_id = base_state.get("id") if isinstance(base_state, dict) else None
-        work_base_state_id = obj["baseStateId"]
-        if work_base_state_id != base_state_id:
-            problems.append(
-                f"baseStateId {work_base_state_id!r} does not match base state id {base_state_id!r}"
-            )
+    problems.extend(_base_state_problems(obj, base_state))
 
     edit_domain = obj.get("editDomain") if isinstance(obj.get("editDomain"), dict) else {}
     protected = obj.get("protected") if isinstance(obj.get("protected"), dict) else {}

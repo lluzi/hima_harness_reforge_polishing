@@ -203,5 +203,7 @@ safety property the frozen wrapper has:
   capabilities dropped, `no-new-privileges`, host networking kept only for the local licence service,
   and the container is always removed on exit (`trap ... EXIT HUP INT TERM`).
 
-There is no batch path for this tool (`contract.yml`'s `xtop-operator` tool is `interactive-only`); the
-wrapper always launches one interactive XTop session per call and exits when that session closes.
+This wrapper has no batch path. Since Issue #64 Task 5 the `xtop-operator` tool is `hybrid`, but its
+batch path is the Pack's own `python3 flow/atcs_cli.py operate-parked` no-op for a parked or skipped
+slot, which never calls this wrapper or XTop; the wrapper always launches one interactive XTop session
+per call and exits when that session closes.

@@ -2,7 +2,7 @@
 
 Source: current Harness Agent Team interface qualified by Issue #52 at
 `58a92850d2d95525110ae1537fc64726d6872295`; ATCS-02 retained-dependency Host test; Issue #64 Task 1
-(Harness scope mode) and Task 4 (`atcs-worker-NN` version 4).
+(Harness scope mode), Task 4 (`atcs-worker-NN` version 4) and Task 5 (six parallel branches).
 
 Applies when: operate-worker-NN has one current workerRequestNN Reader observation (slots w01..w06;
 a Team exists for every operate-worker node the graph declares).
@@ -28,6 +28,26 @@ adopts the exact Operator result and completes the execution; capture seals the 
 Missing or unsafe plans, and refusals that remain after the one format repair below, return to a
 person; they never manufacture a no-fix Contribution. No safe hypothesis requires explicit diagnosis
 and a revised Workshop plan or an honest stop.
+
+Six parallel branches (Issue #64 Task 5): `prepare-workers` forks the six slots into branches, each
+`research-worker-NN -> read-worker-request-NN -> operate-worker-NN -> capture-worker-NN ->
+read-worker-result-NN`, joined at `check-worker-results`. Begin every node yourself; nothing starts a
+successor. A branch holds one Site Job at a time, and an interactive open at the Site Job cap is
+refused, not queued: retry it once another branch frees a slot. At operate-worker-NN, create the slot's
+Team only when the slot is active and its request reading is `tc_request_invalid_count` 0. For a parked
+slot (`parked: true` in its prepared package), or an active slot whose request reading is not 0, create
+no Team member: `work` the operate node, whose batch path `operate-parked` opens no XTop session, then
+complete it; the capture seals a `parked` no-fix that names why no session ran. For a skipped active
+slot that no-fix carries the refusal `inadmissible-request`, so its branch's `check-worker-results`
+verdict is FAIL (the join still leads to `collect`). `operate-parked` refuses an active slot with an
+admissible request, and refuses (does not skip) when it cannot read the request or the working state.
+To free a delegation place, observe a finished child's result instead of cancelling it.
+
+Recovery: when a Team member the Operator depends on (Researcher, Reviewer or the Operator itself)
+ends without an observed result -- cancelled, expired, refused or uncertain -- the Host settles that
+operate execution `failed` at once and it spends one Retry. Begin the node again: the new execution
+gets fresh Team identities, and the Team is created again from the Researcher. Do not `work` an
+active slot's operate node to escape a stranded Team: `operate-parked` refuses it.
 
 Format repair: a `result` refusal that says the Researcher or Reviewer "must return one JSON object"
 or "does not satisfy" its schema is a formatting refusal, not a plan refusal. The recipe allows one

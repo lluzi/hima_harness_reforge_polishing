@@ -100,8 +100,8 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 3 | `policy` | analysisContractDir, targetSetupNs(`{from: goal}`), targetHoldNs(`{from: goal}`) | reads `<analysisContractDir>/policy.json` + `state/baseline.json` + `state/observation.json` | `state/policy.json` (stamped) |
 | 4 | `observe` | querySpec, siteProfile, scenariosContract(Site-fixed `analysisContract/scenarios.json`, per-scenario corner + PT library identity -- C4 final review, was `scenario-corners.json`, see "Task 12c fix round" below), maxPaths(`{from: strategy}`, an upper cap -- see "Fix round 1" below) | `_scenario_pt_inputs` (x4, built from `state/working-state.json`, re-verified by sha256) then `adapters.compile_pt_scenario_tasks` + `run_tool` (x4) then `state.capture` | `state/observation.json` (also `state/observation-prev.json`, `observations/<id>.json` and `research/observe/max-paths.json`) |
 | 5 | `risk` | priorObservation(`state/observation-prev.json`), currentObservation(`state/observation.json`), recheck | `state.compare_checks` (self-compares on the campaign's first observation, when `priorObservation` does not exist yet) | `state/risk.json` |
-| 6 | `prepare-workers` | baseState(`state/working-state.json`), siteCapabilities, edaProfile, campaignPlan(the ONE admitted envelope `{"candidate":{"workPackages":{"w01"..,"w06"..},"reason"},"baseState":..,"siteCapabilities":..}`; reads `candidate.workPackages`, refuses `ambiguous-plan` if a top-level `workPackages` key is also present -- see "Task 12c fix round" below) | `workspaces.validate_work_package` + `workspaces.prepare` (one per slot in `workspaces.TASK_IDS`, w01..w06) + `adapters.compile_xtop_operator_task`/`compile_xtop_analysis_manual_task` (per slot, materialized into each worker's own root) | `state/workers.json` (now embeds each slot's full `workPackage`/`workspaceManifest`) |
-| 7 | `capture-contribution` | slot | `contributions.seal` (base_ref/result_refs composed from `state/workers.json[slot]` and the slot's own workspace root -- see `_cmd_capture_contribution`'s docstring for the exact `before.dump`/`after.dump`/`ops.jsonl`/`summary.json` file names); `contributions.seal_session` instead when `ops.jsonl` holds Task 3 toolkit lines or `tainted.json` exists (`_seal_xtop_session`: also `gain.jsonl`, the transcript's `ATCS:taint:` line, `eco_output/`, `state/xtop-context.json` filler patterns) | `state/contribution-<slot>.json` (one of 6 literal names) |
+| 6 | `prepare-workers` | baseState(`state/working-state.json`), siteCapabilities, edaProfile, campaignPlan(the ONE admitted envelope `{"candidate":{"workPackages":{"w01"..,"w06"..},"reason"},"baseState":..,"siteCapabilities":..}`; reads `candidate.workPackages`, refuses `ambiguous-plan` if a top-level `workPackages` key is also present -- see "Task 12c fix round" below) | `workspaces.validate_work_package` + `workspaces.prepare` (one per slot in `workspaces.TASK_IDS`, w01..w06) + `adapters.compile_xtop_operator_task`/`compile_xtop_analysis_manual_task` (per active slot, materialized into each worker's own root; a parked slot gets a workspace and no session -- Issue #64 Task 5) | `state/workers.json` (now embeds each slot's full `workPackage`/`workspaceManifest`, `parked: true` for a parked slot, and `requiredSlots` = all six) |
+| 7 | `capture-contribution` | slot | `contributions.seal` (base_ref/result_refs composed from `state/workers.json[slot]` and the slot's own workspace root -- see `_cmd_capture_contribution`'s docstring for the exact `before.dump`/`after.dump`/`ops.jsonl`/`summary.json` file names); `contributions.seal_session` instead when `ops.jsonl` holds Task 3 toolkit lines or `tainted.json` exists (`_seal_xtop_session`: also `gain.jsonl`, the transcript's `ATCS:taint:` line, `eco_output/`, `state/xtop-context.json` filler patterns); `contributions.seal_parked` for a slot that ran no session (parked, or skipped by `operate-parked`) | `state/contribution-<slot>.json` (one of 6 literal names) |
 | 8 | `collect` | (none) | reads whichever `contribution-w0N.json` exist AND still matches `state/workers.json[slot]`'s current revision (`contribution-index` read envelope: `{"contributions","pending":[{"slot","reason"}]}` -- see "Task 12c fix round" below) | `state/contributions-collected.json` |
 | 9 | `compose-facts` | plan(the SAME admitted integration-plan envelope row 10 reads; absent on the first pass -- see "Task 12c fix round" below) | `composition.analyze` (`baseStateId` from `state/working-state.json`; `resolutions` from the admitted plan, `[]` on the first pass; `worst_checks` from `state/observation.json` when it observes that state, for the xtop-session recipe's blocker coverage) | `state/composition-facts.json` |
 | 10 | `replay-prepare` | baseState(`state/working-state.json`), plan(the admitted integration-plan envelope `{"plan":...,"facts":...}` -- see "Task 12c fix round" below), siteProfile; baseState, plan, siteProfile, autoFinish(optional knob `0`/`1`, overrides `plan.autoFinish`) | recipe batch (`composition-facts.recipe`, Issue #64 Task 6): `integration.prepare_recipe_replay` then `adapters.compile_recipe_replay_task` + `run_tool` for the merged and control arms at once (`integrations/<batchId>/{merged,control}/`); legacy `fix` selection: `integration.validate_plan` + `integration.prepare_replay` then `adapters.compile_xtop_replay_task` + `run_tool` (best-effort) | `state/replay-request.json` |
@@ -117,6 +117,8 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 20 | `apr-prepare` | (none -- see "Fix round 1" below) | reads `research/requests/next-decision.json` then `lifecycle.compile_intervention` + `lifecycle.stage_task` | `state/apr-task.json` (one fixed literal path for every stage; carries `taskId` and `stage`) |
 | 21 | `apr-run` | siteProfile | reads `state/apr-task.json` then `run_tool` (stage batch) + `adapters.compile_innovus_export_task` + `run_tool` (export batch) | `state/implement.json` (same shape `implement` writes) |
 | 22 | `record-experience` | reasonSource(the SAME admitted integration-plan envelope row 10 reads -- only actually read when `_merge_commit_provenance` says `"merge"`; see "Task 12c fix round" below) | `experience.record` (lineage/decision/outcome composed from `state/working-state.json`, `state/implement.json`, `state/evaluation.json`, `state/contributions-collected.json`, `state/merge-commit.json`/`state/apr-task.json` (provenance), `state/sta.json`, `state/policy.json`/`state/pointers.json`) | `state/experience.json` |
+| 23 | `worker-slots` | workerSlots(`{from: strategy}`, an integer 1..6; Issue #64 Task 5) | validates the knob; slots up to it may be active and every slot above it must be parked | `state/worker-slots.json` (stamped `worker-slots`: `workerSlots`, `activeSlots`, `parkedSlots`) |
+| 24 | `operate-parked` | slot | the `xtop-operator` tool's batch path (Issue #64 Task 5): opens no XTop session for a slot `prepare-workers` parked or an active slot whose worker request is inadmissible (`workspaces.request_invalid_count` + `workspaces.bound_view` against the prepared package); refuses any other active slot (`slot-active`) | `<slot root>/parked.json` (stamped `parked-operate` receipt, `why` parked or inadmissible-request; an unreadable request or working state refuses; `prepare-workers` removes a stale one) |
 
 Site-admin utility (not a Harness graph subcommand -- no workspace, no declared output)
 -------------------------------------------------------------------------------------------
@@ -269,9 +271,11 @@ Task 12c fix round (Opus review of the compiled graph: CLI/Reader fixes)
       present at all is now `AtcsError("ambiguous-plan", ...)` (exit 3) --
       see `_cmd_prepare_workers`'s own docstring. A new `campaign-plan`
       reader kind in `tools/read-atcs.py` counts problems
-      (`workspaces.request_invalid_count`) across the packages (w01..w03 until
-      Issue #64 Task 5 widens it to `workspaces.TASK_IDS`) plus
-      structural problems (missing `workPackages`/a slot/`reason`).
+      (`workspaces.request_invalid_count`) across every slot in
+      `workspaces.TASK_IDS` (Issue #64 Task 5, which also refuses shared
+      instances, uncovered worst checks and active slots above the
+      `workerSlots` knob) plus structural problems (missing
+      `workPackages`/a slot/`reason`).
    b. `replay-prepare`, `compose-facts` (second pass) and
       `record-experience` all read the SAME integration-plan envelope file
       (`{"plan":...,"facts":...}` -- the exact shape
@@ -383,6 +387,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import os
 import shutil
 import sys
@@ -546,6 +551,7 @@ def _paths(workspace):
         "risk": state_dir / "risk.json",
         "experience": state_dir / "experience.json",
         "workers": state_dir / "workers.json",
+        "worker_slots": state_dir / "worker-slots.json",
         "contributions_collected": state_dir / "contributions-collected.json",
         "composition_facts": state_dir / "composition-facts.json",
         "replay_request": state_dir / "replay-request.json",
@@ -1216,6 +1222,22 @@ def _cmd_prepare_workers(workspace, args):
             raise InputError("invalid-input", f"campaign plan workPackages is missing slot {slot!r}")
         validated = workspaces.validate_work_package(raw, base_state, site_capabilities)
         manifest = workspaces.prepare(validated, str(workspace), base_state)
+        # Issue #64 Task 5 fix round 1: `prepare` reuses the root of an identical package, so an
+        # earlier generation's `operate-parked` receipt is removed here; this preparation's own
+        # operate node decides afresh whether the slot runs a session.
+        stale_receipt = workspace / manifest["root"] / "parked.json"
+        if stale_receipt.is_file() or stale_receipt.is_symlink():
+            stale_receipt.unlink()
+        if workspaces.is_parked(validated):
+            # Issue #64 Task 5: a parked slot's branch still runs, as a no-op. It gets its private
+            # workspace (so its parked Contribution is bound to this revision) but no XTop session:
+            # `operate-parked` settles its operate node and `capture-contribution` seals a parked no-fix.
+            index[slot] = {
+                "workPackageId": validated["id"], "manifestId": manifest["id"], "root": manifest["root"],
+                "namePrefix": manifest["namePrefix"], "parked": True,
+                "workPackage": validated, "workspaceManifest": manifest,
+            }
+            continue
 
         # `manifest["root"]` is workspace-relative (`atcs.workspaces.prepare`'s own
         # convention: "workspaces/<taskId>/r<rev>/"); join it against `workspace`
@@ -1253,7 +1275,103 @@ def _cmd_prepare_workers(workspace, args):
             # of its own beyond the slot name.
             "workPackage": validated, "workspaceManifest": manifest,
         }
-    return _paths(workspace)["workers"], {"workers": index, "requiredSlots": ["w01"]}
+    # Issue #64 Task 5: every slot runs as its own fork branch, so `collect` waits for all six; a
+    # parked slot contributes its parked no-fix.
+    return _paths(workspace)["workers"], {"workers": index, "requiredSlots": list(workspaces.TASK_IDS)}
+
+
+def _cmd_worker_slots(workspace, args):
+    """Bind the Run's `workerSlots` Strategy knob for this generation's campaign plan (Issue #64 Task 5).
+
+    `bind-worker-slots` runs on every way into the plan Workshop, so the campaign-plan
+    Reader reads the knob the Run holds now: slots w01..w0<n> may be active and every
+    slot above <n> must be parked. The value is an integer from 1 to 6.
+    """
+    (raw,) = args
+    if not isinstance(raw, str) or not re.fullmatch(r"[0-9]+", raw.strip()):
+        raise InputError("invalid-input", f"workerSlots must be an integer from 1 to {len(workspaces.TASK_IDS)}, got {raw!r}")
+    count = int(raw.strip())
+    if not 1 <= count <= len(workspaces.TASK_IDS):
+        raise InputError("invalid-input", f"workerSlots must be an integer from 1 to {len(workspaces.TASK_IDS)}, got {count}")
+    body = {
+        "workerSlots": count,
+        "activeSlots": list(workspaces.TASK_IDS[:count]),
+        "parkedSlots": list(workspaces.TASK_IDS[count:]),
+    }
+    return _paths(workspace)["worker_slots"], core.stamp("worker-slots", body)
+
+
+def _parked_entry(workspace, slot):
+    """`state/workers.json[slot]` for a slot argument; `(entry, parked)`."""
+    if slot not in workspaces.TASK_IDS:
+        raise InputError("invalid-input", f"slot must be one of {workspaces.TASK_IDS}, got {slot!r}")
+    workers_doc = _read_plain(_paths(workspace)["workers"])
+    entry = workers_doc.get("workers", {}).get(slot)
+    if not entry:
+        raise InputError("missing-input", f"state/workers.json has no entry for slot {slot!r}")
+    parked = entry.get("parked") is True and workspaces.is_parked(entry.get("workPackage"))
+    return entry, parked
+
+
+def _worker_request_problems(workspace, slot, entry):
+    """Problems in slot `slot`'s current worker request, by the flow-side half of the Reader's rule.
+
+    `workspaces.request_invalid_count` against the working state, a `taskId` other than
+    the slot, and every `workspaces.PREPARED_BINDING_FIELDS` field that differs from the
+    package `prepare-workers` prepared; an envelope with no candidate object is one problem.
+    An absent or unreadable request, or working state, refuses (exit 2/3) instead: the
+    owner never skips a slot whose request could not be read.
+    It never admits what the worker-request Reader refused: the Reader also resolves the
+    names against the base netlist and refuses the read outright on a miss.
+    """
+    path = Path(workspace) / "research" / "requests" / f"worker-request-{slot}.json"
+    # Unreadable inputs refuse (InputError/AtcsError propagate): only a request that parses
+    # and then fails validation is skipped.
+    envelope = _read_plain(path)
+    working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
+    if not isinstance(envelope, dict) or not isinstance(envelope.get("candidate"), dict):
+        return 1
+    candidate = envelope["candidate"]
+    site_capabilities = envelope.get("siteCapabilities")
+    count = workspaces.request_invalid_count(candidate, working_state,
+                                             site_capabilities if isinstance(site_capabilities, dict) else {})
+    if candidate.get("taskId") != slot:
+        count += 1
+    prepared, requested = workspaces.bound_view(entry.get("workPackage")), workspaces.bound_view(candidate)
+    return count + sum(1 for field in workspaces.PREPARED_BINDING_FIELDS if prepared[field] != requested[field])
+
+
+def _cmd_operate_parked(workspace, args):
+    """The operate node of a slot that runs no session (Issue #64 Task 5): the xtop-operator batch path.
+
+    An active slot's operate node is its worker Team Operator's interactive XTop session.
+    This batch path opens no XTop session and writes only a stamped receipt,
+    `<slot root>/parked.json`, so the branch stays a pure act chain and its capture seals
+    a parked no-fix. It admits two slots: one `prepare-workers` parked (`why: parked`), and
+    an active slot whose worker request is inadmissible (`why: inadmissible-request`, the
+    branch holds no Judge to stop it, so the owner skips it here). Any other active slot is
+    refused (`slot-active`, exit 3): this path never stands in for an expert session.
+    """
+    (slot,) = args
+    workspace = Path(workspace)
+    entry, parked = _parked_entry(workspace, slot)
+    if parked:
+        why, reason = "parked", entry["workPackage"]["problem"]
+    else:
+        problems = _worker_request_problems(workspace, slot, entry)
+        if problems == 0:
+            raise core.AtcsError(
+                "slot-active",
+                f"slot {slot!r} is active and its worker request is admissible: its operate node runs only as "
+                "the worker Team Operator's interactive XTop session",
+            )
+        why = "inadmissible-request"
+        reason = f"slot {slot} was skipped: its worker request has {problems} problem(s), so no session ran"
+    body = {
+        "taskId": slot, "workPackageId": entry["workPackageId"],
+        "revision": entry["workspaceManifest"]["revision"], "why": why, "reason": reason,
+    }
+    return workspace / entry["root"] / "parked.json", core.stamp("parked-operate", body)
 
 
 _NO_FIX_ADAPTER_ERROR_MARKER = "HIMA-ADAPTER-ERROR"
@@ -1366,6 +1484,10 @@ def _seal_xtop_session(workspace, root, base_ref, before_dump, after_dump, ops_l
     return contributions.seal_session(base_ref, result_refs, operation_trace, gain_text)
 
 
+_PARKED_FORBIDDEN_OUTPUTS = ("before.dump", "after.dump", "ops.jsonl", "gain.jsonl", "tainted.json", "eco_output",
+                             "summary.json")
+
+
 def _cmd_capture_contribution(workspace, args):
     """Compose `base_ref`/`result_refs` from `state/workers.json` and the slot's own workspace (G2).
 
@@ -1408,6 +1530,11 @@ def _cmd_capture_contribution(workspace, args):
     legacy typed-procedure trace and the empty/absent-trace no-fix path
     below are unchanged.
 
+    Issue #64 Task 5: a slot that ran no session -- parked by the plan, or
+    skipped by `operate-parked` (its `<root>/parked.json` receipt) -- seals a
+    `parked` no-fix (`contributions.seal_parked`) and reads no dump; any
+    Operator output in its root refuses (`parked-slot-ran`, exit 3).
+
     Both dumps missing, or one dump missing, is `missing-input` (exit 2) as
     before, matching "no subcommand reads files that no subcommand writes":
     every one of them is written by the Operator session `prepare-workers`
@@ -1436,6 +1563,31 @@ def _cmd_capture_contribution(workspace, args):
     root = Path(entry["root"])
     if not root.is_absolute():
         root = workspace / root
+    receipt_path = root / "parked.json"
+    plan_parked = entry.get("parked") is True or workspaces.is_parked(work_package)
+    if plan_parked or receipt_path.exists():
+        # Issue #64 Task 5: this slot ran no session -- the plan parked it, or `operate-parked`
+        # skipped its inadmissible request. Any Operator output in its root means something did
+        # run there, and that is refused rather than sealed as a no-fix.
+        ran = sorted(name for name in _PARKED_FORBIDDEN_OUTPUTS if (root / name).exists())
+        ran += sorted(path.name for path in root.glob("xtop_log_*.txt"))
+        if ran:
+            raise core.AtcsError("parked-slot-ran", f"slot {slot!r} ran no session but holds Operator outputs {ran}")
+        refusal = None
+        if plan_parked:
+            reason = work_package.get("problem")
+        else:
+            receipt = _read_declared(receipt_path, "parked-operate")
+            if (receipt.get("taskId") != slot or receipt.get("workPackageId") != entry.get("workPackageId")
+                    or receipt.get("revision") != workspace_manifest.get("revision")):
+                raise core.AtcsError("stale-receipt", f"{receipt_path} belongs to another preparation of slot {slot!r}")
+            reason = receipt.get("reason")
+            # Visible at the join: the skipped active slot's result carries this refusal, so its
+            # branch's `worker-result-admissible` verdict FAILs (both outcomes still collect).
+            refusal = {"code": "inadmissible-request", "detail": reason}
+        body = contributions.seal_parked(base_ref, reason, refusal=refusal)
+        _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
+        return _contribution_path(workspace, slot), body
     ops_log_path = Path(entry["opsLog"])
     if not ops_log_path.is_absolute():
         ops_log_path = workspace / ops_log_path
@@ -1638,9 +1790,10 @@ def _cmd_compose_facts(workspace, args):
     # working state's own (an observation of another state names no blocker here).
     observation = _read_json_or_default(_paths(workspace)["observation"], {})
     observed_state = observation.get("designStateId") if isinstance(observation, dict) else None
-    worst = (composition.worst_checks(observation)
-             if observed_state in (None, working_state["id"]) else [])
-    body = composition.analyze(working_state["id"], collected["contributions"], resolutions, worst_checks=worst)
+    endpoints = (composition.worst_check_endpoints(observation)
+                 if observed_state in (None, working_state["id"]) else {})
+    body = composition.analyze(working_state["id"], collected["contributions"], resolutions,
+                               worst_checks=sorted(endpoints), worst_endpoints=endpoints)
     return _paths(workspace)["composition_facts"], body
 
 
@@ -3969,6 +4122,8 @@ SUBCOMMANDS = {
     "observe": _cmd_observe,
     "risk": _cmd_risk,
     "prepare-workers": _cmd_prepare_workers,
+    "worker-slots": _cmd_worker_slots,
+    "operate-parked": _cmd_operate_parked,
     "capture-contribution": _cmd_capture_contribution,
     "collect": _cmd_collect,
     "compose-facts": _cmd_compose_facts,

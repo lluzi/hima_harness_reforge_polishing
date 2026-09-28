@@ -108,8 +108,8 @@ from pathlib import Path
 #                            the worker Team's Reviewer approves a scope from it, so there is no
 #                            top-level `actions` list any more.)
 #
-#   campaign-plan           {"candidate": {"workPackages": {"w01": {...}, "w02": {...},
-#                             "w03": {...}}, "reason": "<str>"},
+#   campaign-plan           {"candidate": {"workPackages": {"w01": {...}, .., "w06": {...}},
+#                             "reason": "<str>"},
 #                            "baseState": {...a stamped "design-state" artifact...},
 #                            "siteCapabilities": {"pgVerification": bool, ...}}
 #                           (Task 12c item 4a: the plan Workshop's ONE campaign-plan
@@ -621,7 +621,7 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
 
     count = workspaces_mod.request_invalid_count(candidate, base_state, site_capabilities)
     if expected_task_id is not None:
-        count += _prepared_package_problems(workspace, expected_task_id, candidate, core)
+        count += _prepared_package_problems(workspace, expected_task_id, candidate, core, workspaces_mod)
     # T63 real-run failure: a bare LEAF instance name (no hierarchy) is not
     # resolvable against the actual post-route netlist, whose leaf cells live
     # inside deeply nested modules (the real `g96219` example). The expert
@@ -653,27 +653,7 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
     return [_emit_count("tc_request_invalid_count", count)]
 
 
-_BOUND_PACKAGE_FIELDS = ("editDomain", "targetPins", "observe", "scope")
-
-
-def _bound_view(package):
-    """The fields a worker session is baked from, normalised for comparison (order-insensitive sets)."""
-    package = package if isinstance(package, dict) else {}
-    domain = package.get("editDomain") if isinstance(package.get("editDomain"), dict) else {}
-    scope = package.get("scope") if isinstance(package.get("scope"), dict) else {}
-
-    def names(value):
-        return sorted(json.dumps(item, sort_keys=True) for item in value) if isinstance(value, list) else repr(value)
-
-    return {
-        "editDomain": {key: names(domain.get(key) or []) for key in ("instances", "nets", "regions")},
-        "targetPins": names(package.get("targetPins")),
-        "observe": package.get("observe", "fast"),
-        "scope": {"commands": names(scope.get("commands")), "maxMutations": repr(scope.get("maxMutations"))},
-    }
-
-
-def _prepared_package_problems(workspace, slot, candidate, core):
+def _prepared_package_problems(workspace, slot, candidate, core, workspaces_mod):
     """Problems tying a worker request's candidate to the package `prepare-workers` prepared for `slot`.
 
     Review fix round 1: the slot's session Tcl is baked from
@@ -695,16 +675,16 @@ def _prepared_package_problems(workspace, slot, candidate, core):
         return 1
     if package.get("taskId") != slot:
         return 1
-    prepared, requested = _bound_view(package), _bound_view(candidate)
-    return sum(1 for field in _BOUND_PACKAGE_FIELDS if prepared[field] != requested[field])
+    prepared, requested = workspaces_mod.bound_view(package), workspaces_mod.bound_view(candidate)
+    return sum(1 for field in workspaces_mod.PREPARED_BINDING_FIELDS if prepared[field] != requested[field])
 
 
 def _read_campaign_plan(report, workspace, extra, mods):
-    """The plan Workshop's ONE campaign-plan document, holding all three work packages (Task 12c item 4a).
+    """The plan Workshop's ONE campaign-plan document, holding every slot's work package (Task 12c item 4a).
 
     Envelope (this script's own contract; see module docstring)::
 
-        {"candidate": {"workPackages": {"w01": {...}, "w02": {...}, "w03": {...}},
+        {"candidate": {"workPackages": {"w01": {...}, .., "w06": {...}},
                         "reason": "<str>"},
          "baseState": {...a stamped "design-state" artifact...},
          "siteCapabilities": {"pgVerification": bool, ...}}
@@ -713,12 +693,19 @@ def _read_campaign_plan(report, workspace, extra, mods):
     (`_verify_design_state_refs`) before any package is validated against
     it, exactly like `_read_request_envelope`. `tc_request_invalid_count`
     is the sum of `workspaces.request_invalid_count` (never
-    `validate_work_package`, which raises) over each of `w01`/`w02`/`w03`,
-    plus one structural problem for each of: a missing/non-dict
-    `workPackages` object, a missing or non-dict entry for any of the three
-    slots, and a missing or blank `reason` string -- so a Reader-visible
-    problem exists for every way the *shape* itself (not just one slot's
-    own content) can be wrong.
+    `validate_work_package`, which raises) over each slot in
+    `workspaces.TASK_IDS` (w01..w06; a parked slot's package is checked as
+    parked), plus one structural problem for each of: a missing/non-dict
+    `workPackages` object, a missing or non-dict entry for any slot, and a
+    missing or blank `reason` string -- so a Reader-visible problem exists
+    for every way the *shape* itself (not just one slot's own content) can
+    be wrong.
+
+    Issue #64 Task 5 (the six slots run as parallel fork branches) adds, over
+    the active (unparked) slots: `_worker_slot_problems` (an active slot
+    above the `workerSlots` knob), `_shared_instance_problems` (an instance
+    two active slots claim) and `_uncovered_blocker_problems` (a worst setup
+    or hold check of a required scenario no active slot targets).
 
     Fix round 2 item 3 (Minor) adds two more Reader-visible problems, both
     counted even though `prepare-workers` (`atcs_cli.py`) independently
@@ -778,18 +765,112 @@ def _read_campaign_plan(report, workspace, extra, mods):
     if not isinstance(work_packages, dict):
         problems += 1
         work_packages = {}
-    for task_id in ("w01", "w02", "w03"):
+    active = {}
+    for task_id in workspaces_mod.TASK_IDS:
         package = work_packages.get(task_id)
         if not isinstance(package, dict):
             problems += 1
             continue
         problems += workspaces_mod.request_invalid_count(package, base_state, site_capabilities)
+        if not workspaces_mod.is_parked(package):
+            active[task_id] = package
 
     reason = candidate.get("reason")
     if not isinstance(reason, str) or not reason.strip():
         problems += 1
 
+    problems += _worker_slot_problems(workspace, active, core, workspaces_mod)
+    problems += _shared_instance_problems(active)
+    problems += _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])
     return [_emit_count("tc_request_invalid_count", problems)]
+
+
+def _worker_slot_problems(workspace, active, core, workspaces_mod):
+    """One problem per active slot above the Run's `workerSlots` knob (Issue #64 Task 5).
+
+    The knob is the stamped `state/worker-slots.json` that `bind-worker-slots` writes on
+    every way into the plan Workshop; an absent or unverifiable record is one problem.
+    """
+    try:
+        record = _load_json(Path(workspace) / "state" / "worker-slots.json")
+        _verify_identity(record, "worker-slots", core)
+        count = record.get("workerSlots")
+        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= len(workspaces_mod.TASK_IDS):
+            raise ValueError(f"workerSlots {count!r} is not 1..{len(workspaces_mod.TASK_IDS)}")
+    except (ValueError, OSError):
+        return 1
+    return sum(1 for task_id in active if workspaces_mod.slot_number(task_id) > count)
+
+
+def _pin_owner(pin):
+    """The instance path a `<instance path>/<pin>` names, compared the way `_split_instance_path` reads it."""
+    segments = _split_instance_path(pin) if isinstance(pin, str) else None
+    if not segments or len(segments) < 2:
+        return None
+    return "/".join(segments[:-1])
+
+
+def _claimed_instances(package):
+    """The instances an active slot claims: its edit domain and the owners of its target pins."""
+    domain = package.get("editDomain") if isinstance(package.get("editDomain"), dict) else {}
+    claimed = set()
+    for name in domain.get("instances") or []:
+        segments = _split_instance_path(name) if isinstance(name, str) else None
+        if segments:
+            claimed.add("/".join(segments))
+    for pin in package.get("targetPins") or []:
+        owner = _pin_owner(pin)
+        if owner:
+            claimed.add(owner)
+    return claimed
+
+
+def _shared_instance_problems(active):
+    """One problem per instance two active slots both claim (Issue #64 Task 5).
+
+    The slots run at once from the same base, so their edit domains must be disjoint: an
+    instance in one active slot's `editDomain.instances`, or owning one of its
+    `targetPins`, may not be claimed by another active slot in either way.
+    """
+    owners = {}
+    for task_id, package in active.items():
+        for instance in _claimed_instances(package):
+            owners.setdefault(instance, set()).add(task_id)
+    return sum(1 for slots in owners.values() if len(slots) > 1)
+
+
+def _uncovered_blocker_problems(workspace, working_state_id, active, core, composition_mod):
+    """One problem per blocker no active slot targets (Issue #64 Task 5: blockers first).
+
+    The blockers are the worst setup check and the worst hold check of each required
+    scenario (`composition.worst_check_endpoints`), read from `state/observation.json`
+    -- the evidence the plan Workshop cites -- with the required scenarios from the
+    stamped `state/policy.json`. A blocker is covered when some active slot covers it by
+    `composition.covers`, the rule that also ranks the merged recipe: its check key in
+    the slot's `targets` (a top-level port has no pin path), or its key endpoint or PT's
+    raw endpoint in the slot's `targetPins`. An observation of another design-state than the working one, or an
+    absent or unverifiable observation or policy, is one problem: the blockers cannot be
+    established, so the plan cannot be shown to put them first.
+    """
+    try:
+        observation = _load_json(Path(workspace) / "state" / "observation.json")
+        _verify_identity(observation, "observation-set", core)
+        policy = _load_json(Path(workspace) / "state" / "policy.json")
+        _verify_identity(policy, "policy", core)
+    except (ValueError, OSError):
+        return 1
+    required = policy.get("requiredScenarios")
+    if (working_state_id is None or observation.get("designStateId") != working_state_id
+            or not isinstance(required, list)):
+        return 1
+    uncovered = 0
+    for key, raw in composition_mod.worst_check_endpoints(observation).items():
+        if key.split("|", 2)[0] not in required:
+            continue
+        if not any(composition_mod.covers(key, raw, package.get("targets") or [], package.get("targetPins") or [])
+                   for package in active.values()):
+            uncovered += 1
+    return uncovered
 
 
 def _read_worker_result(report, workspace, expected_task_id, mods):
@@ -809,7 +890,13 @@ def _read_worker_result(report, workspace, expected_task_id, mods):
     predicted = obj.get("predicted")
     predicted = predicted if isinstance(predicted, dict) else {}
     missing = core.unknown("not reported in predicted")
+    # Issue #64 Task 5: the join `check-worker-results` judges each branch on this count.
+    refusals = obj.get("refusals")
+    refusal_count = len(refusals) if isinstance(refusals, list) else 1
+    if obj.get("admissible") is not True:
+        refusal_count = max(refusal_count, 1)
     return [
+        _emit_count("tc_worker_refusal_count", refusal_count),
         _emit("tc_xtop_setup_wns_ns", "ns", predicted.get("xtopSetupWns", missing), mode="setup"),
         _emit("tc_xtop_hold_wns_ns", "ns", predicted.get("xtopHoldWns", missing), mode="hold"),
         _emit("tc_presta_setup_wns_ns", "ns", predicted.get("prestaSetupWns", missing), mode="setup"),
