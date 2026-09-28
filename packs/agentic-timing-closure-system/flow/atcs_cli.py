@@ -1232,6 +1232,11 @@ def _cmd_prepare_workers(workspace, args):
 
         analysis_task = adapters.compile_xtop_analysis_manual_task(
             manifest, validated.get("editDomain", {}), operator_tcl_path, ops_log_path,
+            # Task 4 (#64) admits `targetPins` and `scope.maxMutations`; until then a package
+            # without them gets no extra pins and the one-mutation default budget.
+            target_pins=validated.get("targetPins"),
+            max_mutations=(validated["scope"].get("maxMutations")
+                           if isinstance(validated.get("scope"), dict) else None),
         )
         analysis_tcl_path = session_dir / "xtop-analysis-manual.tcl"
         analysis_tcl_path.write_text(analysis_task["tcl"], encoding="utf-8")
