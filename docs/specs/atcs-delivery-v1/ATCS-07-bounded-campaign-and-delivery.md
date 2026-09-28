@@ -12,6 +12,12 @@
 Operator；开发 Agent 不同时操作 HimaHarness/Catsights。只创建一个新 Campaign、一个持久 Run、一个
 owner。历史 Runs 保持不变。
 
+所有 GUI 工作必须先通过
+[HimaHarness human-like test discipline](../../user-guide/himaharness-human-like-test-discipline.md)：
+固定主屏 side-by-side 布局、一个 HimaHarness 主进程/窗口、一个新鲜 Claude tester context、首个动作前
+身份截图，以及每次测试后的 App teardown。窗口身份或布局不确定时 verdict 为
+`TEST_ENV_BLOCKED`，不能归因为 Pack/Product 缺陷。
+
 ## Bounded journey
 
 1. 启动精确 App/Home，Guide 解释 Pack、Site、输入、Goal、post-route-only 限制和下一步。
