@@ -367,7 +367,7 @@ test('a Team Reviewer may approve an Operator scope: typed mutations within its 
   const firstId = await begin('begin-1');
   const reviewer = await create('reviewer', firstId, 'reviewer-1'); assert.equal(reviewer.status, 'created', JSON.stringify(reviewer));
   assert.deepEqual(reviewer.effectiveContract.recipe.reviewOutput,
-    { scopeField: 'scope', commands: ['size_cell', 'insert_buffer'], maxMutations: 5 },
+    { mode: 'scope', scopeField: 'scope', commands: ['size_cell', 'insert_buffer'], maxMutations: 5 },
     'the Reviewer learns the recipe commands and cap it may approve');
   const reviewerId = reviewer.effectiveContract.delegationId as string;
   const overCap = await readResult(reviewerId);
@@ -428,6 +428,7 @@ test('a Team Reviewer may approve an Operator scope: typed mutations within its 
 
   const operator = await create('operator', executionId, 'operator'); assert.equal(operator.status, 'created', JSON.stringify(operator));
   const payload = operator.effectiveContract.recipe.inlinePayload;
+  assert.equal(payload.mode, 'scope');
   assert.deepEqual(payload.scope, { commands: ['size_cell', 'insert_buffer'], maxMutations: 4 });
   assert.equal(payload.planSha256, planSha256);
   assert.equal(payload.command, undefined, 'a scope is not one pinned action');

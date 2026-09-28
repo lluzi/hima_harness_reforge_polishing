@@ -12,6 +12,7 @@
 // `decideLaunch` will use when one does, so a check that says a pack fits cannot disagree with the
 // decision that later refuses it.
 import { campaignRelativePath } from './paths.js';
+import { REVIEWED_SCOPE_MAX_MUTATIONS } from './delegation.js';
 import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
@@ -529,7 +530,7 @@ const teamMember = z.strictObject({
     fromRole: packId,
     planInput: declaredName,
     commands: z.array(z.string().min(1)).min(1).max(32),
-    maxMutations: z.number().int().min(1).max(200),
+    maxMutations: z.number().int().min(1).max(REVIEWED_SCOPE_MAX_MUTATIONS),
     hostPlanHashArgument: declaredName,
     planHashField: declaredName,
     scopeField: declaredName,

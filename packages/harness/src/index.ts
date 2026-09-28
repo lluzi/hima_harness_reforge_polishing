@@ -419,6 +419,12 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
  * caller has not yet re-discovered against is therefore not detected by this function or by
  * `GET /hima/api/sites`; only a `discoverSshSite` call that recomputes and compares can see it.
  */
+/** The tool an act node of `pack` runs, when `nodeId` names one. */
+function nodeTool(pack: import('./packs.js').Pack, nodeId: string): import('./packs.js').PackTool | undefined {
+  const node = pack.graph.nodes.find(item => item.id === nodeId);
+  return node?.kind === 'act' && node.parameters.tool ? pack.contract.tools.find(item => item.id === node.parameters.tool) : undefined;
+}
+
 function siteHeadReadiness(site: Site): SiteHeadView['readiness'] {
   if (site.kind === 'local') return 'ready';
   if (site.discovery === undefined) return 'needs-discovery';
@@ -880,15 +886,14 @@ export default class Hima extends Service {
     if(run?.control&&run.control.owner!==sessionId) {
       if(!delegated)return {status:'refused',reason:'This conversation has no active Operator delegation for the exact Run execution.'};
       // A reviewed scope is enforced at runtime admission against the Run's retained Pack classification.
-      const reviewedScope=delegated.reviewedAction!==undefined&&'scope' in delegated.reviewedAction?{...delegated.reviewedAction.scope,
+      const reviewedScope=delegated.reviewedAction?.mode==='scope'?{...delegated.reviewedAction.scope,
         planHashArgument:delegated.reviewedAction.planHashArgument,planSha256:delegated.reviewedAction.planSha256}:undefined;
-      if(request.action==='input'&&delegated.reviewedAction!==undefined&&!('scope' in delegated.reviewedAction)) {
+      if(request.action==='input'&&delegated.reviewedAction!==undefined&&delegated.reviewedAction.mode!=='scope') {
         const command=request.command;
         if(command.name===delegated.reviewedAction.command
             &&identityOf(command.args)!==identityOf(delegated.reviewedAction.arguments))return {status:'refused',reason:'The Operator mutation differs from the immutable owner-adopted reviewed action.'};
         if(!run.packId||!request.nodeId)return {status:'refused',reason:'The Operator target Pack/node identity is unavailable.'};
-        const pack=loadPack(this.config.packsDir,run.packId);const node=pack.graph.nodes.find(item=>item.id===request.nodeId);
-        const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
+        const tool=nodeTool(loadPack(this.config.packsDir,run.packId),request.nodeId);
         const mutations=new Set(tool?.interactive?.commands.mutate??[]);
         if(mutations.has(command.name)&&command.name!==delegated.reviewedAction.command)return {status:'refused',reason:'The Operator requested a different mutation than the immutable owner-adopted reviewed action.'};
       }
@@ -1023,13 +1028,11 @@ export default class Hima extends Service {
       const operatorConsumer=team.members.find(item=>item.reviewedAction?.fromRole===member.id);
       if(operatorConsumer?.reviewedAction?.mode==='scope') {
         const reviewed=operatorConsumer.reviewedAction;
-        const node=pack.graph.nodes.find(item=>item.id===operatorConsumer.node);
-        const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
+        const tool=nodeTool(pack,operatorConsumer.node);
         if(reviewed.commands.some(command=>!tool?.interactive?.arguments[command]))return {unknowns:[],status:'refused',artifacts:[],reason:'The Pack Reviewer output contract has no matching typed Operator command.'};
-        reviewOutput={scopeField:reviewed.scopeField,commands:reviewed.commands,maxMutations:reviewed.maxMutations};
+        reviewOutput={mode:'scope',scopeField:reviewed.scopeField,commands:reviewed.commands,maxMutations:reviewed.maxMutations};
       } else if(operatorConsumer?.reviewedAction) {
-        const node=pack.graph.nodes.find(item=>item.id===operatorConsumer.node);
-        const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
+        const tool=nodeTool(pack,operatorConsumer.node);
         const declaration=tool?.interactive?.arguments[operatorConsumer.reviewedAction.command];
         if(!declaration)return {unknowns:[],status:'refused',artifacts:[],reason:'The Pack Reviewer output contract has no matching typed Operator command.'};
         reviewOutput={command:operatorConsumer.reviewedAction.command,
@@ -1051,18 +1054,18 @@ export default class Hima extends Service {
           const problem=reviewedScopeProblem(scope,reviewed);
           if(problem!==undefined)return {unknowns:[],status:'refused',artifacts:[],reason:`${problem[0]!.toUpperCase()}${problem.slice(1)}.`};
           const {commands,maxMutations}=scope as {commands:string[];maxMutations:number};
-          const node=pack.graph.nodes.find(item=>item.id===member.node);const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
+          const tool=nodeTool(pack,member.node);
           const untyped=commands.filter(command=>!tool?.interactive?.commands.mutate.includes(command)
             ||!tool.interactive.arguments[command]?.some(item=>item.name===reviewed.hostPlanHashArgument&&item.type==='string'));
           if(untyped.length>0)return {unknowns:[],status:'refused',artifacts:[],reason:`The reviewed scope names commands that are not hash-bearing mutations of the Operator tool: ${untyped.join(', ')}.`};
-          inlinePayload={sourceResultRecordId:result.id,adoptionRecordId:source.adoptedRecordId!,planSha256:planHash,
+          inlinePayload={mode:'scope',sourceResultRecordId:result.id,adoptionRecordId:source.adoptedRecordId!,planSha256:planHash,
             planHashArgument:reviewed.hostPlanHashArgument,scope:{commands,maxMutations}};
         } else {
         const planHash=payload[member.reviewedAction.planHashField];const command=payload[member.reviewedAction.commandField];const args=payload[member.reviewedAction.argumentsField];
         const planRecord=outputRecords.get(member.reviewedAction.planInput);
         if(typeof planHash!=='string'||planHash!==planRecord?.contentSha256)return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action plan SHA-256 differs from the current reader-backed fix plan.'};
         if(typeof command!=='string'||!args||typeof args!=='object'||Array.isArray(args))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action command or arguments are malformed.'};
-        const node=pack.graph.nodes.find(item=>item.id===member.node);const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
+        const tool=nodeTool(pack,member.node);
         const declaration=tool?.interactive?.arguments[command];if(command!==member.reviewedAction.command||!declaration||!Object.values(tool!.interactive!.commands).flat().includes(command))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action command is not the Pack recipe mutation.'};
         const values=args as Record<string,unknown>;const actionDeclaration=declaration.filter(item=>item.name!==member.reviewedAction!.hostPlanHashArgument);
         if(new Set([...Object.keys(values),...actionDeclaration.map(item=>item.name)]).size!==actionDeclaration.length)return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action arguments differ from the typed Pack command.'};
@@ -1080,7 +1083,7 @@ export default class Hima extends Service {
       const delegationId=`team-${team.id}-${member.id}-${identityOf({runId:run.id,executionId:execution.id}).slice(0,16)}`;
       const priorRecipe=existing.find(row=>row.delegationId===delegationId);
       const recipeDigest=identityOf({packDigest:run.packDigest,team,member});
-      const task=[member.taskTemplate,`Runtime inputs: ${inputRefs.join(', ')}.`,inlinePayload?`${'scope' in inlinePayload?'Immutable reviewed scope':'Immutable reviewed action'}: ${JSON.stringify(inlinePayload)}.`:''].filter(Boolean).join('\n');
+      const task=[member.taskTemplate,`Runtime inputs: ${inputRefs.join(', ')}.`,inlinePayload?`${inlinePayload.mode==='scope'?'Immutable reviewed scope':'Immutable reviewed action'}: ${JSON.stringify(inlinePayload)}.`:''].filter(Boolean).join('\n');
       normalizedRequest={...request,recipe:undefined,...(priorRecipe?.reservation.admittedRevision===undefined?{}:{expectedRevision:priorRecipe.reservation.admittedRevision}),contract:{delegationId,role:member.role,task,inputRefs,nodeRef:member.node,
         allowedTools:member.allowedTools,budgetShare:member.budgetShare,dependencyIds,recipient:{kind:'run-owner',sessionId:run.control.owner},
         recipe:{teamId:team.id,version:team.version,memberId:member.id,executionId:execution.id,recipeDigest,resultSchema:member.resultSchema,...(inlinePayload?{inlinePayload}:{})}}};
