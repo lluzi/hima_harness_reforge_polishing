@@ -276,6 +276,102 @@ def _verify_design_state_refs(design_state, workspace, core):
         _require_file(workspace, entry["path"], entry["sha256"], core, "design-state.sdc")
 
 
+_NETLIST_MODULE_RE = re.compile(r'^\s*module\s+(\\[^\s]+|[A-Za-z_$][A-Za-z0-9_$]*)')
+_NETLIST_ENDMODULE_RE = re.compile(r'^\s*endmodule\b')
+_NETLIST_IDENT = r'(?:\\[^\s]+|[A-Za-z_$][A-Za-z0-9_$]*)'
+_NETLIST_INSTANCE_RE = re.compile(rf'^\s*({_NETLIST_IDENT})\s+({_NETLIST_IDENT})\s*\(')
+_NETLIST_KEYWORDS = {
+    "input", "output", "inout", "wire", "reg", "assign", "supply0", "supply1",
+    "tri", "tri0", "tri1", "triand", "trior", "trireg", "wand", "wor",
+    "parameter", "localparam", "specparam", "specify", "endspecify",
+    "genvar", "defparam", "function", "endfunction", "task", "endtask",
+    "initial", "always", "always_comb", "always_ff", "always_latch",
+    "generate", "endgenerate", "module", "endmodule", "typedef", "logic",
+    "integer", "real", "time", "event", "package", "endpackage",
+    "interface", "endinterface", "class", "endclass",
+}
+_netlist_hierarchy_cache = {}
+
+
+def _strip_verilog_escape(name):
+    return name[1:] if name.startswith("\\") else name
+
+
+def _parse_netlist_hierarchy(netlist_path):
+    """One pass over a (possibly ~650k line) structural Verilog netlist.
+
+    Returns ``{module_name: {instance_name: instance_type}}`` for every
+    ``module ... endmodule`` block: `instance_type` is the declared cell/
+    module type, with a leading Verilog escaped-identifier backslash
+    stripped from both the type and the instance name. Only used to answer
+    "is this a real hierarchical instance path", never to interpret the
+    design otherwise.
+    """
+    modules = {}
+    current = None
+    current_instances = None
+    with open(netlist_path, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("//") or stripped.startswith("`"):
+                continue
+            match = _NETLIST_MODULE_RE.match(line)
+            if match:
+                current = _strip_verilog_escape(match.group(1))
+                current_instances = modules.setdefault(current, {})
+                continue
+            if _NETLIST_ENDMODULE_RE.match(line):
+                current = None
+                current_instances = None
+                continue
+            if current is None:
+                continue
+            match = _NETLIST_INSTANCE_RE.match(line)
+            if not match:
+                continue
+            type_token, inst_token = match.group(1), match.group(2)
+            if _strip_verilog_escape(type_token) in _NETLIST_KEYWORDS:
+                continue
+            current_instances[_strip_verilog_escape(inst_token)] = _strip_verilog_escape(type_token)
+    return modules
+
+
+def _netlist_hierarchy(netlist_path):
+    """Memoized per resolved netlist path within this process (module docstring)."""
+    key = str(Path(netlist_path).resolve())
+    if key not in _netlist_hierarchy_cache:
+        _netlist_hierarchy_cache[key] = _parse_netlist_hierarchy(key)
+    return _netlist_hierarchy_cache[key]
+
+
+def _is_hierarchical_instance(hierarchy, top, instance_path):
+    """True when `instance_path` walks real instances from `top` in `hierarchy`.
+
+    Every non-final `/`-separated segment must be an instance of a *user
+    module* (its declared type is itself a key of `hierarchy`) so the walk
+    can continue into that module's own instances; the final segment may be
+    any instance declared in the last module reached (a leaf cell or a
+    module instantiation).
+    """
+    if not isinstance(instance_path, str) or not instance_path:
+        return False
+    segments = instance_path.split("/")
+    if any(segment == "" for segment in segments):
+        return False
+    current_module = top
+    for index, segment in enumerate(segments):
+        instances = hierarchy.get(current_module)
+        if instances is None or segment not in instances:
+            return False
+        if index == len(segments) - 1:
+            return True
+        instance_type = instances[segment]
+        if instance_type not in hierarchy:
+            return False
+        current_module = instance_type
+    return True
+
+
 def _resolve_id_in_workspace(workspace, artifact_id, exclude_dirnames=("hima-readers",)):
     """Best-effort: find a JSON file under `workspace` whose own `id` matches.
 
@@ -460,6 +556,23 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
             if (not isinstance(action["toMaster"], str) or not action["toMaster"]
                     or core.is_tcl_unsafe(action["toMaster"]) or "*" in action["toMaster"] or "?" in action["toMaster"]):
                 raise ValueError("worker action master is not a safe cell name")
+        # T63 real-run failure: a worker action naming a bare LEAF instance
+        # name (no hierarchy) is not resolvable against the actual post-route
+        # netlist, whose leaf cells live inside deeply nested modules — see
+        # `read-atcs.py`'s module docstring / this task's brief for the real
+        # `g96219` example. Every action instance must be a full `/`-separated
+        # hierarchical path from `base_state["top"]`, walked directly against
+        # the sha-verified base netlist (never trusted from the candidate).
+        netlist_path = _safe_join(workspace, base_state["netlist"]["path"], "worker-request.netlist")
+        hierarchy = _netlist_hierarchy(netlist_path)
+        top = base_state.get("top")
+        for action in actions:
+            name = action["instance"]
+            if not _is_hierarchical_instance(hierarchy, top, name):
+                raise ValueError(
+                    f"worker action instance {name!r} is not a hierarchical instance under top {top!r} "
+                    "in the base netlist"
+                )
     return [_emit_count("tc_request_invalid_count", count)]
 
 

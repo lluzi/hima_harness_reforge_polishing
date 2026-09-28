@@ -218,7 +218,10 @@ def _make_baseline_manifest(workspace):
     dat_dir = workspace / "db.enc.dat"
     dat_dir.mkdir(parents=True, exist_ok=True)
     (dat_dir / "manifest.txt").write_text("dat contents\n", encoding="utf-8")
-    (workspace / "netlist.v").write_text("module top(); endmodule\n", encoding="utf-8")
+    # `U1` is a real declared leaf-cell instance directly under `top` so the
+    # Reader's hierarchical-instance check (T63) admits the bare instance
+    # name this test suite's `worker-request` fixtures already use for it.
+    (workspace / "netlist.v").write_text("module top();\n  SOME_CELL U1 (.A(a));\nendmodule\n", encoding="utf-8")
     (workspace / "constraints.sdc").write_text("create_clock -period 1.0 clk\n", encoding="utf-8")
     (workspace / f"{CORNER}.spef").write_text("*SPEF IEEE 1481-1999\n", encoding="utf-8")
     return {

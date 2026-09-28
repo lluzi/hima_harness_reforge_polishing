@@ -51,6 +51,18 @@
 - **`undo` 不能作为回退机制的唯一依赖。** manual ECO checkpoint 在关闭重开 workspace 后
   即消失（XTop `undo.1`/`save_workspace.1` 已核实）；系统恢复必须依赖保存的 checkpoint
   和已确认操作清单重放，不能假定任意自动修复都有可用的逆操作（ARCHITECTURE §8.4）。
+- **post-route 网表是层级化的：action 和 editDomain 的 instance 必须是从设计 top 出发、
+  `/` 分隔的完整层级路径（例如 `<inst>/<inst>/g96219`），绝不能是裸叶名。** 一个端点 pin
+  的 owning cell 只给出叶名，它上面的路径来自实例化它的各级 module，要通过沿层级走
+  module 实例化关系去找，而不能靠猜测或截断前缀（Issue #63 实测：`g96219` 声明在
+  `dec_tlu_ctl` module 内，`dec_tlu_ctl` 又被上一级 module 实例化，一路到 top
+  `swerv_wrapper`；把裸名 `g96219` 交给在 top 打开的 XTop 会话，得到
+  `Cell 'g96219' not found in design 'swerv_wrapper'`，整个 Operator session 无效）。
+  必须读取完整网表，绝不能只读截断的前缀。port 端点没有 instance，不适用本条尺寸
+  （sizing）约束。
+- 一个 no-fix Contribution 只是不出现在 `select` 里，不需要额外声明；`resolutions`
+  仅用于 composition facts 中已命名的冲突，`decision` 的形式是
+  `<keep|drop|revise>:<contributionId>`，并带上该冲突自己的 `conflictKey`。
 
 ## Counterexample
 

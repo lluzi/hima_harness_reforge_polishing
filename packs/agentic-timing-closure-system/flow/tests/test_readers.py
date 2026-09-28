@@ -63,12 +63,18 @@ def _write(path, text=""):
     return path
 
 
-def _build_design_state(workspace, name="baseline"):
+def _build_design_state(workspace, name="baseline", netlist_text=None):
     """A real `design-state` artifact over real files under `workspace`."""
     root = workspace / "inputs" / name
     _write(root / "top.enc", "encrypted-checkpoint")
     _write(root / "top.enc.dat" / "cells.dat", "cell-data")
-    _write(root / "top.v", "module top; endmodule")
+    if netlist_text is None:
+        # `U1` is a real declared leaf-cell instance directly under `top` so
+        # the hierarchical-instance check (T63) admits the bare name
+        # `worker-request` tests already use for it; `OUTSIDE` is
+        # deliberately never declared.
+        netlist_text = "module top;\n  SOME_CELL U1 (.A(a));\nendmodule\n"
+    _write(root / "top.v", netlist_text)
     _write(root / "func_ssg_rcworst_m40.spef", "*SPEF ...")
     _write(root / "top.sdc", "create_clock ...")
 
@@ -322,6 +328,104 @@ class WorkPackageReaderTest(unittest.TestCase):
         report.write_text(json.dumps(envelope))
         with self.assertRaises(ValueError):
             read_atcs.read("work-package", report, self.workspace)
+
+
+class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
+    """T63 real failure: w01 admitted actions naming a bare LEAF instance name
+    from a hierarchical post-route netlist (`g96219`, declared inside a
+    sub-module, not directly under `top`) -- XTop, opened at `top`, could not
+    find it. A worker action `instance` must be a full `/`-separated
+    hierarchical path from the base netlist's own top module."""
+
+    HIER_NETLIST = (
+        "module top;\n"
+        "  SUB_MOD u_sub (.X(x));\n"
+        "endmodule\n"
+        "module SUB_MOD;\n"
+        "  \\CKAN2D2BWP35P140HVT g96219 (.A1(n));\n"
+        "endmodule\n"
+    )
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.workspace = _make_workspace(self.tmp.name)
+        self.design = _build_design_state(self.workspace, netlist_text=self.HIER_NETLIST)
+
+    def _write_envelope(self, instance, domain):
+        candidate = {
+            "taskId": "w01",
+            "baseStateId": self.design["id"],
+            "problem": "hold violation on endpoint X",
+            "targets": ["func_ssg_rcworst_m40|hold|X"],
+            "editDomain": {"instances": domain, "nets": [], "regions": []},
+            "protected": {"instances": [], "nets": []},
+            "mayAffect": [],
+            "actions": ["size_cell"],
+            "budget": {"xtopMinutes": 30, "queries": 5, "attempts": 3},
+        }
+        envelope = {
+            "candidate": candidate,
+            "baseState": self.design,
+            "siteCapabilities": {},
+            "actions": [{"instance": instance, "toMaster": "CKAN2D4BWP35P140HVT"}],
+        }
+        report = self.workspace / "flow" / "records" / "worker-request.json"
+        _write(report, json.dumps(envelope))
+        return report
+
+    def test_bare_leaf_name_is_refused(self):
+        """The real Issue #63 failure: `g96219` alone, admitted by the Reader
+        before this fix, is not resolvable against a hierarchical netlist."""
+        report = self._write_envelope("g96219", domain=["g96219"])
+        with self.assertRaisesRegex(ValueError, "not a hierarchical instance"):
+            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+
+    def test_full_hierarchical_path_is_admitted(self):
+        report = self._write_envelope("u_sub/g96219", domain=["u_sub/g96219"])
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertEqual(values[0]["value"], 0)
+
+    def test_wrong_middle_segment_is_refused(self):
+        report = self._write_envelope("wrong_sub/g96219", domain=["wrong_sub/g96219"])
+        with self.assertRaisesRegex(ValueError, "not a hierarchical instance"):
+            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+
+    def test_escaped_identifier_instance_works(self):
+        """`g96219` is declared in the netlist as the Verilog escaped
+        identifier `\\CKAN2D2BWP35P140HVT g96219 (...)` is the *cell type*
+        here, not the escape target -- exercise an escaped *instance* name
+        directly to confirm the leading backslash is stripped when matching."""
+        netlist = (
+            "module top;\n"
+            "  SUB_MOD \\u_sub (.X(x));\n"
+            "endmodule\n"
+            "module SUB_MOD;\n"
+            "  CKAN2D2BWP35P140HVT \\g96219 (.A1(n));\n"
+            "endmodule\n"
+        )
+        design = _build_design_state(self.workspace, name="escaped", netlist_text=netlist)
+        candidate = {
+            "taskId": "w01",
+            "baseStateId": design["id"],
+            "problem": "hold violation on endpoint X",
+            "targets": ["func_ssg_rcworst_m40|hold|X"],
+            "editDomain": {"instances": ["u_sub/g96219"], "nets": [], "regions": []},
+            "protected": {"instances": [], "nets": []},
+            "mayAffect": [],
+            "actions": ["size_cell"],
+            "budget": {"xtopMinutes": 30, "queries": 5, "attempts": 3},
+        }
+        envelope = {
+            "candidate": candidate,
+            "baseState": design,
+            "siteCapabilities": {},
+            "actions": [{"instance": "u_sub/g96219", "toMaster": "CKAN2D4BWP35P140HVT"}],
+        }
+        report = self.workspace / "flow" / "records" / "worker-request-escaped.json"
+        _write(report, json.dumps(envelope))
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertEqual(values[0]["value"], 0)
 
 
 class CampaignPlanReaderTest(unittest.TestCase):
