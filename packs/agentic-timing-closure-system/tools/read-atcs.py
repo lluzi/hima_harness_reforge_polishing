@@ -593,6 +593,8 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
     must resolve as a full hierarchical path in the verified base netlist
     (the pin's owner a leaf cell), or the read is refused. There is no
     top-level `actions` list any more: the worker Team approves a scope.
+    For a worker slot the candidate is also bound to the package
+    `prepare-workers` prepared for it (`_prepared_package_problems`).
     """
     core = mods["core"]
     workspaces_mod = mods["workspaces"]
@@ -618,6 +620,8 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
         raise ValueError(f"candidate.taskId must be {expected_task_id!r}, got {candidate.get('taskId')!r}")
 
     count = workspaces_mod.request_invalid_count(candidate, base_state, site_capabilities)
+    if expected_task_id is not None:
+        count += _prepared_package_problems(workspace, expected_task_id, candidate, core)
     # T63 real-run failure: a bare LEAF instance name (no hierarchy) is not
     # resolvable against the actual post-route netlist, whose leaf cells live
     # inside deeply nested modules (the real `g96219` example). The expert
@@ -647,6 +651,52 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
                     "in the base netlist"
                 )
     return [_emit_count("tc_request_invalid_count", count)]
+
+
+_BOUND_PACKAGE_FIELDS = ("editDomain", "targetPins", "observe", "scope")
+
+
+def _bound_view(package):
+    """The fields a worker session is baked from, normalised for comparison (order-insensitive sets)."""
+    package = package if isinstance(package, dict) else {}
+    domain = package.get("editDomain") if isinstance(package.get("editDomain"), dict) else {}
+    scope = package.get("scope") if isinstance(package.get("scope"), dict) else {}
+
+    def names(value):
+        return sorted(json.dumps(item, sort_keys=True) for item in value) if isinstance(value, list) else repr(value)
+
+    return {
+        "editDomain": {key: names(domain.get(key) or []) for key in ("instances", "nets", "regions")},
+        "targetPins": names(package.get("targetPins")),
+        "observe": package.get("observe", "fast"),
+        "scope": {"commands": names(scope.get("commands")), "maxMutations": repr(scope.get("maxMutations"))},
+    }
+
+
+def _prepared_package_problems(workspace, slot, candidate, core):
+    """Problems tying a worker request's candidate to the package `prepare-workers` prepared for `slot`.
+
+    Review fix round 1: the slot's session Tcl is baked from
+    `state/workers.json[slot].workPackage` (domain, pins, regions, observation
+    mode and Tcl-side budget), and the worker Team reviews the request. A
+    candidate whose `editDomain`, `targetPins`, `observe` or `scope` differs
+    from that package in either direction would have one scope reviewed and
+    another enforced, so each differing field is one problem. An absent,
+    unreadable or identity-failing prepared package is one problem too: a
+    request for a slot that was never prepared is never admissible.
+    """
+    try:
+        workers = _load_json(Path(workspace) / "state" / "workers.json")
+        package = ((workers.get("workers") or {}).get(slot) or {}).get("workPackage")
+        if not isinstance(package, dict):
+            raise ValueError(f"state/workers.json has no prepared work package for slot {slot!r}")
+        _verify_identity(package, "work-package", core)
+    except (ValueError, OSError, AttributeError):
+        return 1
+    if package.get("taskId") != slot:
+        return 1
+    prepared, requested = _bound_view(package), _bound_view(candidate)
+    return sum(1 for field in _BOUND_PACKAGE_FIELDS if prepared[field] != requested[field])
 
 
 def _read_campaign_plan(report, workspace, extra, mods):

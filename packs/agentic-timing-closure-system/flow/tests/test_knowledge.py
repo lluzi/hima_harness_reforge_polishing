@@ -295,6 +295,37 @@ class ExpertOperatorKnowledgeTest(unittest.TestCase):
                        "legal_fail_no_space_on_row", "no_hold_gain", "no_setup_gain"):
             self.assertIn(reason, cited)
 
+    def test_only_host_refusals_are_free(self):
+        """Review fix round 1: a mutation the Host admits and the toolkit then refuses still spends one
+        approved mutation of the Reviewer's budget; only a Host scope, hash or budget refusal is free."""
+        loop = self.subsections["The expert loop"]
+        self.assertNotRegex(loop, r"(?i)refused call[^.]*costs no budget")
+        self.assertRegex(loop, r"(?i)host refus[^.]*(free|costs nothing)")
+        self.assertRegex(loop, r"(?i)toolkit refus[^.]*costs one approved mutation")
+        self.assertRegex(self.text, r"(?i)budget[^.]*trials[^.]*undo[^.]*refusals")
+
+    def _row(self, reason):
+        table = self.subsections["Fail-reason to move table"]
+        rows = [line for line in table.splitlines() if line.startswith("|") and f"`{reason}`" in line.split("|")[1]]
+        self.assertEqual(len(rows), 1, reason)
+        return rows[0].split("|")[3].lower()
+
+    def test_hold_specific_reasons_follow_the_pack_remedies(self):
+        """Knowledge pack section 7: `too_weak_drive_strength` and `off_path_violated_pin` are
+        hold-specific; the remedy is a buffer chain, a timing window or a targeted path, not sizing."""
+        for reason in ("too_weak_drive_strength", "off_path_violated_pin"):
+            move = self._row(reason)
+            self.assertIn("chain", move, reason)
+            self.assertIn("timing window", move, reason)
+            self.assertNotIn("sizedownonly", move, reason)
+
+    def test_collateral_reasons_raise_the_opposite_margin_first(self):
+        self.assertIn("setupmargin", self._row("break_setup").split(";")[0])
+        self.assertIn("holdmargin", self._row("break_hold").split(";")[0])
+
+    def test_target_pins_are_instance_pins_not_ports(self):
+        self.assertRegex(self.text, r"(?i)targetPins[^.]*instance pins[^.]*not[^.]*ports")
+
     def test_blockers_are_separated_from_the_bulk(self):
         blockers = self.subsections["Blockers vs bulk"].lower()
         self.assertIn("fail reason", blockers)

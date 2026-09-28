@@ -54,6 +54,15 @@ read_atcs = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(read_atcs)
 
 
+def _prepare_slot(workspace, package):
+    """What `prepare-workers` leaves for a slot: `state/workers.json[slot].workPackage`, stamped."""
+    body = {k: v for k, v in package.items() if k not in ("schema", "id")}
+    path = workspace / "state" / "workers.json"
+    workers = json.loads(path.read_text()) if path.exists() else {"workers": {}}
+    workers["workers"][package["taskId"]] = {"workPackage": core.stamp("work-package", body)}
+    _write(path, json.dumps(workers))
+
+
 def _make_workspace(tmp_root):
     """A fresh Campaign-workspace-shaped directory with `flow/atcs` symlinked in."""
     workspace = Path(tmp_root) / "workspace"
@@ -260,10 +269,11 @@ class WorkPackageReaderTest(unittest.TestCase):
         self.workspace = _make_workspace(self.tmp.name)
         self.design = _build_design_state(self.workspace)
 
-    def _write_envelope(self, candidate, site_capabilities=None):
+    def _write_envelope(self, candidate, site_capabilities=None, prepared=None):
         envelope = {"candidate": candidate, "baseState": self.design, "siteCapabilities": site_capabilities or {}}
         report = self.workspace / "flow" / "records" / "work-package.json"
         _write(report, json.dumps(envelope))
+        _prepare_slot(self.workspace, candidate if prepared is None else prepared)
         return report
 
     def _valid_candidate(self, **overrides):
@@ -342,6 +352,49 @@ class WorkPackageReaderTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "w07"):
             read_atcs.read("worker-request", report, self.workspace, extra=["w07"])
 
+    def test_a_request_matching_its_prepared_package_is_admitted(self):
+        report = self._write_envelope(self._valid_candidate(problem="refined wording", observe="fast"),
+                                      prepared=self._valid_candidate())
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertEqual(values[0]["value"], 0)
+
+    def test_a_request_drifting_from_its_prepared_package_is_invalid(self):
+        """Review fix round 1: the session Tcl is baked from `state/workers.json[slot].workPackage`,
+        so a request whose domain, pins, observation or scope differs would review one scope and run
+        another."""
+        prepared = self._valid_candidate()
+        drifts = {
+            "a wider edit domain": {"editDomain": {"instances": ["U1"], "nets": ["n1"], "regions": []}},
+            "a narrower edit domain": {"editDomain": {"instances": [], "nets": [], "regions": []}},
+            "a new region": {"editDomain": {"instances": ["U1"], "nets": [], "regions": [[0, 0, 1, 1]]}},
+            "other target pins": {"targetPins": ["U1/Z"]},
+            "another observation mode": {"observe": "full"},
+            "a wider scope": {"scope": {"commands": EXPERT_SCOPE["commands"] + ["atcs_move_cell"],
+                                        "maxMutations": 120}},
+        }
+        for label, change in drifts.items():
+            with self.subTest(drift=label):
+                report = self._write_envelope(self._valid_candidate(**change), prepared=prepared)
+                values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+                self.assertGreaterEqual(values[0]["value"], 1, label)
+
+    def test_a_request_for_an_unprepared_slot_is_invalid(self):
+        report = self._write_envelope(self._valid_candidate())
+        (self.workspace / "state" / "workers.json").unlink()
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertGreaterEqual(values[0]["value"], 1)
+        _write(self.workspace / "state" / "workers.json", json.dumps({"workers": {"w02": {}}}))
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_a_tampered_prepared_package_is_invalid(self):
+        report = self._write_envelope(self._valid_candidate())
+        workers = json.loads((self.workspace / "state" / "workers.json").read_text())
+        workers["workers"]["w01"]["workPackage"]["targetPins"] = ["U1/Z"]
+        _write(self.workspace / "state" / "workers.json", json.dumps(workers))
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertGreaterEqual(values[0]["value"], 1)
+
     def test_a_target_pin_whose_owner_is_not_in_the_netlist_is_refused(self):
         report = self._write_envelope(self._valid_candidate(targetPins=["OUTSIDE/A"]))
         with self.assertRaisesRegex(ValueError, "not a hierarchical pin"):
@@ -402,6 +455,7 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
         }
         report = self.workspace / "flow" / "records" / "worker-request.json"
         _write(report, json.dumps(envelope))
+        _prepare_slot(self.workspace, candidate)
         return report
 
     def test_bare_leaf_name_is_refused(self):
@@ -472,6 +526,7 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
         }
         report = self.workspace / "flow" / "records" / "worker-request-escaped.json"
         _write(report, json.dumps(envelope))
+        _prepare_slot(self.workspace, candidate)
         values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
         self.assertEqual(values[0]["value"], 0)
 

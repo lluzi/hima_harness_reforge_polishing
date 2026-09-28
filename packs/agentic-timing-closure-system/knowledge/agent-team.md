@@ -12,7 +12,10 @@ the edit domain and `scope` (the toolkit mutations the slot may need, always wit
 is no pinned action list. Researcher reads that exact request and returns, per blocker cluster, the
 suspected mechanism, the first ladder move and its falsifier. The owner observes and adopts its exact
 result; Reviewer reads that retained dependency and returns `{planSha256, scope: {commands,
-maxMutations}}`: commands from the recipe list, a budget from 1 to the recipe cap 120. Host refuses a
+maxMutations}}`: commands from the recipe list, a budget from 1 to the recipe cap 120 that fits the
+loop (trials, one undo each, and a margin for toolkit refusals, which also spend an approved mutation).
+The request's own `candidate.scope.commands` narrowing is advisory: the Host enforces the recipe's
+static list and the Reviewer's approved subset, not the package's list. Host refuses a
 scope outside the recipe at the Reviewer result (one follow-up repairs it) and checks it again, with
 the plan SHA, when the Operator is created. The owner never rewrites Researcher or Reviewer bytes into
 a second plan.

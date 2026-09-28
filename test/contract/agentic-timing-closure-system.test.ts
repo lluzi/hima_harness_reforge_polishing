@@ -266,6 +266,12 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual(reviewer.resultSchema, { id: 'atcs-worker-review/2',
     required: ['schema', 'planSha256', 'scope', 'evidenceRefs', 'limitations'] });
   assert.match(reviewer.taskTemplate, /atcs_undo/);
+  // Review fix round 1: only Host refusals are free; a toolkit refusal spends one approved mutation,
+  // so the Reviewer sizes the budget to the loop (trials, their undos and refusals), not a token count.
+  assert.match(reviewer.taskTemplate, /trials[^.]*undo[^.]*refusals/);
+  assert.doesNotMatch(operatorMember.taskTemplate, /refused call costs nothing/);
+  assert.match(operatorMember.taskTemplate, /Host refus[^.]*free/);
+  assert.match(operatorMember.taskTemplate, /toolkit refus[^.]*costs one approved mutation/);
   assert.deepEqual(operatorMember.reviewedAction, { mode: 'scope', fromRole: 'reviewer', planInput: 'workerRequest01',
     commands: mutations, maxMutations: recipeCap, hostPlanHashArgument: 'planSha256', planHashField: 'planSha256',
     scopeField: 'scope' });

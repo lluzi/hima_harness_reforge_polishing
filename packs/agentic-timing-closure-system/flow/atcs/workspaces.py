@@ -53,7 +53,11 @@ is bound by four more fields, all baked into the session Tcl by
   toolkit's mutations, the same list as `contract.yml`
   `xtop-operator.interactive.commands.mutate`) and must keep `atcs_undo`,
   because the expert loop undoes every trial XTop's gain does not support.
-  It is the widest set the slot's Reviewer should approve from.
+  It is the widest set the slot's Reviewer should approve from, and the
+  narrowing is advisory: the Harness enforces the recipe's static command
+  list and the Reviewer's approved subset, and the session Tcl does not
+  check command names. The worker-request Reader binds the request to this
+  package (`state/workers.json[slot].workPackage`) field by field.
   `maxMutations` must equal `SCOPE_MAX_MUTATIONS`, the worker Teams' recipe
   cap: it becomes the session's Tcl-side budget (`::ATCS_MAX_MUTATIONS`),
   which only backs the Host. The budget that binds is the Reviewer's approved

@@ -16,8 +16,8 @@
 
 | Procedure | XTop command it emits | Man page (row) |
 | --- | --- | --- |
-| `atcs_ref` | `summarize_gba_violations -as_reference`, captured by `redirect -variable` | `summarize_gba_violations.1` (314), `redirect.1` (221) |
-| `atcs_gain` | `summarize_gba_violations -with_delta -with_reference -with_fail_reason` | `summarize_gba_violations.1` (314) |
+| `atcs_ref` | `summarize_gba_violations -as_reference -exclude_path`, captured by `redirect -variable` | `summarize_gba_violations.1` (314), `redirect.1` (221) |
+| `atcs_gain` | `summarize_gba_violations -with_delta -with_reference -exclude_path -with_fail_reason` | `summarize_gba_violations.1` (314) |
 | `atcs_paths` | `get_paths`; `analyze_setup_path_violations` / `analyze_hold_path_violations -detail_info` | `get_paths.1` (149), `analyze_setup_path_violations.1` (16), `analyze_hold_path_violations.1` (12) |
 | `atcs_fail_reasons` | `report_fail_reasons -stats -verbose -pins`; `get_failed_pins -reasons` | `report_fail_reasons.1` (245), `get_failed_pins.1` (132) |
 | `atcs_candidates` | `list_size_cell_candidates`, `list_insert_buffer_candidates`, `list_exchange_cell_candidates` | `list_size_cell_candidates.1` (188), `list_insert_buffer_candidates.1` (185), `list_exchange_cell_candidates.1` (183) |
@@ -38,7 +38,8 @@
 
 ## Applies when
 
-- The plan Workshop clusters the blockers into slot work packages: `targetPins`, a disjoint
+- The plan Workshop clusters the blockers into slot work packages: `targetPins` (instance pins,
+  `<instance path>/<pin>`, not primary ports), a disjoint
   `editDomain`, and a `scope` whose commands name the moves the cluster may need.
 - A research Workshop writes a slot's worker request, and the worker Team runs: the Researcher
   proposes ladder moves with falsifiers, the Reviewer sizes the scope (commands and a mutation
@@ -74,9 +75,16 @@ trials; only refreshed PrimeTime judges convergence.
    ladder gains, or when the blockers are clear. Then `atcs_dump_cells after.dump`,
    `atcs_export_changes` and `atcs_close`.
 
-A refused call reaches no XTop state and costs no budget. Read the refusal and choose again; never
-resend the same mutation. A tainted session (an `uncertain` line) refuses every further mutation:
-dump, close and report it.
+What a refusal costs. A Host refusal (a command outside the scope, another plan hash, the budget
+spent) writes no intent and is free. A mutation the Host admits but the toolkit refuses (a pin or
+instance outside the domain, a move point outside every region, a master already in place, a timing
+window with size-only) changes nothing, yet the toolkit refusal costs one approved mutation of the
+Reviewer's budget. So check the domain, pins, regions and candidates with the read procedures, which
+are free, before sending. Read every refusal and choose again; never resend the same mutation. A
+tainted session (an `uncertain` line) refuses every further mutation: dump, close and report it.
+
+The Reviewer's budget must fit the loop: the planned trials, one undo for each, plus a margin for
+toolkit refusals. A token budget of one or two mutations cannot run it.
 
 ### Hold ladder
 
@@ -124,13 +132,14 @@ a region only when the analysis blames distance (net delay) and a region was pla
 
 | Fail reason (`report_fail_reasons`) | What it means | Next move |
 | --- | --- | --- |
-| `break_setup`, `break_setup_of_driver`, `no_setup_margin` | the hold repair hurts setup | timing window at low effort; a smaller step (dummy before chain); sink-side chain, not driver sizing |
-| `break_hold`, `break_hold_of_driver`, `no_hold_margin` | the setup repair hurts hold | `holdMargin` above 0; size instead of buffer; a remove-buffer pass |
+| `break_setup`, `break_setup_of_driver`, `no_setup_margin` | the hold repair hurts setup | raise `setupMargin`; timing window at low effort; a smaller step (dummy before chain); sink-side chain, not driver sizing |
+| `break_hold`, `break_hold_of_driver`, `no_hold_margin` | the setup repair hurts hold | raise `holdMargin` above 0; size instead of buffer; a remove-buffer pass |
 | `too_large_slack` | sizing only fixes small slack | chain or buffer, not size |
 | `unable_fix_by_dummy_cell`, `no_available_dummy_cell` | a dummy load cannot help | delay or buffer chain |
 | `sufficient_driving_strength` | a buffer is not needed | size, split load or remove buffer |
-| `too_weak_drive_strength`, `no_alternative_cell` | no sizing candidate | exchange cell or buffer; check the `atcs_candidates` lists |
-| `off_path_violated_pin` | an off-path pin fails setup | size down off-path (`sizeDownOnly`) first, or add that pin as a target |
+| `too_weak_drive_strength` | a hold size-down candidate is too weak | delay or buffer chain, or a timing window; not another sizing move |
+| `no_alternative_cell` | no sizing candidate | exchange cell or buffer; check the `atcs_candidates` lists |
+| `off_path_violated_pin` | an off-path pin already fails setup | sink-side chain or a timing window; or target the off-path pin's setup first |
 | `large_input_transition`, `heavy_fanout_net`, `break_max_transition`, `break_max_capacitance` | slew or load problem | split load or net, buffer, then size |
 | `no_setup_gain`, `no_hold_gain`, `no_setup_total_gain`, `no_hold_total_gain` | no net gain | change the method or the pin set; never only raise effort |
 | `legal_fail_no_space_on_row`, `legal_fail_density` | no legal space | smaller cells, fewer inserts, a move inside a region; else record the blocker as physical |
