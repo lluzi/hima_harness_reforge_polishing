@@ -1809,6 +1809,35 @@ class CaptureContributionComposedTest(unittest.TestCase):
         self.assertIn("HIMA-ADAPTER-ERROR", contribution["diagnosis"])
         self.assertIn("DFQD2BWP12T", contribution["diagnosis"])
 
+    def test_no_fix_diagnosis_ignores_echoed_command_wrappers(self):
+        """The real XTop transcript echoes every adapter-wrapped command (each
+        containing the literal HIMA-ADAPTER-ERROR text) after an `xtop > `
+        prompt; only the tool's own `Error...` output and bare
+        HIMA-ADAPTER-ERROR status lines are evidence (retained run-5a5b8ba5 w01)."""
+        manifest = self._seed_workers()
+        root = self.workspace / manifest["root"]
+        (root / "before.dump").write_text("U1 BUFX1\n", encoding="utf-8")
+        (root / "after.dump").write_text("U1 BUFX1\n", encoding="utf-8")
+        wrapper = ('set __hima_code [catch {{*}$__hima_command} __hima_result __hima_options]; '
+                   'if {$__hima_code != 0} { puts stderr "HIMA-ADAPTER-ERROR:$__hima_code:$__hima_result" }')
+        (root / "xtop_log_1.txt").write_text(
+            f'xtop > puts "HIMA:a:ACK"; set __hima_command [list atcs_dump_cells "before.dump"]; {wrapper}\n'
+            "HIMA:a:DONE\n"
+            f'xtop > puts "HIMA:b:ACK"; set __hima_command [list atcs_size_cell "u/sr_reg_1_" "DFQD2BWP12T"]; {wrapper}\n'
+            "Error: Library cell 'DFQD2BWP12T' not found.\n"
+            "HIMA-ADAPTER-ERROR:1:\n"
+            "HIMA:b:FAIL\n"
+            f'xtop > puts "HIMA:c:ACK"; set __hima_command [list atcs_close]; {wrapper}\n',
+            encoding="utf-8",
+        )
+
+        result = _run("capture-contribution", self.workspace, "w01")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        diagnosis = json.loads((self.workspace / "state" / "contribution-w01.json").read_text())["diagnosis"]
+        self.assertIn("Error: Library cell 'DFQD2BWP12T' not found.", diagnosis)
+        self.assertNotIn("xtop >", diagnosis)
+        self.assertNotIn("__hima_command", diagnosis)
+
     def test_missing_ops_log_with_differing_dumps_is_still_refused(self):
         """Counterexample: a real design change with no ops trace at all is still
         a missing-input refusal, not an honest no-fix -- only byte-identical

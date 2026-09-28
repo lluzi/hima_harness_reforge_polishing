@@ -1260,7 +1260,8 @@ def _no_fix_diagnosis(root, before_dump, dump_sha256):
     bytes), plus, when the slot root holds an XTop transcript
     (``xtop_log_*.txt``) naming a `HIMA-ADAPTER-ERROR`, the first few such
     lines verbatim (bounded: <= `_NO_FIX_ADAPTER_ERROR_MAX_LINES` lines, each
-    truncated to `_NO_FIX_ADAPTER_ERROR_MAX_CHARS` chars) -- the closest thing
+    truncated to `_NO_FIX_ADAPTER_ERROR_MAX_CHARS` chars; tool `Error...` lines too, never the
+    echoed `xtop > ` command wrappers) -- the closest thing
     to "why" a fail-closed diagnosis is allowed to assert.
     """
     del before_dump  # named bytes only; the digest already identifies them
@@ -1275,8 +1276,11 @@ def _no_fix_diagnosis(root, before_dump, dump_sha256):
         except OSError:
             continue
         for line in text.splitlines():
-            if _NO_FIX_ADAPTER_ERROR_MARKER in line:
-                error_lines.append(line.strip()[:_NO_FIX_ADAPTER_ERROR_MAX_CHARS])
+            # The transcript echoes every adapter-wrapped command after an `xtop > ` prompt, and each
+            # wrapper contains the marker text; only the tool's own output lines are evidence.
+            line = line.strip()
+            if line.startswith(_NO_FIX_ADAPTER_ERROR_MARKER) or line.startswith("Error"):
+                error_lines.append(line[:_NO_FIX_ADAPTER_ERROR_MAX_CHARS])
                 if len(error_lines) >= _NO_FIX_ADAPTER_ERROR_MAX_LINES:
                     break
         if len(error_lines) >= _NO_FIX_ADAPTER_ERROR_MAX_LINES:
