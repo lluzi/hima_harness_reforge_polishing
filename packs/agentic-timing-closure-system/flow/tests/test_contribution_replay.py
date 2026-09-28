@@ -1139,7 +1139,10 @@ class XtopSessionAdmissionTests(unittest.TestCase):
         self.assertTrue(contribution["admissible"], contribution["refusals"])
         predicted = contribution["predicted"]
         self.assertAlmostEqual(core.value_of(predicted["xtopHoldWns"]), -0.050)
-        self.assertAlmostEqual(core.value_of(predicted["xtopSetupWns"]), -0.021)
+        # The probe (-with_top_n -with_fail_reason) feeds failReasons only; predicted is the mutation reading.
+        self.assertAlmostEqual(core.value_of(predicted["xtopSetupWns"]), -0.020)
+        self.assertEqual(contribution["session"]["predictedFromSeq"], sized)
+        self.assertEqual(contribution["session"]["failReasonsFromSeq"], sized)
         self.assertAlmostEqual(core.value_of(predicted["xtopHoldTns"]), -0.900)
         self.assertAlmostEqual(core.value_of(contribution["reference"]["xtopHoldWns"]), -0.070)
         self.assertEqual(contribution["validationLevel"], "xtop")
@@ -1235,6 +1238,93 @@ class XtopSessionAdmissionTests(unittest.TestCase):
         log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
         contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"}, evidence={"ecoOutput": False})
         self.assertEqual(_codes(contribution), ["missing-export"])
+
+
+
+import xtop_summary_samples as real  # noqa: E402
+
+SCENARIOS = ["func_ffg_cbest_125", "func_ffg_cbest_m40", "func_ssg_rcworst_125", "func_ssg_rcworst_m40"]
+
+
+class RealSummarizeOutputTests(unittest.TestCase):
+    """`parse_gain_summary` pinned to verbatim XTop output (old flow run g002)."""
+
+    def test_the_reference_form_reads_total_and_every_scenario(self):
+        parsed = contributions.parse_gain_summary(real.PRE_OPT_SETUP)
+        self.assertEqual(sorted(parsed), ["setup"])
+        self.assertEqual(parsed["setup"]["total"], {"count": 12, "worst": -0.0387, "tns": -0.1160})
+        self.assertEqual(sorted(parsed["setup"]["scenarios"]), SCENARIOS)
+        self.assertEqual(parsed["setup"]["scenarios"]["func_ffg_cbest_125"], {"count": 0, "worst": 0.0, "tns": 0.0})
+        hold = contributions.parse_gain_summary(real.PRE_OPT_HOLD)["hold"]
+        self.assertEqual(hold["total"], {"count": 70, "worst": -0.1542, "tns": -3.9661})
+        self.assertEqual(hold["scenarios"]["func_ssg_rcworst_125"], {"count": 49, "worst": -0.1398, "tns": -2.9593})
+
+    def test_the_delta_form_reads_current_reference_and_delta_columns(self):
+        hold = contributions.parse_gain_summary(real.POST_OPT_HOLD)["hold"]
+        self.assertEqual(hold["total"], {
+            "count": 66, "count0": 70, "dCount": -4, "worst": -0.1542, "worst0": -0.1542, "dWorst": 0.0,
+            "tns": -3.7707, "tns0": -3.9661, "dTns": 0.1954})
+        self.assertEqual(hold["scenarios"]["func_ffg_cbest_m40"], {
+            "count": 52, "count0": 55, "dCount": -3, "worst": -0.0704, "worst0": -0.0704, "dWorst": 0.0,
+            "tns": -0.6551, "tns0": -0.7199, "dTns": 0.0649})
+        self.assertEqual(sorted(hold["scenarios"]), SCENARIOS)
+        setup = contributions.parse_gain_summary(real.POST_OPT_SETUP)["setup"]
+        self.assertEqual(setup["total"]["dTns"], 0.0)
+        self.assertEqual(setup["scenarios"]["func_ssg_rcworst_m40"]["worst"], -0.0387)
+
+    def test_a_whole_report_file_reads_both_sections_and_ignores_the_eco_action_table(self):
+        parsed = contributions.parse_gain_summary(real.POST_OPT_FULL)
+        self.assertEqual(sorted(parsed), ["hold", "setup"])
+        self.assertEqual(parsed["setup"]["total"]["count"], 12)
+        self.assertEqual(parsed["hold"]["total"]["tns"], -3.7707)
+        both = contributions.parse_gain_summary(real.PRE_OPT_FULL)
+        self.assertEqual(both["hold"]["total"]["worst"], -0.1542)
+
+    def test_a_section_that_does_not_add_up_or_does_not_fit_its_header_is_dropped(self):
+        corrupt = real.POST_OPT_HOLD.replace("+0.1954", "+0.2954")
+        self.assertNotIn("hold", contributions.parse_gain_summary(corrupt))
+        short = real.POST_OPT_HOLD.replace("-3.7707    -3.9661    +0.1954", "-3.7707    -3.9661")
+        self.assertNotIn("hold", contributions.parse_gain_summary(short))
+        doubled = real.PRE_OPT_SETUP + real.PRE_OPT_SETUP.replace("-0.1160", "-0.2160")
+        self.assertNotIn("setup", contributions.parse_gain_summary(doubled))
+        for text in ("", 'WNS "delta"\t-0.010 for -setup', "WNS    -0.0700\nTNS    -1.2000\n"):
+            self.assertEqual(contributions.parse_gain_summary(text), {})
+
+    def _real_session(self, targets):
+        log = sf.SessionLog()
+        log.gains[0]["checks"] = {
+            "setup": sf.summary_entry("setup", real.PRE_OPT_SETUP, as_reference=True),
+            "hold": sf.summary_entry("hold", real.PRE_OPT_HOLD, as_reference=True),
+        }
+        seq = log.size("U1", "BUFX1", "BUFX2")
+        log.gains.append({"seq": seq, "kind": "mutation", "checks": {
+            "setup": sf.summary_entry("setup", real.POST_OPT_SETUP),
+            "hold": sf.summary_entry("hold", real.POST_OPT_HOLD),
+        }})
+        return _seal_session(log, {**BEFORE, "U1": "BUFX2"}, base_ref=sf.make_base_ref(targets=targets))
+
+    def test_real_readings_give_predicted_reference_value_and_per_scenario_summaries(self):
+        contribution = self._real_session(["func_ssg_rcworst_m40|hold|U1/D"])
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        predicted, reference = contribution["predicted"], contribution["reference"]
+        self.assertEqual(core.value_of(predicted["xtopHoldWns"]), -0.1542)
+        self.assertEqual(core.value_of(predicted["xtopHoldTns"]), -3.7707)
+        self.assertEqual(core.value_of(predicted["xtopSetupWns"]), -0.0387)
+        self.assertEqual(core.value_of(predicted["xtopSetupTns"]), -0.1160)
+        self.assertEqual(core.value_of(reference["xtopHoldTns"]), -3.9661)
+        self.assertEqual(core.value_of(reference["xtopHoldWns"]), -0.1542)
+        self.assertEqual(contribution["value"], 0.0)
+        self.assertEqual(contribution["valueDetail"]["wnsGain"], {"hold": 0.0})
+        self.assertAlmostEqual(contribution["valueDetail"]["tnsGain"], 0.1954)
+        summary = contribution["gainSummary"]
+        self.assertEqual(summary["predicted"]["hold"]["scenarios"]["func_ssg_rcworst_m40"]["tns"], -3.7009)
+        self.assertEqual(summary["predicted"]["hold"]["scenarios"]["func_ssg_rcworst_m40"]["dTns"], 0.1953)
+        self.assertEqual(summary["reference"]["hold"]["scenarios"]["func_ffg_cbest_125"]["tns"], -0.7568)
+        self.assertEqual(summary["predicted"]["setup"]["total"]["dWorst"], 0.0)
+
+    def test_real_readings_with_no_setup_change_refuse_a_setup_target(self):
+        contribution = self._real_session(["func_ssg_rcworst_m40|setup|U1/D"])
+        self.assertEqual(_codes(contribution), ["no-predicted-gain"])
 
 
 if __name__ == "__main__":

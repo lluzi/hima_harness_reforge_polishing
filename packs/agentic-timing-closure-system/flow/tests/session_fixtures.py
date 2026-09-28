@@ -4,9 +4,8 @@
 (`atcs_mutate`, `atcs_undo`, `atcs_log_gain`) and
 `notes/t3-toolkit-surface.md`; the field order and values mirror what
 `flow/tests/test_xtop_toolkit.py` observes from the rendered session. The
-`summarize_gba_violations` text is synthesized in the layout
-`atcs.contributions.parse_gain_summary` documents (the real layout is an
-unproven assumption until Task 7 reads a live session).
+`summarize_gba_violations` text follows the real layout pinned by
+`xtop_summary_samples` (the old flow's server run).
 """
 from __future__ import annotations
 
@@ -167,22 +166,32 @@ def summary_entry(check, text, as_reference=False, top_n=None, fail_reason=False
     return {"command": f"summarize_gba_violations {options} -{check}", "code": 0, "result": "", "text": text}
 
 
+SCENARIO = "func_ss"
+_RULE = "-" * 129
+
+
 def reference_text(check, wns, tns, num):
-    return (f"Summary of {check} GBA violations\n"
-            f"------------------------------------\n"
-            f"WNS    {wns:.4f}\n"
-            f"TNS    {tns:.4f}\n"
-            f"NUM    {num}\n")
+    """`summarize_gba_violations -exclude_path -as_reference -<check>` in the real layout
+    (`xtop_summary_samples.PRE_OPT_*`), for one scenario."""
+    return (f"### {check} summary ###\n"
+            f"Scenario                  Count      Worst        TNS\n"
+            f"------------------------------------------------------\n"
+            f"total                  {num:>6} {wns:>10.4f} {tns:>10.4f}\n"
+            f"  {SCENARIO:<20} {num:>6} {wns:>10.4f} {tns:>10.4f}\n")
 
 
 def delta_text(check, reference, current, fail_reasons=None):
+    """`summarize_gba_violations -exclude_path -with_reference -with_delta -<check>` in the real
+    layout (`xtop_summary_samples.POST_OPT_*`); `reference`/`current` are `(wns, tns)`."""
     (ref_wns, ref_tns), (cur_wns, cur_tns) = reference, current
-    text = (f"Summary of {check} GBA violations\n"
-            f"------------------------------------------------\n"
-            f"         Reference     Current       Delta\n"
-            f"------------------------------------------------\n"
-            f"WNS      {ref_wns:.4f}       {cur_wns:.4f}       {cur_wns - ref_wns:.4f}\n"
-            f"TNS      {ref_tns:.4f}       {cur_tns:.4f}       {cur_tns - ref_tns:.4f}\n")
+    row = (f"{3:>6} {4:>9} {-1:>+10}    |    {cur_wns:>7.4f} {ref_wns:>10.4f} {cur_wns - ref_wns:>+10.4f}    |"
+           f"    {cur_tns:>7.4f} {ref_tns:>10.4f} {cur_tns - ref_tns:>+10.4f}")
+    text = (f"### {check} summary ###\n"
+            "Scenario                  Count    Count0    D_Count           Worst     Worst0    D_Worst"
+            "             TNS       TNS0      D_TNS\n"
+            f"{_RULE}\n"
+            f"total                   {row}\n"
+            f"  {SCENARIO:<20}  {row}\n")
     if fail_reasons:
         text += "Fail reasons\n"
         for reason, count in fail_reasons.items():

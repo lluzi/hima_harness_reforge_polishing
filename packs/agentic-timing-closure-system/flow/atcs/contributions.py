@@ -956,8 +956,10 @@ def _script_sha256(path):
 #   uses for `skip: shared-instance`.
 # - ``delta``: `actual_delta` of the two dumps (authoritative); removable
 #   filler cells it exempts are named in ``fillerChanges``.
-# - ``predicted`` / ``reference``: Measures read from the last non-reference
-#   gain line and the seq-0 reference line (``xtop{Setup,Hold}{Wns,Tns}``).
+# - ``predicted`` / ``reference``: Measures read from the ``total`` rows of the
+#   last mutation/undo gain line and the seq-0 reference line
+#   (``xtop{Setup,Hold}{Wns,Tns}``); ``gainSummary`` holds both readings'
+#   full per-scenario `parse_gain_summary` sections.
 # - ``failReasons``: ``{check: {reason: count}}`` from the last
 #   ``-with_fail_reason`` reading that reflects the final state, else ``{}``.
 # - ``value`` (ns) and ``valueDetail``: the ranking value, see `_session_value`.
@@ -1000,8 +1002,12 @@ GAIN_KINDS = ("reference", "mutation", "undo", "probe")
 SESSION_CHECKS = ("setup", "hold")
 _OPTIONAL_NAME_LISTS = ("newNets", "fillers", "ecoCells")
 _NUMBER = re.compile(r"^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?$")
-_COLUMN_NAMES = {"reference": "reference", "ref": "reference", "current": "current", "cur": "current",
-                 "total": "current", "delta": "delta"}
+_SUMMARY_COLUMNS = {"Count": "count", "Count0": "count0", "D_Count": "dCount", "Worst": "worst",
+                    "Worst0": "worst0", "D_Worst": "dWorst", "TNS": "tns", "TNS0": "tns0", "D_TNS": "dTns"}
+_SUMMARY_SECTION = re.compile(r"^###\s+(setup|hold)\s+summary\s+###\s*$")
+_INT_COLUMNS = ("count", "count0", "dCount")
+# Rows print 4 decimals; a delta column may differ from its own difference by one rounding step each side.
+_DELTA_TOLERANCE = 1.5e-4
 _FAIL_REASON_ROW = re.compile(r"^\s*([a-z][a-z0-9_]*)\s*[:=]?\s+(\d+)\s*$")
 
 
@@ -1120,115 +1126,126 @@ def parse_gain_log(text):
 
 
 def parse_gain_summary(text):
-    """Read WNS/TNS out of one ``summarize_gba_violations`` capture.
+    """Parse ``summarize_gba_violations`` output into ``{check: {"total": row, "scenarios": {name: row}}}``.
 
-    UNPROVEN ASSUMPTION (Task 7 must confirm against a live session): the
-    text carries ``WNS``/``TNS`` rows in one of three layouts --
+    Pinned to real XTop 2025.09 output (the old flow's server run; verbatim in
+    ``tests/xtop_summary_samples.py``). Each check prints one section::
 
-    - a row with one number (``WNS  -0.0700``): that number is ``current``
-      (the ``-as_reference`` reading);
-    - a row qualified by a column word (``WNS reference -0.07``,
-      ``WNS "delta" 0.02``): the number belongs to that column;
-    - a header line naming columns (``Reference Current Delta``, or a
-      PrimeTime-style ``Total reg->reg ...``) followed by rows with exactly
-      one number per header token: numbers map to the named columns
-      (``total`` counts as ``current``).
+        ### hold summary ###
+        Scenario                  Count      Worst        TNS            (-as_reference)
+        Scenario  Count Count0 D_Count | Worst Worst0 D_Worst | TNS TNS0 D_TNS   (-with_reference -with_delta)
+        ------...
+        total                        70    -0.1542    -3.9661
+          func_ffg_cbest_125         44    -0.0764    -0.7568
 
-    Anything else -- several numbers without a matching header, a second,
-    different value for the same column -- makes that metric's column
-    ambiguous, and it reads as ``None``. Returns ``{"wns"|"tns":
-    {"reference"|"current"|"delta": float|None}}``; the caller turns
-    ``None`` into an `unknown` Measure, so an unexpected layout fails
-    closed (``no-predicted-gain``), never guesses a gain. Slack sums are
-    taken as signed (negative = violating), as PrimeTime reports them.
+    Columns map to ``count``/``count0``/``dCount`` (ints), ``worst``/``worst0``/
+    ``dWorst`` and ``tns``/``tns0``/``dTns`` (ns): the plain column is the
+    current design, ``...0`` is the session reference, ``D_...`` their
+    difference. ``Worst`` is the worst slack (``0.0000`` when nothing
+    violates) and ``TNS`` is negative when violating. ``|`` separators are
+    ignored; a line with no number ends the table, and other text (the
+    ``summarize_eco_actions`` table, fail-reason lines) is skipped.
+
+    Fail closed: a section is dropped (absent from the result) when any of
+    its rows does not have exactly one number per header column, a row name
+    repeats, it has no ``total`` row, a ``D_`` column disagrees with its
+    current minus reference by more than one rounding step, or the same
+    check prints two sections. Text with no recognizable section returns
+    ``{}``; callers turn that into `unknown` Measures.
     """
-    found = {"wns": {}, "tns": {}}
-    ambiguous = {"wns": set(), "tns": set()}
-    header = None
-
-    def record(metric, column, value):
-        previous = found[metric].get(column)
-        if previous is not None and previous != value:
-            ambiguous[metric].add(column)
-        found[metric][column] = value
-
+    sections = {}
+    broken = set()
+    check = header = None
     for raw_line in text.splitlines():
-        tokens = [token.strip("\"'():,") for token in raw_line.split()]
-        tokens = [token for token in tokens if token]
-        if not tokens:
+        line = raw_line.strip()
+        match = _SUMMARY_SECTION.match(line)
+        if match:
+            check, header = match.group(1), None
+            if check in sections or check in broken:
+                broken.add(check)
+            sections.setdefault(check, {"total": None, "scenarios": {}})
             continue
-        lowered = [token.lower() for token in tokens]
-        numbers = [token for token in tokens if _NUMBER.match(token)]
-        if lowered[0] not in ("wns", "tns"):
-            if not numbers and any(token in _COLUMN_NAMES for token in lowered):
-                header = [_COLUMN_NAMES.get(token) for token in lowered]
+        if check is None or check in broken:
             continue
-        metric = lowered[0]
-        rest = tokens[1:]
-        qualifier = None
-        if rest and not _NUMBER.match(rest[0]):
-            qualifier = _COLUMN_NAMES.get(rest[0].lower())
-            if qualifier is None:
-                ambiguous[metric].add("*")
-                continue
-            rest = rest[1:]
-        values = [float(token) for token in rest if _NUMBER.match(token)]
-        if qualifier is not None:
-            if len(values) == 1:
-                record(metric, qualifier, values[0])
-            else:
-                ambiguous[metric].add(qualifier)
-        elif header is not None and len(values) == len(header):
-            for column, value in zip(header, values):
-                if column is not None:
-                    record(metric, column, value)
-        elif len(values) == 1:
-            record(metric, "current", values[0])
+        tokens = [token for token in line.split() if token != "|"]
+        if not tokens or set(line) <= set("-"):
+            continue
+        if tokens[0] == "Scenario":
+            columns = [_SUMMARY_COLUMNS.get(token) for token in tokens[1:]]
+            if header is not None or None in columns or len(set(columns)) != len(columns) \
+                    or not {"worst", "tns"} <= set(columns):
+                broken.add(check)
+            header = columns
+            continue
+        if line.startswith("###"):
+            check = header = None
+            continue
+        if header is None:
+            continue
+        name, values = tokens[0], tokens[1:]
+        if not any(_NUMBER.match(value) for value in values):
+            header = None  # a text line (e.g. fail reasons) ends the table
+            continue
+        if len(values) != len(header) or not all(_NUMBER.match(value) for value in values):
+            broken.add(check)
+            continue
+        row = {column: (int(float(value)) if column in _INT_COLUMNS else float(value))
+               for column, value in zip(header, values)}
+        for current, reference, delta in (("worst", "worst0", "dWorst"), ("tns", "tns0", "dTns"),
+                                          ("count", "count0", "dCount")):
+            if delta in row and current in row and reference in row \
+                    and abs(row[current] - row[reference] - row[delta]) > _DELTA_TOLERANCE:
+                broken.add(check)
+        target = sections[check]
+        if name == "total":
+            if target["total"] is not None:
+                broken.add(check)
+            target["total"] = row
+        elif name in target["scenarios"]:
+            broken.add(check)
         else:
-            ambiguous[metric].add("*")
-
-    result = {}
-    for metric in ("wns", "tns"):
-        if "*" in ambiguous[metric]:
-            result[metric] = {"reference": None, "current": None, "delta": None}
-            continue
-        result[metric] = {column: (None if column in ambiguous[metric] else found[metric].get(column))
-                          for column in ("reference", "current", "delta")}
-    return result
-
-
-def _current_of(metric):
-    if metric["current"] is not None:
-        return metric["current"]
-    if metric["reference"] is not None and metric["delta"] is not None:
-        return round(metric["reference"] + metric["delta"], 9)
-    return None
+            target["scenarios"][name] = row
+    return {name: section for name, section in sorted(sections.items())
+            if name not in broken and section["total"] is not None}
 
 
 def _measure(value, reason):
     return core.known(value) if value is not None else core.unknown(reason)
 
 
+def _gain_reading(gain_line):
+    """``(parsed, reasons)``: `parse_gain_summary` per check of one gain line, and why a check is missing."""
+    parsed, reasons = {}, {}
+    for check in SESSION_CHECKS:
+        entry = (gain_line or {}).get("checks", {}).get(check)
+        if gain_line is None or entry is None:
+            reasons[check] = "no gain reading"
+        elif entry["code"] != 0:
+            reasons[check] = f"summarize_gba_violations failed (code {entry['code']})"
+        else:
+            section = parse_gain_summary(entry["text"]).get(check)
+            if section is None:
+                reasons[check] = f"no readable '### {check} summary ###' section in the gain text"
+            else:
+                parsed[check] = section
+    return parsed, reasons
+
+
 def _gain_measures(gain_line, column="current"):
-    """``{"xtop<Check><Wns|Tns>": Measure}`` read from one gain line's texts."""
+    """``{"xtop<Check><Wns|Tns>": Measure}`` from one gain line's ``total`` rows.
+
+    ``column="current"`` reads ``Worst``/``TNS``; ``"reference"`` reads
+    ``Worst0``/``TNS0`` (present only in ``-with_reference`` readings).
+    """
+    parsed, reasons = _gain_reading(gain_line)
+    suffix = "" if column == "current" else "0"
     measures = {}
     for check in SESSION_CHECKS:
         label = check.capitalize()
-        entry = (gain_line or {}).get("checks", {}).get(check)
-        if gain_line is None or entry is None:
-            reason = "no gain reading"
-            parsed = None
-        elif entry["code"] != 0:
-            reason = f"summarize_gba_violations failed (code {entry['code']})"
-            parsed = None
-        else:
-            reason = "summarize_gba_violations text not in a known layout"
-            parsed = parse_gain_summary(entry["text"])
-        for metric in ("wns", "tns"):
-            value = None
-            if parsed is not None:
-                value = _current_of(parsed[metric]) if column == "current" else parsed[metric][column]
-            measures[f"xtop{label}{metric.capitalize()}"] = _measure(value, reason)
+        total = (parsed.get(check) or {}).get("total") or {}
+        reason = reasons.get(check) or f"no {column} column in the {check} summary"
+        measures[f"xtop{label}Wns"] = _measure(total.get("worst" + suffix), reason)
+        measures[f"xtop{label}Tns"] = _measure(total.get("tns" + suffix), reason)
     return measures
 
 
@@ -1448,7 +1465,11 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
             refuse("missing-gain-line", f"kept seq {line['seq']} has no {kind} gain line")
     last_kept_seq = max((line["seq"] for line in kept_all), default=0)
     references = [gain_line for gain_line in gain_lines if gain_line["kind"] == "reference"]
-    readings = [gain_line for gain_line in gain_lines if gain_line["kind"] != "reference"]
+    # `predicted` comes from the last mutation/undo reading: every kept line has one (checked
+    # above), no other line changes the design, and its form (`-with_delta -with_reference`) is
+    # the one pinned to real output. `atcs_gain` probes (`-with_top_n -with_fail_reason`) only
+    # feed `failReasons`.
+    readings = [gain_line for gain_line in gain_lines if gain_line["kind"] in ("mutation", "undo")]
     reference_line = references[0] if references else None
     last_reading = readings[-1] if readings else reference_line
     if kept_all and (last_reading is None or last_reading["seq"] < last_kept_seq):
@@ -1459,6 +1480,7 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
         fallback = _gain_measures(last_reading, column="reference")
         reference = {key: measure if core.is_known(measure) else fallback[key] for key, measure in reference.items()}
     predicted = _gain_measures(last_reading)
+    gain_summary = {"reference": _gain_reading(reference_line)[0], "predicted": _gain_reading(last_reading)[0]}
     predicted.update({"prestaSetupWns": core.unknown("not predicted by an xtop-session"),
                       "prestaHoldWns": core.unknown("not predicted by an xtop-session")})
     fail_reasons, fail_reasons_seq = _latest_fail_reasons(gain_lines, last_kept_seq)
@@ -1564,6 +1586,7 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
         "atomicGroups": [],
         "predicted": predicted,
         "reference": reference,
+        "gainSummary": gain_summary,
         "failReasons": fail_reasons,
         "value": value,
         "valueDetail": value_detail,
