@@ -27,7 +27,7 @@ import { advance, endBudgetExhausted, attemptOf, attemptOfSession, currentAttemp
 import { killDidNotTake, workshopOutputProblem, type Driving, type FabricDeps } from './node-turns.js';
 import { SiteUnreadableError } from './errors.js';
 import { counted } from './words.js';
-import { drive, controlling, reconcileAppliedRevisions, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
+import { drive, controlling, executionPack, reconcileAppliedRevisions, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
 import { owesAnExperience, owesRunAssets, writeExperience } from './experience.js';
 import { closeInterruptedMoments } from './moments.js';
 
@@ -755,7 +755,8 @@ async function cancelFencedRun(deps: FabricDeps, runId: string): Promise<CancelR
 async function workshopOutputOf(deps: FabricDeps, run: RunRecord, launch: JobRecord, nodeId: string | undefined): Promise<string | undefined> {
   if (launch.event !== 'launched' || launch.workshop === undefined) return undefined;
   try {
-    const pack = packOf(deps, run);
+    // The method the Run executes, with its accepted growth graphs, as the drive's own check reads it.
+    const pack = run.control === undefined ? packOf(deps, run) : executionPack(deps, run);
     const node = positionOf(pack, nodeId)?.node;
     if (node?.kind !== 'act' || node.parameters.workshop === undefined) return `Workshop output of node ${nodeId ?? '(unknown)'} cannot be verified: the retained method no longer declares that Workshop node`;
     const site = loadSite(deps.sitesDir, launch.siteId);

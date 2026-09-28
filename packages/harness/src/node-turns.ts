@@ -705,6 +705,8 @@ export async function workshopOutputProblem(at: {
       return `Workshop output ${relative} was not written: ${why} but ${file} is not on site ${site.name}; the entry execution is the Workshop's result and must write its declared output "${output.name}"`;
     }
     if (at.entryPath === undefined) return `Workshop output ${relative} cannot be verified as written by this execution: the launch of tmux session ${session} records no entry`;
+    // `test A -ot B` is false when B is missing, which would pass a stale output: ask first.
+    if (await channel.absent(at.entryPath)) return `Workshop output ${relative} cannot be verified as written by this execution: its entry ${at.entryPath} is no longer on site ${site.name}`;
     const older = await channel.exec(['test', file, '-ot', at.entryPath]);
     if (older.code === 0) {
       return `Workshop output ${relative} was not written by this execution: ${why} but ${file} is older than its entry ${at.entryPath}, so it was left by earlier work; the entry execution must write its declared output "${output.name}" itself`;

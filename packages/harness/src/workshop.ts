@@ -781,7 +781,7 @@ export function workshopInstructions(brief: WorkshopBriefing): string {
     `It is read by ${brief.produces.reader}, which takes these value types out of it:`,
     listed(emits, '(none)'),
     'A file that reader cannot make sense of is a generation nobody can judge.',
-    `${declaration.entry} runs once, and that one run is this workshop's result: it must write that file before it exits 0.`,
+    `${declaration.entry} runs once, and that one run is this workshop's result: it must write (or touch) that file before it exits 0.`,
     'An entry that exits 0 without writing it is a failed attempt. Explore with the read and knowledge tools before you write the entry, not in it.',
     '',
     'The values this attempt supplies, which the command line above already carries:',

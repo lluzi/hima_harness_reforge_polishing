@@ -959,17 +959,28 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
     // the pack's own words (#58), which is why the words go in here rather than being resolved twice.
     generations: generationsOf(run, records, words),
     ...(() => {
-      const revisions = records.filter((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied').map((record): RevisionHistoryView => ({
+      const revisions = records.flatMap((record): RevisionHistoryView[] => record.type === 'revision' && record.event === 'applied' ? [{
         revisionId: record.revisionId, version: record.version, recordId: record.id,
         changedNodes: record.changedNodes, affectedNodes: record.affectedNodes,
         invalidatedRecordIds: record.invalidates ?? [], reusedRecordIds: record.reuses ?? [],
-      }));
+      }] : record.type === 'resumed' && record.kind === 'restart' ? [{
+        // A person's restart of a passed node (#64 D2) supersedes records as a revision does, and is
+        // read beside revisions so every "superseded" label and current-evidence check sees it.
+        revisionId: `continue:${record.requestId ?? record.id}`, version: 0, recordId: record.id,
+        changedNodes: [record.nodeId],
+        affectedNodes: [...new Set((record.invalidates ?? []).flatMap((id) => {
+          const invalidated = records.find((candidate) => candidate.id === id);
+          return invalidated !== undefined && 'nodeId' in invalidated && typeof invalidated.nodeId === 'string' && invalidated.nodeId !== record.nodeId ? [invalidated.nodeId] : [];
+        }))],
+        invalidatedRecordIds: record.invalidates ?? [], reusedRecordIds: [],
+      }] : []);
       return revisions.length === 0 ? {} : { revisions };
     })(),
     jobs: records.filter((r): r is JobRecord => r.type === 'job').map(jobView),
     blockers: records.filter((r): r is BlockerRecord => r.type === 'blocker').map(blockerView),
     cancels: records.filter((r): r is CancelRecord => r.type === 'cancel').map(cancelView),
-    resumes: records.filter((r): r is ResumedRecord => r.type === 'resumed').map(resumeView),
+    // A restart is shown with the revisions it resembles, not as a blocker resume.
+    resumes: records.filter((r): r is ResumedRecord => r.type === 'resumed' && r.kind !== 'restart').map(resumeView),
     decision: decision ? decisionView(decision) : null,
     code: records.filter((r): r is CodeRecord => r.type === 'code').map(codeView),
     knowledge: records.filter((r): r is KnowledgeRecord => r.type === 'knowledge').map(knowledgeView),
