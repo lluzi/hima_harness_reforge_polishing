@@ -88,6 +88,7 @@ import type { JudgedBranch, Judge } from './judge.js';
 import type { ReaderRef } from './ledger.js';
 import { SiteUnreadableError } from './errors.js';
 import { materializeWorkshopRevision, type WorkspaceRevisionAsset } from './workspace.js';
+import { retainRunMaterial } from './experience.js';
 import { libraryQualificationObservationRefusal } from './adapters/library-qualification.js';
 
 /** What every fabric operation is given: the ledger a Run lives in, HimaJudge, and where the Sites
@@ -1052,14 +1053,24 @@ export async function buildWorkshopScope(ctx: Driving, node: Extract<PackNode, {
   const already = records.some((record) => record.type === 'code' && record.nodeId === node.id
     && record.attempt === attempt && record.path.startsWith(`${resolved.workshopAbs}/`));
   if (!already && latest.size > 0) {
-    const assets = [...latest.values()];
-    await materializeWorkshopRevision(ctx.site, assets, resolved.workshopAbs);
-    for (const asset of assets) await ctx.deps.ledger.appendCode(ctx.runId, {
-      nodeId: node.id, attempt, sessionId, workshop: resolved.declaration.id,
-      path: pathsOf(ctx.site).join(resolved.workshopAbs, asset.logicalPath), sha256: asset.afterSha256,
-      bytes: asset.bytes, language: resolved.declaration.language,
-      ...(ctx.branchId === undefined ? {} : { branchId: ctx.branchId }),
-    });
+    // Seeded bytes are retained like any authored write: the owner may rewrite this pathname in
+    // place, and the `code` record must still reproduce the version it names (Issue #63). Every
+    // copy is retained before any record, so a retention failure leaves no partial seed behind
+    // `already`; retention is keyed by content and safe to repeat.
+    const copied = await materializeWorkshopRevision(ctx.site, [...latest.values()], resolved.workshopAbs);
+    const retained = [];
+    for (const { asset, bytes } of copied) {
+      retained.push({ asset, retainedPath: await retainRunMaterial({ ledger: ctx.deps.ledger, packsDir: ctx.deps.packsDir }, ctx.runId, bytes, asset.afterSha256) });
+    }
+    for (const { asset, retainedPath } of retained) {
+      await ctx.deps.ledger.appendCode(ctx.runId, {
+        ...(retainedPath === undefined ? {} : { retainedPath }),
+        nodeId: node.id, attempt, sessionId, workshop: resolved.declaration.id,
+        path: pathsOf(ctx.site).join(resolved.workshopAbs, asset.logicalPath), sha256: asset.afterSha256,
+        bytes: asset.bytes, language: resolved.declaration.language,
+        ...(ctx.branchId === undefined ? {} : { branchId: ctx.branchId }),
+      });
+    }
   }
   return { ok: true, resolved, scope: {
     ledger: ctx.deps.ledger, packsDir: ctx.deps.packsDir, runId: ctx.runId, site: ctx.site, nodeId: node.id, attempt,

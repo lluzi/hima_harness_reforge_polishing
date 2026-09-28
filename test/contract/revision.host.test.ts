@@ -7,7 +7,8 @@ import path from 'node:path';
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
 import { localHome, sessionsOf, killSessions, waitUntil } from './support/fabric.ts';
 import { repoRoot } from './support/dsh-home.ts';
-import { currentRecordsIn, retainedRecordMaterial, type ExecutionActionRequest, type JobRecord, type LedgerRecord, type RevisionProposal, type RunRecord } from '@hima/harness';
+import { packsDirOf } from './support/pack.ts';
+import { currentRecordsIn, readArchivedMaterial, readRunAssets, retainedRecordMaterial, type ExecutionActionRequest, type JobRecord, type LedgerRecord, type RevisionProposal, type RunRecord } from '@hima/harness';
 
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
@@ -618,6 +619,80 @@ test('revising a ready branch preserves an unfinished sibling and retires the ol
     assert.deepEqual(context().available, ['judge']);
     const jobs = host.ctx.hima.ledger.records({ runId, type: 'job' }).filter(r => r.type === 'job' && r.event === 'launched');
     assert.equal(jobs.filter(r => r.type === 'job' && r.nodeId === 'independent').length, 1, 'the valid sibling computation is reused');
+  } finally {
+    if (runId) { killSessions(sessionsOf(host, runId)); await host.ctx.hima.cancelRun(runId); }
+    await host.dispose(); await home.h.dispose();
+  }
+});
+
+test('a revision seeded into an execution keeps its recorded bytes after the owner rewrites that entry in place', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 }); assert.ok(home);
+  const packDir = path.join(home.h.home, 'hima/packs/authored-workshop'); await mkdir(packDir, { recursive: true });
+  for (const file of ['contract.yml', 'graph.yml', 'semantics.yml', 'readers', 'rules', 'tools', 'knowledge']) {
+    await cp(path.join(repoRoot, 'test/fixtures/pipeline/workshop', file), path.join(packDir, file), { recursive: true });
+  }
+  await writeFile(path.join(packDir, 'PACK.md'), '# Seeded revision retention fixture\n');
+  await writeFile(path.join(home.flow.root, 'numbers.txt'), '3\n7\n11\n');
+  const host = await bootInProcess(home.h); let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran'); if (started.kind !== 'ran') return; runId = started.run.id;
+    let request = 0;
+    const act = (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}) => {
+      const control = host.ctx.hima.ledger.run(runId!)!.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), expectedEpoch: control.epoch,
+        expectedRevision: control.revision, requestId: `seeded-retention-${++request}`, action, ...fields });
+    };
+    const entry = 'mkdir -p "$2/research/analysis"\nawk -v scale="$3" \'{sum+=$1} END {print sum*scale}\' "$2/flow/numbers.txt" > "$2/research/analysis/result.txt"\n';
+    const first = (await act('begin', { nodeId: 'analyze' })).receipt!.executionId!;
+    await act('recommend', { executionId: first });
+    await act('write', { executionId: first, path: 'entry.sh', content: entry });
+    await act('work', { executionId: first });
+    await waitUntil('first Workshop ready', () => host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === first && execution.phase === 'ready'));
+    await act('complete', { executionId: first });
+    const read = await act('begin', { nodeId: 'read-analysis' }); const readId = read.receipt!.executionId!;
+    await act('work', { executionId: readId });
+    await waitUntil('first read ready', () => host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === readId && execution.phase === 'ready'));
+    await act('complete', { executionId: readId });
+    const source = host.ctx.hima.ledger.records({ runId, type: 'code' }).findLast((record) => record.type === 'code')!;
+    const evidence = host.ctx.hima.ledger.records({ runId }).find((record) => record.type === 'workspace')!;
+    if (source.type !== 'code' || evidence.type !== 'workspace') return assert.fail('fixture lacks code or workspace evidence');
+    const context = host.ctx.hima.executionContext(runId);
+    const revisedEntry = `${entry}# approved revision seeded into the next execution\n`;
+    const proposal: RevisionProposal = { revisionId: 'seeded-then-rewritten',
+      method: { id: context.method!.id, version: context.method!.version, digest: context.method!.digest },
+      inputThroughSeq: context.run.nextSeq - 1, inputs: [{ recordId: evidence.id, contentIdentity: identity(evidence) }],
+      reason: 'seed an approved algorithm the owner will then edit', changedNodes: ['analyze'], affectedNodes: ['analyze', 'read-analysis', 'judge'],
+      changes: [{ nodeId: 'analyze', scope: 'workshop', path: 'entry.sh', fromSha256: source.sha256, content: revisedEntry, sourceRecordId: source.id }] };
+    const revised = await act('revise', { revision: proposal }); assert.equal(revised.kind, 'accepted', revised.reason);
+    const next = await act('begin', { nodeId: 'analyze' }); assert.equal(next.kind, 'accepted', next.reason);
+    const nextId = next.receipt!.executionId!;
+    assert.equal((await act('recommend', { executionId: nextId })).kind, 'accepted');
+    // Issue #63 #153: the Host seeds the revision into the new execution and records it as code.
+    const seeded = host.ctx.hima.ledger.records({ runId, type: 'code' }).findLast((record) => record.type === 'code')!;
+    assert.equal(seeded.type, 'code'); if (seeded.type !== 'code') return;
+    assert.ok(seeded.path.includes(`/.executions/${nextId}/`), seeded.path);
+    assert.equal(await readFile(seeded.path, 'utf8'), revisedEntry);
+    // #161/#162: the owner then rewrites that same execution entry in place.
+    const edited = `${revisedEntry}# owner edit after seeding\n`;
+    assert.equal((await act('write', { executionId: nextId, path: 'entry.sh', content: edited })).kind, 'accepted');
+    assert.equal(await readFile(seeded.path, 'utf8'), edited, 'the fixture overwrote the seeded pathname');
+    const held = await host.ctx.hima.readMaterial(runId, seeded.id);
+    assert.equal(held.kind, 'read', `the seeded code version stays reproducible: ${JSON.stringify(held)}`);
+    if (held.kind === 'read') assert.equal(held.text, revisedEntry);
+    // #238: the Run's archive must hold every code record, including the seeded one.
+    await host.ctx.hima.cancelRun(runId);
+    const archived = host.ctx.hima.ledger.records({ runId, type: 'archive' }).findLast((record) => record.type === 'archive');
+    assert.ok(archived && archived.type === 'archive');
+    assert.notEqual(archived.delivery, 'failed', JSON.stringify(archived));
+    const deps = { ledger: host.ctx.hima.ledger, sitesDir: path.join(home.h.home, 'hima/sites'), packsDir: packsDirOf(home.h) };
+    const assets = await readRunAssets(deps, runId);
+    assert.equal(assets.kind, 'read', JSON.stringify(assets)); if (assets.kind !== 'read') return;
+    const material = assets.manifest.materials.find((item) => item.recordId === seeded.id); assert.ok(material);
+    const bytes = await readArchivedMaterial(deps, runId, material.path);
+    assert.equal(bytes.kind, 'read'); if (bytes.kind === 'read') assert.equal(bytes.text, revisedEntry);
+    runId = undefined;
   } finally {
     if (runId) { killSessions(sessionsOf(host, runId)); await host.ctx.hima.cancelRun(runId); }
     await host.dispose(); await home.h.dispose();

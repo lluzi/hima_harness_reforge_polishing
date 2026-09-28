@@ -572,10 +572,12 @@ export async function applyWorkspaceRevision(site: ReturnType<typeof loadSite>, 
   return assets;
 }
 
-/** Copy accepted Workshop algorithm bytes into a new execution's private directory. */
+/** Copy accepted Workshop algorithm bytes into a new execution's private directory. Returns the
+ * verified bytes of each copy so the caller can retain them before the pathname is edited in place. */
 export async function materializeWorkshopRevision(site: ReturnType<typeof loadSite>, assets: readonly WorkspaceRevisionAsset[],
-  targetRoot: string): Promise<void> {
+  targetRoot: string): Promise<{ readonly asset: WorkspaceRevisionAsset; readonly bytes: Uint8Array }[]> {
   const channel = channelFor(site); const p = pathsOf(site);
+  const copied: { readonly asset: WorkspaceRevisionAsset; readonly bytes: Uint8Array }[] = [];
   for (const asset of assets.filter((item) => item.scope === 'workshop')) {
     const source = await decideRead(site, asset.afterVersionPath, channel);
     if (!source.ok) throw new Error(`retained Workshop revision is unavailable: ${source.reason}`);
@@ -587,5 +589,7 @@ export async function materializeWorkshopRevision(site: ReturnType<typeof loadSi
     const output = await decideWrite(site, target, channel); if (!output.ok) throw new Error(output.reason);
     await mustRun(channel, ['tee', '--', output.absPath], `materialize revised Workshop file ${output.absPath}`, { stdin: Buffer.from(bytes) });
     if (sha256Of(await channel.readFile(output.absPath)) !== asset.afterSha256) throw new Error(`materialized Workshop file ${output.absPath} did not verify`);
+    copied.push({ asset, bytes });
   }
+  return copied;
 }
