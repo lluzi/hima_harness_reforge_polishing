@@ -16,7 +16,7 @@
 #   re-reads are of finalEvaluation, whose values every gm-* rule requires (artifact-ready reads
 #   tc_final_setup_wns_ns too), so every verdict still cites the Generation's latest reading.
 id: agentic-timing-closure-system
-version: "0.1.10"
+version: "0.2.0"
 entry: bind-inputs
 nodes:
   # 1. Bind and verify inputs; strict scope.

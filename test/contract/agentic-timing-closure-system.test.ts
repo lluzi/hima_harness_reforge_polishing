@@ -98,10 +98,12 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   const seeded = spawnSync('python3', ['-c', [
     'import sys,json; from pathlib import Path',
     'sys.path.insert(0,sys.argv[1]); sys.path.insert(0,sys.argv[2])',
+    // The stub XTop session (test/fixtures/interactive-job/atcs-repl.tcl) reports one scenario, func_ss,
+    // so that is the required scenario whose rows the capture's gain gates read (Task 7 fix round 1).
     'import test_cli_state as f; from atcs import core,state,workspaces',
     'w=Path(sys.argv[3]); manifest=f._make_baseline_manifest(w)',
     'base=state.design_state(manifest); core.write_artifact(w/"state/working-state.json",base)',
-    'caps={"design":"top","techLef":"tech.lef","cellLefGlob":"*.lef","pgVerification":False,**f._write_xtop_context(w,base["id"])}',
+    'caps={"design":"top","techLef":"tech.lef","cellLefGlob":"*.lef","pgVerification":False,**f._write_xtop_context(w,base["id"],("func_ss",))}',
     'f._write_json(Path(sys.argv[4]),caps)',
     'active={"taskId":"w01","baseStateId":base["id"],"problem":"synthetic sizing","targets":[],"editDomain":{"instances":["U1"],"nets":[],"regions":[]},"protected":{"instances":[],"nets":[]},"mayAffect":[],"actions":["size_cell"],"budget":{"xtopMinutes":1,"queries":1,"attempts":1},"targetPins":["U1/A"],"scope":{"commands":list(workspaces.MUTATE_COMMANDS),"maxMutations":workspaces.SCOPE_MAX_MUTATIONS}}',
     'packages={s:({"taskId":s,"baseStateId":base["id"],"parked":True,"problem":"one blocker cluster; slot "+s+" has none"} if s!="w01" else active) for s in workspaces.TASK_IDS}',
@@ -267,7 +269,7 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   assert.equal((await readFile(path.join(slotRoot, 'ops.jsonl'), 'utf8')).trim().split('\n').length, 1);
   assert.equal((await readFile(path.join(slotRoot, 'gain.jsonl'), 'utf8')).trim().split('\n').length, 2, 'the session reference and one mutation reading');
 });
-const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v9/atcs-xtop-operator-v9.sh';
+const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v12/atcs-xtop-operator-v12.sh';
 
 test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the local Site, and passes its Python contract tests', async (t) => {
   const h = await createHimaHome();
@@ -512,7 +514,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /agentic-timing-closure-system@0\.1\.10.*fit/s);
+    assert.match(throughHost.text, /agentic-timing-closure-system@0\.2\.0.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {
@@ -520,4 +522,32 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     encoding: 'utf8',
   });
   assert.equal(tests.status, 0, `${tests.stdout}\n${tests.stderr}`);
+});
+
+test('the admin generator labels the ATCS binding with the installed wrapper version, not a fixed one', async (t) => {
+  // Issue #64 Task 7 fix round 1: the atcs-v10 binding came out as `linglong-atcs28:xtop-operator-v5`.
+  const h = await createHimaHome(); t.after(() => h.dispose());
+  const pack = loadPack(path.join(repoRoot, 'packs'), 'agentic-timing-closure-system');
+  const tool = pack.contract.tools.find((candidate) => candidate.id === 'xtop-operator')!;
+  const wrapper = tool.interactive?.argv?.[0] ?? '';
+  const version = /atcs-v(\d+)\/atcs-xtop-operator-v\1\.sh$/.exec(wrapper)?.[1];
+  assert.ok(version, `the contract names an installed atcs-vN wrapper: ${wrapper}`);
+  const { packDigestExcludes } = await import('@hima/harness');
+  const template = await readFile(path.join(repoRoot, `sites/linglong-atcs28/xtop-operator-environment-v${version}.template.json`), 'utf8');
+  const evidence = template
+    .replace('<current-pack-digest>', pack.folder.digest(packDigestExcludes))
+    .replace('<current-adapter-digest>', BUILTIN_TCL_ADAPTER_DIGEST)
+    .replace('<current-commands-digest>', interactiveCommandsDigest(tool))
+    .replace('<passed-after-fresh-production-root-qualification>', 'passed')
+    .replaceAll('<64-lowercase-hex>', 'a'.repeat(64));
+  assert.equal(JSON.parse(evidence).wrapper.path, wrapper, 'the environment template names the contract wrapper');
+  const environment = path.join(h.home, 'xtop-operator-environment.json');
+  const output = path.join(h.home, 'interactive-bindings.json');
+  await writeFile(environment, evidence);
+  const generated = spawnSync(process.execPath, [path.join(repoRoot, 'scripts/generate-xtop-operator-binding.mjs'),
+    '--environment', environment, '--output', output], { cwd: repoRoot, encoding: 'utf8' });
+  assert.equal(generated.status, 0, generated.stderr);
+  const document = JSON.parse(await readFile(output, 'utf8'));
+  assert.equal(document.bindings[0].environment.id, `linglong-atcs28:xtop-operator-v${version}`);
+  assert.match(document.bindings[0].id, new RegExp(`^linglong-atcs28:xtop-operator-v${version}:`));
 });

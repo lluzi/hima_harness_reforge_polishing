@@ -269,6 +269,19 @@ class ExpertOperatorKnowledgeTest(unittest.TestCase):
                   ["atcs_ref", "atcs_paths", "atcs_fail_reasons", "atcs_gain", "atcs_undo"], "the expert loop")
         self.assertRegex(self.subsections["The expert loop"], r"(?i)budget")
 
+    def test_a_targeted_fix_is_kept_not_trialled(self):
+        # Task 7, real XTop: "The committed actions cannot be undone." after a fix flow.
+        loop = self.subsections["The expert loop"]
+        self.assertIn("cannot be undone", loop)
+        for word in ("atcs_fix_hold_pins", "atcs_fix_setup_pins", "sizeCellOnly", "insert_buffer", "split_net"):
+            self.assertIn(word, loop)
+
+    def test_domain_nets_are_xtop_names_not_primetime_names(self):
+        # Task 7, real XTop: the pin's net was the module's local net, not PrimeTime's flattened name.
+        applies = " ".join(self.sections["Applies when"].split())
+        self.assertIn("`editDomain.nets` are XTop's names", applies)
+        self.assertIn("swerv_dbg/rst_l", applies)
+
     def test_the_ladders_run_in_expert_order(self):
         _in_order(self, self.subsections["Hold ladder"].lower(),
                   ["size down", "dummy", "chain", "loader clustering", "timing window"], "the hold ladder")

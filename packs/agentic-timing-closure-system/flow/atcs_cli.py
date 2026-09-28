@@ -1447,10 +1447,12 @@ def _seal_xtop_session(workspace, root, base_ref, before_dump, after_dump, ops_l
     Reads, beside ``ops.jsonl``: ``gain.jsonl`` (absent = no readings) and
     ``tainted.json`` (any content, even unreadable, taints); in the slot
     root: the XTop transcripts' ``ATCS:taint:`` line and ``eco_output/``
-    (at least one file). The Site's removable-filler master patterns come
-    from the bound ``state/xtop-context.json`` (``removableFillers``; none
-    when that file is absent, so every filler change then counts as an
-    out-of-domain change).
+    (at least one file). The Site's removable-filler master patterns and
+    the required scenarios whose rows the gain gates read come from the
+    bound ``state/xtop-context.json`` (``removableFillers``,
+    ``requiredScenarios``; none when that file is absent, so every filler
+    change then counts as an out-of-domain change and every scenario row
+    is read).
     """
     gain_path = ops_log_path.parent / "gain.jsonl"
     gain_text = _read_text(str(gain_path)) if gain_path.is_file() else ""
@@ -1463,10 +1465,12 @@ def _seal_xtop_session(workspace, root, base_ref, before_dump, after_dump, ops_l
         if tainted is None:
             tainted = {"reason": "tainted.json holds null"}
     eco_output = root / "eco_output"
-    filler_patterns = []
+    filler_patterns, required_scenarios = [], []
     context_path = _paths(workspace)["xtop_context"]
     if context_path.is_file():
-        filler_patterns = list(_read_declared(context_path, "xtop-context").get("removableFillers") or [])
+        context = _read_declared(context_path, "xtop-context")
+        filler_patterns = list(context.get("removableFillers") or [])
+        required_scenarios = list(context.get("requiredScenarios") or [])
     summary = _read_json_or_default(root / "summary.json", {})
     result_refs = {
         "beforeDump": str(before_dump), "afterDump": str(after_dump),
@@ -1474,7 +1478,8 @@ def _seal_xtop_session(workspace, root, base_ref, before_dump, after_dump, ops_l
             "taintedJson": tainted, "transcriptTaint": _transcript_taint(root),
             "ecoOutput": eco_output.is_dir() and any(path.is_file() for path in eco_output.rglob("*")),
         },
-        "fillerPatterns": filler_patterns, "diagnosis": summary.get("diagnosis"),
+        "fillerPatterns": filler_patterns, "requiredScenarios": required_scenarios,
+        "diagnosis": summary.get("diagnosis"),
     }
     return contributions.seal_session(base_ref, result_refs, operation_trace, gain_text)
 

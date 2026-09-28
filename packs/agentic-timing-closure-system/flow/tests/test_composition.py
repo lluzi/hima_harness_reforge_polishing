@@ -899,12 +899,13 @@ class XtopSessionRecipeTests(unittest.TestCase):
     def test_an_inadmissible_session_is_listed_as_excluded_and_never_ranked(self):
         good = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030))
         worse = _session("w02", [("U2", "BUFX2")], _hold_gain(-0.010))
-        self.assertEqual([refusal["code"] for refusal in worse["refusals"]], ["no-predicted-gain"])
+        self.assertEqual([refusal["code"] for refusal in worse["refusals"]], ["no-predicted-gain", "breaks-target-check"])
 
         facts = composition.analyze(BASE_STATE_ID, [good, worse], [])
         self.assertEqual([entry["contribution"] for entry in facts["recipe"]["sessions"]], [good["id"]])
         self.assertEqual(facts["recipe"]["excluded"],
-                         [{"contribution": worse["id"], "taskId": "w02", "codes": ["no-predicted-gain"]}])
+                         [{"contribution": worse["id"], "taskId": "w02",
+                           "codes": sorted(["no-predicted-gain", "breaks-target-check"])}])
         self.assertNotIn(worse["id"], facts["considered"])
 
     def test_the_recipe_does_not_depend_on_input_order(self):

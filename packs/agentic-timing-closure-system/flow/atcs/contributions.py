@@ -1006,7 +1006,8 @@ def _script_sha256(path):
 #   full per-scenario `parse_gain_summary` sections.
 # - ``failReasons``: ``{check: {reason: count}}`` from the last
 #   ``-with_fail_reason`` reading that reflects the final state, else ``{}``.
-# - ``value`` (ns) and ``valueDetail``: the ranking value, see `_session_value`.
+# - ``value`` (ns) and ``valueDetail``: the ranking value, read per required scenario (the best
+#   violating scenario's WNS gain of the best target check), see `_session_value`.
 # - ``targets`` / ``targetPins``: the work package's own, for blocker coverage.
 # - ``operations: []``, ``preconditions: []``, ``atomicGroups: []``: the
 #   legacy replay has nothing to do for a session.
@@ -1028,12 +1029,16 @@ def _script_sha256(path):
 # - ``out-of-scope``: a changed object outside the domain, collected into
 #   ``outOfScope``. The domain is ``editDomain.instances`` plus instances
 #   this session created whose leaf name starts with ``namePrefix``;
-# - ``no-predicted-gain``: kept commands whose predicted target slack got
-#   worse, did not improve at all, or cannot be read;
-# - ``breaks-opposite-check``: kept commands whose predicted non-target
-#   check (setup for a hold repair, and so on) got worse in WNS by more
-#   than one rounding step, or cannot be read. A TNS loss there is charged
-#   to the rank (``valueDetail.rankTnsGain``) instead.
+# - ``no-predicted-gain``: kept commands with which no violating required
+#   scenario improves on a target check (WNS first, then TNS), or none can
+#   be read;
+# - ``breaks-target-check``: kept commands with which a required scenario's
+#   target check got worse in WNS by more than one rounding step, whatever
+#   another scenario gained;
+# - ``breaks-opposite-check``: kept commands with which a required
+#   scenario's non-target check (setup for a hold repair, and so on) got
+#   worse in WNS by more than one rounding step, or cannot be read. A TNS
+#   loss there is charged to the rank (``valueDetail.rankTnsGain``) instead.
 #
 # Typed requests (size/exchange/insert/remove) must show exactly their
 # requested effect in their own logged delta; fixes, splits, moves and
@@ -1056,7 +1061,11 @@ _SUMMARY_SECTION = re.compile(r"^###\s+(setup|hold)\s+summary\s+###\s*$")
 _INT_COLUMNS = ("count", "count0", "dCount")
 # Rows print 4 decimals; a delta column may differ from its own difference by one rounding step each side.
 _DELTA_TOLERANCE = 1.5e-4
-_FAIL_REASON_ROW = re.compile(r"^\s*([a-z][a-z0-9_]*)\s*[:=]?\s+(\d+)\s*$")
+# XTop's probe (`summarize_gba_violations ... -with_top_n N -with_fail_reason`) appends, per check, a
+# `### <check> top N endpoints ###` table whose last column is `Fail Reason`, one `<reason>:<percent>%`
+# per endpoint row (real XTop, Issue #64 Task 7: `not_only_pin:100%`).
+_TOP_N_HEADING = re.compile(r"^### (?:setup|hold) top \d+ endpoints ###\s*$")
+_FAIL_REASON_CELL = re.compile(r"^([a-z][a-z0-9_]*):\d+(?:\.\d+)?%$")
 
 
 def is_session_log(text):
@@ -1308,13 +1317,42 @@ def _gain_measures(gain_line, column="current"):
 
 
 def parse_fail_reasons(text):
-    """``{reason: count}`` from ``<snake_case_reason> <int>`` rows (best effort, informational)."""
+    """``{reason: endpoints}``: how many rows of the probe's top-N endpoint tables name each fail reason.
+
+    Only a ``### <check> top N endpoints ###`` table whose header has a ``Fail Reason`` column is
+    read; its rows end in ``<reason>:<percent>%`` cells, several of them space-separated.
+    Returns ``None`` (unread, never ``{}``) when the text holds no such table: a reply without one
+    says nothing about why endpoints fail. A table with the column and no rows is ``{}``.
+    Informational only.
+    """
     counts = {}
+    in_table = with_reasons = found = False
     for raw_line in text.splitlines():
-        match = _FAIL_REASON_ROW.match(raw_line)
-        if match:
-            counts[match.group(1)] = counts.get(match.group(1), 0) + int(match.group(2))
-    return counts
+        line = raw_line.strip()
+        if _TOP_N_HEADING.match(line):
+            in_table, with_reasons = True, False
+            continue
+        if not in_table:
+            continue
+        if not line or line.startswith("###"):
+            in_table = False
+            continue
+        if line.startswith("Slack"):
+            with_reasons = line.endswith("Fail Reason")
+            found = found or with_reasons
+            continue
+        if not with_reasons or set(line) == {"-"}:
+            continue
+        # Several reasons share the cell, space-separated (`break_setup:66% port_net:16%`, Task 7 run 3).
+        reasons = set()
+        for token in line.split():
+            for cell in token.split(","):
+                match = _FAIL_REASON_CELL.match(cell)
+                if match:
+                    reasons.add(match.group(1))
+        for reason in reasons:
+            counts[reason] = counts.get(reason, 0) + 1
+    return counts if found else None
 
 
 def _target_checks(work_package):
@@ -1330,28 +1368,66 @@ def _target_checks(work_package):
 _OPPOSITE_TOLERANCE = 1e-4
 
 
-def _session_value(target_checks, reference, predicted):
-    """The ranking value and the gain gates, over both checks.
+def _scenario_gains(gain_summary, required_scenarios):
+    """``{check: {scenario: {"wnsGain", "tnsGain", "referenceWns"} | None}}`` from the readings' rows.
 
-    For every check ``k`` in setup/hold: ``wnsGain[k] = predicted WNS -
-    reference WNS`` and ``tnsGain[k]`` likewise (positive = better; TNS is
-    negative when violating). Target checks are the ``mode`` parts of the
-    work package's ``targets`` (both when none is named); the others are
-    opposite checks.
+    Each required scenario's row of the last reading against the same row of the session reference
+    (the reading's own ``Worst0``/``TNS0`` columns when the reference line lacks it); ``None`` when
+    either side cannot be read. With no required scenarios named, every scenario either reading has.
+    """
+    gain_summary = gain_summary if isinstance(gain_summary, dict) else {}
 
-    - ``value`` = ``wnsGain`` of the target check whose reference WNS is
-      worst (ties: hold before setup); ``targetTnsGain`` sums the target
-      checks' ``tnsGain``; ``rankTnsGain`` = ``targetTnsGain`` plus every
-      opposite check's ``tnsGain`` (signed), and breaks ranking ties -- an
-      opposite TNS loss lowers the rank; it never refuses the session.
-    - ``no-predicted-gain``: a target WNS is unknown or got worse, or no
-      target WNS and not ``targetTnsGain`` improved.
-    - ``breaks-opposite-check``: an opposite check's WNS or TNS is unknown,
-      or its WNS got worse by more than `_OPPOSITE_TOLERANCE` (one rounding
-      step). Its TNS change only enters ``rankTnsGain``.
+    def rows(reading, check):
+        section = (reading or {}).get(check) if isinstance(reading, dict) else None
+        return (section or {}).get("scenarios") or {}
 
-    Returns ``(value, detail, refusals)``, ``refusals`` a list of
-    ``(code, detail)``.
+    gains = {}
+    for check in SESSION_CHECKS:
+        ref_rows, cur_rows = rows(gain_summary.get("reference"), check), rows(gain_summary.get("predicted"), check)
+        names = list(required_scenarios) if required_scenarios else sorted(set(ref_rows) | set(cur_rows))
+        gains[check] = {}
+        for name in names:
+            ref, cur = ref_rows.get(name) or {}, cur_rows.get(name) or {}
+            ref_wns = ref.get("worst", cur.get("worst0"))
+            ref_tns = ref.get("tns", cur.get("tns0"))
+            values = (ref_wns, ref_tns, cur.get("worst"), cur.get("tns"))
+            if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in values):
+                gains[check][name] = None
+                continue
+            gains[check][name] = {"wnsGain": round(cur["worst"] - ref_wns, 9),
+                                  "tnsGain": round(cur["tns"] - ref_tns, 9), "referenceWns": ref_wns}
+    return gains
+
+
+def _improves(gain):
+    """A scenario reading improves on WNS first, then TNS (rows print 4 decimals, so any WNS change is a step)."""
+    return gain["wnsGain"] > 1e-9 or (gain["wnsGain"] > -1e-9 and gain["tnsGain"] > 1e-9)
+
+
+def _session_value(target_checks, reference, predicted, gain_summary=None, required_scenarios=None):
+    """The ranking value and the gain gates, per required scenario (Issue #64 Task 7 fix round 1).
+
+    A reading's ``total`` row is the worst endpoint over all scenarios, so a repair in one scenario
+    hides behind another scenario's unchanged worst endpoint (real w03: ssg_125 setup -0.0851 ->
+    -0.0828 while the total stayed at ssg_m40's -0.1567). So the gates read the per-scenario rows of
+    the required scenarios (`_scenario_gains`); target checks are the ``mode`` parts of the work
+    package's ``targets`` (both when none is named), the others are opposite checks.
+
+    - A target check's gain is its best scenario, among the required scenarios where that check is
+      violating in the reference (``referenceWns`` < 0): the largest WNS improvement, then the
+      largest TNS improvement, then the scenario name ascending. ``value`` is the WNS gain of the
+      best target check by the same order (ties: hold before setup); 0.0 when none can be read.
+    - ``no-predicted-gain``: no violating required scenario improves on any target check (WNS
+      first, then TNS), including when none can be read.
+    - ``breaks-target-check``: a required scenario's target-check WNS got worse by more than
+      `_OPPOSITE_TOLERANCE`, even though another scenario improved (fix round 2).
+    - ``breaks-opposite-check``: a required scenario's opposite-check row cannot be read, or its WNS
+      got worse by more than `_OPPOSITE_TOLERANCE` (one rounding step).
+    - ``wnsGain``/``tnsGain``/``targetTnsGain``/``rankTnsGain`` keep the ``total``-row reading:
+      ``rankTnsGain`` = target TNS gain plus every opposite check's signed TNS gain, the rank's
+      tie-break, so an opposite TNS loss lowers the rank without refusing.
+
+    Returns ``(value, detail, refusals)``, ``refusals`` a list of ``(code, detail)``.
     """
     wns_gain, tns_gain = {}, {}
     for check in SESSION_CHECKS:
@@ -1363,35 +1439,54 @@ def _session_value(target_checks, reference, predicted):
     opposite = [check for check in SESSION_CHECKS if check not in target_checks]
     target_tns = [tns_gain[check] for check in target_checks if check in tns_gain]
     target_tns_gain = round(sum(target_tns), 9) if len(target_tns) == len(target_checks) else None
-    known_refs = [(core.value_of(reference[f"xtop{c.capitalize()}Wns"]), c) for c in target_checks
-                  if core.is_known(reference[f"xtop{c.capitalize()}Wns"])]
-    worst = min(known_refs)[1] if known_refs else None
-    value = wns_gain.get(worst, 0.0) if worst is not None else 0.0
     opposite_tns = [tns_gain[check] for check in opposite if check in tns_gain]
     rank_tns_gain = (round(target_tns_gain + sum(opposite_tns), 9)
                      if target_tns_gain is not None and len(opposite_tns) == len(opposite) else None)
-    detail = {"targetChecks": list(target_checks), "oppositeChecks": opposite, "worstCheck": worst,
+
+    scenario_gains = _scenario_gains(gain_summary, required_scenarios)
+    best = {}
+    for check in target_checks:
+        violating = sorted(((-gain["wnsGain"], -gain["tnsGain"], name), name)
+                           for name, gain in scenario_gains[check].items()
+                           if gain is not None and gain["referenceWns"] < 0)
+        if violating:
+            best[check] = violating[0][1]
+    order = sorted(((-scenario_gains[check][name]["wnsGain"], -scenario_gains[check][name]["tnsGain"],
+                     0 if check == "hold" else 1), check) for check, name in best.items())
+    value_check = order[0][1] if order else None
+    value = scenario_gains[value_check][best[value_check]]["wnsGain"] if value_check else 0.0
+    detail = {"targetChecks": list(target_checks), "oppositeChecks": opposite, "worstCheck": value_check,
+              "bestScenario": best, "scenarioGain": scenario_gains, "requiredScenarios": list(required_scenarios or []),
               "wnsGain": wns_gain, "tnsGain": tns_gain, "targetTnsGain": target_tns_gain,
               "rankTnsGain": rank_tns_gain}
 
     refusals = []
-    missing_wns = [check for check in target_checks if check not in wns_gain]
-    worsened = {check: wns_gain[check] for check in target_checks if wns_gain.get(check, 0) < 0}
-    if missing_wns:
-        refusals.append(("no-predicted-gain", f"predicted or reference WNS unknown for target {missing_wns}"))
-    elif worsened:
-        refusals.append(("no-predicted-gain", f"predicted target WNS got worse: {worsened}"))
-    elif not any(wns_gain[check] > 0 for check in target_checks) \
-            and not (target_tns_gain is not None and target_tns_gain > 0):
-        refusals.append(("no-predicted-gain", f"no predicted target gain (WNS {wns_gain}, TNS {target_tns_gain})"))
+    improving = {check: sorted(name for name, gain in scenario_gains[check].items()
+                               if gain is not None and gain["referenceWns"] < 0 and _improves(gain))
+                 for check in target_checks}
+    if not any(improving.values()):
+        if not best:
+            refusals.append(("no-predicted-gain", f"no violating required scenario of target {list(target_checks)} "
+                                                  "can be read"))
+        else:
+            refusals.append(("no-predicted-gain", "no violating required scenario improves on target "
+                                                  f"{list(target_checks)}: {scenario_gains}"))
+    detail["improvingScenarios"] = improving
+    # A repair is not admitted on its best scenario alone: its own check must not get worse elsewhere.
+    for check in target_checks:
+        worse = {name: gain["wnsGain"] for name, gain in sorted(scenario_gains[check].items())
+                 if gain is not None and gain["wnsGain"] < -_OPPOSITE_TOLERANCE}
+        if worse:
+            refusals.append(("breaks-target-check", f"target {check} WNS got worse in {worse}"))
 
     for check in opposite:
-        unknown = [metric for metric, gains in (("WNS", wns_gain), ("TNS", tns_gain)) if check not in gains]
-        broken = {"WNS": wns_gain[check]} if wns_gain.get(check, 0) < -_OPPOSITE_TOLERANCE else {}
-        if unknown:
-            refusals.append(("breaks-opposite-check", f"opposite {check} {unknown} cannot be read"))
+        unknown = sorted(name for name, gain in scenario_gains[check].items() if gain is None)
+        broken = {name: gain["wnsGain"] for name, gain in sorted(scenario_gains[check].items())
+                  if gain is not None and gain["wnsGain"] < -_OPPOSITE_TOLERANCE}
+        if unknown or not scenario_gains[check]:
+            refusals.append(("breaks-opposite-check", f"opposite {check} cannot be read for {unknown or 'any scenario'}"))
         elif broken:
-            refusals.append(("breaks-opposite-check", f"opposite {check} got worse: {broken}"))
+            refusals.append(("breaks-opposite-check", f"opposite {check} WNS got worse in {broken}"))
     return value, detail, refusals
 
 
@@ -1447,6 +1542,25 @@ def _net_log(lines):
     return kept, sorted(undone), sorted(set(discarded)), problems
 
 
+def _pin_module(pin):
+    """The module path that owns a ``<instance path>/<pin>``'s cell ("" at the top level)."""
+    owner = pin.rsplit("/", 1)[0] if isinstance(pin, str) and "/" in pin else ""
+    return owner.rsplit("/", 1)[0] if "/" in owner else ""
+
+
+def _requested_instance(state, name, modules):
+    """The instance a request named: ``name`` itself, or ``<module>/name`` for one of ``modules``.
+
+    ``modules`` are the modules owning the request's load pins: real XTop creates a new cell in its
+    load pins' module under the requested leaf name (Issue #64 Task 7: ``swerv_dbg/atcs_w01_r1_chain_d0``).
+    ``None`` when none matches.
+    """
+    if name in state:
+        return name
+    found = sorted({f"{module}/{name}" for module in modules if module and f"{module}/{name}" in state})
+    return found[0] if len(found) == 1 else None
+
+
 def _request_problem(line):
     """Why a kept typed request's own logged effect is not what it asked for, or ``None``."""
     cmd, args = line["cmd"], line["args"]
@@ -1462,8 +1576,18 @@ def _request_problem(line):
             return f"exchange_cell changed {stray} outside {sorted(n for n in allowed if n)}"
     elif cmd in ("insert_buffer", "insert_dummy_cell", "split_load"):
         names = args.get("newInstances") if cmd != "insert_dummy_cell" else [args.get("newInstance")]
-        missing = [name for name in names or [None]
-                   if not _is_nonempty_string(name) or after.get(name) is None or before.get(name) is not None]
+        if cmd == "insert_buffer":
+            loads = args.get("loadPins") or []
+        elif cmd == "insert_dummy_cell":
+            loads = [args.get("pin")]
+        else:
+            loads = [pin for group in args.get("pinGroups") or [] if isinstance(group, list) for pin in group]
+        modules = {_pin_module(pin) for pin in loads if isinstance(pin, str)}
+        missing = []
+        for name in names or [None]:
+            placed = _requested_instance(after, name, modules) if _is_nonempty_string(name) else None
+            if placed is None or after.get(placed) is None or before.get(placed) is not None:
+                missing.append(name)
         if line.get("matchesRequest") is not True or missing:
             return f"{cmd} did not create its named instances {missing or names}"
     elif cmd == "remove_buffer":
@@ -1480,8 +1604,9 @@ def _latest_fail_reasons(gain_lines, last_kept_seq):
             break
         checks = gain_line["checks"]
         if any("-with_fail_reason" in entry["command"] for entry in checks.values()):
-            return ({check: parse_fail_reasons(entry["text"]) for check, entry in sorted(checks.items())
-                     if entry["code"] == 0}, gain_line["seq"])
+            parsed = {check: parse_fail_reasons(entry["text"]) for check, entry in sorted(checks.items())
+                      if entry["code"] == 0 and "-with_fail_reason" in entry["command"]}
+            return ({check: reasons for check, reasons in parsed.items() if reasons is not None}, gain_line["seq"])
     return {}, None
 
 
@@ -1490,7 +1615,8 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
 
     `result_refs`: ``{"beforeDump", "afterDump"`` (paths), ``"evidence":
     {"taintedJson": obj|None, "transcriptTaint": "clean"|"tainted:<why>"|None,
-    "ecoOutput": bool}, "fillerPatterns": [glob, ...], "diagnosis":
+    "ecoOutput": bool}, "fillerPatterns": [glob, ...], "requiredScenarios": [name, ...] (optional;
+    the scenarios whose rows the gain gates read, all of the readings' when absent), "diagnosis":
     str|None}``. `ops_text`/`gain_text` are the raw ``ops.jsonl`` /
     ``gain.jsonl`` texts. Raises `AtcsError` only for unusable input (a
     ``base_ref`` whose parts disagree, an unreadable dump, a malformed log);
@@ -1513,6 +1639,7 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
     after = parse_cell_dump(_decode_utf8(_read_dump_bytes(after_path, "afterDump"), after_path, "afterDump"))
     evidence = result_refs.get("evidence") if isinstance(result_refs.get("evidence"), dict) else {}
     filler_patterns = [p for p in (result_refs.get("fillerPatterns") or []) if _is_nonempty_string(p)]
+    required_scenarios = [name for name in (result_refs.get("requiredScenarios") or []) if _is_nonempty_string(name)]
 
     refusals = []
 
@@ -1628,7 +1755,8 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
     if commands:
         if not evidence.get("ecoOutput"):
             refuse("missing-export", "kept commands but eco_output/ holds no exported change files")
-        value, value_detail, gain_refusals = _session_value(target_checks, reference, predicted)
+        value, value_detail, gain_refusals = _session_value(target_checks, reference, predicted, gain_summary,
+                                                            required_scenarios)
         for code, detail in gain_refusals:
             refuse(code, detail)
     else:

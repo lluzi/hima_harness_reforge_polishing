@@ -122,6 +122,7 @@ set ::atcs_mutations 0
 set ::atcs_plan_sha256 ""
 set ::atcs_tainted ""
 set ::atcs_reference_captured 0
+set ::atcs_fix_ran ""
 set ::atcs_kept {}
 set ::atcs_stack {}
 set ::atcs_session_instances {}
@@ -345,6 +346,21 @@ proc atcs_require_domain_pin {pin} {
     error "out-of-scope pin: $pin"
 }
 # Removing an instance merges its nets: every one of them must be in the domain.
+# XTop commits a fix flow's actions: `undo` cannot revert them ("The committed actions cannot be
+# undone.", real XTop, Issue #64 Task 7). A fix that may insert cells (a hold fix unless it is
+# size-only without a dummy cell; a setup fix with insert_buffer or split_net) must have each
+# -only_pins pin's net in the domain, or an out-of-domain insertion could only taint the session.
+# For a hold fix that is the net the delay or dummy cell goes on. For setup insert_buffer/split_net
+# the check is necessary but not sufficient: XTop may buffer or split an upstream net of the path
+# through a pin's cell, which only the after-call observation (and the capture's dump delta) sees.
+proc atcs_require_pin_nets {pins} {
+    foreach pin $pins {
+        set net [atcs_pin_net $pin]
+        if {![atcs_net_in_domain $net]} {
+            error "out-of-scope pin: $pin is on net $net outside the edit domain; a fix that may insert cells there cannot be undone"
+        }
+    }
+}
 proc atcs_require_instance_nets {name} {
     foreach net [atcs_instance_nets $name] {
         if {![atcs_net_in_domain $net]} { error "out-of-scope net: $net (on $name)" }
@@ -613,6 +629,28 @@ proc atcs_forget {seq} {
     unset ::atcs_op($seq)
 }
 
+# The instance a request named: `name` itself, or `<module>/name` for one of `modules`, the modules
+# that own the request's load pins (real XTop creates a new cell in its load pins' module under the
+# requested leaf name, Issue #64 Task 7: swerv_dbg/atcs_w01_r1_chain_d0). A removal names an existing
+# instance, which is found as given. "" when none matches.
+proc atcs_request_instance {state name modules} {
+    if {[dict exists $state $name]} { return $name }
+    set found {}
+    foreach module [lsort -unique $modules] {
+        if {$module ne "" && [dict exists $state "$module/$name"]} { lappend found "$module/$name" }
+    }
+    return [expr {[llength $found] == 1 ? [lindex $found 0] : ""}]
+}
+# The module path owning each pin's cell ("" at the top level).
+proc atcs_pin_modules {pins} {
+    set modules {}
+    foreach pin $pins {
+        set owner [atcs_pin_owner $pin]
+        if {$owner eq ""} { set owner [join [lrange [split $pin /] 0 end-1] /] }
+        lappend modules [join [lrange [split $owner /] 0 end-1] /]
+    }
+    return [lsort -unique $modules]
+}
 # One mutation. `kind`:
 #   exact    (size_cell) the delta must be exactly `expected`
 #   request  (inserts, split_load, remove) an empty delta fails; "matchesRequest"
@@ -620,12 +658,15 @@ proc atcs_forget {seq} {
 #   fix      (fixes, split_net, exchange) an empty delta is a legal no-change
 #   move     (move_cell) masters cannot show it: kept when XTop returned 0 and
 #            added an ECO action, with no master change
-proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {named_nets {}} {move_instance ""}} {
+proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {named_nets {}} {move_instance ""}
+                  {load_modules {}}} {
     atcs_ensure_reference
     set pre [atcs_observe_before]
     atcs_commit_mutation $plan_sha256
     if {[catch {
         lassign [atcs_call $command] code result
+        if {$code == 0 && $cmd eq "fix_hold_gba_violations"} { set ::atcs_fix_ran hold }
+        if {$code == 0 && $cmd eq "fix_setup_gba_violations"} { set ::atcs_fix_ran setup }
         set post [atcs_observe_after $pre]
         set c0 [dict get $pre count]
         set c1 [dict get $post count]
@@ -679,7 +720,10 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
         if {$kind eq "request"} {
             set matches 1
             dict for {name master} $expected {
-                if {![dict exists $after $name] || [dict get $after $name] ne $master} { set matches 0 }
+                set placed [atcs_request_instance $after $name $load_modules]
+                if {$placed eq "" || [dict get $after $placed] ne $master} {
+                    set matches 0
+                }
             }
             lappend extra matchesRequest [atcs_jbool $matches]
         }
@@ -726,11 +770,17 @@ proc atcs_ref {} {
     if {$::atcs_reference_captured} { return "session reference already captured; it is never moved" }
     return [atcs_capture_reference]
 }
+# XTop keeps fail reasons only for the check of the last fix flow in the session: before any fix,
+# `-with_fail_reason` fails ("No fail reason since no fix or optimize flow have run yet."), and
+# after a hold fix it fails for setup ("Last flow is 'hold_gba', mismatched with current summary.",
+# real XTop, Issue #64 Task 7). `-with_top_n` alone always lists the worst endpoints.
 proc atcs_gain {check top_n} {
     atcs_choice check $check {setup hold}
     atcs_int topN $top_n 1 100
     atcs_ensure_reference
-    set entry [atcs_summarize $check [list -with_delta -with_reference -exclude_path -with_top_n $top_n -with_fail_reason]]
+    set options [list -with_delta -with_reference -exclude_path -with_top_n $top_n]
+    if {$::atcs_fix_ran eq $check} { lappend options -with_fail_reason }
+    set entry [atcs_summarize $check $options]
     atcs_append [atcs_gain_path] [atcs_jobj [list seq $::atcs_seq kind [atcs_js probe] topN $top_n \
         checks [atcs_jobj [list $check [atcs_summary_json $entry]]]]]
     lassign $entry command code result text
@@ -764,8 +814,12 @@ proc atcs_fail_reasons {pins reasons methods} {
     if {[llength $methods] > 0} { set method_option [list -methods $methods] }
     set pairs {}
     if {[llength $pins] > 0} {
+        # report_fail_reasons prints its report and returns "" (real XTop, Issue #64 Task 7): capture it.
+        # Before any fix or optimize flow it prints an empty table (XTop keeps no fail reasons yet).
         set command [concat [list report_fail_reasons] $method_option [list -stats -verbose -pins $pins]]
-        lappend pairs report [atcs_js [uplevel #0 $command]]
+        set ::atcs_capture ""
+        set result [uplevel #0 [list redirect -variable ::atcs_capture $command]]
+        lappend pairs report [atcs_js [expr {$::atcs_capture ne "" ? $::atcs_capture : $result}]]
     }
     if {[llength $reasons] > 0} {
         set failed [uplevel #0 [concat [list get_failed_pins] $method_option [list -reasons $reasons]]]
@@ -830,7 +884,7 @@ proc atcs_insert_buffer {net load_pins masters new_instances new_nets plan_sha25
         newInstances [atcs_jarr $new_instances] newNets [atcs_jarr $new_nets] planSha256 [atcs_js $plan_sha256]]]
     return [atcs_mutate atcs_insert_buffer insert_buffer $args_json $plan_sha256 \
         [list insert_buffer -new_cell_names $new_instances -new_net_names $new_nets \
-            [get_pins -exact $load_pins] $masters] request $expected $new_nets]
+            [get_pins -exact $load_pins] $masters] request $expected $new_nets "" [atcs_pin_modules $load_pins]]
 }
 proc atcs_insert_dummy {pin master new_instance plan_sha256} {
     atcs_begin_mutation $plan_sha256
@@ -843,7 +897,7 @@ proc atcs_insert_dummy {pin master new_instance plan_sha256} {
         planSha256 [atcs_js $plan_sha256]]]
     return [atcs_mutate atcs_insert_dummy insert_dummy_cell $args_json $plan_sha256 \
         [list insert_dummy_cell -new_cell_name $new_instance [get_pins -exact $pin] $master] \
-        request [dict create $new_instance $master]]
+        request [dict create $new_instance $master] {} "" [atcs_pin_modules [list $pin]]]
 }
 proc atcs_split_load {net pin_groups master new_instances new_nets plan_sha256} {
     atcs_begin_mutation $plan_sha256
@@ -872,7 +926,8 @@ proc atcs_split_load {net pin_groups master new_instances new_nets plan_sha256} 
     lappend command -lib_cell $master -new_cell_names $new_instances -new_net_names $new_nets
     set args_json [atcs_jobj [list net [atcs_js $net] pinGroups "\[[join $groups_json ,]\]" master [atcs_js $master] \
         newInstances [atcs_jarr $new_instances] newNets [atcs_jarr $new_nets] planSha256 [atcs_js $plan_sha256]]]
-    return [atcs_mutate atcs_split_load split_load $args_json $plan_sha256 $command request $expected $new_nets]
+    return [atcs_mutate atcs_split_load split_load $args_json $plan_sha256 $command request $expected $new_nets "" \
+        [atcs_pin_modules [concat {*}$groups]]]
 }
 proc atcs_split_net {net master rule segments plan_sha256} {
     atcs_begin_mutation $plan_sha256
@@ -885,7 +940,8 @@ proc atcs_split_net {net master rule segments plan_sha256} {
     return [atcs_mutate atcs_split_net split_net $args_json $plan_sha256 \
         [list split_net [get_nets -exact $net] -lib_cell $master -rule $rule -segment $segments] fix]
 }
-# Absolute moves only: the target point must lie in an edit-domain region. A
+# Absolute moves only: the target point must lie in an edit-domain region. XTop's point is "(x,y)"
+# (move_cell.1; real XTop refuses "{x y}" as "not a valid 'pointf'", Issue #64 Task 7). A
 # -delta move is not offered, because no documented attribute reads a cell's
 # location to resolve its target.
 proc atcs_move_cell {instance x y plan_sha256} {
@@ -896,7 +952,7 @@ proc atcs_move_cell {instance x y plan_sha256} {
     atcs_require_point $x $y
     set args_json [atcs_jobj [list instance [atcs_js $instance] x $x y $y planSha256 [atcs_js $plan_sha256]]]
     return [atcs_mutate atcs_move_cell move_cell $args_json $plan_sha256 \
-        [list move_cell -to [list $x $y] [get_cells -exact $instance]] move {} {} $instance]
+        [list move_cell -to "($x,$y)" [get_cells -exact $instance]] move {} {} $instance]
 }
 proc atcs_remove_buffer {instance plan_sha256} {
     atcs_begin_mutation $plan_sha256
@@ -927,6 +983,7 @@ proc atcs_fix_hold_pins {pins effort hold_target setup_margin size_cell_only use
     if {$effort eq "omit" && !$size_cell_only} { error "effort may be omitted only with sizeCellOnly" }
     if {$fix_timing_window && $size_cell_only} { error "fix_timing_window cannot be combined with size_cell_only" }
     if {$fix_timing_window && $effort ne "low"} { error "fix_timing_window works only with low effort, got $effort" }
+    if {!$size_cell_only || $use_dummy_cell} { atcs_require_pin_nets $pins }
     set command [list fix_hold_gba_violations]
     if {$effort ne "omit"} { lappend command -effort $effort }
     # The frozen Pack's qualified hold-size string: -size_cell_only -size_rule nominal_keywords.
@@ -963,6 +1020,9 @@ proc atcs_fix_setup_pins {pins methods remove_buffer_only size_down_only effort 
     }
     if {!$remove_buffer_only && !$size_down_only && [llength $methods] == 0} {
         error "name methods, removeBufferOnly or sizeDownOnly"
+    }
+    if {[lsearch -exact $methods insert_buffer] >= 0 || [lsearch -exact $methods split_net] >= 0} {
+        atcs_require_pin_nets $pins
     }
     set command [list fix_setup_gba_violations]
     if {[llength $methods] > 0} { lappend command -methods $methods }

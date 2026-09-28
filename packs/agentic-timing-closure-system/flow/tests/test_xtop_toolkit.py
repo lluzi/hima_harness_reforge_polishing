@@ -142,9 +142,17 @@ set ::stub_remove_extra {}
 set ::stub_insert_hier ""
 set ::stub_insert_removes {}
 set ::stub_undo_broken 0
+# Real XTop (Issue #64 Task 7, qual-issue64-chain-20260928): a fix flow's actions are committed and
+# `undo` refuses them ("Error: The committed actions cannot be undone."); set ::stub_fix_committed 1
+# to model it. Most mechanism tests below use a fix as a vehicle for an arbitrary effect and keep 0.
+set ::stub_fix_committed 0
+# Real XTop: `summarize_gba_violations -with_fail_reason` fails until a fix or optimize flow has run.
+set ::stub_fix_ran 0
 set ::stub_fail {}
 set ::stub_noop {}
-proc stub_act {touched} { lappend ::actions [list [array get ::cells] [array get ::pin_net] $touched] }
+proc stub_act {touched {committed 0}} {
+    lappend ::actions [list [array get ::cells] [array get ::pin_net] $touched $committed]
+}
 proc stub_gate {name} {
     if {[lsearch -exact $::stub_fail $name] >= 0} { error "XTop stub refused $name" }
     return [expr {[lsearch -exact $::stub_noop $name] >= 0}]
@@ -347,6 +355,12 @@ proc split_net {args} {
 proc move_cell {args} {
     stub_record move_cell {*}$args
     stub_gate move_cell
+    # Real XTop's pointf is "(x,y)" (move_cell.1 example; Task 7: "{x y}" is refused).
+    set to [lindex $args [expr {[lsearch -exact $args -to] + 1}]]
+    if {![regexp {^\([-+0-9.eE]+,[-+0-9.eE]+\)$} $to]} {
+        puts "Error: Value for 'move_cell:to' is not a valid 'pointf'."
+        error ""
+    }
     stub_act [stub_names [lindex $args end]]
     return 1
 }
@@ -360,15 +374,16 @@ proc remove_buffer {args} {
 proc stub_fix {name words} {
     stub_record $name {*}$words
     stub_gate $name
+    set ::stub_fix_ran [expr {$name eq "fix_hold_gba_violations" ? "hold" : "setup"}]
     set touched {}
     foreach {inst master} $::stub_fix_effect { lappend touched $inst }
     if {[llength $touched] == 0 && $::stub_fix_actions == 0} { return 0 }
-    stub_act $touched
+    stub_act $touched $::stub_fix_committed
     foreach {inst master} $::stub_fix_effect {
         if {$master eq ""} { unset ::cells($inst) } else { set ::cells($inst) $master }
     }
     foreach {pin net} $::stub_fix_pins { set ::pin_net($pin) $net }
-    for {set k 1} {$k < $::stub_fix_actions} {incr k} { stub_act {} }
+    for {set k 1} {$k < $::stub_fix_actions} {incr k} { stub_act {} $::stub_fix_committed }
     return 3
 }
 proc fix_hold_gba_violations {args} { return [stub_fix fix_hold_gba_violations $args] }
@@ -377,6 +392,11 @@ proc undo {args} {
     stub_record undo {*}$args
     if {$::stub_undo_broken} { return "" }
     if {[llength $::actions] == 0} { error "Error: no ECO checkpoint to undo" }
+    if {[lindex $::actions end 3]} {
+        # Real XTop's reply to undoing a fix flow (Task 7): printed, code 1, empty result.
+        puts "Error: The committed actions cannot be undone."
+        error ""
+    }
     array unset ::cells
     array unset ::pin_net
     array set ::cells [lindex $::actions end 0]
@@ -387,21 +407,35 @@ proc undo {args} {
 proc summarize_gba_violations {args} {
     stub_record summarize_gba_violations {*}$args
     stub_gate summarize_gba_violations
+    if {[lsearch -exact $args -with_fail_reason] >= 0 && $::stub_fix_ran eq "0"} {
+        puts "Error: No fail reason since no fix or optimize flow have run yet."
+        error ""
+    }
+    # Real XTop (Task 7 run 3): fail reasons belong to the last fix flow's check only.
+    if {[lsearch -exact $args -with_fail_reason] >= 0 && [lsearch -exact $args -$::stub_fix_ran] < 0} {
+        puts "Error: Last flow is '${::stub_fix_ran}_gba', mismatched with current summary."
+        error ""
+    }
     return "WNS \"delta\"\t-0.010 for $args"
 }
 proc redirect {args} {
     stub_record redirect {*}[lrange $args 0 end-1]
     set target [lindex $args end-1]
+    set ::stub_out ""
     set code [catch {uplevel #0 [lindex $args end]} r]
     upvar #0 $target captured
-    set captured "captured: $r\n"
+    set captured [expr {$::stub_out ne "" ? $::stub_out : "captured: $r\n"}]
+    set ::stub_out ""
     if {$code} { error $r }
     return ""
 }
 proc get_paths {args} { stub_record get_paths {*}$args; return [list path:1 path:2] }
 proc analyze_setup_path_violations {args} { stub_record analyze_setup_path_violations {*}$args; return "SETUP-ANALYSIS" }
 proc analyze_hold_path_violations {args} { stub_record analyze_hold_path_violations {*}$args; return "HOLD-ANALYSIS" }
-proc report_fail_reasons {args} { stub_record report_fail_reasons {*}$args; return "REASONS" }
+# Real XTop prints the report and returns "" (Task 7 fix round 1); `redirect -variable` captures it.
+set ::stub_out ""
+set ::stub_reasons_report "REASONS"
+proc report_fail_reasons {args} { stub_record report_fail_reasons {*}$args; append ::stub_out $::stub_reasons_report; return "" }
 proc get_failed_pins {args} { stub_record get_failed_pins {*}$args; return [list pin:U1/A pin:U2/A] }
 proc list_size_cell_candidates {args} { stub_record list_size_cell_candidates {*}$args; return "BUFX2 BUFX4" }
 proc list_insert_buffer_candidates {args} { stub_record list_insert_buffer_candidates {*}$args; return "BUFX2" }
@@ -1417,15 +1451,35 @@ class ObservedEffectConfinementTest(unittest.TestCase):
 
     def test_an_insert_that_xtop_names_differently_is_kept_and_flagged(self):
         session = Session(self, observe="full").run(
-            "set ::stub_insert_hier u_core/\n"
+            f"set ::stub_insert_hier u_core/{PREFIX}z\n"
             f"T ins {{atcs_insert_buffer N1 UOUT/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
             "set ::stub_insert_hier {}\n"
             f"T ok {{atcs_insert_buffer N1 U3/A BUFX2 {PREFIX}b2 {PREFIX}n2 {PLAN}}}\n"
         )
         self.assertEqual(session.outcome("ins")[0], "OK", session.stdout)
         self.assertIs(session.ops[0]["matchesRequest"], False)
-        self.assertEqual(session.ops[0]["after"], {"instances": {f"u_core/{PREFIX}b1": "BUFX2"}})
+        self.assertEqual(session.ops[0]["after"], {"instances": {f"u_core/{PREFIX}z{PREFIX}b1": "BUFX2"}})
         self.assertIs(session.ops[1]["matchesRequest"], True)
+
+    def test_an_insert_placed_in_its_loads_module_matches_the_request(self):
+        # Real XTop (Task 7, w01): `insert_buffer -new_cell_names atcs_w01_r1_chain_d0` on a load pin
+        # inside swerv_dbg created swerv_dbg/atcs_w01_r1_chain_d0: the new cell lands in the loads'
+        # module under the requested leaf name.
+        domain = {"instances": ["U1", "U2", "U3", "u_core/U5"], "nets": ["N1", "N2", "N3"], "regions": []}
+        for observe in ("fast", "full"):
+            session = Session(self, observe=observe, domain=domain).run(
+                "set ::cells(u_core/U5) BUFX1\nset ::pin_net(u_core/U5/A) N1\n"
+                "set ::stub_insert_hier u_core/\n"
+                f"T ins {{atcs_insert_buffer N1 u_core/U5/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
+                # Review fix: only the load pins' own module matches; another module does not.
+                "set ::stub_insert_hier u_other/\n"
+                f"T elsewhere {{atcs_insert_buffer N1 u_core/U5/A BUFX2 {PREFIX}b2 {PREFIX}n2 {PLAN}}}\n"
+            )
+            self.assertEqual(session.outcome("ins")[0], "OK", session.stdout)
+            self.assertEqual(session.ops[0]["after"], {"instances": {f"u_core/{PREFIX}b1": "BUFX2"}})
+            self.assertIs(session.ops[0]["matchesRequest"], True, observe)
+            self.assertEqual(session.outcome("elsewhere")[0], "OK", session.stdout)
+            self.assertIs(session.ops[1]["matchesRequest"], False, observe)
 
     def test_removable_fillers_are_exempt_and_logged(self):
         full = Session(self, observe="full").run(
@@ -1468,8 +1522,9 @@ class ReadProceduresTest(unittest.TestCase):
         probe = [gain for gain in session.gains if gain["kind"] == "probe"]
         self.assertEqual(len(probe), 1)
         command = probe[0]["checks"]["hold"]["command"]
+        # No fix has run in this session, so XTop has no fail reasons to report yet (Task 7, real XTop).
         self.assertEqual(command, "summarize_gba_violations -with_delta -with_reference -exclude_path "
-                                  "-with_top_n 7 -with_fail_reason -hold")
+                                  "-with_top_n 7 -hold")
         (setup_analysis,) = session.calls_to("analyze_setup_path_violations")
         self.assertEqual(setup_analysis[1:], ["-top", "5", "-detail_info"])
         (get_paths,) = session.calls_to("get_paths")
@@ -1482,6 +1537,127 @@ class ReadProceduresTest(unittest.TestCase):
         self.assertEqual([call[0] for call in session.calls if call[0] in MUTATING_XTOP], [])
         self.assertEqual(session.ops, [])
 
+
+    def test_fail_reasons_return_what_xtop_prints(self):
+        # Real XTop (Task 7 fix round 1): report_fail_reasons prints its report and returns "", so the
+        # toolkit read {"report":""}. It now captures the printed report.
+        import live_session_samples as live
+        text = live.LIVE_REPORT_FAIL_REASONS_AFTER_FIX
+        session = Session(self).run(
+            f"set ::stub_reasons_report {{{text}}}\n"
+            "T reasons {atcs_fail_reasons {U1/A U2/A} {} {}}\n"
+        )
+        self.assertEqual(session.outcome("reasons")[0], "OK", session.stdout + session.stderr)
+        line = next(line for line in session.stdout.splitlines() if line.startswith("reasons:OK:"))
+        reply = json.loads(line[len("reasons:OK:"):])
+        self.assertIn("break_hold_of_driver   ####################....................      1  50.0%", reply["report"])
+        self.assertIn("rm_assigns_buf_ifu_axi_araddr_5/Z", reply["report"])
+        self.assertEqual(session.calls_to("redirect")[-1][1], "-variable")
+
+    def test_the_probe_asks_for_fail_reasons_only_after_a_fix_ran(self):
+        # Real XTop, Task 7 (qual-issue64-chain-20260928, w01..w03): before any fix or optimize flow,
+        # `-with_fail_reason` fails ("No fail reason since no fix or optimize flow have run yet.");
+        # `-with_top_n` alone works. After a fix the probe carries the fail reasons.
+        session = Session(self).run(
+            "T before {atcs_gain setup 5}\n"
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            "T after_size {atcs_gain setup 5}\n"
+            "set ::stub_fix_effect {U1 BUFX4}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            "T after_fix {atcs_gain hold 5}\n"
+        )
+        for tag in ("before", "size", "after_size", "fix", "after_fix"):
+            self.assertEqual(session.outcome(tag)[0], "OK", tag + session.stdout + session.stderr)
+        probes = [gain for gain in session.gains if gain["kind"] == "probe"]
+        self.assertEqual([next(iter(probe["checks"].values()))["command"] for probe in probes], [
+            "summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n 5 -setup",
+            "summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n 5 -setup",
+            "summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n 5 -with_fail_reason -hold",
+        ])
+        self.assertTrue(all(next(iter(probe["checks"].values()))["code"] == 0 for probe in probes))
+
+
+    def test_the_probe_asks_for_fail_reasons_of_the_last_fix_flows_check_only(self):
+        # Real XTop, Task 7 run 3: after a hold flow, `-with_fail_reason -setup` fails ("Last flow is
+        # 'hold_gba', mismatched with current summary."); the other check is probed without them.
+        session = Session(self).run(
+            "set ::stub_fix_effect {U1 BUFX4}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            "T hold {atcs_gain hold 5}\nT setup {atcs_gain setup 5}\n"
+            "set ::stub_fix_effect {U1 BUFX2}\n"
+            f"T sfix {{{SETUP} U1/A size_cell 0 0 high 0.0 0.02 {PLAN}}}\n"
+            "T hold2 {atcs_gain hold 5}\nT setup2 {atcs_gain setup 5}\n"
+        )
+        for tag in ("fix", "hold", "setup", "sfix", "hold2", "setup2"):
+            self.assertEqual(session.outcome(tag)[0], "OK", tag + session.stdout + session.stderr)
+        commands = [next(iter(g["checks"].values()))["command"] for g in session.gains if g["kind"] == "probe"]
+        base = "summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n 5"
+        self.assertEqual(commands, [f"{base} -with_fail_reason -hold", f"{base} -setup",
+                                    f"{base} -hold", f"{base} -with_fail_reason -setup"])
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class CommittedFixTest(unittest.TestCase):
+    """Real XTop commits a fix flow's actions (Task 7): `undo` cannot revert a targeted fix."""
+
+    def test_undo_of_a_committed_fix_fails_changes_nothing_and_does_not_taint(self):
+        session = Session(self).run(
+            "set ::stub_fix_committed 1\nset ::stub_fix_effect {U1 BUFX4}\n"
+            f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            f"T undo {{atcs_undo {PLAN}}}\n"
+            f"T next {{atcs_size_cell U2 INVX2 {PLAN}}}\n"
+            'puts "CELLS:[stub_cells]"\n'
+        )
+        self.assertEqual(session.outcome("fix")[0], "OK", session.stdout)
+        status, message = session.outcome("undo")
+        self.assertEqual(status, "ERR")
+        self.assertIn("failed and changed nothing", message)
+        self.assertIn("Error: The committed actions cannot be undone.", session.stdout)
+        self.assertEqual([op["status"] for op in session.ops], ["kept", "error", "kept"])
+        self.assertEqual(session.outcome("next")[0], "OK", session.stdout)
+        self.assertIn("U1=BUFX4", session.cells_line())
+        self.assertFalse((session.root / "tainted.json").exists())
+
+    def test_move_sends_xtops_pointf(self):
+        # Real XTop (Task 7, w03): `move_cell -to {2.26 328.6}` is refused ("not a valid 'pointf'");
+        # the man page's form is `-to {(x,y)}`.
+        session = Session(self).run(f"T mv {{atcs_move_cell U3 2.26 28.6 {PLAN}}}\n")
+        self.assertEqual(session.outcome("mv")[0], "OK", session.stdout)
+        (move,) = session.calls_to("move_cell")
+        self.assertEqual(move[1:3], ["-to", "(2.26,28.6)"])
+        self.assertEqual(session.ops[0]["status"], "kept")
+
+    def test_a_fix_that_may_insert_cells_needs_each_pin_net_in_the_domain(self):
+        # Task 7 w01: a hold fix on a target pin whose net was outside the domain inserted a delay
+        # cell there; XTop could not undo it, so the session was tainted. The toolkit now refuses such
+        # a fix before XTop: hold fixes (unless size-only) and setup fixes that may insert or split.
+        domain = {"instances": ["U1", "U2", "U3"], "nets": ["N1"], "regions": []}
+        session = Session(self, domain=domain, target_pins=["U9/D"]).run(
+            "set ::stub_fix_committed 1\n"
+            f"T hold {{{HOLD} U9/D high 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            f"T setup_insert {{{SETUP} U9/D {{size_cell insert_buffer}} 0 0 high 0.0 0.02 {PLAN}}}\n"
+            f"T setup_split {{{SETUP} U9/D split_net 0 0 high 0.0 0.02 {PLAN}}}\n"
+            "set ::stub_fix_effect {U1 BUFX4}\n"
+            f"T hold_size {{{HOLD} U9/D omit 0.0 0.02 1 0 0 0 -1 {{}} {PLAN}}}\n"
+            "set ::stub_fix_effect {U1 BUFX2}\n"
+            f"T setup_size {{{SETUP} U9/D size_cell 0 0 high 0.0 0.02 {PLAN}}}\n"
+            "set ::stub_fix_effect {U2 INVX2}\n"
+            f"T hold_domain_net {{{HOLD} U1/A high 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+        )
+        # Review fix: size-only with a dummy cell still inserts (`-use_dummy_cell`).
+        dummy = Session(self, domain=domain, target_pins=["U9/D"]).run(
+            f"T hold_size_dummy {{{HOLD} U9/D omit 0.0 0.02 1 1 0 0 -1 {{}} {PLAN}}}\n")
+        self.assertEqual(dummy.outcome("hold_size_dummy")[0], "ERR", dummy.stdout)
+        self.assertIn("U9/D is on net N2 outside the edit domain", dummy.outcome("hold_size_dummy")[1])
+        self.assertEqual(dummy.calls_to("fix_hold_gba_violations"), [])
+        for tag in ("hold", "setup_insert", "setup_split"):
+            status, message = session.outcome(tag)
+            self.assertEqual(status, "ERR", tag)
+            self.assertIn("U9/D is on net N2 outside the edit domain", message)
+        for tag in ("hold_size", "setup_size", "hold_domain_net"):
+            self.assertEqual(session.outcome(tag)[0], "OK", tag + session.stdout)
+        self.assertEqual(len(session.calls_to("fix_hold_gba_violations")), 2)
+        self.assertEqual(len(session.calls_to("fix_setup_gba_violations")), 1)
+        self.assertEqual([op["seq"] for op in session.ops], [1, 2, 3])
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class KnowledgeSurfaceTest(unittest.TestCase):
@@ -1549,7 +1725,7 @@ class KnowledgeSurfaceTest(unittest.TestCase):
                 for check in gain["checks"].values():
                     self.assertIn("-exclude_path", check["command"].split())
             (move,) = session.calls_to("move_cell")
-            self.assertEqual(move[1:], ["-to", "10.5 20", "cell:U3"])
+            self.assertEqual(move[1:], ["-to", "(10.5,20)", "cell:U3"])
             self.assertEqual([op["status"] for op in session.ops if op["cmd"] == "move_cell"], ["kept"])
 
 

@@ -17,7 +17,7 @@
 | Procedure | XTop command it emits | Man page (row) |
 | --- | --- | --- |
 | `atcs_ref` | `summarize_gba_violations -as_reference -exclude_path`, captured by `redirect -variable` | `summarize_gba_violations.1` (314), `redirect.1` (221) |
-| `atcs_gain` | `summarize_gba_violations -with_delta -with_reference -exclude_path -with_fail_reason` | `summarize_gba_violations.1` (314) |
+| `atcs_gain` | `summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n`, plus `-with_fail_reason` for the check of the last fix flow (XTop keeps none for the other check or before a fix) | `summarize_gba_violations.1` (314) |
 | `atcs_paths` | `get_paths`; `analyze_setup_path_violations` / `analyze_hold_path_violations -detail_info` | `get_paths.1` (149), `analyze_setup_path_violations.1` (16), `analyze_hold_path_violations.1` (12) |
 | `atcs_fail_reasons` | `report_fail_reasons -stats -verbose -pins`; `get_failed_pins -reasons` | `report_fail_reasons.1` (245), `get_failed_pins.1` (132) |
 | `atcs_candidates` | `list_size_cell_candidates`, `list_insert_buffer_candidates`, `list_exchange_cell_candidates` | `list_size_cell_candidates.1` (188), `list_insert_buffer_candidates.1` (185), `list_exchange_cell_candidates.1` (183) |
@@ -27,7 +27,7 @@
 | `atcs_insert_dummy` | `insert_dummy_cell` | `insert_dummy_cell.1` (178) |
 | `atcs_split_load` | `split_load -pin_group ...` | `split_load.1` (304) |
 | `atcs_split_net` | `split_net -rule wire_length\|cap -segment 2..16` | `split_net.1` (305) |
-| `atcs_move_cell` | `move_cell -to {x y}`, the point inside an `editDomain.regions` box | `move_cell.1` (201) |
+| `atcs_move_cell` | `move_cell -to {(x,y)}` in microns, inside an `editDomain.regions` box (µm); XTop legalizes the point to a nearby site (origin vs centre unsettled; within about half a cell) | `move_cell.1` (201) |
 | `atcs_remove_buffer` | `remove_buffer`, every net of the buffer in the domain | `remove_buffer.1` (225) |
 | `atcs_fix_hold_pins` | `fix_hold_gba_violations ... -only_pins` | `fix_hold_gba_violations.1` (112) |
 | `atcs_fix_setup_pins` | `fix_setup_gba_violations ... -only_pins` | `fix_setup_gba_violations.1` (114) |
@@ -39,8 +39,9 @@
 ## Applies when
 
 - The plan Workshop clusters the blockers into slot work packages: `targetPins` (instance pins,
-  `<instance path>/<pin>`, not primary ports), a disjoint
-  `editDomain`, and a `scope` whose commands name the moves the cluster may need.
+  `<instance path>/<pin>`, not primary ports), a disjoint `editDomain`, and a `scope` whose commands
+  name the moves the cluster may need. `editDomain.nets` are XTop's names: a pin inside a module sits on
+  its local net (`swerv_dbg/rst_l`), not PrimeTime's flattened one (`FE_OCPN9798_rst_l`; Task 7).
 - A research Workshop writes a slot's worker request, and the worker Team runs: the Researcher
   proposes ladder moves with falsifiers, the Reviewer sizes the scope (commands and a mutation
   budget), the Operator runs the loop below in its interactive `xtop-operator` session. The Team's
@@ -51,27 +52,29 @@
 ## Changes this decision
 
 The Operator is a trial-and-measure expert, not the executor of one pinned action. Each trial is
-probabilistic: XTop's gain shows whether it helped against the session reference. Keep what the gain
-shows helps, undo what does not. The merge later ranks sessions by value (blocker coverage first, then
-XTop's predicted gain) and replays them best-effort before auto-finish, and a plain auto-fix control
-arm guards the batch. XTop's prediction decides, WNS first: control when merged is worse on worst
-setup or hold WNS (by more than 1e-4); merged when it is better on one WNS; with both WNS equal,
-merged only when it is no worse on setup and hold TNS (1e-3) and better on one, or all four tie.
-So a short, clean kept log beats many marginal edits. XTop's gain only screens
-trials; only refreshed PrimeTime judges convergence.
+probabilistic: XTop's gain against the session reference shows whether it helped; keep what helps,
+undo what does not. The merge ranks sessions by value (blocker coverage, then XTop's best per-scenario
+gain on a violating target check) and replays them before auto-finish; a plain auto-fix control arm
+guards the batch. XTop's prediction decides, WNS first: control when merged is worse on setup or hold
+WNS (> 1e-4); merged when better on one WNS; with both equal, merged only when no worse on setup and
+hold TNS (1e-3) and better on one, or all four tie. So a short, clean kept log beats many marginal
+edits. XTop's gain only screens trials; only refreshed PrimeTime judges convergence.
 
 ### The expert loop
 
-1. `atcs_dump_cells before.dump`, then `atcs_ref` once: the setup and hold reference that every gain
-   is read against.
-2. Diagnose the target pins before changing anything. `atcs_paths` (check, topN, endPoints = the
-   target pins) gives the paths and XTop's analyze report of their causes. `atcs_fail_reasons` says
-   why auto-fix left them. `atcs_candidates` gives the legal masters and buffers for the path's cells.
+1. `atcs_dump_cells before.dump`, then `atcs_ref` once: the setup and hold reference of every gain.
+2. Diagnose before changing anything: `atcs_paths` (check, topN, endPoints = the target pins) gives
+   the paths and XTop's analysis; the request's evidence (the prior batch's fail reasons; none in the
+   first generation) says why auto-fix left them; `atcs_candidates` gives the path cells' masters. XTop
+   keeps no fail reasons in a session before its first fix (Task 7: an empty table): read
+   `atcs_fail_reasons` on the target pins after the slot's own fix, setup reasons after a setup fix.
 3. Choose one move from the failing check's ladder, steered by the fail-reason table. Change one
    principal variable per trial (method, master, margin or pin set), or the gain cannot be attributed.
-4. Trial it: one manual ECO, or one targeted fix on the slot's own pins, carrying the plan hash.
-5. `atcs_gain` for the target check and for the opposite check. The toolkit also logs both after
-   every kept mutation.
+4. Trial it: one manual ECO, with the plan hash. A targeted fix is no trial: XTop commits its actions
+   and `atcs_undo` cannot revert them ("The committed actions cannot be undone", Task 7). Send
+   `atcs_fix_hold_pins` or `atcs_fix_setup_pins` only as a keep, after the manual trials; one that may
+   insert (hold unless `sizeCellOnly` without `useDummyCell`, setup `insert_buffer`/`split_net`) needs its pins' nets in the domain.
+5. `atcs_gain` for the target and the opposite check; the toolkit also logs both after each kept mutation.
 6. Keep the trial only if the target slack improved and the opposite check did not break. Otherwise
    `atcs_undo` at once, before the next trial.
 7. Stop when the budget is spent (every mutation and every undo counts), when no candidate on the
@@ -86,8 +89,7 @@ Reviewer's budget. So check the domain, pins, regions and candidates with the re
 are free, before sending. Read every refusal and choose again; never resend the same mutation. A
 tainted session (an `uncertain` line) refuses every further mutation: dump, close and report it.
 
-The Reviewer's budget must fit the loop: the planned trials, one undo for each, plus a margin for
-toolkit refusals. A token budget of one or two mutations cannot run it.
+The Reviewer's budget must fit the loop: trials, one undo each, and a margin for toolkit refusals.
 
 ### Hold ladder
 
@@ -97,8 +99,7 @@ toolkit refusals. A token budget of one or two mutations cannot run it.
 2. Dummy load for a very small violation: `atcs_insert_dummy`, or `useDummyCell 1`.
 3. Delay or buffer chain at the sink: `atcs_insert_buffer` with several masters, or
    `maxDelayCellLength` 1..5 with a `delayCellList` that mixes delay and normal buffers.
-4. Loader clustering when several close loaders fail together: `maxClusterLoaderCount` 1..6; the
-   User Guide suggests trying 4.
+4. Loader clustering when close loaders fail together: `maxClusterLoaderCount` 1..6 (the User Guide: try 4).
 5. Timing window when `break_setup` dominates: `fixTimingWindow 1` at effort `low` only, never with
    `sizeCellOnly` (XTop documents both incompatibilities; the toolkit refuses them).
 
@@ -160,7 +161,8 @@ a region only when the analysis blames distance (net delay) and a region was pla
   size-only, hold; `packs/xtop-timing-closure/flow/closure.py`) after the expert repairs, which are
   locked with `set_dont_touch` first, so the two arms differ only by the recipe. Both arms then read
   `summarize_gba_violations -exclude_path -with_top_n N -with_fail_reason` per check; the chosen
-  arm's reasons are sealed with the batch and reach the next plan through the residual cases.
+  arm's reasons reach the next plan through the residual cases. Auto-finish ends with a hold flow, so
+  its setup reasons are unread: a setup worker reads them in its own session after its setup fix.
 - Workers spend their budget on blockers only. A worker that fixes bulk endpoints takes area and
   routing from auto-finish and blurs its own gain. One mechanism per slot, in disjoint edit domains:
   no instance and no net in two active slots.
@@ -172,8 +174,7 @@ hold violations from 7,430 to 148 (2,908 buffers inserted, 919 cells resized). S
 global fixes again at high effort with the blockers still in place and over-fixed: WNS stayed at
 -0.154 ns hold and -0.0383 ns setup, and PrimeTime after the round-2 ECO measured hold -0.16 ns. Higher
 effort adds internal pin groups and runtime, not a new mechanism for the endpoints that set WNS. The
-order that works: diagnose the blockers, repair them with targeted moves and undo what does not gain,
-lock them, then auto-finish the bulk.
+order that works: diagnose the blockers, repair them with targeted moves, lock them, then auto-finish.
 
-The loop has its own limit (strategy map, judgement 2): with many violations and ample resources, one
-GBA auto pass converges faster than any expert loop. Use the loop on the residual, not on round 1.
+The loop has its own limit (strategy map, judgement 2): with many violations one GBA auto pass
+converges faster than any expert loop. Use the loop on the residual, not on round 1.

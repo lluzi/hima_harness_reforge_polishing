@@ -156,7 +156,7 @@ class AdapterToolError(Exception):
 
 
 def tcl_safe(value, label, allow_brackets=False):
-    """Return `value` unchanged, or raise `AtcsError("unsafe-name", ...)`.
+    r"""Return `value` unchanged, or raise `AtcsError("unsafe-name", ...)`.
 
     Same rule as `atcs.integration._validate_tcl_value`: a non-empty string
     with no whitespace, no control character and none of ``;[]{}$"\`` (backslash

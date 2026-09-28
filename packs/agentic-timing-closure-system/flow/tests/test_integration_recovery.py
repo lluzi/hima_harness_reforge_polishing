@@ -1681,13 +1681,25 @@ class ReconcileRecipeTests(unittest.TestCase):
         request = prepare_default()
         merged = arm_evidence("merged", receipts=merged_receipts(request), session_deltas=matching_session_deltas())
         merged["result"]["failReasons"] = {"setup": 0, "hold": 1}
-        merged["failReasonText"] = {"setup": "no_setup_gain 3\n", "hold": "Error: unknown option\n"}
+        merged["failReasonText"] = {"setup": "### setup top 3 endpoints ###\n  Slack    Scenario                Name       Fail Reason      \n------------------------------------------------------------\n-0.0100    func_ss                 U0/D      no_setup_gain:100%\n-0.0100    func_ss                 U1/D      no_setup_gain:100%\n-0.0100    func_ss                 U2/D      no_setup_gain:100%\n", "hold": "Error: unknown option\n"}
         state = integration.reconcile_recipe(request, {"merged": merged, "control": arm_evidence("control")})
         self.assertEqual(state["arms"]["merged"]["failReasons"], {"setup": {"no_setup_gain": 3}})
         self.assertEqual(state["arms"]["merged"]["failReasonsUnread"], ["hold"])
         self.assertEqual(state["chosen"]["arm"], "merged")
         self.assertEqual(state["failReasons"], {"arm": "merged", "setup": {"no_setup_gain": 3}, "unread": ["hold"]})
         self.assertEqual(state["arms"]["control"]["failReasonsUnread"], [])
+
+    def test_a_fail_reason_reply_without_a_table_is_unread_not_empty(self):
+        # Review fix (Task 7 fix round 1): a code-0 reply with no Fail Reason table said nothing.
+        request = prepare_default()
+        merged = arm_evidence("merged", receipts=merged_receipts(request), session_deltas=matching_session_deltas())
+        merged["result"]["failReasons"] = {"setup": 0, "hold": 0}
+        merged["failReasonText"] = {"setup": "### setup summary ###\ntotal 0 0.0 0.0\n",
+                                    "hold": "### hold top 1 endpoints ###\n  Slack    Scenario    Name    Fail Reason\n"
+                                            "-------------------------------\n-0.0100    s1    U1/D    no_hold_gain:100%\n"}
+        state = integration.reconcile_recipe(request, {"merged": merged, "control": arm_evidence("control")})
+        self.assertEqual(state["arms"]["merged"]["failReasons"], {"hold": {"no_hold_gain": 1}})
+        self.assertEqual(state["arms"]["merged"]["failReasonsUnread"], ["setup"])
 
     def test_equal_worst_slack_is_broken_by_tns(self):
         _, state = reconcile_default(control_kw={"setup": {"s1": (3, -0.02, -0.05), "s2": (0, 0.0, 0.0)}})

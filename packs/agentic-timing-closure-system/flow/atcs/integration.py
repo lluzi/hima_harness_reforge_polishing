@@ -1,4 +1,4 @@
-"""M5: deterministic replay and merge — the Integration Fix Session's adapter.
+r"""M5: deterministic replay and merge — the Integration Fix Session's adapter.
 
 This module owns the six M5 producers named in
 ``.superpowers/sdd/task-7-brief.md`` and the ``integration-plan``,
@@ -1624,12 +1624,15 @@ def _arm_view(arm, evidence, request, session_accounts):
     fail_codes = (result or {}).get("failReasons") if isinstance((result or {}).get("failReasons"), dict) else {}
     # A check whose fail-reason read returned a non-zero Tcl code was not read: unread, never `{}`.
     unread = [check for check in ("setup", "hold") if fail_codes.get(check, 0) not in (0, "0")]
+    # A reply with no recognisable Fail Reason table is unread as well (Task 7 fix round 1).
+    parsed = {check: contributions.parse_fail_reasons(fail_text[check]) for check in ("setup", "hold")
+              if isinstance(fail_text.get(check), str) and check not in unread}
+    unread += [check for check, reasons in parsed.items() if reasons is None]
     view = {
         "safe": not problems, "problems": problems, "missingPair": missing, "eco": pair,
         "prediction": _prediction(evidence.get("predictText"), request.get("requiredScenarios") or []),
-        "failReasons": {check: contributions.parse_fail_reasons(fail_text[check]) for check in ("setup", "hold")
-                        if isinstance(fail_text.get(check), str) and check not in unread},
-        "failReasonsUnread": unread,
+        "failReasons": {check: reasons for check, reasons in parsed.items() if reasons is not None},
+        "failReasonsUnread": sorted(unread, key=("setup", "hold").index),
         "toolFailure": evidence.get("toolFailure"),
         "autoFix": (result or {}).get("autoFix") or [],
     }
