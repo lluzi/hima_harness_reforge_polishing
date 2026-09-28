@@ -31,6 +31,7 @@ import {
   substitute,
   toolArgv,
   workshopArgv,
+  workshopProducersOf,
   type ContractOutput,
   type Pack,
   type PackNode,
@@ -363,7 +364,7 @@ async function launchAndWait(
     : { branch: { id: ctx.branchId, currentNode: node.id, state: 'running' as const } };
   await progress(ctx, launch.meters, running);
   if (ctx.nonblocking) return { kind: 'pending', session };
-  return waitForJob(ctx, node, attempt, session, launch.reads?.finish);
+  return waitForJob(ctx, node, attempt, session, launch.reads?.finish ?? (launch.workshop === undefined ? undefined : settleWorkshopFinished));
 }
 
 /**
@@ -609,6 +610,20 @@ function toHostLog(ctx: Driving, line: string): void {
   ctx.deps.log?.(`hima: ${line}`);
 }
 
+/**
+ * What a Reader blocked on an input that is not there says about who writes it (#64 D2): when a
+ * Workshop of this Pack declares that output, re-reading the same missing path would only block
+ * again, so the words name the upstream node whose new work has to come first. Empty for any other
+ * refusal, and for an output no Workshop produces.
+ */
+function missingInputHint(ctx: Driving, node: PackNode, reason: string): string {
+  if (node.kind !== 'act' || node.parameters.observes === undefined || !reason.startsWith('cannot resolve')) return '';
+  const producers = workshopProducersOf(ctx.pack, node.parameters.observes).filter((producer) => producer.nodeId !== node.id);
+  if (producers.length === 0) return '';
+  const named = producers.map((producer) => `node ${producer.nodeId} (Workshop "${producer.workshop}")`).join(' or ');
+  return `; ${named} writes this input and must run again before this Reader can read it: continue ${producers[0]!.nodeId} to start new work there instead of re-reading`;
+}
+
 /** One node blocked, carrying why in words and the Job it was waiting on where there was one. */
 async function blockNode(ctx: Driving, node: PackNode, attempt: number, reason: string, jobSession?: string): Promise<Step> {
   await appendNode(ctx, node, 'blocked', attempt, jobSession === undefined ? { reason } : { reason, jobSession });
@@ -629,6 +644,41 @@ async function settleFinished(ctx: Driving, node: PackNode, attempt: number, ses
   const reason = exitCode === 0 ? {} : { reason: `job "${node.id}" in tmux session ${session} exited ${exitCode}` };
   await appendNode(ctx, node, state, attempt, { jobSession: session, ...reason });
   return exitCode === 0 ? { kind: 'settled' } : { kind: 'blocked' };
+}
+
+/**
+ * A Workshop Job that exited 0 is `done` only when the file its Workshop declares it produces is on
+ * the Site (#64 D1). A Workshop's one entry execution is its result: an entry that only explored and
+ * printed to stdout leaves nothing for the Reader downstream, and calling it `done` hands that Reader
+ * a path it cannot resolve. So a missing output is a failed attempt with that reason, through the same
+ * accounting as a non-zero exit — an Agent-owned Workshop stays in its coding loop and the owner opens
+ * the next attempt; a moment-driven one spends its Retry allowance.
+ *
+ * Only presence is asked. Whether what was written makes sense is the Reader's to say, and a question
+ * the Site would not answer is a failed attempt naming why, never a `done` nobody verified.
+ */
+async function settleWorkshopFinished(ctx: Driving, node: PackNode, attempt: number, session: string, exitCode: number): Promise<Step> {
+  if (exitCode !== 0 || node.kind !== 'act' || node.parameters.workshop === undefined) return settleFinished(ctx, node, attempt, session, exitCode);
+  const missing = await missingWorkshopOutput(ctx, node, session);
+  if (missing === undefined) return settleFinished(ctx, node, attempt, session, exitCode);
+  return settleFailedAttempt(ctx, node, attempt, { jobSession: session, exitCode, reason: missing });
+}
+
+/** Why the declared output of this Workshop node is not on the Site after its Job, or undefined when it is. */
+async function missingWorkshopOutput(ctx: Driving, node: Extract<PackNode, { kind: 'act' }>, session: string): Promise<string | undefined> {
+  const declaration = ctx.pack.contract.workshops.find((workshop) => workshop.id === node.parameters.workshop);
+  const output = declaration === undefined ? undefined : ctx.pack.contract.outputs.find((candidate) => candidate.name === declaration.produces);
+  if (declaration === undefined || output === undefined) return undefined;
+  const relative = outputPath(output, ctx.bindings);
+  const at = pathsOf(ctx.site).join(ctx.workspace, relative);
+  const written = `Workshop output ${relative} was not written`;
+  const why = `the ${declaration.entry} Job of workshop "${declaration.id}" in tmux session ${session} exited 0`;
+  try {
+    if (!(await channelFor(ctx.site).absent(at))) return undefined;
+  } catch (err) {
+    return `${written} as far as site ${ctx.site.name} would say: ${why}, and whether ${at} exists could not be asked: ${(err as Error).message}`;
+  }
+  return `${written}: ${why} but ${at} is not on site ${ctx.site.name}; the entry execution is the Workshop's result and must write its declared output "${output.name}"`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -882,7 +932,7 @@ async function observeWithBundledReader(
     return { kind: 'settled' };
   }
   // A refusal is a record of its own; the node says the same thing in words.
-  return blockNode(ctx, node, attempt, `${result.record.path} was not read: ${result.record.reason}`);
+  return blockNode(ctx, node, attempt, `${result.record.path} was not read: ${result.record.reason}${missingInputHint(ctx, node, result.record.reason)}`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1488,7 +1538,10 @@ async function runPackReader(
   // when the reader was launched, and a report that is gone by the time the Job ends does not lose
   // the reading with it.
   const report = await decideRead(site, reading.report, channel);
-  if (!report.ok) return refuse(reading.report, report.reason);
+  if (!report.ok) {
+    await ctx.deps.ledger.appendRefusal(ctx.runId, { path: reading.report, reason: report.reason }, 'executor');
+    return blocked(`${report.reason}${missingInputHint(ctx, node, report.reason)}`);
+  }
   let seen: ReportSeen;
   try {
     const bytes = await channel.readFile(report.absPath);
@@ -1696,6 +1749,11 @@ export async function resumeNode(ctx: Driving, node: PackNode, attempt: number, 
   }
   if (node.kind === 'act' && node.parameters.observes !== undefined) {
     return waitForJob(ctx, node, attempt, session, cannotReadBack(session, launched?.id));
+  }
+  // A Workshop's Job is settled against the output its Workshop declares, whichever process picks it
+  // up (#64 D1): the `launched` record names the Workshop, and the node says so for a legacy record.
+  if (launched?.workshop !== undefined || (node.kind === 'act' && node.parameters.workshop !== undefined)) {
+    return waitForJob(ctx, node, attempt, session, settleWorkshopFinished);
   }
   return waitForJob(ctx, node, attempt, session);
 }
