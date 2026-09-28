@@ -514,6 +514,7 @@ class TwoRoundFlowTest(unittest.TestCase):
             "targets": [], "editDomain": {"instances": [instance], "nets": [], "regions": []},
             "protected": {"instances": [], "nets": []}, "mayAffect": [],
             "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+            "targetPins": [], "scope": {"commands": ["atcs_size_cell", "atcs_undo"], "maxMutations": workspaces.SCOPE_MAX_MUTATIONS},
         }
         validated = workspaces.validate_work_package(work_package_raw, base_state, {"pgVerification": False})
         manifest = workspaces.prepare(validated, str(self.workspace), base_state)
@@ -683,6 +684,7 @@ class TwoRoundFlowTest(unittest.TestCase):
                 "targets": [], "editDomain": {"instances": [], "nets": [], "regions": []},
                 "protected": {"instances": [], "nets": []}, "mayAffect": [],
                 "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+                "targetPins": [], "scope": {"commands": ["atcs_size_cell", "atcs_undo"], "maxMutations": workspaces.SCOPE_MAX_MUTATIONS},
             }
             for task_id in workspaces.TASK_IDS
         }
@@ -1701,6 +1703,7 @@ class PrepareWorkersByteIdentityTest(unittest.TestCase):
                 "targets": [], "editDomain": {"instances": [], "nets": [], "regions": []},
                 "protected": {"instances": [], "nets": []}, "mayAffect": [],
                 "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+                "targetPins": [], "scope": {"commands": ["atcs_size_cell", "atcs_undo"], "maxMutations": workspaces.SCOPE_MAX_MUTATIONS},
             }
             for task_id in workspaces.TASK_IDS
         }
@@ -1726,6 +1729,12 @@ class PrepareWorkersByteIdentityTest(unittest.TestCase):
         for task_id in workspaces.TASK_IDS:
             self.assertEqual(workers["workers"][task_id]["workPackage"]["taskId"], task_id)
             self.assertEqual(len(workers["workers"][task_id]["sessionTclSha256"]), 64)
+        # Issue #64 Task 4: six slots, and each session bakes the package's scope budget (the recipe
+        # cap; the Reviewer's smaller budget is the Host's) and its observation mode.
+        self.assertEqual(sorted(workers["workers"]), ["w01", "w02", "w03", "w04", "w05", "w06"])
+        session_tcl = Path(workers["workers"]["w06"]["sessionTcl"]).read_text(encoding="utf-8")
+        self.assertIn("set ::ATCS_MAX_MUTATIONS {120}", session_tcl)
+        self.assertIn("set ::ATCS_OBSERVE {fast}", session_tcl)
 
     def test_missing_xtop_context_refuses_before_any_worker_session_is_compiled(self):
         (self.workspace / "state" / "xtop-context.json").unlink()
@@ -1809,6 +1818,7 @@ class CaptureContributionComposedTest(unittest.TestCase):
             "targets": [], "editDomain": {"instances": [instance], "nets": [], "regions": []},
             "protected": {"instances": [], "nets": []}, "mayAffect": [],
             "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+            "targetPins": [], "scope": {"commands": ["atcs_size_cell", "atcs_undo"], "maxMutations": workspaces.SCOPE_MAX_MUTATIONS},
         }
         validated = workspaces.validate_work_package(work_package_raw, self.base_state, {"pgVerification": False})
         manifest = workspaces.prepare(validated, str(self.workspace), self.base_state)

@@ -92,6 +92,16 @@ the coordinator's executable-convergence scope. ATCS-02 required no Runtime chan
 Researcher result is a retained dependency and the existing Workshop output remains the action authority.
 Local Host/Tcl fixtures prove the mechanism; commercial qualification remains a separate gate.
 
+2026-09-28 Issue #64 Task 4: the worker Teams are version 4 in Harness scope mode. The Reviewer
+approves `{scope: {commands, maxMutations}, planSha256}` within the recipe (the eleven `xtop-operator`
+mutations, cap 120); the Operator runs the expert loop of `knowledge/xtop-expert-operator.md`. Work
+packages carry `scope` (Tcl-side budget = the recipe cap; the Reviewer's budget is the Host's),
+`targetPins`, `observe` and `editDomain.regions`, for slots w01..w06. Gap until Task 5: the graph
+declares operate-worker-01..03 only, and a Team must trigger at a declared interactive node, so Teams
+04..06 (Team 01 with the slot number changed), their request outputs, Readers and research Workshops
+land with Task 5's nodes; the campaign-plan Reader still counts w01..w03 while `prepare-workers`
+requires all six packages.
+
 Every tool and reader `contract.yml` names is held in this folder (tools run `flow/atcs_cli.py` or
 the Site's XTop Operator wrapper; readers run `tools/read-atcs.py`). None of the gaps below is
 closed by a hidden loop or background process.
