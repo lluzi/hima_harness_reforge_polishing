@@ -799,5 +799,173 @@ class SealedContributionIntegrationTest(unittest.TestCase):
             self.assertEqual(facts["schema"], "atcs.composition-facts/1")
 
 
+
+# ---------------------------------------------------------------------------
+# Issue #64 Task 4 (user amendment 2026-09-28): a ranked recipe over admitted
+# `xtop-session` Contributions -- rank, mark `skip: shared-instance`, never refuse.
+# ---------------------------------------------------------------------------
+
+import session_fixtures as sf  # noqa: E402
+
+SESSION_BEFORE = {"U1": "BUFX1", "U2": "BUFX1", "U3": "INVX1", "U4": "BUFX1"}
+NO_GAIN = ((-0.020, -0.100), (-0.020, -0.100))
+
+
+def _hold_gain(delta_wns, delta_tns=0.1):
+    return NO_GAIN, ((-0.070, -1.200), (-0.070 + delta_wns, -1.200 + delta_tns))
+
+
+def _session(slot, sizes, gain, targets=None, target_pins=None, extra=None, before=None):
+    """Seal one admitted session in `slot` that sizes each `(instance, to)` in `sizes`."""
+    before = dict(before or SESSION_BEFORE)
+    base_ref = sf.make_base_ref(slot=slot, instances=tuple(sorted(before)), targets=targets,
+                                target_pins=target_pins)
+    log = sf.SessionLog()
+    after = dict(before)
+    for instance, to_master in sizes:
+        log.size(instance, after[instance], to_master, gain=gain)
+        after[instance] = to_master
+    if extra is not None:
+        extra(log, after)
+    with tempfile.TemporaryDirectory() as tmp:
+        before_path = Path(tmp) / "before.dump"
+        after_path = Path(tmp) / "after.dump"
+        before_path.write_text(sf.dump_text(before), encoding="utf-8")
+        after_path.write_text(sf.dump_text(after), encoding="utf-8")
+        contribution = contributions.seal_session(
+            base_ref,
+            {"beforeDump": str(before_path), "afterDump": str(after_path),
+             "evidence": {"taintedJson": None, "transcriptTaint": "clean", "ecoOutput": True}},
+            log.ops_text(), log.gain_text())
+    return contribution
+
+
+class XtopSessionRecipeTests(unittest.TestCase):
+    def test_a_shared_instance_is_skipped_in_the_lower_ranked_session_and_the_batch_still_composes(self):
+        high = _session("w01", [("U1", "BUFX2"), ("U2", "BUFX2")], _hold_gain(0.030))
+        low = _session("w02", [("U3", "INVX2"), ("U1", "BUFX4")], _hold_gain(0.010))
+        self.assertTrue(high["admissible"], high["refusals"])
+        self.assertTrue(low["admissible"], low["refusals"])
+
+        facts = composition.analyze(BASE_STATE_ID, [low, high], [])
+
+        self.assertEqual(facts["conflicts"], [])
+        self.assertEqual(facts["unresolvedCount"], 0)
+        self.assertEqual(sorted(facts["considered"]), sorted([high["id"], low["id"]]))
+        recipe = facts["recipe"]
+        self.assertEqual([entry["contribution"] for entry in recipe["sessions"]], [high["id"], low["id"]])
+        self.assertEqual([entry["rank"] for entry in recipe["sessions"]], [1, 2])
+        high_commands, low_commands = (entry["commands"] for entry in recipe["sessions"])
+        self.assertEqual([command["skip"] for command in high_commands], [None, None])
+        self.assertEqual([command["args"]["instance"] for command in low_commands], ["U3", "U1"])
+        self.assertIsNone(low_commands[0]["skip"])
+        self.assertEqual(low_commands[1]["skip"], "shared-instance")
+        self.assertEqual(low_commands[1]["sharedWith"], [{"instance": "U1", "contribution": high["id"], "rank": 1}])
+        self.assertEqual(recipe["commandCount"], 4)
+        self.assertEqual(recipe["skipCount"], 1)
+        self.assertEqual(facts["order"], [high["id"], low["id"]])
+
+    def test_blocker_coverage_ranks_before_predicted_value(self):
+        covers = _session("w01", [("U1", "BUFX2")], _hold_gain(0.005),
+                          targets=["func_ss|hold|U1/D"], target_pins=["U1/D"])
+        bulk = _session("w02", [("U2", "BUFX2")], _hold_gain(0.040),
+                        targets=["func_ss|hold|U2/D"], target_pins=["U2/D"])
+        worst = ["func_ss|hold|U1/D"]
+
+        ranked = composition.analyze(BASE_STATE_ID, [bulk, covers], [], worst_checks=worst)["recipe"]
+        self.assertEqual([entry["contribution"] for entry in ranked["sessions"]], [covers["id"], bulk["id"]])
+        self.assertEqual(ranked["sessions"][0]["blockerCoverage"], 1)
+        self.assertEqual(ranked["sessions"][0]["coveredChecks"], worst)
+        self.assertEqual(ranked["worstChecks"], worst)
+
+        by_value = composition.analyze(BASE_STATE_ID, [covers, bulk], [])["recipe"]
+        self.assertEqual([entry["contribution"] for entry in by_value["sessions"]], [bulk["id"], covers["id"]])
+
+    def test_a_skipped_creation_cascades_to_commands_on_the_instance_it_created(self):
+        def fix_then_size(log, after):
+            log.fix_hold(["U1/D"], {"U1": "BUFX2", "atcs_w02_r1_eco_1": None},
+                         {"U1": "BUFX4", "atcs_w02_r1_eco_1": "DELAY2"}, gain=_hold_gain(0.010))
+            log.size("atcs_w02_r1_eco_1", "DELAY2", "DELAY4", gain=_hold_gain(0.012))
+            after.update({"U1": "BUFX4", "atcs_w02_r1_eco_1": "DELAY4"})
+
+        high = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030))
+        low = _session("w02", [("U1", "BUFX2")], _hold_gain(0.001), extra=fix_then_size)
+        self.assertTrue(low["admissible"], low["refusals"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [high, low], [])["recipe"]
+        skips = [command["skip"] for command in recipe["sessions"][1]["commands"]]
+        self.assertEqual(skips, ["shared-instance", "shared-instance", "depends-on-skipped"])
+
+    def test_an_inadmissible_session_is_listed_as_excluded_and_never_ranked(self):
+        good = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030))
+        worse = _session("w02", [("U2", "BUFX2")], _hold_gain(-0.010))
+        self.assertEqual([refusal["code"] for refusal in worse["refusals"]], ["no-predicted-gain"])
+
+        facts = composition.analyze(BASE_STATE_ID, [good, worse], [])
+        self.assertEqual([entry["contribution"] for entry in facts["recipe"]["sessions"]], [good["id"]])
+        self.assertEqual(facts["recipe"]["excluded"],
+                         [{"contribution": worse["id"], "taskId": "w02", "codes": ["no-predicted-gain"]}])
+        self.assertNotIn(worse["id"], facts["considered"])
+
+    def test_the_recipe_does_not_depend_on_input_order(self):
+        first = _session("w01", [("U1", "BUFX2")], _hold_gain(0.020))
+        second = _session("w02", [("U1", "BUFX4")], _hold_gain(0.020))
+        one = composition.analyze(BASE_STATE_ID, [first, second], [])
+        two = composition.analyze(BASE_STATE_ID, [second, first], [])
+        self.assertEqual(one["id"], two["id"])
+        self.assertEqual(one["recipe"]["sessions"][0]["contribution"], min(first["id"], second["id"]))
+
+    def test_legacy_kinds_keep_their_conflicts_and_an_empty_recipe(self):
+        c1 = make_contribution(task_id="w01", delta={"mastersChanged": {"U1": ["BUFX1", "BUFX2"]},
+                                                     "added": {}, "removed": {}})
+        c2 = make_contribution(task_id="w02", delta={"mastersChanged": {"U1": ["BUFX1", "BUFX4"]},
+                                                     "added": {}, "removed": {}})
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        self.assertEqual([conflict["kind"] for conflict in facts["conflicts"]], ["same-instance-different-master"])
+        self.assertEqual(facts["recipe"]["sessions"], [])
+
+    def test_a_session_whose_base_dump_disagrees_is_excluded_from_the_recipe_not_a_conflict(self):
+        one = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030))
+        two = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020))
+        odd = _session("w03", [("U3", "INVX2")], _hold_gain(0.050), before={**SESSION_BEFORE, "U9": "BUFX1"})
+        self.assertNotEqual(odd["beforeDumpSha256"], one["beforeDumpSha256"])
+
+        facts = composition.analyze(BASE_STATE_ID, [odd, one, two], [])
+        self.assertEqual(facts["conflicts"], [])
+        self.assertEqual([entry["contribution"] for entry in facts["recipe"]["sessions"]], [one["id"], two["id"]])
+        self.assertEqual(facts["recipe"]["excluded"],
+                         [{"contribution": odd["id"], "taskId": "w03", "codes": ["base-dump-mismatch"]}])
+        self.assertNotIn(odd["id"], facts["considered"])
+        self.assertNotIn(odd["id"], facts["order"])
+
+    def test_the_tns_tie_break_uses_the_target_checks_only(self):
+        a = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.10))
+        b = _session("w02", [("U2", "BUFX2")], _hold_gain(0.010, 0.30))
+        recipe = composition.analyze(BASE_STATE_ID, [a, b], [])["recipe"]
+        self.assertEqual([entry["contribution"] for entry in recipe["sessions"]], [b["id"], a["id"]])
+        self.assertAlmostEqual(recipe["sessions"][0]["tnsGain"], 0.30)
+
+    def test_an_opposite_tns_loss_is_admitted_but_ranks_below_an_equal_session_without_it(self):
+        clean = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.10))
+        setup_loss = ((-0.020, -0.100), (-0.020, -0.150))  # setup WNS unchanged, setup TNS 0.05 worse
+        lossy = _session("w02", [("U2", "BUFX2")], (setup_loss, _hold_gain(0.010, 0.10)[1]))
+        self.assertTrue(lossy["admissible"], lossy["refusals"])
+        self.assertAlmostEqual(lossy["valueDetail"]["targetTnsGain"], clean["valueDetail"]["targetTnsGain"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [lossy, clean], [])["recipe"]
+        self.assertEqual([entry["contribution"] for entry in recipe["sessions"]], [clean["id"], lossy["id"]])
+        self.assertAlmostEqual(recipe["sessions"][1]["tnsGain"], 0.05)
+        self.assertEqual(recipe["rankedBy"],
+                         ["blockerCoverage desc", "value desc", "rankTnsGain desc", "id asc"])
+
+    def test_worst_checks_are_the_worst_failing_check_per_scenario_and_mode(self):
+        observation = {"checks": {
+            "a|setup|P1": {"slack": core.known(-0.01)}, "a|setup|P2": {"slack": core.known(-0.05)},
+            "a|hold|P3": {"slack": core.known(-0.02)}, "b|hold|P4": {"slack": core.known(0.01)},
+            "b|setup|P5": {"slack": core.unknown("not reported")},
+        }}
+        self.assertEqual(composition.worst_checks(observation), ["a|hold|P3", "a|setup|P2"])
+
+
 if __name__ == "__main__":
     unittest.main()

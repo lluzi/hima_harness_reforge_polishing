@@ -246,9 +246,11 @@ precondition), but the contribution is inadmissible.
 """
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import math
+import re
 from pathlib import Path
 
 from . import core
@@ -815,6 +817,25 @@ def _campaign_relative_path(path, manifest):
     )
 
 
+def _check_base(manifest, work_package, state_id):
+    """`AtcsError("base-mismatch", ...)` unless the manifest, work package and state id agree."""
+    if manifest.get("baseStateId") != state_id:
+        raise core.AtcsError(
+            "base-mismatch",
+            f"workspaceManifest.baseStateId {manifest.get('baseStateId')!r} != stateId {state_id!r}",
+        )
+    if work_package.get("baseStateId") != state_id:
+        raise core.AtcsError(
+            "base-mismatch",
+            f"workPackage.baseStateId {work_package.get('baseStateId')!r} != stateId {state_id!r}",
+        )
+    if manifest.get("workPackageId") != work_package.get("id"):
+        raise core.AtcsError(
+            "base-mismatch",
+            f"workspaceManifest.workPackageId {manifest.get('workPackageId')!r} != workPackage.id {work_package.get('id')!r}",
+        )
+
+
 def seal(base_ref, result_refs, operation_trace):
     """Seal a worker's real tool work into a ``contribution`` artifact.
 
@@ -833,21 +854,7 @@ def seal(base_ref, result_refs, operation_trace):
     work_package = core.require(base_ref, "workPackage", "base_ref")
     state_id = core.require(base_ref, "stateId", "base_ref")
 
-    if manifest.get("baseStateId") != state_id:
-        raise core.AtcsError(
-            "base-mismatch",
-            f"workspaceManifest.baseStateId {manifest.get('baseStateId')!r} != stateId {state_id!r}",
-        )
-    if work_package.get("baseStateId") != state_id:
-        raise core.AtcsError(
-            "base-mismatch",
-            f"workPackage.baseStateId {work_package.get('baseStateId')!r} != stateId {state_id!r}",
-        )
-    if manifest.get("workPackageId") != work_package.get("id"):
-        raise core.AtcsError(
-            "base-mismatch",
-            f"workspaceManifest.workPackageId {manifest.get('workPackageId')!r} != workPackage.id {work_package.get('id')!r}",
-        )
+    _check_base(manifest, work_package, state_id)
 
     task_id = core.require(manifest, "taskId", "workspaceManifest")
     revision = core.require(manifest, "revision", "workspaceManifest")
@@ -927,3 +934,715 @@ def _script_sha256(path):
         return core.file_sha256(path)
     except (OSError, core.AtcsError) as exc:
         raise core.AtcsError("missing-input", f"cannot read script at {path}: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Issue #64 Task 4: `xtop-session` Contributions (the Task 3 expert toolkit)
+# ---------------------------------------------------------------------------
+#
+# A worker's interactive XTop session (``templates/xtop-operator.tcl``) writes
+# ``ops.jsonl`` (one line per mutation that reached XTop), ``gain.jsonl``
+# (``summarize_gba_violations`` readings) and, once tainted, ``tainted.json``.
+# `seal_session` turns those plus the before/after cell dumps into one sealed
+# Contribution. Its shape adds these fields to the legacy one:
+#
+# - ``commands``: the net kept command log -- every ``status == "kept"``
+#   non-undo line, minus every seq a kept undo line names in ``undoes``, in
+#   log order. ``discards`` seqs (empty checkpoints) were never kept. Each
+#   entry is ``{"seq","proc","cmd","args","before","after","instances"
+#   [,"newNets"][,"verified"][,"ecoCells"][,"fillers"]}``: a replay calls
+#   ``proc`` with ``args`` (``planSha256`` included, as the Host sent it);
+#   ``instances`` is every instance the line observed, which composition
+#   uses for `skip: shared-instance`.
+# - ``delta``: `actual_delta` of the two dumps (authoritative); removable
+#   filler cells it exempts are named in ``fillerChanges``.
+# - ``predicted`` / ``reference``: Measures read from the ``total`` rows of the
+#   last mutation/undo gain line and the seq-0 reference line
+#   (``xtop{Setup,Hold}{Wns,Tns}``); ``gainSummary`` holds both readings'
+#   full per-scenario `parse_gain_summary` sections.
+# - ``failReasons``: ``{check: {reason: count}}`` from the last
+#   ``-with_fail_reason`` reading that reflects the final state, else ``{}``.
+# - ``value`` (ns) and ``valueDetail``: the ranking value, see `_session_value`.
+# - ``targets`` / ``targetPins``: the work package's own, for blocker coverage.
+# - ``operations: []``, ``preconditions: []``, ``atomicGroups: []``: the
+#   legacy replay has nothing to do for a session.
+#
+# ``kind`` is ``"xtop-session"`` when ``commands`` is non-empty, else
+# ``"no-fix"`` with a deterministic diagnosis. Refusal codes (the
+# Contribution is still sealed and returned, never raised away):
+#
+# - ``tainted``: ``tainted.json`` exists, an ``uncertain`` line exists, or the
+#   XTop transcript's ``ATCS:taint:`` line is missing or not ``clean``;
+# - ``missing-gain-line``: a kept line has no gain line of its kind and seq,
+#   or the last gain line predates the last kept line;
+# - ``missing-export``: kept commands but no ``eco_output/`` files;
+# - ``trace-mismatch``: the log does not explain the dump delta (a logged
+#   change the dump lacks, an untraced in-domain change, a precondition the
+#   running state does not hold, a kept typed request whose logged effect
+#   is not what it asked for, an undo that is not the top of the kept
+#   stack, or a seq gap);
+# - ``out-of-scope``: a changed object outside the domain, collected into
+#   ``outOfScope``. The domain is ``editDomain.instances`` plus instances
+#   this session created whose leaf name starts with ``namePrefix``;
+# - ``no-predicted-gain``: kept commands whose predicted target slack got
+#   worse, did not improve at all, or cannot be read;
+# - ``breaks-opposite-check``: kept commands whose predicted non-target
+#   check (setup for a hold repair, and so on) got worse in WNS by more
+#   than one rounding step, or cannot be read. A TNS loss there is charged
+#   to the rank (``valueDetail.rankTnsGain``) instead.
+#
+# Typed requests (size/exchange/insert/remove) must show exactly their
+# requested effect in their own logged delta; fixes, splits, moves and
+# ``verified: "eco-actions"`` lines are accepted from their observed delta.
+# Either way the whole net log, replayed over the before dump, must equal
+# the after dump except for exempt fillers.
+
+SESSION_COMMANDS = (
+    "size_cell", "exchange_cell", "insert_buffer", "insert_dummy_cell", "split_load", "split_net",
+    "move_cell", "remove_buffer", "fix_hold_gba_violations", "fix_setup_gba_violations", "undo",
+)
+SESSION_STATUSES = ("kept", "no-change", "error", "reverted", "uncertain")
+GAIN_KINDS = ("reference", "mutation", "undo", "probe")
+SESSION_CHECKS = ("setup", "hold")
+_OPTIONAL_NAME_LISTS = ("newNets", "fillers", "ecoCells")
+_NUMBER = re.compile(r"^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?$")
+_SUMMARY_COLUMNS = {"Count": "count", "Count0": "count0", "D_Count": "dCount", "Worst": "worst",
+                    "Worst0": "worst0", "D_Worst": "dWorst", "TNS": "tns", "TNS0": "tns0", "D_TNS": "dTns"}
+_SUMMARY_SECTION = re.compile(r"^###\s+(setup|hold)\s+summary\s+###\s*$")
+_INT_COLUMNS = ("count", "count0", "dCount")
+# Rows print 4 decimals; a delta column may differ from its own difference by one rounding step each side.
+_DELTA_TOLERANCE = 1.5e-4
+_FAIL_REASON_ROW = re.compile(r"^\s*([a-z][a-z0-9_]*)\s*[:=]?\s+(\d+)\s*$")
+
+
+def is_session_log(text):
+    """True when the first non-blank line of `text` is a Task 3 toolkit line (``seq``/``proc``, no ``op``)."""
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            return False
+        return isinstance(record, dict) and "op" not in record and "proc" in record and "seq" in record
+    return False
+
+
+def _malformed(line_number, detail, code="malformed-ops-log"):
+    return core.AtcsError(code, f"line {line_number}: {detail}")
+
+
+def _instance_map(value, line_number, label):
+    if not isinstance(value, dict) or not isinstance(value.get("instances"), dict):
+        raise _malformed(line_number, f"{label} must be {{\"instances\": {{name: master|null}}}}")
+    instances = value["instances"]
+    for name, master in instances.items():
+        if not _is_nonempty_string(name) or not (master is None or _is_nonempty_string(master)):
+            raise _malformed(line_number, f"{label}.instances[{name!r}] must map a name to a master or null")
+    return dict(instances)
+
+
+def parse_session_log(text):
+    """Parse a Task 3 ``ops.jsonl`` into its line dicts, fail-closed on shape.
+
+    Raises `AtcsError("malformed-ops-log", ...)` for a line that is not a
+    JSON object, a ``seq`` that is not a positive int strictly above the
+    previous line's, an unknown ``cmd``/``status``, a ``proc`` that is not an
+    ``atcs_*`` name, non-object ``args``, a malformed ``before``/``after``,
+    a non-``uncertain`` undo line without an int ``undoes`` and an int-list ``discards``, or
+    a malformed optional field (``newNets``/``fillers``/``ecoCells`` string
+    lists, ``matchesRequest`` bool, ``verified`` string). An ``uncertain``
+    line may omit ``before``/``after`` (read as empty) and, for an undo,
+    ``undoes``/``discards``: `atcs_fail_uncertain` writes it without them,
+    and it taints the slot anyway. A gap in ``seq`` is content, not shape:
+    `seal_session` records it as a refusal.
+    """
+    lines = []
+    previous_seq = 0
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except ValueError as exc:
+            raise _malformed(line_number, f"invalid JSON: {exc}") from exc
+        if not isinstance(record, dict):
+            raise _malformed(line_number, "not a JSON object")
+        seq = record.get("seq")
+        if not _is_plain_int(seq) or seq <= previous_seq:
+            raise _malformed(line_number, f"seq must be an int above {previous_seq}, got {seq!r}")
+        previous_seq = seq
+        if record.get("cmd") not in SESSION_COMMANDS:
+            raise _malformed(line_number, f"unknown cmd {record.get('cmd')!r}")
+        proc = record.get("proc")
+        if not _is_nonempty_string(proc) or not proc.startswith("atcs_"):
+            raise _malformed(line_number, f"proc must be an atcs_* procedure, got {proc!r}")
+        if not isinstance(record.get("args"), dict):
+            raise _malformed(line_number, "args must be an object")
+        if record.get("status") not in SESSION_STATUSES:
+            raise _malformed(line_number, f"unknown status {record.get('status')!r}")
+        uncertain = record["status"] == "uncertain"
+        # `atcs_fail_uncertain` logs {seq,cmd,proc,args,status,observe,error} only: an uncertain line
+        # may lack before/after (and, for an undo, undoes/discards). It taints the slot either way.
+        for side in ("before", "after"):
+            if uncertain and side not in record:
+                record[side] = {"instances": {}}
+            else:
+                record[side] = {"instances": _instance_map(record.get(side), line_number, side)}
+        if record["cmd"] == "undo" and not uncertain:
+            discards = record.get("discards")
+            if not _is_plain_int(record.get("undoes")) or not isinstance(discards, list) \
+                    or not all(_is_plain_int(item) for item in discards):
+                raise _malformed(line_number, "an undo line needs an int undoes and an int-list discards")
+        for key in _OPTIONAL_NAME_LISTS:
+            if key in record and (not isinstance(record[key], list)
+                                  or not all(_is_nonempty_string(item) for item in record[key])):
+                raise _malformed(line_number, f"{key} must be a list of names")
+        if "matchesRequest" in record and not isinstance(record["matchesRequest"], bool):
+            raise _malformed(line_number, "matchesRequest must be a bool")
+        if "verified" in record and not _is_nonempty_string(record["verified"]):
+            raise _malformed(line_number, "verified must be a string")
+        lines.append(record)
+    return lines
+
+
+def parse_gain_log(text):
+    """Parse ``gain.jsonl`` into its line dicts; `AtcsError("malformed-gain-log", ...)` on shape.
+
+    Each line is ``{"seq": int >= 0, "kind": reference|mutation|undo|probe,
+    "checks": {"setup"|"hold": {"command": str, "code": int, "text": str}}}``.
+    """
+    lines = []
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except ValueError as exc:
+            raise _malformed(line_number, f"invalid JSON: {exc}", "malformed-gain-log") from exc
+        if not isinstance(record, dict) or not _is_plain_int(record.get("seq")) or record["seq"] < 0:
+            raise _malformed(line_number, "a gain line needs an int seq >= 0", "malformed-gain-log")
+        if record.get("kind") not in GAIN_KINDS:
+            raise _malformed(line_number, f"unknown gain kind {record.get('kind')!r}", "malformed-gain-log")
+        checks = record.get("checks")
+        if not isinstance(checks, dict) or not set(checks) <= set(SESSION_CHECKS):
+            raise _malformed(line_number, "checks must map setup/hold to readings", "malformed-gain-log")
+        for check, entry in checks.items():
+            if (not isinstance(entry, dict) or not isinstance(entry.get("command"), str)
+                    or not _is_plain_int(entry.get("code")) or not isinstance(entry.get("text"), str)):
+                raise _malformed(line_number, f"checks.{check} needs command, int code and text", "malformed-gain-log")
+        lines.append(record)
+    return lines
+
+
+def parse_gain_summary(text):
+    """Parse ``summarize_gba_violations`` output into ``{check: {"total": row, "scenarios": {name: row}}}``.
+
+    Pinned to real XTop 2025.09 output (the old flow's server run; verbatim in
+    ``tests/xtop_summary_samples.py``). Each check prints one section::
+
+        ### hold summary ###
+        Scenario                  Count      Worst        TNS            (-as_reference)
+        Scenario  Count Count0 D_Count | Worst Worst0 D_Worst | TNS TNS0 D_TNS   (-with_reference -with_delta)
+        ------...
+        total                        70    -0.1542    -3.9661
+          func_ffg_cbest_125         44    -0.0764    -0.7568
+
+    Columns map to ``count``/``count0``/``dCount`` (ints), ``worst``/``worst0``/
+    ``dWorst`` and ``tns``/``tns0``/``dTns`` (ns): the plain column is the
+    current design, ``...0`` is the session reference, ``D_...`` their
+    difference. ``Worst`` is the worst slack (``0.0000`` when nothing
+    violates) and ``TNS`` is negative when violating. ``|`` separators are
+    ignored; a blank line or the next ``###`` line ends the table, and text
+    outside a table (the ``summarize_eco_actions`` table) is skipped.
+
+    Fail closed: a section is dropped (absent from the result) when any
+    line of its table (after the header, before the table ends) does not
+    have exactly one number per header column, a row name
+    repeats, it has no ``total`` row, a ``D_`` column disagrees with its
+    current minus reference by more than one rounding step, or the same
+    check prints two sections. Text with no recognizable section returns
+    ``{}``; callers turn that into `unknown` Measures.
+    """
+    sections = {}
+    broken = set()
+    check = header = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        match = _SUMMARY_SECTION.match(line)
+        if match:
+            check, header = match.group(1), None
+            if check in sections or check in broken:
+                broken.add(check)
+            sections.setdefault(check, {"total": None, "scenarios": {}})
+            continue
+        if check is None or check in broken:
+            continue
+        tokens = [token for token in line.split() if token != "|"]
+        if not tokens:
+            header = None  # a blank line ends the table
+            continue
+        if set(line) <= set("-"):
+            continue
+        if tokens[0] == "Scenario":
+            columns = [_SUMMARY_COLUMNS.get(token) for token in tokens[1:]]
+            if header is not None or None in columns or len(set(columns)) != len(columns) \
+                    or not {"worst", "tns"} <= set(columns):
+                broken.add(check)
+            header = columns
+            continue
+        if line.startswith("###"):
+            check = header = None
+            continue
+        if header is None:
+            continue
+        name, values = tokens[0], tokens[1:]
+        if len(values) != len(header) or not all(_NUMBER.match(value) for value in values):
+            broken.add(check)
+            continue
+        row = {column: (int(float(value)) if column in _INT_COLUMNS else float(value))
+               for column, value in zip(header, values)}
+        for current, reference, delta in (("worst", "worst0", "dWorst"), ("tns", "tns0", "dTns"),
+                                          ("count", "count0", "dCount")):
+            if delta in row and current in row and reference in row \
+                    and abs(row[current] - row[reference] - row[delta]) > _DELTA_TOLERANCE:
+                broken.add(check)
+        target = sections[check]
+        if name == "total":
+            if target["total"] is not None:
+                broken.add(check)
+            target["total"] = row
+        elif name in target["scenarios"]:
+            broken.add(check)
+        else:
+            target["scenarios"][name] = row
+    return {name: section for name, section in sorted(sections.items())
+            if name not in broken and section["total"] is not None}
+
+
+def _measure(value, reason):
+    return core.known(value) if value is not None else core.unknown(reason)
+
+
+def _gain_reading(gain_line):
+    """``(parsed, reasons)``: `parse_gain_summary` per check of one gain line, and why a check is missing."""
+    parsed, reasons = {}, {}
+    for check in SESSION_CHECKS:
+        entry = (gain_line or {}).get("checks", {}).get(check)
+        if gain_line is None or entry is None:
+            reasons[check] = "no gain reading"
+        elif entry["code"] != 0:
+            reasons[check] = f"summarize_gba_violations failed (code {entry['code']})"
+        else:
+            section = parse_gain_summary(entry["text"]).get(check)
+            if section is None:
+                reasons[check] = f"no readable '### {check} summary ###' section in the gain text"
+            else:
+                parsed[check] = section
+    return parsed, reasons
+
+
+def _gain_measures(gain_line, column="current"):
+    """``{"xtop<Check><Wns|Tns>": Measure}`` from one gain line's ``total`` rows.
+
+    ``column="current"`` reads ``Worst``/``TNS``; ``"reference"`` reads
+    ``Worst0``/``TNS0`` (present only in ``-with_reference`` readings).
+    """
+    parsed, reasons = _gain_reading(gain_line)
+    suffix = "" if column == "current" else "0"
+    measures = {}
+    for check in SESSION_CHECKS:
+        label = check.capitalize()
+        total = (parsed.get(check) or {}).get("total") or {}
+        reason = reasons.get(check) or f"no {column} column in the {check} summary"
+        measures[f"xtop{label}Wns"] = _measure(total.get("worst" + suffix), reason)
+        measures[f"xtop{label}Tns"] = _measure(total.get("tns" + suffix), reason)
+    return measures
+
+
+def parse_fail_reasons(text):
+    """``{reason: count}`` from ``<snake_case_reason> <int>`` rows (best effort, informational)."""
+    counts = {}
+    for raw_line in text.splitlines():
+        match = _FAIL_REASON_ROW.match(raw_line)
+        if match:
+            counts[match.group(1)] = counts.get(match.group(1), 0) + int(match.group(2))
+    return counts
+
+
+def _target_checks(work_package):
+    kinds = set()
+    for target in work_package.get("targets") or []:
+        parts = target.split("|") if isinstance(target, str) else []
+        if len(parts) >= 3 and parts[1] in SESSION_CHECKS:
+            kinds.add(parts[1])
+    return sorted(kinds) or sorted(SESSION_CHECKS)
+
+
+# A check reading prints 4 decimals: a move within one rounding step is not a change.
+_OPPOSITE_TOLERANCE = 1e-4
+
+
+def _session_value(target_checks, reference, predicted):
+    """The ranking value and the gain gates, over both checks.
+
+    For every check ``k`` in setup/hold: ``wnsGain[k] = predicted WNS -
+    reference WNS`` and ``tnsGain[k]`` likewise (positive = better; TNS is
+    negative when violating). Target checks are the ``mode`` parts of the
+    work package's ``targets`` (both when none is named); the others are
+    opposite checks.
+
+    - ``value`` = ``wnsGain`` of the target check whose reference WNS is
+      worst (ties: hold before setup); ``targetTnsGain`` sums the target
+      checks' ``tnsGain``; ``rankTnsGain`` = ``targetTnsGain`` plus every
+      opposite check's ``tnsGain`` (signed), and breaks ranking ties -- an
+      opposite TNS loss lowers the rank instead of refusing (controller
+      decision, user amendment: repairs are valued, not all-or-nothing).
+    - ``no-predicted-gain``: a target WNS is unknown or got worse, or no
+      target WNS and not ``targetTnsGain`` improved.
+    - ``breaks-opposite-check``: an opposite check's WNS or TNS is unknown,
+      or its WNS got worse by more than `_OPPOSITE_TOLERANCE` (one rounding
+      step). Its TNS change only enters ``rankTnsGain``.
+
+    Returns ``(value, detail, refusals)``, ``refusals`` a list of
+    ``(code, detail)``.
+    """
+    wns_gain, tns_gain = {}, {}
+    for check in SESSION_CHECKS:
+        label = check.capitalize()
+        for metric, gains in (("Wns", wns_gain), ("Tns", tns_gain)):
+            ref, cur = reference[f"xtop{label}{metric}"], predicted[f"xtop{label}{metric}"]
+            if core.is_known(ref) and core.is_known(cur):
+                gains[check] = round(core.value_of(cur) - core.value_of(ref), 9)
+    opposite = [check for check in SESSION_CHECKS if check not in target_checks]
+    target_tns = [tns_gain[check] for check in target_checks if check in tns_gain]
+    target_tns_gain = round(sum(target_tns), 9) if len(target_tns) == len(target_checks) else None
+    known_refs = [(core.value_of(reference[f"xtop{c.capitalize()}Wns"]), c) for c in target_checks
+                  if core.is_known(reference[f"xtop{c.capitalize()}Wns"])]
+    worst = min(known_refs)[1] if known_refs else None
+    value = wns_gain.get(worst, 0.0) if worst is not None else 0.0
+    opposite_tns = [tns_gain[check] for check in opposite if check in tns_gain]
+    rank_tns_gain = (round(target_tns_gain + sum(opposite_tns), 9)
+                     if target_tns_gain is not None and len(opposite_tns) == len(opposite) else None)
+    detail = {"targetChecks": list(target_checks), "oppositeChecks": opposite, "worstCheck": worst,
+              "wnsGain": wns_gain, "tnsGain": tns_gain, "targetTnsGain": target_tns_gain,
+              "rankTnsGain": rank_tns_gain}
+
+    refusals = []
+    missing_wns = [check for check in target_checks if check not in wns_gain]
+    worsened = {check: wns_gain[check] for check in target_checks if wns_gain.get(check, 0) < 0}
+    if missing_wns:
+        refusals.append(("no-predicted-gain", f"predicted or reference WNS unknown for target {missing_wns}"))
+    elif worsened:
+        refusals.append(("no-predicted-gain", f"predicted target WNS got worse: {worsened}"))
+    elif not any(wns_gain[check] > 0 for check in target_checks) \
+            and not (target_tns_gain is not None and target_tns_gain > 0):
+        refusals.append(("no-predicted-gain", f"no predicted target gain (WNS {wns_gain}, TNS {target_tns_gain})"))
+
+    for check in opposite:
+        unknown = [metric for metric, gains in (("WNS", wns_gain), ("TNS", tns_gain)) if check not in gains]
+        broken = {"WNS": wns_gain[check]} if wns_gain.get(check, 0) < -_OPPOSITE_TOLERANCE else {}
+        if unknown:
+            refusals.append(("breaks-opposite-check", f"opposite {check} {unknown} cannot be read"))
+        elif broken:
+            refusals.append(("breaks-opposite-check", f"opposite {check} got worse: {broken}"))
+    return value, detail, refusals
+
+
+def _leaf(name):
+    return name.rsplit("/", 1)[-1]
+
+
+def _filler(master, patterns):
+    return master is not None and any(fnmatch.fnmatchcase(master, pattern) for pattern in patterns)
+
+
+def _command_entry(line):
+    before = line["before"]["instances"]
+    after = line["after"]["instances"]
+    entry = {
+        "seq": line["seq"], "proc": line["proc"], "cmd": line["cmd"], "args": line["args"],
+        "before": before, "after": after,
+        "instances": sorted(set(before) | set(after) | set(line.get("ecoCells") or [])),
+    }
+    for key in ("newNets", "verified", "ecoCells", "fillers"):
+        if key in line:
+            entry[key] = line[key]
+    return entry
+
+
+def _net_log(lines):
+    """``(kept_lines, undone, discarded, problems)``: the net kept log after undo, per the Task 3 rule."""
+    stack = []
+    undone = []
+    discarded = []
+    problems = []
+    seqs = {line["seq"]: line for line in lines}
+    for line in lines:
+        if line["status"] != "kept":
+            continue
+        if line["cmd"] != "undo":
+            stack.append(line["seq"])
+            continue
+        target = line["undoes"]
+        if not stack or stack[-1] != target:
+            problems.append(f"undo seq {line['seq']} names seq {target}, not the last kept edit {stack[-1:] or None}")
+        if target in stack:
+            stack.remove(target)
+            undone.append(target)
+        for seq in line["discards"]:
+            checkpoint = seqs.get(seq)
+            if checkpoint is None or checkpoint["status"] == "kept" or seq > line["seq"]:
+                problems.append(f"undo seq {line['seq']} discards seq {seq}, which is not an empty checkpoint")
+            discarded.append(seq)
+    kept = [seqs[seq] for seq in stack]
+    return kept, sorted(undone), sorted(set(discarded)), problems
+
+
+def _request_problem(line):
+    """Why a kept typed request's own logged effect is not what it asked for, or ``None``."""
+    cmd, args = line["cmd"], line["args"]
+    before, after = line["before"]["instances"], line["after"]["instances"]
+    if cmd == "size_cell":
+        instance, to_master = args.get("instance"), args.get("toMaster")
+        if set(after) != {instance} or after.get(instance) != to_master or before.get(instance) is None:
+            return f"size_cell asked {instance!r} -> {to_master!r}, logged {before} -> {after}"
+    elif cmd == "exchange_cell":
+        allowed = {args.get("instance")} | set(args.get("cells") or [])
+        stray = sorted((set(before) | set(after)) - allowed)
+        if stray:
+            return f"exchange_cell changed {stray} outside {sorted(n for n in allowed if n)}"
+    elif cmd in ("insert_buffer", "insert_dummy_cell", "split_load"):
+        names = args.get("newInstances") if cmd != "insert_dummy_cell" else [args.get("newInstance")]
+        missing = [name for name in names or [None]
+                   if not _is_nonempty_string(name) or after.get(name) is None or before.get(name) is not None]
+        if line.get("matchesRequest") is not True or missing:
+            return f"{cmd} did not create its named instances {missing or names}"
+    elif cmd == "remove_buffer":
+        instance = args.get("instance")
+        if line.get("matchesRequest") is not True or before.get(instance) is None \
+                or instance not in after or after[instance] is not None:
+            return f"remove_buffer did not remove {instance!r}"
+    return None
+
+
+def _latest_fail_reasons(gain_lines, last_kept_seq):
+    for gain_line in reversed(gain_lines):
+        if gain_line["seq"] < last_kept_seq:
+            break
+        checks = gain_line["checks"]
+        if any("-with_fail_reason" in entry["command"] for entry in checks.values()):
+            return ({check: parse_fail_reasons(entry["text"]) for check, entry in sorted(checks.items())
+                     if entry["code"] == 0}, gain_line["seq"])
+    return {}, None
+
+
+def seal_session(base_ref, result_refs, ops_text, gain_text):
+    """Seal one worker's Task 3 XTop session into an ``xtop-session`` (or ``no-fix``) Contribution.
+
+    `result_refs`: ``{"beforeDump", "afterDump"`` (paths), ``"evidence":
+    {"taintedJson": obj|None, "transcriptTaint": "clean"|"tainted:<why>"|None,
+    "ecoOutput": bool}, "fillerPatterns": [glob, ...], "diagnosis":
+    str|None}``. `ops_text`/`gain_text` are the raw ``ops.jsonl`` /
+    ``gain.jsonl`` texts. Raises `AtcsError` only for unusable input (a
+    ``base_ref`` whose parts disagree, an unreadable dump, a malformed log);
+    every content problem is a refusal on the returned Contribution -- see
+    the block comment above for the codes and the shape.
+    """
+    manifest = core.require(base_ref, "workspaceManifest", "base_ref")
+    work_package = core.require(base_ref, "workPackage", "base_ref")
+    state_id = core.require(base_ref, "stateId", "base_ref")
+    _check_base(manifest, work_package, state_id)
+    name_prefix = core.require(manifest, "namePrefix", "workspaceManifest")
+
+    lines = parse_session_log(ops_text)
+    gain_lines = parse_gain_log(gain_text)
+
+    before_path = core.require(result_refs, "beforeDump", "result_refs")
+    after_path = core.require(result_refs, "afterDump", "result_refs")
+    before_bytes = _read_dump_bytes(before_path, "beforeDump")
+    before = parse_cell_dump(_decode_utf8(before_bytes, before_path, "beforeDump"))
+    after = parse_cell_dump(_decode_utf8(_read_dump_bytes(after_path, "afterDump"), after_path, "afterDump"))
+    evidence = result_refs.get("evidence") if isinstance(result_refs.get("evidence"), dict) else {}
+    filler_patterns = [p for p in (result_refs.get("fillerPatterns") or []) if _is_nonempty_string(p)]
+
+    refusals = []
+
+    def refuse(code, detail):
+        refusals.append({"code": code, "detail": detail})
+
+    # Taint: any one signal refuses the slot (notes/t3-toolkit-surface.md, capture rule 1, 2, 5).
+    if evidence.get("taintedJson") is not None:
+        refuse("tainted", f"tainted.json: {core.canonical(evidence['taintedJson']).decode('utf-8')}")
+    for line in lines:
+        if line["status"] == "uncertain":
+            refuse("tainted", f"ops.jsonl seq {line['seq']} ({line['cmd']}) is uncertain: {line.get('error', '')}")
+    transcript_taint = evidence.get("transcriptTaint")
+    if transcript_taint is None:
+        refuse("tainted", "the XTop transcript has no ATCS:taint: line (the session did not close through atcs_close)")
+    elif transcript_taint != "clean":
+        refuse("tainted", f"the XTop transcript says ATCS:taint:{transcript_taint}")
+
+    if [line["seq"] for line in lines] != list(range(1, len(lines) + 1)):
+        refuse("trace-mismatch", f"ops.jsonl seqs {[line['seq'] for line in lines]} are not 1..{len(lines)}")
+
+    kept_lines, undone, discarded, undo_problems = _net_log(lines)
+    for problem in undo_problems:
+        refuse("trace-mismatch", problem)
+    commands = [_command_entry(line) for line in kept_lines]
+
+    # Gain lines: every kept line has its own; the reading used as `predicted` is the latest state.
+    gain_keys = {(gain_line["seq"], gain_line["kind"]) for gain_line in gain_lines}
+    kept_all = [line for line in lines if line["status"] == "kept"]
+    for line in kept_all:
+        kind = "undo" if line["cmd"] == "undo" else "mutation"
+        if (line["seq"], kind) not in gain_keys:
+            refuse("missing-gain-line", f"kept seq {line['seq']} has no {kind} gain line")
+    last_kept_seq = max((line["seq"] for line in kept_all), default=0)
+    references = [gain_line for gain_line in gain_lines if gain_line["kind"] == "reference"]
+    # `predicted` comes from the last mutation/undo reading: every kept line has one (checked
+    # above), no other line changes the design, and its form (`-with_delta -with_reference`) is
+    # the one pinned to real output. `atcs_gain` probes (`-with_top_n -with_fail_reason`) only
+    # feed `failReasons`.
+    readings = [gain_line for gain_line in gain_lines if gain_line["kind"] in ("mutation", "undo")]
+    reference_line = references[0] if references else None
+    last_reading = readings[-1] if readings else reference_line
+    if kept_all and (last_reading is None or last_reading["seq"] < last_kept_seq):
+        refuse("missing-gain-line", f"no gain reading at or after the last kept seq {last_kept_seq}")
+
+    reference = _gain_measures(reference_line)
+    if last_reading is not None and last_reading is not reference_line:
+        fallback = _gain_measures(last_reading, column="reference")
+        reference = {key: measure if core.is_known(measure) else fallback[key] for key, measure in reference.items()}
+    predicted = _gain_measures(last_reading)
+    gain_summary = {"reference": _gain_reading(reference_line)[0], "predicted": _gain_reading(last_reading)[0]}
+    predicted.update({"prestaSetupWns": core.unknown("not predicted by an xtop-session"),
+                      "prestaHoldWns": core.unknown("not predicted by an xtop-session")})
+    fail_reasons, fail_reasons_seq = _latest_fail_reasons(gain_lines, last_kept_seq)
+
+    # Domain: editDomain instances plus instances created under this workspace's prefix.
+    edit_domain = work_package.get("editDomain") or {}
+    domain = set(edit_domain.get("instances") or [])
+
+    def out_of_domain(name):
+        if name in before:
+            return name not in domain
+        return not _leaf(name).startswith(name_prefix)
+
+    out_of_scope = set()
+    running = dict(before)
+    for line, command in zip(kept_lines, commands):
+        problem = _request_problem(line)
+        if problem is not None:
+            refuse("trace-mismatch", f"seq {command['seq']}: {problem}")
+        for name in command["instances"]:
+            if out_of_domain(name):
+                out_of_scope.add(name)
+        for name, master in command["before"].items():
+            if running.get(name) != master:
+                refuse("trace-mismatch", f"seq {command['seq']}: {name!r} logged as {master!r} before the "
+                                         f"{command['cmd']}, the replayed state has {running.get(name)!r}")
+        for name, master in command["after"].items():
+            if master is None:
+                running.pop(name, None)
+            else:
+                running[name] = master
+
+    touched = {name for command in commands for name in command["instances"]}
+    names = set(before) | set(after) | set(running)
+    filler_changes = []
+    untraced = []
+    for name in sorted(names):
+        actual, implied = (before.get(name), after.get(name)), (before.get(name), running.get(name))
+        if actual == implied:
+            continue
+        actual_changed = actual[0] != actual[1]
+        implied_changed = implied[0] != implied[1]
+        if actual_changed and not implied_changed:
+            if name not in touched and name not in domain and all(
+                    master is None or _filler(master, filler_patterns) for master in actual):
+                filler_changes.append(name)
+            elif out_of_domain(name):
+                out_of_scope.add(name)
+            else:
+                untraced.append(name)
+        else:
+            untraced.append(name)
+    if untraced:
+        refuse("trace-mismatch", "the net command log does not explain the dump delta for "
+                                 f"{untraced}: logged {[(n, before.get(n), running.get(n)) for n in untraced]}, "
+                                 f"dumped {[(n, before.get(n), after.get(n)) for n in untraced]}")
+    if out_of_scope:
+        refuse("out-of-scope", f"changes outside the edit domain: {sorted(out_of_scope)}")
+
+    kind = "xtop-session" if commands else "no-fix"
+    target_checks = _target_checks(work_package)
+    if commands:
+        if not evidence.get("ecoOutput"):
+            refuse("missing-export", "kept commands but eco_output/ holds no exported change files")
+        value, value_detail, gain_refusals = _session_value(target_checks, reference, predicted)
+        for code, detail in gain_refusals:
+            refuse(code, detail)
+    else:
+        value, value_detail = 0.0, {"targetChecks": target_checks,
+                                    "oppositeChecks": [c for c in SESSION_CHECKS if c not in target_checks],
+                                    "worstCheck": None, "wnsGain": {}, "tnsGain": {}, "targetTnsGain": None,
+                                    "rankTnsGain": None}
+
+    diagnosis = result_refs.get("diagnosis")
+    if not (isinstance(diagnosis, str) and diagnosis.strip()) and not commands:
+        statuses = {}
+        for line in lines:
+            statuses[line["status"]] = statuses.get(line["status"], 0) + 1
+        diagnosis = (f"XTop session kept no command: {len(lines)} ops.jsonl line(s) {statuses}, "
+                     f"undone seqs {undone}, discarded checkpoints {discarded}")
+
+    nets = set()
+    for command in commands:
+        nets.update(command.get("newNets") or [])
+        if _is_nonempty_string(command["args"].get("net")):
+            nets.add(command["args"]["net"])
+    checks = set(work_package.get("targets") or []) | set(work_package.get("mayAffect") or [])
+    has_prediction = any(core.is_known(predicted[key]) for key in ("xtopSetupWns", "xtopHoldWns"))
+
+    body = {
+        "taskId": core.require(manifest, "taskId", "workspaceManifest"),
+        "revision": core.require(manifest, "revision", "workspaceManifest"),
+        "baseStateId": state_id,
+        "kind": kind,
+        "commands": commands,
+        "operations": [],
+        "script": None,
+        "beforeDumpSha256": hashlib.sha256(before_bytes).hexdigest(),
+        "delta": actual_delta(before, after),
+        "fillerChanges": filler_changes,
+        "touches": {"instances": sorted(touched), "nets": sorted(nets), "regions": [], "checks": sorted(checks),
+                    "cones": []},
+        "preconditions": [],
+        "dependencies": [],
+        "atomicGroups": [],
+        "predicted": predicted,
+        "reference": reference,
+        "gainSummary": gain_summary,
+        "failReasons": fail_reasons,
+        "value": value,
+        "valueDetail": value_detail,
+        "targets": sorted(work_package.get("targets") or []),
+        "targetPins": sorted(work_package.get("targetPins") or []),
+        "validationLevel": "xtop" if has_prediction else "none",
+        "diagnosis": diagnosis,
+        "session": {
+            "lines": len(lines), "kept": [command["seq"] for command in commands], "undone": undone,
+            "discarded": discarded, "observe": sorted({line.get("observe") for line in lines
+                                                        if isinstance(line.get("observe"), str)}),
+            "predictedFromSeq": last_reading["seq"] if last_reading is not None else None,
+            "failReasonsFromSeq": fail_reasons_seq, "fillerPatterns": filler_patterns,
+        },
+        "admissible": not refusals,
+        "refusals": refusals,
+        "outOfScope": sorted(out_of_scope),
+    }
+    return core.stamp("contribution", body)

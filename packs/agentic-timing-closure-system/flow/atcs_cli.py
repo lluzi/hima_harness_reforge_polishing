@@ -101,9 +101,9 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 4 | `observe` | querySpec, siteProfile, scenariosContract(Site-fixed `analysisContract/scenarios.json`, per-scenario corner + PT library identity -- C4 final review, was `scenario-corners.json`, see "Task 12c fix round" below), maxPaths(`{from: strategy}`, an upper cap -- see "Fix round 1" below) | `_scenario_pt_inputs` (x4, built from `state/working-state.json`, re-verified by sha256) then `adapters.compile_pt_scenario_tasks` + `run_tool` (x4) then `state.capture` | `state/observation.json` (also `state/observation-prev.json`, `observations/<id>.json` and `research/observe/max-paths.json`) |
 | 5 | `risk` | priorObservation(`state/observation-prev.json`), currentObservation(`state/observation.json`), recheck | `state.compare_checks` (self-compares on the campaign's first observation, when `priorObservation` does not exist yet) | `state/risk.json` |
 | 6 | `prepare-workers` | baseState(`state/working-state.json`), siteCapabilities, edaProfile, campaignPlan(the ONE admitted envelope `{"candidate":{"workPackages":{"w01"..,"w06"..},"reason"},"baseState":..,"siteCapabilities":..}`; reads `candidate.workPackages`, refuses `ambiguous-plan` if a top-level `workPackages` key is also present -- see "Task 12c fix round" below) | `workspaces.validate_work_package` + `workspaces.prepare` (one per slot in `workspaces.TASK_IDS`, w01..w06) + `adapters.compile_xtop_operator_task`/`compile_xtop_analysis_manual_task` (per slot, materialized into each worker's own root) | `state/workers.json` (now embeds each slot's full `workPackage`/`workspaceManifest`) |
-| 7 | `capture-contribution` | slot | `contributions.seal` (base_ref/result_refs composed from `state/workers.json[slot]` and the slot's own workspace root -- see `_cmd_capture_contribution`'s docstring for the exact `before.dump`/`after.dump`/`ops.jsonl`/`summary.json` file names) | `state/contribution-<slot>.json` (one of 3 literal names) |
+| 7 | `capture-contribution` | slot | `contributions.seal` (base_ref/result_refs composed from `state/workers.json[slot]` and the slot's own workspace root -- see `_cmd_capture_contribution`'s docstring for the exact `before.dump`/`after.dump`/`ops.jsonl`/`summary.json` file names); `contributions.seal_session` instead when `ops.jsonl` holds Task 3 toolkit lines or `tainted.json` exists (`_seal_xtop_session`: also `gain.jsonl`, the transcript's `ATCS:taint:` line, `eco_output/`, `state/xtop-context.json` filler patterns) | `state/contribution-<slot>.json` (one of 6 literal names) |
 | 8 | `collect` | (none) | reads whichever `contribution-w0N.json` exist AND still matches `state/workers.json[slot]`'s current revision (`contribution-index` read envelope: `{"contributions","pending":[{"slot","reason"}]}` -- see "Task 12c fix round" below) | `state/contributions-collected.json` |
-| 9 | `compose-facts` | plan(the SAME admitted integration-plan envelope row 10 reads; absent on the first pass -- see "Task 12c fix round" below) | `composition.analyze` (`baseStateId` from `state/working-state.json`; `resolutions` from the admitted plan, `[]` on the first pass) | `state/composition-facts.json` |
+| 9 | `compose-facts` | plan(the SAME admitted integration-plan envelope row 10 reads; absent on the first pass -- see "Task 12c fix round" below) | `composition.analyze` (`baseStateId` from `state/working-state.json`; `resolutions` from the admitted plan, `[]` on the first pass; `worst_checks` from `state/observation.json` when it observes that state, for the xtop-session recipe's blocker coverage) | `state/composition-facts.json` |
 | 10 | `replay-prepare` | baseState(`state/working-state.json`), plan(the admitted integration-plan envelope `{"plan":...,"facts":...}` -- see "Task 12c fix round" below), siteProfile | `integration.validate_plan` + `integration.prepare_replay` then `adapters.compile_xtop_replay_task` + `run_tool` (best-effort) | `state/replay-request.json` |
 | 11 | `reconcile` | (none -- edit domains come from `state/workers.json`, see "Task 12c fix round" below) | `integration.reconcile` | `state/integration-state.json` |
 | 12 | `presta` | baseState(`state/working-state.json`), scenariosContract, siteProfile | `integration.seal_batch` (read-only re-derivation, for `newNets`) + `adapters.compile_pt_presta_task` + `run_tool`, `verification.precheck_evidence` | `state/presta.json` (the stamped `precheckEvidence` artifact) |
@@ -1296,6 +1296,75 @@ def _no_fix_diagnosis(root, dump_sha256):
     return "; ".join(parts)
 
 
+_TAINT_MARKER = "ATCS:taint:"
+
+
+def _transcript_taint(root):
+    """The slot's taint state from every ``ATCS:taint:<state>`` line in every XTop transcript.
+
+    ``atcs_close`` prints ``ATCS:taint:clean`` or ``ATCS:taint:tainted:<reason>``;
+    echoed ``xtop > `` command lines never start with the marker. Returns
+    ``None`` when no transcript holds such a line, ``"clean"`` only when every
+    such line says ``clean``, and otherwise the first non-clean state found
+    (in sorted transcript order; any non-clean line refuses, so the order
+    only picks which reason is quoted). An unreadable transcript is a
+    non-clean state.
+    """
+    states = []
+    for log_path in sorted(root.glob("xtop_log_*.txt")):
+        try:
+            text = log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            states.append(f"unreadable transcript {log_path.name}: {exc}")
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith(_TAINT_MARKER):
+                states.append(line[len(_TAINT_MARKER):])
+    if not states:
+        return None
+    return next((state for state in states if state != "clean"), "clean")
+
+
+def _seal_xtop_session(workspace, root, base_ref, before_dump, after_dump, ops_log_path, operation_trace,
+                       tainted_path):
+    """Issue #64 Task 4: seal a Task 3 expert session (`contributions.seal_session`).
+
+    Reads, beside ``ops.jsonl``: ``gain.jsonl`` (absent = no readings) and
+    ``tainted.json`` (any content, even unreadable, taints); in the slot
+    root: the XTop transcripts' ``ATCS:taint:`` line and ``eco_output/``
+    (at least one file). The Site's removable-filler master patterns come
+    from the bound ``state/xtop-context.json`` (``removableFillers``; none
+    when that file is absent, so every filler change then counts as an
+    out-of-domain change).
+    """
+    gain_path = ops_log_path.parent / "gain.jsonl"
+    gain_text = _read_text(str(gain_path)) if gain_path.is_file() else ""
+    tainted = None
+    if tainted_path.is_file():
+        try:
+            tainted = json.loads(tainted_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            tainted = {"reason": f"unreadable tainted.json: {exc}"}
+        if tainted is None:
+            tainted = {"reason": "tainted.json holds null"}
+    eco_output = root / "eco_output"
+    filler_patterns = []
+    context_path = _paths(workspace)["xtop_context"]
+    if context_path.is_file():
+        filler_patterns = list(_read_declared(context_path, "xtop-context").get("removableFillers") or [])
+    summary = _read_json_or_default(root / "summary.json", {})
+    result_refs = {
+        "beforeDump": str(before_dump), "afterDump": str(after_dump),
+        "evidence": {
+            "taintedJson": tainted, "transcriptTaint": _transcript_taint(root),
+            "ecoOutput": eco_output.is_dir() and any(path.is_file() for path in eco_output.rglob("*")),
+        },
+        "fillerPatterns": filler_patterns, "diagnosis": summary.get("diagnosis"),
+    }
+    return contributions.seal_session(base_ref, result_refs, operation_trace, gain_text)
+
+
 def _cmd_capture_contribution(workspace, args):
     """Compose `base_ref`/`result_refs` from `state/workers.json` and the slot's own workspace (G2).
 
@@ -1330,6 +1399,13 @@ def _cmd_capture_contribution(workspace, args):
       `no-fix` slot -- `contributions.seal` refuses one without it. An
       explicit `summary.json` diagnosis always wins over the deterministic
       one computed here.
+
+    Issue #64 Task 4: when ``ops.jsonl`` holds Task 3 toolkit lines (or
+    ``tainted.json`` exists beside it), the slot is sealed by
+    `_seal_xtop_session` / `contributions.seal_session` as an
+    ``xtop-session`` (or session ``no-fix``) Contribution instead; the
+    legacy typed-procedure trace and the empty/absent-trace no-fix path
+    below are unchanged.
 
     Both dumps missing, or one dump missing, is `missing-input` (exit 2) as
     before, matching "no subcommand reads files that no subcommand writes":
@@ -1370,6 +1446,12 @@ def _cmd_capture_contribution(workspace, args):
 
     ops_log_exists = ops_log_path.is_file()
     operation_trace = _read_text(str(ops_log_path)) if ops_log_exists else ""
+    tainted_path = ops_log_path.parent / "tainted.json"
+    if contributions.is_session_log(operation_trace) or tainted_path.is_file():
+        body = _seal_xtop_session(workspace, root, base_ref, before_dump, after_dump, ops_log_path,
+                                  operation_trace, tainted_path)
+        _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
+        return _contribution_path(workspace, slot), body
     ops_trace_empty = not operation_trace.strip()
     no_fix_evidence = (not ops_log_exists) or ops_trace_empty
     dump_sha256 = None
@@ -1550,7 +1632,14 @@ def _cmd_compose_facts(workspace, args):
                 if existing_request.get("batchId") == plan_raw.get("batchId"):
                     plan_raw = None  # stale: this exact batch has already been prepared/replayed
     resolutions = (plan_raw or {}).get("resolutions") or []
-    body = composition.analyze(working_state["id"], collected["contributions"], resolutions)
+    # Issue #64 Task 4: blocker coverage ranks the recipe's xtop sessions -- the worst
+    # failing check per scenario and mode of the current observation, when it is this
+    # working state's own (an observation of another state names no blocker here).
+    observation = _read_json_or_default(_paths(workspace)["observation"], {})
+    observed_state = observation.get("designStateId") if isinstance(observation, dict) else None
+    worst = (composition.worst_checks(observation)
+             if observed_state in (None, working_state["id"]) else [])
+    body = composition.analyze(working_state["id"], collected["contributions"], resolutions, worst_checks=worst)
     return _paths(workspace)["composition_facts"], body
 
 
