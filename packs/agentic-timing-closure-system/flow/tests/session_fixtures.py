@@ -198,9 +198,14 @@ def delta_text(check, reference, current, fail_reasons=None):
             f"total                   {row}\n"
             f"  {SCENARIO:<20}  {row}\n")
     if fail_reasons:
-        text += "Fail reasons\n"
-        for reason, count in fail_reasons.items():
-            text += f"  {reason}    {count}\n"
+        # The probe's top-N table in the real layout (`live_session_samples.LIVE_PROBE_SETUP`): one
+        # endpoint row per failing endpoint, its fail reason in the last column.
+        rows = [reason for reason, count in fail_reasons.items() for _ in range(count)]
+        text += (f"### {check} top {len(rows)} endpoints ###\n"
+                 "  Slack    Scenario                Name       Fail Reason      \n"
+                 f"{'-' * 60}\n")
+        for index, reason in enumerate(rows):
+            text += f"{cur_wns:>7.4f}    {SCENARIO:<20}    U{index}/D    {reason}:100%\n"
     return text
 
 

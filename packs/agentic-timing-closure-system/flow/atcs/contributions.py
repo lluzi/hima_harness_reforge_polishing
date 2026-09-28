@@ -1059,7 +1059,11 @@ _SUMMARY_SECTION = re.compile(r"^###\s+(setup|hold)\s+summary\s+###\s*$")
 _INT_COLUMNS = ("count", "count0", "dCount")
 # Rows print 4 decimals; a delta column may differ from its own difference by one rounding step each side.
 _DELTA_TOLERANCE = 1.5e-4
-_FAIL_REASON_ROW = re.compile(r"^\s*([a-z][a-z0-9_]*)\s*[:=]?\s+(\d+)\s*$")
+# XTop's probe (`summarize_gba_violations ... -with_top_n N -with_fail_reason`) appends, per check, a
+# `### <check> top N endpoints ###` table whose last column is `Fail Reason`, one `<reason>:<percent>%`
+# per endpoint row (real XTop, Issue #64 Task 7: `not_only_pin:100%`).
+_TOP_N_HEADING = re.compile(r"^### (?:setup|hold) top \d+ endpoints ###\s*$")
+_FAIL_REASON_CELL = re.compile(r"^([a-z][a-z0-9_]*):\d+(?:\.\d+)?%$")
 
 
 def is_session_log(text):
@@ -1311,12 +1315,36 @@ def _gain_measures(gain_line, column="current"):
 
 
 def parse_fail_reasons(text):
-    """``{reason: count}`` from ``<snake_case_reason> <int>`` rows (best effort, informational)."""
+    """``{reason: endpoints}``: how many rows of the probe's top-N endpoint tables name each fail reason.
+
+    Only a ``### <check> top N endpoints ###`` table whose header has a ``Fail Reason`` column is
+    read; its rows end in ``<reason>:<percent>%`` cells (comma-separated when there are several).
+    Best effort and informational: a table without that column names no reason.
+    """
     counts = {}
+    in_table = with_reasons = False
     for raw_line in text.splitlines():
-        match = _FAIL_REASON_ROW.match(raw_line)
-        if match:
-            counts[match.group(1)] = counts.get(match.group(1), 0) + int(match.group(2))
+        line = raw_line.strip()
+        if _TOP_N_HEADING.match(line):
+            in_table, with_reasons = True, False
+            continue
+        if not in_table:
+            continue
+        if not line or line.startswith("###"):
+            in_table = False
+            continue
+        if line.startswith("Slack"):
+            with_reasons = line.endswith("Fail Reason")
+            continue
+        if not with_reasons or set(line) == {"-"}:
+            continue
+        reasons = set()
+        for cell in line.split()[-1].split(","):
+            match = _FAIL_REASON_CELL.match(cell)
+            if match:
+                reasons.add(match.group(1))
+        for reason in reasons:
+            counts[reason] = counts.get(reason, 0) + 1
     return counts
 
 
