@@ -98,10 +98,12 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   const seeded = spawnSync('python3', ['-c', [
     'import sys,json; from pathlib import Path',
     'sys.path.insert(0,sys.argv[1]); sys.path.insert(0,sys.argv[2])',
+    // The stub XTop session (test/fixtures/interactive-job/atcs-repl.tcl) reports one scenario, func_ss,
+    // so that is the required scenario whose rows the capture's gain gates read (Task 7 fix round 1).
     'import test_cli_state as f; from atcs import core,state,workspaces',
     'w=Path(sys.argv[3]); manifest=f._make_baseline_manifest(w)',
     'base=state.design_state(manifest); core.write_artifact(w/"state/working-state.json",base)',
-    'caps={"design":"top","techLef":"tech.lef","cellLefGlob":"*.lef","pgVerification":False,**f._write_xtop_context(w,base["id"])}',
+    'caps={"design":"top","techLef":"tech.lef","cellLefGlob":"*.lef","pgVerification":False,**f._write_xtop_context(w,base["id"],("func_ss",))}',
     'f._write_json(Path(sys.argv[4]),caps)',
     'active={"taskId":"w01","baseStateId":base["id"],"problem":"synthetic sizing","targets":[],"editDomain":{"instances":["U1"],"nets":[],"regions":[]},"protected":{"instances":[],"nets":[]},"mayAffect":[],"actions":["size_cell"],"budget":{"xtopMinutes":1,"queries":1,"attempts":1},"targetPins":["U1/A"],"scope":{"commands":list(workspaces.MUTATE_COMMANDS),"maxMutations":workspaces.SCOPE_MAX_MUTATIONS}}',
     'packages={s:({"taskId":s,"baseStateId":base["id"],"parked":True,"problem":"one blocker cluster; slot "+s+" has none"} if s!="w01" else active) for s in workspaces.TASK_IDS}',
