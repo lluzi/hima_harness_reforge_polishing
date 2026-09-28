@@ -171,6 +171,26 @@ class RecipeBatchCheckPlanTest(unittest.TestCase):
         self.assertEqual(legacy["functional"], [])
 
 
+class BatchGuaranteeTest(unittest.TestCase):
+    """A recipe batch's sealed guarantee reaches the evaluation, so an unevidenced one (merged
+    chosen only because the control arm was unusable) is reported with the result."""
+
+    def test_the_merge_commits_guarantee_is_reported_with_the_evaluation(self):
+        guarantee = {"evidenced": False, "arm": "merged", "reason": "control arm unusable"}
+        plan = verification.plan_checks(
+            {"id": "mc-1", "parentStateId": "state-0", "operations": [], "guarantee": guarantee},
+            _policy({scenario: BASE_CORNER for scenario in SCENARIO_WNS}))
+        evaluation = verification.assemble(plan, _base_receipts(), {"checks": {}}, {
+            "drc": fixtures.drc_report([]), "connectivity": fixtures.connectivity_report([])})
+        self.assertEqual(evaluation["batchGuarantee"], guarantee)
+        self.assertEqual(evaluation["id"], core.digest({k: v for k, v in evaluation.items() if k != "id"}))
+
+    def test_a_batch_without_a_guarantee_reports_none(self):
+        evaluation = verification.assemble(_base_plan(), _base_receipts(), {"checks": {}}, {
+            "drc": fixtures.drc_report([]), "connectivity": fixtures.connectivity_report([])})
+        self.assertNotIn("batchGuarantee", evaluation)
+
+
 class PrestaQualificationTest(unittest.TestCase):
     def test_new_nets_absent_from_spef_are_all_unqualified(self):
         result = verification.presta_qualification(["n1", "n2", "n3"], {"existing_net"})

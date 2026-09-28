@@ -445,6 +445,10 @@ def plan_checks(merge_commit, policy):
         "candidateId": merge_commit.get("id"),
         "parentStateId": merge_commit.get("parentStateId"),
     }
+    if isinstance(merge_commit.get("guarantee"), dict):
+        # A recipe batch's sealed never-worse-than-auto-fix guarantee (Issue #64), reported with
+        # the evaluation as `batchGuarantee`.
+        body["batchGuarantee"] = merge_commit["guarantee"]
     return core.stamp("check-plan", body)
 
 
@@ -847,4 +851,6 @@ def assemble(plan, receipts, prior_observation, baseline_physical, baseline_unco
         "comparison": comparison,
         "physical": physical_out,
     }
+    if isinstance(plan.get("batchGuarantee"), dict):
+        body["batchGuarantee"] = plan["batchGuarantee"]
     return core.stamp("evaluation", body)

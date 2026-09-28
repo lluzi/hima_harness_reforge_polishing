@@ -230,6 +230,22 @@ class ParkedBranchTest(unittest.TestCase):
         self.assertEqual(sorted(p["slot"] for p in collected["pending"]), ["w01", "w02"],
                          "active slots without a sealed session stay pending")
 
+    def test_a_slot_whose_prepared_entry_and_package_disagree_on_parking_is_refused(self):
+        """One parked predicate: `state/workers.json` marks a slot parked exactly when its
+        prepared package is parked; operate and capture refuse a slot where the two disagree."""
+        workers_path = self.workspace / "state" / "workers.json"
+        tampered = json.loads(workers_path.read_text())
+        tampered["workers"]["w01"]["parked"] = True        # an active package marked parked
+        del tampered["workers"]["w05"]["parked"]           # a parked package not marked
+        workers_path.write_text(json.dumps(tampered), encoding="utf-8")
+        for slot in ("w01", "w05"):
+            for command in ("operate-parked", "capture-contribution"):
+                with self.subTest(slot=slot, command=command):
+                    result = _run(command, self.workspace, slot)
+                    self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+                    self.assertEqual(json.loads(result.stderr)["code"], "identity-mismatch")
+            self.assertFalse((self.workspace / "state" / f"contribution-{slot}.json").exists())
+
     def test_a_parked_slot_that_ran_a_session_is_refused(self):
         root = self.workspace / self.workers["workers"]["w06"]["root"]
         (root / "before.dump").write_text("U6 BUF1\n", encoding="utf-8")

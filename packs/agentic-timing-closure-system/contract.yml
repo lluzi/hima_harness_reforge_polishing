@@ -1125,8 +1125,10 @@ workshops:
       for a check ending at a top-level port, its check key in the slot's targets. The worst clusters
       take the lowest slots. Active slots share no instance: an instance in one active slot's
       editDomain.instances, or owning one of its targetPins, is in no other active slot's domain or
-      target pins. Active slots may share edit-domain nets; the ranked recipe resolves any command
-      that touches an instance a higher-ranked session already changed. An active slot's package holds problem, target check keys, edit domain
+      target pins. Active slots also share no edit-domain net: a net in one active slot's
+      editDomain.nets is in no other's. Read the prior batch's XTop fail reasons after auto-finish
+      (state/residual-cases.json, batchFailReasons and each case's failReasons): the clusters plain
+      auto-fix could not fix, and why, are the expert slots' work. An active slot's package holds problem, target check keys, edit domain
       (instances, nets and regions [x1, y1, x2, y2] for moves), protected objects, may-affect checks,
       admissible actions (size_cell, insert_buffer, delete_buffer, and pg_local_adjust only when
       siteCapabilities.pgVerification is true), budget, targetPins (the blockers' full hierarchical
@@ -1144,7 +1146,7 @@ workshops:
     directory: research/plan
     entry: entry.py
     language: python
-    reads: [workingState, workerSlotPolicy, inputReadiness, currentObservations, acceptancePolicy, riskAtlas, contributionIndex, campaignExperience, statePointers]
+    reads: [workingState, workerSlotPolicy, inputReadiness, currentObservations, acceptancePolicy, riskAtlas, contributionIndex, campaignExperience, statePointers, residualCases]
     knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md, xtop-expert-operator.md]
     produces: campaignPlan
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1153,9 +1155,10 @@ workshops:
     purpose: >-
       Research worker slot w01 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
-      evidence, including the prior generation's XTop fail reasons; choose the ladder moves, falsifiers
-      and typed atcs_* procedures the expert Operator session will try (knowledge
-      xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
+      evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
+      failReasons, and the batch's after auto-finish in state/residual-cases.json); choose the
+      ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
+      (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
       candidate.scope; there is no pinned action list. Write the
       slot's request to research/requests/worker-request-w01.json as {candidate: <the w01 work
       package exactly as prepared in state/workers.json: the same editDomain, targetPins, observe and
@@ -1170,7 +1173,7 @@ workshops:
     directory: research/worker-01
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult01]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult01, residualCases]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest01
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1179,9 +1182,10 @@ workshops:
     purpose: >-
       Research worker slot w02 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
-      evidence, including the prior generation's XTop fail reasons; choose the ladder moves, falsifiers
-      and typed atcs_* procedures the expert Operator session will try (knowledge
-      xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
+      evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
+      failReasons, and the batch's after auto-finish in state/residual-cases.json); choose the
+      ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
+      (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
       candidate.scope; there is no pinned action list. Write the
       slot's request to research/requests/worker-request-w02.json as {candidate: <the w02 work
       package exactly as prepared in state/workers.json: the same editDomain, targetPins, observe and
@@ -1196,7 +1200,7 @@ workshops:
     directory: research/worker-02
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult02]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult02, residualCases]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest02
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1205,9 +1209,10 @@ workshops:
     purpose: >-
       Research worker slot w03 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
-      evidence, including the prior generation's XTop fail reasons; choose the ladder moves, falsifiers
-      and typed atcs_* procedures the expert Operator session will try (knowledge
-      xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
+      evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
+      failReasons, and the batch's after auto-finish in state/residual-cases.json); choose the
+      ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
+      (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
       candidate.scope; there is no pinned action list. Write the
       slot's request to research/requests/worker-request-w03.json as {candidate: <the w03 work
       package exactly as prepared in state/workers.json: the same editDomain, targetPins, observe and
@@ -1222,7 +1227,7 @@ workshops:
     directory: research/worker-03
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult03]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult03, residualCases]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest03
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1231,9 +1236,10 @@ workshops:
     purpose: >-
       Research worker slot w04 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
-      evidence, including the prior generation's XTop fail reasons; choose the ladder moves, falsifiers
-      and typed atcs_* procedures the expert Operator session will try (knowledge
-      xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
+      evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
+      failReasons, and the batch's after auto-finish in state/residual-cases.json); choose the
+      ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
+      (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
       candidate.scope; there is no pinned action list. Write the
       slot's request to research/requests/worker-request-w04.json as {candidate: <the w04 work
       package exactly as prepared in state/workers.json: the same editDomain, targetPins, observe and
@@ -1248,7 +1254,7 @@ workshops:
     directory: research/worker-04
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult04]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult04, residualCases]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest04
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1257,9 +1263,10 @@ workshops:
     purpose: >-
       Research worker slot w05 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
-      evidence, including the prior generation's XTop fail reasons; choose the ladder moves, falsifiers
-      and typed atcs_* procedures the expert Operator session will try (knowledge
-      xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
+      evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
+      failReasons, and the batch's after auto-finish in state/residual-cases.json); choose the
+      ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
+      (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
       candidate.scope; there is no pinned action list. Write the
       slot's request to research/requests/worker-request-w05.json as {candidate: <the w05 work
       package exactly as prepared in state/workers.json: the same editDomain, targetPins, observe and
@@ -1274,7 +1281,7 @@ workshops:
     directory: research/worker-05
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult05]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult05, residualCases]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest05
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1283,9 +1290,10 @@ workshops:
     purpose: >-
       Research worker slot w06 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
-      evidence, including the prior generation's XTop fail reasons; choose the ladder moves, falsifiers
-      and typed atcs_* procedures the expert Operator session will try (knowledge
-      xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
+      evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
+      failReasons, and the batch's after auto-finish in state/residual-cases.json); choose the
+      ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
+      (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
       candidate.scope; there is no pinned action list. Write the
       slot's request to research/requests/worker-request-w06.json as {candidate: <the w06 work
       package exactly as prepared in state/workers.json: the same editDomain, targetPins, observe and
@@ -1300,7 +1308,7 @@ workshops:
     directory: research/worker-06
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult06]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult06, residualCases]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest06
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']

@@ -123,6 +123,13 @@ values:
   tc_missing_prior_check_count:
     unit: count
     description: Prior checks that needed comparison but could no longer be located/observed; kept separate from an intentional lineage replacement.
+  tc_batch_guarantee_unevidenced:
+    unit: count
+    description: >-
+      1 when the evaluated recipe batch's merged arm was chosen only because its plain auto-fix
+      control arm was unusable, so XTop never showed it no worse than auto-fix
+      (`evaluation.batchGuarantee.evidenced: false`); 0 when the arms were compared, or for a batch
+      with no recipe guarantee. Reported with the final evaluation; no rule reads it.
   tc_refresh_count:
     unit: count
     description: Completed actual full physical refreshes recorded in the pointers history as of this acceptance record; kept separate from research/generation counts.

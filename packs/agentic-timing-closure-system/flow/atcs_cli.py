@@ -1256,11 +1256,7 @@ def _cmd_prepare_workers(workspace, args):
 
         analysis_task = adapters.compile_xtop_analysis_manual_task(
             manifest, validated.get("editDomain", {}), operator_tcl_path, ops_log_path,
-            # Task 4 (#64) admits `targetPins`, `scope.maxMutations` and `observe`; until then a
-            # package without them gets no extra pins, the one-mutation budget and fast observation.
-            target_pins=validated.get("targetPins"),
-            max_mutations=(validated["scope"].get("maxMutations")
-                           if isinstance(validated.get("scope"), dict) else None),
+            target_pins=validated.get("targetPins"), max_mutations=validated["scope"]["maxMutations"],
             observe=validated.get("observe"),
         )
         analysis_tcl_path = session_dir / "xtop-analysis-manual.tcl"
@@ -1309,12 +1305,11 @@ def _parked_entry(workspace, slot):
     entry = workers_doc.get("workers", {}).get(slot)
     if not entry:
         raise InputError("missing-input", f"state/workers.json has no entry for slot {slot!r}")
-    parked = entry.get("parked") is True and workspaces.is_parked(entry.get("workPackage"))
-    return entry, parked
+    return entry, workspaces.prepared_slot_parked(entry)
 
 
-def _worker_request_problems(workspace, slot, entry):
-    """Problems in slot `slot`'s current worker request, by the flow-side half of the Reader's rule.
+def _worker_request_problem_count(workspace, slot, entry):
+    """How many problems slot `slot`'s current worker request has, by the flow-side half of the Reader's rule.
 
     `workspaces.request_invalid_count` against the working state, a `taskId` other than
     the slot, and every `workspaces.PREPARED_BINDING_FIELDS` field that differs from the
@@ -1358,7 +1353,7 @@ def _cmd_operate_parked(workspace, args):
     if parked:
         why, reason = "parked", entry["workPackage"]["problem"]
     else:
-        problems = _worker_request_problems(workspace, slot, entry)
+        problems = _worker_request_problem_count(workspace, slot, entry)
         if problems == 0:
             raise core.AtcsError(
                 "slot-active",
@@ -1564,7 +1559,7 @@ def _cmd_capture_contribution(workspace, args):
     if not root.is_absolute():
         root = workspace / root
     receipt_path = root / "parked.json"
-    plan_parked = entry.get("parked") is True or workspaces.is_parked(work_package)
+    plan_parked = workspaces.prepared_slot_parked(entry)
     if plan_parked or receipt_path.exists():
         # Issue #64 Task 5: this slot ran no session -- the plan parked it, or `operate-parked`
         # skipped its inadmissible request. Any Operator output in its root means something did
@@ -1793,7 +1788,7 @@ def _cmd_compose_facts(workspace, args):
     endpoints = (composition.worst_check_endpoints(observation)
                  if observed_state in (None, working_state["id"]) else {})
     body = composition.analyze(working_state["id"], collected["contributions"], resolutions,
-                               worst_checks=sorted(endpoints), worst_endpoints=endpoints)
+                               worst_keys=sorted(endpoints), worst_endpoints=endpoints)
     return _paths(workspace)["composition_facts"], body
 
 
@@ -3099,19 +3094,7 @@ def _cmd_evaluate(workspace, args):
     # would have to launch itself.
     baseline_unconstrained = _baseline_unconstrained_counts(workspace)
     body = verification.assemble(plan, receipts, prior_observation, baseline_physical, baseline_unconstrained)
-    return _paths(workspace)["evaluation"], _with_batch_guarantee(body, merge_commit)
-
-
-def _with_batch_guarantee(evaluation, merge_commit):
-    """The evaluation, carrying a recipe batch's sealed never-worse-than-auto-fix `guarantee`
-    (Issue #64 Task 6) as `batchGuarantee` -- so an unevidenced one (merged chosen only because
-    the control arm was unusable) is reported with the result. Other batches: unchanged."""
-    guarantee = merge_commit.get("guarantee") if isinstance(merge_commit, dict) else None
-    if not isinstance(guarantee, dict):
-        return evaluation
-    body = {key: value for key, value in evaluation.items() if key not in ("schema", "id")}
-    body["batchGuarantee"] = guarantee
-    return core.stamp("evaluation", body)
+    return _paths(workspace)["evaluation"], body
 
 
 def _cmd_adopt(workspace, args):
@@ -3500,8 +3483,30 @@ def _cmd_residual(workspace, args):
     observation_for_extract = dict(base_observation)
     observation_for_extract["checkDetails"] = check_details
 
-    cases = residual_module.extract(evaluation, observation_for_extract, exp, readiness)
-    return _paths(workspace)["residual_cases"], {"cases": cases, "queryNotes": notes}
+    batch_fail_reasons = _evaluated_batch_fail_reasons(workspace) if evaluation_path.is_file() else None
+    cases = residual_module.extract(evaluation, observation_for_extract, exp, readiness,
+                                    fail_reasons=batch_fail_reasons)
+    body = {"cases": cases, "queryNotes": notes}
+    if batch_fail_reasons is not None:
+        body["batchFailReasons"] = batch_fail_reasons
+    return _paths(workspace)["residual_cases"], body
+
+
+def _evaluated_batch_fail_reasons(workspace):
+    """The evaluated recipe batch's sealed post-auto-finish fail reasons, or None.
+
+    Read from `state/merge-commit.json` only when it is the candidate `state/implement.json`
+    names; ``{mergeCommitId, arm, setup?, hold?}``.
+    """
+    implement = _read_json_or_default(_paths(workspace)["implement"], {})
+    path = _paths(workspace)["merge_commit"]
+    if not implement.get("mergeCommitId") or not path.is_file():
+        return None
+    merge_commit = _read_declared(path, "merge-commit")
+    reasons = merge_commit.get("failReasons")
+    if merge_commit.get("id") != implement["mergeCommitId"] or not isinstance(reasons, dict):
+        return None
+    return {"mergeCommitId": merge_commit["id"], **reasons}
 
 
 def _cmd_apr_prepare(workspace, args):

@@ -410,7 +410,8 @@ proc atcs_observe_after {pre} {
             set m1 [atcs_cell_master $name]
             if {$m1 ne $m0} { dict set delta $name [list $m0 $m1] }
         }
-        foreach name [atcs_eco_cells [expr {$c1 - $c0}]] {
+        set reported [atcs_eco_cells [expr {$c1 - $c0}]]
+        foreach name $reported {
             if {[dict exists $d0 $name]} { continue }
             set m1 [atcs_cell_master $name]
             if {[atcs_is_filler $m1]} {
@@ -422,14 +423,19 @@ proc atcs_observe_after {pre} {
             }
         }
     }
-    # ECO actions with no master change (moves, reconnects, swaps): the cells they touched.
+    # The cells every ECO action touched, moves, reconnects and swaps included: one outside
+    # the domain is out of domain even beside an in-domain master change (full mode diffs
+    # masters only). A call that changed no master keeps its domain cells as `ecoCells`.
     set eco_cells {}
-    if {$c1 > $c0 && [dict size $delta] == 0 && [llength $bad] == 0} {
-        foreach name [atcs_eco_cells [expr {$c1 - $c0}]] {
+    if {$c1 > $c0} {
+        set no_master_change [expr {[dict size $delta] == 0 && [llength $bad] == 0}]
+        if {![info exists reported]} { set reported [atcs_eco_cells [expr {$c1 - $c0}]] }
+        foreach name $reported {
+            if {[dict exists $delta $name] || [lsearch -exact $bad $name] >= 0} { continue }
             if {[atcs_is_filler [atcs_cell_master $name]]} {
                 if {[lsearch -exact $fillers $name] < 0} { lappend fillers $name }
             } elseif {[atcs_instance_in_domain $name]} {
-                lappend eco_cells $name
+                if {$no_master_change} { lappend eco_cells $name }
             } else {
                 lappend bad $name
             }

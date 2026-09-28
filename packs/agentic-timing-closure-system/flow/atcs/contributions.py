@@ -945,10 +945,7 @@ def seal_parked(base_ref, reason, refusal=None):
     manifest = core.require(base_ref, "workspaceManifest", "base_ref")
     work_package = core.require(base_ref, "workPackage", "base_ref")
     state_id = core.require(base_ref, "stateId", "base_ref")
-    if manifest.get("baseStateId") != state_id or work_package.get("baseStateId") != state_id:
-        raise core.AtcsError("base-mismatch", f"parked slot's manifest or package is not based on {state_id!r}")
-    if manifest.get("workPackageId") != work_package.get("id"):
-        raise core.AtcsError("base-mismatch", "parked slot's workspaceManifest names another work package")
+    _check_base(manifest, work_package, state_id)
     if not isinstance(reason, str) or not reason.strip():
         raise core.AtcsError("missing-input", "a slot that ran no session needs the reason it ran none")
     predicted, validation_level = _predicted_measures({})
@@ -1346,8 +1343,7 @@ def _session_value(target_checks, reference, predicted):
       worst (ties: hold before setup); ``targetTnsGain`` sums the target
       checks' ``tnsGain``; ``rankTnsGain`` = ``targetTnsGain`` plus every
       opposite check's ``tnsGain`` (signed), and breaks ranking ties -- an
-      opposite TNS loss lowers the rank instead of refusing (controller
-      decision, user amendment: repairs are valued, not all-or-nothing).
+      opposite TNS loss lowers the rank; it never refuses the session.
     - ``no-predicted-gain``: a target WNS is unknown or got worse, or no
       target WNS and not ``targetTnsGain`` improved.
     - ``breaks-opposite-check``: an opposite check's WNS or TNS is unknown,
@@ -1399,12 +1395,14 @@ def _session_value(target_checks, reference, predicted):
     return value, detail, refusals
 
 
-def _leaf(name):
+def leaf_name(name):
+    """The last `/`-separated segment of a hierarchical instance or net name."""
     return name.rsplit("/", 1)[-1]
 
 
-def _filler(master, patterns):
-    return master is not None and any(fnmatch.fnmatchcase(master, pattern) for pattern in patterns)
+def is_filler(master, patterns):
+    """Whether `master` matches one of the Site's removable filler `patterns` (an absent master never does)."""
+    return bool(master) and any(fnmatch.fnmatchcase(master, pattern) for pattern in patterns)
 
 
 def _command_entry(line):
@@ -1521,7 +1519,7 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
     def refuse(code, detail):
         refusals.append({"code": code, "detail": detail})
 
-    # Taint: any one signal refuses the slot (notes/t3-toolkit-surface.md, capture rule 1, 2, 5).
+    # Taint: tainted.json, an uncertain line, or a missing or unclean ATCS:taint: line refuses the slot.
     if evidence.get("taintedJson") is not None:
         refuse("tainted", f"tainted.json: {core.canonical(evidence['taintedJson']).decode('utf-8')}")
     for line in lines:
@@ -1577,7 +1575,7 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
     def out_of_domain(name):
         if name in before:
             return name not in domain
-        return not _leaf(name).startswith(name_prefix)
+        return not leaf_name(name).startswith(name_prefix)
 
     out_of_scope = set()
     running = dict(before)
@@ -1610,7 +1608,7 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
         implied_changed = implied[0] != implied[1]
         if actual_changed and not implied_changed:
             if name not in touched and name not in domain and all(
-                    master is None or _filler(master, filler_patterns) for master in actual):
+                    master is None or is_filler(master, filler_patterns) for master in actual):
                 filler_changes.append(name)
             elif out_of_domain(name):
                 out_of_scope.add(name)

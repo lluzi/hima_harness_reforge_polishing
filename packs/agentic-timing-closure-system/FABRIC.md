@@ -112,7 +112,7 @@ every slot" drives the real fork in the in-process Host, from `prepare-workers` 
 test asserts the fork shape with `forkFrom`), `test/contract/fork-interactive-team.host.test.ts`
 (concurrent interactive Team branches) and `flow/tests/test_worker_slots.py`. The campaign plan is
 blockers first: the campaign-plan Reader counts every instance two active slots claim (edit domain or
-target-pin owner), every worst setup or hold check of a required scenario (read from
+target-pin owner) and every edit-domain net two active slots name, every worst setup or hold check of a required scenario (read from
 `state/observation.json` with `composition.worst_check_endpoints`, required scenarios from
 `state/policy.json`) that no active slot covers by `composition.covers` -- the one rule the recipe's
 `blockerCoverage` also uses: the check key in `targets` (a top-level port), or the key's or PT's raw
@@ -163,7 +163,10 @@ Schema limits and how the graph expresses them:
   `worker-result-admissible` FAIL (the join still collects). There is no per-slot revise loop, so the
   slot contributes nothing this round until a later research revisit re-plans it. `prepare-workers`
   removes an earlier skip receipt (`parked.json`) from every root it (re)prepares, since `prepare`
-  reuses the root of an identical package.
+  reuses the root of an identical package. Known limitation: a parked branch still runs its research
+  Workshop (a trivial parked request) and a few seconds of batch no-op; removing that cost needs a
+  Harness feature that skips a fork branch, not built here (with `workerSlots` defaulting to 6,
+  parking is rare).
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.
@@ -386,6 +389,13 @@ Known gaps carried from earlier tasks:
   parameters. The v2 wrapper additionally pins the complete flow and slot session Tcl. The current
   shared `contract.yml` still names v1 until ATCS-03 integrates the v2 path; no real XTop qualification
   has run, so worker research quality and the v2 binding remain unqualified.
+- G35 (Issue #64 final review, decision 5) Worker Team members get only a condensed copy of the
+  expert knowledge, in their `taskTemplate`: a Pack Agent Team member declares `inputs` (recorded Run
+  outputs read through `hima_delegation_input`) but has no knowledge list, and
+  `workshop.ts:knowledgeForWorkshop` serves only a Workshop's declared `knowledge`. So the
+  Researcher, Reviewer and Operator cannot read `knowledge/xtop-expert-operator.md` itself; the
+  slot's research Workshop (`research-worker-NN`) reads it and writes the request they work from.
+  Closing the gap needs a generic Harness seam for declaring Pack knowledge on a Team member.
 
 ## Reviews
 

@@ -37,7 +37,7 @@ PACK_DIR = FLOW_DIR.parent
 sys.path.insert(0, str(FLOW_DIR))
 sys.path.insert(0, str(TESTS_DIR))
 
-from atcs import adapters, core  # noqa: E402
+from atcs import adapters, core, workspaces  # noqa: E402
 
 TCLSH = shutil.which("tclsh")
 PREFIX = "atcs_w01_r1_"
@@ -631,6 +631,7 @@ class ToolkitContractTest(unittest.TestCase):
 
 class AnalysisTaskBudgetTest(unittest.TestCase):
     def _compile(self, domain=DOMAIN, **kwargs):
+        kwargs.setdefault("max_mutations", workspaces.SCOPE_MAX_MUTATIONS)
         return adapters.compile_xtop_analysis_manual_task(
             {"namePrefix": PREFIX}, domain, "/ws/operator.tcl", "/ws/ops.jsonl", **kwargs,
         )
@@ -642,14 +643,13 @@ class AnalysisTaskBudgetTest(unittest.TestCase):
         self.assertEqual(task["maxMutations"], 12)
         self.assertEqual(task["targetPins"], ["U9/D", "u/q_reg[3]/D"])
 
-    def test_absent_budget_defaults_to_one_mutation(self):
+    def test_the_package_recipe_cap_is_the_largest_budget(self):
         task = self._compile()
-        self.assertEqual(task["maxMutations"], adapters.DEFAULT_OPERATOR_MAX_MUTATIONS)
-        self.assertEqual(adapters.DEFAULT_OPERATOR_MAX_MUTATIONS, 1)
-        self.assertIn("set ::ATCS_MAX_MUTATIONS {1}", task["tcl"])
+        self.assertIn(f"set ::ATCS_MAX_MUTATIONS {{{workspaces.SCOPE_MAX_MUTATIONS}}}", task["tcl"])
+        self.assertEqual(task["maxMutations"], workspaces.SCOPE_MAX_MUTATIONS)
 
-    def test_refuses_a_budget_outside_one_to_two_hundred(self):
-        for bad in (0, 201, -1, "3", True, 2.5):
+    def test_refuses_a_budget_outside_one_to_the_recipe_cap(self):
+        for bad in (0, workspaces.SCOPE_MAX_MUTATIONS + 1, -1, "3", True, 2.5, None):
             with self.assertRaises(core.AtcsError, msg=repr(bad)) as ctx:
                 self._compile(max_mutations=bad)
             self.assertEqual(ctx.exception.code, "invalid-input")
@@ -1363,6 +1363,23 @@ class ObservedEffectConfinementTest(unittest.TestCase):
             self.assertIn("UOUT", message)
             self.assertEqual(session.ops[0]["status"], "reverted")
             self.assertEqual(session.ops[0]["outOfDomain"], ["UOUT"])
+
+    def test_an_out_of_domain_eco_action_beside_an_in_domain_master_change_is_undone(self):
+        """Full mode diffs masters only, so an ECO action on an out-of-domain cell whose master
+        stays put hides behind an in-domain master change unless `get_eco_cells` is read too."""
+        for session in self._both():
+            session.run(
+                "set ::stub_fix_effect {U1 BUFX4 UOUT BUFX1}\n"
+                f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+                'puts "CELLS:[stub_cells]"\n'
+            )
+            status, message = session.outcome("fix")
+            self.assertEqual(status, "ERR", session.stdout)
+            self.assertIn("UOUT", message)
+            op = session.ops[0]
+            self.assertEqual(op["status"], "reverted")
+            self.assertEqual(op["outOfDomain"], ["UOUT"])
+            self.assertEqual(session.cells_line(), INITIAL_CELLS)
 
     def test_fast_mode_refuses_a_new_net_it_cannot_prove_new(self):
         session = Session(self).run(
