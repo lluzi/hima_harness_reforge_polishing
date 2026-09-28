@@ -1504,7 +1504,7 @@ def eco_files(netlist=NETLIST_ECO, physical=PHYSICAL_ECO, arm="merged"):
 
 def arm_evidence(arm, *, setup=None, hold=None, complete=True, tainted="", eco=None, receipts=None,
                  session_deltas=None, auto_delta=None, total_delta=None, protected=None, export_code=0,
-                 tool_failure=None, predict_text=None, kept_new_nets=None):
+                 tool_failure=None, predict_text=None, kept_instance_nets=None):
     setup = setup if setup is not None else {"s1": (1, -0.02, -0.02), "s2": (0, 0.0, 0.0)}
     hold = hold if hold is not None else {"s1": (0, 0.0, 0.0), "s2": (2, -0.05, -0.08)}
     result = None
@@ -1521,7 +1521,7 @@ def arm_evidence(arm, *, setup=None, hold=None, complete=True, tainted="", eco=N
                                         "hold": gba_summary("hold", hold) if hold != "missing" else None},
         "eco": eco if eco is not None else eco_files(arm=arm),
         "toolFailure": tool_failure,
-        "keptNewNets": list(kept_new_nets or []),
+        "keptInstanceNets": dict(kept_instance_nets or {}),
     }
 
 
@@ -1679,8 +1679,19 @@ class ReconcileRecipeTests(unittest.TestCase):
 
     def test_new_nets_are_the_expert_nets_when_auto_finish_inserted_nothing(self):
         total = {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {"atcs_w02_r1_b1": "BUFX2"}, "removed": {}}
-        _, state = reconcile_default(merged_kw={"total_delta": total, "kept_new_nets": ["atcs_w02_r1_n1"]})
+        _, state = reconcile_default(merged_kw={
+            "total_delta": total,
+            "kept_instance_nets": {"atcs_w02_r1_b1": ["atcs_w02_r1_n1"], "atcs_w02_r1_gone": ["atcs_w02_r1_n9"]}})
         self.assertEqual(state["newNets"], ["atcs_w02_r1_n1"])
+
+    def test_an_expert_instance_without_a_recorded_net_makes_new_nets_unknown(self):
+        total = {"mastersChanged": {}, "added": {"atcs_w02_r1_b1": "BUFX2", "atcs_w01_r1_eco_3": "BUFX4"},
+                 "removed": {}}
+        _, state = reconcile_default(merged_kw={"total_delta": total,
+                                                "kept_instance_nets": {"atcs_w02_r1_b1": ["atcs_w02_r1_n1"],
+                                                                       "atcs_w01_r1_eco_3": []}})
+        self.assertIsNone(state["newNets"])
+        self.assertIn("atcs_w01_r1_eco_3", state["newNetsUnknown"])
 
     def test_new_nets_are_unknown_when_auto_fix_inserted_instances(self):
         auto = {"mastersChanged": {}, "added": {"atcs_b1_auto_eco_1": "BUFX2"}, "removed": {}}

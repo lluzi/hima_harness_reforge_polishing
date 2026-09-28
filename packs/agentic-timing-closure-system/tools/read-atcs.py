@@ -946,6 +946,23 @@ def _read_integration_state(report, workspace, extra, mods):
     ]
 
 
+def _recipe_batch_provenance(workspace):
+    """Whether the workspace's own state shows a recipe batch (Issue #64 Task 6)."""
+    state_dir = Path(workspace) / "state"
+    for name, test in (("replay-request.json", lambda doc: doc.get("mode") == "recipe"),
+                       ("integration-state.json",
+                        lambda doc: isinstance(doc.get("chosen"), dict) and bool(doc["chosen"].get("eco")))):
+        path = state_dir / name
+        if path.is_file() and not path.is_symlink():
+            try:
+                doc = _load_json(path)
+            except ValueError:
+                continue
+            if isinstance(doc, dict) and test(doc):
+                return True
+    return False
+
+
 def _read_precheck_evidence(report, workspace, extra, mods):
     """A stamped `atcs.precheck-evidence/1` artifact
     (`atcs.verification.precheck_evidence(merge_commit, spef_net_names_path)`):
@@ -970,6 +987,10 @@ def _read_precheck_evidence(report, workspace, extra, mods):
     batch_kind = obj.get("batchKind", "legacy")
     if batch_kind not in ("legacy", "recipe"):
         raise ValueError("precheck-evidence.batchKind must be legacy or recipe")
+    # A recipe pre-check never gates, so the claim needs provenance in the workspace itself: a
+    # recipe replay-request, or an integration-state that chose an ECO pair. Without it, the
+    # evidence gates exactly like a legacy batch.
+    recipe_provenance = _recipe_batch_provenance(workspace)
     if batch_kind == "recipe" and new_nets is None:
         if not isinstance(obj.get("newNetsUnknown"), str) or not obj["newNetsUnknown"]:
             raise ValueError("precheck-evidence.newNets is null without newNetsUnknown")
@@ -994,7 +1015,7 @@ def _read_precheck_evidence(report, workspace, extra, mods):
     count = result["count"]
     if batch_kind == "recipe" and new_nets is None:
         count = core.unknown(f"the batch's new nets are unknown: {obj['newNetsUnknown']}")
-    if batch_kind == "legacy":
+    if batch_kind == "legacy" or not recipe_provenance:
         # A legacy M5 batch uses the pre-check as its decision basis: its unqualified nets gate it.
         gate = count
     else:

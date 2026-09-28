@@ -782,7 +782,7 @@ async function bootAtcsGraph(t: TestContext, theme: 'light' | 'dark', remoteDebu
   ] });
   await writeFile(replayOverride, `${JSON.stringify([say('Campaign Agent conversation is ready.')], null, 2)}\n`);
   await writeLocalSite(h, { allowedReadRoots: [packSource, inputsRoot, h.workspace], allowedWriteRoots: [h.workspace],
-    allowedWrappers: [wrapper, 'python3', '/usr/bin/python3'], licences: { xtop: 1, innovus: 1, primetime: 1, starrc: 1 },
+    allowedWrappers: [wrapper, 'python3', '/usr/bin/python3'], licences: { xtop: 2, innovus: 1, primetime: 1, starrc: 1 },
     bindings: { designStateManifest: path.join(inputsRoot, 'manifest.json'), analysisContract: path.join(inputsRoot, 'analysis'),
       siteCapabilities: path.join(inputsRoot, 'caps.json'), workspaceRoot: h.workspace } });
   await writeReplayOverlay(h.home, { file: replayFile, overrideFile: replayOverride });

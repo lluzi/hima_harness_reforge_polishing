@@ -1739,8 +1739,8 @@ def _chosen_new_nets(chosen_arm, evidence, fillers):
     """``(newNets, unknownReason)`` for the chosen arm's refresh (presta's qualification input).
 
     Known only when every instance the arm added is accounted for: none added (sizing and
-    removals create no net), or merged with auto-finish adding none, so every new net is one a
-    kept expert command logged. Auto-fix names its own nets inside XTop, and this Pack does not
+    removals create no net), or merged with auto-finish adding none and every added instance
+    mapped to a net its own kept expert command recorded. Auto-fix names its own nets inside XTop, and this Pack does not
     read them back from the ECO files, so an arm whose auto-fix added instances has unknown
     new nets -- presta never claims a qualification it does not have.
     """
@@ -1754,7 +1754,12 @@ def _chosen_new_nets(chosen_arm, evidence, fillers):
     auto = evidence.get("autoDelta")
     auto_added = _delta_without_fillers(auto, fillers)["added"] if isinstance(auto, dict) else None
     if chosen_arm == "merged" and auto_added == {}:
-        return sorted(set(evidence.get("keptNewNets") or [])), None
+        # Every expert-added instance must map to a net its own kept command recorded.
+        instance_nets = evidence.get("keptInstanceNets") if isinstance(evidence.get("keptInstanceNets"), dict) else {}
+        unmapped = sorted(name for name in added if not instance_nets.get(name))
+        if unmapped:
+            return None, f"expert-added instance(s) {unmapped} have no recorded new net"
+        return sorted({net for name in added for net in instance_nets[name]}), None
     return None, (f"auto-fix in the {chosen_arm} arm inserted {len(added)} instance(s); XTop named their nets "
                   "and this Pack does not read them back from the ECO files")
 

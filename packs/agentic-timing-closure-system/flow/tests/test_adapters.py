@@ -1053,8 +1053,8 @@ class RecipeReplayTclshTest(unittest.TestCase):
 
     def test_the_expert_nets_of_kept_commands_are_read_back(self):
         _, _, arms = self._run_both(self.EVEN, self.EVEN)
-        self.assertEqual(arms["merged"]["keptNewNets"], ["atcs_w02_r1_n1"])
-        self.assertEqual(arms["control"]["keptNewNets"], [])
+        self.assertEqual(arms["merged"]["keptInstanceNets"], {"atcs_w02_r1_b1": ["atcs_w02_r1_n1"]})
+        self.assertEqual(arms["control"]["keptInstanceNets"], {})
 
     def test_a_changed_instance_that_no_longer_exists_is_not_protected_and_is_recorded(self):
         self.request = _recipe_request(extra_w02=[_recipe_command(

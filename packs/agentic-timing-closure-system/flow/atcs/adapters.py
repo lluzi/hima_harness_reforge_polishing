@@ -1356,8 +1356,9 @@ def read_replay_arm(arm_root, arm, request, workspace=None):
     """Read one finished (or failed) arm back for `atcs.integration.reconcile_recipe`.
 
     Returns ``{arm, result, receipts, badReceiptLines, sessionDeltas, autoDelta, totalDelta,
-    predictText, eco, keptNewNets}`` (``keptNewNets``: the nets the merged arm's kept toolkit
-    lines created -- their logged ``newNets`` and requested ``args.newNets``). Dump deltas come from the real cell dumps
+    predictText, eco, keptInstanceNets}`` (``keptInstanceNets``: each instance a kept merged-arm
+    toolkit line created, with the nets that line created -- its logged ``newNets`` and requested
+    ``args.newNets``; an empty list when it recorded none). Dump deltas come from the real cell dumps
     (`atcs.contributions.actual_delta`); ``eco`` lists every ``atcs_batch_netlist_*`` /
     ``atcs_batch_physical_*`` file with its path (relative to `workspace` when given), sha256
     and text. Anything absent reads as ``None``/empty -- `reconcile_recipe` decides what that
@@ -1406,7 +1407,7 @@ def read_replay_arm(arm_root, arm, request, workspace=None):
     auto_delta = contributions_module.actual_delta(previous, final) if previous is not None and final else None
     total_delta = contributions_module.actual_delta(base, final) if base is not None and final else None
 
-    kept_new_nets = []
+    instance_nets = {}
     ops_path = root / "ops.jsonl"
     if arm == "merged" and ops_path.is_file():
         for raw_line in ops_path.read_text(encoding="utf-8").splitlines():
@@ -1417,9 +1418,13 @@ def read_replay_arm(arm_root, arm, request, workspace=None):
             if not isinstance(line, dict) or line.get("status") != "kept" or line.get("cmd") == "undo":
                 continue
             args = line.get("args") if isinstance(line.get("args"), dict) else {}
-            for net in list(line.get("newNets") or []) + list(args.get("newNets") or []):
-                if isinstance(net, str) and net and net not in kept_new_nets:
-                    kept_new_nets.append(net)
+            nets = sorted({net for net in list(line.get("newNets") or []) + list(args.get("newNets") or [])
+                           if isinstance(net, str) and net})
+            before = ((line.get("before") or {}).get("instances") or {})
+            after = ((line.get("after") or {}).get("instances") or {})
+            for name, master in after.items():
+                if master is not None and before.get(name, None) is None and name in before:
+                    instance_nets[name] = sorted(set(instance_nets.get(name, [])) | set(nets))
 
     predict_text = {}
     for check in ("setup", "hold"):
@@ -1439,7 +1444,7 @@ def read_replay_arm(arm_root, arm, request, workspace=None):
     return {
         "arm": arm, "root": rel(root), "result": result, "receipts": receipts, "badReceiptLines": bad_lines,
         "sessionDeltas": session_deltas, "autoDelta": auto_delta, "totalDelta": total_delta,
-        "predictText": predict_text, "eco": eco, "keptNewNets": sorted(kept_new_nets),
+        "predictText": predict_text, "eco": eco, "keptInstanceNets": instance_nets,
     }
 
 

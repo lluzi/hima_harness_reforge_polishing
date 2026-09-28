@@ -921,7 +921,9 @@ class PrecheckEvidenceReaderTest(unittest.TestCase):
         values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
         self.assertEqual(values["tc_presta_gate_net_count"]["value"], 1)
 
-    def _write_recipe_evidence(self, new_nets, spef_lines, predictive, unknown_reason=None):
+    def _write_recipe_evidence(self, new_nets, spef_lines, predictive, unknown_reason=None, provenance=True):
+        if provenance:
+            _write(self.workspace / "state" / "replay-request.json", json.dumps({"mode": "recipe"}))
         spef_path = self.workspace / "inputs" / "spef-net-names.txt"
         _write(spef_path, "\n".join(spef_lines) + ("\n" if spef_lines else ""))
         body = {"parentStateId": "a" * 20, "contributions": [], "operations": [], "innovusEcoTcl": "",
@@ -950,6 +952,22 @@ class PrecheckEvidenceReaderTest(unittest.TestCase):
         report = self._write_recipe_evidence(["n1", "n2"], ["n1"], predictive=False)
         values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
         self.assertEqual(values["tc_unqualified_rc_net_count"]["value"], 1)
+        self.assertEqual(values["tc_presta_gate_net_count"]["value"], 0)
+
+    def test_a_recipe_claim_without_recipe_provenance_is_read_as_legacy(self):
+        report = self._write_recipe_evidence(["n1", "n2"], ["n1"], predictive=False, provenance=False)
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertEqual(values["tc_presta_gate_net_count"]["value"], 1)
+        report = self._write_recipe_evidence(None, ["n1"], predictive=False, unknown_reason="auto-fix inserted 2",
+                                             provenance=False)
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertIsNone(values["tc_presta_gate_net_count"]["value"])
+
+    def test_integration_state_with_a_chosen_pair_is_recipe_provenance(self):
+        _write(self.workspace / "state" / "integration-state.json",
+               json.dumps({"chosen": {"arm": "merged", "eco": {"netlist": {}, "physical": {}}}}))
+        report = self._write_recipe_evidence(["n1", "n2"], ["n1"], predictive=False, provenance=False)
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
         self.assertEqual(values["tc_presta_gate_net_count"]["value"], 0)
 
     def test_a_recipe_batch_claiming_a_prediction_it_does_not_have_is_refused(self):
