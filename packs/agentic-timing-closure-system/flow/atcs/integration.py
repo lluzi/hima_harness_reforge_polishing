@@ -26,6 +26,14 @@ This module owns the six M5 producers named in
   only flags documented in ``knowledge/xtop-capabilities.md`` and
   ``knowledge/innovus-stage-interventions.md``.
 
+Issue #64 Task 6 adds the recipe replay (see the "Recipe replay" section at the
+end of this module): `prepare_recipe_replay` (Task 4b's ranked recipe ->
+``"mode": "recipe"`` `replay-request`), `parse_gba_summary` (XTop's per-scenario
+`summarize_gba_violations` table), `eco_text_problems`, `reconcile_recipe` (arm
+safety and the merged-vs-control choice) and `seal_batch`'s recipe branch (the
+chosen ECO pair, both arms' predictions, the choice, per-session applied/skipped
+lists and deltas). The legacy step replay below is unchanged.
+
 Per ``AGENTIC_TIMING_CLOSURE_SYSTEM_ARCHITECTURE.zh-CN.md`` §8 ("Integration
 Fix Session"), this module is the "确定性适配器" half of that session: it
 never picks a winner and never invents a fix (that is the compose
@@ -275,7 +283,9 @@ group member happened to carry an identical op. `newNets` is every
 """
 from __future__ import annotations
 
+import fnmatch
 import math
+import re
 
 from . import core
 
@@ -1110,6 +1120,8 @@ def seal_batch(state, request, facts, contributions):
     with any of these is tentative, never a deliverable (architecture §8's
     step 10).
     """
+    if state.get("mode") == "recipe" or request.get("mode") == "recipe":
+        return _seal_recipe_batch(state, request, facts, contributions)
     if state.get("batchId") != request.get("batchId"):
         raise core.AtcsError("identity-mismatch", "state.batchId != request.batchId")
     if request.get("baseStateId") != facts.get("baseStateId"):
@@ -1175,5 +1187,701 @@ def seal_batch(state, request, facts, contributions):
         "innovusEcoTcl": innovus_eco_tcl(operations),
         "sourceMap": source_map,
         "newNets": new_nets,
+    }
+    return core.stamp("merge-commit", body)
+
+
+# ---------------------------------------------------------------------------
+# Recipe replay (Issue #64 Task 6): the generation's one XTop replay
+# ---------------------------------------------------------------------------
+#
+# A `replay-request` with ``"mode": "recipe"`` replays Task 4b's ranked recipe
+# (`composition-facts.recipe`, notes/t4b-recipe.md) in two XTop processes started
+# together from the same base (`templates/xtop-replay.tcl`, one run per arm):
+#
+# - **merged**: `000.dump`; per ranked session, in rank order, its commands through
+#   the worker toolkit's own `atcs_*` procedures, each session confined to its own
+#   edit domain, `namePrefix` and plan hash as its worker session had them, then
+#   `NNN.dump`; `set_dont_touch` on every
+#   instance the applied commands changed; if `autoFinish`, `AUTO_FINISH` (hold,
+#   then setup); `auto.dump`; final `summarize_gba_violations` per check;
+#   `write_design_changes ... -output_dir eco -keep_route`.
+# - **control**: `000.dump`; the old flow's qualified plain auto-fix (`CONTROL`);
+#   `auto.dump`; the same summaries; `write_design_changes ... -output_dir
+#   eco-control -keep_route`.
+#
+# Replay is best effort (user amendment 2026-09-28): a command the recipe marks
+# `skip`, or one that errors or that the toolkit refuses, is recorded as skipped
+# with its reason and the replay continues. `reconcile_recipe` then refuses an
+# unsafe arm (incomplete run, tainted toolkit session, out-of-domain replay change,
+# no single ECO pair, or a `FORMATVERSION`/`dbNetFreeWires`/`editDelete -net`
+# line), and picks the arm whose XTop prediction is better -- so the refreshed
+# batch is never worse than plain auto-fix by XTop's own estimate. PrimeTime after
+# the refresh stays the only convergence judge.
+
+RECIPE_PROCS = {
+    "atcs_size_cell": ("instance", "toMaster", "planSha256"),
+    "atcs_exchange_cell": ("instance", "cells", "planSha256"),
+    "atcs_insert_buffer": ("net", "loadPins", "masters", "newInstances", "newNets", "planSha256"),
+    "atcs_insert_dummy": ("pin", "master", "newInstance", "planSha256"),
+    "atcs_split_load": ("net", "pinGroups", "master", "newInstances", "newNets", "planSha256"),
+    "atcs_split_net": ("net", "master", "rule", "segments", "planSha256"),
+    "atcs_move_cell": ("instance", "x", "y", "planSha256"),
+    "atcs_remove_buffer": ("instance", "planSha256"),
+    "atcs_fix_hold_pins": ("pins", "effort", "holdTarget", "setupMargin", "sizeCellOnly", "useDummyCell",
+                           "fixTimingWindow", "maxClusterLoaderCount", "maxDelayCellLength", "delayCellList",
+                           "planSha256"),
+    "atcs_fix_setup_pins": ("pins", "methods", "removeBufferOnly", "sizeDownOnly", "effort", "setupTarget",
+                            "holdMargin", "planSha256"),
+}
+"""Toolkit mutation procedures a recipe command may name, with their positional argument
+names (`contract.yml` `interactive.arguments`, which a test checks). `atcs_undo` is absent:
+a recipe is a net kept log, so an undo never replays."""
+
+DEFAULT_SETUP_MARGIN = 0.02
+DEFAULT_HOLD_MARGIN = 0.02
+MARGIN_LIMIT = 0.2
+"""Qualified margins of the old serial flow (`packs/xtop-timing-closure/knowledge/source-flow.md`
+Sec.7.3), bounded like its fix plans (`closure.py` `validate_plan`: -0.2..0.2 ns)."""
+
+ARMS = ("merged", "control")
+ECO_PREFIX = "atcs_batch"
+ECO_DIRS = {"merged": "eco", "control": "eco-control"}
+_ECO_ROLES = ("netlist", "physical")
+_PREFIX_RE_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+
+
+def auto_finish_tcl(setup_margin, hold_margin):
+    """The merged arm's auto-finish, in the brief's order: hold, then setup (size, buffer).
+
+    Strings follow `packs/xtop-timing-closure/flow/closure.py` `actions_tcl_text` (hold-buffer,
+    setup-size, setup-buffer kinds at effort high, targets 0.0).
+    """
+    return [
+        f"fix_hold_gba_violations -effort high -hold_target 0.0 -setup_margin {setup_margin}",
+        f"fix_setup_gba_violations -methods size_cell -effort high -setup_target 0.0 -hold_margin {hold_margin}",
+        f"fix_setup_gba_violations -methods insert_buffer -effort high -setup_target 0.0 -hold_margin {hold_margin}",
+    ]
+
+
+def control_tcl(setup_margin, hold_margin):
+    """The control arm: the old flow's qualified plain auto-fix sequence (source-flow.md Sec.7.3
+    order: setup size, setup buffer, hold size, hold buffer), rendered by `closure.py`
+    `actions_tcl_text` at effort high."""
+    return [
+        f"fix_setup_gba_violations -methods size_cell -effort high -setup_target 0.0 -hold_margin {hold_margin}",
+        f"fix_setup_gba_violations -methods insert_buffer -effort high -setup_target 0.0 -hold_margin {hold_margin}",
+        f"fix_hold_gba_violations -size_cell_only -size_rule nominal_keywords -hold_target 0.0 "
+        f"-setup_margin {setup_margin}",
+        f"fix_hold_gba_violations -effort high -hold_target 0.0 -setup_margin {setup_margin}",
+    ]
+
+
+def _recipe_margin(plan, key, default):
+    value = plan.get(key, default)
+    if (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+            or not -MARGIN_LIMIT <= value <= MARGIN_LIMIT):
+        raise core.AtcsError("invalid-recipe", f"plan.{key} must be a number in [-{MARGIN_LIMIT}, {MARGIN_LIMIT}]")
+    return value
+
+
+def _recipe_word(value, label):
+    """One Tcl word for a toolkit argument: JSON scalars and (nested) arrays, brace-quoted.
+
+    Strings may not hold whitespace, braces, a backslash or a control character, so every
+    word is one literal inside its braces (brackets and `$` stay literal there). The toolkit
+    procedure still validates the value itself.
+    """
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return _format_number(value)
+    if isinstance(value, str):
+        if value == "":
+            return "{}"
+        if any(ch in "{}\\" or ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in value):
+            raise core.AtcsError("unsafe-name", f"{label} contains an unsafe character: {value!r}")
+        return "{" + value + "}"
+    if isinstance(value, list):
+        return "{" + " ".join(_recipe_word(item, label) for item in value) + "}"
+    raise core.AtcsError("malformed-input", f"{label} must be a JSON string, number, boolean or array")
+
+
+def recipe_call_tcl(proc, args):
+    """One toolkit call (``atcs_size_cell {U1} {BUFX2} {<sha>}``) from a recipe command.
+
+    Raises `AtcsError` (``invalid-recipe``, ``unsafe-name`` or ``malformed-input``) when the
+    procedure is not a replayable mutation, its named arguments do not match, or a value
+    cannot be one safe Tcl word.
+    """
+    names = RECIPE_PROCS.get(proc)
+    if names is None:
+        raise core.AtcsError("invalid-recipe", f"{proc!r} is not a replayable toolkit mutation")
+    if not isinstance(args, dict) or set(args) != set(names):
+        got = sorted(args) if isinstance(args, dict) else args
+        raise core.AtcsError("invalid-recipe", f"{proc} needs arguments {list(names)}, got {got!r}")
+    return " ".join([proc] + [_recipe_word(args[name], f"{proc}.{name}") for name in names])
+
+
+def _safe_names(values, label):
+    if not isinstance(values, list):
+        raise core.AtcsError("invalid-recipe", f"{label} must be a list")
+    for value in values:
+        _validate_tcl_value(value, f"{label} entry", allow_brackets=True)
+    return list(values)
+
+
+def _session_identity(slot, session):
+    if not isinstance(session, dict):
+        raise core.AtcsError("invalid-recipe", f"recipe session {slot!r} has no identity (namePrefix, editDomain)")
+    prefix = session.get("namePrefix")
+    if not isinstance(prefix, str) or not prefix or not set(prefix) <= _PREFIX_RE_CHARS or prefix[0].isdigit():
+        raise core.AtcsError("invalid-recipe", f"session {slot!r} namePrefix must be [A-Za-z_][A-Za-z0-9_]*")
+    domain = session.get("editDomain") or {}
+    if not isinstance(domain, dict):
+        raise core.AtcsError("invalid-recipe", f"session {slot!r} editDomain must be an object")
+    regions = []
+    for region in domain.get("regions") or []:
+        if (not isinstance(region, (list, tuple)) or len(region) != 4
+                or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
+                       for v in region)):
+            raise core.AtcsError("invalid-recipe", f"session {slot!r} region must be [x1, y1, x2, y2]")
+        regions.append(list(region))
+    return {
+        "prefix": prefix,
+        "instances": _safe_names(list(domain.get("instances") or []), f"{slot} editDomain.instances"),
+        "nets": _safe_names(list(domain.get("nets") or []), f"{slot} editDomain.nets"),
+        "pins": _safe_names(list(session.get("targetPins") or []), f"{slot} targetPins"),
+        "regions": regions,
+    }
+
+
+def prepare_recipe_replay(plan, base_state_id, recipe, sessions, required_scenarios=(), removable_fillers=()):
+    """Build a ``"mode": "recipe"`` `replay-request` from Task 4b's ranked recipe.
+
+    - `plan`: the admitted integration plan (``batchId``, ``baseStateId``, ``reason``; optional
+      ``autoFinish`` (default true) and ``setupMargin``/``holdMargin`` (default 0.02 ns)).
+    - `recipe`: `composition-facts.recipe` -- ``sessions`` in rank order, each ``{rank,
+      contribution, taskId, commands: [{seq, proc, args, instances, skip}]}``.
+    - `sessions`: ``{taskId: {contributionId, revision, namePrefix, editDomain, targetPins,
+      delta}}`` -- each worker slot's admitted work package and sealed Contribution.
+
+    A command whose procedure or arguments cannot be rendered safely is kept in the request as
+    skipped (``invalid-entry: ...``) and is never sent to XTop -- replay is best effort, so one
+    bad command never refuses the batch. Refusals (`AtcsError`): ``identity-mismatch`` (plan base
+    or a session's contribution id differs), ``invalid-recipe`` (malformed recipe, a slot ranked
+    twice, a slot without identity, margins out of range).
+    """
+    if not isinstance(plan, dict):
+        raise core.AtcsError("invalid-recipe", "plan must be an object")
+    if plan.get("baseStateId") != base_state_id:
+        raise core.AtcsError("identity-mismatch", "plan.baseStateId != facts.baseStateId")
+    batch_id = plan.get("batchId")
+    if not isinstance(batch_id, str) or not batch_id:
+        raise core.AtcsError("invalid-recipe", "plan.batchId must be a non-empty string")
+    auto_finish = plan.get("autoFinish", True)
+    if not isinstance(auto_finish, bool):
+        raise core.AtcsError("invalid-recipe", "plan.autoFinish must be a boolean")
+    setup_margin = _recipe_margin(plan, "setupMargin", DEFAULT_SETUP_MARGIN)
+    hold_margin = _recipe_margin(plan, "holdMargin", DEFAULT_HOLD_MARGIN)
+    if not isinstance(recipe, dict) or not isinstance(recipe.get("sessions"), list):
+        raise core.AtcsError("invalid-recipe", "recipe must be an object with a sessions list")
+    sessions = sessions if isinstance(sessions, dict) else {}
+
+    request_sessions = []
+    steps = []
+    seen_slots = set()
+    for index, ranked in enumerate(recipe["sessions"], start=1):
+        if not isinstance(ranked, dict) or not isinstance(ranked.get("commands"), list):
+            raise core.AtcsError("invalid-recipe", f"recipe session #{index} must carry a commands list")
+        slot = ranked.get("taskId")
+        if not isinstance(slot, str) or not slot:
+            raise core.AtcsError("invalid-recipe", f"recipe session #{index} has no taskId")
+        if slot in seen_slots:
+            raise core.AtcsError("invalid-recipe", f"recipe ranks slot {slot!r} twice")
+        seen_slots.add(slot)
+        identity = sessions.get(slot)
+        bound = _session_identity(slot, identity)
+        contribution_id = ranked.get("contribution")
+        if contribution_id != identity.get("contributionId"):
+            raise core.AtcsError(
+                "identity-mismatch",
+                f"recipe session {slot!r} names contribution {contribution_id!r}, the slot sealed "
+                f"{identity.get('contributionId')!r}",
+            )
+        request_sessions.append({
+            "slot": slot, "rank": ranked.get("rank"), "contributionId": contribution_id,
+            "revision": identity.get("revision"), "namePrefix": bound["prefix"], "dumpIndex": index,
+            "domain": {key: bound[key] for key in ("instances", "nets", "pins", "regions")},
+            "delta": _normalize_delta(identity.get("delta")),
+        })
+        for command in ranked["commands"]:
+            command = command if isinstance(command, dict) else {}
+            proc, args, skip = command.get("proc"), command.get("args"), command.get("skip")
+            tcl = None
+            if skip is not None and (not isinstance(skip, str) or not skip):
+                skip = "invalid-entry: skip must be null or a reason"
+            if skip is None:
+                try:
+                    tcl = recipe_call_tcl(proc, args)
+                except core.AtcsError as exc:
+                    skip = f"invalid-entry: {exc.code}: {exc.detail}"
+            step_id = core.digest({"batchId": batch_id, "contributionId": contribution_id,
+                                   "seq": command.get("seq"), "rank": len(steps)})
+            steps.append({
+                "stepId": step_id, "slot": slot, "contributionId": contribution_id, "seq": command.get("seq"),
+                "proc": proc, "args": args, "skip": skip, "tcl": tcl,
+            })
+
+    safe_batch = "".join(ch if ch in _PREFIX_RE_CHARS else "_" for ch in batch_id)
+    body = {
+        "mode": "recipe",
+        "batchId": batch_id,
+        "baseStateId": base_state_id,
+        "reason": plan.get("reason"),
+        "autoFinish": auto_finish,
+        "setupMargin": setup_margin,
+        "holdMargin": hold_margin,
+        "autoPrefix": f"atcs_{safe_batch}_auto_",
+        "autoFinishTcl": auto_finish_tcl(setup_margin, hold_margin) if auto_finish else [],
+        "controlTcl": control_tcl(setup_margin, hold_margin),
+        "requiredScenarios": list(required_scenarios or []),
+        "removableFillers": list(removable_fillers or []),
+        "sessions": request_sessions,
+        "steps": steps,
+        "excluded": list(recipe.get("excluded") or []),
+    }
+    return core.stamp("replay-request", body)
+
+
+# ---- XTop prediction (summarize_gba_violations) -------------------------------
+
+_GBA_HEADER_TOKENS = ("Count", "Worst", "TNS")
+
+
+def _number_token(token):
+    try:
+        value = float(token)
+    except ValueError:
+        return None
+    return value if math.isfinite(value) else None
+
+
+def parse_gba_summary(text, check=None):
+    """Per-scenario `summarize_gba_violations -exclude_path` table -> ``{"total", "scenarios"}``.
+
+    Pinned to real XTop 2025.09 output (notes/real-summarize-sample.txt): a ``### <check>
+    summary ###`` section, a ``Scenario Count Worst TNS`` header -- or, with ``-with_reference
+    -with_delta``, ``Scenario Count Count0 D_Count | Worst Worst0 D_Worst | TNS TNS0 D_TNS`` --
+    a dashed rule, a ``total`` row, then one indented row per scenario. Columns are located by
+    header name, so only the current ``Count``/``Worst``/``TNS`` values are read. TNS is signed
+    (negative when violating); a clean scenario reads ``0.0000``.
+
+    With `check` (``setup``/``hold``), only that check's section is read when the text carries
+    section markers. Returns ``None`` for text without such a table (an XTop error, an empty
+    redirect) -- the caller then treats the prediction as unknown, never as zero.
+    """
+    if not isinstance(text, str) or not text:
+        return None
+    lines = text.replace("\r", "").split("\n")
+    if check is not None and any(line.strip().startswith("### ") for line in lines):
+        marker = f"### {check} summary ###"
+        starts = [i for i, line in enumerate(lines) if line.strip() == marker]
+        if not starts:
+            return None
+        section = []
+        for line in lines[starts[0] + 1:]:
+            if line.strip().startswith("### "):
+                break
+            section.append(line)
+        lines = section
+    header = None
+    rows = []
+    for line in lines:
+        tokens = [token for token in line.split() if token != "|"]
+        if not tokens:
+            if rows:
+                break
+            continue
+        if header is None:
+            if tokens[0] == "Scenario" and all(name in tokens for name in _GBA_HEADER_TOKENS):
+                header = tokens
+            continue
+        if set(line.strip()) <= {"-"}:
+            continue
+        if len(tokens) != len(header):
+            if rows:
+                break
+            return None
+        rows.append(tokens)
+    if header is None or not rows:
+        return None
+    columns = {name: header.index(name) for name in _GBA_HEADER_TOKENS}
+    parsed = {"total": None, "scenarios": {}}
+    for tokens in rows:
+        count, wns, tns = (_number_token(tokens[columns[name]]) for name in _GBA_HEADER_TOKENS)
+        if count is None or wns is None or tns is None or count != int(count):
+            return None
+        entry = {"count": int(count), "wns": wns, "tns": tns}
+        if tokens[0] == "total":
+            parsed["total"] = entry
+        else:
+            parsed["scenarios"][tokens[0]] = entry
+    if parsed["total"] is None and not parsed["scenarios"]:
+        return None
+    return parsed
+
+
+def _prediction(predict_text, required):
+    """One arm's prediction: per-scenario tables plus the comparison key, or ``{"unknown": why}``."""
+    predict_text = predict_text if isinstance(predict_text, dict) else {}
+    tables = {}
+    for check in ("setup", "hold"):
+        table = parse_gba_summary(predict_text.get(check), check)
+        if table is None:
+            return {"unknown": f"no readable {check} summarize_gba_violations table"}
+        tables[check] = table
+    prediction = {}
+    for check in ("setup", "hold"):
+        scenarios = tables[check]["scenarios"]
+        names = list(required) if required else sorted(scenarios)
+        if not names:
+            if tables[check]["total"] is None:
+                return {"unknown": f"{check} summary has no scenario rows"}
+            rows = {"total": tables[check]["total"]}
+        else:
+            missing = [name for name in names if name not in scenarios]
+            if missing:
+                return {"unknown": f"{check} summary lacks required scenario(s) {missing}"}
+            rows = {name: scenarios[name] for name in names}
+        prediction[check] = rows
+        prediction[f"worst{check.capitalize()}Wns"] = round(min(row["wns"] for row in rows.values()), 6)
+        prediction[f"{check}Tns"] = round(sum(row["tns"] for row in rows.values()), 6)
+    return prediction
+
+
+def _prediction_key(prediction):
+    """Larger is better: worst slack, then the two checks' worst slacks together, then TNS."""
+    setup, hold = prediction["worstSetupWns"], prediction["worstHoldWns"]
+    return (round(min(setup, hold), 6), round(setup + hold, 6),
+            round(prediction["setupTns"] + prediction["holdTns"], 6))
+
+
+# ---- ECO pair safety -----------------------------------------------------------
+
+_FORMATVERSION_RE = re.compile(r"(?m)^\s*FORMATVERSION\s+")
+_ROUTE_DESTRUCTIVE_RE = re.compile(r"(?m)^\s*(?:dbNetFreeWires\b|editDelete\s+-net\b)")
+
+
+def eco_text_problems(role, text):
+    """Why one `write_design_changes -keep_route` file cannot be `source`d as-is (empty = safe).
+
+    The frozen serial flow's `validate_sourceable_eco` rules: an atomic `loadECO` directive file
+    (`FORMATVERSION`) is not sourceable Tcl, and `dbNetFreeWires` / `editDelete -net` destroy
+    routing despite `-keep_route`.
+    """
+    if not isinstance(text, str) or not [line for line in text.splitlines()
+                                         if line.strip() and not line.lstrip().startswith("#")]:
+        return [f"{role} ECO file is empty"]
+    problems = []
+    if _FORMATVERSION_RE.search(text):
+        problems.append(f"{role} ECO is an atomic loadECO FORMATVERSION file, not sourceable Tcl")
+    destructive = _ROUTE_DESTRUCTIVE_RE.findall(text)
+    if destructive:
+        problems.append(f"{role} ECO holds {len(destructive)} route-destructive dbNetFreeWires/editDelete -net line(s)")
+    return problems
+
+
+# ---- reconcile / choose ----------------------------------------------------------
+
+
+def _is_filler(master, patterns):
+    return bool(master) and any(fnmatch.fnmatchcase(master, pattern) for pattern in patterns)
+
+
+def _delta_without_fillers(delta, patterns):
+    delta = _normalize_delta(delta)
+    kept = _empty_delta()
+    for name, pair in delta["mastersChanged"].items():
+        if not (_is_filler(pair[0], patterns) or _is_filler(pair[1], patterns)):
+            kept["mastersChanged"][name] = pair
+    for key in ("added", "removed"):
+        for name, master in delta[key].items():
+            if not _is_filler(master, patterns):
+                kept[key][name] = master
+    return kept
+
+
+def _eco_pair(evidence_eco, arm):
+    """``(pair, texts, problems, missing)`` for one arm's `write_design_changes` output."""
+    evidence_eco = evidence_eco if isinstance(evidence_eco, dict) else {}
+    pair, texts, problems, missing = {}, {}, [], False
+    for role in _ECO_ROLES:
+        files = evidence_eco.get(role) or []
+        if len(files) != 1:
+            missing = True
+            problems.append(f"missing-eco-pair: {len(files)} {ECO_PREFIX}_{role}_* file(s) in "
+                            f"{ECO_DIRS[arm]}/, need exactly one")
+            continue
+        entry = files[0]
+        if not isinstance(entry.get("path"), str) or not isinstance(entry.get("sha256"), str):
+            missing = True
+            problems.append(f"missing-eco-pair: {role} file has no path/sha256")
+            continue
+        pair[role] = {"path": entry["path"], "sha256": entry["sha256"]}
+        texts[role] = entry.get("text")
+    if not missing:
+        for role in _ECO_ROLES:
+            problems.extend(eco_text_problems(role, texts[role]))
+    return pair if not missing else None, problems, missing
+
+
+def _arm_view(arm, evidence, request, session_accounts):
+    evidence = evidence if isinstance(evidence, dict) else {}
+    result = evidence.get("result") if isinstance(evidence.get("result"), dict) else None
+    problems = []
+    if result is None or result.get("complete") is not True:
+        problems.append("incomplete: the XTop run did not reach its end (no complete arm-result.json)")
+    elif result.get("arm") != arm:
+        problems.append(f"arm-result.json names arm {result.get('arm')!r}, not {arm!r}")
+    else:
+        if result.get("tainted"):
+            problems.append(f"tainted toolkit session: {result['tainted']}")
+        if result.get("exportCode") not in (0, "0"):
+            problems.append(f"write_design_changes failed: {result.get('exportResult')}")
+    if evidence.get("badReceiptLines"):
+        problems.append(f"{evidence['badReceiptLines']} unreadable receipts.jsonl line(s)")
+    pair, eco_problems, missing = _eco_pair(evidence.get("eco"), arm)
+    problems.extend(eco_problems)
+    if arm == "merged":
+        problems.extend(session_accounts["problems"])
+    view = {
+        "safe": not problems, "problems": problems, "missingPair": missing, "eco": pair,
+        "prediction": _prediction(evidence.get("predictText"), request.get("requiredScenarios") or []),
+        "toolFailure": evidence.get("toolFailure"),
+        "autoFix": (result or {}).get("autoFix") or [],
+    }
+    if arm == "merged":
+        view["protected"] = list((result or {}).get("protected") or [])
+        view["protectCode"] = (result or {}).get("protectCode")
+    return view
+
+
+def _merged_sessions(request, evidence):
+    """Per-session applied/skipped lists, replay deltas and their warnings (merged arm)."""
+    evidence = evidence if isinstance(evidence, dict) else {}
+    steps = request.get("steps") or []
+    steps_by_id = {step["stepId"]: step for step in steps}
+    fillers = request.get("removableFillers") or []
+    problems, warnings = [], []
+
+    receipts = {}
+    for receipt in evidence.get("receipts") or []:
+        step_id = receipt.get("stepId") if isinstance(receipt, dict) else None
+        if step_id not in steps_by_id:
+            problems.append(f"receipt for an unknown step: {receipt!r}")
+            continue
+        if step_id in receipts and receipts[step_id] != receipt:
+            problems.append(f"two different receipts for step {step_id}")
+            continue
+        receipts[step_id] = receipt
+
+    deltas = evidence.get("sessionDeltas") if isinstance(evidence.get("sessionDeltas"), dict) else {}
+    accounts = {}
+    for session in request.get("sessions") or []:
+        slot = session["slot"]
+        applied, skipped = [], []
+        for step in steps:
+            if step["slot"] != slot:
+                continue
+            receipt = receipts.get(step["stepId"])
+            if step.get("skip") is not None:
+                skipped.append({"stepId": step["stepId"], "attempted": False, "reason": f"recipe:{step['skip']}"})
+            elif receipt is None:
+                # Every sendable command leaves a receipt, applied or skipped; a missing one
+                # means the run stopped early or its evidence is incomplete.
+                skipped.append({"stepId": step["stepId"], "attempted": False, "reason": "no-receipt"})
+                problems.append(f"session {slot}: no receipt for step {step['stepId']}")
+            elif receipt.get("status") == "applied":
+                applied.append(step["stepId"])
+            else:
+                skipped.append({"stepId": step["stepId"], "attempted": receipt.get("attempted", True) is not False,
+                                "reason": str(receipt.get("reason") or "skipped")})
+        replay_delta = deltas.get(slot)
+        account = {"contributionId": session["contributionId"], "rank": session.get("rank"),
+                   "applied": applied, "skipped": skipped, "delta": replay_delta,
+                   "contributionDelta": session.get("delta")}
+        if replay_delta is None:
+            account["deltaMatches"] = False
+            problems.append(f"session {slot}: no {session['dumpIndex']:03d}.dump delta")
+        else:
+            replay_view = _delta_without_fillers(replay_delta, fillers)
+            account["deltaMatches"] = replay_view == _delta_without_fillers(session.get("delta"), fillers)
+            if not account["deltaMatches"]:
+                warnings.append({"kind": "replayMismatch", "slot": slot, "contributionId": session["contributionId"],
+                                 "detail": "the replayed session changed the design differently from its "
+                                           "Contribution's own dump delta"})
+            prefix = session.get("namePrefix") or ""
+            domain_instances = set((session.get("domain") or {}).get("instances") or [])
+            # Confinement: an existing instance outside this session's own edit domain, or a new
+            # one without its prefix. Filler masters are exempt (the Site's removable fillers).
+            stray = sorted(
+                name for name in _delta_instances(replay_view)
+                if name not in domain_instances
+                and not (name in replay_view["added"] and name.rsplit("/", 1)[-1].startswith(prefix))
+            )
+            if stray:
+                problems.append(f"session {slot}: out-of-domain replay change(s) {stray}")
+        accounts[slot] = account
+    return {"accounts": accounts, "problems": problems, "warnings": warnings}
+
+
+def choose_arm(merged, control):
+    """``(arm, reason)`` -- see `reconcile_recipe`. Raises when neither arm is usable."""
+    if not merged["safe"] and not control["safe"]:
+        code = "missing-input" if merged["missingPair"] else "eco-refused"
+        raise core.AtcsError(
+            code, f"no usable ECO pair: merged {merged['problems']}; control {control['problems']}",
+        )
+    if not control["safe"]:
+        return "merged", f"control arm unusable ({'; '.join(control['problems'])}); merged arm is safe"
+    if not merged["safe"]:
+        return "control", f"merged arm refused ({'; '.join(merged['problems'])}); control arm is safe"
+    merged_prediction, control_prediction = merged["prediction"], control["prediction"]
+    if "unknown" in merged_prediction:
+        return "control", f"merged prediction unknown ({merged_prediction['unknown']}); plain auto-fix kept"
+    if "unknown" in control_prediction:
+        return "merged", f"control prediction unknown ({control_prediction['unknown']}); merged arm is safe"
+    merged_key, control_key = _prediction_key(merged_prediction), _prediction_key(control_prediction)
+    detail = (f"worst WNS / setup+hold WNS / TNS: merged {list(merged_key)} vs control {list(control_key)}")
+    if merged_key == control_key:
+        return "merged", f"tie ({detail}); merged kept"
+    if merged_key > control_key:
+        return "merged", f"merged predicts better ({detail})"
+    return "control", f"control predicts better ({detail})"
+
+
+def reconcile_recipe(request, arms):
+    """Fold both arms' evidence into a ``"mode": "recipe"`` `integration-state`.
+
+    `arms` is ``{"merged"|"control": evidence}`` as `atcs.adapters.read_replay_arm` reads it
+    (``result`` = arm-result.json, ``receipts``, ``sessionDeltas``, ``autoDelta``,
+    ``totalDelta``, ``predictText``, ``eco`` = the `write_design_changes` files with their
+    text, ``toolFailure``).
+
+    An arm is unsafe when its run is incomplete, its toolkit session was tainted, its export
+    failed, it has no single netlist+physical pair, a pair file is empty or holds a
+    `FORMATVERSION` / `dbNetFreeWires` / `editDelete -net` line, or (merged) a receipt is
+    unattributable or a session's replay changed an instance outside its own edit domain.
+    Choice: a safe arm over an unsafe one; with both safe, the better XTop prediction over the
+    required scenarios -- worst of setup/hold WNS, then setup+hold worst WNS, then total TNS
+    (sum over scenarios) -- with a tie going to merged; an unknown merged prediction keeps
+    control, an unknown control prediction keeps merged. Neither arm usable raises
+    ``missing-input`` (the merged pair is missing) or ``eco-refused``.
+
+    Recorded, never blocking: skipped commands (per session), a session replay delta that
+    differs from its Contribution's own delta (``warnings`` kind ``replayMismatch``), and an
+    auto-finish change to a `set_dont_touch`-protected instance (``protectedChanged``). The
+    Reader-facing lists (``pending``, ``failed``, ``replayMismatch``, ``outOfScope``,
+    ``unknownReceipts``) stay empty: an unsafe arm is never the chosen one.
+    """
+    if not isinstance(request, dict) or request.get("mode") != "recipe":
+        raise core.AtcsError("identity-mismatch", "reconcile_recipe needs a recipe-mode replay-request")
+    arms = arms if isinstance(arms, dict) else {}
+    sessions = _merged_sessions(request, arms.get("merged"))
+    views = {arm: _arm_view(arm, arms.get(arm), request, sessions) for arm in ARMS}
+    chosen_arm, reason = choose_arm(views["merged"], views["control"])
+
+    merged_evidence = arms.get("merged") if isinstance(arms.get("merged"), dict) else {}
+    auto_delta = merged_evidence.get("autoDelta")
+    protected = views["merged"].get("protected") or []
+    warnings = list(sessions["warnings"])
+    protected_changed = []
+    if isinstance(auto_delta, dict):
+        normalized = _normalize_delta(auto_delta)
+        protected_changed = sorted(name for name in protected
+                                   if name in normalized["mastersChanged"] or name in normalized["removed"])
+    if protected_changed:
+        warnings.append({"kind": "protectedChanged", "instances": protected_changed,
+                         "detail": "auto-finish changed set_dont_touch-protected expert repairs"})
+    if views["merged"].get("protectCode") not in (None, 0, "0"):
+        warnings.append({"kind": "protectFailed", "detail": "set_dont_touch returned an error"})
+
+    chosen_evidence = arms.get(chosen_arm) if isinstance(arms.get(chosen_arm), dict) else {}
+    applied = {step_id: slot for slot, account in sessions["accounts"].items() for step_id in account["applied"]}
+    body = {
+        "mode": "recipe",
+        "batchId": request.get("batchId"),
+        "applied": applied,
+        "failed": [], "pending": [], "replayMismatch": [], "outOfScope": [], "unknownReceipts": [],
+        "delta": _normalize_delta(chosen_evidence.get("totalDelta")),
+        "sessions": sessions["accounts"],
+        "autoDelta": _normalize_delta(auto_delta) if isinstance(auto_delta, dict) else None,
+        "protected": list(protected),
+        "protectedChanged": protected_changed,
+        "warnings": warnings,
+        "arms": views,
+        "chosen": {"arm": chosen_arm, "reason": reason, "eco": views[chosen_arm]["eco"]},
+    }
+    return core.stamp("integration-state", body)
+
+
+def _seal_recipe_batch(state, request, facts, contributions):
+    """`seal_batch` for a recipe batch: the chosen ECO pair, both arms, the choice and sessions."""
+    if request.get("mode") != "recipe" or state.get("mode") != "recipe":
+        raise core.AtcsError("identity-mismatch", "a recipe integration-state needs its recipe replay-request")
+    if state.get("batchId") != request.get("batchId"):
+        raise core.AtcsError("identity-mismatch", "state.batchId != request.batchId")
+    if request.get("baseStateId") != facts.get("baseStateId"):
+        raise core.AtcsError("identity-mismatch", "request.baseStateId != facts.baseStateId")
+    blocking = {key: state.get(key) or [] for key in ("pending", "failed", "replayMismatch", "outOfScope",
+                                                      "unknownReceipts")}
+    problems = [f"{name}={ids}" for name, ids in blocking.items() if ids]
+    if problems:
+        raise core.AtcsError("integration-incomplete", "; ".join(problems))
+    chosen = state.get("chosen")
+    eco = chosen.get("eco") if isinstance(chosen, dict) else None
+    if (not isinstance(eco, dict) or chosen.get("arm") not in ARMS
+            or any(not isinstance(eco.get(role), dict) or not eco[role].get("path") or not eco[role].get("sha256")
+                   for role in _ECO_ROLES)):
+        raise core.AtcsError("missing-input", "integration-state names no chosen ECO pair")
+
+    contributions_by_id = {contribution["id"]: contribution for contribution in contributions}
+    sessions = state.get("sessions") or {}
+    credited = []
+    if chosen["arm"] == "merged":
+        for session in request.get("sessions") or []:
+            account = sessions.get(session["slot"]) or {}
+            if account.get("applied"):
+                contribution = contributions_by_id.get(session["contributionId"])
+                if contribution is None:
+                    raise core.AtcsError(
+                        "missing-input", f"no sealed contribution supplied for {session['contributionId']!r}",
+                    )
+                credited.append({"id": session["contributionId"], "revision": contribution.get("revision")})
+    credited.sort(key=lambda entry: entry["id"])
+
+    arms = state.get("arms") or {}
+    body = {
+        "parentStateId": facts.get("baseStateId"),
+        "batchId": request.get("batchId"),
+        "contributions": credited,
+        "operations": [],
+        "innovusEcoTcl": "",
+        "sourceMap": {},
+        "newNets": [],
+        "eco": {role: {"path": eco[role]["path"], "sha256": eco[role]["sha256"]} for role in _ECO_ROLES},
+        "choice": {"arm": chosen["arm"], "reason": chosen.get("reason")},
+        "arms": {arm: {"eco": (arms.get(arm) or {}).get("eco"), "safe": (arms.get(arm) or {}).get("safe"),
+                       "problems": (arms.get(arm) or {}).get("problems"),
+                       "prediction": (arms.get(arm) or {}).get("prediction")} for arm in ARMS},
+        "sessions": sessions,
+        "autoDelta": state.get("autoDelta"),
+        "protected": state.get("protected") or [],
+        "protectedChanged": state.get("protectedChanged") or [],
+        "warnings": state.get("warnings") or [],
+        "autoFinish": request.get("autoFinish"),
+        "setupMargin": request.get("setupMargin"),
+        "holdMargin": request.get("holdMargin"),
     }
     return core.stamp("merge-commit", body)

@@ -104,10 +104,10 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 7 | `capture-contribution` | slot | `contributions.seal` (base_ref/result_refs composed from `state/workers.json[slot]` and the slot's own workspace root -- see `_cmd_capture_contribution`'s docstring for the exact `before.dump`/`after.dump`/`ops.jsonl`/`summary.json` file names) | `state/contribution-<slot>.json` (one of 3 literal names) |
 | 8 | `collect` | (none) | reads whichever `contribution-w0N.json` exist AND still matches `state/workers.json[slot]`'s current revision (`contribution-index` read envelope: `{"contributions","pending":[{"slot","reason"}]}` -- see "Task 12c fix round" below) | `state/contributions-collected.json` |
 | 9 | `compose-facts` | plan(the SAME admitted integration-plan envelope row 10 reads; absent on the first pass -- see "Task 12c fix round" below) | `composition.analyze` (`baseStateId` from `state/working-state.json`; `resolutions` from the admitted plan, `[]` on the first pass) | `state/composition-facts.json` |
-| 10 | `replay-prepare` | baseState(`state/working-state.json`), plan(the admitted integration-plan envelope `{"plan":...,"facts":...}` -- see "Task 12c fix round" below), siteProfile | `integration.validate_plan` + `integration.prepare_replay` then `adapters.compile_xtop_replay_task` + `run_tool` (best-effort) | `state/replay-request.json` |
-| 11 | `reconcile` | (none -- edit domains come from `state/workers.json`, see "Task 12c fix round" below) | `integration.reconcile` | `state/integration-state.json` |
+| 10 | `replay-prepare` | baseState(`state/working-state.json`), plan(the admitted integration-plan envelope `{"plan":...,"facts":...}` -- see "Task 12c fix round" below), siteProfile; baseState, plan, siteProfile, autoFinish(optional knob `0`/`1`, overrides `plan.autoFinish`) | recipe batch (`composition-facts.recipe`, Issue #64 Task 6): `integration.prepare_recipe_replay` then `adapters.compile_recipe_replay_task` + `run_tool` for the merged and control arms at once (`integrations/<batchId>/{merged,control}/`); legacy `fix` selection: `integration.validate_plan` + `integration.prepare_replay` then `adapters.compile_xtop_replay_task` + `run_tool` (best-effort) | `state/replay-request.json` |
+| 11 | `reconcile` | (none -- edit domains come from `state/workers.json`, see "Task 12c fix round" below) | recipe batch: `adapters.read_replay_arm` (x2) + `integration.reconcile_recipe` (safety, choice); legacy: `integration.reconcile` | `state/integration-state.json` |
 | 12 | `presta` | baseState(`state/working-state.json`), scenariosContract, siteProfile | `integration.seal_batch` (read-only re-derivation, for `newNets`) + `adapters.compile_pt_presta_task` + `run_tool`, `verification.precheck_evidence` | `state/presta.json` (the stamped `precheckEvidence` artifact) |
-| 13 | `implement` | currentDesignState(`state/working-state.json`), siteProfile | `integration.seal_batch` then `adapters.compile_innovus_eco_task` + `run_tool` (refuses `stale-base` unless the sealed merge commit's own `parentStateId` equals `currentDesignState["id"]`; refuses `write-once` if `implementations/<mergeId>/`'s own outputs already exist -- C2, final review) | `state/implement.json` |
+| 13 | `implement` | currentDesignState(`state/working-state.json`), siteProfile | `integration.seal_batch` then `adapters.compile_innovus_eco_task` + `run_tool` (a recipe batch sources the chosen ECO pair, copied under `implementations/<mergeId>/eco/` only if its sha256 still matches the seal; refuses `stale-base` unless the sealed merge commit's own `parentStateId` equals `currentDesignState["id"]`; refuses `write-once` if `implementations/<mergeId>/`'s own outputs already exist -- C2, final review) | `state/implement.json` |
 | 14 | `extract` | corners, siteProfile | `adapters.compile_starrc_task` + `run_tool` (per corner) | `state/extract.json` |
 | 15 | `sta` | querySpec, scenariosContract, baseDesignState(`state/working-state.json`), siteProfile, maxPaths(`{from: strategy}`, an upper cap -- I10, final review, same rule as `observe`'s) | `_verified_state_sdc_path` (SDC from `baseDesignState`'s own recorded `sdc[0]`, sha256-verified -- no separate `sdc` argv any more, see "Fix round 2" below) + `state.design_state` (built FIRST, from the implemented outputs -- C5, final review), `adapters.compile_pt_scenario_task` + `run_tool` (per scenario), `state.capture` (each observation labeled with the candidate's OWN new state id, never `baseDesignState`'s), `refresh.record_refresh` (once, on completion) | `state/sta.json` (also archived verbatim to `implementations/<mergeId>/sta.json`, and appends `state/refresh-ledger.json`) |
 | 16 | `physical` | (candidate) mode only; (baseline) siteProfile, mode (I13: no longer two static rpt paths) | (candidate) I/O packaging only, reads+re-hashes `state/implement.json`'s `drcReport`/`connectivityReport`; (baseline) `adapters.compile_innovus_export_task` + `run_tool` against `state/baseline.json`'s own staged database, same `-limit`/`-error` values `innovus-eco.tcl` uses | `state/baseline-physical.json` or `state/physical.json` |
@@ -385,6 +385,7 @@ import json
 import os
 import shutil
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 _FLOW_DIR = Path(__file__).resolve().parent
@@ -1572,7 +1573,10 @@ def _cmd_replay_prepare(workspace, args):
     `receipts.jsonl`". `reconcile` itself is unaffected: a step with no receipt at all
     still reports as `pending`, exactly as before.
     """
-    base_state_path, plan_path, site_profile_path = args
+    if len(args) not in (3, 4):
+        raise InputError("invalid-input", "usage: replay-prepare <workspace> <baseState> <plan> <site> [autoFinish]")
+    base_state_path, plan_path, site_profile_path = args[:3]
+    auto_finish = _auto_finish_arg(args[3]) if len(args) == 4 else None
     workspace = Path(workspace)
     facts = _read_declared(_paths(workspace)["composition_facts"], "composition-facts")
     collected = _read_plain(_paths(workspace)["contributions_collected"])
@@ -1583,6 +1587,8 @@ def _cmd_replay_prepare(workspace, args):
     base_state = _read_declared(base_state_path, "design-state")
     if _is_stale_base(base_state["id"], facts.get("baseStateId")):
         raise core.AtcsError("stale-base", "base design-state does not match facts.baseStateId")
+    if _is_recipe_batch(facts, plan_raw, collected):
+        return _replay_prepare_recipe(workspace, base_state, facts, collected, plan_raw, site_profile, auto_finish)
 
     validated_plan = integration.validate_plan(plan_raw, facts)
     request = integration.prepare_replay(validated_plan, facts, collected["contributions"])
@@ -1597,7 +1603,7 @@ def _cmd_replay_prepare(workspace, args):
     # authored `batchId` (`plan.batchId`, never invented by this dispatcher) has no
     # freshness guarantee of its own; replaying the same id twice would silently mix
     # one generation's raw XTop evidence into what looks like a second, distinct one.
-    if output_root.exists() and (output_root / "xtop-replay.tcl").is_file():
+    if _replay_already_ran(output_root):
         raise core.AtcsError(
             "batch-id-reused",
             f"integrations/{batch_id}/xtop-replay.tcl already exists -- batch ids must be unique, "
@@ -1637,6 +1643,127 @@ def _cmd_replay_prepare(workspace, args):
     return _paths(workspace)["replay_request"], request
 
 
+def _auto_finish_arg(value):
+    """The optional `autoFinish` knob argv (`1`/`0`, `true`/`false`); `None` keeps the plan's."""
+    text = str(value).strip().lower()
+    if text in ("1", "1.0", "true"):
+        return True
+    if text in ("0", "0.0", "false"):
+        return False
+    raise InputError("invalid-input", f"autoFinish must be 0 or 1, got {value!r}")
+
+
+def _replay_already_ran(output_root):
+    """Whether `integrations/<batchId>/` already holds a replay: a legacy step replay's
+    `xtop-replay.tcl`, or a recipe replay's merged-arm one. Only `replay-prepare` writes either."""
+    return (output_root / "xtop-replay.tcl").is_file() or (output_root / "merged" / "xtop-replay.tcl").is_file()
+
+
+def _is_recipe_batch(facts, plan_raw, collected):
+    """A batch replays Task 4b's ranked recipe (Issue #64 Task 6) when `composition-facts`
+    carries one and the plan selects no legacy `fix` Contribution (those keep the M5 step
+    replay unchanged)."""
+    if not isinstance(facts.get("recipe"), dict):
+        return False
+    selected = set(plan_raw.get("select") or []) if isinstance(plan_raw.get("select"), list) else set()
+    return not any(contribution.get("kind") == "fix" and contribution.get("id") in selected
+                   for contribution in collected.get("contributions") or [])
+
+
+def _recipe_sessions(workspace, recipe, collected, base_state_id):
+    """`{taskId: identity}` for every ranked recipe session: the slot's admitted work package
+    (`state/workers.json`: namePrefix, editDomain, targetPins) and its sealed Contribution
+    (id, revision, dump delta). A slot missing either is left out, so
+    `integration.prepare_recipe_replay` refuses it (`invalid-recipe`)."""
+    workers = (_read_plain(_paths(workspace)["workers"]).get("workers") or {})
+    by_id = {contribution.get("id"): contribution for contribution in collected.get("contributions") or []}
+    sessions = {}
+    for ranked in recipe.get("sessions") or []:
+        slot = ranked.get("taskId") if isinstance(ranked, dict) else None
+        contribution = by_id.get(ranked.get("contribution")) if isinstance(ranked, dict) else None
+        entry = workers.get(slot) if isinstance(slot, str) else None
+        if contribution is None or not isinstance(entry, dict) or contribution.get("taskId") != slot:
+            continue
+        if _is_stale_base(contribution.get("baseStateId"), base_state_id):
+            raise core.AtcsError("stale-base", f"recipe session {slot!r} was sealed against another base")
+        work_package = entry.get("workPackage") or {}
+        sessions[slot] = {
+            "contributionId": contribution["id"], "revision": contribution.get("revision"),
+            "namePrefix": entry.get("namePrefix"), "editDomain": work_package.get("editDomain") or {},
+            "targetPins": work_package.get("targetPins") or [], "delta": contribution.get("delta"),
+        }
+    return sessions
+
+
+def _run_replay_arms(site_profile, task):
+    """Start both arms' XTop processes together and wait for both; `{arm: toolFailure|None}`.
+
+    One arm failing never stops or fails the other (a failed control arm must not fail the
+    merged arm); `reconcile` reads whatever each arm left behind.
+    """
+    def run(arm_task):
+        try:
+            adapters.run_tool(site_profile, arm_task["argv"], cwd=arm_task["root"], log_path=arm_task["logPath"])
+        except adapters.AdapterToolError as exc:
+            return {"detail": exc.detail, "log": str(exc.log_path)}
+        return None
+
+    with ThreadPoolExecutor(max_workers=len(task["arms"])) as pool:
+        futures = {arm: pool.submit(run, arm_task) for arm, arm_task in task["arms"].items()}
+        return {arm: future.result() for arm, future in futures.items()}
+
+
+def _replay_prepare_recipe(workspace, base_state, facts, collected, plan_raw, site_profile, auto_finish):
+    """Issue #64 Task 6: replay the ranked recipe as two concurrent XTop arms (merged, control).
+
+    Writes `integrations/<batchId>/{merged,control}/` (`adapters.compile_recipe_replay_task`),
+    runs both through the Site wrapper at once, and records each arm's root and any tool
+    failure in `state/replay-receipts.json` (`{"mode": "recipe", "arms": {...}}`). A tool
+    failure is evidence, not a refusal: `reconcile` decides which arm, if any, is usable.
+    """
+    plan = dict(plan_raw)
+    if auto_finish is not None:
+        plan["autoFinish"] = auto_finish
+    recipe = facts["recipe"]
+    sessions = _recipe_sessions(workspace, recipe, collected, facts.get("baseStateId"))
+    for key in ("design", "techLef", "cellLefGlob"):
+        if not site_profile.get(key):
+            raise InputError("invalid-input", f"site capabilities is missing {key!r}")
+    xtop_context = _verified_xtop_context(workspace, base_state["id"], site_profile)
+    request = integration.prepare_recipe_replay(
+        plan, facts.get("baseStateId"), recipe, sessions,
+        required_scenarios=xtop_context.get("requiredScenarios") or [],
+        removable_fillers=xtop_context.get("removableFillers") or [],
+    )
+    batch_id = adapters.validate_path_segment(request.get("batchId"), "replay-request.batchId")
+    output_root = workspace / "integrations" / batch_id
+    if _replay_already_ran(output_root):
+        raise core.AtcsError(
+            "batch-id-reused",
+            f"integrations/{batch_id}/ already holds a replay -- batch ids must be unique, "
+            "this Pack never replays the same batch id a second time",
+        )
+    netlist_path = workspace / base_state["netlist"]["path"]
+    def_path = workspace / base_state["def"]["path"] if base_state.get("def") else None
+    task = adapters.compile_recipe_replay_task(
+        site_profile["design"], site_profile["techLef"], site_profile["cellLefGlob"],
+        str(netlist_path), str(def_path) if def_path else "", request, output_root, xtop_context,
+    )
+    for arm_task in task["arms"].values():
+        Path(arm_task["root"]).mkdir(parents=True, exist_ok=True)
+        Path(arm_task["recipePath"]).write_text(arm_task["recipeText"], encoding="utf-8")
+        Path(arm_task["autoFixPath"]).write_text(arm_task["autoFixText"], encoding="utf-8")
+        Path(arm_task["tclPath"]).write_text(arm_task["tcl"], encoding="utf-8")
+    failures = _run_replay_arms(site_profile, task)
+    arms = {}
+    for arm, arm_task in task["arms"].items():
+        arms[arm] = {"root": _relpath(arm_task["root"], workspace)}
+        if failures.get(arm) is not None:
+            arms[arm]["toolFailure"] = failures[arm]
+    _canonical_write(_paths(workspace)["replay_receipts"], {"mode": "recipe", "arms": arms})
+    return _paths(workspace)["replay_request"], request
+
+
 def _cmd_reconcile(workspace, args):
     """Edit domains come from `state/workers.json`'s own validated `workPackage` (Task 12c item 2).
 
@@ -1656,6 +1783,17 @@ def _cmd_reconcile(workspace, args):
     workspace = Path(workspace)
     request = _read_declared(_paths(workspace)["replay_request"], "replay-request")
     receipts_doc = _read_plain(_paths(workspace)["replay_receipts"])
+    if request.get("mode") == "recipe":
+        # Issue #64 Task 6: both arms are read back fresh from disk (dumps, receipts,
+        # summaries, the ECO pair and its bytes) and `reconcile_recipe` chooses.
+        batch_id = adapters.validate_path_segment(request.get("batchId"), "replay-request.batchId")
+        recorded = receipts_doc.get("arms") if isinstance(receipts_doc.get("arms"), dict) else {}
+        arms = {}
+        for arm in adapters.REPLAY_ARMS:
+            evidence = adapters.read_replay_arm(workspace / "integrations" / batch_id / arm, arm, request, workspace)
+            evidence["toolFailure"] = (recorded.get(arm) or {}).get("toolFailure")
+            arms[arm] = evidence
+        return _paths(workspace)["integration_state"], integration.reconcile_recipe(request, arms)
     collected = _read_plain(_paths(workspace)["contributions_collected"])
     workers_doc = _read_plain(_paths(workspace)["workers"])
     workers = workers_doc.get("workers", {}) or {}
@@ -1887,7 +2025,8 @@ def _cmd_implement(workspace, args):
         # Crash-window recovery (final review minor, item 2): recompile the same
         # deterministic task (no side effects, never runs the tool) so the exact
         # outputs a genuine prior success would have produced can be re-verified.
-        recovery_task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root))
+        recovery_task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root),
+                                                          eco_root=workspace)
         recovery_outputs = recovery_task["outputs"]
         outputs_verified = all(Path(path).is_file() for path in recovery_outputs.values())
         if outputs_verified:
@@ -1910,17 +2049,34 @@ def _cmd_implement(workspace, args):
     # an adopted one). Preserve that partial evidence, moved aside, rather than
     # overwriting or discarding it in place, then run this attempt into a fresh
     # `output_root`.
-    if (output_root / "eco.tcl").is_file():
+    if (output_root / "eco.tcl").is_file() or (output_root / "innovus-eco.tcl").is_file():
         attempt = 1
         while (output_root.parent / f"{merge_id}-attempt-{attempt}").exists():
             attempt += 1
         output_root.rename(output_root.parent / f"{merge_id}-attempt-{attempt}")
 
-    task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root))
+    task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root),
+                                             eco_root=workspace)
 
-    eco_path = Path(task["ecoPath"])
-    eco_path.parent.mkdir(parents=True, exist_ok=True)
-    eco_path.write_text(task["ecoText"], encoding="utf-8")
+    if task.get("ecoCopies"):
+        # Issue #64 Task 6: the chosen `write_design_changes -keep_route` pair, copied into
+        # this implementation only if its bytes are still exactly what the batch sealed.
+        for copy in task["ecoCopies"]:
+            source = Path(copy["from"])
+            if source.is_symlink() or not source.is_file() or core.file_sha256(source) != copy["sha256"]:
+                raise core.AtcsError(
+                    "identity-mismatch",
+                    f"ECO {copy['role']} file {source} is missing or differs from the sha256 the batch sealed",
+                )
+            target = Path(copy["to"])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+            if core.file_sha256(target) != copy["sha256"]:
+                raise core.AtcsError("identity-mismatch", f"ECO {copy['role']} copy {target} differs from its source")
+    else:
+        eco_path = Path(task["ecoPath"])
+        eco_path.parent.mkdir(parents=True, exist_ok=True)
+        eco_path.write_text(task["ecoText"], encoding="utf-8")
     main_tcl_path = output_root / "innovus-eco.tcl"
     main_tcl_path.write_text(task["tcl"], encoding="utf-8")
     log_path = output_root / "innovus-eco.log"
