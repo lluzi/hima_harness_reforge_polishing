@@ -96,6 +96,8 @@ save_workspace -as ${design}_operator_baseline
 #   matchesRequest  whether the delta holds the named new/removed instances
 #   outOfDomain, undo  the refused objects and the immediate XTop undo calls
 #   error   the unexpected Tcl error that made the line uncertain
+# Every summarize_gba_violations call carries -exclude_path, as the qualified
+# flow's reports do, so the reference and every reading share one option set.
 # gain.jsonl (beside ops.jsonl): {"seq","kind","checks":{"setup"|"hold":
 #   {"command","code","result","text"}}[,"topN"]}, kind reference | mutation
 #   | undo | probe; seq is the ops.jsonl line it follows (0 = session start).
@@ -510,7 +512,7 @@ proc atcs_summary_json {entry} {
 proc atcs_capture_reference {} {
     set pairs {}
     foreach check {setup hold} {
-        set entry [atcs_summarize $check {-as_reference}]
+        set entry [atcs_summarize $check {-as_reference -exclude_path}]
         if {[lindex $entry 1] != 0} { error "session reference capture failed for $check: [lindex $entry 2]" }
         lappend pairs $check [atcs_summary_json $entry]
     }
@@ -525,7 +527,7 @@ proc atcs_ensure_reference {} {
 proc atcs_log_gain {kind seq} {
     set pairs {}
     foreach check {setup hold} {
-        lappend pairs $check [atcs_summary_json [atcs_summarize $check {-with_delta -with_reference}]]
+        lappend pairs $check [atcs_summary_json [atcs_summarize $check {-with_delta -with_reference -exclude_path}]]
     }
     set line [atcs_jobj [list seq $seq kind [atcs_js $kind] checks [atcs_jobj $pairs]]]
     if {[catch {atcs_append [atcs_gain_path] $line} message]} {
@@ -722,7 +724,7 @@ proc atcs_gain {check top_n} {
     atcs_choice check $check {setup hold}
     atcs_int topN $top_n 1 100
     atcs_ensure_reference
-    set entry [atcs_summarize $check [list -with_delta -with_reference -with_top_n $top_n -with_fail_reason]]
+    set entry [atcs_summarize $check [list -with_delta -with_reference -exclude_path -with_top_n $top_n -with_fail_reason]]
     atcs_append [atcs_gain_path] [atcs_jobj [list seq $::atcs_seq kind [atcs_js probe] topN $top_n \
         checks [atcs_jobj [list $check [atcs_summary_json $entry]]]]]
     lassign $entry command code result text
