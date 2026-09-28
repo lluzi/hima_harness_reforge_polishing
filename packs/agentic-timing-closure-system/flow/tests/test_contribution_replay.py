@@ -1006,5 +1006,236 @@ class SealTests(unittest.TestCase):
             self.assertEqual(contribution["touches"]["instances"], ["U1"])
 
 
+
+# ---------------------------------------------------------------------------
+# Issue #64 Task 4: `xtop-session` Contributions from the Task 3 toolkit logs.
+# ---------------------------------------------------------------------------
+
+import session_fixtures as sf  # noqa: E402
+
+BEFORE = {"U1": "BUFX1", "U2": "BUFX1", "U3": "INVX1", "X9": "BUFX1", "FILL1": "FILLER4"}
+IMPROVES = ((-0.020, -0.100), (-0.020, -0.100)), ((-0.070, -1.200), (-0.050, -0.900))
+
+
+def _seal_session(log, after, before=None, evidence=None, base_ref=None, filler_patterns=None,
+                  gain_text=None):
+    with tempfile.TemporaryDirectory() as tmp:
+        before_path = write_dump(tmp, "before.dump", before if before is not None else BEFORE)
+        after_path = write_dump(tmp, "after.dump", after)
+        clean = {"taintedJson": None, "transcriptTaint": "clean", "ecoOutput": True}
+        clean.update(evidence or {})
+        result_refs = {"beforeDump": before_path, "afterDump": after_path, "evidence": clean,
+                       "fillerPatterns": list(filler_patterns or [])}
+        return contributions.seal_session(
+            base_ref or sf.make_base_ref(), result_refs, log.ops_text(),
+            log.gain_text() if gain_text is None else gain_text)
+
+
+def _codes(contribution):
+    return sorted({refusal["code"] for refusal in contribution["refusals"]})
+
+
+class XtopSessionNetLogTests(unittest.TestCase):
+    def test_an_undone_insert_is_excluded_from_the_net_command_log(self):
+        log = sf.SessionLog()
+        inserted = log.insert("N1", ["U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"],
+                              gain=IMPROVES)
+        log.undo(inserted, gain=(((-0.020, -0.100), (-0.020, -0.100)), ((-0.070, -1.200), (-0.070, -1.200))))
+        sized = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(contribution["kind"], "xtop-session")
+        self.assertEqual([command["seq"] for command in contribution["commands"]], [sized])
+        command = contribution["commands"][0]
+        self.assertEqual(command["proc"], "atcs_size_cell")
+        self.assertEqual(command["args"], {"instance": "U1", "toMaster": "BUFX2", "planSha256": sf.PLAN})
+        self.assertEqual(command["instances"], ["U1"])
+        self.assertEqual(contribution["session"]["undone"], [inserted])
+        self.assertNotIn("atcs_w01_r1_b1", json.dumps(contribution["commands"]))
+        self.assertEqual(contribution["delta"]["mastersChanged"], {"U1": ["BUFX1", "BUFX2"]})
+        self.assertEqual(contribution["operations"], [])
+
+    def test_an_undo_that_discards_empty_checkpoints_leaves_a_no_fix(self):
+        log = sf.SessionLog()
+        sized = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        checkpoint = log.no_change(checkpoint=True)
+        log.undo(sized, discards=[checkpoint],
+                 gain=(((-0.020, -0.100), (-0.020, -0.100)), ((-0.070, -1.200), (-0.070, -1.200))))
+
+        contribution = _seal_session(log, dict(BEFORE))
+
+        self.assertEqual(contribution["kind"], "no-fix")
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(contribution["commands"], [])
+        self.assertEqual(contribution["session"]["discarded"], [checkpoint])
+        self.assertIn("kept no command", contribution["diagnosis"])
+
+    def test_fix_split_move_and_eco_action_lines_are_accepted_from_the_dump_delta(self):
+        log = sf.SessionLog()
+        log.fix_hold(["U1/D"], {"U2": "BUFX1", "atcs_w01_r1_eco_1": None},
+                     {"U2": "BUFX2", "atcs_w01_r1_eco_1": "DELAY2"}, gain=IMPROVES)
+        log.move("U3", "INVX1", 10.0, 20.0, gain=IMPROVES)
+        log.fix_hold(["U1/D"], {"U1": "BUFX1"}, {"U1": "BUFX1"}, eco_cells=["U1"], gain=IMPROVES)
+
+        contribution = _seal_session(log, {**BEFORE, "U2": "BUFX2", "atcs_w01_r1_eco_1": "DELAY2"})
+
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual([c["proc"] for c in contribution["commands"]],
+                         ["atcs_fix_hold_pins", "atcs_move_cell", "atcs_fix_hold_pins"])
+        self.assertEqual(contribution["commands"][1]["verified"], "eco-actions")
+        self.assertEqual(contribution["commands"][2]["ecoCells"], ["U1"])
+        self.assertEqual(contribution["commands"][2]["instances"], ["U1"])
+
+    def test_a_malformed_line_is_unusable_input(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.ops[0]["status"] = "maybe"
+        with self.assertRaises(core.AtcsError) as ctx:
+            _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(ctx.exception.code, "malformed-ops-log")
+
+    def test_the_legacy_typed_procedure_log_still_seals_through_seal(self):
+        self.assertFalse(contributions.is_session_log(
+            ops_text({"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"})))
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        self.assertTrue(contributions.is_session_log(log.ops_text()))
+
+
+class XtopSessionAdmissionTests(unittest.TestCase):
+    def test_a_negative_predicted_gain_is_refused_no_predicted_gain(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2",
+                 gain=(((-0.020, -0.100), (-0.020, -0.100)), ((-0.070, -1.200), (-0.090, -1.500))))
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertFalse(contribution["admissible"])
+        self.assertEqual(_codes(contribution), ["no-predicted-gain"])
+
+    def test_no_gain_at_all_is_refused_no_predicted_gain(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2",
+                 gain=(((-0.020, -0.100), (-0.020, -0.100)), ((-0.070, -1.200), (-0.070, -1.200))))
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(_codes(contribution), ["no-predicted-gain"])
+
+    def test_an_unreadable_gain_summary_is_refused_no_predicted_gain(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        for check in ("setup", "hold"):
+            log.gains[-1]["checks"][check]["text"] = "summary unavailable\n"
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(_codes(contribution), ["no-predicted-gain"])
+        self.assertIn("unknown", contribution["predicted"]["xtopHoldWns"])
+
+    def test_predicted_measures_value_and_fail_reasons_come_from_the_last_gain_lines(self):
+        log = sf.SessionLog()
+        sized = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.gain(sized, "probe", ((-0.020, -0.100), (-0.021, -0.110)), ((-0.070, -1.200), (-0.050, -0.900)),
+                 fail_reasons={"setup": {}, "hold": {"break_setup": 3, "legal_fail_no_space_on_row": 2}}, top_n=5)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        predicted = contribution["predicted"]
+        self.assertAlmostEqual(core.value_of(predicted["xtopHoldWns"]), -0.050)
+        self.assertAlmostEqual(core.value_of(predicted["xtopSetupWns"]), -0.021)
+        self.assertAlmostEqual(core.value_of(predicted["xtopHoldTns"]), -0.900)
+        self.assertAlmostEqual(core.value_of(contribution["reference"]["xtopHoldWns"]), -0.070)
+        self.assertEqual(contribution["validationLevel"], "xtop")
+        # Targets are hold checks: value is the hold WNS gain; setup is not a target here.
+        self.assertAlmostEqual(contribution["value"], 0.020)
+        self.assertAlmostEqual(contribution["valueDetail"]["tnsGain"], 0.300)
+        self.assertEqual(contribution["valueDetail"]["targetChecks"], ["hold"])
+        self.assertEqual(contribution["failReasons"],
+                         {"hold": {"break_setup": 3, "legal_fail_no_space_on_row": 2}, "setup": {}})
+        self.assertEqual(contribution["targetPins"], ["U1/D"])
+
+    def test_an_out_of_domain_change_in_the_dump_is_out_of_scope(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2", "X9": "BUFX4"})
+        self.assertFalse(contribution["admissible"])
+        self.assertEqual(contribution["outOfScope"], ["X9"])
+        self.assertEqual(_codes(contribution), ["out-of-scope"])
+
+    def test_an_unprefixed_new_instance_in_the_dump_is_out_of_scope(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2", "rogue_buf": "BUFX1"})
+        self.assertEqual(contribution["outOfScope"], ["rogue_buf"])
+
+    def test_an_untraced_in_domain_change_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2", "U2": "BUFX4"})
+        self.assertEqual(_codes(contribution), ["trace-mismatch"])
+        self.assertEqual(contribution["outOfScope"], [])
+
+    def test_a_logged_change_missing_from_the_dump_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        contribution = _seal_session(log, dict(BEFORE))
+        self.assertEqual(_codes(contribution), ["trace-mismatch"])
+
+    def test_a_kept_request_whose_delta_misses_its_named_instances_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        log.insert("N1", ["U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"], gain=IMPROVES,
+                   matches=False)
+        contribution = _seal_session(log, {**BEFORE, "atcs_w01_r1_b1": "DELAY1"})
+        self.assertEqual(_codes(contribution), ["trace-mismatch"])
+
+    def test_a_kept_size_whose_logged_master_differs_from_the_request_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.ops[0]["args"]["toMaster"] = "BUFX8"
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(_codes(contribution), ["trace-mismatch"])
+
+    def test_filler_changes_are_exempt_only_under_the_site_filler_patterns(self):
+        log = sf.SessionLog()
+        log.insert("N1", ["U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"], gain=IMPROVES)
+        after = {name: master for name, master in BEFORE.items() if name != "FILL1"}
+        after["atcs_w01_r1_b1"] = "DELAY1"
+
+        exempt = _seal_session(log, after, filler_patterns=["FILLER*"])
+        self.assertTrue(exempt["admissible"], exempt["refusals"])
+        self.assertEqual(exempt["fillerChanges"], ["FILL1"])
+
+        strict = _seal_session(log, after)
+        self.assertEqual(strict["outOfScope"], ["FILL1"])
+
+    def test_a_tainted_slot_is_refused(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        after = {**BEFORE, "U1": "BUFX2"}
+        for evidence in ({"taintedJson": {"reason": "gain write failed", "seq": 1}},
+                         {"transcriptTaint": "tainted:undo did not restore"},
+                         {"transcriptTaint": None}):
+            with self.subTest(evidence=evidence):
+                contribution = _seal_session(log, after, evidence=evidence)
+                self.assertFalse(contribution["admissible"])
+                self.assertEqual(_codes(contribution), ["tainted"])
+
+    def test_an_uncertain_line_taints_the_slot(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.uncertain()
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2", "U2": "BUFX2"})
+        self.assertIn("tainted", _codes(contribution))
+
+    def test_a_kept_line_without_its_gain_line_is_refused(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2")  # no gain line written
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertIn("missing-gain-line", _codes(contribution))
+
+    def test_kept_commands_without_an_eco_export_are_refused(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"}, evidence={"ecoOutput": False})
+        self.assertEqual(_codes(contribution), ["missing-export"])
+
+
 if __name__ == "__main__":
     unittest.main()

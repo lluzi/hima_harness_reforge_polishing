@@ -246,9 +246,11 @@ precondition), but the contribution is inadmissible.
 """
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import math
+import re
 from pathlib import Path
 
 from . import core
@@ -815,6 +817,25 @@ def _campaign_relative_path(path, manifest):
     )
 
 
+def _check_base(manifest, work_package, state_id):
+    """`AtcsError("base-mismatch", ...)` unless the manifest, work package and state id agree."""
+    if manifest.get("baseStateId") != state_id:
+        raise core.AtcsError(
+            "base-mismatch",
+            f"workspaceManifest.baseStateId {manifest.get('baseStateId')!r} != stateId {state_id!r}",
+        )
+    if work_package.get("baseStateId") != state_id:
+        raise core.AtcsError(
+            "base-mismatch",
+            f"workPackage.baseStateId {work_package.get('baseStateId')!r} != stateId {state_id!r}",
+        )
+    if manifest.get("workPackageId") != work_package.get("id"):
+        raise core.AtcsError(
+            "base-mismatch",
+            f"workspaceManifest.workPackageId {manifest.get('workPackageId')!r} != workPackage.id {work_package.get('id')!r}",
+        )
+
+
 def seal(base_ref, result_refs, operation_trace):
     """Seal a worker's real tool work into a ``contribution`` artifact.
 
@@ -833,21 +854,7 @@ def seal(base_ref, result_refs, operation_trace):
     work_package = core.require(base_ref, "workPackage", "base_ref")
     state_id = core.require(base_ref, "stateId", "base_ref")
 
-    if manifest.get("baseStateId") != state_id:
-        raise core.AtcsError(
-            "base-mismatch",
-            f"workspaceManifest.baseStateId {manifest.get('baseStateId')!r} != stateId {state_id!r}",
-        )
-    if work_package.get("baseStateId") != state_id:
-        raise core.AtcsError(
-            "base-mismatch",
-            f"workPackage.baseStateId {work_package.get('baseStateId')!r} != stateId {state_id!r}",
-        )
-    if manifest.get("workPackageId") != work_package.get("id"):
-        raise core.AtcsError(
-            "base-mismatch",
-            f"workspaceManifest.workPackageId {manifest.get('workPackageId')!r} != workPackage.id {work_package.get('id')!r}",
-        )
+    _check_base(manifest, work_package, state_id)
 
     task_id = core.require(manifest, "taskId", "workspaceManifest")
     revision = core.require(manifest, "revision", "workspaceManifest")
@@ -927,3 +934,652 @@ def _script_sha256(path):
         return core.file_sha256(path)
     except (OSError, core.AtcsError) as exc:
         raise core.AtcsError("missing-input", f"cannot read script at {path}: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Issue #64 Task 4: `xtop-session` Contributions (the Task 3 expert toolkit)
+# ---------------------------------------------------------------------------
+#
+# A worker's interactive XTop session (``templates/xtop-operator.tcl``) writes
+# ``ops.jsonl`` (one line per mutation that reached XTop), ``gain.jsonl``
+# (``summarize_gba_violations`` readings) and, once tainted, ``tainted.json``.
+# `seal_session` turns those plus the before/after cell dumps into one sealed
+# Contribution. Its shape adds these fields to the legacy one:
+#
+# - ``commands``: the net kept command log -- every ``status == "kept"``
+#   non-undo line, minus every seq a kept undo line names in ``undoes``, in
+#   log order. ``discards`` seqs (empty checkpoints) were never kept. Each
+#   entry is ``{"seq","proc","cmd","args","before","after","instances"
+#   [,"newNets"][,"verified"][,"ecoCells"][,"fillers"]}``: a replay calls
+#   ``proc`` with ``args`` (``planSha256`` included, as the Host sent it);
+#   ``instances`` is every instance the line observed, which composition
+#   uses for `skip: shared-instance`.
+# - ``delta``: `actual_delta` of the two dumps (authoritative); removable
+#   filler cells it exempts are named in ``fillerChanges``.
+# - ``predicted`` / ``reference``: Measures read from the last non-reference
+#   gain line and the seq-0 reference line (``xtop{Setup,Hold}{Wns,Tns}``).
+# - ``failReasons``: ``{check: {reason: count}}`` from the last
+#   ``-with_fail_reason`` reading that reflects the final state, else ``{}``.
+# - ``value`` (ns) and ``valueDetail``: the ranking value, see `_session_value`.
+# - ``targets`` / ``targetPins``: the work package's own, for blocker coverage.
+# - ``operations: []``, ``preconditions: []``, ``atomicGroups: []``: the
+#   legacy replay has nothing to do for a session.
+#
+# ``kind`` is ``"xtop-session"`` when ``commands`` is non-empty, else
+# ``"no-fix"`` with a deterministic diagnosis. Refusal codes (the
+# Contribution is still sealed and returned, never raised away):
+#
+# - ``tainted``: ``tainted.json`` exists, an ``uncertain`` line exists, or the
+#   XTop transcript's ``ATCS:taint:`` line is missing or not ``clean``;
+# - ``missing-gain-line``: a kept line has no gain line of its kind and seq,
+#   or the last gain line predates the last kept line;
+# - ``missing-export``: kept commands but no ``eco_output/`` files;
+# - ``trace-mismatch``: the log does not explain the dump delta (a logged
+#   change the dump lacks, an untraced in-domain change, a precondition the
+#   running state does not hold, a kept typed request whose logged effect
+#   is not what it asked for, an undo that is not the top of the kept
+#   stack, or a seq gap);
+# - ``out-of-scope``: a changed object outside the domain, collected into
+#   ``outOfScope``. The domain is ``editDomain.instances`` plus instances
+#   this session created whose leaf name starts with ``namePrefix``;
+# - ``no-predicted-gain``: kept commands whose predicted target slack got
+#   worse, did not improve at all, or cannot be read.
+#
+# Typed requests (size/exchange/insert/remove) must show exactly their
+# requested effect in their own logged delta; fixes, splits, moves and
+# ``verified: "eco-actions"`` lines are accepted from their observed delta.
+# Either way the whole net log, replayed over the before dump, must equal
+# the after dump except for exempt fillers.
+
+SESSION_COMMANDS = (
+    "size_cell", "exchange_cell", "insert_buffer", "insert_dummy_cell", "split_load", "split_net",
+    "move_cell", "remove_buffer", "fix_hold_gba_violations", "fix_setup_gba_violations", "undo",
+)
+SESSION_STATUSES = ("kept", "no-change", "error", "reverted", "uncertain")
+GAIN_KINDS = ("reference", "mutation", "undo", "probe")
+SESSION_CHECKS = ("setup", "hold")
+_OPTIONAL_NAME_LISTS = ("newNets", "fillers", "ecoCells")
+_NUMBER = re.compile(r"^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?$")
+_COLUMN_NAMES = {"reference": "reference", "ref": "reference", "current": "current", "cur": "current",
+                 "total": "current", "delta": "delta"}
+_FAIL_REASON_ROW = re.compile(r"^\s*([a-z][a-z0-9_]*)\s*[:=]?\s+(\d+)\s*$")
+
+
+def is_session_log(text):
+    """True when the first non-blank line of `text` is a Task 3 toolkit line (``seq``/``proc``, no ``op``)."""
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            return False
+        return isinstance(record, dict) and "op" not in record and "proc" in record and "seq" in record
+    return False
+
+
+def _malformed(line_number, detail, code="malformed-ops-log"):
+    return core.AtcsError(code, f"line {line_number}: {detail}")
+
+
+def _instance_map(value, line_number, label):
+    if not isinstance(value, dict) or not isinstance(value.get("instances"), dict):
+        raise _malformed(line_number, f"{label} must be {{\"instances\": {{name: master|null}}}}")
+    instances = value["instances"]
+    for name, master in instances.items():
+        if not _is_nonempty_string(name) or not (master is None or _is_nonempty_string(master)):
+            raise _malformed(line_number, f"{label}.instances[{name!r}] must map a name to a master or null")
+    return dict(instances)
+
+
+def parse_session_log(text):
+    """Parse a Task 3 ``ops.jsonl`` into its line dicts, fail-closed on shape.
+
+    Raises `AtcsError("malformed-ops-log", ...)` for a line that is not a
+    JSON object, a ``seq`` that is not a positive int strictly above the
+    previous line's, an unknown ``cmd``/``status``, a ``proc`` that is not an
+    ``atcs_*`` name, non-object ``args``, a malformed ``before``/``after``,
+    an undo line without an int ``undoes`` and an int-list ``discards``, or
+    a malformed optional field (``newNets``/``fillers``/``ecoCells`` string
+    lists, ``matchesRequest`` bool, ``verified`` string). A gap in ``seq`` is
+    content, not shape: `seal_session` records it as a refusal.
+    """
+    lines = []
+    previous_seq = 0
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except ValueError as exc:
+            raise _malformed(line_number, f"invalid JSON: {exc}") from exc
+        if not isinstance(record, dict):
+            raise _malformed(line_number, "not a JSON object")
+        seq = record.get("seq")
+        if not _is_plain_int(seq) or seq <= previous_seq:
+            raise _malformed(line_number, f"seq must be an int above {previous_seq}, got {seq!r}")
+        previous_seq = seq
+        if record.get("cmd") not in SESSION_COMMANDS:
+            raise _malformed(line_number, f"unknown cmd {record.get('cmd')!r}")
+        proc = record.get("proc")
+        if not _is_nonempty_string(proc) or not proc.startswith("atcs_"):
+            raise _malformed(line_number, f"proc must be an atcs_* procedure, got {proc!r}")
+        if not isinstance(record.get("args"), dict):
+            raise _malformed(line_number, "args must be an object")
+        if record.get("status") not in SESSION_STATUSES:
+            raise _malformed(line_number, f"unknown status {record.get('status')!r}")
+        record["before"] = {"instances": _instance_map(record.get("before"), line_number, "before")}
+        record["after"] = {"instances": _instance_map(record.get("after"), line_number, "after")}
+        if record["cmd"] == "undo":
+            discards = record.get("discards")
+            if not _is_plain_int(record.get("undoes")) or not isinstance(discards, list) \
+                    or not all(_is_plain_int(item) for item in discards):
+                raise _malformed(line_number, "an undo line needs an int undoes and an int-list discards")
+        for key in _OPTIONAL_NAME_LISTS:
+            if key in record and (not isinstance(record[key], list)
+                                  or not all(_is_nonempty_string(item) for item in record[key])):
+                raise _malformed(line_number, f"{key} must be a list of names")
+        if "matchesRequest" in record and not isinstance(record["matchesRequest"], bool):
+            raise _malformed(line_number, "matchesRequest must be a bool")
+        if "verified" in record and not _is_nonempty_string(record["verified"]):
+            raise _malformed(line_number, "verified must be a string")
+        lines.append(record)
+    return lines
+
+
+def parse_gain_log(text):
+    """Parse ``gain.jsonl`` into its line dicts; `AtcsError("malformed-gain-log", ...)` on shape.
+
+    Each line is ``{"seq": int >= 0, "kind": reference|mutation|undo|probe,
+    "checks": {"setup"|"hold": {"command": str, "code": int, "text": str}}}``.
+    """
+    lines = []
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except ValueError as exc:
+            raise _malformed(line_number, f"invalid JSON: {exc}", "malformed-gain-log") from exc
+        if not isinstance(record, dict) or not _is_plain_int(record.get("seq")) or record["seq"] < 0:
+            raise _malformed(line_number, "a gain line needs an int seq >= 0", "malformed-gain-log")
+        if record.get("kind") not in GAIN_KINDS:
+            raise _malformed(line_number, f"unknown gain kind {record.get('kind')!r}", "malformed-gain-log")
+        checks = record.get("checks")
+        if not isinstance(checks, dict) or not set(checks) <= set(SESSION_CHECKS):
+            raise _malformed(line_number, "checks must map setup/hold to readings", "malformed-gain-log")
+        for check, entry in checks.items():
+            if (not isinstance(entry, dict) or not isinstance(entry.get("command"), str)
+                    or not _is_plain_int(entry.get("code")) or not isinstance(entry.get("text"), str)):
+                raise _malformed(line_number, f"checks.{check} needs command, int code and text", "malformed-gain-log")
+        lines.append(record)
+    return lines
+
+
+def parse_gain_summary(text):
+    """Read WNS/TNS out of one ``summarize_gba_violations`` capture.
+
+    UNPROVEN ASSUMPTION (Task 7 must confirm against a live session): the
+    text carries ``WNS``/``TNS`` rows in one of three layouts --
+
+    - a row with one number (``WNS  -0.0700``): that number is ``current``
+      (the ``-as_reference`` reading);
+    - a row qualified by a column word (``WNS reference -0.07``,
+      ``WNS "delta" 0.02``): the number belongs to that column;
+    - a header line naming columns (``Reference Current Delta``, or a
+      PrimeTime-style ``Total reg->reg ...``) followed by rows with exactly
+      one number per header token: numbers map to the named columns
+      (``total`` counts as ``current``).
+
+    Anything else -- several numbers without a matching header, a second,
+    different value for the same column -- makes that metric's column
+    ambiguous, and it reads as ``None``. Returns ``{"wns"|"tns":
+    {"reference"|"current"|"delta": float|None}}``; the caller turns
+    ``None`` into an `unknown` Measure, so an unexpected layout fails
+    closed (``no-predicted-gain``), never guesses a gain. Slack sums are
+    taken as signed (negative = violating), as PrimeTime reports them.
+    """
+    found = {"wns": {}, "tns": {}}
+    ambiguous = {"wns": set(), "tns": set()}
+    header = None
+
+    def record(metric, column, value):
+        previous = found[metric].get(column)
+        if previous is not None and previous != value:
+            ambiguous[metric].add(column)
+        found[metric][column] = value
+
+    for raw_line in text.splitlines():
+        tokens = [token.strip("\"'():,") for token in raw_line.split()]
+        tokens = [token for token in tokens if token]
+        if not tokens:
+            continue
+        lowered = [token.lower() for token in tokens]
+        numbers = [token for token in tokens if _NUMBER.match(token)]
+        if lowered[0] not in ("wns", "tns"):
+            if not numbers and any(token in _COLUMN_NAMES for token in lowered):
+                header = [_COLUMN_NAMES.get(token) for token in lowered]
+            continue
+        metric = lowered[0]
+        rest = tokens[1:]
+        qualifier = None
+        if rest and not _NUMBER.match(rest[0]):
+            qualifier = _COLUMN_NAMES.get(rest[0].lower())
+            if qualifier is None:
+                ambiguous[metric].add("*")
+                continue
+            rest = rest[1:]
+        values = [float(token) for token in rest if _NUMBER.match(token)]
+        if qualifier is not None:
+            if len(values) == 1:
+                record(metric, qualifier, values[0])
+            else:
+                ambiguous[metric].add(qualifier)
+        elif header is not None and len(values) == len(header):
+            for column, value in zip(header, values):
+                if column is not None:
+                    record(metric, column, value)
+        elif len(values) == 1:
+            record(metric, "current", values[0])
+        else:
+            ambiguous[metric].add("*")
+
+    result = {}
+    for metric in ("wns", "tns"):
+        if "*" in ambiguous[metric]:
+            result[metric] = {"reference": None, "current": None, "delta": None}
+            continue
+        result[metric] = {column: (None if column in ambiguous[metric] else found[metric].get(column))
+                          for column in ("reference", "current", "delta")}
+    return result
+
+
+def _current_of(metric):
+    if metric["current"] is not None:
+        return metric["current"]
+    if metric["reference"] is not None and metric["delta"] is not None:
+        return round(metric["reference"] + metric["delta"], 9)
+    return None
+
+
+def _measure(value, reason):
+    return core.known(value) if value is not None else core.unknown(reason)
+
+
+def _gain_measures(gain_line, column="current"):
+    """``{"xtop<Check><Wns|Tns>": Measure}`` read from one gain line's texts."""
+    measures = {}
+    for check in SESSION_CHECKS:
+        label = check.capitalize()
+        entry = (gain_line or {}).get("checks", {}).get(check)
+        if gain_line is None or entry is None:
+            reason = "no gain reading"
+            parsed = None
+        elif entry["code"] != 0:
+            reason = f"summarize_gba_violations failed (code {entry['code']})"
+            parsed = None
+        else:
+            reason = "summarize_gba_violations text not in a known layout"
+            parsed = parse_gain_summary(entry["text"])
+        for metric in ("wns", "tns"):
+            value = None
+            if parsed is not None:
+                value = _current_of(parsed[metric]) if column == "current" else parsed[metric][column]
+            measures[f"xtop{label}{metric.capitalize()}"] = _measure(value, reason)
+    return measures
+
+
+def parse_fail_reasons(text):
+    """``{reason: count}`` from ``<snake_case_reason> <int>`` rows (best effort, informational)."""
+    counts = {}
+    for raw_line in text.splitlines():
+        match = _FAIL_REASON_ROW.match(raw_line)
+        if match:
+            counts[match.group(1)] = counts.get(match.group(1), 0) + int(match.group(2))
+    return counts
+
+
+def _target_checks(work_package):
+    kinds = set()
+    for target in work_package.get("targets") or []:
+        parts = target.split("|") if isinstance(target, str) else []
+        if len(parts) >= 3 and parts[1] in SESSION_CHECKS:
+            kinds.add(parts[1])
+    return sorted(kinds) or sorted(SESSION_CHECKS)
+
+
+def _session_value(target_checks, reference, predicted):
+    """The ranking value and whether the session predicts a gain.
+
+    For each target check kind ``k`` (``setup``/``hold`` named by the work
+    package's ``targets``; both when none is named): ``wnsGain[k] = predicted
+    WNS - reference WNS`` and the TNS change likewise (positive = better).
+    ``value`` is ``wnsGain`` of the target kind whose reference WNS is worst
+    (ties: hold before setup, alphabetically); ``tnsGain`` sums the target
+    kinds' TNS changes and breaks ranking ties. A session predicts a gain
+    when no target kind's WNS got worse and at least one of its WNS or its
+    TNS improved. Returns ``(value, detail, problem)``; ``problem`` is the
+    `no-predicted-gain` refusal detail, or ``None``.
+    """
+    wns_gain = {}
+    tns_parts = []
+    unknown_parts = []
+    for check in target_checks:
+        label = check.capitalize()
+        ref_wns, cur_wns = reference[f"xtop{label}Wns"], predicted[f"xtop{label}Wns"]
+        if core.is_known(ref_wns) and core.is_known(cur_wns):
+            wns_gain[check] = round(core.value_of(cur_wns) - core.value_of(ref_wns), 9)
+        else:
+            unknown_parts.append(f"{check} WNS")
+        ref_tns, cur_tns = reference[f"xtop{label}Tns"], predicted[f"xtop{label}Tns"]
+        if core.is_known(ref_tns) and core.is_known(cur_tns):
+            tns_parts.append(core.value_of(cur_tns) - core.value_of(ref_tns))
+        else:
+            unknown_parts.append(f"{check} TNS")
+    tns_gain = round(sum(tns_parts), 9) if tns_parts and len(tns_parts) == len(target_checks) else None
+    known_refs = [(core.value_of(reference[f"xtop{c.capitalize()}Wns"]), c) for c in target_checks
+                  if core.is_known(reference[f"xtop{c.capitalize()}Wns"])]
+    worst = min(known_refs)[1] if known_refs else None
+    value = wns_gain.get(worst, 0.0) if worst is not None else 0.0
+    detail = {"targetChecks": list(target_checks), "worstCheck": worst, "wnsGain": wns_gain, "tnsGain": tns_gain}
+
+    missing_wns = [check for check in target_checks if check not in wns_gain]
+    if missing_wns:
+        return value, detail, f"predicted or reference WNS unknown for {missing_wns} ({unknown_parts})"
+    worsened = {check: gain for check, gain in wns_gain.items() if gain < 0}
+    if worsened:
+        return value, detail, f"predicted target WNS got worse: {worsened}"
+    if not any(gain > 0 for gain in wns_gain.values()) and not (tns_gain is not None and tns_gain > 0):
+        return value, detail, f"no predicted target gain (WNS {wns_gain}, TNS {tns_gain})"
+    return value, detail, None
+
+
+def _leaf(name):
+    return name.rsplit("/", 1)[-1]
+
+
+def _filler(master, patterns):
+    return master is not None and any(fnmatch.fnmatchcase(master, pattern) for pattern in patterns)
+
+
+def _command_entry(line):
+    before = line["before"]["instances"]
+    after = line["after"]["instances"]
+    entry = {
+        "seq": line["seq"], "proc": line["proc"], "cmd": line["cmd"], "args": line["args"],
+        "before": before, "after": after,
+        "instances": sorted(set(before) | set(after) | set(line.get("ecoCells") or [])),
+    }
+    for key in ("newNets", "verified", "ecoCells", "fillers"):
+        if key in line:
+            entry[key] = line[key]
+    return entry
+
+
+def _net_log(lines):
+    """``(kept_lines, undone, discarded, problems)``: the net kept log after undo, per the Task 3 rule."""
+    stack = []
+    undone = []
+    discarded = []
+    problems = []
+    seqs = {line["seq"]: line for line in lines}
+    for line in lines:
+        if line["status"] != "kept":
+            continue
+        if line["cmd"] != "undo":
+            stack.append(line["seq"])
+            continue
+        target = line["undoes"]
+        if not stack or stack[-1] != target:
+            problems.append(f"undo seq {line['seq']} names seq {target}, not the last kept edit {stack[-1:] or None}")
+        if target in stack:
+            stack.remove(target)
+            undone.append(target)
+        for seq in line["discards"]:
+            checkpoint = seqs.get(seq)
+            if checkpoint is None or checkpoint["status"] == "kept" or seq > line["seq"]:
+                problems.append(f"undo seq {line['seq']} discards seq {seq}, which is not an empty checkpoint")
+            discarded.append(seq)
+    kept = [seqs[seq] for seq in stack]
+    return kept, sorted(undone), sorted(set(discarded)), problems
+
+
+def _request_problem(line):
+    """Why a kept typed request's own logged effect is not what it asked for, or ``None``."""
+    cmd, args = line["cmd"], line["args"]
+    before, after = line["before"]["instances"], line["after"]["instances"]
+    if cmd == "size_cell":
+        instance, to_master = args.get("instance"), args.get("toMaster")
+        if set(after) != {instance} or after.get(instance) != to_master or before.get(instance) is None:
+            return f"size_cell asked {instance!r} -> {to_master!r}, logged {before} -> {after}"
+    elif cmd == "exchange_cell":
+        allowed = {args.get("instance")} | set(args.get("cells") or [])
+        stray = sorted((set(before) | set(after)) - allowed)
+        if stray:
+            return f"exchange_cell changed {stray} outside {sorted(n for n in allowed if n)}"
+    elif cmd in ("insert_buffer", "insert_dummy_cell", "split_load"):
+        names = args.get("newInstances") if cmd != "insert_dummy_cell" else [args.get("newInstance")]
+        missing = [name for name in names or [None]
+                   if not _is_nonempty_string(name) or after.get(name) is None or before.get(name) is not None]
+        if line.get("matchesRequest") is not True or missing:
+            return f"{cmd} did not create its named instances {missing or names}"
+    elif cmd == "remove_buffer":
+        instance = args.get("instance")
+        if line.get("matchesRequest") is not True or before.get(instance) is None \
+                or instance not in after or after[instance] is not None:
+            return f"remove_buffer did not remove {instance!r}"
+    return None
+
+
+def _latest_fail_reasons(gain_lines, last_kept_seq):
+    for gain_line in reversed(gain_lines):
+        if gain_line["seq"] < last_kept_seq:
+            break
+        checks = gain_line["checks"]
+        if any("-with_fail_reason" in entry["command"] for entry in checks.values()):
+            return ({check: parse_fail_reasons(entry["text"]) for check, entry in sorted(checks.items())
+                     if entry["code"] == 0}, gain_line["seq"])
+    return {}, None
+
+
+def seal_session(base_ref, result_refs, ops_text, gain_text):
+    """Seal one worker's Task 3 XTop session into an ``xtop-session`` (or ``no-fix``) Contribution.
+
+    `result_refs`: ``{"beforeDump", "afterDump"`` (paths), ``"evidence":
+    {"taintedJson": obj|None, "transcriptTaint": "clean"|"tainted:<why>"|None,
+    "ecoOutput": bool}, "fillerPatterns": [glob, ...], "diagnosis":
+    str|None}``. `ops_text`/`gain_text` are the raw ``ops.jsonl`` /
+    ``gain.jsonl`` texts. Raises `AtcsError` only for unusable input (a
+    ``base_ref`` whose parts disagree, an unreadable dump, a malformed log);
+    every content problem is a refusal on the returned Contribution -- see
+    the block comment above for the codes and the shape.
+    """
+    manifest = core.require(base_ref, "workspaceManifest", "base_ref")
+    work_package = core.require(base_ref, "workPackage", "base_ref")
+    state_id = core.require(base_ref, "stateId", "base_ref")
+    _check_base(manifest, work_package, state_id)
+    name_prefix = core.require(manifest, "namePrefix", "workspaceManifest")
+
+    lines = parse_session_log(ops_text)
+    gain_lines = parse_gain_log(gain_text)
+
+    before_path = core.require(result_refs, "beforeDump", "result_refs")
+    after_path = core.require(result_refs, "afterDump", "result_refs")
+    before_bytes = _read_dump_bytes(before_path, "beforeDump")
+    before = parse_cell_dump(_decode_utf8(before_bytes, before_path, "beforeDump"))
+    after = parse_cell_dump(_decode_utf8(_read_dump_bytes(after_path, "afterDump"), after_path, "afterDump"))
+    evidence = result_refs.get("evidence") if isinstance(result_refs.get("evidence"), dict) else {}
+    filler_patterns = [p for p in (result_refs.get("fillerPatterns") or []) if _is_nonempty_string(p)]
+
+    refusals = []
+
+    def refuse(code, detail):
+        refusals.append({"code": code, "detail": detail})
+
+    # Taint: any one signal refuses the slot (notes/t3-toolkit-surface.md, capture rule 1, 2, 5).
+    if evidence.get("taintedJson") is not None:
+        refuse("tainted", f"tainted.json: {core.canonical(evidence['taintedJson']).decode('utf-8')}")
+    for line in lines:
+        if line["status"] == "uncertain":
+            refuse("tainted", f"ops.jsonl seq {line['seq']} ({line['cmd']}) is uncertain: {line.get('error', '')}")
+    transcript_taint = evidence.get("transcriptTaint")
+    if transcript_taint is None:
+        refuse("tainted", "the XTop transcript has no ATCS:taint: line (the session did not close through atcs_close)")
+    elif transcript_taint != "clean":
+        refuse("tainted", f"the XTop transcript says ATCS:taint:{transcript_taint}")
+
+    if [line["seq"] for line in lines] != list(range(1, len(lines) + 1)):
+        refuse("trace-mismatch", f"ops.jsonl seqs {[line['seq'] for line in lines]} are not 1..{len(lines)}")
+
+    kept_lines, undone, discarded, undo_problems = _net_log(lines)
+    for problem in undo_problems:
+        refuse("trace-mismatch", problem)
+    commands = [_command_entry(line) for line in kept_lines]
+
+    # Gain lines: every kept line has its own; the reading used as `predicted` is the latest state.
+    gain_keys = {(gain_line["seq"], gain_line["kind"]) for gain_line in gain_lines}
+    kept_all = [line for line in lines if line["status"] == "kept"]
+    for line in kept_all:
+        kind = "undo" if line["cmd"] == "undo" else "mutation"
+        if (line["seq"], kind) not in gain_keys:
+            refuse("missing-gain-line", f"kept seq {line['seq']} has no {kind} gain line")
+    last_kept_seq = max((line["seq"] for line in kept_all), default=0)
+    references = [gain_line for gain_line in gain_lines if gain_line["kind"] == "reference"]
+    readings = [gain_line for gain_line in gain_lines if gain_line["kind"] != "reference"]
+    reference_line = references[0] if references else None
+    last_reading = readings[-1] if readings else reference_line
+    if kept_all and (last_reading is None or last_reading["seq"] < last_kept_seq):
+        refuse("missing-gain-line", f"no gain reading at or after the last kept seq {last_kept_seq}")
+
+    reference = _gain_measures(reference_line)
+    if last_reading is not None and last_reading is not reference_line:
+        fallback = _gain_measures(last_reading, column="reference")
+        reference = {key: measure if core.is_known(measure) else fallback[key] for key, measure in reference.items()}
+    predicted = _gain_measures(last_reading)
+    predicted.update({"prestaSetupWns": core.unknown("not predicted by an xtop-session"),
+                      "prestaHoldWns": core.unknown("not predicted by an xtop-session")})
+    fail_reasons, fail_reasons_seq = _latest_fail_reasons(gain_lines, last_kept_seq)
+
+    # Domain: editDomain instances plus instances created under this workspace's prefix.
+    edit_domain = work_package.get("editDomain") or {}
+    domain = set(edit_domain.get("instances") or [])
+
+    def out_of_domain(name):
+        if name in before:
+            return name not in domain
+        return not _leaf(name).startswith(name_prefix)
+
+    out_of_scope = set()
+    running = dict(before)
+    for line, command in zip(kept_lines, commands):
+        problem = _request_problem(line)
+        if problem is not None:
+            refuse("trace-mismatch", f"seq {command['seq']}: {problem}")
+        for name in command["instances"]:
+            if out_of_domain(name):
+                out_of_scope.add(name)
+        for name, master in command["before"].items():
+            if running.get(name) != master:
+                refuse("trace-mismatch", f"seq {command['seq']}: {name!r} logged as {master!r} before the "
+                                         f"{command['cmd']}, the replayed state has {running.get(name)!r}")
+        for name, master in command["after"].items():
+            if master is None:
+                running.pop(name, None)
+            else:
+                running[name] = master
+
+    touched = {name for command in commands for name in command["instances"]}
+    names = set(before) | set(after) | set(running)
+    filler_changes = []
+    untraced = []
+    for name in sorted(names):
+        actual, implied = (before.get(name), after.get(name)), (before.get(name), running.get(name))
+        if actual == implied:
+            continue
+        actual_changed = actual[0] != actual[1]
+        implied_changed = implied[0] != implied[1]
+        if actual_changed and not implied_changed:
+            if name not in touched and name not in domain and (_filler(actual[0], filler_patterns)
+                                                               or _filler(actual[1], filler_patterns)):
+                filler_changes.append(name)
+            elif out_of_domain(name):
+                out_of_scope.add(name)
+            else:
+                untraced.append(name)
+        else:
+            untraced.append(name)
+    if untraced:
+        refuse("trace-mismatch", "the net command log does not explain the dump delta for "
+                                 f"{untraced}: logged {[(n, before.get(n), running.get(n)) for n in untraced]}, "
+                                 f"dumped {[(n, before.get(n), after.get(n)) for n in untraced]}")
+    if out_of_scope:
+        refuse("out-of-scope", f"changes outside the edit domain: {sorted(out_of_scope)}")
+
+    kind = "xtop-session" if commands else "no-fix"
+    target_checks = _target_checks(work_package)
+    if commands:
+        if not evidence.get("ecoOutput"):
+            refuse("missing-export", "kept commands but eco_output/ holds no exported change files")
+        value, value_detail, gain_problem = _session_value(target_checks, reference, predicted)
+        if gain_problem is not None:
+            refuse("no-predicted-gain", gain_problem)
+    else:
+        value, value_detail = 0.0, {"targetChecks": target_checks, "worstCheck": None, "wnsGain": {},
+                                    "tnsGain": None}
+
+    diagnosis = result_refs.get("diagnosis")
+    if not (isinstance(diagnosis, str) and diagnosis.strip()) and not commands:
+        statuses = {}
+        for line in lines:
+            statuses[line["status"]] = statuses.get(line["status"], 0) + 1
+        diagnosis = (f"XTop session kept no command: {len(lines)} ops.jsonl line(s) {statuses}, "
+                     f"undone seqs {undone}, discarded checkpoints {discarded}")
+
+    nets = set()
+    for command in commands:
+        nets.update(command.get("newNets") or [])
+        if _is_nonempty_string(command["args"].get("net")):
+            nets.add(command["args"]["net"])
+    checks = set(work_package.get("targets") or []) | set(work_package.get("mayAffect") or [])
+    has_prediction = any(core.is_known(predicted[key]) for key in ("xtopSetupWns", "xtopHoldWns"))
+
+    body = {
+        "taskId": core.require(manifest, "taskId", "workspaceManifest"),
+        "revision": core.require(manifest, "revision", "workspaceManifest"),
+        "baseStateId": state_id,
+        "kind": kind,
+        "commands": commands,
+        "operations": [],
+        "script": None,
+        "beforeDumpSha256": hashlib.sha256(before_bytes).hexdigest(),
+        "delta": actual_delta(before, after),
+        "fillerChanges": filler_changes,
+        "touches": {"instances": sorted(touched), "nets": sorted(nets), "regions": [], "checks": sorted(checks),
+                    "cones": []},
+        "preconditions": [],
+        "dependencies": [],
+        "atomicGroups": [],
+        "predicted": predicted,
+        "reference": reference,
+        "failReasons": fail_reasons,
+        "value": value,
+        "valueDetail": value_detail,
+        "targets": sorted(work_package.get("targets") or []),
+        "targetPins": sorted(work_package.get("targetPins") or []),
+        "validationLevel": "xtop" if has_prediction else "none",
+        "diagnosis": diagnosis,
+        "session": {
+            "lines": len(lines), "kept": [command["seq"] for command in commands], "undone": undone,
+            "discarded": discarded, "observe": sorted({line.get("observe") for line in lines
+                                                        if isinstance(line.get("observe"), str)}),
+            "predictedFromSeq": last_reading["seq"] if last_reading is not None else None,
+            "failReasonsFromSeq": fail_reasons_seq, "fillerPatterns": filler_patterns,
+        },
+        "admissible": not refusals,
+        "refusals": refusals,
+        "outOfScope": sorted(out_of_scope),
+    }
+    return core.stamp("contribution", body)
