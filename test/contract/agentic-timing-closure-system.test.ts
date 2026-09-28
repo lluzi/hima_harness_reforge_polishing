@@ -529,7 +529,7 @@ test('the admin generator labels the ATCS binding with the installed wrapper ver
   const h = await createHimaHome(); t.after(() => h.dispose());
   const pack = loadPack(path.join(repoRoot, 'packs'), 'agentic-timing-closure-system');
   const tool = pack.contract.tools.find((candidate) => candidate.id === 'xtop-operator')!;
-  const wrapper = tool.interactive!.argv[0]!;
+  const wrapper = tool.interactive?.argv?.[0] ?? '';
   const version = /atcs-v(\d+)\/atcs-xtop-operator-v\1\.sh$/.exec(wrapper)?.[1];
   assert.ok(version, `the contract names an installed atcs-vN wrapper: ${wrapper}`);
   const { packDigestExcludes } = await import('@hima/harness');
