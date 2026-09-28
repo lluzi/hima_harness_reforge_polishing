@@ -599,9 +599,9 @@ class XtopOperatorArgvTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Step 1 requirement: typed procedures reject a target outside the
-# edit-domain list passed at session start (real tclsh execution, XTop
-# commands stubbed).
+# Session-setup stubs for tests that source a compiled XTop template in tclsh.
+# The typed toolkit's edit-domain, budget, trace and undo behaviour is covered
+# by `test_xtop_toolkit.py` (Issue #64 Task 3).
 # ---------------------------------------------------------------------------
 
 
@@ -640,93 +640,6 @@ proc foreach_in_collection {iter_var collection body} {
     foreach i $collection { uplevel 1 $body }
 }
 """
-
-
-@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
-class TypedProcedureEditDomainTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = _tmp()
-        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        for name in ("tech.lef", "cells.lef", "netlist.v", "design.def"):
-            (self.tmp / name).write_text("stub", encoding="utf-8")
-        self.run_root = self.tmp / "run"
-        self.run_root.mkdir()
-        self.ops_log = self.run_root / "ops.jsonl"
-
-        manifest = {"namePrefix": "atcs_w01_r1_"}
-        operator_task = adapters.compile_xtop_operator_task(
-            manifest, "top", str(self.tmp / "tech.lef"), str(self.tmp / "cells.lef"),
-            str(self.tmp / "netlist.v"), str(self.tmp / "design.def"), str(self.run_root), _xtop_context(self.tmp),
-        )
-        self.operator_tcl_path = self.run_root / "operator.tcl"
-        self.operator_tcl_path.write_text(operator_task["tcl"], encoding="utf-8")
-
-        edit_domain = {"instances": ["U_IN_DOMAIN"], "nets": ["N_IN_DOMAIN"]}
-        analysis_task = adapters.compile_xtop_analysis_manual_task(
-            manifest, edit_domain, self.operator_tcl_path, self.ops_log,
-        )
-        self.script_path = self.tmp / "test-session.tcl"
-        self.script_path.write_text(_STUB_PROCS + analysis_task["tcl"], encoding="utf-8")
-
-    def _run_tcl(self, extra_commands):
-        script = self.script_path.read_text(encoding="utf-8") + "\n" + extra_commands
-        combined = self.tmp / "combined.tcl"
-        combined.write_text(script, encoding="utf-8")
-        return subprocess.run([TCLSH, str(combined)], capture_output=True, text=True)
-
-    def test_rejects_size_cell_on_out_of_domain_instance(self):
-        result = self._run_tcl('atcs_size_cell U_OUT_DOMAIN MOCKBUFX4\n')
-        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("out-of-scope", result.stdout + result.stderr)
-        self.assertFalse(self.ops_log.exists() and self.ops_log.read_text().strip(),
-                          "an out-of-scope mutation must not be logged")
-
-    def test_rejects_delete_buffer_on_out_of_domain_instance(self):
-        result = self._run_tcl('atcs_delete_buffer U_OUT_DOMAIN\n')
-        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("out-of-scope", result.stdout + result.stderr)
-
-    def test_rejects_insert_buffer_on_out_of_domain_net(self):
-        result = self._run_tcl('atcs_insert_buffer N_OUT_DOMAIN {P1 P2} U_NEW N_NEW MOCKBUFX2\n')
-        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("out-of-scope", result.stdout + result.stderr)
-
-    def test_accepts_size_cell_on_in_domain_instance_and_logs_one_operation(self):
-        result = self._run_tcl('atcs_size_cell U_IN_DOMAIN MOCKBUFX4\nputs "TCL-OK"\n')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("TCL-OK", result.stdout)
-        lines = [line for line in self.ops_log.read_text(encoding="utf-8").splitlines() if line.strip()]
-        self.assertEqual(len(lines), 1)
-        op = json.loads(lines[0])
-        self.assertEqual(op, {"op": "size_cell", "instance": "U_IN_DOMAIN", "fromMaster": "MASTERX", "toMaster": "MOCKBUFX4"})
-
-    def test_cell_query_and_mutation_readback_resolve_native_collections(self):
-        result = self._run_tcl('''
-proc get_cells {args} { return "COLLECTION:[lindex $args 0]" }
-proc get_attribute {obj attr} {
-    if {![string match "COLLECTION:*" $obj]} { error "unwrapped native object" }
-    return MASTERX
-}
-if {[atcs_query_cells U_IN_DOMAIN ref_name] ne "MASTERX"} { error "wrong query" }
-atcs_size_cell U_IN_DOMAIN MOCKBUFX4
-puts "COLLECTION-PASS"
-''')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("COLLECTION-PASS", result.stdout)
-
-    def test_accepts_insert_buffer_on_in_domain_net_and_logs_one_operation(self):
-        result = self._run_tcl('atcs_insert_buffer N_IN_DOMAIN {P1 P2} U_NEW N_NEW MOCKBUFX2\nputs "TCL-OK"\n')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        lines = [line for line in self.ops_log.read_text(encoding="utf-8").splitlines() if line.strip()]
-        self.assertEqual(len(lines), 1)
-        op = json.loads(lines[0])
-        self.assertEqual(op["op"], "insert_buffer")
-        self.assertEqual(op["net"], "N_IN_DOMAIN")
-        self.assertEqual(op["loadPins"], ["P1", "P2"])
-        self.assertEqual(op["newInstance"], "U_NEW")
-        self.assertEqual(op["newNet"], "N_NEW")
-        self.assertEqual(op["master"], "MOCKBUFX2")
-        self.assertIsNone(op["location"])
 
 
 # ---------------------------------------------------------------------------
