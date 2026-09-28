@@ -1,3 +1,4 @@
+// @hima-seam llm-replay direct
 import assert from 'node:assert/strict';
 import { appendFile, copyFile, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -460,6 +461,11 @@ test('a Team Reviewer may approve an Operator scope: typed mutations within its 
   // Closing the session does not open a new budget: the product refuses a second open in this execution.
   const closed = await interactive({ action: 'close', requestId: 'close-1', toolSessionId });
   assert.equal(closed.status, 'closed', JSON.stringify(closed));
+  // The stopped Job settles its execution through the asynchronous Job observer; wait for that fact
+  // rather than racing it, so the refusal below is always the settled one.
+  await waitUntil('the closed interactive Job settles its execution', () =>
+    ['ready', 'failed', 'completed'].includes(control().executions[executionId]!.phase), 10_000, 25);
   const reopened = await interactive({ action: 'open', requestId: 'open-2' });
-  assert.equal(reopened.status, 'refused', JSON.stringify(reopened)); assert.match(reopened.reason, /freshly begun execution/);
+  assert.equal(reopened.status, 'refused', JSON.stringify(reopened));
+  assert.match(reopened.reason, /the interactive execution is absent, settled, failed or superseded/);
 });
