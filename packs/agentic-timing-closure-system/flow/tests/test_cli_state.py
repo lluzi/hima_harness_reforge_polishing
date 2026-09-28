@@ -2727,6 +2727,62 @@ class ResidualQueriesTheEvaluatedCandidateStateTest(unittest.TestCase):
         self.assertFalse((workspace / "research" / "residual").exists())
 
 
+class ResidualCarriesTheBatchFailReasonsTest(unittest.TestCase):
+    """US10/US34: the evaluated batch's sealed post-auto-finish fail reasons reach the residual,
+    per check kind, so the next generation's research reads what plain auto-fix could not fix."""
+
+    CHECK_KEY = "func_ssg_rcworst_m40|setup|U_FF_2/D"
+
+    def _workspace(self, fail_reasons, merge_id_override=None):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        result = _run("baseline", workspace, workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        parent_state = json.loads((workspace / "state" / "working-state.json").read_text())
+        core.write_artifact(workspace / "state" / "readiness.json", _full_flow_readiness(workspace, manifest))
+        merge_commit = core.stamp("merge-commit", {
+            "parentStateId": parent_state["id"], "batchId": "gen-1", "contributions": [], "operations": [],
+            "choice": {"arm": "control", "reason": "r"}, "failReasons": fail_reasons,
+        })
+        _write_json(workspace / "state" / "merge-commit.json", merge_commit)
+        _write_json(workspace / "state" / "implement.json", {
+            "mergeCommitId": merge_id_override or merge_commit["id"], "design": "top",
+            "parentStateId": parent_state["id"],
+        })
+        evaluation = core.stamp("evaluation", {
+            "candidateId": merge_commit["id"], "parentStateId": parent_state["id"], "stateId": "0" * 20,
+            "finalSetupWns": core.known(-0.12), "finalHoldWns": core.known(0.03),
+            "comparison": {"fixed": [], "remaining": [self.CHECK_KEY], "entrant": [], "regressed": [],
+                           "missingPrior": []},
+        })
+        _write_json(workspace / "state" / "evaluation.json", evaluation)
+        _write_json(workspace / "state" / "sta.json", {"designStateId": "0" * 20, "database": {}, "sta": {
+            "func_ssg_rcworst_m40": {"corner": CORNER, "inputs": {}, "observation": {
+                "precision": "gba", "scenarios": {}, "sources": [],
+                "checks": {self.CHECK_KEY: {"slack": core.known(-0.12), "startpoint": "U_FF_1/CP"}}}}}})
+        return workspace, merge_commit
+
+    def _residual(self, workspace):
+        result = _run("residual", workspace, _scenarios_contract_path(workspace), _site_profile_path(workspace))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return json.loads((workspace / "state" / "residual-cases.json").read_text())
+
+    def test_the_sealed_fail_reasons_reach_the_residual_and_each_case_of_that_check(self):
+        reasons = {"arm": "control", "setup": {"no_setup_gain": 3}, "hold": {"break_setup": 2}}
+        workspace, merge_commit = self._workspace(reasons)
+        doc = self._residual(workspace)
+        self.assertEqual(doc["batchFailReasons"], {"mergeCommitId": merge_commit["id"], **reasons})
+        self.assertEqual(doc["cases"][0]["failReasons"], {"no_setup_gain": 3})
+
+    def test_a_merge_commit_of_another_candidate_is_not_read(self):
+        workspace, _ = self._workspace({"arm": "merged", "setup": {"no_setup_gain": 3}}, merge_id_override="other")
+        doc = self._residual(workspace)
+        self.assertNotIn("batchFailReasons", doc)
+        self.assertEqual(doc["cases"][0]["failReasons"], {})
+
+
 class ResidualBaselineOnlyTest(unittest.TestCase):
     """Task 12c item 1b: `residual` derives its remaining failing checks from
     `state/observation.json` when `state/evaluation.json` does not exist yet,

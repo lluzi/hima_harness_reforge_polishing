@@ -703,8 +703,8 @@ def _read_campaign_plan(report, workspace, extra, mods):
 
     Issue #64 Task 5 (the six slots run as parallel fork branches) adds, over
     the active (unparked) slots: `_worker_slot_problems` (an active slot
-    above the `workerSlots` knob), `_shared_instance_problems` (an instance
-    two active slots claim) and `_uncovered_blocker_problems` (a worst setup
+    above the `workerSlots` knob), `_shared_domain_problems` (an instance or
+    net two active slots claim) and `_uncovered_blocker_problems` (a worst setup
     or hold check of a required scenario no active slot targets).
 
     Fix round 2 item 3 (Minor) adds two more Reader-visible problems, both
@@ -780,7 +780,7 @@ def _read_campaign_plan(report, workspace, extra, mods):
         problems += 1
 
     problems += _worker_slot_problems(workspace, active, core, workspaces_mod)
-    problems += _shared_instance_problems(active)
+    problems += _shared_domain_problems(active)
     problems += _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])
     return [_emit_count("tc_request_invalid_count", problems)]
 
@@ -825,17 +825,20 @@ def _claimed_instances(package):
     return claimed
 
 
-def _shared_instance_problems(active):
-    """One problem per instance two active slots both claim (Issue #64 Task 5).
+def _shared_domain_problems(active):
+    """One problem per instance or net two active slots both claim (US8, disjoint edit domains).
 
     The slots run at once from the same base, so their edit domains must be disjoint: an
-    instance in one active slot's `editDomain.instances`, or owning one of its
-    `targetPins`, may not be claimed by another active slot in either way.
+    instance in one active slot's `editDomain.instances`, or owning one of its `targetPins`,
+    may not be claimed by another active slot in either way, and an `editDomain.nets` entry
+    belongs to one active slot only.
     """
     owners = {}
     for task_id, package in active.items():
-        for instance in _claimed_instances(package):
-            owners.setdefault(instance, set()).add(task_id)
+        domain = package.get("editDomain") if isinstance(package.get("editDomain"), dict) else {}
+        nets = {("net", name) for name in domain.get("nets") or [] if isinstance(name, str)}
+        for claim in {("instance", name) for name in _claimed_instances(package)} | nets:
+            owners.setdefault(claim, set()).add(task_id)
     return sum(1 for slots in owners.values() if len(slots) > 1)
 
 
@@ -1138,6 +1141,11 @@ def _read_evaluation(report, workspace, extra, mods):
     values = []
     for type_name, field, unit, mode in _EVALUATION_FIELDS:
         values.append(_emit(type_name, unit, obj.get(field, missing), mode=mode))
+    # A recipe batch's never-worse-than-auto-fix guarantee (`batchGuarantee`): 1 when the merged
+    # arm was chosen only because the control arm was unusable; 0 when compared, or no recipe batch.
+    guarantee = obj.get("batchGuarantee")
+    unevidenced = 1 if isinstance(guarantee, dict) and guarantee.get("evidenced") is False else 0
+    values.append(_emit_count("tc_batch_guarantee_unevidenced", unevidenced))
     return values
 
 

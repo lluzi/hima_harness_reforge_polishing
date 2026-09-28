@@ -1364,6 +1364,23 @@ class ObservedEffectConfinementTest(unittest.TestCase):
             self.assertEqual(session.ops[0]["status"], "reverted")
             self.assertEqual(session.ops[0]["outOfDomain"], ["UOUT"])
 
+    def test_an_out_of_domain_eco_action_beside_an_in_domain_master_change_is_undone(self):
+        """Full mode diffs masters only, so an ECO action on an out-of-domain cell whose master
+        stays put hides behind an in-domain master change unless `get_eco_cells` is read too."""
+        for session in self._both():
+            session.run(
+                "set ::stub_fix_effect {U1 BUFX4 UOUT BUFX1}\n"
+                f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+                'puts "CELLS:[stub_cells]"\n'
+            )
+            status, message = session.outcome("fix")
+            self.assertEqual(status, "ERR", session.stdout)
+            self.assertIn("UOUT", message)
+            op = session.ops[0]
+            self.assertEqual(op["status"], "reverted")
+            self.assertEqual(op["outOfDomain"], ["UOUT"])
+            self.assertEqual(session.cells_line(), INITIAL_CELLS)
+
     def test_fast_mode_refuses_a_new_net_it_cannot_prove_new(self):
         session = Session(self).run(
             f"set ::stub_fix_effect {{{PREFIX}eco_7 BUFX2}}\n"

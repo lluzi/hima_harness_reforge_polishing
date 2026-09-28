@@ -168,8 +168,14 @@ def _limits_for(evidence):
     return limits
 
 
-def extract(evaluation, observation, exp, readiness):
-    """Build one ``residual-case`` per still-unclosed check (see module docstring)."""
+def extract(evaluation, observation, exp, readiness, fail_reasons=None):
+    """Build one ``residual-case`` per still-unclosed check (see module docstring).
+
+    `fail_reasons` (optional, ``{"setup"|"hold": {reason: count}}``) is the evaluated batch's
+    sealed post-auto-finish XTop fail-reason reading; each case carries the one of its check
+    kind as ``failReasons`` (``{}`` when there is none).
+    """
+    fail_reasons = fail_reasons if isinstance(fail_reasons, dict) else {}
     comparison = core.require(evaluation, "comparison", "evaluation")
     remaining_keys = core.require(comparison, "remaining", "evaluation.comparison")
 
@@ -209,6 +215,7 @@ def extract(evaluation, observation, exp, readiness):
             "limits": _limits_for(evidence),
             "suggestedStage": suggested_stage,
             "requiredInputs": required_inputs,
+            "failReasons": dict(fail_reasons.get(key.split("|", 2)[1] if key.count("|") >= 2 else "") or {}),
         }
         cases.append(core.stamp("residual-case", case))
 

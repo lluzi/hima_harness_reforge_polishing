@@ -1309,8 +1309,7 @@ def _parked_entry(workspace, slot):
     entry = workers_doc.get("workers", {}).get(slot)
     if not entry:
         raise InputError("missing-input", f"state/workers.json has no entry for slot {slot!r}")
-    parked = entry.get("parked") is True and workspaces.is_parked(entry.get("workPackage"))
-    return entry, parked
+    return entry, workspaces.prepared_slot_parked(entry)
 
 
 def _worker_request_problems(workspace, slot, entry):
@@ -1564,7 +1563,7 @@ def _cmd_capture_contribution(workspace, args):
     if not root.is_absolute():
         root = workspace / root
     receipt_path = root / "parked.json"
-    plan_parked = entry.get("parked") is True or workspaces.is_parked(work_package)
+    plan_parked = workspaces.prepared_slot_parked(entry)
     if plan_parked or receipt_path.exists():
         # Issue #64 Task 5: this slot ran no session -- the plan parked it, or `operate-parked`
         # skipped its inadmissible request. Any Operator output in its root means something did
@@ -3500,8 +3499,30 @@ def _cmd_residual(workspace, args):
     observation_for_extract = dict(base_observation)
     observation_for_extract["checkDetails"] = check_details
 
-    cases = residual_module.extract(evaluation, observation_for_extract, exp, readiness)
-    return _paths(workspace)["residual_cases"], {"cases": cases, "queryNotes": notes}
+    batch_fail_reasons = _evaluated_batch_fail_reasons(workspace) if evaluation_path.is_file() else None
+    cases = residual_module.extract(evaluation, observation_for_extract, exp, readiness,
+                                    fail_reasons=batch_fail_reasons)
+    body = {"cases": cases, "queryNotes": notes}
+    if batch_fail_reasons is not None:
+        body["batchFailReasons"] = batch_fail_reasons
+    return _paths(workspace)["residual_cases"], body
+
+
+def _evaluated_batch_fail_reasons(workspace):
+    """The evaluated recipe batch's sealed post-auto-finish fail reasons, or None.
+
+    Read from `state/merge-commit.json` only when it is the candidate `state/implement.json`
+    names; ``{mergeCommitId, arm, setup?, hold?}``.
+    """
+    implement = _read_json_or_default(_paths(workspace)["implement"], {})
+    path = _paths(workspace)["merge_commit"]
+    if not implement.get("mergeCommitId") or not path.is_file():
+        return None
+    merge_commit = _read_declared(path, "merge-commit")
+    reasons = merge_commit.get("failReasons")
+    if merge_commit.get("id") != implement["mergeCommitId"] or not isinstance(reasons, dict):
+        return None
+    return {"mergeCommitId": merge_commit["id"], **reasons}
 
 
 def _cmd_apr_prepare(workspace, args):

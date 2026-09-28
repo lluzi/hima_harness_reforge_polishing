@@ -54,7 +54,8 @@ The Operator is a trial-and-measure expert, not the executor of one pinned actio
 probabilistic: XTop's gain shows whether it helped against the session reference. Keep what the gain
 shows helps, undo what does not. The merge later ranks sessions by value (blocker coverage first, then
 XTop's predicted gain) and replays them best-effort before auto-finish, and a plain auto-fix control
-arm guards the batch. So a short, clean kept log beats many marginal edits. XTop's gain only screens
+arm guards the batch: the merged batch is kept only when XTop predicts it no worse than control on
+both worst setup and worst hold WNS. So a short, clean kept log beats many marginal edits. XTop's gain only screens
 trials; only refreshed PrimeTime judges convergence.
 
 ### The expert loop
@@ -153,10 +154,14 @@ a region only when the analysis blames distance (net delay) and a region was pla
   (`atcs_fail_reasons`, `summarize_gba_violations -with_fail_reason`): its reason is not "no violation
   left". The worst check of every required scenario is a blocker until it is repaired.
 - The bulk is everything auto-fix clears by itself. It is not worker work. The batch's auto-finish
-  runs the serial flow's qualified hold and then setup strings (`packs/xtop-timing-closure/flow/closure.py`)
-  after the expert repairs, which are locked with `set_dont_touch` first.
+  runs the control arm's exact qualified plain auto-fix sequence (setup size, setup buffer, hold
+  size-only, hold; `packs/xtop-timing-closure/flow/closure.py`) after the expert repairs, which are
+  locked with `set_dont_touch` first, so the two arms differ only by the recipe. Both arms then read
+  `summarize_gba_violations -exclude_path -with_top_n N -with_fail_reason` per check; the chosen
+  arm's reasons are sealed with the batch and reach the next plan through the residual cases.
 - Workers spend their budget on blockers only. A worker that fixes bulk endpoints takes area and
-  routing from auto-finish and blurs its own gain. One mechanism per slot, in disjoint edit domains.
+  routing from auto-finish and blurs its own gain. One mechanism per slot, in disjoint edit domains:
+  no instance and no net in two active slots.
 
 ## Counterexample
 

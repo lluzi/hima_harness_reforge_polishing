@@ -1342,14 +1342,18 @@ class PrepareRecipeReplayTests(unittest.TestCase):
     def test_a_plan_without_select_replays_every_ranked_session(self):
         self.assertEqual(len(prepare_default()["sessions"]), 2)
 
-    def test_merged_auto_finish_uses_the_brief_strings_hold_then_setup(self):
-        request = prepare_default()
+    def test_merged_auto_finish_is_the_control_arms_exact_qualified_sequence(self):
+        """The two arms differ only by the expert recipe: merged auto-finish includes the
+        qualified hold size-only line (`-size_cell_only -size_rule nominal_keywords`)."""
+        request = prepare_default(setupMargin=0.03, holdMargin=0.01)
         self.assertTrue(request["autoFinish"])
         self.assertEqual(request["autoFinishTcl"], [
-            "fix_hold_gba_violations -effort high -hold_target 0.0 -setup_margin 0.02",
-            "fix_setup_gba_violations -methods size_cell -effort high -setup_target 0.0 -hold_margin 0.02",
-            "fix_setup_gba_violations -methods insert_buffer -effort high -setup_target 0.0 -hold_margin 0.02",
+            "fix_setup_gba_violations -methods size_cell -effort high -setup_target 0.0 -hold_margin 0.01",
+            "fix_setup_gba_violations -methods insert_buffer -effort high -setup_target 0.0 -hold_margin 0.01",
+            "fix_hold_gba_violations -size_cell_only -size_rule nominal_keywords -hold_target 0.0 -setup_margin 0.03",
+            "fix_hold_gba_violations -effort high -hold_target 0.0 -setup_margin 0.03",
         ])
+        self.assertEqual(request["autoFinishTcl"], request["controlTcl"])
 
     def test_control_arm_is_the_old_flows_qualified_plain_auto_fix(self):
         request = prepare_default(setupMargin=0.03, holdMargin=0.01)
@@ -1377,6 +1381,14 @@ class PrepareRecipeReplayTests(unittest.TestCase):
                                                  "regions": [[0, 0, 10, 10]]})
         self.assertEqual(sessions[1]["domain"], {"instances": ["U3"], "nets": ["N3"], "pins": [], "regions": []})
         self.assertNotIn("domain", prepare_default())
+
+    def test_an_inverted_session_region_is_refused(self):
+        """The one region rule of work packages and Operator sessions: x1<=x2 and y1<=y2."""
+        sessions = recipe_sessions()
+        sessions["w01"]["editDomain"]["regions"] = [[10, 0, 0, 10]]
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.prepare_recipe_replay(recipe_plan(), BASE_STATE_ID, default_recipe(), sessions)
+        self.assertEqual(ctx.exception.code, "invalid-recipe")
 
     def test_a_slot_ranked_twice_is_refused(self):
         recipe = default_recipe()
@@ -1618,6 +1630,34 @@ class ReconcileRecipeTests(unittest.TestCase):
         _, state = reconcile_default()
         self.assertEqual(state["chosen"]["arm"], "merged")
         self.assertIn("tie", state["chosen"]["reason"])
+
+    def test_merged_with_better_hold_but_worse_setup_wns_is_not_chosen(self):
+        """Never worse than plain auto-fix: a merged arm that loses setup WNS is refused even
+        when its hold WNS gain makes its worst-of-both slack better."""
+        _, state = reconcile_default(merged_kw={"setup": {"s1": (1, -0.03, -0.03), "s2": (0, 0.0, 0.0)},
+                                                "hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.01, -0.01)}})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIn("setup WNS", state["chosen"]["reason"])
+
+    def test_merged_with_better_setup_but_worse_hold_wns_is_not_chosen(self):
+        _, state = reconcile_default(merged_kw={"setup": {"s1": (0, 0.0, 0.0), "s2": (0, 0.0, 0.0)},
+                                                "hold": {"s1": (0, 0.0, 0.0), "s2": (2, -0.06, -0.06)}})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIn("hold WNS", state["chosen"]["reason"])
+
+    def test_a_wns_loss_within_one_rounding_step_is_no_worse(self):
+        _, state = reconcile_default(merged_kw={"setup": {"s1": (1, -0.0201, -0.0201), "s2": (0, 0.0, 0.0)},
+                                                "hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.04, -0.04)}})
+        self.assertEqual(state["chosen"]["arm"], "merged")
+
+    def test_merged_no_worse_on_wns_and_worse_on_tns_only_is_not_chosen(self):
+        _, state = reconcile_default(merged_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (4, -0.05, -0.20)}})
+        self.assertEqual(state["chosen"]["arm"], "control")
+
+    def test_merged_better_on_one_tns_and_worse_on_the_other_is_chosen(self):
+        _, state = reconcile_default(merged_kw={"setup": {"s1": (2, -0.02, -0.03), "s2": (0, 0.0, 0.0)},
+                                                "hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.05, -0.05)}})
+        self.assertEqual(state["chosen"]["arm"], "merged")
 
     def test_equal_worst_slack_is_broken_by_tns(self):
         _, state = reconcile_default(control_kw={"setup": {"s1": (3, -0.02, -0.05), "s2": (0, 0.0, 0.0)}})

@@ -1204,10 +1204,10 @@ def seal_batch(state, request, facts, contributions):
 #   the worker toolkit's own `atcs_*` procedures, each session confined to its own
 #   edit domain, `namePrefix` and plan hash as its worker session had them, then
 #   `NNN.dump`; `set_dont_touch` on every
-#   instance the applied commands changed; if `autoFinish`, `AUTO_FINISH` (hold,
-#   then setup); `auto.dump`; final `summarize_gba_violations` per check;
+#   instance the applied commands changed; if `autoFinish`, the plain auto-fix
+#   sequence (`auto_fix_tcl`); `auto.dump`; final `summarize_gba_violations` per check;
 #   `write_design_changes ... -output_dir eco -keep_route`.
-# - **control**: `000.dump`; the old flow's qualified plain auto-fix (`CONTROL`);
+# - **control**: `000.dump`; the same plain auto-fix (`auto_fix_tcl`) alone;
 #   `auto.dump`; the same summaries; `write_design_changes ... -output_dir
 #   eco-control -keep_route`.
 #
@@ -1216,8 +1216,9 @@ def seal_batch(state, request, facts, contributions):
 # with its reason and the replay continues. `reconcile_recipe` then refuses an
 # unsafe arm (incomplete run, tainted toolkit session, out-of-domain replay change,
 # no single ECO pair, or a `FORMATVERSION`/`dbNetFreeWires`/`editDelete -net`
-# line), and picks the arm whose XTop prediction is better -- so the refreshed
-# batch is never worse than plain auto-fix by XTop's own estimate. PrimeTime after
+# line), and keeps merged only when its XTop prediction is no worse than control's
+# on both worst WNS -- so the refreshed batch is never worse than plain auto-fix by
+# XTop's own estimate. PrimeTime after
 # the refresh stays the only convergence judge.
 
 RECIPE_PROCS = {
@@ -1245,6 +1246,9 @@ MARGIN_LIMIT = 0.2
 """Qualified margins of the old serial flow (`packs/xtop-timing-closure/knowledge/source-flow.md`
 Sec.7.3), bounded like its fix plans (`closure.py` `validate_plan`: -0.2..0.2 ns)."""
 
+FAIL_REASON_TOP_N = 20
+"""`summarize_gba_violations -with_top_n` of each arm's post-auto-finish fail-reason reading."""
+
 ARMS = ("merged", "control")
 ECO_PREFIX = "atcs_batch"
 ECO_DIRS = {"merged": "eco", "control": "eco-control"}
@@ -1252,23 +1256,13 @@ _ECO_ROLES = ("netlist", "physical")
 _PREFIX_RE_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 
 
-def auto_finish_tcl(setup_margin, hold_margin):
-    """The merged arm's auto-finish, in the brief's order: hold, then setup (size, buffer).
+def auto_fix_tcl(setup_margin, hold_margin):
+    """Plain auto-fix: the old flow's qualified sequence (source-flow.md Sec.7.3 order: setup size,
+    setup buffer, hold size, hold buffer), rendered by `closure.py` `actions_tcl_text` at effort high.
 
-    Strings follow `packs/xtop-timing-closure/flow/closure.py` `actions_tcl_text` (hold-buffer,
-    setup-size, setup-buffer kinds at effort high, targets 0.0).
+    The control arm runs it alone; the merged arm runs the same lines as its auto-finish after the
+    expert recipe, so the two arms differ only by the recipe.
     """
-    return [
-        f"fix_hold_gba_violations -effort high -hold_target 0.0 -setup_margin {setup_margin}",
-        f"fix_setup_gba_violations -methods size_cell -effort high -setup_target 0.0 -hold_margin {hold_margin}",
-        f"fix_setup_gba_violations -methods insert_buffer -effort high -setup_target 0.0 -hold_margin {hold_margin}",
-    ]
-
-
-def control_tcl(setup_margin, hold_margin):
-    """The control arm: the old flow's qualified plain auto-fix sequence (source-flow.md Sec.7.3
-    order: setup size, setup buffer, hold size, hold buffer), rendered by `closure.py`
-    `actions_tcl_text` at effort high."""
     return [
         f"fix_setup_gba_violations -methods size_cell -effort high -setup_target 0.0 -hold_margin {hold_margin}",
         f"fix_setup_gba_violations -methods insert_buffer -effort high -setup_target 0.0 -hold_margin {hold_margin}",
@@ -1343,10 +1337,9 @@ def _session_identity(slot, session):
         raise core.AtcsError("invalid-recipe", f"session {slot!r} editDomain must be an object")
     regions = []
     for region in domain.get("regions") or []:
-        if (not isinstance(region, (list, tuple)) or len(region) != 4
-                or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
-                       for v in region)):
-            raise core.AtcsError("invalid-recipe", f"session {slot!r} region must be [x1, y1, x2, y2]")
+        if core.region_box(region) is None:
+            raise core.AtcsError("invalid-recipe", f"session {slot!r} region must be [x1, y1, x2, y2] with x1<=x2, "
+                                                   "y1<=y2")
         regions.append(list(region))
     return {
         "prefix": prefix,
@@ -1457,8 +1450,9 @@ def prepare_recipe_replay(plan, base_state_id, recipe, sessions, required_scenar
         "setupMargin": setup_margin,
         "holdMargin": hold_margin,
         "autoPrefix": f"atcs_{safe_batch}_auto_",
-        "autoFinishTcl": auto_finish_tcl(setup_margin, hold_margin) if auto_finish else [],
-        "controlTcl": control_tcl(setup_margin, hold_margin),
+        "autoFinishTcl": auto_fix_tcl(setup_margin, hold_margin) if auto_finish else [],
+        "controlTcl": auto_fix_tcl(setup_margin, hold_margin),
+        "failReasonTopN": FAIL_REASON_TOP_N,
         "requiredScenarios": list(required_scenarios or []),
         "removableFillers": list(removable_fillers or []),
         "sessions": request_sessions,
@@ -1527,11 +1521,27 @@ def _prediction(predict_text, required):
     return prediction
 
 
-def _prediction_key(prediction):
-    """Larger is better: worst slack, then the two checks' worst slacks together, then TNS."""
-    setup, hold = prediction["worstSetupWns"], prediction["worstHoldWns"]
-    return (round(min(setup, hold), 6), round(setup + hold, 6),
-            round(prediction["setupTns"] + prediction["holdTns"], 6))
+PREDICTION_TOLERANCE = 1e-4
+"""One rounding step of XTop's 4-decimal summary: a difference within it is no difference."""
+
+
+def _compare_predictions(merged, control):
+    """``(merged_chosen, detail)``: merged only if it is no worse than control on worst setup WNS
+    and worst hold WNS, and strictly better on at least one of the four WNS/TNS measures or equal
+    on all of them (a tie goes to merged)."""
+    keys = (("worstSetupWns", "setup WNS"), ("worstHoldWns", "hold WNS"),
+            ("setupTns", "setup TNS"), ("holdTns", "hold TNS"))
+    diffs = {label: round(merged[key] - control[key], 6) for key, label in keys}
+    detail = "; ".join(f"{label} merged {merged[key]} vs control {control[key]}" for key, label in keys)
+    worse = [label for label in ("setup WNS", "hold WNS") if diffs[label] < -PREDICTION_TOLERANCE]
+    if worse:
+        return False, f"merged is worse on {' and '.join(worse)} ({detail})"
+    better = [label for label, diff in diffs.items() if diff > PREDICTION_TOLERANCE]
+    if better:
+        return True, f"merged is no worse on WNS and better on {', '.join(better)} ({detail})"
+    if all(abs(diff) <= PREDICTION_TOLERANCE for diff in diffs.values()):
+        return True, f"tie ({detail}); merged kept"
+    return False, f"merged is better on nothing and worse on TNS ({detail})"
 
 
 # ---- ECO pair safety -----------------------------------------------------------
@@ -1622,9 +1632,12 @@ def _arm_view(arm, evidence, request, session_accounts):
     problems.extend(eco_problems)
     if arm == "merged":
         problems.extend(session_accounts["problems"])
+    fail_text = evidence.get("failReasonText") if isinstance(evidence.get("failReasonText"), dict) else {}
     view = {
         "safe": not problems, "problems": problems, "missingPair": missing, "eco": pair,
         "prediction": _prediction(evidence.get("predictText"), request.get("requiredScenarios") or []),
+        "failReasons": {check: contributions.parse_fail_reasons(fail_text[check]) for check in ("setup", "hold")
+                        if isinstance(fail_text.get(check), str)},
         "toolFailure": evidence.get("toolFailure"),
         "autoFix": (result or {}).get("autoFix") or [],
     }
@@ -1726,13 +1739,8 @@ def choose_arm(merged, control):
     if "unknown" in control_prediction:
         return ("control", f"control prediction unknown ({control_prediction['unknown']}); both arms use the "
                            "same summary command, so plain auto-fix is kept", True)
-    merged_key, control_key = _prediction_key(merged_prediction), _prediction_key(control_prediction)
-    detail = (f"worst WNS / setup+hold WNS / TNS: merged {list(merged_key)} vs control {list(control_key)}")
-    if merged_key == control_key:
-        return "merged", f"tie ({detail}); merged kept", True
-    if merged_key > control_key:
-        return "merged", f"merged predicts better ({detail})", True
-    return "control", f"control predicts better ({detail})", True
+    merged_chosen, detail = _compare_predictions(merged_prediction, control_prediction)
+    return ("merged" if merged_chosen else "control"), detail, True
 
 
 def _chosen_new_nets(chosen_arm, evidence, fillers):
@@ -1776,14 +1784,21 @@ def reconcile_recipe(request, arms):
     failed, it has no single netlist+physical pair, a pair file is empty or holds a
     `FORMATVERSION` / `dbNetFreeWires` / `editDelete -net` line, or (merged) a receipt is
     unattributable or a session's replay changed an instance outside its own edit domain.
-    Choice: a safe arm over an unsafe one; with both safe, the better XTop prediction over the
-    required scenarios -- worst of setup/hold WNS, then setup+hold worst WNS, then total TNS
-    (sum over scenarios) -- with a tie going to merged; an unknown prediction of either arm keeps
-    control (both run the same summary command, so plain auto-fix is the conservative pick).
+    Choice: a safe arm over an unsafe one; with both safe, XTop's predictions over the required
+    scenarios: merged only if it is no worse than control on worst setup WNS and on worst hold
+    WNS (within `PREDICTION_TOLERANCE`), and strictly better on at least one of setup/hold WNS or
+    TNS (TNS summed over scenarios), else control; a tie on all four goes to merged. An unknown
+    prediction of either arm keeps control (both run the same summary command, so plain auto-fix
+    is the conservative pick).
     Merged chosen only because control is unusable is sealed ``guarantee.evidenced: false`` with
     a ``guaranteeUnevidenced`` warning. ``newNets`` is the chosen arm's new nets when every added
     instance is accounted for, else ``None`` with ``newNetsUnknown``. Neither arm usable raises
     ``missing-input`` (the merged pair is missing) or ``eco-refused``.
+
+    ``failReasons`` is the chosen arm's post-auto-finish ``summarize_gba_violations
+    -with_fail_reason`` reading, ``{arm, setup?: {reason: count}, hold?: {...}}`` (a check whose
+    reading is missing is absent); ``arms.*.failReasons`` holds both arms'. They are what plain
+    auto-fix left unfixed and why, for the residual and the next generation's research.
 
     Recorded, never blocking: skipped commands (per session), a session replay delta that
     differs from its Contribution's own delta (``warnings`` kind ``replayMismatch``), and an
@@ -1835,6 +1850,7 @@ def reconcile_recipe(request, arms):
         "warnings": warnings,
         "arms": views,
         "chosen": {"arm": chosen_arm, "reason": reason, "eco": views[chosen_arm]["eco"]},
+        "failReasons": {"arm": chosen_arm, **views[chosen_arm]["failReasons"]},
         "guarantee": {"evidenced": evidenced, "arm": chosen_arm, "reason": reason},
         "newNets": new_nets,
     }
@@ -1889,6 +1905,7 @@ def _seal_recipe_batch(state, request, facts, contributions):
         "newNets": state.get("newNets"),
         "eco": {role: {"path": eco[role]["path"], "sha256": eco[role]["sha256"]} for role in _ECO_ROLES},
         "choice": {"arm": chosen["arm"], "reason": chosen.get("reason")},
+        "failReasons": state.get("failReasons") or {"arm": chosen["arm"]},
         "arms": {arm: {"eco": (arms.get(arm) or {}).get("eco"), "safe": (arms.get(arm) or {}).get("safe"),
                        "problems": (arms.get(arm) or {}).get("problems"),
                        "prediction": (arms.get(arm) or {}).get("prediction")} for arm in ARMS},

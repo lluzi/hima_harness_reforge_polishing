@@ -848,8 +848,14 @@ proc redirect {args} {
     if {$code} { error $r }
     return ""
 }
+set ::stub_fail_reasons_setup "no_setup_gain 3\nlegal_fail_no_space_on_row 1"
+set ::stub_fail_reasons_hold "break_setup 2\nno_hold_gain 5"
 proc summarize_gba_violations {args} {
     stub_record summarize_gba_violations {*}$args
+    if {[lsearch -exact $args -with_fail_reason] >= 0} {
+        if {[lsearch -exact $args -setup] >= 0} { return $::stub_fail_reasons_setup }
+        return $::stub_fail_reasons_hold
+    }
     if {[lsearch -exact $args -exclude_path] >= 0} {
         if {[lsearch -exact $args -setup] >= 0} { return $::stub_summary_setup }
         return $::stub_summary_hold
@@ -1014,9 +1020,9 @@ class RecipeReplayTclshTest(unittest.TestCase):
                   "fix_setup_gba_violations", "write_design_changes")}
         self.assertLess(first["size_cell"], first["insert_buffer"])
         self.assertLess(first["insert_buffer"], first["set_dont_touch"])
-        self.assertLess(first["set_dont_touch"], first["fix_hold_gba_violations"])
-        self.assertLess(first["fix_hold_gba_violations"], first["fix_setup_gba_violations"])
-        self.assertLess(first["fix_setup_gba_violations"], first["write_design_changes"])
+        self.assertLess(first["set_dont_touch"], first["fix_setup_gba_violations"])
+        self.assertLess(first["fix_setup_gba_violations"], first["fix_hold_gba_violations"])
+        self.assertLess(first["fix_hold_gba_violations"], first["write_design_changes"])
         auto = [words for words in merged if words[0] in ("fix_hold_gba_violations", "fix_setup_gba_violations")]
         self.assertEqual([" ".join(words) for words in auto], self.request["autoFinishTcl"])
         dont_touch = next(words for words in merged if words[0] == "set_dont_touch")
@@ -1027,6 +1033,31 @@ class RecipeReplayTclshTest(unittest.TestCase):
                                       "-keep_route"])
         dumps = Path(self.task["arms"]["merged"]["dumpDir"])
         self.assertEqual(sorted(p.name for p in dumps.iterdir()), ["000.dump", "001.dump", "002.dump", "auto.dump"])
+
+    def test_both_arms_record_fail_reasons_after_auto_fix_and_the_chosen_arms_are_sealed(self):
+        """US10/US34: the reasons XTop could not fix what is left after auto-finish, per check,
+        read back from both arms, and the chosen arm's sealed with the batch."""
+        merged, control, arms = self._run_both(self.EVEN, self.EVEN)
+        for words in (merged, control):
+            commands = [" ".join(w) for w in words]
+            last_fix = max(i for i, w in enumerate(words)
+                           if w[0] in ("fix_hold_gba_violations", "fix_setup_gba_violations"))
+            export = next(i for i, w in enumerate(words) if w[0] == "write_design_changes")
+            for check in ("setup", "hold"):
+                line = f"summarize_gba_violations -exclude_path -with_top_n 20 -with_fail_reason -{check}"
+                self.assertIn(line, commands)
+                self.assertLess(last_fix, commands.index(line))
+                self.assertLess(commands.index(line), export)
+        expected = {"setup": {"no_setup_gain": 3, "legal_fail_no_space_on_row": 1},
+                    "hold": {"break_setup": 2, "no_hold_gain": 5}}
+        state = integration_module.reconcile_recipe(self.request, arms)
+        for arm in ("merged", "control"):
+            self.assertEqual(state["arms"][arm]["failReasons"], expected)
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertEqual(state["failReasons"], {"arm": "merged", **expected})
+        merge = integration_module.seal_batch(state, self.request, {"baseStateId": "base-1"}, [
+            {"id": "c1", "revision": 1}, {"id": "c2", "revision": 3}])
+        self.assertEqual(merge["failReasons"], {"arm": "merged", **expected})
 
     def test_skipped_commands_are_recorded_and_the_replay_continues(self):
         _, _, arms = self._run_both(self.EVEN, self.EVEN)

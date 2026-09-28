@@ -1111,12 +1111,10 @@ OPERATOR_OBSERVE_MODES = ("fast", "full")
 
 
 def _operator_regions(edit_domain):
-    """`editDomain.regions` (``[[x1, y1, x2, y2], ...]``, finite numbers, x1<=x2, y1<=y2) or refuse."""
+    """`editDomain.regions` (``[[x1, y1, x2, y2], ...]``, `core.region_box`) or refuse."""
     regions = []
     for region in (edit_domain or {}).get("regions") or []:
-        if (not isinstance(region, (list, tuple)) or len(region) != 4
-                or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in region)
-                or region[0] > region[2] or region[1] > region[3]):
+        if core.region_box(region) is None:
             raise core.AtcsError("invalid-input", f"editDomain region must be [x1, y1, x2, y2] with x1<=x2, y1<=y2: "
                                                   f"{region!r}")
         regions.append(list(region))
@@ -1332,6 +1330,7 @@ def compile_recipe_replay_task(design, tech_lef, cell_lef_glob, netlist, def_pat
             "AUTO_PREFIX": auto_prefix, "RECEIPTS_LOG": str(paths["receiptsLog"]),
             "DUMP_DIR": str(paths["dumpDir"]), "PREDICT_DIR": str(paths["predictDir"]),
             "ARM_RESULT": str(paths["armResult"]),
+            "FAIL_REASON_TOP_N": str(request.get("failReasonTopN") or integration_module.FAIL_REASON_TOP_N),
         }
         env.update(context_env)
         tcl = compile_task("xtop-operator.tcl", env=env, globals_=globals_) + "\n" + load_template("xtop-replay.tcl")
@@ -1356,7 +1355,8 @@ def read_replay_arm(arm_root, arm, request, workspace=None):
     """Read one finished (or failed) arm back for `atcs.integration.reconcile_recipe`.
 
     Returns ``{arm, result, receipts, badReceiptLines, sessionDeltas, autoDelta, totalDelta,
-    predictText, eco, keptInstanceNets}`` (``keptInstanceNets``: each instance a kept merged-arm
+    predictText, failReasonText, eco, keptInstanceNets}`` (``failReasonText``: the
+    ``predict/<check>-fail-reasons.rpt`` texts) (``keptInstanceNets``: each instance a kept merged-arm
     toolkit line created, with the nets that line created -- its logged ``newNets`` and requested
     ``args.newNets``; an empty list when it recorded none). Dump deltas come from the real cell dumps
     (`atcs.contributions.actual_delta`); ``eco`` lists every ``atcs_batch_netlist_*`` /
@@ -1426,10 +1426,12 @@ def read_replay_arm(arm_root, arm, request, workspace=None):
                 if master is not None and before.get(name, None) is None and name in before:
                     instance_nets[name] = sorted(set(instance_nets.get(name, [])) | set(nets))
 
-    predict_text = {}
+    predict_text, fail_reason_text = {}, {}
     for check in ("setup", "hold"):
         path = root / "predict" / f"{check}.rpt"
         predict_text[check] = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else None
+        path = root / "predict" / f"{check}-fail-reasons.rpt"
+        fail_reason_text[check] = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else None
 
     eco_dir = root / integration_module.ECO_DIRS[arm]
     eco = {}
@@ -1444,7 +1446,8 @@ def read_replay_arm(arm_root, arm, request, workspace=None):
     return {
         "arm": arm, "root": rel(root), "result": result, "receipts": receipts, "badReceiptLines": bad_lines,
         "sessionDeltas": session_deltas, "autoDelta": auto_delta, "totalDelta": total_delta,
-        "predictText": predict_text, "eco": eco, "keptInstanceNets": instance_nets,
+        "predictText": predict_text, "failReasonText": fail_reason_text, "eco": eco,
+        "keptInstanceNets": instance_nets,
     }
 
 
