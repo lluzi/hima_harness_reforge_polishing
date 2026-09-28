@@ -13,14 +13,15 @@ defect or a wrong-window tester action caused by overlapping App/Code windows.
 
 Follow [HimaHarness human-like test discipline](himaharness-human-like-test-discipline.md).
 
-- Screen policy: primary macOS display, one Space, HimaHarness left 60%,
-  Claude/Catsights right 40%.
+- Screen policy: the sole HimaHarness window is fully on the dedicated external
+  Catsights display; Claude/Codex/Terminal stay on the Mac primary display.
 - Start from zero HimaHarness main processes. The user manually stopped the old
   test; verify rather than assume.
 - Use one fresh Claude session with context below 50%.
 - Launch exactly one assigned HimaHarness App/Home. The coordinator must provide
   those fixed identities in `HIMA_TEST_TASK_V1` before launch.
-- Record window titles and capture the side-by-side screenshot before clicking.
+- Record the two-display window inventory and capture Catsights showing the
+  complete target HimaHarness window before clicking.
 
 ## Read-only diagnostic
 

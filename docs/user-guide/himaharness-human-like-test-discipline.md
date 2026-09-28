@@ -8,21 +8,24 @@ Produce evidence about one released App/Pack through one unambiguous human-like
 test surface. Window placement, process identity and teardown are test gates,
 not presentation preferences.
 
-## Fixed test surface
+## Fixed two-display test surface
 
-- **Display:** primary macOS display, one dedicated Space.
-- **Layout:** HimaHarness occupies the left 60%; Claude Desktop/Catsights occupies
-  the right 40%.
-- **Excluded:** Code, Terminal, report editors and old HimaHarness windows stay
-  minimized or on another Space.
+- **Catsights external display:** the only active HimaHarness window, fully
+  contained on that physical display.
+- **Mac primary display:** Claude Desktop, Codex, Code, Terminal and report
+  editors. These windows never overlap or enter Catsights.
+- **Physical collaboration:** the two displays sit side by side; Catsights is
+  the product-operation surface and the Mac primary display is the
+  coordination/development surface.
 - **Instances:** one HimaHarness main process, one HimaHarness window, one Claude
   tester session, one Catsights observation surface.
 - **Identity:** the checkpoint records App path/version, Home, kit, Pack digest,
   Site and visible window title before the first click.
 
-The tester captures a screenshot of this layout before any product action. An
-ambiguous, stacked or obscured layout is `TEST_ENV_BLOCKED`; no product verdict
-may follow from it.
+Before any product action, the tester captures Catsights showing the complete
+HimaHarness window and records a two-display window inventory. HimaHarness on
+the primary display, any coding window on Catsights, or an ambiguous/stacked
+target is `TEST_ENV_BLOCKED`; no product verdict may follow from it.
 
 ## Context discipline
 
@@ -46,7 +49,8 @@ Before launch:
    trial;
 3. launch the exact assigned App once with the exact assigned Home;
 4. verify one main process and one window;
-5. arrange and screenshot the fixed test surface.
+5. move that window fully onto the Catsights external display;
+6. capture Catsights and record the two-display inventory.
 
 Electron helper processes are expected and are not separate App instances.
 Multiple main executables, windows with different kits/Homes, or an unknown
