@@ -376,11 +376,11 @@ function duplicateReceipt(kind: AdmissionKind, records: ReturnType<typeof protoc
 
 class RunInteractiveAuthority implements InteractiveAuthority {
   private readonly deps: InteractiveRuntimeDeps;
-  private readonly request: InteractiveAddress;
+  private readonly request: InteractiveOperateRequest;
   private readonly derived: DerivedInteractiveOperation;
   private readonly qualification: InteractiveQualification;
   private readonly callerDigest: string;
-  constructor(deps: InteractiveRuntimeDeps, request: InteractiveAddress, derived: DerivedInteractiveOperation, qualification: InteractiveQualification, callerDigest: string) {
+  constructor(deps: InteractiveRuntimeDeps, request: InteractiveOperateRequest, derived: DerivedInteractiveOperation, qualification: InteractiveQualification, callerDigest: string) {
     this.deps = deps; this.request = request; this.derived = derived; this.qualification = qualification; this.callerDigest = callerDigest;
   }
 
@@ -425,13 +425,20 @@ class RunInteractiveAuthority implements InteractiveAuthority {
         if (!reply) return { kind: 'refused', reason: `interactive command ${view.activeCommand.commandId} still owns the single-writer lease (${view.activeCommand.state})` };
       }
       let payload: ProtocolRecord = intent.record;
-      const budget = this.request.scopeMutationBudget;
-      if (intent.action === 'input' && budget !== undefined) {
-        // Counted from the Ledger under the Run lock, so a restart or a concurrent call cannot exceed it.
-        const admitted = protocolRecords(this.deps.fabric.ledger, run.id).filter((item) => item.payload.event === 'input-intent'
-          && item.payload.toolSessionId === intent.record.toolSessionId && item.payload.scopeMutation === true).length;
-        if (admitted >= budget) return { kind: 'refused', reason: `The owner-adopted reviewed scope admits at most ${budget} mutations in tool session ${intent.record.toolSessionId}; ${admitted} were already admitted.` };
-        payload = { ...intent.record, scopeMutation: true };
+      const scope = this.request.reviewedScope;
+      if (intent.action === 'input' && intent.record.effect === 'mutation' && scope !== undefined && this.request.action === 'input') {
+        // The retained Pack classifies the command; only its save commands are outside the scope.
+        const { name, args } = this.request.command;
+        if (fresh.commands.find((command) => command.name === name)?.effect !== 'save') {
+          if (!scope.commands.includes(name)) return { kind: 'refused', reason: `The Operator mutation ${name} is outside the immutable owner-adopted reviewed scope (${scope.commands.join(', ')}).` };
+          const values = args !== null && typeof args === 'object' && !Array.isArray(args) ? args as Record<string, unknown> : {};
+          if (values[scope.planHashArgument] !== scope.planSha256) return { kind: 'refused', reason: `The Operator mutation ${scope.planHashArgument} differs from the owner-adopted reviewed plan SHA-256.` };
+          // Counted from the Ledger under the Run lock, so a restart or a concurrent call cannot exceed it.
+          const admitted = protocolRecords(this.deps.fabric.ledger, run.id).filter((item) => item.payload.event === 'input-intent'
+            && item.payload.toolSessionId === intent.record.toolSessionId && item.payload.scopeMutation === true).length;
+          if (admitted >= scope.maxMutations) return { kind: 'refused', reason: `The owner-adopted reviewed scope admits at most ${scope.maxMutations} mutations in tool session ${intent.record.toolSessionId}; ${admitted} were already admitted.` };
+          payload = { ...intent.record, scopeMutation: true };
+        }
       }
       const appended = await this.deps.fabric.ledger.appendInteractive(run.id, {
         executionId: intent.record.executionId, toolSessionId: intent.record.toolSessionId,

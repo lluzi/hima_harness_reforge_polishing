@@ -68,6 +68,26 @@ export interface TeamRecipeBinding {
   readonly inlinePayload?: ReviewedActionPayload | ReviewedScopePayload;
 }
 
+/**
+ * Why a Reviewer's `scope` value is not one the Pack recipe allows, or undefined when it is: one
+ * object with exactly `commands` (a non-empty distinct subset of the recipe commands) and
+ * `maxMutations` (an integer from 1 to the recipe cap).
+ */
+export function reviewedScopeProblem(scope: unknown, recipe: { readonly commands: readonly string[]; readonly maxMutations: number }): string | undefined {
+  if (!scope || typeof scope !== 'object' || Array.isArray(scope)) return 'the reviewed scope must be one object with commands and maxMutations';
+  const { commands, maxMutations, ...extra } = scope as Record<string, unknown>;
+  if (Object.keys(extra).length > 0) return `the reviewed scope accepts only commands and maxMutations; unexpected ${Object.keys(extra).join(', ')}`;
+  if (!Array.isArray(commands) || commands.length === 0 || commands.some(item => typeof item !== 'string') || new Set(commands).size !== commands.length) {
+    return 'the reviewed scope commands must be a non-empty list of distinct command names';
+  }
+  const outside = (commands as string[]).filter(command => !recipe.commands.includes(command));
+  if (outside.length > 0) return `the reviewed scope names commands outside the Pack recipe scope (${recipe.commands.join(', ')}): ${outside.join(', ')}`;
+  if (typeof maxMutations !== 'number' || !Number.isInteger(maxMutations) || maxMutations < 1 || maxMutations > recipe.maxMutations) {
+    return `the reviewed scope maxMutations must be an integer from 1 to the Pack recipe cap ${recipe.maxMutations}`;
+  }
+  return undefined;
+}
+
 export interface ReviewedActionPayload { readonly sourceResultRecordId: string; readonly adoptionRecordId: string;
   readonly planSha256: string; readonly command: string; readonly arguments: Readonly<Record<string, string | number | boolean>> }
 /**

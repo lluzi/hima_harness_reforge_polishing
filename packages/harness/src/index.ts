@@ -33,7 +33,7 @@ import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs, ownedW
 import { controlling, identityOf, drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, settleStrandedTeamExecutions, type RunDelegationRequest } from './delegation-runtime.js';
-import { registerDelegationGuard, parseDelegationResultObservedPayload } from './delegation.js';
+import { registerDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
 import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
 import { interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
@@ -879,21 +879,10 @@ export default class Hima extends Service {
     }
     if(run?.control&&run.control.owner!==sessionId) {
       if(!delegated)return {status:'refused',reason:'This conversation has no active Operator delegation for the exact Run execution.'};
-      let scopeMutationBudget:number|undefined;
-      if(request.action==='input'&&delegated.reviewedAction!==undefined&&'scope' in delegated.reviewedAction) {
-        // Reviewed scope: a mutation must be a scope command carrying the adopted plan hash; the runtime
-        // admission counts it against the scope budget. Read, save and close commands are unaffected.
-        const reviewed=delegated.reviewedAction;const command=request.command;
-        if(!run.packId||!request.nodeId)return {status:'refused',reason:'The Operator target Pack/node identity is unavailable.'};
-        const pack=loadPack(this.config.packsDir,run.packId);const node=pack.graph.nodes.find(item=>item.id===request.nodeId);
-        const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
-        if((tool?.interactive?.commands.mutate??[]).includes(command.name)) {
-          if(!reviewed.scope.commands.includes(command.name))return {status:'refused',reason:`The Operator mutation ${command.name} is outside the immutable owner-adopted reviewed scope (${reviewed.scope.commands.join(', ')}).`};
-          const args=command.args!==null&&typeof command.args==='object'&&!Array.isArray(command.args)?command.args as Record<string,unknown>:{};
-          if(args[reviewed.planHashArgument]!==reviewed.planSha256)return {status:'refused',reason:`The Operator mutation ${reviewed.planHashArgument} differs from the owner-adopted reviewed plan SHA-256.`};
-          scopeMutationBudget=reviewed.scope.maxMutations;
-        }
-      } else if(request.action==='input'&&delegated.reviewedAction!==undefined&&!('scope' in delegated.reviewedAction)) {
+      // A reviewed scope is enforced at runtime admission against the Run's retained Pack classification.
+      const reviewedScope=delegated.reviewedAction!==undefined&&'scope' in delegated.reviewedAction?{...delegated.reviewedAction.scope,
+        planHashArgument:delegated.reviewedAction.planHashArgument,planSha256:delegated.reviewedAction.planSha256}:undefined;
+      if(request.action==='input'&&delegated.reviewedAction!==undefined&&!('scope' in delegated.reviewedAction)) {
         const command=request.command;
         if(command.name===delegated.reviewedAction.command
             &&identityOf(command.args)!==identityOf(delegated.reviewedAction.arguments))return {status:'refused',reason:'The Operator mutation differs from the immutable owner-adopted reviewed action.'};
@@ -904,7 +893,7 @@ export default class Hima extends Service {
         if(mutations.has(command.name)&&command.name!==delegated.reviewedAction.command)return {status:'refused',reason:'The Operator requested a different mutation than the immutable owner-adopted reviewed action.'};
       }
       request={...request,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,...delegated,
-        ...(scopeMutationBudget===undefined?{}:{scopeMutationBudget})};
+        ...(reviewedScope===undefined?{}:{reviewedScope})};
     }
     if(this.factStop.signal.aborted)return {status:'refused',reason:'The Host is stopping.'};
     const result=await operateInteractive(this.interactiveDeps(),request);
@@ -1058,17 +1047,16 @@ export default class Hima extends Service {
           const reviewed=member.reviewedAction;
           const planHash=payload[reviewed.planHashField];const scope=payload[reviewed.scopeField];
           if(typeof planHash!=='string'||planHash!==outputRecords.get(reviewed.planInput)?.contentSha256)return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed scope plan SHA-256 differs from the current reader-backed plan.'};
-          if(!scope||typeof scope!=='object'||Array.isArray(scope))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed scope must be one object with commands and maxMutations.'};
-          const {commands,maxMutations,...extra}=scope as Record<string,unknown>;
-          if(Object.keys(extra).length>0)return {unknowns:[],status:'refused',artifacts:[],reason:`The reviewed scope accepts only commands and maxMutations; unexpected ${Object.keys(extra).join(', ')}.`};
-          if(!Array.isArray(commands)||commands.length===0||commands.some(item=>typeof item!=='string')||new Set(commands).size!==commands.length)return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed scope commands must be a non-empty list of distinct command names.'};
+          // Second guard: the Reviewer result gate already refused this; a Ledger result that bypassed it still cannot pass.
+          const problem=reviewedScopeProblem(scope,reviewed);
+          if(problem!==undefined)return {unknowns:[],status:'refused',artifacts:[],reason:`${problem[0]!.toUpperCase()}${problem.slice(1)}.`};
+          const {commands,maxMutations}=scope as {commands:string[];maxMutations:number};
           const node=pack.graph.nodes.find(item=>item.id===member.node);const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
-          const outside=(commands as string[]).filter(command=>!reviewed.commands.includes(command)||!tool?.interactive?.commands.mutate.includes(command)
+          const untyped=commands.filter(command=>!tool?.interactive?.commands.mutate.includes(command)
             ||!tool.interactive.arguments[command]?.some(item=>item.name===reviewed.hostPlanHashArgument&&item.type==='string'));
-          if(outside.length>0)return {unknowns:[],status:'refused',artifacts:[],reason:`The reviewed scope names commands outside the Pack recipe scope (${reviewed.commands.join(', ')}): ${outside.join(', ')}.`};
-          if(typeof maxMutations!=='number'||!Number.isInteger(maxMutations)||maxMutations<1||maxMutations>reviewed.maxMutations)return {unknowns:[],status:'refused',artifacts:[],reason:`The reviewed scope maxMutations must be an integer from 1 to the Pack recipe cap ${reviewed.maxMutations}.`};
+          if(untyped.length>0)return {unknowns:[],status:'refused',artifacts:[],reason:`The reviewed scope names commands that are not hash-bearing mutations of the Operator tool: ${untyped.join(', ')}.`};
           inlinePayload={sourceResultRecordId:result.id,adoptionRecordId:source.adoptedRecordId!,planSha256:planHash,
-            planHashArgument:reviewed.hostPlanHashArgument,scope:{commands:commands as string[],maxMutations}};
+            planHashArgument:reviewed.hostPlanHashArgument,scope:{commands,maxMutations}};
         } else {
         const planHash=payload[member.reviewedAction.planHashField];const command=payload[member.reviewedAction.commandField];const args=payload[member.reviewedAction.argumentsField];
         const planRecord=outputRecords.get(member.reviewedAction.planInput);

@@ -6,7 +6,7 @@ import { timeBoxRemainingMs, ownedWaitedMs } from './budget.js';
 import { runExitFence } from './host-exit.js';
 import type { DelegationRecord, RunRecord } from './ledger.js';
 import { batchToolRefusal, positionOf } from './packs.js';
-import { createDelegation, followupDelegation, cancelDelegation, readDelegationResult, durableDelegationHandoff, parseDelegationResultObservedPayload, type DelegationContract, type EffectiveDelegationContract, type DelegationAuthority, type DelegationReservation, type DelegationRuntimePolicy, type DurableDelegationState, type OperatorDelegationGrant } from './delegation.js';
+import { createDelegation, followupDelegation, cancelDelegation, readDelegationResult, durableDelegationHandoff, parseDelegationResultObservedPayload, reviewedScopeProblem, type DelegationContract, type EffectiveDelegationContract, type DelegationAuthority, type DelegationReservation, type DelegationRuntimePolicy, type DurableDelegationState, type OperatorDelegationGrant } from './delegation.js';
 const json = (value: unknown) => JSON.parse(JSON.stringify(value));
 type Creation = {
     contract: DelegationContract;
@@ -303,6 +303,16 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
         if (!payload || Array.isArray(payload) || payload.schema !== found.effective.recipe.resultSchema.id
             || found.effective.recipe.resultSchema.required.some(field => !(field in payload))) {
             return { status: 'refused', artifacts: [], unknowns: [], reason: `Agent Team result does not satisfy ${found.effective.recipe.resultSchema.id}.` };
+        }
+        // A Reviewer feeding a scope Operator is gated here, before result-observed, so a bad scope
+        // leaves the child accepted: it can be followed up, or cancelled so the execution settles.
+        const reviewOutput = found.effective.recipe.reviewOutput;
+        const scopeProblem = reviewOutput !== undefined && 'scopeField' in reviewOutput
+            ? reviewedScopeProblem(payload[reviewOutput.scopeField], reviewOutput) : undefined;
+        if (scopeProblem !== undefined) {
+            const left = found.effective.budgetShare.maxFollowups - found.followups;
+            return { status: 'refused', artifacts: [], unknowns: [], reason: `Agent Team member ${found.effective.recipe.memberId} result is refused: ${scopeProblem}. `
+                + (left > 0 ? `${left} follow-up(s) to the same child remain.` : 'No follow-up remains; cancelling this delegation ends it without a result.') };
         }
     }
     let candidateHandoff: ReturnType<typeof durableDelegationHandoff> | undefined;

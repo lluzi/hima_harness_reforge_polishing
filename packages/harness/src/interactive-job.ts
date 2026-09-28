@@ -102,10 +102,12 @@ export interface InteractiveAddress {
   /** Host-only pin from the Operator delegation receipt. */
   readonly expectedBindingDigest?: string;
   /**
-   * Host-only: this input is a mutation under an owner-adopted reviewed scope. Admission counts the
-   * scope mutations already recorded for the tool session and refuses once this many were admitted.
+   * Host-only: the Operator's owner-adopted reviewed scope. Admission holds every mutation the
+   * retained Pack classifies as `mutate` to these commands and plan hash, and counts the scope
+   * mutations already recorded for the tool session against `maxMutations`.
    */
-  readonly scopeMutationBudget?: number;
+  readonly reviewedScope?: { readonly commands: readonly string[]; readonly maxMutations: number;
+    readonly planHashArgument: string; readonly planSha256: string };
 }
 
 export interface InteractiveSession {
