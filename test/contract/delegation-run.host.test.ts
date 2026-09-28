@@ -273,9 +273,40 @@ async function admissionRun(t:import('node:test').TestContext,parallelJobs:numbe
  return {host,runId:id,actor,rows,create,complete};
 }
 
-test('six parallel Teams of three are admitted for two generations in a 180-minute box, charged by live use on the Site lanes',async t=>{
+test('six parallel Teams of three fit two generations in a 180-minute box on six Site lanes when every child uses its whole share',async t=>{
+ // The ATCS budget (notes/t2b-admission.md): Researcher 10 min and Reviewer 10 min, each keeping one follow-up,
+ // and Operator 20 min, on a Site of parallelJobs 6, so 6 x 180 = 1080 min of delegation time.
+ // Worst case: no child ends early. Researchers and Reviewers complete with a follow-up still allowed, so each
+ // keeps its whole share reserved; Operators never end. 6 slots x 40 min x 2 generations = 480 min charged.
+ // (On one lane the same Teams would need 480 of 180 min: generation 1 alone, 240 min, does not fit.)
+ const {rows,create,complete}=await admissionRun(t,6,minutes(180),48);
+ const team=[['researcher','researcher',minutes(10),1],['reviewer','reviewer',minutes(10),1],['operator','analyst',minutes(20),0]] as const;
+ for(const generation of [1,2]){
+  for(const [index,[member,role,share,followups]] of team.entries()){
+   for(const slot of [1,2,3,4,5,6]){
+    const delegationId=`g${generation}-s${slot}-${member}`;
+    const dependency=index===0?[]:[`g${generation}-s${slot}-${team[index-1]![0]}`];
+    const created=await create(delegationId,role,share,followups,dependency);
+    assert.equal(created.status,'created',`${delegationId}: ${JSON.stringify(created)}`);
+    assert.equal(created.effectiveContract.budgetShare.maxElapsedMs,share,'an admitted share is never narrowed');
+   }
+   // Operators are left running: their whole share stays charged.
+   if(member!=='operator')for(const slot of [1,2,3,4,5,6])await complete(`g${generation}-s${slot}-${member}`);
+  }
+ }
+ assert.equal(rows().length,36);
+ assert.equal(rows().filter(row=>row.state==='accepted').length,12,'both generations\' Operators still hold their whole share');
+ assert.equal(rows().filter(row=>row.state==='completed').length,24,'every Researcher and Reviewer keeps a follow-up, so its whole share too');
+ // The charge is the full 480 min: three 175-min children fit (1005 min), a fourth (1180 min) does not.
+ for(const n of [1,2,3])assert.equal((await create(`probe-${n}`,'analyst',minutes(175))).status,'created',`probe-${n}`);
+ const over=await create('probe-4','analyst',minutes(175));
+ assert.equal(over.status,'refused',JSON.stringify(over));assert.match(over.reason,/Child shares exceed/);
+});
+
+test('ended children are charged only the time they held, so a second generation reuses the lanes the first one ended on',async t=>{
  // Six worker slots on a Site of six job lanes: each slot's Team is Researcher -> Reviewer -> Operator stand-in,
- // with ATCS-like follow-up allowances. Full shares: 6 x 95 min = 570 min a generation, 1140 min for two.
+ // with ATCS-like follow-up allowances. Full shares: 6 x 95 min = 570 min a generation, 1140 min for two, which
+ // exceeds 1080: generation 2 is admitted only because generation 1's Operators ended within moments.
  const {rows,create,complete}=await admissionRun(t,6,minutes(180),48);
  const team=[['researcher','researcher',minutes(20),1],['reviewer','reviewer',minutes(15),1],['operator','analyst',minutes(60),0]] as const;
  const slots=[1,2,3,4,5,6];
