@@ -178,7 +178,9 @@ test('a Team execution whose required member ended without a result settles fail
   assert.ok(control().paused.includes('synthesize'), 'the Hard blocker holds the node for a person');
   assert.equal(fourth.kind, 'refused', JSON.stringify(fourth));
 
-  // Boundary: at a hybrid node the owner can still finish through batch work, so the Team is advisory.
+  // A hybrid node's Team is stranded the same way: a Pack that runs the Team's Operator on its
+  // interactive path (ATCS #64 Task 5: the batch path is a no-op for parked slots) cannot finish
+  // that execution once a required member ended without a result, whatever the tool's mode.
   await host.ctx.hima.cancelRun(runId); cleanupRunId = undefined;
   const hybrid = await host.ctx.hima.startRun({ pack: hybridPackId, site: site.name, goal: { target_period_ns: 2 },
     ownerSessionId: actor, timeBoxMs: 120_000 });
@@ -200,7 +202,27 @@ test('a Team execution whose required member ended without a result settles fail
   assert.equal(hybridReviewer.status, 'created', JSON.stringify(hybridReviewer));
   const hybridCancel = await hybridDelegate({ action: 'cancel', delegationId: hybridReviewer.effectiveContract.delegationId, requestId: 'hybrid-cancel' });
   assert.equal(hybridCancel.status, 'accepted', JSON.stringify(hybridCancel));
-  assert.equal(hybridControl().executions[hybridExecutionId]!.phase, 'begun');
+  const hybridSettled = hybridControl().executions[hybridExecutionId]!;
+  assert.equal(hybridSettled.phase, 'failed', 'a hybrid-tool Team execution whose required member ended settles failed');
+  assert.ok(hybridSettled.reason?.includes(hybridReviewer.effectiveContract.delegationId), hybridSettled.reason);
+
+  // Boundary: a batch execution whose Team lost no required member (a parked slot's no-op) is
+  // untouched and launches its own batch Job.
+  const batchBegin = await host.ctx.hima.executionAction({ runId: hybridRunId, actor, action: 'begin', nodeId: 'synthesize',
+    requestId: 'hybrid-batch-begin', expectedEpoch: hybridControl().epoch, expectedRevision: hybridControl().revision });
+  assert.equal(batchBegin.kind, 'accepted', JSON.stringify(batchBegin));
+  const batchId = batchBegin.receipt!.executionId!;
+  const scoutOnBatch = await hybridDelegate({ action: 'create', requestId: 'hybrid-scout',
+    recipe: { teamId: 'advisory-team', version: '1', memberId: 'scout', executionId: batchId } });
+  assert.equal(scoutOnBatch.status, 'created', JSON.stringify(scoutOnBatch));
+  const scoutOnBatchCancel = await hybridDelegate({ action: 'cancel', delegationId: scoutOnBatch.effectiveContract.delegationId, requestId: 'hybrid-scout-cancel' });
+  assert.equal(scoutOnBatchCancel.status, 'accepted', JSON.stringify(scoutOnBatchCancel));
+  assert.equal(hybridControl().executions[batchId]!.phase, 'begun', 'no required Team member was lost, so nothing settles it');
+  const worked = await host.ctx.hima.executionAction({ runId: hybridRunId, actor, action: 'work', executionId: batchId,
+    requestId: 'hybrid-batch-work', expectedEpoch: hybridControl().epoch, expectedRevision: hybridControl().revision });
+  assert.equal(worked.kind, 'accepted', JSON.stringify(worked));
+  // The fixture REPL waits on stdin, so its batch Job runs on; that it launched is the boundary.
+  assert.equal(hybridControl().executions[batchId]!.phase, 'working', JSON.stringify(hybridControl().executions[batchId]));
 });
 
 test('a Team Reviewer may approve an Operator scope: typed mutations within its commands, plan hash and budget', async (t) => {

@@ -5,7 +5,7 @@ import { controlling, identityOf, executionContext, executionPack, settleStrande
 import { timeBoxRemainingMs, ownedWaitedMs } from './budget.js';
 import { runExitFence } from './host-exit.js';
 import type { DelegationRecord, RunRecord } from './ledger.js';
-import { batchToolRefusal, positionOf } from './packs.js';
+import { positionOf } from './packs.js';
 import { createDelegation, followupDelegation, cancelDelegation, readDelegationResult, durableDelegationHandoff, parseDelegationResultObservedPayload, reviewedScopeProblem, type DelegationContract, type EffectiveDelegationContract, type DelegationAuthority, type DelegationReservation, type DelegationRuntimePolicy, type DurableDelegationState, type OperatorDelegationGrant } from './delegation.js';
 const json = (value: unknown) => JSON.parse(JSON.stringify(value));
 type Creation = {
@@ -408,11 +408,14 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
 }
 
 /**
- * A Pack Agent Team execution at an interactive-only node finishes only through a Team Operator,
- * which needs every role it transitively depends on. Team identities are fixed per execution, so once
- * each such Team has lost one of those members without an observed result, nothing in this execution
- * can produce it. Settle the execution as a failed attempt; the next begin gets fresh Team identities.
- * Caller holds the Run's admission queue. Returns whether any execution settled.
+ * A Pack Agent Team execution finishes only through its Team Operator, which needs every role it
+ * transitively depends on. Team identities are fixed per execution, so once each such Team has lost
+ * one of those members without an observed result, nothing in this execution can produce it. Settle
+ * the execution as a failed attempt; the next begin gets fresh Team identities. This holds whatever
+ * the tool's mode: a hybrid tool's batch path may be a Pack's no-op for executions that run no Team
+ * (ATCS #64 Task 5), never a way to finish one whose Team is stranded. An execution with no lost
+ * Team delegation is never touched here. Caller holds the Run's admission queue. Returns whether any
+ * execution settled.
  */
 export async function settleStrandedTeamExecutions(deps: FabricDeps, runId: string): Promise<boolean> {
     const run = deps.ledger.run(runId);
@@ -426,9 +429,7 @@ export async function settleStrandedTeamExecutions(deps: FabricDeps, runId: stri
     for (const executionId of new Set(lost.map(row => row.effective.recipe!.executionId))) {
         const nodeId = run.control.executions[executionId]!.nodeId;
         const node = positionOf(pack, nodeId)?.node;
-        const tool = node?.kind === 'act' && node.parameters.tool !== undefined ? pack.contract.tools.find(item => item.id === node.parameters.tool) : undefined;
-        // A batch-capable node can still finish through `work`; only an interactive-only one needs the Operator.
-        if (tool === undefined || batchToolRefusal(tool) === undefined) continue;
+        if (node?.kind !== 'act' || node.parameters.tool === undefined) continue;
         const teams = pack.contract.agentTeams.flatMap(team => {
             const operator = team.members.find(item => item.role === 'operator' && item.node === nodeId);
             if (team.triggerNode !== nodeId || operator === undefined) return [];
