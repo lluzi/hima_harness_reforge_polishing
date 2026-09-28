@@ -2179,22 +2179,32 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
           return continued(`The user continued node ${waiting.nodeId}: its Pack wait is cleared. Read current facts before choosing the next action.`);
         }
         if (timeBoxSpent(run, ownedWaitedMs(run))) return no('the Campaign time box is exhausted; continuing does not reset it');
-        // "New work starts again at <node>" for a node the Run has already passed (#64 D2): the
-        // downstream results that new work supersedes, and their pauses and blockers, give way to it.
-        const restart = req.origin === 'human' && scope !== '*' ? upstreamRestart(deps, pack, run, scope) : undefined;
+        // "New work starts again at <node>" for a node the Run has already passed while work downstream
+        // of it is stuck (#64 D2): the results that new work supersedes, and the pauses their blocked
+        // executions left, give way to it. A node the person paused keeps the plain meaning below —
+        // lifting that pause moves nothing.
+        const restart = scope !== '*' && !control.paused.includes(scope) ? upstreamRestart(deps, pack, run, scope) : undefined;
         if (restart !== undefined) {
           if (!restart.ok) return no(restart.reason);
-          for (const execution of restart.superseded) {
-            if (execution.phase !== 'failed' || execution.humanClearance !== undefined
-              || (execution.result?.kind !== 'blocked' && execution.result?.kind !== 'hard-blocker')) continue;
+          if (req.origin !== 'human') return no(`only a person can start new work again at ${scope}, because it supersedes blocked work downstream: ask the user to continue ${scope}, or revise its code`);
+          const resumedBy = (nodeId: string) => deps.ledger.records({ runId: run.id, type: 'resumed' })
+            .some((record) => record.type === 'resumed' && record.requestId === req.requestId && record.nodeId === nodeId);
+          for (const execution of restart.stuck) {
             // As `clearExecutionBlocker` does, before the control write: the clearance closes the wait.
+            // Keyed by this request, so a retry after a fault between the two writes adds nothing.
+            if (resumedBy(execution.nodeId)) continue;
             const blocker = deps.ledger.records({ runId: run.id, type: 'blocker' }).findLast((record) => record.type === 'blocker' && record.nodeId === execution.nodeId);
-            await deps.ledger.appendResumed(run.id, { nodeId: execution.nodeId, who: `human in conversation ${req.actor}`,
+            await deps.ledger.appendResumed(run.id, { nodeId: execution.nodeId, who: `human in conversation ${req.actor}`, requestId: req.requestId,
               ...(blocker === undefined ? {} : { clears: blocker.id }) });
+          }
+          // The superseded results stop being current evidence, as a revision's closure does.
+          if (!resumedBy(scope)) {
+            await deps.ledger.appendResumed(run.id, { nodeId: scope, who: `human in conversation ${req.actor}`, requestId: req.requestId,
+              invalidates: restart.invalidates });
           }
           const latest = existingRun(deps.ledger, run.id);
           const latestControl = latest.control!;
-          const cleared = [...new Set([scope, ...latestControl.paused.filter((paused) => paused !== '*' && restart.closure.includes(paused))])];
+          const cleared = [...new Set([scope, ...latestControl.paused.filter((paused) => restart.clears.includes(paused))])];
           const supersededBy = `continue:${req.requestId}`;
           const ids = new Set(restart.superseded.map((execution) => execution.id));
           receipt = { ...receipt, data: { scope, clearedScopes: cleared, restartsAt: scope, superseded: [...ids] } };
@@ -2204,7 +2214,8 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
               [id, ids.has(id) ? { ...execution, supersededBy } : execution])),
           }, receipt, {}, 'done', restart.progress);
           const released = cleared.filter((item) => item !== scope);
-          return continued(`The user continued node ${scope}: new work starts again there. Hima moved this Run back to ${scope} and superseded the downstream results this new work replaces${released.length === 0 ? '' : `, clearing the pauses of ${released.join(', ')}`}. Read current facts, then begin ${scope}.`);
+          const kept = latestControl.paused.filter((paused) => !cleared.includes(paused));
+          return continued(`The user continued node ${scope}: new work starts again there. Hima moved this Run back to ${scope} and superseded the downstream results this new work replaces${released.length === 0 ? '' : `, clearing the blocked pauses of ${released.join(', ')}`}${kept.length === 0 ? '' : `; the holds on ${kept.join(', ')} remain`}. Read current facts, then begin ${scope}.`);
         }
         changed = { paused: control.paused.filter((paused) => paused !== scope) };
       }
@@ -2273,19 +2284,23 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
 }
 
 /**
- * Whether a human continuation of `nodeId` means new work at a node this Run has already passed, and
- * what that supersedes (#64 D2). Undefined when it does not: the node is where the Run stands, has not
- * run in this generation, is not upstream of the current position, or the Run is inside a Loop or an
- * active growth branch, whose own entry and return own their positions — there the continuation keeps
- * meaning "lift this node's pause" only. A refusal when it does but cannot safely happen now.
+ * Whether a continuation of `nodeId` means new work at a node this Run has already passed, and what
+ * that supersedes (#64 D2). Undefined when it does not, and the continuation keeps meaning "lift this
+ * node's pause": the node is where the Run stands, has not run in this generation, is not upstream of
+ * the current position, nothing downstream of it is stuck, or the Run is inside a Loop or an active
+ * growth branch, whose own entry and return own their positions. A refusal when it does but cannot
+ * safely happen now.
  *
- * Upstream is read over the same non-revisit dependency closure a revision invalidates
- * (`revisionImpactOf`), and the position is restored the way a revision restores it
- * (`revisionPosition`), so the two ways of re-entering a passed node cannot disagree about what
- * comes after it.
+ * Stuck is an uncleared blocked execution in the node's downstream closure, or a pause there that no
+ * person or Agent asked for (a blocked execution's own). Only such pauses are cleared (`clears`); a
+ * deliberate human or Agent hold stays. Upstream is the same non-revisit dependency closure a revision
+ * invalidates (`revisionImpactOf`), the position is restored the way a revision restores it
+ * (`revisionPosition`), and the superseded records are the ones a revision would invalidate — so the
+ * two ways of re-entering a passed node cannot disagree about what comes after it.
  */
 function upstreamRestart(deps: FabricDeps, pack: Pack, run: RunRecord, nodeId: string):
-  | { readonly ok: true; readonly closure: readonly string[]; readonly superseded: readonly NodeExecution[]; readonly progress: RunProgress }
+  | { readonly ok: true; readonly superseded: readonly NodeExecution[]; readonly stuck: readonly NodeExecution[];
+      readonly clears: readonly string[]; readonly invalidates: string[]; readonly progress: RunProgress }
   | { readonly ok: false; readonly reason: string }
   | undefined {
   const control = run.control;
@@ -2298,18 +2313,43 @@ function upstreamRestart(deps: FabricDeps, pack: Pack, run: RunRecord, nodeId: s
   if (positions.length === 0 || positions.includes(nodeId)) return undefined;
   const current = (execution: NodeExecution): boolean => execution.supersededBy === undefined
     && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation;
-  const executions = Object.values(control.executions);
-  if (!executions.some((execution) => current(execution) && execution.nodeId === nodeId && execution.phase !== 'begun')) return undefined;
+  const executions = Object.values(control.executions).filter(current);
+  if (!executions.some((execution) => execution.nodeId === nodeId && execution.phase !== 'begun')) return undefined;
   const closure = revisionImpactOf(pack, [nodeId]);
   if (!positions.some((position) => closure.includes(position))) return undefined;
+  const stuck = executions.filter((execution) => closure.includes(execution.nodeId) && execution.phase === 'failed'
+    && execution.humanClearance === undefined && (execution.result?.kind === 'blocked' || execution.result?.kind === 'hard-blocker'));
+  const clears = executionHolds(control).filter((hold) => hold.scope !== '*' && closure.includes(hold.scope) && hold.source === 'unknown').map((hold) => hold.scope);
+  if (stuck.length === 0 && clears.length === 0) return undefined;
   if (executions.some((execution) => execution.phase === 'working' || execution.phase === 'uncertain')
     || deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === run.id)) {
     return { ok: false, reason: `new work cannot start again at ${nodeId} while a Job of this Run is in flight or uncertain; let it settle or stop it first` };
   }
+  if (run.fork !== undefined) {
+    const at = positionOf(pack, run.fork.from);
+    const fork = at === undefined ? undefined : forkFrom(at.graph, at.node);
+    const branch = fork?.ok ? fork.branches.find((candidate) => candidate.nodes.includes(nodeId)) : undefined;
+    const running = Object.entries(run.fork.branches).filter(([id, held]) => id !== branch?.id && held.state !== 'done').map(([id]) => id);
+    if (branch !== undefined && run.fork.branches[branch.id]?.state === 'done' && running.length > 0) {
+      return { ok: false, reason: `new work cannot start again at ${nodeId} in its finished fork branch while branch ${running.join(', ')} is still running; continue it once the fork reaches its join` };
+    }
+  }
   const restored = revisionPosition(pack, [nodeId], run);
   if (restored.progress === undefined) return { ok: false, reason: `new work cannot start again at ${nodeId} from the current position: ${restored.reason}` };
-  return { ok: true, closure, progress: restored.progress,
-    superseded: executions.filter((execution) => current(execution) && closure.includes(execution.nodeId)) };
+  const superseded = executions.filter((execution) => closure.includes(execution.nodeId));
+  // Exactly the records `revisionAction` invalidates for the executions it supersedes.
+  const all = deps.ledger.records({ runId: run.id });
+  const currentRecords = currentRecordsIn(all);
+  const invalidates = new Set<string>();
+  for (const execution of superseded) {
+    const terminal = all.filter((record) => record.type === 'node' && record.nodeId === execution.nodeId
+      && record.attempt === execution.attempt && record.generation === execution.generation
+      && record.loopId === execution.loopId && record.branchId === execution.branchId).at(-1)?.seq ?? execution.inputThroughSeq ?? 0;
+    for (const record of currentRecords) if (record.seq > (execution.inputThroughSeq ?? 0) && record.seq <= terminal
+      && record.generation === execution.generation && record.loopId === execution.loopId
+      && (!('branchId' in record) || record.branchId === execution.branchId)) invalidates.add(record.id);
+  }
+  return { ok: true, superseded, stuck, clears, invalidates: [...invalidates], progress: restored.progress };
 }
 
 /** What an owner is told about a cleared Reader whose input a Workshop upstream writes (#64 D2). */
@@ -2319,7 +2359,7 @@ function upstreamProducerNote(pack: Pack, nodeId: string): string {
   const producers = workshopProducersOf(pack, node.parameters.observes).filter((producer) => producer.nodeId !== nodeId);
   if (producers.length === 0) return '';
   const names = producers.map((producer) => producer.nodeId).join(' or ');
-  return ` If its input is still missing, re-reading it only blocks again: ${names} writes that input and must run first, so ask the user to continue ${producers[0]!.nodeId}, which starts new work there.`;
+  return ` If its input is still missing, re-reading it only blocks again: ${names} writes that input and must run first, so a person must continue ${producers[0]!.nodeId}, which starts new work there (you may instead revise its Workshop code).`;
 }
 
 async function clearExecutionBlocker(deps: FabricDeps, run: RunRecord, req: ExecutionActionRequest,
