@@ -1,5 +1,5 @@
 id: agentic-timing-closure-system
-version: "0.1.6"
+version: "0.1.7"
 title: Agentic timing closure system
 status: development
 minimumHarnessVersion: 0.1.0
@@ -783,7 +783,10 @@ workshops:
       evaluation, pointers, residual cases, experience and remaining budget. Write one next-decision to
       research/requests/next-decision.json with stateRef, observationRef, budgetRef, question, action
       (observe, research, compose, revise, implement, earlier-apr, wait or goal-met), targets, reason,
-      falsifier, costBasis and requiredArtifacts. earlier-apr is legal only when the scope is
+      falsifier, costBasis and requiredArtifacts. stateRef is the `id` (20 lowercase hex) of state/working-state.json;
+      observationRef is the `id` (20 lowercase hex) of the observation the decision cites, such as
+      state/observation.json; both are plain strings, never objects or file sha256 values. budgetRef is a
+      non-empty string naming the budget basis. earlier-apr is legal only when the scope is
       full-flow and must name the stage (place, cts, route or postroute) the APR task prepares and
       runs; wait names the concrete external input, scope or capability required;
       goal-met is

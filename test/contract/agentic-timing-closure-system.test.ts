@@ -292,12 +292,21 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     for (const pattern of forbidden) assert.doesNotMatch(word, pattern, `argv word "${word}" references a forbidden path`);
   }
 
+  // The next-decision Reader (tools/read-atcs.py) refuses stateRef/observationRef that are not a
+  // 20-hex artifact `id` and a budgetRef that is not a string; the Workshop purpose must say so, or
+  // the Researcher guesses (Issue 63: objects of 64-hex content hashes, request-admissible FAIL).
+  const decider = pack.contract.workshops.find((w: { produces?: string }) => w.produces === 'nextDecision');
+  assert.ok(decider, 'a workshop produces nextDecision');
+  assert.match(decider.purpose, /stateRef is the `id` \(20 lowercase hex\) of state\/working-state\.json/);
+  assert.match(decider.purpose, /observationRef is the `id` \(20 lowercase hex\) of the observation/);
+  assert.match(decider.purpose, /budgetRef is a non-empty string/);
+
   installPackMethod({ from: packDir, to: path.join(h.home, 'hima/packs', packId) });
   const host = await bootInProcess(h);
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /agentic-timing-closure-system@0\.1\.6.*fit/s);
+    assert.match(throughHost.text, /agentic-timing-closure-system@0\.1\.7.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {
