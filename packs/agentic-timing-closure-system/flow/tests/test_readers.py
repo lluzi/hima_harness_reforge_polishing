@@ -896,7 +896,8 @@ class PrecheckEvidenceReaderTest(unittest.TestCase):
     def test_all_nets_qualified(self):
         report, _spef = self._write_evidence(["n1", "n2"], ["n1", "n2", "n3"])
         values = read_atcs.read("precheck-evidence", report, self.workspace)
-        self.assertEqual(values, [{"type": "tc_unqualified_rc_net_count", "unit": "count", "value": 0}])
+        self.assertEqual(values, [{"type": "tc_unqualified_rc_net_count", "unit": "count", "value": 0},
+                                  {"type": "tc_presta_gate_net_count", "unit": "count", "value": 0}])
 
     def test_some_nets_unqualified(self):
         report, _spef = self._write_evidence(["n1", "n2"], ["n1"])
@@ -914,6 +915,68 @@ class PrecheckEvidenceReaderTest(unittest.TestCase):
         report, _spef = self._write_evidence([], [])
         values = read_atcs.read("precheck-evidence", report, self.workspace)
         self.assertEqual(values[0]["value"], 0)
+
+    def test_a_legacy_batch_gates_on_its_unqualified_nets(self):
+        report, _spef = self._write_evidence(["n1", "n2"], ["n1"])
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertEqual(values["tc_presta_gate_net_count"]["value"], 1)
+
+    def _write_recipe_evidence(self, new_nets, spef_lines, predictive, unknown_reason=None, provenance=True):
+        if provenance:
+            _write(self.workspace / "state" / "replay-request.json", json.dumps({"mode": "recipe"}))
+        spef_path = self.workspace / "inputs" / "spef-net-names.txt"
+        _write(spef_path, "\n".join(spef_lines) + ("\n" if spef_lines else ""))
+        body = {"parentStateId": "a" * 20, "contributions": [], "operations": [], "innovusEcoTcl": "",
+                "sourceMap": {}, "newNets": new_nets,
+                "eco": {"netlist": {"path": "n", "sha256": "1" * 64}, "physical": {"path": "p", "sha256": "2" * 64}}}
+        if unknown_reason:
+            body["newNetsUnknown"] = unknown_reason
+        evidence = verification.precheck_evidence(core.stamp("merge-commit", body), spef_path, predictive=predictive)
+        evidence = core.stamp("precheck-evidence", {
+            **{k: v for k, v in evidence.items() if k not in ("schema", "id")},
+            "spefNetNames": {"path": str(spef_path.relative_to(self.workspace)),
+                             "sha256": evidence["spefNetNames"]["sha256"]},
+        })
+        report = self.workspace / "flow" / "records" / "precheck.json"
+        core.write_artifact(report, evidence)
+        return report
+
+    def test_a_recipe_batch_with_unknown_new_nets_is_non_predictive_and_does_not_gate(self):
+        report = self._write_recipe_evidence(None, ["n1"], predictive=False, unknown_reason="auto-fix inserted 2")
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertIsNone(values["tc_unqualified_rc_net_count"]["value"])
+        self.assertIn("auto-fix inserted 2", values["tc_unqualified_rc_net_count"]["unknownReason"])
+        self.assertEqual(values["tc_presta_gate_net_count"]["value"], 0)
+
+    def test_a_recipe_batch_with_unqualified_nets_is_non_predictive_and_does_not_gate(self):
+        report = self._write_recipe_evidence(["n1", "n2"], ["n1"], predictive=False)
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertEqual(values["tc_unqualified_rc_net_count"]["value"], 1)
+        self.assertEqual(values["tc_presta_gate_net_count"]["value"], 0)
+
+    def test_a_recipe_claim_without_recipe_provenance_is_read_as_legacy(self):
+        report = self._write_recipe_evidence(["n1", "n2"], ["n1"], predictive=False, provenance=False)
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertEqual(values["tc_presta_gate_net_count"]["value"], 1)
+        report = self._write_recipe_evidence(None, ["n1"], predictive=False, unknown_reason="auto-fix inserted 2",
+                                             provenance=False)
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertIsNone(values["tc_presta_gate_net_count"]["value"])
+
+    def test_integration_state_with_a_chosen_pair_is_recipe_provenance(self):
+        _write(self.workspace / "state" / "integration-state.json",
+               json.dumps({"chosen": {"arm": "merged", "eco": {"netlist": {}, "physical": {}}}}))
+        report = self._write_recipe_evidence(["n1", "n2"], ["n1"], predictive=False, provenance=False)
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertEqual(values["tc_presta_gate_net_count"]["value"], 0)
+
+    def test_a_recipe_batch_claiming_a_prediction_it_does_not_have_is_refused(self):
+        report = self._write_recipe_evidence(["n1", "n2"], ["n1"], predictive=True)
+        with self.assertRaises(ValueError):
+            read_atcs.read("precheck-evidence", report, self.workspace)
+        report = self._write_recipe_evidence([], [], predictive=False)
+        with self.assertRaises(ValueError):
+            read_atcs.read("precheck-evidence", report, self.workspace)
 
     def test_changed_spef_source_is_a_hard_failure(self):
         report, spef_path = self._write_evidence(["n1"], ["n1"])
@@ -1429,7 +1492,7 @@ class SemanticsCoverageTest(unittest.TestCase):
         "tc_final_identity_error_count", "tc_applicable_constraint_failure_count",
         "tc_applicable_constraint_unknown_count", "tc_fixed_check_count", "tc_missing_prior_check_count",
         "tc_refresh_count", "tc_accepted_artifact_ready", "tc_stop_required", "tc_next_action",
-        "tc_selected_contribution_count",
+        "tc_selected_contribution_count", "tc_presta_gate_net_count",
     }
 
     def _load_yaml_light(self, path):

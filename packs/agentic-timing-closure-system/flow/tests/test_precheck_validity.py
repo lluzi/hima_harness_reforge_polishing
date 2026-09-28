@@ -161,6 +161,16 @@ class PlanChecksTest(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "missing-input")
 
 
+class RecipeBatchCheckPlanTest(unittest.TestCase):
+    def test_a_recipe_batch_always_checks_functional_connectivity(self):
+        policy = {"requiredScenarios": ["s1"], "scenarioCorners": {"s1": "c1"}}
+        plan = verification.plan_checks({"id": "m1", "parentStateId": "p", "operations": [],
+                                         "eco": {"netlist": {}, "physical": {}}}, policy)
+        self.assertEqual(plan["functional"], ["connectivity"])
+        legacy = verification.plan_checks({"id": "m1", "parentStateId": "p", "operations": []}, policy)
+        self.assertEqual(legacy["functional"], [])
+
+
 class PrestaQualificationTest(unittest.TestCase):
     def test_new_nets_absent_from_spef_are_all_unqualified(self):
         result = verification.presta_qualification(["n1", "n2", "n3"], {"existing_net"})
@@ -177,6 +187,11 @@ class PrestaQualificationTest(unittest.TestCase):
         self.assertEqual(result["unqualified"], ["n1", "n2"])
         self.assertTrue(core.is_known(core.known(0)))  # sanity on helper
         self.assertEqual(result["count"], core.unknown("unreadable-spef-net-list"))
+
+    def test_unknown_new_nets_are_an_unknown_count_never_zero(self):
+        result = verification.presta_qualification(None, {"n1"})
+        self.assertFalse(core.is_known(result["count"]))
+        self.assertIsNone(result["unqualified"])
 
     def test_no_new_nets_is_known_zero_even_if_spef_unreadable(self):
         result = verification.presta_qualification([], None)
@@ -232,6 +247,24 @@ class PrecheckEvidenceProducerTest(unittest.TestCase):
         })
         with self.assertRaises(core.AtcsError):
             verification.precheck_evidence(bad, self.spef_path)
+
+    def test_a_recipe_batch_seals_whether_the_pre_check_is_predictive(self):
+        recipe = core.stamp("merge-commit", {
+            "parentStateId": "a" * 20, "contributions": [], "operations": [], "innovusEcoTcl": "",
+            "sourceMap": {}, "newNets": None, "newNetsUnknown": "auto-fix inserted 3 instance(s)",
+            "eco": {"netlist": {"path": "n", "sha256": "1" * 64}, "physical": {"path": "p", "sha256": "2" * 64}},
+        })
+        evidence = verification.precheck_evidence(recipe, self.spef_path, predictive=False)
+        self.assertEqual(evidence["batchKind"], "recipe")
+        self.assertIs(evidence["predictive"], False)
+        self.assertIsNone(evidence["newNets"])
+        self.assertEqual(evidence["newNetsUnknown"], "auto-fix inserted 3 instance(s)")
+        with self.assertRaises(core.AtcsError):
+            verification.precheck_evidence(recipe, self.spef_path)  # a recipe batch must state it
+
+    def test_a_legacy_batch_evidence_is_unchanged(self):
+        evidence = verification.precheck_evidence(self.merge_commit, self.spef_path)
+        self.assertEqual(set(evidence), {"schema", "id", "mergeCommitId", "newNets", "spefNetNames"})
 
     def test_unreadable_source_path_is_refused(self):
         with self.assertRaises(core.AtcsError) as ctx:

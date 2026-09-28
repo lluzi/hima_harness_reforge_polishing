@@ -157,6 +157,7 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 | `tc_unresolved_conflict_count` | count | 当前选择组合中未解决的冲突/依赖 | 不是整个研究池所有冲突数 |
 | `tc_out_of_scope_edit_count` | count | 实际修改越出允许编辑域的项 | 影响范围未知另行说明，不当零 |
 | `tc_unqualified_rc_net_count` | count | 当前预演涉及而缺有效寄生模型的 nets | 未知不能被判预演合格 |
+| `tc_presta_gate_net_count` | count | 以预演作为决策依据时阻断的 nets：旧 M5 批次等于 `tc_unqualified_rc_net_count`；配方批次（Issue #64 Task 6）为 0，其预演证据记 `predictive: false`，由刷新后的 PrimeTime 独立判定 | 旧批次未知不当 0 |
 | `tc_xtop_setup_wns_ns` / `tc_xtop_hold_wns_ns` | ns | 当前 XTop 模型的明确最差 slack 观察 | 未报数值则 unknown |
 | `tc_presta_setup_wns_ns` / `tc_presta_hold_wns_ns` | ns | 当前预演模型/范围的 PT 最差 slack | 不能作最终 Goal 来源 |
 | `tc_final_setup_wns_ns` / `tc_final_hold_wns_ns` | ns | 固定最终口径下全部必要 checks 的最差 slack | 若只证明 nonnegative 但未量得实际正值，记录相应下界/覆盖；不得伪造正 margin |
@@ -194,7 +195,7 @@ Judge 只执行已声明谓词，不解释根因、不选择最佳修复。Reade
 | `request-admissible` | `tc_request_invalid_count == 0` | 执行本次查询/试验 | 返回明确诊断以修订请求 |
 | `replay-consistent` | `tc_replay_mismatch_count == 0` 且 `tc_out_of_scope_edit_count == 0` | 继续集成 | 恢复/局部修订，不假称实际采用 |
 | `composition-ready` | `tc_unresolved_conflict_count == 0` | 封闭当前选择组合 | 处理冲突或缩小当前批次 |
-| `presta-model-qualified` | `tc_unqualified_rc_net_count == 0` | 使用该预演支持相应决策 | 该模型结论 unknown；可另选适用物理 probe，不一律终止 |
+| `presta-model-qualified` | `tc_presta_gate_net_count == 0` | 使用该预演支持相应决策 | 该模型结论 unknown；可另选适用物理 probe，不一律终止 |
 | `final-evidence-ready` | `tc_missing_required_check_count == 0`、`tc_final_identity_error_count == 0` | 判断最终 Goal | 补测或修复身份问题 |
 | `required-constraints-pass` | `tc_applicable_constraint_failure_count == 0`、`tc_applicable_constraint_unknown_count == 0` | 允许对应结果的采用 | 不采用为合格结果，保留候选与原因 |
 | `setup-goal` | `tc_final_setup_wns_ns >= target_setup_wns_ns` | 联合 Goal 的一部分 | 继续研究，不单独宣布失败终态 |

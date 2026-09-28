@@ -5,3 +5,4 @@ argv: [/usr/bin/python3, '${READER}', 'precheck-evidence', '${REPORT}', '${OUT}'
 reportKind: atcs-precheck-evidence/1
 emits:
   - tc_unqualified_rc_net_count
+  - tc_presta_gate_net_count

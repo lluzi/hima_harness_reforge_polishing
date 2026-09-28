@@ -47,7 +47,10 @@ the workspace layout decision)
 - `compile_innovus_eco_task` always writes the merge commit's own
   `innovusEcoTcl` text to ``<output_root>/eco.tcl`` and sources it from
   there; it never inlines that text into the compiled Tcl body itself, so
-  the sourced ECO stays inspectable as its own file.
+  the sourced ECO stays inspectable as its own file. A recipe batch
+  (Issue #64 Task 6) instead names its chosen `write_design_changes` pair;
+  the pair is copied to ``<output_root>/eco/{netlist,physical}.tcl`` and
+  sourced from there (`innovus-eco-pair.tcl`).
 
 `parse_path_detail` real-corpus grammar (Task 16)
 -----------------------------------------------------
@@ -953,15 +956,26 @@ def compile_innovus_export_task(current_db_path, design, output_root):
     return {"tcl": tcl, "env": env, "outputs": outputs, "command": ["innovus", "-batch", "-files"]}
 
 
-def compile_innovus_eco_task(merge_commit, current_db_path, design, output_root):
-    """One `innovus-eco.tcl` task: source `merge_commit["innovusEcoTcl"]`, route, export under `output_root`.
+def compile_innovus_eco_task(merge_commit, current_db_path, design, output_root, eco_root=None):
+    """One Innovus ECO task: restore, apply the batch's ECO, `ecoRoute`, export under `output_root`.
 
-    Raises `AtcsError("missing-input", ...)` when the merge commit carries
-    no `innovusEcoTcl` text. `output_root` is expected to be
-    ``implementations/<mergeId>/`` (architecture Sec.13.4) -- every output
-    path this function returns is computed under it, never elsewhere.
+    A recipe batch's merge commit carries ``eco``: the chosen `write_design_changes -keep_route`
+    pair ``{"netlist"|"physical": {"path", "sha256"}}`` (paths relative to `eco_root`, the
+    campaign workspace). Then the task is `innovus-eco-pair.tcl` -- `source` the netlist file,
+    `source` the physical file, the frozen serial flow's `setNanoRouteMode -routeWithEco true ...`
+    and `ecoRoute` (`packs/xtop-timing-closure/flow/templates/apply-eco.tcl`) -- and it returns
+    ``ecoCopies``: the caller copies each file into ``<output_root>/eco/`` after checking its
+    sha256, so Innovus sources the exact bytes the batch sealed.
+
+    Without ``eco``, the task is today's: `innovus-eco.tcl` sources `merge_commit["innovusEcoTcl"]`
+    written to ``<output_root>/eco.tcl`` (byte-identical output). Raises `AtcsError("missing-input",
+    ...)` when the merge commit carries neither. `output_root` is expected to be
+    ``implementations/<mergeId>/`` (architecture Sec.13.4) -- every output path this function
+    returns is computed under it, never elsewhere.
     """
     validate_path_segment(design, "design")
+    if merge_commit.get("eco") is not None:
+        return _compile_innovus_eco_pair_task(merge_commit["eco"], current_db_path, design, output_root, eco_root)
     eco_text = merge_commit.get("innovusEcoTcl")
     if not eco_text:
         raise core.AtcsError("missing-input", "merge commit has no innovusEcoTcl")
@@ -982,6 +996,42 @@ def compile_innovus_eco_task(merge_commit, current_db_path, design, output_root)
     return {
         "tcl": tcl, "env": env, "ecoPath": str(eco_path), "ecoText": eco_text,
         "outputs": outputs, "command": ["innovus", "-batch", "-files"],
+    }
+
+
+def _innovus_outputs(output_root, design):
+    return {
+        "database": str(output_root / "DBS" / f"{design}.enc"),
+        "def": str(output_root / "EXPORT" / "design.def"),
+        "netlist": str(output_root / "EXPORT" / "design.v"),
+        "drc": str(output_root / "RPT" / "verify_drc.rpt"),
+        "connectivity": str(output_root / "RPT" / "verify_connectivity.rpt"),
+    }
+
+
+def _compile_innovus_eco_pair_task(eco, current_db_path, design, output_root, eco_root):
+    output_root = Path(output_root)
+    copies = []
+    for role in ("netlist", "physical"):
+        ref = eco.get(role) if isinstance(eco, dict) else None
+        if (not isinstance(ref, dict) or not isinstance(ref.get("path"), str) or not ref["path"]
+                or not isinstance(ref.get("sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", ref["sha256"])):
+            raise core.AtcsError("missing-input", f"merge commit eco.{role} must be {{path, sha256}}")
+        source = Path(ref["path"])
+        if not source.is_absolute():
+            if eco_root is None:
+                raise core.AtcsError("missing-input", f"eco.{role} path is relative and no eco_root was given")
+            source = Path(eco_root) / source
+        copies.append({"role": role, "from": str(source), "to": str(output_root / "eco" / f"{role}.tcl"),
+                       "sha256": ref["sha256"]})
+    env = {
+        "CURRENT_DB": str(current_db_path), "DESIGN": design,
+        "NETLIST_ECO": copies[0]["to"], "PHYSICAL_ECO": copies[1]["to"], "OUTPUT_ROOT": str(output_root),
+    }
+    tcl = compile_task("innovus-eco-pair.tcl", env=env)
+    return {
+        "tcl": tcl, "env": env, "ecoCopies": copies, "outputs": _innovus_outputs(output_root, design),
+        "command": ["innovus", "-batch", "-files"],
     }
 
 
@@ -1123,7 +1173,7 @@ def compile_xtop_analysis_manual_task(workspace_manifest, edit_domain, operator_
 
 def compile_xtop_replay_task(design, tech_lef, cell_lef_glob, netlist, def_path, steps, output_root,
                              xtop_context):
-    """One `xtop-replay.tcl` batch-replay task for `steps` (a `replay-request.steps` list).
+    """One legacy `xtop-replay-steps.tcl` batch-replay task for `steps` (a `replay-request.steps` list).
 
     I3 (final review, XTop replay source): builds its own fresh XTop workspace
     from the batch's own base-state LEF/netlist/DEF -- `create_workspace` +
@@ -1162,7 +1212,7 @@ def compile_xtop_replay_task(design, tech_lef, cell_lef_glob, netlist, def_path,
     }
     context_env, context_globals = _xtop_task_context(xtop_context)
     env.update(context_env)
-    tcl = compile_task("xtop-replay.tcl", env=env, globals_=context_globals)
+    tcl = compile_task("xtop-replay-steps.tcl", env=env, globals_=context_globals)
     return {
         "tcl": tcl, "env": env, "stepsPath": str(steps_path), "stepsText": steps_text,
         "dumpDir": str(dump_dir), "receiptsLog": str(receipts_log),
@@ -1170,7 +1220,7 @@ def compile_xtop_replay_task(design, tech_lef, cell_lef_glob, netlist, def_path,
 
 
 def read_replay_receipts(receipts_log_path):
-    """Turn `xtop-replay.tcl`'s `receipts.jsonl` into `atcs.integration.reconcile`'s `receipts` shape.
+    """Turn `xtop-replay-steps.tcl`'s `receipts.jsonl` into `atcs.integration.reconcile`'s `receipts` shape.
 
     For an ``"ok"`` line, re-reads its `beforeDump`/`afterDump` cell dumps
     (`atcs.contributions.parse_cell_dump`) and computes `observedDelta` via
@@ -1194,6 +1244,217 @@ def read_replay_receipts(receipts_log_path):
         else:
             receipts.append({"stepId": row["stepId"], "status": "error"})
     return receipts
+
+
+# ---------------------------------------------------------------------------
+# XTop: the generation's one recipe replay, two arms (Issue #64 Task 6)
+# ---------------------------------------------------------------------------
+
+
+REPLAY_ARMS = integration_module.ARMS
+
+
+def _recipe_tcl(request):
+    """The merged arm's RECIPE_TCL: per ranked session, enter its own domain and prefix, run
+    its commands, then dump."""
+    lines = []
+    for session in request.get("sessions") or []:
+        slot = tcl_safe(session["slot"], "recipe slot")
+        prefix = tcl_safe(session["namePrefix"], "session namePrefix")
+        domain = session.get("domain") or {}
+        regions = [repr(v) if isinstance(v, float) else str(v)
+                   for region in _operator_regions({"regions": domain.get("regions") or []}) for v in region]
+        lines.append(
+            f"atcs_replay_session {{{slot}}} {{{prefix}}} "
+            f"{tcl_list_literal(domain.get('instances') or [], 'session instances')} "
+            f"{tcl_list_literal(domain.get('nets') or [], 'session nets')} "
+            f"{tcl_list_literal(domain.get('pins') or [], 'session pins')} "
+            f"{tcl_list_literal(regions, 'session regions')}\n"
+        )
+        for step in request.get("steps") or []:
+            if step["slot"] != session["slot"]:
+                continue
+            step_id = tcl_safe(step["stepId"], "stepId")
+            if step.get("skip") is not None or not step.get("tcl"):
+                lines.append(f"atcs_replay_step {{{step_id}}} 1 {{}}\n")
+            else:
+                lines.append(f"atcs_replay_step {{{step_id}}} 0 {{{step['tcl']}}}\n")
+        lines.append(f"atcs_replay_session_end {int(session['dumpIndex'])}\n")
+    return "".join(lines)
+
+
+def compile_recipe_replay_task(design, tech_lef, cell_lef_glob, netlist, def_path, request, output_root,
+                               xtop_context):
+    """Both arms of one recipe `replay-request` (`atcs.integration.prepare_recipe_replay`).
+
+    Each arm is ``<output_root>/<arm>/``: `xtop-replay.tcl` (the worker session's own
+    `xtop-operator.tcl` setup and toolkit, then `templates/xtop-replay.tcl`), `recipe.tcl`,
+    `auto-fix.tcl`, and after the run `receipts.jsonl`, `ops.jsonl`/`gain.jsonl` (merged),
+    `dumps/`, `predict/`, `arm-result.json` and the ECO pair under `eco/` (merged) or
+    `eco-control/` (control). In the merged arm each session's commands run inside that
+    session's own edit domain (set per session by `atcs_replay_session`), with a budget of one
+    mutation per sendable command; the control arm has an empty recipe and domain. Nothing
+    here launches XTop.
+    """
+    validate_path_segment(design, "design")
+    if request.get("mode") != "recipe":
+        raise core.AtcsError("identity-mismatch", "compile_recipe_replay_task needs a recipe replay-request")
+    output_root = Path(output_root)
+    context_env, context_globals = _xtop_task_context(xtop_context)
+    sendable = sum(1 for step in request.get("steps") or [] if step.get("skip") is None and step.get("tcl"))
+    auto_prefix = tcl_safe(request.get("autoPrefix"), "autoPrefix")
+    arms = {}
+    for arm in REPLAY_ARMS:
+        root = output_root / arm
+        globals_ = {"EDIT_DOMAIN_INSTANCES": [], "EDIT_DOMAIN_NETS": [], "EDIT_DOMAIN_PINS": [],
+                    "EDIT_DOMAIN_REGIONS": []}
+        if arm == "merged":
+            globals_["ATCS_MAX_MUTATIONS"] = [str(max(1, sendable))]
+            recipe_text = _recipe_tcl(request)
+            auto_lines = list(request.get("autoFinishTcl") or [])
+        else:
+            globals_["ATCS_MAX_MUTATIONS"] = ["1"]
+            recipe_text = ""
+            auto_lines = list(request.get("controlTcl") or [])
+        globals_.update({"ATCS_OBSERVE": ["fast"], "ATCS_ARM": [arm]})
+        globals_.update(context_globals)
+        paths = {
+            "tclPath": root / "xtop-replay.tcl", "recipePath": root / "recipe.tcl",
+            "autoFixPath": root / "auto-fix.tcl", "receiptsLog": root / "receipts.jsonl",
+            "dumpDir": root / "dumps", "predictDir": root / "predict", "armResult": root / "arm-result.json",
+            "ecoDir": root / integration_module.ECO_DIRS[arm], "logPath": root / "xtop-replay.log",
+        }
+        env = {
+            "DESIGN": design, "TECH_LEF": tech_lef, "CELL_LEF_GLOB": cell_lef_glob,
+            "NETLIST": netlist, "DEF": def_path if def_path else "", "RUN_ROOT": str(root),
+            "ECO_PREFIX": f"{auto_prefix}eco", "NAME_PREFIX": auto_prefix, "OPS_LOG": str(root / "ops.jsonl"),
+            "RECIPE_TCL": str(paths["recipePath"]), "AUTO_FIX_TCL": str(paths["autoFixPath"]),
+            "AUTO_PREFIX": auto_prefix, "RECEIPTS_LOG": str(paths["receiptsLog"]),
+            "DUMP_DIR": str(paths["dumpDir"]), "PREDICT_DIR": str(paths["predictDir"]),
+            "ARM_RESULT": str(paths["armResult"]),
+        }
+        env.update(context_env)
+        tcl = compile_task("xtop-operator.tcl", env=env, globals_=globals_) + "\n" + load_template("xtop-replay.tcl")
+        arm_task = {key: str(value) for key, value in paths.items()}
+        arm_task.update({
+            "root": str(root), "tcl": tcl, "env": env, "recipeText": recipe_text,
+            "autoFixText": "".join(line + "\n" for line in auto_lines),
+            "argv": ["xtop", "-f", str(paths["tclPath"])],
+        })
+        arms[arm] = arm_task
+    return {"arms": arms}
+
+
+def _read_dump(path):
+    path = Path(path)
+    if not path.is_file():
+        return None
+    return contributions_module.parse_cell_dump(path.read_text(encoding="utf-8"))
+
+
+def read_replay_arm(arm_root, arm, request, workspace=None):
+    """Read one finished (or failed) arm back for `atcs.integration.reconcile_recipe`.
+
+    Returns ``{arm, result, receipts, badReceiptLines, sessionDeltas, autoDelta, totalDelta,
+    predictText, eco, keptInstanceNets}`` (``keptInstanceNets``: each instance a kept merged-arm
+    toolkit line created, with the nets that line created -- its logged ``newNets`` and requested
+    ``args.newNets``; an empty list when it recorded none). Dump deltas come from the real cell dumps
+    (`atcs.contributions.actual_delta`); ``eco`` lists every ``atcs_batch_netlist_*`` /
+    ``atcs_batch_physical_*`` file with its path (relative to `workspace` when given), sha256
+    and text. Anything absent reads as ``None``/empty -- `reconcile_recipe` decides what that
+    means; this function never raises for missing evidence.
+    """
+    root = Path(arm_root)
+
+    def rel(path):
+        return _relative_to(path, workspace)
+
+    result = None
+    result_path = root / "arm-result.json"
+    if result_path.is_file():
+        try:
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+        except ValueError:
+            result = None
+    receipts, bad_lines = [], 0
+    receipts_path = root / "receipts.jsonl"
+    if receipts_path.is_file():
+        for raw_line in receipts_path.read_text(encoding="utf-8").splitlines():
+            if not raw_line.strip():
+                continue
+            try:
+                row = json.loads(raw_line)
+            except ValueError:
+                bad_lines += 1
+                continue
+            if isinstance(row, dict):
+                receipts.append(row)
+            else:
+                bad_lines += 1
+
+    dump_dir = root / "dumps"
+    base = _read_dump(dump_dir / "000.dump")
+    previous = base
+    session_deltas = {}
+    for session in request.get("sessions") or [] if arm == "merged" else []:
+        current = _read_dump(dump_dir / f"{int(session['dumpIndex']):03d}.dump")
+        session_deltas[session["slot"]] = (
+            contributions_module.actual_delta(previous, current) if previous is not None and current is not None
+            else None
+        )
+        previous = current
+    final = _read_dump(dump_dir / "auto.dump")
+    auto_delta = contributions_module.actual_delta(previous, final) if previous is not None and final else None
+    total_delta = contributions_module.actual_delta(base, final) if base is not None and final else None
+
+    instance_nets = {}
+    ops_path = root / "ops.jsonl"
+    if arm == "merged" and ops_path.is_file():
+        for raw_line in ops_path.read_text(encoding="utf-8").splitlines():
+            try:
+                line = json.loads(raw_line) if raw_line.strip() else None
+            except ValueError:
+                continue
+            if not isinstance(line, dict) or line.get("status") != "kept" or line.get("cmd") == "undo":
+                continue
+            args = line.get("args") if isinstance(line.get("args"), dict) else {}
+            nets = sorted({net for net in list(line.get("newNets") or []) + list(args.get("newNets") or [])
+                           if isinstance(net, str) and net})
+            before = ((line.get("before") or {}).get("instances") or {})
+            after = ((line.get("after") or {}).get("instances") or {})
+            for name, master in after.items():
+                if master is not None and before.get(name, None) is None and name in before:
+                    instance_nets[name] = sorted(set(instance_nets.get(name, [])) | set(nets))
+
+    predict_text = {}
+    for check in ("setup", "hold"):
+        path = root / "predict" / f"{check}.rpt"
+        predict_text[check] = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else None
+
+    eco_dir = root / integration_module.ECO_DIRS[arm]
+    eco = {}
+    for role in ("netlist", "physical"):
+        eco[role] = []
+        pattern = f"{integration_module.ECO_PREFIX}_{role}_*"
+        for path in sorted(eco_dir.glob(pattern)) if eco_dir.is_dir() else []:
+            if path.is_symlink() or not path.is_file():
+                continue
+            eco[role].append({"path": rel(path), "sha256": core.file_sha256(path),
+                              "text": path.read_text(encoding="utf-8", errors="replace")})
+    return {
+        "arm": arm, "root": rel(root), "result": result, "receipts": receipts, "badReceiptLines": bad_lines,
+        "sessionDeltas": session_deltas, "autoDelta": auto_delta, "totalDelta": total_delta,
+        "predictText": predict_text, "eco": eco, "keptInstanceNets": instance_nets,
+    }
+
+
+def _relative_to(path, workspace):
+    if workspace is None:
+        return str(path)
+    try:
+        return str(Path(path).resolve().relative_to(Path(workspace).resolve()))
+    except ValueError:
+        return str(path)
 
 
 # ---------------------------------------------------------------------------

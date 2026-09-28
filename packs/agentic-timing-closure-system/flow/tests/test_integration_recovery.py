@@ -1135,5 +1135,754 @@ class SealBatchTests(unittest.TestCase):
         self.assertEqual(first["schema"], "atcs.merge-commit/1")
 
 
+# ---------------------------------------------------------------------------
+# Issue #64 Task 6: the generation's one replay -- the ranked expert recipe
+# through the toolkit procs, protection, auto-finish, one Innovus ECO pair, and
+# a plain auto-fix control arm so the refreshed batch is never worse than it.
+# ---------------------------------------------------------------------------
+
+PLAN_SHA = "a" * 64
+PLAN_SHA_2 = "b" * 64
+
+# Real XTop 2025.09 output (SWERV28, old serial flow run xtop-timing-closure-20260922-090023-5357,
+# g002/XTOP/report; notes/real-summarize-sample.txt). pre_opt: `summarize_gba_violations -exclude_path
+# -as_reference -setup|-hold`; post_opt: `... -exclude_path -with_reference -with_delta -setup|-hold`.
+REAL_PRE_OPT = """### setup summary ###
+Scenario                  Count      Worst        TNS
+------------------------------------------------------
+total                        12    -0.0387    -0.1160
+  func_ffg_cbest_125          0     0.0000     0.0000
+  func_ffg_cbest_m40          0     0.0000     0.0000
+  func_ssg_rcworst_125        0     0.0000     0.0000
+  func_ssg_rcworst_m40       12    -0.0387    -0.1160
+### hold summary ###
+Scenario                  Count      Worst        TNS
+------------------------------------------------------
+total                        70    -0.1542    -3.9661
+  func_ffg_cbest_125         44    -0.0764    -0.7568
+  func_ffg_cbest_m40         55    -0.0704    -0.7199
+  func_ssg_rcworst_125       49    -0.1398    -2.9593
+  func_ssg_rcworst_m40       48    -0.1542    -3.8962
+"""
+REAL_POST_OPT = """### design: swerv_wrapper ###
+Name                      Count     D_Area     Density    D_Density
+--------------------------------------------------------------------
+total                         -    +2.8980    73.0145%     +0.0007%
+  inserted                    4    +2.8980           -     +0.0007%
+    DEL025D1BWP30P140         3    +1.1340           -     +0.0003%
+    DEL100MD1BWP30P140        1    +1.7640           -     +0.0004%
+  sized                       0    +0.0000           -     +0.0000%
+  removed                     0    +0.0000           -     +0.0000%
+  moved                       0    +0.0000           -     +0.0000%
+### setup summary ###
+Scenario                  Count    Count0    D_Count           Worst     Worst0    D_Worst             TNS       TNS0      D_TNS
+---------------------------------------------------------------------------------------------------------------------------------
+total                        12        12         +0    |    -0.0387    -0.0387    +0.0000    |    -0.1160    -0.1160    +0.0000
+  func_ffg_cbest_125          0         0         +0    |     0.0000     0.0000    +0.0000    |     0.0000     0.0000    +0.0000
+  func_ffg_cbest_m40          0         0         +0    |     0.0000     0.0000    +0.0000    |     0.0000     0.0000    +0.0000
+  func_ssg_rcworst_125        0         0         +0    |     0.0000     0.0000    +0.0000    |     0.0000     0.0000    +0.0000
+  func_ssg_rcworst_m40       12        12         +0    |    -0.0387    -0.0387    +0.0000    |    -0.1160    -0.1160    +0.0000
+### hold summary ###
+Scenario                  Count    Count0    D_Count           Worst     Worst0    D_Worst             TNS       TNS0      D_TNS
+---------------------------------------------------------------------------------------------------------------------------------
+total                        66        70         -4    |    -0.1542    -0.1542    +0.0000    |    -3.7707    -3.9661    +0.1954
+  func_ffg_cbest_125         42        44         -2    |    -0.0764    -0.0764    +0.0000    |    -0.6846    -0.7568    +0.0722
+  func_ffg_cbest_m40         52        55         -3    |    -0.0704    -0.0704    +0.0000    |    -0.6551    -0.7199    +0.0649
+  func_ssg_rcworst_125       46        49         -3    |    -0.1398    -0.1398    +0.0000    |    -2.7901    -2.9593    +0.1692
+  func_ssg_rcworst_m40       46        48         -2    |    -0.1542    -0.1542    +0.0000    |    -3.7009    -3.8962    +0.1953
+"""
+REAL_SCENARIOS = ["func_ffg_cbest_125", "func_ffg_cbest_m40", "func_ssg_rcworst_125", "func_ssg_rcworst_m40"]
+
+
+def gba_summary(check, rows):
+    """An XTop `summarize_gba_violations -exclude_path` table (format read from a real
+    SWERV28 session transcript, docs/assessment/2026-09-25/next-stage/wave1-operator-
+    delegation/evidence.json). `rows` is `{scenario: (count, worst, tns)}`."""
+    worst_total = min(row[1] for row in rows.values())
+    tns_total = sum(row[2] for row in rows.values())
+    count_total = sum(row[0] for row in rows.values())
+    lines = [f"### {check} summary ###", "Scenario                  Count      Worst        TNS",
+             "-" * 54, f"total                 {count_total:>10} {worst_total:>10.4f} {tns_total:>10.4f}"]
+    for name, (count, worst, tns) in rows.items():
+        lines.append(f"  {name:<24}{count:>6} {worst:>10.4f} {tns:>10.4f}")
+    return "\n".join(lines) + "\n"
+
+
+def recipe_command(seq, proc, args, instances, skip=None):
+    """One `composition-facts.recipe.sessions[].commands[]` entry (Task 4b, notes/t4b-recipe.md)."""
+    return {"seq": seq, "proc": proc, "cmd": proc[len("atcs_"):], "args": args, "instances": list(instances),
+            "skip": skip}
+
+
+def recipe_session(rank, contribution, task_id, commands):
+    return {"rank": rank, "contribution": contribution, "taskId": task_id, "blockerCoverage": 1,
+            "coveredChecks": [], "value": 0.01, "tnsGain": 0.02, "commands": commands,
+            "executedCount": sum(1 for c in commands if c["skip"] is None),
+            "skipCount": sum(1 for c in commands if c["skip"] is not None)}
+
+
+def size_args(instance, to_master, plan=PLAN_SHA):
+    return {"instance": instance, "toMaster": to_master, "planSha256": plan}
+
+
+def hold_args(pins, plan=PLAN_SHA):
+    return {"pins": list(pins), "effort": "low", "holdTarget": 0.0, "setupMargin": 0.02, "sizeCellOnly": False,
+            "useDummyCell": True, "fixTimingWindow": True, "maxClusterLoaderCount": 4, "maxDelayCellLength": -1,
+            "delayCellList": [], "planSha256": plan}
+
+
+def insert_args(net, loads, masters, new_instances, new_nets, plan=PLAN_SHA_2):
+    return {"net": net, "loadPins": list(loads), "masters": list(masters), "newInstances": list(new_instances),
+            "newNets": list(new_nets), "planSha256": plan}
+
+
+def recipe_sessions():
+    return {
+        "w01": {
+            "contributionId": "c1", "revision": 1, "namePrefix": "atcs_w01_r1_",
+            "editDomain": {"instances": ["U1", "U2"], "nets": ["N1"], "regions": [[0, 0, 10, 10]]},
+            "targetPins": ["U9/D"],
+            "delta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+        },
+        "w02": {
+            "contributionId": "c2", "revision": 3, "namePrefix": "atcs_w02_r1_",
+            "editDomain": {"instances": ["U3"], "nets": ["N3"], "regions": []},
+            "targetPins": [],
+            "delta": {"mastersChanged": {}, "added": {"atcs_w02_r1_b1": "BUFX2"}, "removed": {}},
+        },
+    }
+
+
+def recipe_plan(batch_id="b1", base_state_id=BASE_STATE_ID, **extra):
+    plan = {"batchId": batch_id, "baseStateId": base_state_id, "reason": "blockers first, then auto-finish"}
+    plan.update(extra)
+    return plan
+
+
+def default_recipe():
+    return {
+        "rankedBy": ["blockerCoverage desc", "value desc", "tnsGain desc", "id asc"], "worstChecks": [],
+        "commandCount": 4, "skipCount": 1,
+        "sessions": [
+            recipe_session(1, "c1", "w01", [
+                recipe_command(1, "atcs_size_cell", size_args("U1", "BUFX2"), ["U1"]),
+                recipe_command(3, "atcs_fix_hold_pins", hold_args(["U9/D"]), ["U2"]),
+            ]),
+            recipe_session(2, "c2", "w02", [
+                recipe_command(2, "atcs_insert_buffer",
+                               insert_args("N3", ["U3/A"], ["BUFX2"], ["atcs_w02_r1_b1"], ["atcs_w02_r1_n1"]),
+                               ["atcs_w02_r1_b1"]),
+                recipe_command(5, "atcs_size_cell", size_args("U1", "BUFX4", PLAN_SHA_2), ["U1"],
+                               skip="shared-instance"),
+            ]),
+        ],
+        "excluded": [{"contribution": "c9", "taskId": "w03", "codes": ["tainted"]}],
+    }
+
+
+def prepare_default(**plan_extra):
+    return integration.prepare_recipe_replay(
+        recipe_plan(**plan_extra), BASE_STATE_ID, default_recipe(), recipe_sessions(),
+        required_scenarios=["s1", "s2"], removable_fillers=["FILL*"],
+    )
+
+
+class PrepareRecipeReplayTests(unittest.TestCase):
+    def test_request_groups_sessions_in_rank_order_with_one_dump_each(self):
+        request = prepare_default()
+        self.assertEqual(request["excluded"], [{"contribution": "c9", "taskId": "w03", "codes": ["tainted"]}])
+        self.assertEqual([step["seq"] for step in request["steps"]], [1, 3, 2, 5])
+        self.assertEqual(request["schema"], "atcs.replay-request/1")
+        self.assertEqual(request["mode"], "recipe")
+        self.assertEqual(request["batchId"], "b1")
+        self.assertEqual(request["baseStateId"], BASE_STATE_ID)
+        self.assertEqual([(s["slot"], s["dumpIndex"], s["contributionId"]) for s in request["sessions"]],
+                         [("w01", 1, "c1"), ("w02", 2, "c2")])
+        self.assertEqual([step["slot"] for step in request["steps"]], ["w01", "w01", "w02", "w02"])
+        self.assertEqual(len({step["stepId"] for step in request["steps"]}), 4)
+
+    def test_kept_commands_render_as_the_same_toolkit_procedure_calls(self):
+        steps = prepare_default()["steps"]
+        self.assertEqual(steps[0]["tcl"], "atcs_size_cell {U1} {BUFX2} {" + PLAN_SHA + "}")
+        self.assertEqual(
+            steps[1]["tcl"],
+            "atcs_fix_hold_pins {{U9/D}} {low} 0.0 0.02 0 1 1 4 -1 {} {" + PLAN_SHA + "}",
+        )
+        self.assertEqual(
+            steps[2]["tcl"],
+            "atcs_insert_buffer {N3} {{U3/A}} {{BUFX2}} {{atcs_w02_r1_b1}} {{atcs_w02_r1_n1}} {" + PLAN_SHA_2 + "}",
+        )
+
+    def test_a_skip_entry_is_listed_with_its_reason_and_never_rendered(self):
+        steps = prepare_default()["steps"]
+        self.assertEqual(steps[3]["skip"], "shared-instance")
+        self.assertIsNone(steps[3]["tcl"])
+        self.assertIsNone(steps[0]["skip"])
+
+    def test_an_unrenderable_entry_is_skipped_not_a_batch_refusal(self):
+        recipe = default_recipe()
+        commands = recipe["sessions"][1]["commands"]
+        commands.append(recipe_command(6, "atcs_undo", {"planSha256": PLAN_SHA_2}, []))
+        commands.append(recipe_command(7, "atcs_size_cell", {"instance": "U3", "planSha256": PLAN_SHA_2}, ["U3"]))
+        commands.append(recipe_command(8, "atcs_size_cell", size_args("U3}; exit {", "BUFX2", PLAN_SHA_2), ["U3"]))
+        request = integration.prepare_recipe_replay(recipe_plan(), BASE_STATE_ID, recipe, recipe_sessions())
+        tail = request["steps"][4:]
+        self.assertEqual(len(tail), 3)
+        for step in tail:
+            self.assertTrue(step["skip"].startswith("invalid-entry:"), step)
+            self.assertIsNone(step["tcl"])
+
+    def test_plan_select_filters_the_recipe_and_records_unselected_sessions(self):
+        request = prepare_default(select=["c1"])
+        self.assertEqual([s["slot"] for s in request["sessions"]], ["w01"])
+        self.assertEqual({step["slot"] for step in request["steps"]}, {"w01"})
+        self.assertIn({"contribution": "c2", "taskId": "w02", "codes": ["not-selected"]}, request["excluded"])
+        self.assertEqual(request["sessions"][0]["dumpIndex"], 1)
+
+    def test_a_plan_without_select_replays_every_ranked_session(self):
+        self.assertEqual(len(prepare_default()["sessions"]), 2)
+
+    def test_merged_auto_finish_uses_the_brief_strings_hold_then_setup(self):
+        request = prepare_default()
+        self.assertTrue(request["autoFinish"])
+        self.assertEqual(request["autoFinishTcl"], [
+            "fix_hold_gba_violations -effort high -hold_target 0.0 -setup_margin 0.02",
+            "fix_setup_gba_violations -methods size_cell -effort high -setup_target 0.0 -hold_margin 0.02",
+            "fix_setup_gba_violations -methods insert_buffer -effort high -setup_target 0.0 -hold_margin 0.02",
+        ])
+
+    def test_control_arm_is_the_old_flows_qualified_plain_auto_fix(self):
+        request = prepare_default(setupMargin=0.03, holdMargin=0.01)
+        self.assertEqual(request["controlTcl"], [
+            "fix_setup_gba_violations -methods size_cell -effort high -setup_target 0.0 -hold_margin 0.01",
+            "fix_setup_gba_violations -methods insert_buffer -effort high -setup_target 0.0 -hold_margin 0.01",
+            "fix_hold_gba_violations -size_cell_only -size_rule nominal_keywords -hold_target 0.0 -setup_margin 0.03",
+            "fix_hold_gba_violations -effort high -hold_target 0.0 -setup_margin 0.03",
+        ])
+
+    def test_auto_finish_off_leaves_the_merged_arm_expert_only_but_control_unchanged(self):
+        request = prepare_default(autoFinish=False)
+        self.assertFalse(request["autoFinish"])
+        self.assertEqual(request["autoFinishTcl"], [])
+        self.assertEqual(len(request["controlTcl"]), 4)
+
+    def test_margins_outside_the_bounded_range_are_refused(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            prepare_default(setupMargin=0.5)
+        self.assertEqual(ctx.exception.code, "invalid-recipe")
+
+    def test_each_session_keeps_its_own_edit_domain(self):
+        sessions = prepare_default()["sessions"]
+        self.assertEqual(sessions[0]["domain"], {"instances": ["U1", "U2"], "nets": ["N1"], "pins": ["U9/D"],
+                                                 "regions": [[0, 0, 10, 10]]})
+        self.assertEqual(sessions[1]["domain"], {"instances": ["U3"], "nets": ["N3"], "pins": [], "regions": []})
+        self.assertNotIn("domain", prepare_default())
+
+    def test_a_slot_ranked_twice_is_refused(self):
+        recipe = default_recipe()
+        recipe["sessions"].append(recipe_session(3, "c1", "w01", [
+            recipe_command(9, "atcs_size_cell", size_args("U2", "INVX2"), ["U2"])]))
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.prepare_recipe_replay(recipe_plan(), BASE_STATE_ID, recipe, recipe_sessions())
+        self.assertEqual(ctx.exception.code, "invalid-recipe")
+
+    def test_a_slot_without_session_identity_is_refused(self):
+        sessions = recipe_sessions()
+        del sessions["w02"]
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.prepare_recipe_replay(recipe_plan(), BASE_STATE_ID, default_recipe(), sessions)
+        self.assertEqual(ctx.exception.code, "invalid-recipe")
+
+    def test_an_entry_naming_another_contribution_is_refused(self):
+        recipe = default_recipe()
+        recipe["sessions"][0]["contribution"] = "c9"
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.prepare_recipe_replay(recipe_plan(), BASE_STATE_ID, recipe, recipe_sessions())
+        self.assertEqual(ctx.exception.code, "identity-mismatch")
+
+    def test_plan_base_state_mismatch_is_identity_mismatch(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.prepare_recipe_replay(recipe_plan(base_state_id=OTHER_BASE_STATE_ID), BASE_STATE_ID,
+                                              default_recipe(), recipe_sessions())
+        self.assertEqual(ctx.exception.code, "identity-mismatch")
+
+    def test_a_real_task_4b_recipe_replays_as_sealed(self):
+        """Sessions sealed by `contributions.seal_session` and ranked by `composition.analyze`
+        (Task 4b, merged) feed the replay request unchanged: args as the toolkit logged them."""
+        sys.path.insert(0, str(TESTS_DIR))
+        from test_composition import _hold_gain, _session
+        import session_fixtures as sf
+        high = _session("w01", [("U1", "BUFX2"), ("U2", "BUFX2")], _hold_gain(0.030))
+        low = _session("w02", [("U3", "INVX2"), ("U1", "BUFX4")], _hold_gain(0.010))
+        facts = composition.analyze(sf.BASE_STATE_ID, [low, high], [])
+        sessions = {}
+        for contribution in (high, low):
+            base_ref = sf.make_base_ref(slot=contribution["taskId"], instances=("U1", "U2", "U3", "U4"))
+            sessions[contribution["taskId"]] = {
+                "contributionId": contribution["id"], "revision": contribution["revision"],
+                "namePrefix": base_ref["workspaceManifest"]["namePrefix"],
+                "editDomain": base_ref["workPackage"]["editDomain"],
+                "targetPins": base_ref["workPackage"]["targetPins"], "delta": contribution["delta"],
+            }
+        request = integration.prepare_recipe_replay(
+            {"batchId": "g1", "baseStateId": sf.BASE_STATE_ID, "reason": "ranked"}, sf.BASE_STATE_ID,
+            facts["recipe"], sessions)
+        self.assertEqual([(s["slot"], s["contributionId"]) for s in request["sessions"]],
+                         [("w01", high["id"]), ("w02", low["id"])])
+        self.assertEqual([step["tcl"] for step in request["steps"]], [
+            f"atcs_size_cell {{U1}} {{BUFX2}} {{{sf.PLAN}}}", f"atcs_size_cell {{U2}} {{BUFX2}} {{{sf.PLAN}}}",
+            f"atcs_size_cell {{U3}} {{INVX2}} {{{sf.PLAN}}}", None,
+        ])
+        self.assertEqual(request["steps"][3]["skip"], "shared-instance")
+        self.assertEqual(request["sessions"][0]["namePrefix"], "atcs_w01_r1_")
+
+    def test_recipe_procedures_match_the_contract_argument_order(self):
+        text = (FLOW_DIR.parent / "contract.yml").read_text(encoding="utf-8")
+        for proc, names in integration.RECIPE_PROCS.items():
+            line = next(item for item in text.splitlines() if item.strip().startswith(f"{proc}: ["))
+            import re
+            self.assertEqual(tuple(re.findall(r"\{ name: (\w+),", line)), names, proc)
+        self.assertNotIn("atcs_undo", integration.RECIPE_PROCS)
+
+
+class ParseGbaSummaryTests(unittest.TestCase):
+    def test_reads_the_real_plain_layout_per_scenario(self):
+        setup = integration.parse_gba_summary(REAL_PRE_OPT, "setup")
+        self.assertEqual(setup["total"], {"count": 12, "wns": -0.0387, "tns": -0.116})
+        self.assertEqual(setup["scenarios"]["func_ssg_rcworst_m40"], {"count": 12, "wns": -0.0387, "tns": -0.116})
+        self.assertEqual(setup["scenarios"]["func_ffg_cbest_125"], {"count": 0, "wns": 0.0, "tns": 0.0})
+        self.assertEqual(sorted(setup["scenarios"]), REAL_SCENARIOS)
+        hold = integration.parse_gba_summary(REAL_PRE_OPT, "hold")
+        self.assertEqual(hold["total"], {"count": 70, "wns": -0.1542, "tns": -3.9661})
+        self.assertEqual(hold["scenarios"]["func_ffg_cbest_m40"], {"count": 55, "wns": -0.0704, "tns": -0.7199})
+
+    def test_reads_the_current_columns_of_the_real_delta_layout(self):
+        hold = integration.parse_gba_summary(REAL_POST_OPT, "hold")
+        self.assertEqual(hold["total"], {"count": 66, "wns": -0.1542, "tns": -3.7707})
+        self.assertEqual(hold["scenarios"]["func_ffg_cbest_125"], {"count": 42, "wns": -0.0764, "tns": -0.6846})
+        self.assertEqual(sorted(hold["scenarios"]), REAL_SCENARIOS)
+        setup = integration.parse_gba_summary(REAL_POST_OPT, "setup")
+        self.assertEqual(setup["scenarios"]["func_ssg_rcworst_m40"], {"count": 12, "wns": -0.0387, "tns": -0.116})
+
+    def test_a_single_section_file_parses_without_naming_the_check(self):
+        hold_only = REAL_PRE_OPT[REAL_PRE_OPT.index("### hold summary ###"):]
+        self.assertEqual(integration.parse_gba_summary(hold_only)["total"]["tns"], -3.9661)
+        self.assertEqual(integration.parse_gba_summary(hold_only, "hold")["total"]["tns"], -3.9661)
+        self.assertIsNone(integration.parse_gba_summary(hold_only, "setup"))
+
+    def test_tolerates_carriage_returns(self):
+        parsed = integration.parse_gba_summary(REAL_PRE_OPT.replace("\n", "\r\n"), "setup")
+        self.assertEqual(parsed["total"]["wns"], -0.0387)
+
+    def test_text_without_the_table_is_none(self):
+        self.assertIsNone(integration.parse_gba_summary("Error: no timing data\n"))
+        self.assertIsNone(integration.parse_gba_summary(""))
+        self.assertIsNone(integration.parse_gba_summary(None))
+        eco_actions_only = REAL_POST_OPT[:REAL_POST_OPT.index("### setup summary ###")]
+        self.assertIsNone(integration.parse_gba_summary(eco_actions_only))
+
+
+NETLIST_ECO = "ecoAddRepeater -term {U3/A} -cell BUFX2 -name atcs_w02_r1_b1\necoChangeCell -inst U1 -cell BUFX2\n"
+PHYSICAL_ECO = "placeInstance atcs_w02_r1_b1 10.0 20.0 R0\n"
+
+
+def eco_files(netlist=NETLIST_ECO, physical=PHYSICAL_ECO, arm="merged"):
+    folder = "eco" if arm == "merged" else "eco-control"
+    files = {}
+    if netlist is not None:
+        files["netlist"] = [{"path": f"integrations/b1/{arm}/{folder}/atcs_batch_netlist_top.txt",
+                             "sha256": core.digest({"t": netlist, "a": arm}) + "0" * 44, "text": netlist}]
+    else:
+        files["netlist"] = []
+    if physical is not None:
+        files["physical"] = [{"path": f"integrations/b1/{arm}/{folder}/atcs_batch_physical_top.txt",
+                              "sha256": core.digest({"t": physical, "a": arm}) + "1" * 44, "text": physical}]
+    else:
+        files["physical"] = []
+    return files
+
+
+def arm_evidence(arm, *, setup=None, hold=None, complete=True, tainted="", eco=None, receipts=None,
+                 session_deltas=None, auto_delta=None, total_delta=None, protected=None, export_code=0,
+                 tool_failure=None, predict_text=None, kept_instance_nets=None):
+    setup = setup if setup is not None else {"s1": (1, -0.02, -0.02), "s2": (0, 0.0, 0.0)}
+    hold = hold if hold is not None else {"s1": (0, 0.0, 0.0), "s2": (2, -0.05, -0.08)}
+    result = None
+    if complete:
+        result = {"arm": arm, "complete": True, "tainted": tainted, "protected": list(protected or []),
+                  "protectCode": 0, "protectResult": "", "autoFix": [], "predict": {"setup": 0, "hold": 0},
+                  "exportCode": export_code, "exportResult": ""}
+    return {
+        "arm": arm, "result": result, "receipts": list(receipts or []), "badReceiptLines": 0,
+        "sessionDeltas": dict(session_deltas or {}),
+        "autoDelta": auto_delta if auto_delta is not None else {"mastersChanged": {}, "added": {}, "removed": {}},
+        "totalDelta": total_delta if total_delta is not None else {"mastersChanged": {}, "added": {}, "removed": {}},
+        "predictText": predict_text or {"setup": gba_summary("setup", setup) if setup != "missing" else None,
+                                        "hold": gba_summary("hold", hold) if hold != "missing" else None},
+        "eco": eco if eco is not None else eco_files(arm=arm),
+        "toolFailure": tool_failure,
+        "keptInstanceNets": dict(kept_instance_nets or {}),
+    }
+
+
+def merged_receipts(request):
+    steps = request["steps"]
+    return [
+        {"stepId": steps[0]["stepId"], "slot": "w01", "status": "applied", "seq": 1},
+        {"stepId": steps[1]["stepId"], "slot": "w01", "status": "skipped", "attempted": True,
+         "reason": "atcs_fix_hold_pins: out-of-scope pin: U9/D"},
+        {"stepId": steps[2]["stepId"], "slot": "w02", "status": "applied", "seq": 3},
+        {"stepId": steps[3]["stepId"], "slot": "w02", "status": "skipped", "attempted": False, "reason": "recipe"},
+    ]
+
+
+def matching_session_deltas():
+    sessions = recipe_sessions()
+    return {slot: sessions[slot]["delta"] for slot in sessions}
+
+
+def reconcile_default(merged_kw=None, control_kw=None, request=None):
+    request = request or prepare_default()
+    merged_kw = dict(merged_kw or {})
+    merged_kw.setdefault("receipts", merged_receipts(request))
+    merged_kw.setdefault("session_deltas", matching_session_deltas())
+    arms = {"merged": arm_evidence("merged", **merged_kw), "control": arm_evidence("control", **(control_kw or {}))}
+    return request, integration.reconcile_recipe(request, arms)
+
+
+class ReconcileRecipeTests(unittest.TestCase):
+    def test_skipped_commands_are_recorded_and_the_replay_still_counts(self):
+        request, state = reconcile_default()
+        steps = request["steps"]
+        w01 = state["sessions"]["w01"]
+        self.assertEqual(w01["applied"], [steps[0]["stepId"]])
+        self.assertEqual(w01["skipped"], [{"stepId": steps[1]["stepId"], "attempted": True,
+                                           "reason": "atcs_fix_hold_pins: out-of-scope pin: U9/D"}])
+        w02 = state["sessions"]["w02"]
+        self.assertEqual(w02["applied"], [steps[2]["stepId"]])
+        self.assertEqual(w02["skipped"], [{"stepId": steps[3]["stepId"], "attempted": False,
+                                           "reason": "recipe:shared-instance"}])
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        for key in ("pending", "failed", "replayMismatch", "outOfScope", "unknownReceipts"):
+            self.assertEqual(state[key], [], key)
+
+    def test_a_session_replay_delta_that_differs_is_a_recorded_warning_not_a_refusal(self):
+        deltas = matching_session_deltas()
+        deltas["w02"] = {"mastersChanged": {}, "added": {"atcs_w02_r1_b1": "BUFX4"}, "removed": {}}
+        _, state = reconcile_default(merged_kw={"session_deltas": deltas})
+        warnings = [w for w in state["warnings"] if w["kind"] == "replayMismatch"]
+        self.assertEqual([w["slot"] for w in warnings], ["w02"])
+        self.assertFalse(state["sessions"]["w02"]["deltaMatches"])
+        self.assertTrue(state["sessions"]["w01"]["deltaMatches"])
+        self.assertEqual(state["replayMismatch"], [])
+        self.assertEqual(state["chosen"]["arm"], "merged")
+
+    def test_auto_finish_changing_a_protected_instance_is_a_recorded_mismatch(self):
+        auto = {"mastersChanged": {"U1": ["BUFX2", "BUFX8"], "UOUT": ["BUFX1", "BUFX4"]}, "added": {}, "removed": {}}
+        _, state = reconcile_default(merged_kw={"auto_delta": auto, "protected": ["U1", "atcs_w02_r1_b1"]})
+        warnings = [w for w in state["warnings"] if w["kind"] == "protectedChanged"]
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0]["instances"], ["U1"])
+        self.assertEqual(state["protectedChanged"], ["U1"])
+
+    def test_a_session_changing_another_sessions_instance_is_out_of_domain(self):
+        deltas = matching_session_deltas()
+        deltas["w02"] = {"mastersChanged": {"U1": ["BUFX2", "BUFX4"]}, "added": {"atcs_w02_r1_b1": "BUFX2"},
+                         "removed": {}}
+        _, state = reconcile_default(merged_kw={"session_deltas": deltas})
+        self.assertTrue(any("session w02" in p and "U1" in p for p in state["arms"]["merged"]["problems"]))
+        self.assertEqual(state["chosen"]["arm"], "control")
+
+    def test_merged_out_of_domain_replay_change_refuses_merged_and_falls_back_to_control(self):
+        deltas = matching_session_deltas()
+        deltas["w01"] = {"mastersChanged": {"U1": ["BUFX1", "BUFX2"], "UOUT": ["BUFX1", "BUFX2"]},
+                         "added": {"FILL_7": "FILL4"}, "removed": {}}
+        _, state = reconcile_default(merged_kw={"session_deltas": deltas})
+        self.assertFalse(state["arms"]["merged"]["safe"])
+        self.assertTrue(any("UOUT" in problem for problem in state["arms"]["merged"]["problems"]))
+        self.assertFalse(any("FILL_7" in problem for problem in state["arms"]["merged"]["problems"]))
+        self.assertEqual(state["chosen"]["arm"], "control")
+
+    def test_control_is_chosen_when_it_predicts_better(self):
+        _, state = reconcile_default(control_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.03, -0.03)}})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIn("control", state["chosen"]["reason"])
+        self.assertEqual(state["chosen"]["eco"]["netlist"]["path"],
+                         "integrations/b1/control/eco-control/atcs_batch_netlist_top.txt")
+
+    def test_merged_is_chosen_when_it_predicts_better(self):
+        _, state = reconcile_default(merged_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.01, -0.01)}})
+        self.assertEqual(state["chosen"]["arm"], "merged")
+
+    def test_merged_is_chosen_on_a_tie(self):
+        _, state = reconcile_default()
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertIn("tie", state["chosen"]["reason"])
+
+    def test_equal_worst_slack_is_broken_by_tns(self):
+        _, state = reconcile_default(control_kw={"setup": {"s1": (3, -0.02, -0.05), "s2": (0, 0.0, 0.0)}})
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        _, state = reconcile_default(merged_kw={"setup": {"s1": (3, -0.02, -0.05), "s2": (0, 0.0, 0.0)}})
+        self.assertEqual(state["chosen"]["arm"], "control")
+
+    def test_only_required_scenarios_are_compared(self):
+        control_hold = {"s1": (0, 0.0, 0.0), "s2": (2, -0.05, -0.08), "s_extra": (9, -0.5, -3.0)}
+        _, state = reconcile_default(control_kw={"hold": control_hold})
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertIn("tie", state["chosen"]["reason"])
+
+    def test_the_choice_reads_real_xtop_summaries_and_breaks_equal_wns_by_tns(self):
+        request = integration.prepare_recipe_replay(
+            recipe_plan(), BASE_STATE_ID, default_recipe(), recipe_sessions(), required_scenarios=REAL_SCENARIOS)
+
+        def sections(text):
+            setup_at, hold_at = text.index("### setup summary ###"), text.index("### hold summary ###")
+            return {"setup": text[setup_at:hold_at], "hold": text[hold_at:]}
+
+        post, pre = sections(REAL_POST_OPT), sections(REAL_PRE_OPT)
+        _, state = reconcile_default(merged_kw={"predict_text": post}, control_kw={"predict_text": pre},
+                                     request=request)
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertEqual(state["arms"]["merged"]["prediction"]["worstHoldWns"], -0.1542)
+        # TNS across required scenarios is the sum of their own rows (the `total` row is a
+        # per-endpoint union, not a sum): -0.6846-0.6551-2.7901-3.7009 vs -0.7568-0.7199-2.9593-3.8962.
+        self.assertEqual(state["arms"]["merged"]["prediction"]["holdTns"], -7.8307)
+        self.assertEqual(state["arms"]["control"]["prediction"]["holdTns"], -8.3322)
+        _, state = reconcile_default(merged_kw={"predict_text": pre}, control_kw={"predict_text": post},
+                                     request=request)
+        self.assertEqual(state["chosen"]["arm"], "control")
+
+    def test_predictions_of_both_arms_are_recorded_per_scenario(self):
+        _, state = reconcile_default()
+        merged = state["arms"]["merged"]["prediction"]
+        self.assertEqual(merged["setup"]["s1"], {"count": 1, "wns": -0.02, "tns": -0.02})
+        self.assertEqual(merged["worstSetupWns"], -0.02)
+        self.assertEqual(merged["worstHoldWns"], -0.05)
+        self.assertEqual(state["arms"]["control"]["prediction"]["hold"]["s2"]["tns"], -0.08)
+
+    def test_a_safe_control_with_an_unknown_prediction_is_chosen(self):
+        _, state = reconcile_default(control_kw={"hold": "missing"})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIn("control prediction unknown", state["chosen"]["reason"])
+        self.assertTrue(state["guarantee"]["evidenced"])
+
+    def test_a_compared_choice_is_an_evidenced_guarantee(self):
+        _, state = reconcile_default()
+        self.assertEqual(state["guarantee"], {"evidenced": True, "arm": "merged",
+                                              "reason": state["chosen"]["reason"]})
+        self.assertFalse([w for w in state["warnings"] if w["kind"] == "guaranteeUnevidenced"])
+
+    def test_new_nets_are_empty_when_the_chosen_arm_inserted_nothing(self):
+        _, state = reconcile_default()
+        self.assertEqual(state["newNets"], [])
+        self.assertNotIn("newNetsUnknown", state)
+
+    def test_new_nets_are_the_expert_nets_when_auto_finish_inserted_nothing(self):
+        total = {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {"atcs_w02_r1_b1": "BUFX2"}, "removed": {}}
+        _, state = reconcile_default(merged_kw={
+            "total_delta": total,
+            "kept_instance_nets": {"atcs_w02_r1_b1": ["atcs_w02_r1_n1"], "atcs_w02_r1_gone": ["atcs_w02_r1_n9"]}})
+        self.assertEqual(state["newNets"], ["atcs_w02_r1_n1"])
+
+    def test_an_expert_instance_without_a_recorded_net_makes_new_nets_unknown(self):
+        total = {"mastersChanged": {}, "added": {"atcs_w02_r1_b1": "BUFX2", "atcs_w01_r1_eco_3": "BUFX4"},
+                 "removed": {}}
+        _, state = reconcile_default(merged_kw={"total_delta": total,
+                                                "kept_instance_nets": {"atcs_w02_r1_b1": ["atcs_w02_r1_n1"],
+                                                                       "atcs_w01_r1_eco_3": []}})
+        self.assertIsNone(state["newNets"])
+        self.assertIn("atcs_w01_r1_eco_3", state["newNetsUnknown"])
+
+    def test_new_nets_are_unknown_when_auto_fix_inserted_instances(self):
+        auto = {"mastersChanged": {}, "added": {"atcs_b1_auto_eco_1": "BUFX2"}, "removed": {}}
+        total = {"mastersChanged": {}, "added": {"atcs_b1_auto_eco_1": "BUFX2"}, "removed": {}}
+        _, state = reconcile_default(merged_kw={"auto_delta": auto, "total_delta": total})
+        self.assertIsNone(state["newNets"])
+        self.assertIn("auto-fix", state["newNetsUnknown"])
+        _, state = reconcile_default(control_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (0, 0.0, 0.0)},
+                                                 "total_delta": total})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIsNone(state["newNets"])
+
+    def test_filler_insertions_are_not_new_nets(self):
+        total = {"mastersChanged": {}, "added": {"FILL_9": "FILL4"}, "removed": {}}
+        _, state = reconcile_default(merged_kw={"total_delta": total})
+        self.assertEqual(state["newNets"], [])
+
+    def test_an_unknown_merged_prediction_falls_back_to_control(self):
+        _, state = reconcile_default(merged_kw={"hold": "missing"})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIn("unknown", state["chosen"]["reason"])
+
+    def test_a_missing_required_scenario_makes_the_prediction_unknown(self):
+        _, state = reconcile_default(merged_kw={"setup": {"s1": (0, 0.0, 0.0)}})
+        self.assertIn("unknown", state["arms"]["merged"]["prediction"])
+        self.assertEqual(state["chosen"]["arm"], "control")
+
+    def test_a_failed_control_arm_does_not_fail_the_merged_arm(self):
+        _, state = reconcile_default(control_kw={
+            "complete": False, "eco": eco_files(None, None, arm="control"),
+            "tool_failure": {"detail": "tool exited 7", "log": "integrations/b1/control/xtop-replay.log"},
+        })
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertFalse(state["arms"]["control"]["safe"])
+        self.assertEqual(state["arms"]["control"]["toolFailure"]["detail"], "tool exited 7")
+        self.assertIn("control", state["chosen"]["reason"])
+        # Nothing shows the merged batch is at least as good as plain auto-fix: sealed as such.
+        self.assertEqual(state["guarantee"]["evidenced"], False)
+        warnings = [w for w in state["warnings"] if w["kind"] == "guaranteeUnevidenced"]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("control", warnings[0]["reason"])
+
+    def test_a_missing_merged_pair_with_no_usable_control_is_missing_input(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            reconcile_default(merged_kw={"eco": eco_files(netlist=None)},
+                              control_kw={"complete": False, "eco": eco_files(None, None, arm="control")})
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_a_missing_merged_pair_falls_back_to_a_safe_control(self):
+        _, state = reconcile_default(merged_kw={"eco": eco_files(physical=None)})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertTrue(any("missing" in problem for problem in state["arms"]["merged"]["problems"]))
+
+    def test_two_netlist_files_are_not_one_pair(self):
+        eco = eco_files()
+        eco["netlist"].append(dict(eco["netlist"][0], path="integrations/b1/merged/eco/atcs_batch_netlist_x.txt"))
+        _, state = reconcile_default(merged_kw={"eco": eco})
+        self.assertEqual(state["chosen"]["arm"], "control")
+
+    def test_formatversion_dbnetfreewires_and_editdelete_net_lines_refuse_the_pair(self):
+        for netlist, physical in (
+            ("FORMATVERSION 2\nADDCELL x\n", PHYSICAL_ECO),
+            (NETLIST_ECO, "dbNetFreeWires [dbGetNetByName n1]\n"),
+            (NETLIST_ECO + "  editDelete -net n1\n", PHYSICAL_ECO),
+        ):
+            with self.subTest(netlist=netlist, physical=physical):
+                _, state = reconcile_default(merged_kw={"eco": eco_files(netlist, physical)})
+                self.assertEqual(state["chosen"]["arm"], "control")
+                self.assertFalse(state["arms"]["merged"]["safe"])
+                self.assertTrue(state["arms"]["merged"]["problems"])
+                self.assertIn("merged", state["chosen"]["reason"])
+
+    def test_an_unsafe_pair_in_both_arms_is_refused(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            reconcile_default(merged_kw={"eco": eco_files("FORMATVERSION 2\n", PHYSICAL_ECO)},
+                              control_kw={"eco": eco_files(NETLIST_ECO, "editDelete -net n2\n", arm="control")})
+        self.assertEqual(ctx.exception.code, "eco-refused")
+
+    def test_an_unsafe_control_pair_leaves_the_merged_pair_chosen(self):
+        _, state = reconcile_default(
+            control_kw={"eco": eco_files(NETLIST_ECO, "dbNetFreeWires x\n", arm="control"),
+                        "hold": {"s1": (0, 0.0, 0.0), "s2": (0, 0.0, 0.0)}})
+        self.assertEqual(state["chosen"]["arm"], "merged")
+
+    def test_a_tainted_merged_session_refuses_merged(self):
+        _, state = reconcile_default(merged_kw={"tainted": "size_cell left an unexpected design state (seq 2)"})
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertTrue(any("tainted" in problem for problem in state["arms"]["merged"]["problems"]))
+
+    def test_a_receipt_for_an_unknown_step_refuses_the_merged_evidence(self):
+        request = prepare_default()
+        receipts = merged_receipts(request) + [{"stepId": "ghost", "slot": "w01", "status": "applied"}]
+        _, state = reconcile_default(merged_kw={"receipts": receipts}, request=request)
+        self.assertFalse(state["arms"]["merged"]["safe"])
+        self.assertEqual(state["chosen"]["arm"], "control")
+
+    def test_a_sendable_step_without_a_receipt_refuses_the_merged_evidence(self):
+        request = prepare_default()
+        receipts = merged_receipts(request)[1:]
+        _, state = reconcile_default(merged_kw={"receipts": receipts}, request=request)
+        self.assertEqual(state["sessions"]["w01"]["skipped"][0],
+                         {"stepId": request["steps"][0]["stepId"], "attempted": False, "reason": "no-receipt"})
+        self.assertFalse(state["arms"]["merged"]["safe"])
+        self.assertEqual(state["chosen"]["arm"], "control")
+
+    def test_eco_text_is_hashed_into_the_state_not_copied(self):
+        _, state = reconcile_default()
+        pair = state["arms"]["merged"]["eco"]
+        self.assertEqual(set(pair), {"netlist", "physical"})
+        self.assertEqual(set(pair["netlist"]), {"path", "sha256"})
+        self.assertEqual(state["chosen"]["eco"], pair)
+
+    def test_a_legacy_request_is_refused(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.reconcile_recipe({"batchId": "b1", "steps": []}, {})
+        self.assertEqual(ctx.exception.code, "identity-mismatch")
+
+
+class SealRecipeBatchTests(unittest.TestCase):
+    def _facts(self):
+        return {"baseStateId": BASE_STATE_ID, "duplicates": []}
+
+    def _contributions(self):
+        return [make_contribution("c1", revision=1), make_contribution("c2", task_id="w02", revision=3)]
+
+    def test_seal_covers_the_chosen_pair_both_predictions_the_choice_and_session_deltas(self):
+        auto = {"mastersChanged": {"UOUT": ["BUFX1", "BUFX4"]}, "added": {}, "removed": {}}
+        request, state = reconcile_default(merged_kw={"auto_delta": auto})
+        merge_commit = integration.seal_batch(state, request, self._facts(), self._contributions())
+        self.assertEqual(merge_commit["schema"], "atcs.merge-commit/1")
+        self.assertEqual(merge_commit["parentStateId"], BASE_STATE_ID)
+        self.assertEqual(merge_commit["eco"], state["chosen"]["eco"])
+        self.assertEqual(merge_commit["choice"]["arm"], "merged")
+        self.assertTrue(merge_commit["choice"]["reason"])
+        self.assertEqual(set(merge_commit["arms"]), {"merged", "control"})
+        for arm in ("merged", "control"):
+            self.assertIn("prediction", merge_commit["arms"][arm])
+            self.assertEqual(set(merge_commit["arms"][arm]["eco"]), {"netlist", "physical"})
+        self.assertEqual(merge_commit["sessions"]["w01"]["applied"], state["sessions"]["w01"]["applied"])
+        self.assertEqual(merge_commit["sessions"]["w02"]["skipped"], state["sessions"]["w02"]["skipped"])
+        self.assertEqual(merge_commit["sessions"]["w02"]["delta"], matching_session_deltas()["w02"])
+        self.assertEqual(merge_commit["autoDelta"], auto)
+        self.assertEqual(merge_commit["operations"], [])
+        self.assertEqual(merge_commit["newNets"], [])
+        self.assertEqual(merge_commit["guarantee"], state["guarantee"])
+        self.assertEqual(merge_commit["contributions"], [{"id": "c1", "revision": 1}, {"id": "c2", "revision": 3}])
+
+    def test_unknown_new_nets_are_sealed_unknown(self):
+        auto = {"mastersChanged": {}, "added": {"atcs_b1_auto_eco_1": "BUFX2"}, "removed": {}}
+        request, state = reconcile_default(merged_kw={"auto_delta": auto, "total_delta": auto})
+        merge_commit = integration.seal_batch(state, request, self._facts(), self._contributions())
+        self.assertIsNone(merge_commit["newNets"])
+        self.assertTrue(merge_commit["newNetsUnknown"])
+
+    def test_a_control_choice_credits_no_contribution(self):
+        request, state = reconcile_default(control_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (0, 0.0, 0.0)}})
+        merge_commit = integration.seal_batch(state, request, self._facts(), self._contributions())
+        self.assertEqual(merge_commit["choice"]["arm"], "control")
+        self.assertEqual(merge_commit["contributions"], [])
+        self.assertEqual(merge_commit["eco"]["netlist"]["path"],
+                         "integrations/b1/control/eco-control/atcs_batch_netlist_top.txt")
+
+    def test_a_different_chosen_pair_is_a_different_merge_commit(self):
+        request, state = reconcile_default()
+        first = integration.seal_batch(state, request, self._facts(), self._contributions())
+        _, other = reconcile_default(control_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (0, 0.0, 0.0)}},
+                                     request=request)
+        second = integration.seal_batch(other, request, self._facts(), self._contributions())
+        self.assertNotEqual(first["id"], second["id"])
+
+    def test_seal_refuses_a_batch_id_mismatch(self):
+        request, state = reconcile_default()
+        state = dict(state, batchId="other")
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.seal_batch(state, request, self._facts(), self._contributions())
+        self.assertEqual(ctx.exception.code, "identity-mismatch")
+
+    def test_seal_refuses_a_state_with_no_chosen_pair(self):
+        request, state = reconcile_default()
+        state = dict(state, chosen=None)
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.seal_batch(state, request, self._facts(), self._contributions())
+        self.assertEqual(ctx.exception.code, "missing-input")
+
+    def test_seal_refuses_a_recipe_state_against_a_legacy_request(self):
+        request, state = reconcile_default()
+        legacy = {"batchId": "b1", "baseStateId": BASE_STATE_ID, "steps": []}
+        with self.assertRaises(core.AtcsError) as ctx:
+            integration.seal_batch(state, legacy, self._facts(), self._contributions())
+        self.assertEqual(ctx.exception.code, "identity-mismatch")
+
+
 if __name__ == "__main__":
     unittest.main()
