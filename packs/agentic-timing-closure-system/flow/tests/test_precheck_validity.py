@@ -333,6 +333,21 @@ class AssembleTest(unittest.TestCase):
         self.assertFalse(core.is_known(evaluation["finalSetupWns"]))
         self.assertFalse(core.is_known(evaluation["finalHoldWns"]))
 
+    def test_capped_path_lists_keep_the_global_timing_wns(self):
+        # Issue #63 postroute_final: hold has up to 5675 violations, above the
+        # maxPaths ceiling (5000), so no hold path list is ever complete. WNS
+        # comes from PT's global timing summary, not the path list, so a
+        # capped list must not turn a known WNS into unknown.
+        receipts = _base_receipts()
+        for scenario, (setup_wns, hold_wns) in SCENARIO_WNS.items():
+            receipts["sta"][scenario]["observation"] = _observation(
+                scenario, core.known(setup_wns), core.known(hold_wns), complete_setup=False, complete_hold=False)
+
+        evaluation = verification.assemble(self.plan, receipts, self.prior_observation, self.baseline_physical)
+
+        self.assertEqual(evaluation["finalSetupWns"], core.known(min(v[0] for v in SCENARIO_WNS.values())))
+        self.assertEqual(evaluation["finalHoldWns"], core.known(min(v[1] for v in SCENARIO_WNS.values())))
+
     def test_sta_input_spef_sha_mismatch_raises_identity_error(self):
         receipts = _base_receipts()
         receipts["sta"]["func_ssg_rcworst_m40"]["inputs"]["spefSha256"] = "f" * 64

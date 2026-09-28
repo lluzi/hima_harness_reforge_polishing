@@ -3370,9 +3370,10 @@ def _baseline_min_wns(observation, required_scenarios):
 
     Mirrors `verification.assemble`'s own fail-closed "final WNS" rule
     (module docstring step 3) at the *baseline*, before any candidate
-    exists -- every required scenario must be present, `complete` for both
-    modes, and carry a known `wns` Measure, or the whole thing is
-    incomplete (`None`), never a partial minimum.
+    exists -- every required scenario must be present and carry a known
+    `wns` Measure for both modes, or the whole thing is incomplete (`None`),
+    never a partial minimum. The WNS is PT's global timing summary, so a path
+    list capped at maxPaths (`complete.<mode>` False) does not affect it.
     """
     scenarios = observation.get("scenarios", {})
     missing = set(observation.get("missingScenarios", []))
@@ -3381,10 +3382,7 @@ def _baseline_min_wns(observation, required_scenarios):
         if scenario in missing or scenario not in scenarios:
             return None
         entry = scenarios[scenario]
-        complete = entry.get("complete", {})
         for mode in ("setup", "hold"):
-            if not complete.get(mode):
-                return None
             wns = entry.get(mode, {}).get("wns")
             if not core.is_known(wns):
                 return None

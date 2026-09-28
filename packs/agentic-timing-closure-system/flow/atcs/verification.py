@@ -266,12 +266,14 @@ Builds the final `evaluation` artifact. Order of operations:
 3. **Final WNS** (`finalSetupWns`/`finalHoldWns`, one Measure per mode,
    independently) — per this task's Decisions: the minimum over all
    required scenarios' `<mode>.wns` Measure, but only when *every* required
-   scenario has a present, non-missing observation whose
-   `complete.<mode>` is `True` and whose `<mode>.wns` is itself a known
-   Measure. Any one required scenario failing any of those three
-   conditions makes the whole mode's final WNS `unknown`, naming every
+   scenario has a present, non-missing observation whose `<mode>.wns` is
+   itself a known Measure. Any one required scenario failing either
+   condition makes the whole mode's final WNS `unknown`, naming every
    contributing scenario/reason — never a partial minimum over whichever
-   scenarios happened to be available.
+   scenarios happened to be available. The WNS is PT's global timing
+   summary, so a path list capped at maxPaths (`complete.<mode>` False)
+   does not affect it; the capped list matters only to the check
+   comparison, which already treats it as incomplete coverage.
 4. **Identity** (`finalIdentityErrorCount`) — the chain DB -> netlist/DEF
    -> SPEF -> STA is checked *per scenario*, and is fail-closed at the leg
    level: `finalIdentityErrorCount` is only ever a known count when every
@@ -590,9 +592,6 @@ def _final_wns(plan, receipts, mode):
         scenario_obs = _scenario_observation(receipts, scenario)
         if scenario_obs is None:
             problems.append(f"{scenario}: missing observation")
-            continue
-        if not scenario_obs.get("complete", {}).get(mode, False):
-            problems.append(f"{scenario}: {mode} coverage incomplete")
             continue
         wns_measure = scenario_obs.get(mode, {}).get("wns")
         if not core.is_known(wns_measure):

@@ -2059,6 +2059,31 @@ class PolicyTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
+class BaselineMinWnsTest(unittest.TestCase):
+    """`_baseline_min_wns` reads each scenario's global-timing WNS; a path list
+    capped at maxPaths (Issue #63 postroute_final: up to 5675 hold violations
+    against a 5000 ceiling) does not make that WNS unknown."""
+
+    def _observation(self, complete):
+        scenarios = {
+            name: {
+                "setup": {"wns": core.known(setup)}, "hold": {"wns": core.known(hold)},
+                "complete": {"setup": complete, "hold": complete},
+            }
+            for name, setup, hold in (("a", -0.16, -0.20), ("b", -0.09, -0.18))
+        }
+        return {"scenarios": scenarios, "missingScenarios": []}
+
+    def test_capped_path_lists_keep_the_global_timing_wns(self):
+        self.assertEqual(atcs_cli._baseline_min_wns(self._observation(False), ["a", "b"]), -0.20)
+
+    def test_missing_scenario_or_unknown_wns_is_still_none(self):
+        observation = self._observation(True)
+        self.assertIsNone(atcs_cli._baseline_min_wns(observation, ["a", "b", "c"]))
+        observation["scenarios"]["b"]["hold"]["wns"] = core.unknown("unreadable")
+        self.assertIsNone(atcs_cli._baseline_min_wns(observation, ["a", "b"]))
+
+
 class IdentityMismatchTest(unittest.TestCase):
     """Every entry-file reference with a changed sha256 -> exit 3 (identity-mismatch), no output."""
 
