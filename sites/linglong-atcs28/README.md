@@ -1,25 +1,30 @@
 # linglong-atcs28 Site administration
 
-Current candidate (Issue 64 Task 7 fix round 1, Pack 0.2.0): `atcs-xtop-operator-v11.sh` under
-`operator-admin/atcs-v11/` (wrapper sha `1d99681a...`, installed mode 0555), with the six-slot
+Current candidate (Issue 64 Task 7 fix round 2, Pack 0.2.0): `atcs-xtop-operator-v12.sh` under
+`operator-admin/atcs-v12/` (wrapper sha `6656badf...`, installed mode 0555), with the six-slot
 administrator verifier copied beside it (`verify-worker-startup.py`, sha `014fcfa5...`, the same bytes as
-v10's and this directory's) and bootstrap root `operator-admin/atcs-v11/bootstraps/`. It was derived on
-the server from the *installed* v10 bytes with only these changes: the `atcs-v11` paths, the verifier
-path, the pinned `atcs_cli.py` (`2b001eda...`) and flow digest (`ea4556ca...`), and the header comment
-(five placeholders, mode 0555). Qualified by its own preflight (`qual-tools/v11-preflight.sh`, the
-wrapper's lines up to the container launch): OK for w01..w03 on a native `prepare-workers` of the final
-flow, refused for parked w04..w06 and for w07, and refused at the adapter check on the v10 (0.2.0 before
-fix round 1) and 0.1.8 flows; and by a real wrapper-launched XTop session (READY, identity query, one
-kept mutation, source and exec writes denied, export, clean close; no SyntaxWarning on the Site's
-Python 3.12). The Permit reads `atcs-v11` only. Capacity is `parallelJobs: 6` and `xtop: 6` for the six
-parallel worker branches; Innovus, StarRC and PrimeTime stay 1 (the refresh is serial).
+v10's, v11's and this directory's) and bootstrap root `operator-admin/atcs-v12/bootstraps/`. It was
+derived on the server from the *installed* v11 bytes with only these changes: the `atcs-v12` paths, the
+verifier path, the pinned flow digest (`a4736851...`; `atcs_cli.py` `2b001eda...` is unchanged from v11)
+and the header comment. Qualified by its own preflight (`qual-tools/v12-preflight.sh`, the wrapper's
+lines up to the container launch): OK for w01..w03 on a native `prepare-workers` of the final flow,
+refused for parked w04..w06 and for w07, refused for the v11 flow by the verifier's flow digest ("flow
+bytes differ from the qualified source", since its `atcs_cli.py` is byte-identical) and for the v10 and
+0.1.8 flows at the adapter check; and by a real wrapper-launched XTop session (READY, identity query,
+one kept mutation, source and exec writes denied, export, clean close, no SyntaxWarning). The Permit
+reads `atcs-v12` only. Capacity is `parallelJobs: 6` and `xtop: 6` for the six parallel worker branches;
+Innovus, StarRC and PrimeTime stay 1 (the refresh is serial).
+
+Previous candidate (Issue 64 Task 7 fix round 1): `atcs-xtop-operator-v11.sh` under
+`operator-admin/atcs-v11/` (sha `1d99681a...`), derived from the installed v10 with the `atcs-v11` paths
+and the fix-round-1 identities (`atcs_cli.py` `2b001eda...`, flow `ea4556ca...`).
 
 Previous candidate (Issue 64, Pack 0.2.0 before fix round 1): `atcs-xtop-operator-v10.sh` with its own
 verifier under `operator-admin/atcs-v10/` (wrapper sha `3f2979ba...`), derived from the installed v9 with
 the `atcs-v10` paths, slots `w01`..`w06`, the six-slot verifier (the installed v8/v9 verifier refuses
 every 0.2.0 active slot, "generated Tcl differs") and the 0.2.0 identities.
 
-Like every wrapper file here, `atcs-xtop-operator-v11.sh` is a template: it equals the installed v11
+Like every wrapper file here, `atcs-xtop-operator-v12.sh` is a template: it equals the installed v12
 except that its pinned image, adapter, flow, verifier and Site-profile values are `<REPLACE-...>`
 placeholders. Install a new version by editing the *installed* previous wrapper, never by copying a
 template, and check that no `<REPLACE-...>` value remains outside comments.
