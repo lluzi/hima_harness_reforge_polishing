@@ -344,6 +344,37 @@ def _netlist_hierarchy(netlist_path):
     return _netlist_hierarchy_cache[key]
 
 
+def _split_instance_path(instance_path):
+    """Split on unescaped `/` and strip each segment's Verilog escape, symmetric with the parser.
+
+    A segment starting with `\\` is an escaped identifier that runs to the next whitespace, so a
+    `/` inside it is literal (`\\u_a/u_b/reg_0_ ` is one instance); the whitespace must then be
+    followed by `/` or the end. Returns None for a malformed path.
+    """
+    segments, index, length = [], 0, len(instance_path)
+    while index <= length:
+        if index < length and instance_path[index] == "\\":
+            end = index + 1
+            while end < length and not instance_path[end].isspace():
+                end += 1
+            segments.append(instance_path[index + 1:end])
+            while end < length and instance_path[end].isspace():
+                end += 1
+            if end < length and instance_path[end] != "/":
+                return None
+            index = end + 1
+            if end >= length:
+                break
+            continue
+        end = instance_path.find("/", index)
+        if end < 0:
+            segments.append(instance_path[index:])
+            break
+        segments.append(instance_path[index:end])
+        index = end + 1
+    return segments
+
+
 def _is_hierarchical_instance(hierarchy, top, instance_path):
     """True when `instance_path` walks real instances from `top` in `hierarchy`.
 
@@ -355,8 +386,8 @@ def _is_hierarchical_instance(hierarchy, top, instance_path):
     """
     if not isinstance(instance_path, str) or not instance_path:
         return False
-    segments = instance_path.split("/")
-    if any(segment == "" for segment in segments):
+    segments = _split_instance_path(instance_path)
+    if segments is None or any(segment == "" for segment in segments):
         return False
     current_module = top
     for index, segment in enumerate(segments):

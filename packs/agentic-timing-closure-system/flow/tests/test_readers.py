@@ -428,6 +428,30 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
         self.assertEqual(values[0]["value"], 0)
 
 
+    def test_escaped_names_in_the_action_path_match_escaped_netlist_instances(self):
+        """Review finding: an escaped segment arrives as `\\name ` (trailing space), and a flattened
+        escaped instance may contain `/`. The path splits only on unescaped `/` and strips each
+        escape, symmetric with the netlist parser. (Whether such a name is admissible in an edit
+        domain at all is the flow's own Tcl-safety rule, not this matcher's.)"""
+        netlist = self.workspace / "escaped-path.v"
+        _write(netlist, (
+            "module top;\n"
+            "  SUB_MOD u_sub (.X(x));\n"
+            "endmodule\n"
+            "module SUB_MOD;\n"
+            "  DFQD1BWP35P140 \\dout_reg[15]  (.D(d));\n"
+            "  DFQD1BWP35P140 \\u_a/u_b/reg_0_  (.D(d));\n"
+            "endmodule\n"
+        ))
+        hierarchy = read_atcs._parse_netlist_hierarchy(netlist)
+        for path in ("u_sub/\\dout_reg[15] ", "u_sub/\\dout_reg[15]", "u_sub/\\u_a/u_b/reg_0_ ", "u_sub/dout_reg[15]"):
+            with self.subTest(path=path):
+                self.assertTrue(read_atcs._is_hierarchical_instance(hierarchy, "top", path))
+        for path in ("u_sub/u_a/u_b/reg_0_", "\\u_sub/dout_reg[15]", "u_sub/\\dout_reg[15] x"):
+            with self.subTest(path=path):
+                self.assertFalse(read_atcs._is_hierarchical_instance(hierarchy, "top", path))
+
+
 class CampaignPlanReaderTest(unittest.TestCase):
     """Task 12c item 4a: the `campaign-plan` reader kind counts problems across
     all three work packages (`workspaces.request_invalid_count`), not just

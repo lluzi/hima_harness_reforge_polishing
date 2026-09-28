@@ -60,6 +60,7 @@
   `Cell 'g96219' not found in design 'swerv_wrapper'`，整个 Operator session 无效）。
   必须读取完整网表，绝不能只读截断的前缀。port 端点没有 instance，不适用本条尺寸
   （sizing）约束。
+  Verilog 转义名（`\\name `）作为路径中的一段时，其内部的 `/` 是名字的一部分，不是层级分隔符。
 - 一个 no-fix Contribution 只是不出现在 `select` 里，不需要额外声明；`resolutions`
   仅用于 composition facts 中已命名的冲突，`decision` 的形式是
   `<keep|drop|revise>:<contributionId>`，并带上该冲突自己的 `conflictKey`。
