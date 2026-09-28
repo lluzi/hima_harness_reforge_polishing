@@ -118,3 +118,53 @@ Enforce the one-effect bound explicitly with the owner before execution.
   5. capture the clean state.
 
   Closing the App is not cancelling the Run.
+
+## Successor: fresh02 (Pack 0.1.3)
+
+### What fresh01 left behind
+
+Fresh01 Run `run-5a5b8ba5-eaea-413a-905a-eeee8c279749` stays preserved, paused at node
+`capture-worker-01`, generation 3, revision 109.
+
+- The journey got through baseline, the next-decision revisit, the plan, and the w01 Researcher,
+  Reviewer and Operator adoptions.
+- The Operator's single `atcs_size_cell` failed with `Library cell 'DFQD2BWP12T' not found`.
+  The before and after dumps are byte-identical.
+- Capture then refused the honest no-fix: `missing-input: ops.jsonl`.
+- The fix is on main: commits `7fc5516b`, `b4aa95f4`, `41ea58d9`, plus the v6 wrapper source
+  `025ac087`.
+
+### Fresh02 identities
+
+- Pack `0.1.3`, digest `fb30d7b6ae5f6cada7722a86906bcbb861e4335e9efdc87bef83bc2e42e12f1b`.
+  - Flow `2929e78d9e1be6311e7a071c9653d7e60d3d16e2ee3cfd425bd9711e3e4faaa6`.
+  - `atcs_cli.py` `11e6fa60baff1ff3f17a4875b8e9189ba0b872c04199d1c703320f62583148d1`.
+  - The operator Tcl template is unchanged.
+- Wrapper `operator-admin/atcs-v6/atcs-xtop-operator-v6.sh`, SHA
+  `f95e477cc8f690818bb94756070a84224c2bd771eb25fb9da1f7adea389483c8`.
+  - It was installed beside v5, which is unchanged.
+  - The verifier is unchanged, `86321360…`.
+- Kit `.hima-tmp/atcs63-fresh-fb30d7b6`:
+  - Home `Fresh02 Data/dsh` and Workspace `Fresh02 Workspace`, both empty.
+  - Launcher `launch-fresh02-nohup.sh`, SHA `4e21f5bb…`. It uses nohup and setsid, keeps Local
+    Network access and survives a closing terminal.
+  - Binding `linglong-atcs28:xtop-operator-v6:fb30d7b6ae5f6cad`, file SHA `c1839241…`.
+  - Environment `666e942c…`.
+  - Permit `50a1a666…`: reads `atcs-v6`.
+  - Site `24960bac…`, unchanged.
+
+### Changed-surface qualification (zero EDA)
+
+The checks ran in the copy `atcs-runs/qual-issue63-v6-20260928`:
+- The v6 verifier refuses the old 0.1.2 flow.
+- The v6 verifier admits the 0.1.3 flow after a native `prepare-workers`.
+- `capture-contribution` on the real fresh01 w01 outputs produces an admissible no-fix
+  `1ff1d75e50d611aaff0c`, with a transcript-backed diagnosis.
+- `collect` exits 0.
+- The bridge preflight is enforced, and the Host cold-start fit is OK.
+
+Not requalified: the XTop launch through v6. Its logic, image, verifier and template are
+unchanged, and the Campaign exercises it.
+
+The journey, bounds and teardown are the same as above. The operator for this cycle is the
+integrator, using background per-window control on Catsights only.
