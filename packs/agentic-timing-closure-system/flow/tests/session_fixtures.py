@@ -197,7 +197,7 @@ def delta_text(check, reference, current, fail_reasons=None):
             f"{_RULE}\n"
             f"total                   {row}\n"
             f"  {SCENARIO:<20}  {row}\n")
-    if fail_reasons:
+    if fail_reasons is not None:
         # The probe's top-N table in the real layout (`live_session_samples.LIVE_PROBE_SETUP`): one
         # endpoint row per failing endpoint, its fail reason in the last column.
         rows = [reason for reason, count in fail_reasons.items() for _ in range(count)]

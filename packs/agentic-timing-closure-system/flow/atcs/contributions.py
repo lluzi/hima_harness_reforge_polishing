@@ -1318,10 +1318,12 @@ def parse_fail_reasons(text):
 
     Only a ``### <check> top N endpoints ###`` table whose header has a ``Fail Reason`` column is
     read; its rows end in ``<reason>:<percent>%`` cells, several of them space-separated.
-    Best effort and informational: a table without that column names no reason.
+    Returns ``None`` (unread, never ``{}``) when the text holds no such table: a reply without one
+    says nothing about why endpoints fail. A table with the column and no rows is ``{}``.
+    Informational only.
     """
     counts = {}
-    in_table = with_reasons = False
+    in_table = with_reasons = found = False
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if _TOP_N_HEADING.match(line):
@@ -1334,6 +1336,7 @@ def parse_fail_reasons(text):
             continue
         if line.startswith("Slack"):
             with_reasons = line.endswith("Fail Reason")
+            found = found or with_reasons
             continue
         if not with_reasons or set(line) == {"-"}:
             continue
@@ -1346,7 +1349,7 @@ def parse_fail_reasons(text):
                     reasons.add(match.group(1))
         for reason in reasons:
             counts[reason] = counts.get(reason, 0) + 1
-    return counts
+    return counts if found else None
 
 
 def _target_checks(work_package):
@@ -1576,8 +1579,9 @@ def _latest_fail_reasons(gain_lines, last_kept_seq):
             break
         checks = gain_line["checks"]
         if any("-with_fail_reason" in entry["command"] for entry in checks.values()):
-            return ({check: parse_fail_reasons(entry["text"]) for check, entry in sorted(checks.items())
-                     if entry["code"] == 0}, gain_line["seq"])
+            parsed = {check: parse_fail_reasons(entry["text"]) for check, entry in sorted(checks.items())
+                      if entry["code"] == 0 and "-with_fail_reason" in entry["command"]}
+            return ({check: reasons for check, reasons in parsed.items() if reasons is not None}, gain_line["seq"])
     return {}, None
 
 

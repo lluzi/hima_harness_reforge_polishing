@@ -61,6 +61,14 @@ class LiveGainJsonlTest(unittest.TestCase):
 class LiveFailReasonTest(unittest.TestCase):
     """XTop prints fail reasons as the top-N table's last column, `<reason>:<percent>%`."""
 
+    def test_a_reply_without_a_fail_reason_table_is_unread(self):
+        # Review fix: a code-0 reply with no recognisable table is unread (None), never an empty read.
+        self.assertIsNone(contributions.parse_fail_reasons(""))
+        self.assertIsNone(contributions.parse_fail_reasons("Information: nothing to report.\n"))
+        header_only = ("### hold top 0 endpoints ###\n  Slack    Scenario    Name    Fail Reason\n"
+                       "--------------------------------------\n")
+        self.assertEqual(contributions.parse_fail_reasons(header_only), {})
+
     def test_fail_reasons_count_the_endpoints_that_name_each_reason(self):
         self.assertEqual(contributions.parse_fail_reasons(live.LIVE_PROBE_SETUP), {"not_only_pin": 10})
         self.assertEqual(contributions.parse_fail_reasons(live.LIVE_PROBE_HOLD), {"not_only_pin": 10})
@@ -72,10 +80,10 @@ class LiveFailReasonTest(unittest.TestCase):
             "break_setup_of_driver": 1})
 
     def test_a_top_n_table_without_the_fail_reason_column_names_no_reason(self):
-        self.assertEqual(contributions.parse_fail_reasons(live.LIVE_TOP_N_BEFORE_FIX_SETUP), {})
+        self.assertIsNone(contributions.parse_fail_reasons(live.LIVE_TOP_N_BEFORE_FIX_SETUP))
 
     def test_the_summary_rows_are_never_read_as_reasons(self):
-        self.assertEqual(contributions.parse_fail_reasons(live.LIVE_GAIN_JSONL_W02.split("\\n")[0]), {})
+        self.assertIsNone(contributions.parse_fail_reasons(live.LIVE_GAIN_JSONL_W02.split("\\n")[0]))
 
 
 
