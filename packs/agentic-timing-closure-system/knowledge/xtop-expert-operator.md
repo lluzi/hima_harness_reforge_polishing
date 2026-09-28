@@ -17,7 +17,7 @@
 | Procedure | XTop command it emits | Man page (row) |
 | --- | --- | --- |
 | `atcs_ref` | `summarize_gba_violations -as_reference -exclude_path`, captured by `redirect -variable` | `summarize_gba_violations.1` (314), `redirect.1` (221) |
-| `atcs_gain` | `summarize_gba_violations -with_delta -with_reference -exclude_path -with_fail_reason` | `summarize_gba_violations.1` (314) |
+| `atcs_gain` | `summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n`, plus `-with_fail_reason` once a fix has run (before that XTop has none) | `summarize_gba_violations.1` (314) |
 | `atcs_paths` | `get_paths`; `analyze_setup_path_violations` / `analyze_hold_path_violations -detail_info` | `get_paths.1` (149), `analyze_setup_path_violations.1` (16), `analyze_hold_path_violations.1` (12) |
 | `atcs_fail_reasons` | `report_fail_reasons -stats -verbose -pins`; `get_failed_pins -reasons` | `report_fail_reasons.1` (245), `get_failed_pins.1` (132) |
 | `atcs_candidates` | `list_size_cell_candidates`, `list_insert_buffer_candidates`, `list_exchange_cell_candidates` | `list_size_cell_candidates.1` (188), `list_insert_buffer_candidates.1` (185), `list_exchange_cell_candidates.1` (183) |
@@ -40,7 +40,9 @@
 
 - The plan Workshop clusters the blockers into slot work packages: `targetPins` (instance pins,
   `<instance path>/<pin>`, not primary ports), a disjoint
-  `editDomain`, and a `scope` whose commands name the moves the cluster may need.
+  `editDomain`, and a `scope` whose commands name the moves the cluster may need. `editDomain.nets`
+  are XTop's names: a pin inside a module sits on that module's local net (`swerv_dbg/rst_l`), not on
+  the flattened name PrimeTime prints on the path (`FE_OCPN9798_rst_l`; Task 7, real XTop).
 - A research Workshop writes a slot's worker request, and the worker Team runs: the Researcher
   proposes ladder moves with falsifiers, the Reviewer sizes the scope (commands and a mutation
   budget), the Operator runs the loop below in its interactive `xtop-operator` session. The Team's
@@ -66,7 +68,11 @@ trials; only refreshed PrimeTime judges convergence.
    why auto-fix left them. `atcs_candidates` gives the legal masters and buffers for the path's cells.
 3. Choose one move from the failing check's ladder, steered by the fail-reason table. Change one
    principal variable per trial (method, master, margin or pin set), or the gain cannot be attributed.
-4. Trial it: one manual ECO, or one targeted fix on the slot's own pins, carrying the plan hash.
+4. Trial it: one manual ECO, carrying the plan hash. A targeted fix is not a trial: XTop commits a
+   fix's actions and `atcs_undo` cannot revert them ("The committed actions cannot be undone", Task 7).
+   Send `atcs_fix_hold_pins` or `atcs_fix_setup_pins` only as a move to keep, after the manual trials.
+   A fix that may insert cells (hold without `sizeCellOnly`, setup with `insert_buffer` or
+   `split_net`) needs each pin's net in the domain; the toolkit refuses it otherwise.
 5. `atcs_gain` for the target check and for the opposite check. The toolkit also logs both after
    every kept mutation.
 6. Keep the trial only if the target slack improved and the opposite check did not break. Otherwise
