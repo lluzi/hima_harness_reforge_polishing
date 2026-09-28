@@ -6,7 +6,7 @@ import { parse, stringify } from 'yaml';
 import { createHash } from 'node:crypto';
 import { BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest, loadPack, packDigestExcludes, retainRunMaterial, runDelegations } from '@hima/harness';
 import { homePatchFile, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
-import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
+import { bootInProcess, createRootAgent, resumeTestAgent } from './support/boot-inprocess.ts';
 import { repoRoot } from './support/dsh-home.ts';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { appendReplaySession, writeMomentScenario } from './support/moments.ts';
@@ -304,7 +304,7 @@ test('a Team Reviewer may approve an Operator scope: typed mutations within its 
   // The owner's first model call comes when DSH tells it that Reviewer 1 finished, so it binds the first child script.
   let scenario = await appendReplaySession({ file: replayFile, override: replayOverride, readyFile: path.join(replayDir, 'unused'), children: [] },
     'scope-owner', Array.from({ length: 8 }, () => say('I acknowledge the retained facts. I will not start another task.')));
-  scenario = await appendReplaySession(scenario, 'scope-reviewer-2', [say(review({ commands: ['size_cell', 'insert_buffer'], maxMutations: 3 }))]);
+  scenario = await appendReplaySession(scenario, 'scope-reviewer-2', [say(review({ commands: ['size_cell', 'insert_buffer'], maxMutations: 4 }))]);
   scenario = await appendReplaySession(scenario, 'scope-operator', [say(JSON.stringify({ schema: 'fixture-operator/1' }))]);
   await writeReplayOverlay(h.home, { file: scenario.file, overrideFile: scenario.override, childFiles: scenario.children });
   await appendFile(homePatchFile(h.home), QUIET_TITLE_ROW);
@@ -405,7 +405,7 @@ test('a Team Reviewer may approve an Operator scope: typed mutations within its 
 
   const operator = await create('operator', executionId, 'operator'); assert.equal(operator.status, 'created', JSON.stringify(operator));
   const payload = operator.effectiveContract.recipe.inlinePayload;
-  assert.deepEqual(payload.scope, { commands: ['size_cell', 'insert_buffer'], maxMutations: 3 });
+  assert.deepEqual(payload.scope, { commands: ['size_cell', 'insert_buffer'], maxMutations: 4 });
   assert.equal(payload.planSha256, planSha256);
   assert.equal(payload.command, undefined, 'a scope is not one pinned action');
   const operatorId = operator.receipt.childSessionId as string;
@@ -425,14 +425,23 @@ test('a Team Reviewer may approve an Operator scope: typed mutations within its 
   assert.equal(wrongHash.status, 'refused', JSON.stringify(wrongHash)); assert.match(wrongHash.reason, /plan SHA-256/);
   const outside = await input('outside', 'set_value', { key: 'k', value: 1, planSha256 });
   assert.equal(outside.status, 'refused', JSON.stringify(outside)); assert.match(outside.reason, /scope/);
-  await accepted('read-before', 'get_value', { key: 'U1' });
+  const readBefore = await accepted('read-before', 'get_value', { key: 'U1' });
+  // The budget caps the approval, not one tool session. No product path opens a second session in one
+  // execution today (open needs a fresh begun execution), so one scope mutation an earlier session of this
+  // approved execution admitted is written as the Ledger would hold it.
+  const readIntent = host.ctx.hima.ledger.records({ runId, type: 'interactive' }).find((record) => record.type === 'interactive'
+    && record.requestId === 'read-before' && (record.payload as { event?: string }).event === 'input-intent')!;
+  assert.ok(readIntent, JSON.stringify(readBefore));
+  await host.ctx.hima.ledger.appendInteractive(runId, { executionId, toolSessionId: 'earlier-session', requestId: 'earlier-m0',
+    event: 'input-intent', payload: { ...(readIntent as { payload: object }).payload, toolSessionId: 'earlier-session',
+      requestId: 'earlier-m0', commandId: 'earlier-m0', effect: 'mutation', scopeMutation: true } as never });
   await accepted('m1', 'size_cell', { instance: 'U1', master: 'BUF4', planSha256 });
   await accepted('m2', 'insert_buffer', { net: 'n1', cell: 'BUF2', planSha256 });
   await accepted('m3', 'size_cell', { instance: 'U1', master: 'BUF2', planSha256 });
   const retry = await input('m3', 'size_cell', { instance: 'U1', master: 'BUF2', planSha256 });
   assert.equal(retry.status, 'duplicate', 'retrying an accepted mutation is its receipt, not a fourth mutation');
   // The budget is counted from the Ledger, so a Host restart does not refill it.
-  await host.dispose(); host = await bootInProcess(h); await host.ctx.hima.reconciled;
+  await host.dispose(); host = await bootInProcess(h); await host.ctx.hima.reconciled; await resumeTestAgent(host.ctx, actor);
   // The Run's retained Pack classifies the command, not a later edit of the installed Pack.
   const installedText = await readFile(contractFile, 'utf8');
   const edited = parse(installedText) as Record<string, any>;
@@ -443,9 +452,14 @@ test('a Team Reviewer may approve an Operator scope: typed mutations within its 
   const outsideAfterEdit = await input('outside-after-edit', 'set_value', { key: 'k', value: 2, planSha256 });
   assert.equal(outsideAfterEdit.status, 'refused', JSON.stringify(outsideAfterEdit)); assert.match(outsideAfterEdit.reason, /outside the immutable owner-adopted reviewed scope/);
   const fourth = await input('m4', 'insert_buffer', { net: 'n1', cell: 'BUF4', planSha256 });
-  assert.equal(fourth.status, 'refused', JSON.stringify(fourth)); assert.match(fourth.reason, /at most 3 mutations/);
+  assert.equal(fourth.status, 'refused', JSON.stringify(fourth)); assert.match(fourth.reason, /at most 4 mutations in this approved execution; 4 were already admitted/);
   await writeFile(contractFile, installedText);
   const read = await accepted('read-after', 'get_value', { key: 'U1' });
   assert.match(JSON.stringify(read), /VALUE U1=BUF2/, 'read commands stay available after the mutation budget is spent');
   await accepted('save', 'save_state', { file: path.join(h.workspace, 'scope-state.txt') });
+  // Closing the session does not open a new budget: the product refuses a second open in this execution.
+  const closed = await interactive({ action: 'close', requestId: 'close-1', toolSessionId });
+  assert.equal(closed.status, 'closed', JSON.stringify(closed));
+  const reopened = await interactive({ action: 'open', requestId: 'open-2' });
+  assert.equal(reopened.status, 'refused', JSON.stringify(reopened)); assert.match(reopened.reason, /freshly begun execution/);
 });

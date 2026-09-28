@@ -104,7 +104,7 @@ export interface InteractiveAddress {
   /**
    * Host-only: the Operator's owner-adopted reviewed scope. Admission holds every mutation the
    * retained Pack classifies as `mutate` to these commands and plan hash, and counts the scope
-   * mutations already recorded for the tool session against `maxMutations`.
+   * mutations already recorded for this execution and actor, across tool sessions, against `maxMutations`.
    */
   readonly reviewedScope?: { readonly commands: readonly string[]; readonly maxMutations: number;
     readonly planHashArgument: string; readonly planSha256: string };

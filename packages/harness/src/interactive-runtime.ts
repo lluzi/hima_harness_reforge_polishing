@@ -433,10 +433,12 @@ class RunInteractiveAuthority implements InteractiveAuthority {
           if (!scope.commands.includes(name)) return { kind: 'refused', reason: `The Operator mutation ${name} is outside the immutable owner-adopted reviewed scope (${scope.commands.join(', ')}).` };
           const values = args !== null && typeof args === 'object' && !Array.isArray(args) ? args as Record<string, unknown> : {};
           if (values[scope.planHashArgument] !== scope.planSha256) return { kind: 'refused', reason: `The Operator mutation ${scope.planHashArgument} differs from the owner-adopted reviewed plan SHA-256.` };
-          // Counted from the Ledger under the Run lock, so a restart or a concurrent call cannot exceed it.
+          // The budget caps the approval: counted from the Ledger for this execution and Operator, across its
+          // tool sessions, under the Run lock, so a restart, a reopen or a concurrent call cannot exceed it.
           const admitted = protocolRecords(this.deps.fabric.ledger, run.id).filter((item) => item.payload.event === 'input-intent'
-            && item.payload.toolSessionId === intent.record.toolSessionId && item.payload.scopeMutation === true).length;
-          if (admitted >= scope.maxMutations) return { kind: 'refused', reason: `The owner-adopted reviewed scope admits at most ${scope.maxMutations} mutations in tool session ${intent.record.toolSessionId}; ${admitted} were already admitted.` };
+            && item.payload.executionId === intent.record.executionId && item.payload.actor === intent.record.actor
+            && item.payload.scopeMutation === true).length;
+          if (admitted >= scope.maxMutations) return { kind: 'refused', reason: `The owner-adopted reviewed scope admits at most ${scope.maxMutations} mutations in this approved execution; ${admitted} were already admitted.` };
           payload = { ...intent.record, scopeMutation: true };
         }
       }

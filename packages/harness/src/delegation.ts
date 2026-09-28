@@ -92,7 +92,7 @@ export interface ReviewedActionPayload { readonly sourceResultRecordId: string; 
   readonly planSha256: string; readonly command: string; readonly arguments: Readonly<Record<string, string | number | boolean>> }
 /**
  * An owner-adopted reviewed scope: each Operator mutation names one of `scope.commands`, carries
- * `planSha256` in its `planHashArgument`, and at most `scope.maxMutations` are admitted per tool session.
+ * `planSha256` in its `planHashArgument`, and at most `scope.maxMutations` are admitted per approved execution, across its tool sessions.
  */
 export interface ReviewedScopePayload { readonly sourceResultRecordId: string; readonly adoptionRecordId: string;
   readonly planSha256: string; readonly planHashArgument: string;
@@ -417,7 +417,7 @@ export const delegationTaskPrompt = (contract: DelegationContract, effective: Ef
       : `Reviewed action output contract: set command to ${JSON.stringify(effective.recipe.reviewOutput.command)}. Set arguments to one object with exactly these fields and no others: ${effective.recipe.reviewOutput.arguments.join(', ')}. Copy their values from one exact action in the reader-backed plan.`,
   effective.recipe?.inlinePayload === undefined ? 'Immutable reviewed action: none.'
     : 'scope' in effective.recipe.inlinePayload
-      ? `Immutable reviewed scope: ${JSON.stringify(effective.recipe.inlinePayload)}. Each mutation must be one of scope.commands and carry ${effective.recipe.inlinePayload.planHashArgument} = ${effective.recipe.inlinePayload.planSha256}; the Host admits at most ${effective.recipe.inlinePayload.scope.maxMutations} mutations in this tool session and refuses the rest. Read commands are unaffected.`
+      ? `Immutable reviewed scope: ${JSON.stringify(effective.recipe.inlinePayload)}. Each mutation must be one of scope.commands and carry ${effective.recipe.inlinePayload.planHashArgument} = ${effective.recipe.inlinePayload.planSha256}; the Host admits at most ${effective.recipe.inlinePayload.scope.maxMutations} mutations in this approved execution, across tool sessions, and refuses the rest. Read commands are unaffected.`
       : `Immutable reviewed action: ${JSON.stringify(effective.recipe.inlinePayload)}. Use exactly this plan hash, command and typed arguments; do not substitute another action.`,
   'Do not claim a Campaign action, verdict, tool result, or file change that the corresponding tool/session transcript does not record.',
 ].join('\n');
