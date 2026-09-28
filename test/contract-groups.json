@@ -48,6 +48,7 @@
     "test/contract/input-admission.host.test.ts",
     "test/contract/interactive-binding.test.ts",
     "test/contract/interactive-eda.host.test.ts",
+    "test/contract/fork-interactive-team.host.test.ts",
     "test/contract/interactive-job.test.ts",
     "test/contract/interactive-runtime.test.ts",
     "test/contract/jobs-unreadable.test.ts",

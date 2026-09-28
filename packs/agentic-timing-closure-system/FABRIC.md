@@ -107,8 +107,16 @@ Schema limits and how the graph expresses them:
   fixing still costs an XTop Operator session to end as a no-fix. A variant forking the three slot
   chains was refused by `loadPack` (`exploreAfter`: every path from a join to an Explore needs a
   fresh reading and a two-rule Judge with no single-rule Judge after it); a branch holds act nodes
-  only, so the per-slot `request-admissible` gate cannot sit in it; and Workshop moments and
-  interactive admissions inside `driveBranch` are runtime-unproven.
+  only, so the per-slot `request-admissible` gate cannot sit in it. Concurrent interactive branches:
+  proven (#64 Task 2) for the owner-driven Run by
+  `test/contract/fork-interactive-team.host.test.ts` ("two fork branches each hold an interactive
+  Job driven by their own Team at once, and the join waits for both captures"; and "under a Site cap
+  of one, ..."): two branches of `workshop -> reader -> interactive tool (Team) -> capture tool` open
+  their interactive Jobs at the same moment, each Team's delegations stay on its own execution, the
+  join judge becomes available only after both captures, and the Site Job cap holds (an open at the
+  cap is refused, not queued). The one Harness change was attribution: interactive launches now carry
+  their execution's `branchId`. The legacy auto-drive `driveBranch` path remains unexercised for
+  Workshops and interactive nodes; ATCS runs owner-driven.
 - G2 A worker request that fails `request-admissible` skips its slot to the next one: there is no
   per-slot revise loop, so that slot contributes nothing this round until a later research revisit
   re-plans it.
