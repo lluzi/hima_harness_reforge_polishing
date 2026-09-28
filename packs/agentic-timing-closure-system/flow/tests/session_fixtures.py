@@ -139,9 +139,14 @@ class SessionLog:
         self._maybe_gain(seq, status, gain, kind="undo")
         return seq
 
-    def uncertain(self):
-        return self._line("size_cell", "atcs_size_cell", {"instance": "U2", "toMaster": "BUFX4"}, "uncertain",
-                          {"U2": "BUFX1"}, {"U2": "BUFX2"}, 1, error="the design changed unexpectedly")
+    def uncertain(self, cmd="size_cell", proc="atcs_size_cell", args=None, error="unexpected Tcl error"):
+        """The exact shape `atcs_fail_uncertain` logs: no before/after/ecoActions/xtop, and for an
+        undo no undoes/discards (xtop-operator.tcl `atcs_fail_uncertain`)."""
+        self.seq += 1
+        args = {"instance": "U2", "toMaster": "BUFX4"} if args is None else args
+        self.ops.append({"seq": self.seq, "cmd": cmd, "proc": proc, "args": {**args, "planSha256": PLAN},
+                         "status": "uncertain", "observe": "fast", "error": error})
+        return self.seq
 
     def _maybe_gain(self, seq, status, gain, kind="mutation"):
         if status == "kept" and gain is not None:

@@ -1126,7 +1126,7 @@ class XtopSessionAdmissionTests(unittest.TestCase):
         for check in ("setup", "hold"):
             log.gains[-1]["checks"][check]["text"] = "summary unavailable\n"
         contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
-        self.assertEqual(_codes(contribution), ["no-predicted-gain"])
+        self.assertEqual(_codes(contribution), ["breaks-opposite-check", "no-predicted-gain"])
         self.assertIn("unknown", contribution["predicted"]["xtopHoldWns"])
 
     def test_predicted_measures_value_and_fail_reasons_come_from_the_last_gain_lines(self):
@@ -1148,7 +1148,8 @@ class XtopSessionAdmissionTests(unittest.TestCase):
         self.assertEqual(contribution["validationLevel"], "xtop")
         # Targets are hold checks: value is the hold WNS gain; setup is not a target here.
         self.assertAlmostEqual(contribution["value"], 0.020)
-        self.assertAlmostEqual(contribution["valueDetail"]["tnsGain"], 0.300)
+        self.assertAlmostEqual(contribution["valueDetail"]["targetTnsGain"], 0.300)
+        self.assertEqual(contribution["valueDetail"]["oppositeChecks"], ["setup"])
         self.assertEqual(contribution["valueDetail"]["targetChecks"], ["hold"])
         self.assertEqual(contribution["failReasons"],
                          {"hold": {"break_setup": 3, "legal_fail_no_space_on_row": 2}, "setup": {}})
@@ -1314,8 +1315,9 @@ class RealSummarizeOutputTests(unittest.TestCase):
         self.assertEqual(core.value_of(reference["xtopHoldTns"]), -3.9661)
         self.assertEqual(core.value_of(reference["xtopHoldWns"]), -0.1542)
         self.assertEqual(contribution["value"], 0.0)
-        self.assertEqual(contribution["valueDetail"]["wnsGain"], {"hold": 0.0})
-        self.assertAlmostEqual(contribution["valueDetail"]["tnsGain"], 0.1954)
+        self.assertEqual(contribution["valueDetail"]["wnsGain"], {"setup": 0.0, "hold": 0.0})
+        self.assertAlmostEqual(contribution["valueDetail"]["targetTnsGain"], 0.1954)
+        self.assertEqual(contribution["valueDetail"]["tnsGain"], {"setup": 0.0, "hold": 0.1954})
         summary = contribution["gainSummary"]
         self.assertEqual(summary["predicted"]["hold"]["scenarios"]["func_ssg_rcworst_m40"]["tns"], -3.7009)
         self.assertEqual(summary["predicted"]["hold"]["scenarios"]["func_ssg_rcworst_m40"]["dTns"], 0.1953)
@@ -1325,6 +1327,126 @@ class RealSummarizeOutputTests(unittest.TestCase):
     def test_real_readings_with_no_setup_change_refuse_a_setup_target(self):
         contribution = self._real_session(["func_ssg_rcworst_m40|setup|U1/D"])
         self.assertEqual(_codes(contribution), ["no-predicted-gain"])
+
+
+
+REAL_REF = {"setup": (-0.0387, -0.1160, 12), "hold": (-0.1500, -3.9000, 70)}
+
+
+class XtopSessionFixRound1Tests(unittest.TestCase):
+    """Review of 2281b6da: uncertain lines in their real shape, the opposite check, fillers, undo rules."""
+
+    def test_a_real_uncertain_mutation_line_is_sealed_as_a_tainted_refusal(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.uncertain(error="can't read \"post\": no such variable")
+        self.assertNotIn("before", log.ops[-1])
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertFalse(contribution["admissible"])
+        self.assertEqual(_codes(contribution), ["tainted"])
+
+    def test_a_real_uncertain_undo_line_is_sealed_as_a_tainted_refusal(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.uncertain(cmd="undo", proc="atcs_undo", args={})
+        self.assertNotIn("undoes", log.ops[-1])
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(_codes(contribution), ["tainted"])
+        self.assertEqual([command["seq"] for command in contribution["commands"]], [1])
+
+    def test_hold_improves_but_setup_breaks_is_refused(self):
+        log = sf.SessionLog(reference=REAL_REF)
+        log.size("U1", "BUFX1", "BUFX2",
+                 gain=(((-0.0387, -0.116), (-0.300, -0.900)), ((-0.150, -3.900), (-0.100, -3.000))))
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertFalse(contribution["admissible"])
+        self.assertEqual(_codes(contribution), ["breaks-opposite-check"])
+        self.assertAlmostEqual(contribution["valueDetail"]["wnsGain"]["setup"], -0.2613)
+        self.assertAlmostEqual(contribution["valueDetail"]["tnsGain"]["setup"], -0.784)
+        self.assertAlmostEqual(contribution["valueDetail"]["tnsGain"]["hold"], 0.900)
+
+    def test_an_opposite_tns_loss_is_refused_and_never_hidden_in_the_target_tns_gain(self):
+        log = sf.SessionLog(reference=REAL_REF)
+        log.size("U1", "BUFX1", "BUFX2",
+                 gain=(((-0.0387, -0.116), (-0.0387, -0.500)), ((-0.150, -3.900), (-0.150, -3.000))))
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(_codes(contribution), ["breaks-opposite-check"])
+        self.assertAlmostEqual(contribution["valueDetail"]["targetTnsGain"], 0.900)
+
+    def test_an_opposite_check_within_rounding_is_not_broken(self):
+        log = sf.SessionLog(reference=REAL_REF)
+        log.size("U1", "BUFX1", "BUFX2",
+                 gain=(((-0.0387, -0.1160), (-0.0388, -0.1161)), ((-0.150, -3.900), (-0.100, -3.000))))
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+
+    def test_an_unreadable_opposite_check_is_refused(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.gains[-1]["checks"]["setup"]["text"] = "garbled\n"
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(_codes(contribution), ["breaks-opposite-check"])
+
+    def test_a_filler_cell_resized_to_a_non_filler_is_out_of_scope(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2", "FILL1": "BUFX4"},
+                                     filler_patterns=["FILLER*"])
+        self.assertEqual(contribution["outOfScope"], ["FILL1"])
+        self.assertEqual(contribution["fillerChanges"], [])
+
+    def test_an_undo_that_is_not_the_top_of_the_kept_stack_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        first = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.size("U2", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.undo(first, gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U2": "BUFX2"})
+        self.assertIn("trace-mismatch", _codes(contribution))
+
+    def test_repeated_stacked_undos_unwind_in_order(self):
+        log = sf.SessionLog()
+        first = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        second = log.size("U2", "BUFX1", "BUFX2", gain=IMPROVES)
+        third = log.size("U3", "INVX1", "INVX2", gain=IMPROVES)
+        log.undo(third, gain=IMPROVES)
+        log.undo(second, gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual([command["seq"] for command in contribution["commands"]], [first])
+        self.assertEqual(contribution["session"]["undone"], [second, third])
+
+    def test_discards_naming_a_kept_line_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        first = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        second = log.size("U2", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.undo(second, discards=[first], gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertIn("trace-mismatch", _codes(contribution))
+
+    def test_a_seq_gap_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.seq += 1  # a line that reached XTop but was never logged
+        second = log.size("U2", "BUFX1", "BUFX2", gain=IMPROVES)
+        self.assertEqual(second, 3)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2", "U2": "BUFX2"})
+        self.assertEqual(_codes(contribution), ["trace-mismatch"])
+
+    def test_a_kept_undo_without_its_undo_gain_line_is_refused(self):
+        log = sf.SessionLog()
+        first = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        second = log.size("U2", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.undo(second)  # no undo gain line
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertIn("missing-gain-line", _codes(contribution))
+        self.assertEqual([command["seq"] for command in contribution["commands"]], [first])
+
+    def test_a_non_numeric_row_inside_a_summary_table_drops_the_section(self):
+        broken = real.POST_OPT_HOLD.replace(
+            "  func_ffg_cbest_m40         52        55         -3    |    -0.0704    -0.0704    +0.0000    |"
+            "    -0.6551    -0.7199    +0.0649", "  func_ffg_cbest_m40         n/a")
+        self.assertNotEqual(broken, real.POST_OPT_HOLD)
+        self.assertNotIn("hold", contributions.parse_gain_summary(broken))
 
 
 if __name__ == "__main__":

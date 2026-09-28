@@ -1299,22 +1299,30 @@ _TAINT_MARKER = "ATCS:taint:"
 
 
 def _transcript_taint(root):
-    """The last ``ATCS:taint:<state>`` line's ``<state>`` in the slot's XTop transcripts, or ``None``.
+    """The slot's taint state from every ``ATCS:taint:<state>`` line in every XTop transcript.
 
     ``atcs_close`` prints ``ATCS:taint:clean`` or ``ATCS:taint:tainted:<reason>``;
-    echoed ``xtop > `` command lines never start with the marker.
+    echoed ``xtop > `` command lines never start with the marker. Returns
+    ``None`` when no transcript holds such a line, ``"clean"`` only when every
+    such line says ``clean``, and otherwise the first non-clean state found
+    (in sorted transcript order; any non-clean line refuses, so the order
+    only picks which reason is quoted). An unreadable transcript is a
+    non-clean state.
     """
-    state = None
+    states = []
     for log_path in sorted(root.glob("xtop_log_*.txt")):
         try:
             text = log_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        except OSError as exc:
+            states.append(f"unreadable transcript {log_path.name}: {exc}")
             continue
         for line in text.splitlines():
             line = line.strip()
             if line.startswith(_TAINT_MARKER):
-                state = line[len(_TAINT_MARKER):]
-    return state
+                states.append(line[len(_TAINT_MARKER):])
+    if not states:
+        return None
+    return next((state for state in states if state != "clean"), "clean")
 
 
 def _seal_xtop_session(workspace, root, base_ref, before_dump, after_dump, ops_log_path, operation_trace,

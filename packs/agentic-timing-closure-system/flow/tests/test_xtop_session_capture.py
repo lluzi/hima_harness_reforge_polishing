@@ -109,6 +109,29 @@ class SessionCaptureTest(unittest.TestCase):
         contribution = self._capture("w01")
         self.assertEqual([refusal["code"] for refusal in contribution["refusals"]], ["tainted"])
 
+    def test_any_non_clean_taint_line_in_any_transcript_is_refused(self):
+        root = self._seed("w01")
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=GAIN)
+        sf.write_session(root, log, BEFORE, {**BEFORE, "U1": "BUFX2"})
+        # A later-sorting transcript says clean; an earlier one recorded a taint.
+        (root / "xtop_log_0.txt").write_text("ATCS:taint:tainted:undo did not restore\n", encoding="utf-8")
+        (root / "xtop_log_9.txt").write_text("ATCS:taint:clean\n", encoding="utf-8")
+        contribution = self._capture("w01")
+        self.assertEqual([refusal["code"] for refusal in contribution["refusals"]], ["tainted"])
+        self.assertIn("undo did not restore", contribution["refusals"][0]["detail"])
+
+    def test_a_real_uncertain_line_is_captured_as_a_tainted_refusal_not_a_crash(self):
+        root = self._seed("w01")
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=GAIN)
+        log.uncertain()
+        sf.write_session(root, log, BEFORE, {**BEFORE, "U1": "BUFX2"},
+                         transcript="ATCS:taint:tainted:atcs_size_cell: unexpected Tcl error")
+        contribution = self._capture("w01")
+        self.assertFalse(contribution["admissible"])
+        self.assertEqual({refusal["code"] for refusal in contribution["refusals"]}, {"tainted"})
+
     def test_site_filler_patterns_come_from_the_bound_xtop_context(self):
         root = self._seed("w01")
         _write_json(self.workspace / "state" / "xtop-context.json", core.stamp("xtop-context", {

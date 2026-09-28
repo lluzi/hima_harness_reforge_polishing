@@ -924,6 +924,27 @@ class XtopSessionRecipeTests(unittest.TestCase):
         self.assertEqual([conflict["kind"] for conflict in facts["conflicts"]], ["same-instance-different-master"])
         self.assertEqual(facts["recipe"]["sessions"], [])
 
+    def test_a_session_whose_base_dump_disagrees_is_excluded_from_the_recipe_not_a_conflict(self):
+        one = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030))
+        two = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020))
+        odd = _session("w03", [("U3", "INVX2")], _hold_gain(0.050), before={**SESSION_BEFORE, "U9": "BUFX1"})
+        self.assertNotEqual(odd["beforeDumpSha256"], one["beforeDumpSha256"])
+
+        facts = composition.analyze(BASE_STATE_ID, [odd, one, two], [])
+        self.assertEqual(facts["conflicts"], [])
+        self.assertEqual([entry["contribution"] for entry in facts["recipe"]["sessions"]], [one["id"], two["id"]])
+        self.assertEqual(facts["recipe"]["excluded"],
+                         [{"contribution": odd["id"], "taskId": "w03", "codes": ["base-dump-mismatch"]}])
+        self.assertNotIn(odd["id"], facts["considered"])
+        self.assertNotIn(odd["id"], facts["order"])
+
+    def test_the_tns_tie_break_uses_the_target_checks_only(self):
+        a = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.10))
+        b = _session("w02", [("U2", "BUFX2")], _hold_gain(0.010, 0.30))
+        recipe = composition.analyze(BASE_STATE_ID, [a, b], [])["recipe"]
+        self.assertEqual([entry["contribution"] for entry in recipe["sessions"]], [b["id"], a["id"]])
+        self.assertAlmostEqual(recipe["sessions"][0]["tnsGain"], 0.30)
+
     def test_worst_checks_are_the_worst_failing_check_per_scenario_and_mode(self):
         observation = {"checks": {
             "a|setup|P1": {"slack": core.known(-0.01)}, "a|setup|P2": {"slack": core.known(-0.05)},

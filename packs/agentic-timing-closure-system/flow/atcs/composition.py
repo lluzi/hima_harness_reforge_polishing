@@ -219,17 +219,23 @@ ordering, so `order` stays total and deterministic even though
 Parallel expert sessions are not code changes that must all be kept
 verbatim; each is a probable repair. So a considered ``kind:
 "xtop-session"`` Contribution (see `atcs.contributions.seal_session`) takes
-part in none of the legacy object/pairwise/duplicate/dependency checks
-above -- only in ``base-dump-mismatch`` (an identity fact) -- and instead
-enters ``recipe``, which ranks the sessions and never refuses the batch:
+part in none of the conflict, interaction or duplicate checks above and
+instead enters ``recipe``, which ranks the sessions and never refuses the
+batch:
+
+- **Identity.** Sessions whose ``beforeDumpSha256`` differs from the
+  sessions' majority hash (the ``base-dump-mismatch`` rule, applied to
+  sessions only) are excluded: listed in ``recipe.excluded`` with code
+  ``base-dump-mismatch`` and removed from ``considered`` and ``order``. No
+  conflict is raised for them.
 
 - **Rank.** Sessions are ordered by ``blockerCoverage`` (how many of this
   call's `worst_checks` -- the worst failing check per scenario and mode,
   see `worst_checks` -- the session targets, by check key in its
   ``targets`` or by endpoint pin in its ``targetPins``) descending, then
   ``value`` (the predicted WNS gain of its worst target check, ns)
-  descending, then ``valueDetail.tnsGain`` descending (unknown counts as
-  0), then ``id`` ascending. ``rank`` starts at 1.
+  descending, then ``valueDetail.targetTnsGain`` descending (the target
+  checks' TNS gain only; unknown counts as 0), then ``id`` ascending. ``rank`` starts at 1.
 - **Skip, never refuse.** Walking sessions in rank order, a command is
   marked ``skip: "shared-instance"`` (with ``sharedWith: [{"instance",
   "contribution", "rank"}]``) when any of its ``instances`` was touched by a
@@ -638,12 +644,30 @@ def _coverage(contribution, worst):
     return sorted(key for key in worst if key in targets or key.split("|", 2)[-1] in pins)
 
 
-def _recipe(sessions, excluded, worst):
+def _session_base_mismatch(sessions):
+    """Sessions whose ``beforeDumpSha256`` is not the sessions' majority hash (ties: smallest hash).
+
+    The same majority rule as `_base_dump_mismatch`, applied to sessions only: an
+    identity problem excludes that session from the recipe, it never becomes a batch
+    conflict (controller decision, #64 Task 4 review).
+    """
+    counts = {}
+    for contribution in sessions:
+        sha = contribution.get("beforeDumpSha256")
+        counts[sha] = counts.get(sha, 0) + 1
+    if len(counts) <= 1:
+        return set()
+    top = max(counts.values())
+    majority = min((sha for sha, count in counts.items() if count == top), key=str)
+    return {contribution["id"] for contribution in sessions if contribution.get("beforeDumpSha256") != majority}
+
+
+def _recipe(sessions, excluded, worst, identity_excluded=()):
     """The ranked recipe over admitted `xtop-session` Contributions -- see the module docstring."""
     ranked = []
     for contribution in sessions:
         covered = _coverage(contribution, worst)
-        tns_gain = (contribution.get("valueDetail") or {}).get("tnsGain")
+        tns_gain = (contribution.get("valueDetail") or {}).get("targetTnsGain")
         ranked.append((len(covered), _number(contribution.get("value")), _number(tns_gain), contribution, covered))
     ranked.sort(key=lambda item: (-item[0], -item[1], -item[2], item[3]["id"]))
 
@@ -691,9 +715,11 @@ def _recipe(sessions, excluded, worst):
         "worstChecks": sorted(worst),
         "sessions": entries,
         "excluded": sorted(
-            ({"contribution": contribution["id"], "taskId": contribution.get("taskId"),
+            [{"contribution": contribution["id"], "taskId": contribution.get("taskId"),
               "codes": sorted({refusal.get("code") for refusal in contribution.get("refusals") or []
-                               if isinstance(refusal, dict)})} for contribution in excluded),
+                               if isinstance(refusal, dict)})} for contribution in excluded]
+            + [{"contribution": contribution["id"], "taskId": contribution.get("taskId"),
+                "codes": ["base-dump-mismatch"]} for contribution in identity_excluded],
             key=lambda item: item["contribution"]),
         "commandCount": command_count,
         "skipCount": skip_count,
@@ -731,6 +757,14 @@ def analyze(base_state_id, contributions, resolutions, worst_checks=None):
     considered_contributions = [
         contribution for contribution in admissible if contribution.get("baseStateId") == base_state_id
     ]
+    # A session that did not start from the sessions' common native state is excluded from the
+    # recipe (and from `considered`/`order`), recorded under `recipe.excluded`.
+    mismatched_ids = _session_base_mismatch(
+        [contribution for contribution in considered_contributions if contribution.get("kind") == "xtop-session"])
+    identity_excluded = [contribution for contribution in considered_contributions
+                         if contribution["id"] in mismatched_ids]
+    considered_contributions = [contribution for contribution in considered_contributions
+                                if contribution["id"] not in mismatched_ids]
     considered_ids = sorted(contribution["id"] for contribution in considered_contributions)
     kind_by_id = {contribution["id"]: contribution.get("kind") for contribution in considered_contributions}
 
@@ -750,14 +784,14 @@ def analyze(base_state_id, contributions, resolutions, worst_checks=None):
 
     conflicts = []
     conflicts.extend(_object_conflicts(fix_contributions))
-    conflicts.extend(_base_dump_mismatch(fix_contributions + session_contributions))
+    conflicts.extend(_base_dump_mismatch(fix_contributions))
     dependency_conflicts, dependency_graph = _dependency_conflicts(fix_contributions, considered_ids)
     conflicts.extend(dependency_conflicts)
     pairwise_conflicts, interactions = _pairwise(fix_contributions)
     conflicts.extend(pairwise_conflicts)
     conflicts.sort(key=lambda conflict: conflict["key"])
 
-    recipe = _recipe(session_contributions, excluded_sessions, worst)
+    recipe = _recipe(session_contributions, excluded_sessions, worst, identity_excluded)
     ranked_ids = [entry["contribution"] for entry in recipe["sessions"]]
     ranked_set = set(ranked_ids)
     other_ids = [contribution_id for contribution_id in considered_ids if contribution_id not in ranked_set]

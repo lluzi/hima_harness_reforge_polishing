@@ -985,7 +985,10 @@ def _script_sha256(path):
 #   ``outOfScope``. The domain is ``editDomain.instances`` plus instances
 #   this session created whose leaf name starts with ``namePrefix``;
 # - ``no-predicted-gain``: kept commands whose predicted target slack got
-#   worse, did not improve at all, or cannot be read.
+#   worse, did not improve at all, or cannot be read;
+# - ``breaks-opposite-check``: kept commands whose predicted non-target
+#   check (setup for a hold repair, and so on) got worse in WNS or TNS by
+#   more than one rounding step, or cannot be read.
 #
 # Typed requests (size/exchange/insert/remove) must show exactly their
 # requested effect in their own logged delta; fixes, splits, moves and
@@ -1046,10 +1049,13 @@ def parse_session_log(text):
     JSON object, a ``seq`` that is not a positive int strictly above the
     previous line's, an unknown ``cmd``/``status``, a ``proc`` that is not an
     ``atcs_*`` name, non-object ``args``, a malformed ``before``/``after``,
-    an undo line without an int ``undoes`` and an int-list ``discards``, or
+    a non-``uncertain`` undo line without an int ``undoes`` and an int-list ``discards``, or
     a malformed optional field (``newNets``/``fillers``/``ecoCells`` string
-    lists, ``matchesRequest`` bool, ``verified`` string). A gap in ``seq`` is
-    content, not shape: `seal_session` records it as a refusal.
+    lists, ``matchesRequest`` bool, ``verified`` string). An ``uncertain``
+    line may omit ``before``/``after`` (read as empty) and, for an undo,
+    ``undoes``/``discards``: `atcs_fail_uncertain` writes it without them,
+    and it taints the slot anyway. A gap in ``seq`` is content, not shape:
+    `seal_session` records it as a refusal.
     """
     lines = []
     previous_seq = 0
@@ -1076,9 +1082,15 @@ def parse_session_log(text):
             raise _malformed(line_number, "args must be an object")
         if record.get("status") not in SESSION_STATUSES:
             raise _malformed(line_number, f"unknown status {record.get('status')!r}")
-        record["before"] = {"instances": _instance_map(record.get("before"), line_number, "before")}
-        record["after"] = {"instances": _instance_map(record.get("after"), line_number, "after")}
-        if record["cmd"] == "undo":
+        uncertain = record["status"] == "uncertain"
+        # `atcs_fail_uncertain` logs {seq,cmd,proc,args,status,observe,error} only: an uncertain line
+        # may lack before/after (and, for an undo, undoes/discards). It taints the slot either way.
+        for side in ("before", "after"):
+            if uncertain and side not in record:
+                record[side] = {"instances": {}}
+            else:
+                record[side] = {"instances": _instance_map(record.get(side), line_number, side)}
+        if record["cmd"] == "undo" and not uncertain:
             discards = record.get("discards")
             if not _is_plain_int(record.get("undoes")) or not isinstance(discards, list) \
                     or not all(_is_plain_int(item) for item in discards):
@@ -1143,11 +1155,12 @@ def parse_gain_summary(text):
     current design, ``...0`` is the session reference, ``D_...`` their
     difference. ``Worst`` is the worst slack (``0.0000`` when nothing
     violates) and ``TNS`` is negative when violating. ``|`` separators are
-    ignored; a line with no number ends the table, and other text (the
-    ``summarize_eco_actions`` table, fail-reason lines) is skipped.
+    ignored; a blank line or the next ``###`` line ends the table, and text
+    outside a table (the ``summarize_eco_actions`` table) is skipped.
 
-    Fail closed: a section is dropped (absent from the result) when any of
-    its rows does not have exactly one number per header column, a row name
+    Fail closed: a section is dropped (absent from the result) when any
+    line of its table (after the header, before the table ends) does not
+    have exactly one number per header column, a row name
     repeats, it has no ``total`` row, a ``D_`` column disagrees with its
     current minus reference by more than one rounding step, or the same
     check prints two sections. Text with no recognizable section returns
@@ -1168,7 +1181,10 @@ def parse_gain_summary(text):
         if check is None or check in broken:
             continue
         tokens = [token for token in line.split() if token != "|"]
-        if not tokens or set(line) <= set("-"):
+        if not tokens:
+            header = None  # a blank line ends the table
+            continue
+        if set(line) <= set("-"):
             continue
         if tokens[0] == "Scenario":
             columns = [_SUMMARY_COLUMNS.get(token) for token in tokens[1:]]
@@ -1183,9 +1199,6 @@ def parse_gain_summary(text):
         if header is None:
             continue
         name, values = tokens[0], tokens[1:]
-        if not any(_NUMBER.match(value) for value in values):
-            header = None  # a text line (e.g. fail reasons) ends the table
-            continue
         if len(values) != len(header) or not all(_NUMBER.match(value) for value in values):
             broken.add(check)
             continue
@@ -1268,50 +1281,68 @@ def _target_checks(work_package):
     return sorted(kinds) or sorted(SESSION_CHECKS)
 
 
-def _session_value(target_checks, reference, predicted):
-    """The ranking value and whether the session predicts a gain.
+# A check reading prints 4 decimals: a move within one rounding step is not a change.
+_OPPOSITE_TOLERANCE = 1e-4
 
-    For each target check kind ``k`` (``setup``/``hold`` named by the work
-    package's ``targets``; both when none is named): ``wnsGain[k] = predicted
-    WNS - reference WNS`` and the TNS change likewise (positive = better).
-    ``value`` is ``wnsGain`` of the target kind whose reference WNS is worst
-    (ties: hold before setup, alphabetically); ``tnsGain`` sums the target
-    kinds' TNS changes and breaks ranking ties. A session predicts a gain
-    when no target kind's WNS got worse and at least one of its WNS or its
-    TNS improved. Returns ``(value, detail, problem)``; ``problem`` is the
-    `no-predicted-gain` refusal detail, or ``None``.
+
+def _session_value(target_checks, reference, predicted):
+    """The ranking value and the gain gates, over both checks.
+
+    For every check ``k`` in setup/hold: ``wnsGain[k] = predicted WNS -
+    reference WNS`` and ``tnsGain[k]`` likewise (positive = better; TNS is
+    negative when violating). Target checks are the ``mode`` parts of the
+    work package's ``targets`` (both when none is named); the others are
+    opposite checks.
+
+    - ``value`` = ``wnsGain`` of the target check whose reference WNS is
+      worst (ties: hold before setup); ``targetTnsGain`` sums the target
+      checks' ``tnsGain`` and breaks ranking ties. An opposite check's TNS
+      never enters it.
+    - ``no-predicted-gain``: a target WNS is unknown or got worse, or no
+      target WNS and not ``targetTnsGain`` improved.
+    - ``breaks-opposite-check``: an opposite check's WNS or TNS is unknown,
+      or got worse by more than `_OPPOSITE_TOLERANCE` (one rounding step).
+
+    Returns ``(value, detail, refusals)``, ``refusals`` a list of
+    ``(code, detail)``.
     """
-    wns_gain = {}
-    tns_parts = []
-    unknown_parts = []
-    for check in target_checks:
+    wns_gain, tns_gain = {}, {}
+    for check in SESSION_CHECKS:
         label = check.capitalize()
-        ref_wns, cur_wns = reference[f"xtop{label}Wns"], predicted[f"xtop{label}Wns"]
-        if core.is_known(ref_wns) and core.is_known(cur_wns):
-            wns_gain[check] = round(core.value_of(cur_wns) - core.value_of(ref_wns), 9)
-        else:
-            unknown_parts.append(f"{check} WNS")
-        ref_tns, cur_tns = reference[f"xtop{label}Tns"], predicted[f"xtop{label}Tns"]
-        if core.is_known(ref_tns) and core.is_known(cur_tns):
-            tns_parts.append(core.value_of(cur_tns) - core.value_of(ref_tns))
-        else:
-            unknown_parts.append(f"{check} TNS")
-    tns_gain = round(sum(tns_parts), 9) if tns_parts and len(tns_parts) == len(target_checks) else None
+        for metric, gains in (("Wns", wns_gain), ("Tns", tns_gain)):
+            ref, cur = reference[f"xtop{label}{metric}"], predicted[f"xtop{label}{metric}"]
+            if core.is_known(ref) and core.is_known(cur):
+                gains[check] = round(core.value_of(cur) - core.value_of(ref), 9)
+    opposite = [check for check in SESSION_CHECKS if check not in target_checks]
+    target_tns = [tns_gain[check] for check in target_checks if check in tns_gain]
+    target_tns_gain = round(sum(target_tns), 9) if len(target_tns) == len(target_checks) else None
     known_refs = [(core.value_of(reference[f"xtop{c.capitalize()}Wns"]), c) for c in target_checks
                   if core.is_known(reference[f"xtop{c.capitalize()}Wns"])]
     worst = min(known_refs)[1] if known_refs else None
     value = wns_gain.get(worst, 0.0) if worst is not None else 0.0
-    detail = {"targetChecks": list(target_checks), "worstCheck": worst, "wnsGain": wns_gain, "tnsGain": tns_gain}
+    detail = {"targetChecks": list(target_checks), "oppositeChecks": opposite, "worstCheck": worst,
+              "wnsGain": wns_gain, "tnsGain": tns_gain, "targetTnsGain": target_tns_gain}
 
+    refusals = []
     missing_wns = [check for check in target_checks if check not in wns_gain]
+    worsened = {check: wns_gain[check] for check in target_checks if wns_gain.get(check, 0) < 0}
     if missing_wns:
-        return value, detail, f"predicted or reference WNS unknown for {missing_wns} ({unknown_parts})"
-    worsened = {check: gain for check, gain in wns_gain.items() if gain < 0}
-    if worsened:
-        return value, detail, f"predicted target WNS got worse: {worsened}"
-    if not any(gain > 0 for gain in wns_gain.values()) and not (tns_gain is not None and tns_gain > 0):
-        return value, detail, f"no predicted target gain (WNS {wns_gain}, TNS {tns_gain})"
-    return value, detail, None
+        refusals.append(("no-predicted-gain", f"predicted or reference WNS unknown for target {missing_wns}"))
+    elif worsened:
+        refusals.append(("no-predicted-gain", f"predicted target WNS got worse: {worsened}"))
+    elif not any(wns_gain[check] > 0 for check in target_checks) \
+            and not (target_tns_gain is not None and target_tns_gain > 0):
+        refusals.append(("no-predicted-gain", f"no predicted target gain (WNS {wns_gain}, TNS {target_tns_gain})"))
+
+    for check in opposite:
+        unknown = [metric for metric, gains in (("WNS", wns_gain), ("TNS", tns_gain)) if check not in gains]
+        broken = {metric: gains[check] for metric, gains in (("WNS", wns_gain), ("TNS", tns_gain))
+                  if check in gains and gains[check] < -_OPPOSITE_TOLERANCE}
+        if unknown:
+            refusals.append(("breaks-opposite-check", f"opposite {check} {unknown} cannot be read"))
+        elif broken:
+            refusals.append(("breaks-opposite-check", f"opposite {check} got worse: {broken}"))
+    return value, detail, refusals
 
 
 def _leaf(name):
@@ -1524,8 +1555,8 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
         actual_changed = actual[0] != actual[1]
         implied_changed = implied[0] != implied[1]
         if actual_changed and not implied_changed:
-            if name not in touched and name not in domain and (_filler(actual[0], filler_patterns)
-                                                               or _filler(actual[1], filler_patterns)):
+            if name not in touched and name not in domain and all(
+                    master is None or _filler(master, filler_patterns) for master in actual):
                 filler_changes.append(name)
             elif out_of_domain(name):
                 out_of_scope.add(name)
@@ -1545,12 +1576,13 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
     if commands:
         if not evidence.get("ecoOutput"):
             refuse("missing-export", "kept commands but eco_output/ holds no exported change files")
-        value, value_detail, gain_problem = _session_value(target_checks, reference, predicted)
-        if gain_problem is not None:
-            refuse("no-predicted-gain", gain_problem)
+        value, value_detail, gain_refusals = _session_value(target_checks, reference, predicted)
+        for code, detail in gain_refusals:
+            refuse(code, detail)
     else:
-        value, value_detail = 0.0, {"targetChecks": target_checks, "worstCheck": None, "wnsGain": {},
-                                    "tnsGain": None}
+        value, value_detail = 0.0, {"targetChecks": target_checks,
+                                    "oppositeChecks": [c for c in SESSION_CHECKS if c not in target_checks],
+                                    "worstCheck": None, "wnsGain": {}, "tnsGain": {}, "targetTnsGain": None}
 
     diagnosis = result_refs.get("diagnosis")
     if not (isinstance(diagnosis, str) and diagnosis.strip()) and not commands:
