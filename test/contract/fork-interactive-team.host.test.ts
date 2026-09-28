@@ -111,6 +111,8 @@ async function writeForkPack(packsDir: string, tclsh: string): Promise<string> {
         { id: branch.capture, kind: 'act', parameters: { tool: 'capture', arguments: { SLOT: branch.id } } },
       ]),
       { id: 'judge', kind: 'judge', parameters: { rules: ['plan-has-action'] } },
+      // Outside every fork: the same interactive tool at the Run's own cursor, after the join.
+      { id: 'operate-main', kind: 'act', parameters: { tool: 'operator', arguments: { SLOT: 'main' } } },
       { id: 'blocked', kind: 'wait', parameters: { blocker: 'hard-blocker' } },
     ],
     edges: branches.flatMap((branch) => [
@@ -119,7 +121,7 @@ async function writeForkPack(packsDir: string, tclsh: string): Promise<string> {
       { from: branch.read, to: branch.operate },
       { from: branch.operate, to: branch.capture },
       { from: branch.capture, to: 'judge' },
-    ]),
+    ]).concat([{ from: 'judge', to: 'operate-main', outcome: 'PASS' }, { from: 'judge', to: 'blocked', outcome: 'FAIL' }] as never[]),
   };
   const values = { plan_action_count: { unit: 'count', description: 'Actions in one branch fix plan' } };
   await writeFile(path.join(dir, 'contract.yml'), stringify(contract));
@@ -187,6 +189,8 @@ function mostOpenAtOnce(records: readonly LedgerRecord[]): number {
 
 interface Driven {
   readonly host: InProcessHost; readonly runId: string; readonly actor: string; readonly workspace: string;
+  /** A second Run of the same Pack on the same Site, owned by a second conversation. */
+  readonly another: () => Promise<Driven>;
 }
 
 /** A booted Host with one Run of the fixture Pack started on a local Site declaring `parallelJobs` slots. */
@@ -210,17 +214,20 @@ async function forkedCampaign(t: TestContext, parallelJobs: number, check: (driv
   await writeReplayOverlay(h.home, { file: scenario.file, overrideFile: scenario.override, childFiles: scenario.children });
   await appendFile(homePatchFile(h.home), `\n- id: hima\n  config:\n    sitesDir: ${JSON.stringify(site.sitesDir)}\n    packsDir: ${JSON.stringify(packsDir)}\n    knowledgeDir: ${JSON.stringify(path.join(h.home, 'hima/knowledge/current'))}\n    interactiveBindingsFile: ${JSON.stringify(bindingsFile)}\n`);
   const host = await bootInProcess(h);
-  let runId: string | undefined;
-  try {
+  const runIds: string[] = [];
+  const start = async (): Promise<Driven> => {
     const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
     const started = await host.ctx.hima.startRun({ pack: packId, site: site.name, goal: { target_period_ns: 2 }, ownerSessionId: actor, timeBoxMs: 180_000 });
-    assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
-    runId = started.run.id;
+    assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') throw new Error('unreachable');
+    runIds.push(started.run.id);
     assert.ok(started.workspace);
-    await check({ host, runId, actor, workspace: started.workspace });
+    return { host, runId: started.run.id, actor, workspace: started.workspace, another: start };
+  };
+  try {
+    await check(await start());
   } finally {
-    if (runId !== undefined) {
-      try { await host.ctx.hima.cancelRun(runId); } finally { killSessions(sessionsOf(host, runId)); }
+    for (const runId of runIds) {
+      try { await host.ctx.hima.cancelRun(runId); } catch { /* already ended */ } finally { killSessions(sessionsOf(host, runId)); }
     }
     try { await host.dispose(); } finally { await h.dispose(); }
   }
@@ -305,7 +312,8 @@ async function teamsReady(driven: Driven, owner: ReturnType<typeof ownerCalls>) 
     assert.equal(control().executions[operate.get(branch.id)!]!.branchId, branch.workshop, `${branch.operate} is admitted in its own branch`);
   }
   const crossed = await create(branches[0], 'researcher', operate.get('b')!);
-  assert.equal(crossed.status, 'refused', 'team-a is triggered by operate-a only, never by the other branch\'s execution');
+  assert.equal(crossed.status, 'refused', 'team-a materialized on operate-b\'s execution is refused');
+  assert.match(crossed.reason, /exact freshly begun target execution/, 'a Team member binds only to its own node\'s execution');
 
   const operatorOf = new Map<string, string>(); const planHashOf = new Map<string, string>();
   for (const branch of branches) {
@@ -391,6 +399,19 @@ test('two fork branches each hold an interactive Job driven by their own Team at
     assert.equal(again.status, 'refused', JSON.stringify(again));
     assert.equal(interactiveJobs('launched').length, 2, 'the refused second open of one execution launched nothing');
 
+    // The cap is pressed: with both slots held by the branches' interactive Jobs, a third Job on the
+    // same Site (a second Run's Workshop) is refused and launches nothing.
+    const rival = ownerCalls(await driven.another());
+    await rival.node('start');
+    const rivalPlan = await rival.begin('plan-a');
+    assert.equal((await rival.act('recommend', { executionId: rivalPlan })).kind, 'accepted');
+    assert.equal((await rival.act('write', { executionId: rivalPlan, path: 'entry.sh', content: 'exit 0\n' })).kind, 'accepted');
+    assert.equal((await rival.act('work', { executionId: rivalPlan })).kind, 'accepted');
+    const pressed = rival.control().executions[rivalPlan]!;
+    assert.deepEqual([pressed.phase, pressed.result], ['begun', { kind: 'at-cap',
+      reason: 'site local is running 2 jobs against a cap of 2; nothing was launched' }], 'a third Job at a Site cap of two is held back');
+    assert.equal(rival.jobs().filter((record) => record.event === 'launched').length, 0, 'the rival Run launched nothing');
+
     // Each Operator applies only its own reviewed action, with both sessions live and their commands interleaved.
     const crossed = await send(branches[1], sessionOf.get('b')!, 'atcs_size_cell',
       { instance: 'U1', toMaster: branches[0].toMaster, planSha256: planHashOf.get('b') }, 'crossed');
@@ -436,10 +457,24 @@ test('two fork branches each hold an interactive Job driven by their own Team at
       const branch = branches.find((item) => [item.workshop, item.read, item.operate, item.capture].includes(execution.nodeId as never));
       assert.equal(execution.branchId, branch?.workshop, `execution of ${execution.nodeId} names its branch`);
     }
+
+    // At the Run's own cursor, outside every fork, a force-closed interactive Job's stop names no branch.
+    assert.deepEqual(context().available, ['operate-main']);
+    const main = await owner.begin('operate-main');
+    await mkdir(path.join(driven.workspace, 'research/branch-main'), { recursive: true });
+    const atMain = (body: Record<string, unknown>) => driven.host.ctx.hima.interactive(driven.actor, { runId: driven.runId, executionId: main,
+      nodeId: 'operate-main', ownerEpoch: control().epoch, controlRevision: control().revision, ...body }) as Promise<Record<string, any>>;
+    const mainOpen = await atMain({ action: 'open', requestId: 'open-main' });
+    assert.equal(mainOpen.status, 'opened', JSON.stringify(mainOpen));
+    const mainStop = await atMain({ action: 'close', requestId: 'close-main', toolSessionId: mainOpen.session.toolSessionId });
+    assert.equal(mainStop.status, 'closed', JSON.stringify(mainStop));
+    const mainJobs = interactiveJobs().filter((record) => record.nodeId === 'operate-main');
+    assert.deepEqual(mainJobs.map((record) => [record.event, 'branchId' in record]), [['launched', false], ['killed', false]],
+      'a main-cursor interactive Job and its stop carry no branchId key');
   });
 });
 
-test('under a Site cap of one, the second branch\'s interactive open is refused while the first holds the slot, and opens once it is free', async (t) => {
+test('under a Site cap of one, the second branch\'s interactive open is refused while the first holds the slot, opens once it is free, and its stop names its branch', async (t) => {
   await forkedCampaign(t, 1, async (driven) => {
     const owner = ownerCalls(driven);
     const { interactiveJobs, records } = owner;
@@ -456,8 +491,12 @@ test('under a Site cap of one, the second branch\'s interactive open is refused 
     await settleOperate(first);
     const retried = await interactive(second, { action: 'open', requestId: `open-${second.id}-retry` });
     assert.equal(retried.status, 'opened', `the freed slot admits the waiting branch: ${JSON.stringify(retried)}`);
-    await operateOnce(second, retried.session.toolSessionId);
-    await settleOperate(second);
     assert.equal(mostOpenAtOnce(records()), 1, 'never more than the one declared slot');
+
+    // A branch's open interactive Job force-closed by its Operator: the stop names the branch it was launched in.
+    const stopped = await interactive(second, { action: 'close', requestId: `close-${second.id}`, toolSessionId: retried.session.toolSessionId });
+    assert.equal(stopped.status, 'closed', JSON.stringify(stopped));
+    assert.deepEqual(interactiveJobs('killed').map((record) => [record.nodeId, record.branchId]), [[second.operate, second.workshop]],
+      'the killed record of a branch\'s interactive Job carries that branch');
   });
 });

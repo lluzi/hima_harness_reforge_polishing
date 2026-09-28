@@ -495,6 +495,8 @@ class RunInteractiveAuthority implements InteractiveAuthority {
   async recordJobStop(job: InteractiveJobIdentity, outcome: { readonly wasRunning: boolean; readonly observedGone: boolean }): Promise<void> {
     if (!outcome.wasRunning || !outcome.observedGone) return;
     await controlling(this.deps.fabric, this.request.runId, async () => {
+      // A Job belongs where it was launched: the branch is read back off the launch, as `jobs.ts`
+      // `belongsTo` does for the `finished`/`killed` records of a batch Job.
       const records = this.deps.fabric.ledger.records({ runId: this.request.runId, type: 'job' })
         .filter((record): record is JobRecord => record.type === 'job' && record.job.session === job.session);
       const ended = records.some((record) => record.event !== 'launched');
