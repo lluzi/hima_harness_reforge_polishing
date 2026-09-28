@@ -127,6 +127,7 @@ from pathlib import Path
 from . import core
 from . import contributions as contributions_module
 from . import integration as integration_module
+from . import workspaces as workspaces_module
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -1100,16 +1101,6 @@ def compile_xtop_operator_task(workspace_manifest, design, tech_lef, cell_lef_gl
     return {"tcl": tcl, "env": env, "tclPath": str(tcl_path), "argv": argv, "ecoPrefix": eco_prefix}
 
 
-DEFAULT_OPERATOR_MAX_MUTATIONS = 1
-"""Mutation budget of an Operator session whose work package names none.
-
-Task 4 (#64) adds `scope.maxMutations` to the work package; until a package
-carries it, a session keeps today's one-reviewed-mutation bound.
-"""
-OPERATOR_MAX_MUTATIONS_CAP = 200
-OPERATOR_OBSERVE_MODES = ("fast", "full")
-
-
 def _operator_regions(edit_domain):
     """`editDomain.regions` (``[[x1, y1, x2, y2], ...]``, `core.region_box`) or refuse."""
     regions = []
@@ -1122,16 +1113,15 @@ def _operator_regions(edit_domain):
 
 
 def compile_xtop_analysis_manual_task(workspace_manifest, edit_domain, operator_tcl_path, ops_log_path,
-                                      target_pins=None, max_mutations=None, observe=None):
+                                      target_pins=None, *, max_mutations, observe=None):
     """One `xtop-analysis-manual.tcl` task binding one worker's edit domain and budget for its whole session.
 
     `edit_domain`: ``{"instances", "nets", "regions"}`` (a work package's own
     `editDomain`); regions bound `atcs_move_cell` targets. `target_pins`: the
     work package's `targetPins` -- with the pins of domain instances, the only
     pins `atcs_fix_*_pins` may name in `-only_pins`. `max_mutations`: the work
-    package's `scope.maxMutations` (1..200), the Tcl-side mutation budget that
-    backs the Host's scope count; ``None`` means
-    `DEFAULT_OPERATOR_MAX_MUTATIONS`. `observe`: ``"fast"`` (default; XTop ECO
+    package's `scope.maxMutations` (1..`workspaces.SCOPE_MAX_MUTATIONS`), the
+    Tcl-side mutation budget that backs the Host's scope count. `observe`: ``"fast"`` (default; XTop ECO
     bookkeeping plus the domain's own objects) or ``"full"`` (adds whole-design
     cell and net snapshots per mutation, for cross-checking the fast path). All
     are baked as Tcl list literals (`::EDIT_DOMAIN_*`, `::ATCS_MAX_MUTATIONS`,
@@ -1141,17 +1131,14 @@ def compile_xtop_analysis_manual_task(workspace_manifest, edit_domain, operator_
     name_prefix = workspace_manifest.get("namePrefix")
     if not name_prefix:
         raise core.AtcsError("missing-input", "workspace manifest has no namePrefix")
-    if max_mutations is None:
-        max_mutations = DEFAULT_OPERATOR_MAX_MUTATIONS
-    if (isinstance(max_mutations, bool) or not isinstance(max_mutations, int)
-            or not 1 <= max_mutations <= OPERATOR_MAX_MUTATIONS_CAP):
-        raise core.AtcsError(
-            "invalid-input", f"maxMutations must be an integer 1..{OPERATOR_MAX_MUTATIONS_CAP}, got {max_mutations!r}",
-        )
+    cap = workspaces_module.SCOPE_MAX_MUTATIONS
+    if isinstance(max_mutations, bool) or not isinstance(max_mutations, int) or not 1 <= max_mutations <= cap:
+        raise core.AtcsError("invalid-input", f"maxMutations must be an integer 1..{cap}, got {max_mutations!r}")
     if observe is None:
         observe = "fast"
-    if observe not in OPERATOR_OBSERVE_MODES:
-        raise core.AtcsError("invalid-input", f"observe must be one of {OPERATOR_OBSERVE_MODES}, got {observe!r}")
+    if observe not in workspaces_module.OBSERVE_MODES:
+        raise core.AtcsError("invalid-input",
+                             f"observe must be one of {workspaces_module.OBSERVE_MODES}, got {observe!r}")
     instances = list((edit_domain or {}).get("instances") or [])
     nets = list((edit_domain or {}).get("nets") or [])
     regions = _operator_regions(edit_domain)

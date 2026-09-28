@@ -25,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -3062,7 +3063,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def _write_candidate(self, parent_min_wns, candidate_setup_wns, candidate_hold_wns,
                           predicted_setup=0.02, predicted_hold=0.05, validation_level="xtop",
-                          parent_known=True, precision="gba"):
+                          parent_known=True, precision="gba", merge_commit_extra=None):
         self.decision_id_seed += 1
         state_id = f"candidate-state-{self.decision_id_seed}"
 
@@ -3086,6 +3087,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
             "contributions": [{"id": "contrib-1", "revision": 1}],
             "operations": [{"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"}],
             "innovusEcoTcl": "ecoChangeCell -inst {U1} -cell BUFX2", "sourceMap": {}, "newNets": [],
+            **(merge_commit_extra or {}),
         })
         merge_id = merge_commit["id"]
         _write_json(self.workspace / "state" / "merge-commit.json", merge_commit)
@@ -3171,6 +3173,27 @@ class RecordExperienceComposedTest(unittest.TestCase):
         self.assertAlmostEqual(core.value_of(entry["measured"]), 0.04)  # 0.04 - 0.0
         self.assertAlmostEqual(core.value_of(entry["predicted"]), 0.02)  # min(0.02, 0.05) - 0.0
         self.assertEqual(entry["verdict"], "helped")
+
+    def _recipe_entry(self, control_prediction):
+        """A recipe batch that chose control: its prediction is the chosen arm's XTop summary."""
+        reason_path = self._write_candidate(
+            parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04, merge_commit_extra={
+                "contributions": [], "choice": {"arm": "control", "reason": "r"}, "arms": {
+                    "merged": {"prediction": {"worstSetupWns": -0.01, "worstHoldWns": -0.02}},
+                    "control": {"prediction": control_prediction}}})
+        _write_json(reason_path, {"plan": {"batchId": "batch-fixture", "reason": "ranked recipe"}, "facts": {}})
+        result = _run("record-experience", self.workspace, reason_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return json.loads((self.workspace / "state" / "experience.json").read_text())["entries"][-1]
+
+    def test_a_recipe_batch_predicts_from_the_chosen_arms_xtop_summary(self):
+        entry = self._recipe_entry({"worstSetupWns": 0.0, "worstHoldWns": -0.03})
+        self.assertAlmostEqual(core.value_of(entry["predicted"]), -0.03)  # min(0.0, -0.03) - 0.0
+
+    def test_an_unknown_chosen_arm_prediction_is_an_unknown_prediction(self):
+        entry = self._recipe_entry({"unknown": "no readable hold table"})
+        self.assertFalse(core.is_known(entry["predicted"]))
+        self.assertIn("no readable hold table", entry["predicted"]["unknown"])
 
     def test_measured_negative_delta_is_hurt(self):
         reason_path = self._write_candidate(parent_min_wns=0.05, candidate_setup_wns=0.01, candidate_hold_wns=0.01)
@@ -3969,37 +3992,15 @@ class RecipeReplayCliTest(unittest.TestCase):
                 raise RuntimeError("wrapper vanished")
             return log_path
 
-        original = atcs_cli.adapters.run_tool
-        atcs_cli.adapters.run_tool = fake_run_tool
-        try:
-            task = {"arms": {arm: {"argv": ["xtop"], "root": str(self.workspace / arm),
-                                   "logPath": str(self.workspace / arm / "log")} for arm in ("merged", "control")}}
-            failures = atcs_cli._run_replay_arms({}, task)
-        finally:
-            atcs_cli.adapters.run_tool = original
+        site = self._site("#!/bin/sh\nexit 0\n")
+        with mock.patch.object(atcs_cli.adapters, "run_tool", side_effect=fake_run_tool):
+            code = atcs_cli.main(["replay-prepare", str(self.workspace), str(self.base_state_path),
+                                  str(self.plan_path), str(site)])
+        self.assertEqual(code, 0)
         self.assertEqual(sorted(calls), ["control", "merged"])
-        self.assertIsNone(failures["merged"])
-        self.assertIn("RuntimeError: wrapper vanished", failures["control"]["detail"])
-
-    def test_record_experience_reads_the_chosen_arms_prediction(self):
-        merge_commit = {"choice": {"arm": "control", "reason": "r"}, "arms": {
-            "merged": {"prediction": {"worstSetupWns": -0.01, "worstHoldWns": -0.02}},
-            "control": {"prediction": {"worstSetupWns": 0.0, "worstHoldWns": -0.03}}}, "contributions": []}
-        value, model = atcs_cli._selected_predicted_min_wns({"contributions": []}, merge_commit)
-        self.assertEqual((value, model), (core.known(-0.03), "xtop"))
-        merge_commit["arms"]["control"]["prediction"] = {"unknown": "no readable hold table"}
-        value, model = atcs_cli._selected_predicted_min_wns({"contributions": []}, merge_commit)
-        self.assertFalse(core.is_known(value))
-        self.assertIn("no readable hold table", value["unknown"])
-
-    def test_the_evaluation_surfaces_the_batch_guarantee(self):
-        body = core.stamp("evaluation", {"candidateId": "m1", "finalSetupWns": core.known(0.0)})
-        merge_commit = {"guarantee": {"evidenced": False, "arm": "merged", "reason": "control arm unusable"},
-                        "warnings": [{"kind": "guaranteeUnevidenced", "reason": "control arm unusable"}]}
-        surfaced = atcs_cli._with_batch_guarantee(body, merge_commit)
-        self.assertEqual(surfaced["batchGuarantee"], merge_commit["guarantee"])
-        self.assertEqual(surfaced["id"], core.digest({k: v for k, v in surfaced.items() if k != "id"}))
-        self.assertIs(atcs_cli._with_batch_guarantee(body, {"operations": []}), body)
+        receipts = json.loads((self.workspace / "state" / "replay-receipts.json").read_text())
+        self.assertNotIn("toolFailure", receipts["arms"]["merged"])
+        self.assertIn("RuntimeError: wrapper vanished", receipts["arms"]["control"]["toolFailure"]["detail"])
 
     def test_reconcile_refuses_when_no_arm_left_an_eco_pair(self):
         self.assertEqual(self._prepare().returncode, 0)

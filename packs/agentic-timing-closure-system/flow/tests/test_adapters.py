@@ -665,6 +665,7 @@ class DumpCellsTest(unittest.TestCase):
         )
         analysis_task = adapters.compile_xtop_analysis_manual_task(
             manifest, {"instances": [], "nets": []}, run_root / "operator.tcl", run_root / "ops.jsonl",
+            max_mutations=1,
         )
         (run_root / "operator.tcl").write_text(operator_task["tcl"], encoding="utf-8")
         script_path = tmp / "dump-session.tcl"

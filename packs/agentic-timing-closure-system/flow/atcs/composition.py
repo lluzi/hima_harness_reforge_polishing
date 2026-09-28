@@ -230,7 +230,7 @@ batch:
   conflict is raised for them.
 
 - **Rank.** Sessions are ordered by ``blockerCoverage`` (how many of this
-  call's `worst_checks` -- the worst failing check per scenario and mode,
+  call's `worst_keys` -- the worst failing check per scenario and mode,
   see `worst_checks` -- the session targets by `covers`: check key in its
   ``targets``, or the key's endpoint or the check's raw PT endpoint
   (`worst_endpoints`, from `worst_check_endpoints`) in its ``targetPins``;
@@ -380,20 +380,30 @@ def _object_conflicts(fix_contributions):
     return conflicts
 
 
-def _base_dump_mismatch(fix_contributions):
-    """`base-dump-mismatch`, naming only the minority hash group(s) — see module docstring."""
-    if len(fix_contributions) < 2:
-        return []
-    sha_by_id = {contribution["id"]: contribution.get("beforeDumpSha256") for contribution in fix_contributions}
+def _base_minority(contributions):
+    """Ids of `contributions` whose ``beforeDumpSha256`` is not their majority hash.
+
+    The majority is the most common hash, ties going to the smallest; with one hash (or none)
+    nobody is in the minority.
+    """
     counts = {}
-    for sha in sha_by_id.values():
+    for contribution in contributions:
+        sha = contribution.get("beforeDumpSha256")
         counts[sha] = counts.get(sha, 0) + 1
     if len(counts) <= 1:
+        return set()
+    top = max(counts.values())
+    majority = min((sha for sha, count in counts.items() if count == top), key=str)
+    return {contribution["id"] for contribution in contributions if contribution.get("beforeDumpSha256") != majority}
+
+
+def _base_dump_mismatch(fix_contributions):
+    """`base-dump-mismatch`, naming only the minority hash group(s) — see module docstring."""
+    minority_ids = sorted(_base_minority(fix_contributions))
+    if not minority_ids:
         return []
-    max_count = max(counts.values())
-    majority_sha = min(sha for sha, count in counts.items() if count == max_count)
-    minority_ids = sorted(cid for cid, sha in sha_by_id.items() if sha != majority_sha)
-    minority_hashes = sorted({sha_by_id[cid] for cid in minority_ids})
+    by_id = {contribution["id"]: contribution.get("beforeDumpSha256") for contribution in fix_contributions}
+    minority_hashes = sorted({by_id[cid] for cid in minority_ids}, key=str)
     return [_make_conflict("base-dump-mismatch", minority_ids, minority_hashes)]
 
 
@@ -682,24 +692,6 @@ def _coverage(contribution, worst, endpoints=None):
     return sorted(key for key in worst if covers(key, endpoints.get(key), targets, pins))
 
 
-def _session_base_mismatch(sessions):
-    """Sessions whose ``beforeDumpSha256`` is not the sessions' majority hash (ties: smallest hash).
-
-    The same majority rule as `_base_dump_mismatch`, applied to sessions only: an
-    identity problem excludes that session from the recipe, it never becomes a batch
-    conflict (controller decision, #64 Task 4 review).
-    """
-    counts = {}
-    for contribution in sessions:
-        sha = contribution.get("beforeDumpSha256")
-        counts[sha] = counts.get(sha, 0) + 1
-    if len(counts) <= 1:
-        return set()
-    top = max(counts.values())
-    majority = min((sha for sha, count in counts.items() if count == top), key=str)
-    return {contribution["id"] for contribution in sessions if contribution.get("beforeDumpSha256") != majority}
-
-
 def _recipe(sessions, excluded, worst, identity_excluded=(), endpoints=None):
     """The ranked recipe over admitted `xtop-session` Contributions -- see the module docstring."""
     ranked = []
@@ -764,7 +756,7 @@ def _recipe(sessions, excluded, worst, identity_excluded=(), endpoints=None):
     }
 
 
-def analyze(base_state_id, contributions, resolutions, worst_checks=None, worst_endpoints=None):
+def analyze(base_state_id, contributions, resolutions, worst_keys=None, worst_endpoints=None):
     """Deterministic three-way composition facts over `contributions` on `base_state_id`.
 
     `contributions` is a list of sealed `contribution` artifacts (see the
@@ -776,14 +768,14 @@ def analyze(base_state_id, contributions, resolutions, worst_checks=None, worst_
     of this module — every other problem with a contribution's *content*
     (a real conflict, interaction, or stale base) is reported as data,
     never raised, since this module only observes, it never refuses a
-    contribution on its own authority. `worst_checks` (optional, a list of
+    contribution on its own authority. `worst_keys` (optional, a list of
     check keys, e.g. from `worst_checks(observation)`) drives the recipe's
     blocker coverage; without it every session's coverage is 0.
     """
     resolutions = resolutions or []
-    worst = worst_checks if worst_checks is not None else []
+    worst = worst_keys if worst_keys is not None else []
     if not isinstance(worst, list) or not all(_is_nonempty_string(key) for key in worst):
-        raise core.AtcsError("missing-input", f"worst_checks must be a list of check keys, got {worst_checks!r}")
+        raise core.AtcsError("missing-input", f"worst_keys must be a list of check keys, got {worst_keys!r}")
 
     _validate_contributions(contributions)
     resolution_keys = _resolution_keys(resolutions)
@@ -797,7 +789,7 @@ def analyze(base_state_id, contributions, resolutions, worst_checks=None, worst_
     ]
     # A session that did not start from the sessions' common native state is excluded from the
     # recipe (and from `considered`/`order`), recorded under `recipe.excluded`.
-    mismatched_ids = _session_base_mismatch(
+    mismatched_ids = _base_minority(
         [contribution for contribution in considered_contributions if contribution.get("kind") == "xtop-session"])
     identity_excluded = [contribution for contribution in considered_contributions
                          if contribution["id"] in mismatched_ids]

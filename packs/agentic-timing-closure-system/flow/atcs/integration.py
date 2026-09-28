@@ -28,8 +28,7 @@ This module owns the six M5 producers named in
 
 Issue #64 Task 6 adds the recipe replay (see the "Recipe replay" section at the
 end of this module): `prepare_recipe_replay` (Task 4b's ranked recipe ->
-``"mode": "recipe"`` `replay-request`), `parse_gba_summary` (XTop's per-scenario
-`summarize_gba_violations` table), `eco_text_problems`, `reconcile_recipe` (arm
+``"mode": "recipe"`` `replay-request`), `eco_text_problems`, `reconcile_recipe` (arm
 safety and the merged-vs-control choice) and `seal_batch`'s recipe branch (the
 chosen ECO pair, both arms' predictions, the choice, per-session applied/skipped
 lists and deltas). The legacy step replay below is unchanged.
@@ -283,7 +282,6 @@ group member happened to carry an identical op. `newNets` is every
 """
 from __future__ import annotations
 
-import fnmatch
 import math
 import re
 
@@ -1253,7 +1251,8 @@ ARMS = ("merged", "control")
 ECO_PREFIX = "atcs_batch"
 ECO_DIRS = {"merged": "eco", "control": "eco-control"}
 _ECO_ROLES = ("netlist", "physical")
-_PREFIX_RE_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+_NAME_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+"""The characters of a name prefix (`[A-Za-z0-9_]`)."""
 
 
 def auto_fix_tcl(setup_margin, hold_margin):
@@ -1330,7 +1329,7 @@ def _session_identity(slot, session):
     if not isinstance(session, dict):
         raise core.AtcsError("invalid-recipe", f"recipe session {slot!r} has no identity (namePrefix, editDomain)")
     prefix = session.get("namePrefix")
-    if not isinstance(prefix, str) or not prefix or not set(prefix) <= _PREFIX_RE_CHARS or prefix[0].isdigit():
+    if not isinstance(prefix, str) or not prefix or not set(prefix) <= _NAME_CHARS or prefix[0].isdigit():
         raise core.AtcsError("invalid-recipe", f"session {slot!r} namePrefix must be [A-Za-z_][A-Za-z0-9_]*")
     domain = session.get("editDomain") or {}
     if not isinstance(domain, dict):
@@ -1440,7 +1439,7 @@ def prepare_recipe_replay(plan, base_state_id, recipe, sessions, required_scenar
                 "proc": proc, "args": args, "skip": skip, "tcl": tcl,
             })
 
-    safe_batch = "".join(ch if ch in _PREFIX_RE_CHARS else "_" for ch in batch_id)
+    safe_batch = "".join(ch if ch in _NAME_CHARS else "_" for ch in batch_id)
     body = {
         "mode": "recipe",
         "batchId": batch_id,
@@ -1464,41 +1463,19 @@ def prepare_recipe_replay(plan, base_state_id, recipe, sessions, required_scenar
 
 # ---- XTop prediction (summarize_gba_violations) -------------------------------
 
-def parse_gba_summary(text, check=None):
-    """One check's per-scenario `summarize_gba_violations` table -> ``{"total", "scenarios"}``.
-
-    A thin view over Task 4b's `atcs.contributions.parse_gain_summary`, the one parser of
-    XTop's summary text, pinned to real XTop 2025.09 output (plain and ``-with_reference
-    -with_delta`` layouts, ``### <check> summary ###`` sections, fail closed). Rows become
-    ``{"count", "wns", "tns"}`` from the current ``Count``/``Worst``/``TNS`` columns (TNS signed,
-    a clean scenario reads 0). Without `check`, the only section present is read. Returns
-    ``None`` when the text carries no readable section -- the caller then treats the
-    prediction as unknown, never as zero.
-    """
-    if not isinstance(text, str) or not text:
-        return None
-    sections = contributions.parse_gain_summary(text)
-    if check is None:
-        if len(sections) != 1:
-            return None
-        check = next(iter(sections))
-    section = sections.get(check)
-    if section is None:
-        return None
-
-    def row(values):
-        return {"count": values["count"], "wns": values["worst"], "tns": values["tns"]}
-
-    return {"total": row(section["total"]),
-            "scenarios": {name: row(values) for name, values in section["scenarios"].items()}}
-
-
 def _prediction(predict_text, required):
-    """One arm's prediction: per-scenario tables plus the comparison key, or ``{"unknown": why}``."""
+    """One arm's prediction from its ``summarize_gba_violations -exclude_path`` texts, or ``{"unknown": why}``.
+
+    Each check's required-scenario rows as `contributions.parse_gain_summary` reads them
+    (``{count, worst, tns}``), plus ``worst<Check>Wns`` (the worst row) and ``<check>Tns`` (the
+    rows summed; the ``total`` row is a per-endpoint union, not a sum). A check whose text is
+    missing or holds no readable table makes the prediction unknown, never zero.
+    """
     predict_text = predict_text if isinstance(predict_text, dict) else {}
     tables = {}
     for check in ("setup", "hold"):
-        table = parse_gba_summary(predict_text.get(check), check)
+        text = predict_text.get(check)
+        table = contributions.parse_gain_summary(text).get(check) if isinstance(text, str) else None
         if table is None:
             return {"unknown": f"no readable {check} summarize_gba_violations table"}
         tables[check] = table
@@ -1516,7 +1493,7 @@ def _prediction(predict_text, required):
                 return {"unknown": f"{check} summary lacks required scenario(s) {missing}"}
             rows = {name: scenarios[name] for name in names}
         prediction[check] = rows
-        prediction[f"worst{check.capitalize()}Wns"] = round(min(row["wns"] for row in rows.values()), 6)
+        prediction[f"worst{check.capitalize()}Wns"] = round(min(row["worst"] for row in rows.values()), 6)
         prediction[f"{check}Tns"] = round(sum(row["tns"] for row in rows.values()), 6)
     return prediction
 
@@ -1572,19 +1549,15 @@ def eco_text_problems(role, text):
 # ---- reconcile / choose ----------------------------------------------------------
 
 
-def _is_filler(master, patterns):
-    return bool(master) and any(fnmatch.fnmatchcase(master, pattern) for pattern in patterns)
-
-
 def _delta_without_fillers(delta, patterns):
     delta = _normalize_delta(delta)
     kept = _empty_delta()
     for name, pair in delta["mastersChanged"].items():
-        if not (_is_filler(pair[0], patterns) or _is_filler(pair[1], patterns)):
+        if not (contributions.is_filler(pair[0], patterns) or contributions.is_filler(pair[1], patterns)):
             kept["mastersChanged"][name] = pair
     for key in ("added", "removed"):
         for name, master in delta[key].items():
-            if not _is_filler(master, patterns):
+            if not contributions.is_filler(master, patterns):
                 kept[key][name] = master
     return kept
 
@@ -1708,7 +1681,7 @@ def _merged_sessions(request, evidence):
             stray = sorted(
                 name for name in _delta_instances(replay_view)
                 if name not in domain_instances
-                and not (name in replay_view["added"] and name.rsplit("/", 1)[-1].startswith(prefix))
+                and not (name in replay_view["added"] and contributions.leaf_name(name).startswith(prefix))
             )
             if stray:
                 problems.append(f"session {slot}: out-of-domain replay change(s) {stray}")
@@ -1841,6 +1814,9 @@ def reconcile_recipe(request, arms):
         "mode": "recipe",
         "batchId": request.get("batchId"),
         "applied": applied,
+        # The integration-state Reader requires these five lists (it fails closed on a missing one)
+        # and the replay-consistent Judges read their counts. A recipe batch's are empty: an unsafe
+        # arm is never chosen, and skips and mismatches are recorded in `sessions`/`warnings`.
         "failed": [], "pending": [], "replayMismatch": [], "outOfScope": [], "unknownReceipts": [],
         "delta": _normalize_delta(chosen_evidence.get("totalDelta")),
         "sessions": sessions["accounts"],

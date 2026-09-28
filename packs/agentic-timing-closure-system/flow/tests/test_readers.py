@@ -631,8 +631,7 @@ class CampaignPlanReaderTest(unittest.TestCase):
         core.write_artifact(self.workspace / "state" / "observation.json", observation)
 
     def _write_worker_slots(self, count):
-        _, body = atcs_cli._cmd_worker_slots(str(self.workspace), [str(count)])
-        core.write_artifact(self.workspace / "state" / "worker-slots.json", body)
+        self.assertEqual(atcs_cli.main(["worker-slots", str(self.workspace), str(count)]), 0)
 
     def _valid_package(self, task_id):
         """An active package: slot wNN owns instance U<N> and targets its pin U<N>/A (disjoint)."""
