@@ -234,3 +234,138 @@ test('real Run delegation recovers a cold completed result, gates dependencies, 
   assert.equal(host.ctx.hima.ledger.records({runId,type:'delegation'}).some(r=>r.type==='delegation'&&r.delegationId==='expiring'&&r.event==='result-observed'),false);
  }finally{if(runId)await host.ctx.hima.cancelRun(runId);await host.dispose();await home.h.dispose();}
 });
+
+// #64 Task 2b: delegation admission counts what a Run's children can still use. A child is charged its
+// whole share while it may still run (or take a follow-up), and only the time it actually held once it
+// has ended; the Run's delegation time is its time box on each of the Site job lanes it was started with.
+const minutes=(n:number)=>n*60_000;
+async function admissionRun(t:import('node:test').TestContext,parallelJobs:number,timeBoxMs:number,children:number){
+ const home=await localHome(t,{sleepSeconds:0,parallelJobs});assert.ok(home);
+ // Every replayed child answers each of up to two turns in prose and goes idle; no child result is read from a model here.
+ let replay=await writeMomentScenario(home.h,'notice',path.join(repoRoot,'test/fixtures/delegation'));
+ const turn={kind:'chunks' as const,chunks:[{type:'block-start',index:0,blockType:'text'},
+  {type:'block-end',index:0,block:{type:'text',text:'Child turn answered.'}},{type:'finish',reason:{kind:'stop'}}]} as never;
+ for(let n=replay.children.length;n<children;n+=1)replay=await appendReplaySession(replay,`admission-child-${n}`,[turn,turn]);
+ await writeReplayOverlay(home.h.home,{file:replay.file,overrideFile:replay.override,childFiles:replay.children});
+ await appendFile(path.join(home.h.profileDir,'cordis.patch.yml'),QUIET_TITLE_ROW);
+ const host=await bootInProcess(home.h);let runId:string|undefined;
+ t.after(async()=>{if(runId)await host.ctx.hima.cancelRun(runId);await host.dispose();await home.h.dispose();});
+ const owner=await createRootAgent(host.ctx,home.h.home);const actor=String(owner.id);
+ const started=await host.ctx.hima.startRun({pack:timingProbePackId,site:'local',goal:{target_period_ns:2},ownerSessionId:actor,timeBoxMs});
+ assert.equal(started.kind,'ran',JSON.stringify(started));if(started.kind!=='ran')throw new Error('unreachable');runId=started.run.id;
+ assert.equal(started.run.budget?.jobCap,parallelJobs);
+ const input=host.ctx.hima.ledger.records({runId})[0];assert.ok(input);
+ const id=runId;const control=()=>host.ctx.hima.executionContext(id).run.control!;
+ const rows=()=>runDelegations((host.ctx.hima as any).deps(),id);
+ const create=(delegationId:string,role:string,maxElapsedMs:number,maxFollowups=0,dependencyIds:string[]=[])=>host.ctx.hima.delegate({runId:id,actor,action:'create',
+  requestId:`create-${delegationId}`,expectedEpoch:control().epoch,expectedRevision:control().revision,contract:{delegationId,role,task:`Answer as ${delegationId}.`,
+   inputRefs:[input.id],allowedTools:['hima_delegation_input'],budgetShare:{maxElapsedMs,maxFollowups},dependencyIds,recipient:{kind:'run-owner',sessionId:actor}}}) as Promise<Record<string,any>>;
+ // The production Ledger handoff shape of one proven completed turn; the model's content is not under test.
+ let results=0;
+ const complete=async(delegationId:string)=>{
+  const row=rows().find(item=>item.delegationId===delegationId)!;const text=JSON.stringify({schema:'fixture/1',from:delegationId});
+  await host.ctx.hima.ledger.appendDelegation(id,{delegationId,parentSessionId:actor,childSessionId:row.childSessionId,requestId:`result-${delegationId}-${++results}`,
+   requestDigest:'a'.repeat(64),event:'result-observed',payload:{candidate:true,source:'native-live-session',handoff:{
+    outputIdentity:createHash('sha256').update(text).digest('hex'),contract:{recordId:row.contractRecordId,requestDigest:row.requestDigest},
+    output:{text,content:[{type:'text',text}],truncated:false},completedTurn:{turn:1,endSeq:1},unknowns:[],
+    evidence:{artifactRefs:[],diffRefs:[],testRefs:[],limitations:['synthetic model result']}}}});
+ };
+ return {host,runId:id,actor,rows,create,complete};
+}
+
+test('six parallel Teams of three fit two generations in a 180-minute box on six Site lanes when every child uses its whole share',async t=>{
+ // The ATCS budget (notes/t2b-admission.md): Researcher 10 min and Reviewer 10 min, each keeping one follow-up,
+ // and Operator 20 min, on a Site of parallelJobs 6, so 6 x 180 = 1080 min of delegation time.
+ // Worst case: no child ends early. Researchers and Reviewers complete with a follow-up still allowed, so each
+ // keeps its whole share reserved; Operators never end. 6 slots x 40 min x 2 generations = 480 min charged.
+ // (On one lane the same Teams would need 480 of 180 min: generation 1 alone, 240 min, does not fit.)
+ const {rows,create,complete}=await admissionRun(t,6,minutes(180),48);
+ const team=[['researcher','researcher',minutes(10),1],['reviewer','reviewer',minutes(10),1],['operator','analyst',minutes(20),0]] as const;
+ for(const generation of [1,2]){
+  for(const [index,[member,role,share,followups]] of team.entries()){
+   for(const slot of [1,2,3,4,5,6]){
+    const delegationId=`g${generation}-s${slot}-${member}`;
+    const dependency=index===0?[]:[`g${generation}-s${slot}-${team[index-1]![0]}`];
+    const created=await create(delegationId,role,share,followups,dependency);
+    assert.equal(created.status,'created',`${delegationId}: ${JSON.stringify(created)}`);
+    assert.equal(created.effectiveContract.budgetShare.maxElapsedMs,share,'an admitted share is never narrowed');
+   }
+   // Operators are left running: their whole share stays charged.
+   if(member!=='operator')for(const slot of [1,2,3,4,5,6])await complete(`g${generation}-s${slot}-${member}`);
+  }
+ }
+ assert.equal(rows().length,36);
+ assert.equal(rows().filter(row=>row.state==='accepted').length,12,'both generations\' Operators still hold their whole share');
+ assert.equal(rows().filter(row=>row.state==='completed').length,24,'every Researcher and Reviewer keeps a follow-up, so its whole share too');
+ // The charge is the full 480 min: three 175-min children fit (1005 min), a fourth (1180 min) does not.
+ for(const n of [1,2,3])assert.equal((await create(`probe-${n}`,'analyst',minutes(175))).status,'created',`probe-${n}`);
+ const over=await create('probe-4','analyst',minutes(175));
+ assert.equal(over.status,'refused',JSON.stringify(over));assert.match(over.reason,/Child shares exceed/);
+});
+
+test('ended children are charged only the time they held, so a second generation reuses the lanes the first one ended on',async t=>{
+ // Six worker slots on a Site of six job lanes: each slot's Team is Researcher -> Reviewer -> Operator stand-in,
+ // with ATCS-like follow-up allowances. Full shares: 6 x 95 min = 570 min a generation, 1140 min for two, which
+ // exceeds 1080: generation 2 is admitted only because generation 1's Operators ended within moments.
+ const {rows,create,complete}=await admissionRun(t,6,minutes(180),48);
+ const team=[['researcher','researcher',minutes(20),1],['reviewer','reviewer',minutes(15),1],['operator','analyst',minutes(60),0]] as const;
+ const slots=[1,2,3,4,5,6];
+ for(const generation of [1,2]){
+  for(const [index,[member,role,share,followups]] of team.entries()){
+   // The six Teams run side by side: every slot's member is admitted before any slot's next member.
+   for(const slot of slots){
+    const delegationId=`g${generation}-s${slot}-${member}`;
+    const dependency=index===0?[]:[`g${generation}-s${slot}-${team[index-1]![0]}`];
+    const created=await create(delegationId,role,share,followups,dependency);
+    assert.equal(created.status,'created',`${delegationId}: ${JSON.stringify(created)}`);
+    assert.equal(created.effectiveContract.budgetShare.maxElapsedMs,share,'an admitted share is never narrowed');
+   }
+   for(const slot of slots)await complete(`g${generation}-s${slot}-${member}`);
+  }
+ }
+ assert.equal(rows().length,36,'two generations of six three-member Teams: more than the old 32-delegation lifetime limit');
+ // Charged now: generation-1 and -2 Researchers and Reviewers keep their whole share while a follow-up is still
+ // allowed (2 x 6 x 35 = 420 min); both generations' Operators completed within moments. 1080 - 420 = 660 min unreserved.
+ const wide=await create('wide-1','analyst',minutes(175));
+ assert.equal(wide.status,'created',JSON.stringify(wide));
+ const tooLong=await create('too-long','analyst',minutes(181));
+ assert.equal(tooLong.status,'refused','a share longer than the remaining time box is refused however many lanes are free');
+ assert.match(tooLong.reason,/Child shares exceed/);
+ // 420 + 175 = 595 min charged: three more wide children would need 525 min of the 485 left.
+ assert.equal((await create('wide-2','analyst',minutes(175))).status,'created');
+ assert.equal((await create('wide-3','analyst',minutes(175))).status,'created');
+ const overLanes=await create('wide-4','analyst',minutes(175));
+ assert.equal(overLanes.status,'refused','children still share the lanes x time box: running children are charged their whole share');
+ assert.match(overLanes.reason,/Child shares exceed/);
+ assert.equal((await create('narrow','analyst',minutes(10))).status,'created','what the lanes still hold is admitted');
+});
+
+test('runaway delegation is still refused: 32 children may run at once, an ended child frees its place, and one Run admits at most 128',async t=>{
+ const {host,runId,actor,rows,create,complete}=await admissionRun(t,1,minutes(60),132);
+ for(let n=1;n<=32;n+=1){const created=await create(`live-${n}`,'reviewer',60_000,1);assert.equal(created.status,'created',`live-${n}: ${JSON.stringify(created)}`);}
+ const runaway=await create('live-33','reviewer',60_000);
+ assert.equal(runaway.status,'refused','a 33rd child while 32 may be running is refused');
+ assert.match(runaway.reason,/32 children that may be running/);
+ // A completed child no longer runs, even while it may still take a follow-up, so its place is free.
+ await complete('live-1');
+ assert.equal(rows().find(item=>item.delegationId==='live-1')!.state,'completed');
+ const freed=await create('live-33','reviewer',60_000);
+ assert.equal(freed.status,'created',`a completed child frees its place: ${JSON.stringify(freed)}`);
+ // Reopening that child with a follow-up makes it run again, so it needs a free place too.
+ const reopen=(requestId:string)=>host.ctx.hima.delegate({runId,actor,action:'followup',delegationId:'live-1',requestId,text:'Refine your answer.',
+  expectedEpoch:host.ctx.hima.executionContext(runId).run.control!.epoch,expectedRevision:host.ctx.hima.executionContext(runId).run.control!.revision}) as Promise<Record<string,any>>;
+ const crowded=await reopen('reopen-crowded');
+ assert.equal(crowded.status,'refused','a follow-up that would make a 33rd child run is refused');
+ assert.match(crowded.reason,/32 children that may be running/);
+ await complete('live-2');
+ const reopened=await reopen('reopen-free');
+ assert.equal(reopened.status,'accepted',`a free place admits the follow-up: ${JSON.stringify(reopened)}`);
+ // Ended children no longer run, but a create-and-end loop still stops at the lifetime bound.
+ for(const row of rows().filter(item=>item.state==='accepted'))await complete(row.delegationId);
+ let n=34;
+ while(rows().length<128){const delegationId=`loop-${n++}`;const created=await create(delegationId,'reviewer',60_000);
+  assert.equal(created.status,'created',`${delegationId}: ${JSON.stringify(created)}`);await complete(delegationId);}
+ const beyond=await create('beyond','reviewer',60_000);
+ assert.equal(beyond.status,'refused','a Run admits at most 128 children in its whole life');
+ assert.match(beyond.reason,/128-delegation admission limit/);
+});
