@@ -19,8 +19,11 @@ reports are historical evidence: never open, continue, inspect or reuse them.
   - Home `<kit>/Fresh01 Data/dsh`, Workspace `<kit>/Fresh01 Workspace`. Both are empty: no
     Campaign, Run or Ledger.
   - Home config `cordis.patch.yml` SHA `0e7850c5d4ba39bbbb9863970382046024855908a23d1ebf1e3c9f21b3675dc0`.
-  - Launcher `<kit>/launch-fresh01.command`, SHA
-    `a4277ad219a7ba16c233822cf1f039b56331d6b07f188afdbbb139cb758fe668`.
+  - Launcher `<kit>/launch-fresh01.command` v2, SHA
+    `523473fd281c704f7295f4b0d10de5e2f607e51259938c9a424025e3b6ea0abc`. v2 unsets an
+    inherited `ELECTRON_RUN_AS_NODE` and `DSH_*` shell environment. The v1 attempt, kept as
+    `launch-fresh01.v1-inherited-env.command`, started Electron as a Node REPL with no window
+    and ended `TEST_ENV_BLOCKED` before any click. It created no Campaign, Run or Home state.
 - Installed Site `linglong-atcs28` SHA `24960bacfbf8f9b638ac2bfcf4d71648f967ad00050c6e9fe6919474f5633947`;
   Permit SHA `bd3daa67d7d0fd90b7ba6a7a7d081e52f1e6ad1d8ffeb14dadc628f46d9faca9`.
 - Binding `<kit>/bindings.json`, SHA `40faa236b8ae421e39bbef4911ffdb796c098675de7d6e52edd833a15080932a`,
