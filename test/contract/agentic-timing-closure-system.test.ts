@@ -269,7 +269,7 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   assert.equal((await readFile(path.join(slotRoot, 'ops.jsonl'), 'utf8')).trim().split('\n').length, 1);
   assert.equal((await readFile(path.join(slotRoot, 'gain.jsonl'), 'utf8')).trim().split('\n').length, 2, 'the session reference and one mutation reading');
 });
-const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v10/atcs-xtop-operator-v10.sh';
+const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v11/atcs-xtop-operator-v11.sh';
 
 test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the local Site, and passes its Python contract tests', async (t) => {
   const h = await createHimaHome();
