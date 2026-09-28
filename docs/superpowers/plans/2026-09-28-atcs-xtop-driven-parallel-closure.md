@@ -1,363 +1,398 @@
-# ATCS Upgrade: XTop-Driven Parallel Tail-First Closure — Implementation Plan
+# ATCS Upgrade: Parallel XTop Expert Operators, Blockers First, Auto-Finish — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** With the smallest change to the tested Pack (0.1.10, main `e7c71927`), make ATCS close post-route timing in fewer refreshes and less time than the serial XTop auto-fix loop:
-- three workers each diagnose one worst-timing cluster and steer XTop to fix it;
-- XTop's own fail reasons drive the next choice;
-- one XTop replay applies all workers' passes plus a global auto-finish;
-- one Innovus → StarRC → PrimeTime refresh verifies each generation.
+**Goal:** Make the smallest change to the tested Pack (0.1.10, main `e7c71927`) so that ATCS closes post-route timing much faster, and better, than repeated plain auto-fix iterations. The work per generation:
 
-**Architecture:** Change only the worker's *vocabulary* and the replay/implement ends. Everything built and proven on real data stays:
-- the three-slot workspaces;
-- the Team (Researcher → Reviewer → Operator);
-- capture, collect, composition and the integration plan;
-- the replay session, the refresh and evaluation, and adoption.
+1. Up to six worker Operators run at the same time. Each is an XTop expert on one blocker cluster.
+2. Each Operator analyzes, tries XTop manual ECOs and targeted fixes, reads XTop's fix gain, undoes what does not help, and keeps what does.
+3. All kept repairs are replayed into one XTop session.
+4. XTop global auto-fix finishes everything else.
+5. One Innovus → StarRC → PrimeTime refresh verifies the result.
 
-The Operator's reviewed action changes from "one hand edit" to "one XTop strategy pass": whitelisted `fix_*` commands with options, scoped by `-only_pins` to the worker's target pins. The old Pack already qualified this pattern on this Site: `hima_apply_action` running `fix_*_gba_violations`, then `write_design_changes -format INNOVUS -keep_route`, then `source` the pair, then `ecoRoute`. **No Harness change.**
+**Architecture:** Keep everything built and proven on real data:
+- slot workspaces (M2), Contributions (M3) and composition (M4);
+- replay and merge commit (M5), refresh and evaluation (M6), and adoption (M7);
+- the Team (Researcher → Reviewer → Operator) and the Site wrapper.
+
+Change five things:
+
+| # | Change | Where |
+| --- | --- | --- |
+| 1 | The Operator's authority becomes a reviewed **scope** (edit domain, allowed XTop commands, mutation budget) instead of one pinned action | one small generic Harness change |
+| 2 | An XTop **expert toolkit** in the Operator session: XTop manual ECO, candidate lists, targeted `fix_*`, gain readout and undo, all domain-confined and traced | Pack Tcl |
+| 3 | Slots w01..w06 run **in parallel** through the existing Harness fork | graph; a generic Harness fix only if the spike shows interactive Jobs cannot run in fork branches |
+| 4 | A **blockers-first** plan | plan Workshop, Reader and knowledge |
+| 5 | **Auto-finish** at the end of the replay, exported as one Innovus ECO | the old flow's qualified path |
 
 **Tech Stack:**
-- Pack: Python 3.9 stdlib (`unittest`), Tcl for XTop, Innovus, StarRC and PrimeTime, and YAML.
-- Tests: Node 24 contract tests.
-- Knowledge source: `/Users/lluzi/Documents/linglong setup/xtop_knowledge.zip` (XTop 2025.09.tmp15 strategy map, command surface, 112 fail reasons).
+- Pack: Python 3.9 stdlib (`unittest`) and Tcl for XTop/Innovus/StarRC/PrimeTime.
+- Harness: TypeScript, with contract tests on Node 24.
+- XTop knowledge pack: `/Users/lluzi/Documents/linglong setup/xtop_knowledge.zip` (XTop 2025.09.tmp15: 388 commands, 112 fail reasons, manual-ECO and strategy chapters).
 
 ---
 
-## 1. First principles: why this closes faster
+## 1. First principles: why this is much faster than repeated auto-fix
 
-1. **A refresh has a fixed cost.**
-   - Measured on `postroute_final` (Run `run-1ca6cdd3`): Innovus ECO + `ecoRoute` 452 s, StarRC over 2 corners 592 s, PrimeTime over 4 scenarios 109 s. That is about 20 min per refresh, whether it carries 1 change or 3,000.
-   - An XTop session is about 100 s. Agent turns were about 75 of the Run's 106 min.
-   - So **T_close ≈ G × (T_research + T_xtop + 20 min)**. Speed comes from:
-     - few generations G;
-     - research off the critical path;
-     - never refreshing a batch that cannot move the goal.
-2. **The goal is WNS, a tail property. XTop's global auto-fix is a bulk tool.** The serial flow's measured record on this design (`packs/xtop-timing-closure/knowledge/source-flow.md` §9):
-   - Round 1 took hold violations from 7,430 to 148 (−98%). It inserted 2,908 cells and resized 919.
-   - Round 2 left hold WNS at −0.154 and setup WNS at −0.0383 (XTop estimate); PrimeTime then measured hold at −0.16.
-   - B_lazy Run `ddabd488` fixed 0 endpoints.
+### 1.1 One refresh costs the same regardless of batch size
 
-   Serial rounds spend 20-minute refreshes re-attacking a tail that one global strategy cannot fix.
-3. **The tail needs a different XTop strategy per cause, and XTop reports the cause.** The XTop knowledge says: "Auto-fix is an executor, not a strategy". Diagnose why there is no candidate, or why candidates fail, then pick the method. Its 112 fail reasons are the strategy feedback API:
+Measured on `postroute_final` in Run `run-1ca6cdd3`:
 
-   | Fail reason | Next strategy |
-   | --- | --- |
-   | `break_setup` | `-fix_timing_window` (low effort), or a different margin |
-   | `legal_fail_no_space_on_row` | density relief, or `-max_cluster_loader_count` |
-   | `no_*_gain` | a different method or scope, not more effort |
-   | tiny hold | `-use_dummy_cell` |
-   | redundant chain | `-remove_buffer_only` |
-   | off-path load | `-size_down_only` |
+| Step | Time |
+| --- | --- |
+| Innovus ECO + `ecoRoute` | 452 s |
+| StarRC, 2 corners | 592 s |
+| PrimeTime, 4 scenarios | 109 s |
+| **One refresh** | **≈ 20 min** |
+| One XTop session | ≈ 100 s |
 
-   Clusters with different causes need different passes. Those are independent decisions, so three workers research them in parallel.
-4. **Order: targeted tail passes first, the global bulk pass last, in one session.** Global auto-fix first consumes the placement space and setup margin the tail needs: 2,908 inserts in round 1, and the over-fixed `xtop_round2_eco_route`. Targeted `-only_pins` passes on the worst clusters first, then the global GBA passes finishing the bulk in the same XTop replay, give one refresh per generation covering tail and bulk.
-5. **XTop's feedback closes the loop cheaply.** Each worker pass reports XTop-estimated gain (`summarize_gba_violations -with_delta`) and fail reasons. So:
-   - a pass with no estimated gain is dropped before any refresh;
-   - the next generation's Researcher starts from real fail reasons, not a guess.
+So closing time is **T ≈ G × (T_operators + 20 min)**, where G is the number of refreshes. Getting faster means:
+- fewer refreshes, each carrying far more verified-in-XTop improvement;
+- operator time in parallel, not in series.
 
-**Acceptance** (§4; refreshed PrimeTime only): the serial flow's best was −0.16 hold / −0.04 setup after 2 refreshes, then it stalled. This plan must reach hold better than −0.15 and setup better than −0.038 in at most 2 refreshes, within 120 min.
+### 1.2 Goal = worst slack; plain auto-fix removes the bulk, then stalls on blockers
+
+The serial flow's own record on this design (`packs/xtop-timing-closure/knowledge/source-flow.md` §9), plus B_lazy Run `ddabd488`:
+
+| Round / Run | What happened |
+| --- | --- |
+| Round 1 | Hold violations 7,430 → 148. 2,908 cells inserted, 919 resized. |
+| Round 2 | Hold WNS −0.154 → −0.154 and setup WNS −0.0383 → −0.0383 (XTop estimate). PrimeTime measured hold at −0.16. |
+| B_lazy `ddabd488` | 0 endpoints fixed. |
+
+Each extra no-brainer round buys another 20-minute refresh without moving WNS.
+
+### 1.3 Blockers need an expert in the loop
+
+The XTop knowledge says two things directly:
+- "Auto-fix is an executor, not a strategy."
+- The 112 fail reasons are XTop's strategy feedback.
+
+A blocker is an endpoint auto-fix cannot close, for example:
+- `break_setup` on a hold path;
+- `legal_fail_no_space_on_row`;
+- `no_hold_gain`;
+- a cross-hierarchy net;
+- a high-fanout net.
+
+It needs an expert loop inside XTop:
+1. Diagnose: `analyze_*_path_violations`, `get_paths`, `report_fail_reasons`.
+2. List candidates: `list_size_cell_candidates`, `list_insert_buffer_candidates`.
+3. Trial manual ECO: `size_cell`, `exchange_cell`, `insert_buffer`, `insert_dummy_cell`, `split_load`, `split_net`, `move_cell`, `remove_buffer`.
+4. Or a targeted fix with the right option: `fix_hold_gba_violations -only_pins … -fix_timing_window | -max_cluster_loader_count 4 | -use_dummy_cell`.
+5. Read the fix gain immediately: `summarize_gba_violations -with_delta` against the session reference.
+6. `undo` if there is no gain.
+
+XTop's incremental timing makes each trial cost seconds, not a 20-minute refresh. Blocker clusters that share no cells, nets or timing windows are independent, so six experts work on six clusters at once.
+
+### 1.4 Order: blockers first, auto-fix last, in one session
+
+- Global auto-fix first consumes placement space and setup margin near the blockers. Round 1 inserted 2,908 buffers; that is the over-fixed `xtop_round2_eco_route`.
+- Expert repairs first, locked with `set_dont_touch`, then global auto-fix for the rest, all replayed in one XTop session, puts blockers and bulk into one refresh.
+
+### 1.5 Prediction and acceptance
+
+- Generation 1, in one refresh: the serial round-1 bulk result plus the blockers round 2 could not move.
+- Generation 2: the residual blockers, starting from real fail reasons.
+
+Acceptance (§4, refreshed PrimeTime only):
+- the serial flow's best after 2 refreshes: −0.16 hold / −0.04 setup, then it stalls;
+- this plan: hold better than −0.15 and setup better than −0.038 in every scenario, within 2 refreshes and 120 min.
 
 ## 2. Global Constraints
 
-- **Version and change scope.**
-  - Pack version 0.1.10 → **0.2.0** in `contract.yml` (quoted, line 2), `graph.yml` and the contract-test regex.
-  - Pack and Site changes only. **No change under `packages/`.**
-  - `packs/xtop-timing-closure/` and `sites/linglong-swerv28/` are frozen; copy qualified command strings from them.
-- **XTop commands.** Only commands present in `command_surface.tsv` / `man_catalog.tsv` of the knowledge pack, with the exact option names listed there.
-- **Mutating pass whitelist.** Exactly:
-  - `fix_hold_gba_violations`
-  - `fix_setup_gba_violations`
-  - `fix_transition_violations -check_timing_margin`
-- **Diagnostic commands.** Non-mutating:
-  - `summarize_gba_violations` (incl. `-with_top_n N -with_fail_reason`)
-  - `report_fail_reasons -stats -verbose`
-  - `get_failed_pins`
-  - `analyze_setup_path_violations -top N -detail_info`
-  - `analyze_hold_path_violations -top N -detail_info`
-  - `get_paths`
-- **Not used in this upgrade** (knowledge §10 risks; not qualified): clock ECO, useful skew, `commit_rank_pin_candidate`, `adjust_path_slack`, `enlarge_timing_violations`, post-mask and PBA path fix.
-- **Python:** stdlib 3.9. Run the tests with `cd packs/agentic-timing-closure-system/flow && python3 -m unittest discover -s tests`.
-- **Fail closed.** No convergence claim except from refreshed PrimeTime on the implemented DB with new SPEF.
-- **Server** (`ssh luzi@192.168.50.41`):
-  - `empyrean-license status` must show `old`; never switch it.
+- **Pack version and scope.** Pack 0.1.10 → **0.2.0**, in `contract.yml` (quoted, line 2), `graph.yml` and the contract-test regex. Fix priority: Pack → Site → generic Harness seam.
+- **Harness changes.** Only these:
+  - Task 1: reviewed scope (required).
+  - Task 2: interactive Jobs in fork branches, only if the spike fails.
+
+  Each must be generic, have a contract-level RED/GREEN test, get an independent Opus review, and pass `pnpm run check:boundary`.
+- **Frozen.** `packs/xtop-timing-closure/` and `sites/linglong-swerv28/`.
+- **XTop surface.** Only commands and options present in the knowledge pack's `command_surface.tsv` / `man_catalog.tsv`.
+- **Out of scope for this upgrade.** Clock ECO, useful skew, `commit_rank_pin_candidate`, `adjust_path_slack`, `enlarge_timing_violations`, post-mask and PBA path fix (knowledge §10, not qualified).
+- **Python.** Stdlib 3.9. Tests: `cd packs/agentic-timing-closure-system/flow && python3 -m unittest discover -s tests`.
+- **Fail closed.** Convergence is claimed only from refreshed PrimeTime on the implemented DB with new SPEF. XTop gain is used only to screen candidates.
+- **Server.**
+  - `empyrean-license status` must be `old`; never switch it.
   - Write only `atcs-runs/qual-*`, `qual-tools/` and new `operator-admin/atcs-vN/`.
-  - Never write a live Campaign workspace or the Foundation.
 - **Wrapper v10.**
-  - Derive it on the server from the **installed** v9.
+  - Derive it on the server from **installed** v9.
   - Diff it against installed v9.
-  - `grep REPLACE` must match comments only.
+  - `grep REPLACE` must hit comments only.
   - Its own preflight must pass on the new flow and refuse the old flow at the adapter check.
   - `kit.mjs` `wrapper-pins-pack-flow` must pass.
-- **Git.** Every commit: `git push origin HEAD:main` and verify the remote SHA. Messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-- **Node 24:** `export PATH="$HOME/.local/node24/bin:$PATH"`.
-- **Live Campaigns:** none until Task 7 passes on real `postroute_final`.
+- **Commits.** `git push origin HEAD:main` after each commit and verify the SHA. The message ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- **Node.** `export PATH="$HOME/.local/node24/bin:$PATH"`.
+- **Live Campaigns.** None until Task 7 passes on real `postroute_final`.
 
-## 3. File map (all under `packs/agentic-timing-closure-system/` unless noted)
+## 3. File map
 
 | File | Change |
 | --- | --- |
-| `knowledge/xtop-strategy.md` (new) | Strategy ladder, fail-reason → strategy table, GBA vs path, target/margin pairing, and the risky commands not to use. Condensed from the knowledge pack with a `## Source` section. |
-| `flow/atcs/workspaces.py` | Work package `passes[]` (typed XTop strategy passes) and `targetPins[]`. |
-| `tools/read-atcs.py` | Worker request: 1–3 passes, whitelist, option types and ranges, `-only_pins` ⊆ target pins, full hierarchical pin paths. |
-| `flow/templates/xtop-operator.tcl` | `atcs_xtop_pass {planSha256 passId}` runs one admitted pass once, then collects `summarize -with_delta` and fail reasons. Non-mutating diagnostic procs. |
-| `contract.yml` | Interactive commands (mutate: `atcs_xtop_pass`; read: diagnostics). Teams `atcs-worker-01..03` v4 with `reviewedAction.command: atcs_xtop_pass`. Knobs `workerSlots` (1..3, default 3) and `autoFinish` (0/1, default 1). Workshop purposes. |
-| `flow/atcs/contributions.py`, `flow/atcs_cli.py` capture | Contribution kind `xtop-pass`: pass spec, dump delta, XTop-estimated delta, fail-reason stats, ECO pair from the worker session. No `ops.jsonl` needed for this kind. |
-| `flow/atcs/composition.py` | Conflicts between `xtop-pass` contributions by overlapping dump deltas and target pins; the existing kinds are unchanged. |
-| `flow/atcs/integration.py`, `flow/templates/xtop-replay.tcl`, `flow/atcs/adapters.py` | Replay re-runs the selected passes in order on the base, then the auto-finish global passes, then one `write_design_changes -format INNOVUS -keep_route`. Seal the ECO pair plus per-pass and auto-finish dump deltas into the merge commit. |
-| `flow/templates/innovus-eco.tcl`, `adapters.compile_innovus_eco_task` | When the merge commit carries an ECO pair: `source` netlist ECO, `source` physical ECO, `ecoRoute`, following the old `apply-eco.tcl`. Otherwise unchanged. |
-| `graph.yml` | Reconnect w02/w03 after w01 (sequential); an optional fork for research after the Task 6 spike. |
-| `sites/linglong-atcs28/*` | v10 wrapper template, environment template, Permit, README. |
-| `test/contract/agentic-timing-closure-system.test.ts` | Teams, commands, reachability, version. |
+| `packages/harness/src/packs.ts`, `index.ts`, `delegation.ts` | `reviewedAction.mode: "scope"` (Task 1). |
+| `packages/harness/src/forks.ts` | Only if the Task 2 spike fails. |
+| `test/contract/delegation-team-settlement.host.test.ts`, `test/contract/fork-join.test.ts` | Harness RED/GREEN. |
+| `packs/.../knowledge/xtop-expert-operator.md` (new) | Expert loop, ladders, fail-reason → move table, gain reading, undo discipline, blockers vs bulk. |
+| `packs/.../flow/templates/xtop-operator.tcl` | Expert toolkit procs, domain guard, op/gain log. |
+| `packs/.../contract.yml` | Interactive commands; Teams `atcs-worker-01..06` v4 (reviewer returns a scope; operator scope mode); knobs `workerSlots` 1..6 and `autoFinish`; Workshop purposes. |
+| `packs/.../flow/atcs/workspaces.py` | Slots `w01..w06`; work package `scope{commands[], maxMutations}` and `targetPins[]`. |
+| `packs/.../tools/read-atcs.py` | Worker request with the scope schema; campaign plan with disjoint domains and blockers first. |
+| `packs/.../flow/atcs/contributions.py`, `atcs_cli.py` | `xtop-session` Contribution (net command log after undo, dump delta, gain, fail reasons). |
+| `packs/.../flow/atcs/composition.py` | Overlap conflicts for session deltas. |
+| `packs/.../flow/atcs/integration.py`, `templates/xtop-replay.tcl`, `adapters.py`, `templates/innovus-eco.tcl` | Replay the kept command logs, then auto-finish, then one `write_design_changes -format INNOVUS -keep_route`, then `source` the pair, then `ecoRoute`. |
+| `packs/.../graph.yml` | Fork `prepare-workers` → six branches (research → read request → check → operate → capture → read result) → join → `collect`. |
+| `sites/linglong-atcs28/*` | v10 wrapper and environment templates, Permit, README; `parallelJobs` 6 and `xtop` licences 6. |
 
 ---
 
-## Task 1: XTop strategy knowledge for the agents
+## Task 1: Harness — reviewed scope instead of one pinned action
 
-**Files:** Create `knowledge/xtop-strategy.md`. Modify `contract.yml` (add it to the `knowledge:` lists of `plan-campaign`, `research-worker-01..03`, `evaluate-next-investment` and the Team researcher and reviewer task templates by name), and `flow/tests/test_knowledge.py`.
+**Why:** `index.ts:1036-1052` takes one `{command, arguments}` from the Reviewer, and `index.ts:882-891` refuses any other mutation. An expert cannot try, measure and undo under that rule.
 
-- [ ] **Step 1: RED.** `test_knowledge.py`:
-  - the file exists with the four required headings;
-  - it names every whitelisted command and option used by Task 2's schema;
-  - it contains the fail-reason table rows `break_setup`, `legal_fail_no_space_on_row`, `no_setup_gain` and `no_hold_gain`.
-- [ ] **Step 2: Write the file** (≤ 150 lines), condensed from the knowledge pack.
-  - **Source:** knowledge pack version 2026-09-24; XTop `2025.09.tmp15` install path; man pages.
-  - **Tail vs bulk:**
-    - Tail = checks at or below each scenario's WNS × 0.5, max 60, clustered by shared driver or net, cone, or a 20 µm region.
-    - Bulk = the rest, left to auto-finish.
-  - **Hold ladder:**
-    1. size down / VT swap (`-size_cell_only -size_rule nominal_keywords`);
-    2. dummy for tiny violations (`-use_dummy_cell`);
-    3. buffer or delay chain (`-max_delay_cell_length N -delay_cell_list …`);
-    4. loader clustering (`-max_cluster_loader_count 4`);
-    5. `-fix_timing_window` when `break_setup` dominates. It needs low effort and cannot combine with `-size_cell_only`.
-  - **Setup ladder:**
-    1. `-remove_buffer_only`;
-    2. `-methods size_cell`;
-    3. `-methods insert_buffer`;
-    4. `-methods split_net`;
-    5. `-size_down_only` for off-path load.
-  - **Pairing:** `hold_target` always with `setup_margin`, and `setup_target` always with `hold_margin`.
-  - **Effort:** higher is not better; change the method or scope on `no_*_gain`.
-  - **The fail-reason → strategy table.**
-  - **Counterexample:** a global high-effort pass before tail passes over-fixed `xtop_round2_eco_route`.
-- [ ] **Step 3:** GREEN, then commit `docs(atcs): XTop strategy knowledge for workers`; push.
+**Interfaces — Produces:**
+- Schema: `reviewedAction.mode: "action" | "scope"` (default `"action"`, so every existing Pack is unchanged).
+- In `"scope"` mode:
+  - the Reviewer result carries `scope: {commands: string[], maxMutations: int}`;
+  - `commands` ⊆ the tool's `interactive.commands.mutate`;
+  - `maxMutations` is between 1 and the recipe's `maxMutations` cap (schema field, 1..200);
+  - the Host stores `inlinePayload.scope` plus `planSha256`.
+- Operator enforcement:
+  - a mutation is accepted iff its command ∈ `scope.commands`, its `planSha256` argument equals the plan hash, and fewer than `maxMutations` mutations were accepted in this `toolSessionId` (counted from the Ledger);
+  - otherwise it is refused with a reason;
+  - read commands are unaffected.
+- Domain confinement stays in the Pack Tcl: each typed proc checks the edit domain, as today.
 
-## Task 2: Worker strategy pass — plan schema, Reader and Operator
-
-**Files:**
-- `flow/atcs/workspaces.py`
-- `tools/read-atcs.py`
-- `flow/templates/xtop-operator.tcl`
-- `contract.yml` (interactive commands, Teams v4 × 3)
-- Tests: `flow/tests/test_workspace_isolation.py`, `flow/tests/test_readers.py`, `flow/tests/test_adapters.py`, and the contract test
-
-**Interfaces — Produces:** a work-package field `passes`:
-
-```json
-[{"passId": "p1",
-  "command": "fix_hold_gba_violations",
-  "options": {"effort": "low", "hold_target": 0.0, "setup_margin": 0.01,
-              "fix_timing_window": true, "max_cluster_loader_count": 4},
-  "onlyPins": ["swerv_dec_tlu/g96219/A1"]}]
-```
-
-Option schema, taken from `command_surface.tsv`:
-
-| Command | Allowed options |
-| --- | --- |
-| `fix_hold_gba_violations` | `effort` ∈ {low, medium, high}; `hold_target`, `setup_margin`, `transition_margin`, `capacitance_margin` floats in [-0.05, 0.1]; `size_cell_only`, `use_dummy_cell`, `fix_timing_window` bools; `size_rule` ∈ {nominal_keywords}; `max_cluster_loader_count` 1..6; `max_delay_cell_length` 0..5 plus `delay_cell_list` (cell names) |
-| `fix_setup_gba_violations` | `effort`; `setup_target`, `hold_margin`, transition/capacitance margins; `methods` ⊆ {size_cell, insert_buffer, split_net}; `remove_buffer_only`, `size_down_only` bools; `size_rule` |
-| `fix_transition_violations` | `check_timing_margin` true only |
-
-Incompatibilities are refused: `fix_timing_window` with `size_cell_only`, and `fix_timing_window` with effort ≠ low.
-
-- [ ] **Step 1: RED tests.**
-  - `validate_work_package` accepts the example.
-  - It refuses:
-    - an unknown command;
-    - an unknown option;
-    - an out-of-range margin;
-    - `fix_timing_window` + `size_cell_only`;
-    - an empty `onlyPins`;
-    - a pin outside `targetPins`;
-    - more than 3 passes.
-  - The Reader admits a w0N request whose `onlyPins` are full hierarchical pin paths (`<instance path>/<pin>`, instance checked by `_is_hierarchical_instance`), and refuses a bare leaf pin.
-  - `test_adapters`: the rendered operator Tcl defines:
-    - `atcs_xtop_pass`, which reads the admitted pass by id from the retained plan file, checks the plan hash, is single-use per `passId`, builds the exact option string, and runs `summarize_gba_violations -setup -with_delta` / `-hold -with_delta` plus `report_fail_reasons -stats -verbose -pins <onlyPins>` after the pass into `pass-<id>.summary`;
-    - read-only `atcs_summarize`, `atcs_fail_reasons` and `atcs_analyze_paths`.
-  - Contract test:
-    - Teams `atcs-worker-01..03` at version `"4"`.
-    - `reviewedAction.command == "atcs_xtop_pass"` and `actionListField == "passes"`.
-    - `atcs_xtop_pass` is in mutate; the diagnostics are in read commands.
+- [ ] **Step 1: RED tests** (reuse the Team fixture in `delegation-team-settlement.host.test.ts`):
+  1. Scope `{commands:[size, insert], maxMutations: 3}`: size, insert, size are accepted; a fourth mutation is refused.
+  2. A mutation of a command outside the scope → refused.
+  3. A wrong `planSha256` → refused.
+  4. Reviewer `maxMutations` above the recipe cap → adoption refused.
+  5. The existing `"action"` mode tests and `interactive-eda.host.test.ts` are unchanged and pass.
 - [ ] **Step 2:** Run them and confirm FAIL.
 - [ ] **Step 3: Implement.**
-  - The Tcl option builder maps the JSON options to flags in the table's order. Bools become flags. `onlyPins` becomes `-only_pins [get_pins {…}]`.
-  - Reuse the old Pack's single-use state pattern (`hima_plan_state`, `packs/xtop-timing-closure/flow/templates/xtop-operator.tcl:63-90`), keyed per `passId`.
-  - Reviewer template: "Select one pass from `passes` whose command and options fit the diagnosed cause (see xtop-strategy.md); return `{command: atcs_xtop_pass, arguments: {passId, planSha256}}`…".
-  - Operator template: "Dump before.dump, run the diagnostics for the target pins, apply the reviewed pass once, run the diagnostics again, dump after.dump, export changes, close."
-- [ ] **Step 4:** GREEN; full suite and contract test.
-- [ ] **Step 5:** Get a review (Opus). Commit `feat(atcs): workers steer XTop with one reviewed strategy pass`; push.
+  - `packs.ts` schema and validation: each scope command must be a mutate command with the hash argument.
+  - `index.ts` build (1036-1052) and enforcement (882-891).
+  - `delegation.ts` types.
+  - The `"action"` path stays byte-identical.
+- [ ] **Step 4:** GREEN; `pnpm run check:boundary`.
+- [ ] **Step 5:** Independent Opus review of the diff package. Commit `feat(harness): a Team reviewer may approve an operator scope`; push; verify.
 
-## Task 3: Capture and compose an `xtop-pass` Contribution
+## Task 2: Spike — six concurrent worker branches with interactive XTop Teams
 
-**Files:** `flow/atcs/contributions.py`, `flow/atcs_cli.py` (`_cmd_capture_contribution`), `flow/atcs/composition.py`. Tests: `test_contribution_replay.py`, `test_composition.py`.
+**Why:** `forkFrom` (`packs.ts:2411-2447`) accepts branches of `act` nodes joined at one judge, and `forks.ts:107-127` drives them concurrently. ATCS Workshops, Readers and the interactive operate node are all `act` nodes. The workers' check judge moves after the join (Task 5). `FABRIC.md:110` records interactive admission inside branches as runtime-unproven.
 
-**Produces:** a Contribution with:
-- `kind: "xtop-pass"`;
-- `pass` (the admitted spec);
-- `delta` from the before/after dumps;
-- `predicted` from the `-with_delta` summaries (Measures);
-- `failReasons{reason: count}`;
-- `touches.instances` = the delta keys, and `touches.checks` = the target checks.
+- [ ] **Step 1: RED/GREEN test** in `test/contract/fork-join.test.ts`. The fixture Pack forks into two branches, each `workshop → reader → interactive tool (Team with scope) → capture tool`, joined at one judge. Use the existing interactive REPL fixture (`test/fixtures/interactive-job/atcs-repl.tcl`). Assert:
+  - both interactive Jobs are open at the same time;
+  - each Team's delegations belong to its own execution;
+  - the join waits for both captures;
+  - the Site `parallelJobs: 2` cap holds.
+- [ ] **Step 2:**
+  - **If it passes:** record "concurrent interactive branches: proven" in `FABRIC.md`.
+  - **If it fails:** make the smallest generic fix in `forks.ts` / `interactive-runtime.ts` so a branch's interactive open follows the same admission as the main cursor. Write the RED test first and get an Opus review.
+- [ ] **Step 3:** Commit and push.
 
-It is `admissible` only if:
-- the dumps exist;
-- the delta is non-empty, or it is recorded as `no-fix` with the diagnosis;
-- the predicted target-pin slack did not get worse.
+## Task 3: XTop expert toolkit in the Operator session
 
-`ops.jsonl` is not required for this kind.
+**Files:** `flow/templates/xtop-operator.tcl`, `contract.yml` (interactive `commands.read` / `commands.mutate`), `flow/tests/test_adapters.py`, contract test.
+
+**Interfaces — Produces:** typed procs. Every mutation proc does the same four things:
+- refuses an object outside the session's edit domain;
+- refuses once `maxMutations` is reached;
+- appends one JSON line to `ops.jsonl`: `{seq, cmd, args, before, after}`, with the XTop return;
+- appends the XTop gain (`summarize_gba_violations -setup/-hold -with_delta`, against a reference captured at session start) to `gain.jsonl`.
+
+| Kind | Proc | XTop command |
+| --- | --- | --- |
+| read | `atcs_ref` | `summarize_gba_violations -setup|-hold -as_reference` (once) |
+| read | `atcs_gain` | `summarize_gba_violations -with_delta -with_top_n N -with_fail_reason` |
+| read | `atcs_paths` | `get_paths` / `analyze_setup_path_violations -top N -detail_info` / `analyze_hold_path_violations …` |
+| read | `atcs_fail_reasons` | `report_fail_reasons -stats -verbose -pins …`, `get_failed_pins -reasons …` |
+| read | `atcs_candidates` | `list_size_cell_candidates`, `list_insert_buffer_candidates`, `list_exchange_cell_candidates` |
+| mutate | `atcs_size_cell` | `size_cell` |
+| mutate | `atcs_exchange_cell` | `exchange_cell` |
+| mutate | `atcs_insert_buffer` | `insert_buffer` (sink-side chains included) |
+| mutate | `atcs_insert_dummy` | `insert_dummy_cell` |
+| mutate | `atcs_split_load` | `split_load` |
+| mutate | `atcs_split_net` | `split_net` |
+| mutate | `atcs_move_cell` | `move_cell` |
+| mutate | `atcs_remove_buffer` | `remove_buffer` |
+| mutate | `atcs_fix_hold_pins` | `fix_hold_gba_violations -only_pins <domain pins> …` (options whitelist: effort, hold_target, setup_margin, size_cell_only, use_dummy_cell, fix_timing_window, max_cluster_loader_count 1..6, max_delay_cell_length 0..5 + delay_cell_list) |
+| mutate | `atcs_fix_setup_pins` | `fix_setup_gba_violations -only_pins <domain pins> …` (methods ⊆ {size_cell, insert_buffer, split_net}, remove_buffer_only, size_down_only, setup_target, hold_margin) |
+| mutate | `atcs_undo` | `undo`; logged as an undo of the last kept mutation |
+
+The last three rows (`atcs_fix_hold_pins`, `atcs_fix_setup_pins`, `atcs_undo`) are the mutations that act as targeted fixes and undo. Exact command names and options come from `command_surface.tsv`; the implementer verifies each against the installed man page and records the page path in `xtop-expert-operator.md`. Every mutation takes `planSha256`. New cell and net names use the workspace `namePrefix`.
 
 - [ ] **Step 1: RED tests.**
-  - An `xtop-pass` capture with a size and an insert in the dump delta → admissible `fix`.
-  - An empty delta → `no-fix` with the fail-reason diagnosis.
-  - Predicted gain < 0 → `admissible false`, refusal `no-predicted-gain`.
-  - Composition:
-    - two `xtop-pass` contributions whose deltas share an instance → conflict `shared-instance`;
-    - disjoint deltas with overlapping target checks → interaction `shared-timing-window`;
-    - the existing typed-op tests unchanged.
-- [ ] **Step 2:** Confirm FAIL. **Step 3:** Implement. **Step 4:** GREEN, then get a review (Opus: identity and sealing). Commit `feat(atcs): capture and compose XTop strategy-pass contributions`; push.
+  - The rendered Tcl defines every proc.
+  - Each mutation proc checks the domain before calling XTop and logs `ops.jsonl` plus `gain.jsonl`.
+  - `atcs_undo` logs `{"cmd":"undo","undoes":<seq>}`.
+  - A `fix_*_pins` proc builds only whitelisted flags and refuses `fix_timing_window` + `size_cell_only`.
+  - Contract: the read and mutate lists match the table.
+- [ ] **Step 2:** Confirm FAIL. **Step 3:** Implement. **Step 4:** GREEN.
+- [ ] **Step 5:** Review (Opus: it is the confinement surface). Commit `feat(atcs): XTop expert toolkit for worker operators`; push.
 
-## Task 4: One replay — worker passes, then auto-finish, then one Innovus ECO
+## Task 4: Expert knowledge, scope plan and `xtop-session` Contributions
 
 **Files:**
-- `flow/atcs/integration.py` (`prepare_replay`, `reconcile`, `seal_batch`)
-- `flow/templates/xtop-replay.tcl`
-- `flow/atcs/adapters.py` (`compile_xtop_replay_task`, `compile_innovus_eco_task`)
-- `flow/templates/innovus-eco.tcl`
-- `flow/atcs_cli.py`
+- `knowledge/xtop-expert-operator.md` (new)
+- `flow/atcs/workspaces.py` (slots w01..w06; `scope`, `targetPins`)
+- `tools/read-atcs.py`
+- `contract.yml`: Teams 01..06 v4; researcher and reviewer templates. The reviewer returns `{scope:{commands,maxMutations}, planSha256}`. The operator template is the expert loop in the knowledge file. `followup: reuse-same-child` with `maxFollowups: 1` stays for the researcher and reviewer.
+- `flow/atcs/contributions.py`, `atcs_cli.py` capture, `flow/atcs/composition.py`
+- Tests: `test_knowledge.py`, `test_workspace_isolation.py`, `test_readers.py`, `test_contribution_replay.py`, `test_composition.py`
 
-Tests: `test_integration_recovery.py`, `test_adapters.py`.
+**Knowledge file** (≤ 180 lines, four headings):
+- **The expert loop:**
+  1. `atcs_ref`;
+  2. diagnose with paths, fail reasons and the analyze commands;
+  3. choose from the ladders;
+  4. trial;
+  5. `atcs_gain`;
+  6. keep, or `atcs_undo` if the target slack did not improve or the opposite check broke;
+  7. stop at the budget or when no candidate gains.
+- **Hold ladder:** size down → dummy → delay/buffer chain → loader clustering → timing window.
+- **Setup ladder:** remove buffer → size → buffer → split net → size down off-path.
+- **Target/margin pairing.**
+- **The fail-reason → move table.**
+- **Blockers vs bulk:** blockers are endpoints whose fail reasons are not "no violation left"; the bulk goes to auto-finish.
+- **Counterexample:** global high effort before blockers over-fixed round 2.
 
-**Produces:**
-- **`replay-request`:**
-  - `passes[]` (the selected contributions' pass specs, in composition order);
-  - `autoFinish{enabled, hold: {effort high, hold_target 0.0, setup_margin m_s}, setup: {methods [size_cell, insert_buffer], effort high, setup_target 0.0, hold_margin m_h}}`. The strings match `packs/xtop-timing-closure/flow/closure.py:684-690`.
-- **`integration-state`:** per-pass dump deltas; the `autoFinish` dump delta; `eco{netlist{path,sha256}, physical{path,sha256}}`.
-- **`merge-commit`:** gains `eco` and `passDeltas`. The id covers them.
+**`xtop-session` Contribution:**
+
+| Field | Content |
+| --- | --- |
+| `commands` | The net kept command log: undone entries removed, order kept. |
+| `delta` | Before/after dumps. |
+| `predicted` | The last gain line, as Measures. |
+| `failReasons` | Counts per reason. |
+
+It is admissible iff all four hold:
+- both dumps exist;
+- replaying the kept `commands` delta equals the dump delta for the typed kinds (size/exchange/insert/remove), with `fix_*_pins`, split and move accepted from the dump delta;
+- predicted target slack did not worsen;
+- no out-of-domain object.
+
+- [ ] **Step 1: RED tests** for each rule above:
+  - a session with an undone insert → the net log excludes it;
+  - a negative gain → refusal `no-predicted-gain`;
+  - an out-of-domain change in the dump → `outOfScope`;
+  - two sessions changing the same instance → conflict `shared-instance`;
+  - a scope `commands` outside the Task 3 mutate list → Reader invalid;
+  - slot `w06` accepted, `w07` refused.
+- [ ] **Step 2:** Confirm FAIL. **Step 3:** Implement. **Step 4:** GREEN.
+- [ ] **Step 5:** Review (Opus). Commit `feat(atcs): expert operator scope and XTop session contributions`; push.
+
+## Task 5: Graph — six parallel workers, blockers first
+
+**Files:** `graph.yml` (nodes w04..w06 copied from w01..w03), `contract.yml` (knob `workerSlots` 1..6, default 6; `plan-campaign` purpose), `tools/read-atcs.py` (`_read_campaign_plan`), tests, `FABRIC.md`.
 
 - [ ] **Step 1: RED tests.**
-  - The rendered replay Tcl, in order:
-    1. `000.dump`;
-    2. for each pass: `atcs_xtop_pass`-equivalent execution of the spec, then `NNN.dump`;
-    3. if `autoFinish`: `fix_hold_gba_violations …`, `fix_setup_gba_violations …`, then `auto.dump`;
-    4. `write_design_changes -format INNOVUS -eco_file_prefix atcs_batch -output_dir eco -keep_route`.
+  - **Campaign plan Reader:**
+    - overlapping `targetPins` instances across slots → invalid;
+    - the worst check of any required scenario not in some slot → invalid (blockers first);
+    - parked slots admitted.
+  - **Contract:** `prepare-workers` forks into six branches, each:
+    - `research-worker-0N` → `read-worker-request-0N` → `operate-worker-0N` → `capture-worker-0N` → `read-worker-result-0N`;
+    - joined at judge `check-worker-results`.
+
+    Then `check-worker-results` → `collect`. A parked or invalid slot's operate node is a no-op: the Reader-admitted parked request makes capture record a `parked` no-fix, so every branch stays a pure act chain as `forkFrom` requires.
+- [ ] **Step 2:** Confirm FAIL. **Step 3:** Implement. If Task 2 failed and was not fixed, use the sequential chain of the same nodes. **Step 4:** GREEN.
+- [ ] **Step 5:** Review. Commit `feat(atcs): six parallel blocker-first worker branches`; push.
+
+## Task 6: One replay — kept expert repairs, then auto-finish, then one Innovus ECO
+
+**Files:** `flow/atcs/integration.py`, `flow/templates/xtop-replay.tcl`, `flow/atcs/adapters.py`, `flow/templates/innovus-eco.tcl`, `flow/atcs_cli.py`. Tests: `test_integration_recovery.py`, `test_adapters.py`.
+
+- [ ] **Step 1: RED tests.** The replay Tcl does, in order:
+  1. `000.dump`;
+  2. per selected `xtop-session` Contribution, in composition order: its kept `commands` through the same procs, then `NNN.dump`;
+  3. `set_dont_touch` on every instance those sessions changed;
+  4. if `autoFinish`:
+     - `fix_hold_gba_violations -effort high -hold_target 0.0 -setup_margin <m_s>`;
+     - `fix_setup_gba_violations -methods size_cell|insert_buffer -effort high -setup_target 0.0 -hold_margin <m_h>` (strings from `packs/xtop-timing-closure/flow/closure.py:684-690`);
+     - `auto.dump`;
+  5. `write_design_changes -format INNOVUS -eco_file_prefix atcs_batch -output_dir eco -keep_route`.
+
+  Beyond that sequence:
   - `reconcile`:
-    - missing ECO pair → `AtcsError("missing-input")`;
-    - an ECO file containing `FORMATVERSION`, `dbNetFreeWires` or `editDelete -net` → refused (the old `validate_sourceable_eco` rule);
-    - a pass whose replay delta is empty while its Contribution delta was not → `replayMismatch` entry (a warning, recorded, not fatal).
-  - `seal_batch`: changing one ECO byte changes the merge id.
-  - `compile_innovus_eco_task` with `merge.eco` sources netlist then physical ECO, then `setNanoRouteMode -routeWithEco true …`, then `ecoRoute`, and not `innovusEcoTcl`. Without `eco`, output is byte-identical to today.
-- [ ] **Step 2:** Confirm FAIL. **Step 3:** Implement. `autoFinish.enabled = false` with no passes reproduces today exactly. **Step 4:** GREEN.
-- [ ] **Step 5:** Get a review (Opus). Commit `feat(atcs): replay worker XTop passes then auto-finish into one Innovus ECO`; push.
-
-## Task 5: Three workers, tail first
-
-**Files:** `graph.yml`, `contract.yml` (the `plan-campaign` and `research-worker-0N` purposes, knob `workerSlots`), `tools/read-atcs.py` (`_read_campaign_plan`), `test_readers.py`, contract test.
-
-- [ ] **Step 1: RED tests.**
-  - Campaign plan Reader:
-    - two slots with overlapping `targetPins` instances → invalid;
-    - the worst check of any required scenario not targeted by some slot → invalid;
-    - a parked slot (`"parked": true`) is admitted.
-  - Contract test: `research-worker-02` and `03` and `operate-worker-02` and `03` are reachable from `prepare-workers`; `collect` follows the slot-03 end.
-- [ ] **Step 2:** Confirm FAIL.
-- [ ] **Step 3: Implement.**
-  - Graph edges:
-    - `read-worker-result-01` → `research-worker-02`, replacing `→ collect`;
-    - `prepare-workers` → `research-worker-01`, kept;
-    - `check-worker-request-02` FAIL → `research-worker-03`, existing;
-    - `read-worker-result-03` → `collect` and `check-worker-request-03` FAIL → `collect`, existing.
-  - `plan-campaign` purpose: "Partition the tail (xtop-strategy.md) into up to three disjoint clusters, worst first; for each, choose 1–3 XTop passes from the ladders that fit its diagnosed cause; park a slot with no cluster; the bulk is left to auto-finish."
-  - Update `FABRIC.md` G1.
-- [ ] **Step 4:** GREEN, then get a review. Commit `feat(atcs): three tail-first worker slots in one batch`; push.
-
-## Task 6: Spike — research Workshops in a Harness fork (optional speed lever)
-
-**Files:** `test/contract/fork-join.test.ts` (new case only).
-
-- [ ] Add a fixture Pack whose fork branches are Workshop → Reader `act` chains joined at one judge. Assert both Workshops begin before either finishes.
-- [ ] **If it passes:** change `graph.yml` so `prepare-workers` forks `research-worker-0N` → `read-worker-request-0N` (×3) into the join judge `check-worker-request-01`, and the operate chain stays serial. Rerun the contract test and commit.
-- [ ] **If it fails:** keep Task 5's sequential graph, record the evidence in `FABRIC.md`, and make no Harness change in this plan.
+    - a missing ECO pair → `missing-input`;
+    - a `FORMATVERSION`, `dbNetFreeWires` or `editDelete -net` line → refused;
+    - a session replay delta differing from its Contribution delta → a recorded `replayMismatch` warning;
+    - auto-finish changing a protected instance → mismatch.
+  - `seal_batch` covers the ECO pair hashes and the per-session and auto deltas.
+  - `compile_innovus_eco_task` with `merge.eco` does `source` netlist, `source` physical, `setNanoRouteMode -routeWithEco true …`, `ecoRoute`. Without it, output is byte-identical to today.
+- [ ] **Step 2:** Confirm FAIL. **Step 3:** Implement. **Step 4:** GREEN.
+- [ ] **Step 5:** Review (Opus). Commit `feat(atcs): replay expert repairs then auto-finish into one Innovus ECO`; push.
 
 ## Task 7: Identity, then a server chain dry run on real `postroute_final`
 
 - [ ] Pack 0.2.0.
-- [ ] Derive the v10 wrapper from installed v9 (§2) and qualify it with its own preflight.
-- [ ] Repo: v10 template, environment template, Permit, README. Run the contract test. Commit and push.
+- [ ] Wrapper v10 (§2) with its own preflight.
+- [ ] Site: `parallelJobs: 6`; `licences.xtop: 6`. Innovus, StarRC and PrimeTime stay 1, since refresh is serial in this plan.
+- [ ] Binding. Contract test. Commit and push.
 - [ ] `qual-tools/chain-dryrun.sh` on a qualification copy:
-  1. bind-inputs → baseline → observe → policy → physical → risk → residual;
-  2. a hand-authored three-slot plan from the real `residual-cases.json`, with full pin paths and passes chosen from the ladders;
-  3. `prepare-workers`;
-  4. for each slot, a non-interactive XTop session running `atcs_xtop_pass` for the plan's first pass, then `capture-contribution`;
-  5. `collect` → `compose-facts` → an admitted plan selecting all admissible → `replay-prepare` with auto-finish → `reconcile` → `presta` → `implement` → `extract` → `sta` → `evaluate`.
-- [ ] Record per stage: exit code, time, XTop-estimated and fail-reason summaries, and refreshed PrimeTime WNS/TNS/violations per scenario, against the baseline and the serial rounds 1–2.
-- [ ] **Pass:** all stages exit 0; ECO sourced and routed; PrimeTime reader-backed.
-- [ ] **If `write_design_changes` misbehaves after replayed passes** (for example, duplicate or missing changes): change Task 4 to export per pass with `-last_n`, add a RED test, and redo this task.
+  1. baseline chain;
+  2. a hand-authored 3-slot blockers-first plan from the real `residual-cases.json`;
+  3. per slot, a non-interactive XTop session that runs a short scripted expert sequence through the Task 3 procs: ref → paths → candidates → one manual ECO → gain → undo → one `atcs_fix_hold_pins` → gain;
+  4. capture ×3;
+  5. collect → compose-facts;
+  6. an admitted plan;
+  7. replay with auto-finish;
+  8. reconcile → presta → implement → extract → sta → evaluate.
+- [ ] Record per stage the exit code, time, the XTop gain lines and fail reasons, and the refreshed PrimeTime per scenario, against the baseline and against serial rounds 1–2.
+- [ ] **Pass:** every stage exits 0 and the PrimeTime result is reader-backed.
+- [ ] If `write_design_changes` after replay duplicates or omits changes: export per session with `-last_n`, add a RED test, and redo this task.
 
-## Task 8: One live Campaign judged against the serial flow
+## Task 8: One live Campaign against the serial flow
 
 - [ ] Build the kit with `kit.mjs`: Pack 0.2.0, binding v10, all preflights.
 - [ ] Guide request:
-  - Goal WNS 0 / 0, post-route only.
-  - 180 min, 2 generations.
-  - `workerSlots` 3, `autoFinish` 1.
+  - Goal WNS 0 / 0, post-route only;
+  - 180 min, 2 generations;
+  - `workerSlots` 6, `autoFinish` 1;
   - PrimeTime-only judgement.
-- [ ] Watch with `watch.py`, with a UI check each cycle.
-- [ ] Report against §4, and update Issue #63.
+- [ ] Watch with `watch.py` plus a UI check each cycle.
+- [ ] Report against §4 and update Issue #63.
 
 ---
 
 ## 4. Acceptance
 
-The following apply to reader-backed PrimeTime on implemented DBs with new SPEF:
+All on reader-backed PrimeTime, implemented DBs, new SPEF:
 
 | # | Criterion |
 | --- | --- |
 | A1 | At most 2 refreshes. |
 | A2 | Hold WNS better than −0.15 ns and setup WNS better than −0.038 ns in every required scenario. |
 | A3 | ssg_m40 hold TNS no worse than −4.10 ns, and setup TNS no worse than −0.12 ns. |
-| A4 | Run start to the second refreshed PrimeTime result in no more than 120 min. |
-| A5 | No new signal DRC from `ecoRoute`; connectivity no worse than the baseline. |
+| A4 | Run start to the second refreshed PrimeTime result in ≤ 120 min. |
+| A5 | No new signal DRC from `ecoRoute`; connectivity no worse than baseline. |
 | A6 | Identity errors 0; required scenarios complete. |
 
 ## 5. Next levers (not in this plan)
 
-- **PBA path fixing** (`fix_*_path_violations`) for the last few residuals, once PBA data export is qualified.
-- **Density relief** before hold insertion when `legal_fail_*` dominates.
-- **Concurrent XTop sessions** across slots.
-- **A faster refresh:** multi-corner StarRC and multi-scenario PrimeTime in one session.
-- **PrimeTime refine/revert** from `utilities/post_verification/` to drop harmful sizing before implementation.
+- PBA path fix (`fix_*_path_violations`) for the last residuals.
+- Density relief before hold insertion when `legal_fail_*` dominates.
+- A parallel refresh: multi-corner StarRC and multi-scenario PrimeTime.
+- PrimeTime refine/revert (`utilities/post_verification/`) before implementation.
 
 ## Self-review
 
-- **Your ask mapped to tasks:**
+- **Coverage of the brief:**
 
-  | Ask | Where |
+  | Brief | Where |
   | --- | --- |
-  | multiple workers | Tasks 5–6 |
-  | analysis | Tasks 1 and 2 (diagnostics and fail reasons) |
-  | fixes done by XTop, steered by agents | Task 2 |
-  | big troubles first | Task 5 (the worst check must be targeted; tail before bulk) |
-  | auto-fix finishes the rest | Task 4 |
-  | faster and better than serial | §1, §4, Tasks 7–8 |
+  | Parallel agents (6 seats; XTop unlimited) | Tasks 2 and 5 |
+  | Operator as an XTop expert: analysis, trial, manual ECO, gain, undo | Tasks 1, 3, 4 |
+  | Blockers first | Tasks 4–5 |
+  | Auto-fix for the rest | Task 6 |
+  | Faster and better than no-brainer iterations | §1, §4, Tasks 7–8 |
 
-- **Minimal change:** no Harness change. It reuses the Team seam (one reviewed action), the three slots, composition, replay, the refresh and adoption. The new surface:
-  - one Operator command;
-  - one Contribution kind;
-  - replay and implement ends taken from the old qualified flow;
-  - three graph edges;
-  - one knowledge file.
-- **Unverified assumptions, each with a test and a fallback:**
-  - `-only_pins` targeted passes on SWERV28 (Task 7);
-  - `write_design_changes` after replayed passes (Task 7);
-  - Workshops in forks (Task 6, optional).
+- **Minimal change:**
+  - One generic Harness change (scope mode), plus a conditional fork fix.
+  - The rest reuses slots, Teams, composition, replay, refresh and adoption.
+  - New surface: the operator toolkit, one Contribution kind, the replay and implement ends from the old qualified flow, six branches, and one knowledge file.
+- **Unverified, each with a test and a fallback:**
+  - interactive Jobs in fork branches (Task 2);
+  - `-only_pins` targeted fixes and the manual ECO commands on SWERV28 (Task 7);
+  - `write_design_changes` after replay (Task 7).
