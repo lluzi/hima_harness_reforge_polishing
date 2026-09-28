@@ -64,8 +64,8 @@ edits. XTop's gain only screens trials; only refreshed PrimeTime judges converge
 
 1. `atcs_dump_cells before.dump`, then `atcs_ref` once: the setup and hold reference of every gain.
 2. Diagnose before changing anything: `atcs_paths` (check, topN, endPoints = the target pins) gives
-   the paths and XTop's analysis; the request's evidence (the prior batch's fail reasons) says why
-   auto-fix left them; `atcs_candidates` gives the legal masters and buffers for the path's cells. XTop
+   the paths and XTop's analysis; the request's evidence (the prior batch's fail reasons; none in the
+   first generation) says why auto-fix left them; `atcs_candidates` gives the path cells' masters. XTop
    keeps no fail reasons in a session before its first fix (Task 7: an empty table): read
    `atcs_fail_reasons` on the target pins after the slot's own fix, setup reasons after a setup fix.
 3. Choose one move from the failing check's ladder, steered by the fail-reason table. Change one
