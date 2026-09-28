@@ -14,9 +14,9 @@ ssh:
 capacity:
   cores: 16
   memoryGiB: 64
-  parallelJobs: 1
+  parallelJobs: 6
   licences:
     innovus: 1
     primetime: 1
     starrc: 1
-    xtop: 2
+    xtop: 6
