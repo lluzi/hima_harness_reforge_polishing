@@ -27,7 +27,7 @@
 | `atcs_insert_dummy` | `insert_dummy_cell` | `insert_dummy_cell.1` (178) |
 | `atcs_split_load` | `split_load -pin_group ...` | `split_load.1` (304) |
 | `atcs_split_net` | `split_net -rule wire_length\|cap -segment 2..16` | `split_net.1` (305) |
-| `atcs_move_cell` | `move_cell -to {(x,y)}`: the cell origin in microns, inside an `editDomain.regions` box; XTop legalizes it to a nearby site | `move_cell.1` (201) |
+| `atcs_move_cell` | `move_cell -to {(x,y)}` in microns, inside an `editDomain.regions` box (µm); XTop legalizes the point to a nearby site (origin vs centre unsettled; within about half a cell) | `move_cell.1` (201) |
 | `atcs_remove_buffer` | `remove_buffer`, every net of the buffer in the domain | `remove_buffer.1` (225) |
 | `atcs_fix_hold_pins` | `fix_hold_gba_violations ... -only_pins` | `fix_hold_gba_violations.1` (112) |
 | `atcs_fix_setup_pins` | `fix_setup_gba_violations ... -only_pins` | `fix_setup_gba_violations.1` (114) |
@@ -52,21 +52,22 @@
 ## Changes this decision
 
 The Operator is a trial-and-measure expert, not the executor of one pinned action. Each trial is
-probabilistic: XTop's gain shows whether it helped against the session reference. Keep what the gain
-shows helps, undo what does not. The merge later ranks sessions by value (blocker coverage first, then
-XTop's predicted gain) and replays them best-effort before auto-finish, and a plain auto-fix control
-arm guards the batch. XTop's prediction decides, WNS first: control when merged is worse on worst
-setup or hold WNS (by more than 1e-4); merged when it is better on one WNS; with both WNS equal,
-merged only when it is no worse on setup and hold TNS (1e-3) and better on one, or all four tie.
-So a short, clean kept log beats many marginal edits. XTop's gain only screens trials; only refreshed
-PrimeTime judges convergence.
+probabilistic: XTop's gain against the session reference shows whether it helped; keep what helps,
+undo what does not. The merge ranks sessions by value (blocker coverage, then XTop's best per-scenario
+gain on a violating target check) and replays them before auto-finish; a plain auto-fix control arm
+guards the batch. XTop's prediction decides, WNS first: control when merged is worse on setup or hold
+WNS (> 1e-4); merged when better on one WNS; with both equal, merged only when no worse on setup and
+hold TNS (1e-3) and better on one, or all four tie. So a short, clean kept log beats many marginal
+edits. XTop's gain only screens trials; only refreshed PrimeTime judges convergence.
 
 ### The expert loop
 
 1. `atcs_dump_cells before.dump`, then `atcs_ref` once: the setup and hold reference of every gain.
-2. Diagnose the target pins before changing anything. `atcs_paths` (check, topN, endPoints = the
-   target pins) gives the paths and XTop's analyze report of their causes. `atcs_fail_reasons` says
-   why auto-fix left them. `atcs_candidates` gives the legal masters and buffers for the path's cells.
+2. Diagnose before changing anything: `atcs_paths` (check, topN, endPoints = the target pins) gives
+   the paths and XTop's analysis; the request's evidence (the prior batch's fail reasons) says why
+   auto-fix left them; `atcs_candidates` gives the legal masters and buffers for the path's cells. XTop
+   keeps no fail reasons in a session before its first fix (Task 7: an empty table): read
+   `atcs_fail_reasons` on the target pins after the slot's own fix, setup reasons after a setup fix.
 3. Choose one move from the failing check's ladder, steered by the fail-reason table. Change one
    principal variable per trial (method, master, margin or pin set), or the gain cannot be attributed.
 4. Trial it: one manual ECO, with the plan hash. A targeted fix is no trial: XTop commits its actions
@@ -88,8 +89,7 @@ Reviewer's budget. So check the domain, pins, regions and candidates with the re
 are free, before sending. Read every refusal and choose again; never resend the same mutation. A
 tainted session (an `uncertain` line) refuses every further mutation: dump, close and report it.
 
-The Reviewer's budget must fit the loop: the planned trials, one undo for each, plus a margin for
-toolkit refusals; a token budget of one or two mutations cannot run it.
+The Reviewer's budget must fit the loop: trials, one undo each, and a margin for toolkit refusals.
 
 ### Hold ladder
 
@@ -161,7 +161,8 @@ a region only when the analysis blames distance (net delay) and a region was pla
   size-only, hold; `packs/xtop-timing-closure/flow/closure.py`) after the expert repairs, which are
   locked with `set_dont_touch` first, so the two arms differ only by the recipe. Both arms then read
   `summarize_gba_violations -exclude_path -with_top_n N -with_fail_reason` per check; the chosen
-  arm's reasons are sealed with the batch and reach the next plan through the residual cases.
+  arm's reasons reach the next plan through the residual cases. Auto-finish ends with a hold flow, so
+  its setup reasons are unread: a setup worker reads them in its own session after its setup fix.
 - Workers spend their budget on blockers only. A worker that fixes bulk endpoints takes area and
   routing from auto-finish and blurs its own gain. One mechanism per slot, in disjoint edit domains:
   no instance and no net in two active slots.
@@ -173,8 +174,7 @@ hold violations from 7,430 to 148 (2,908 buffers inserted, 919 cells resized). S
 global fixes again at high effort with the blockers still in place and over-fixed: WNS stayed at
 -0.154 ns hold and -0.0383 ns setup, and PrimeTime after the round-2 ECO measured hold -0.16 ns. Higher
 effort adds internal pin groups and runtime, not a new mechanism for the endpoints that set WNS. The
-order that works: diagnose the blockers, repair them with targeted moves and undo what does not gain,
-lock them, then auto-finish the bulk.
+order that works: diagnose the blockers, repair them with targeted moves, lock them, then auto-finish.
 
-The loop has its own limit (strategy map, judgement 2): with many violations and ample resources, one
-GBA auto pass converges faster than any expert loop. Use the loop on the residual, not on round 1.
+The loop has its own limit (strategy map, judgement 2): with many violations one GBA auto pass
+converges faster than any expert loop. Use the loop on the residual, not on round 1.
