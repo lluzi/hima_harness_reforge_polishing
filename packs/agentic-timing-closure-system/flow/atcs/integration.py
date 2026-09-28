@@ -1,4 +1,4 @@
-"""M5: deterministic replay and merge — the Integration Fix Session's adapter.
+r"""M5: deterministic replay and merge — the Integration Fix Session's adapter.
 
 This module owns the six M5 producers named in
 ``.superpowers/sdd/task-7-brief.md`` and the ``integration-plan``,
