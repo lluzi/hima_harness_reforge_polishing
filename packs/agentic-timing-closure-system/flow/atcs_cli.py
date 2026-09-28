@@ -1253,7 +1253,7 @@ _NO_FIX_ADAPTER_ERROR_MAX_LINES = 5
 _NO_FIX_ADAPTER_ERROR_MAX_CHARS = 300
 
 
-def _no_fix_diagnosis(root, before_dump, dump_sha256):
+def _no_fix_diagnosis(root, dump_sha256):
     """Deterministic evidence for an honest no-fix Contribution (Issue 63) -- never
     model prose. States the sha256 that was actually checked (before.dump and
     after.dump are byte-identical, so either one's digest names the same
@@ -1264,7 +1264,6 @@ def _no_fix_diagnosis(root, before_dump, dump_sha256):
     echoed `xtop > ` command wrappers) -- the closest thing
     to "why" a fail-closed diagnosis is allowed to assert.
     """
-    del before_dump  # named bytes only; the digest already identifies them
     parts = [
         f"Operator session produced no design change: before/after dumps identical "
         f"(sha256 {dump_sha256}); ops trace empty"
@@ -1387,7 +1386,7 @@ def _cmd_capture_contribution(workspace, args):
 
     diagnosis = summary.get("diagnosis")
     if no_fix_evidence and not (isinstance(diagnosis, str) and diagnosis.strip()):
-        diagnosis = _no_fix_diagnosis(root, before_dump, dump_sha256)
+        diagnosis = _no_fix_diagnosis(root, dump_sha256)
 
     result_refs = {
         "beforeDump": str(before_dump), "afterDump": str(after_dump), "script": None,
