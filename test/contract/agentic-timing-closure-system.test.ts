@@ -233,6 +233,22 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   // engine's own unlabelled-UNDETERMINED default (wait-for-person).
   assert.equal(pack.graph.edges.length, 143);
 
+  // Issue 63 (fresh03 `sta` blocked: "references ${MAX_PATHS}, which nothing bound"): every
+  // `${NAME}` a node's tool command line uses is bound by that node or is a Harness-reserved value.
+  const reserved = new Set(['WORKSPACE', 'SLOT', 'ENTRY', 'WORKSHOP', 'READER', 'REPORT', 'OUT']);
+  const unbound: string[] = [];
+  for (const node of pack.graph.nodes as any[]) {
+    const toolId = node.parameters?.tool;
+    if (typeof toolId !== 'string') continue;
+    const tool = pack.contract.tools.find(item => item.id === toolId)!;
+    const words = [...tool.argv, ...(tool.interactive?.argv ?? [])].join(' ');
+    const bound = new Set(Object.keys(node.parameters.arguments ?? {}));
+    for (const [, name] of words.matchAll(/\$\{([A-Z_]+)\}/g)) {
+      if (!bound.has(name!) && !reserved.has(name!)) unbound.push(`${node.id}:${name}`);
+    }
+  }
+  assert.deepEqual(unbound, []);
+
   const localCheck = checkPack(pack, loadSite(local.sitesDir, local.name));
   assert.equal(localCheck.fit, true, localCheck.errors.join('\n'));
 
@@ -281,7 +297,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /agentic-timing-closure-system@0\.1\.4.*fit/s);
+    assert.match(throughHost.text, /agentic-timing-closure-system@0\.1\.5.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {
