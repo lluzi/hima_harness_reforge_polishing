@@ -80,7 +80,7 @@ save_workspace -as ${design}_operator_baseline
 # ops.jsonl (OPS_LOG), one line per mutation that reached XTop, seq 1, 2, ...:
 #   {"seq","cmd","proc"[,"undoes","discards","undoCalls"],"args","status",
 #    "observe","ecoActions","before","after"[,"newNets"][,"fillers"],"xtop"
-#    [,"verified"][,"matchesRequest"][,"outOfDomain","undo"][,"error"]}
+#    [,"verified"][,"ecoCells"][,"matchesRequest"][,"outOfDomain","undo"][,"error"]}
 #   cmd     the XTop command (size_cell ... fix_setup_gba_violations, undo)
 #   args    the procedure's named arguments, as the Host sent them
 #   status  kept | no-change | error | reverted | uncertain
@@ -90,7 +90,9 @@ save_workspace -as ${design}_operator_baseline
 #   newNets nets created by the edit that its new instances sit on
 #   fillers exempt removable-filler cells the edit touched
 #   xtop    {"command","code","result"}: the Tcl command and XTop's return
-#   verified "eco-actions" when cell masters cannot show the effect (move_cell)
+#   verified "eco-actions" when cell masters cannot show the effect: move_cell,
+#           or a fix whose ECO actions touched domain cells without a master
+#           change (those cells are listed under "ecoCells")
 #   matchesRequest  whether the delta holds the named new/removed instances
 #   outOfDomain, undo  the refused objects and the immediate XTop undo calls
 #   error   the unexpected Tcl error that made the line uncertain
@@ -98,7 +100,8 @@ save_workspace -as ${design}_operator_baseline
 #   {"command","code","result","text"}}[,"topN"]}, kind reference | mutation
 #   | undo | probe; seq is the ops.jsonl line it follows (0 = session start).
 # tainted.json (beside ops.jsonl) exists once the session is tainted:
-#   {"reason","seq"}; atcs_export_changes then refuses.
+#   {"reason","seq"}; atcs_export_changes then refuses, and atcs_close prints
+#   ATCS:taint:tainted:<reason> (else ATCS:taint:clean) to the transcript.
 ########################################################################
 foreach {atcs_name atcs_default} {EDIT_DOMAIN_INSTANCES {} EDIT_DOMAIN_NETS {} EDIT_DOMAIN_PINS {}
         EDIT_DOMAIN_REGIONS {} ATCS_MAX_MUTATIONS 1 ATCS_OBSERVE fast XTOP_REMOVABLE_FILLERS {}} {
@@ -417,6 +420,19 @@ proc atcs_observe_after {pre} {
             }
         }
     }
+    # ECO actions with no master change (moves, reconnects, swaps): the cells they touched.
+    set eco_cells {}
+    if {$c1 > $c0 && [dict size $delta] == 0 && [llength $bad] == 0} {
+        foreach name [atcs_eco_cells [expr {$c1 - $c0}]] {
+            if {[atcs_is_filler [atcs_cell_master $name]]} {
+                if {[lsearch -exact $fillers $name] < 0} { lappend fillers $name }
+            } elseif {[atcs_instance_in_domain $name]} {
+                lappend eco_cells $name
+            } else {
+                lappend bad $name
+            }
+        }
+    }
     set new_nets {}
     dict for {name pair} $delta {
         lassign $pair m0 m1
@@ -440,7 +456,7 @@ proc atcs_observe_after {pre} {
             }
         }
     }
-    return [dict create count $c1 delta $delta bad $bad newNets $new_nets fillers $fillers]
+    return [dict create count $c1 delta $delta bad $bad newNets $new_nets fillers $fillers ecoCells $eco_cells]
 }
 # Undo XTop ECO actions until count_eco_actions is back at `goal`; stop at the
 # first undo that fails or does not lower the count. Returns {count calls}.
@@ -607,6 +623,7 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
         set c1 [dict get $post count]
         set delta [dict get $post delta]
         set bad [dict get $post bad]
+        set eco_cells [dict get $post ecoCells]
         set extra {}
         if {[llength $bad] > 0} {
             lassign [atcs_undo_to $c0] count calls
@@ -623,6 +640,14 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
             } else {
                 set status [expr {$code == 0 ? "no-change" : "error"}]
             }
+        } elseif {[dict size $delta] == 0 && [llength $eco_cells] > 0} {
+            # XTop acted on domain cells without changing a master: kept when a fix asked for it.
+            if {$kind eq "fix" && $code == 0} {
+                set kind eco
+                set status kept
+            } else {
+                set status uncertain
+            }
         } elseif {[dict size $delta] == 0} {
             set status [expr {$code == 0 ? "no-change" : "error"}]
         } elseif {$code != 0} {
@@ -635,6 +660,10 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
         if {$kind eq "move"} {
             set before [dict create $move_instance [dict get $pre domain $move_instance]]
             set after [atcs_state [list $move_instance]]
+        } elseif {$kind eq "eco"} {
+            set before [dict create]
+            foreach name $eco_cells { dict set before $name [dict get $pre domain $name] }
+            set after [atcs_state $eco_cells]
         } else {
             set before [atcs_delta_side $delta 0]
             set after [atcs_delta_side $delta 1]
@@ -646,7 +675,8 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
             }
             lappend extra matchesRequest [atcs_jbool $matches]
         }
-        if {$kind eq "move"} { lappend extra verified [atcs_js eco-actions] }
+        if {$kind eq "move" || $kind eq "eco"} { lappend extra verified [atcs_js eco-actions] }
+        if {[llength $eco_cells] > 0} { lappend extra ecoCells [atcs_jarr $eco_cells] }
         set fields [list cmd [atcs_js $cmd] proc [atcs_js $proc] args $args_json status [atcs_js $status] \
             observe [atcs_js $::ATCS_OBSERVE] ecoActions [expr {$c1 - $c0}] \
             before [atcs_state_json $before] after [atcs_state_json $after]]
@@ -759,15 +789,17 @@ proc atcs_size_cell {instance to_master plan_sha256} {
 proc atcs_exchange_cell {instance cells plan_sha256} {
     atcs_begin_mutation $plan_sha256
     atcs_require_instance $instance
+    if {[atcs_cell_master $instance] eq ""} { error "instance $instance does not exist" }
+    # exchange_cell swaps with "the specified cell instances": every partner is an existing domain instance.
     set cells [atcs_list cells $cells 1]
     foreach cell $cells {
-        atcs_check_name cell $cell
-        if {[atcs_cell_master $cell] ne "" && ![atcs_instance_in_domain $cell]} { error "out-of-scope instance: $cell" }
+        atcs_require_instance $cell
+        if {[atcs_cell_master $cell] eq ""} { error "instance $cell does not exist" }
     }
     set args_json [atcs_jobj [list instance [atcs_js $instance] cells [atcs_jarr $cells] \
         planSha256 [atcs_js $plan_sha256]]]
     return [atcs_mutate atcs_exchange_cell exchange_cell $args_json $plan_sha256 \
-        [list exchange_cell [get_cells -exact $instance] $cells] fix]
+        [list exchange_cell [get_cells -exact $instance] [get_cells -exact $cells]] fix]
 }
 proc atcs_insert_buffer {net load_pins masters new_instances new_nets plan_sha256} {
     atcs_begin_mutation $plan_sha256
@@ -959,7 +991,7 @@ proc atcs_undo {plan_sha256} {
         set now [atcs_state $keys]
         set restored [expr {$count == [dict get $op c0]}]
         foreach name $keys {
-            set want [expr {[dict exists $op_before $name] && [dict get $op kind] ne "move"
+            set want [expr {[dict exists $op_before $name] && [lsearch -exact {move eco} [dict get $op kind]] < 0
                 ? [dict get $op_before $name] : [dict get $current $name]}]
             if {[dict get $now $name] ne $want} { set restored 0 }
         }
@@ -971,7 +1003,9 @@ proc atcs_undo {plan_sha256} {
                 if {![dict exists $op_before $name]
                         || $pair ne [list [dict get $op_after $name] [dict get $op_before $name]]} { set restored 0 }
             }
-            if {[dict size $seen] != [dict size $op_before] && [dict get $op kind] ne "move"} { set restored 0 }
+            if {[dict size $seen] != [dict size $op_before] && [lsearch -exact {move eco} [dict get $op kind]] < 0} {
+                set restored 0
+            }
         }
         set undo_ok 0
         foreach call $calls { if {[lindex $call 0] == 0} { set undo_ok 1 } }
@@ -995,7 +1029,7 @@ proc atcs_undo {plan_sha256} {
             ecoActions [expr {$count - $c_before}] before [atcs_state_json $before] after [atcs_state_json $after] \
             xtop [atcs_xtop_json undo [expr {$last eq "" ? 0 : [lindex $last 0]}] [lindex $last 1]] \
             undo [atcs_undo_calls_json $calls]]
-        if {[dict get $op kind] eq "move"} { lappend fields verified [atcs_js eco-actions] }
+        if {[lsearch -exact {move eco} [dict get $op kind]] >= 0} { lappend fields verified [atcs_js eco-actions] }
         lassign [atcs_log_op $fields] seq line
         if {$status eq "kept"} {
             set ::atcs_kept [lrange $::atcs_kept 0 end-1]
@@ -1039,8 +1073,14 @@ proc atcs_export_changes {} {
     save_workspace -as ${::design}_operator_candidate
     return $::eco_output_dir
 }
+# The transcript always states the taint state the capture must honour.
 proc atcs_close {} {
-    return "closing after adapter receipt"
+    if {$::atcs_tainted ne ""} {
+        puts "ATCS:taint:tainted:$::atcs_tainted"
+        return "closing after adapter receipt; session tainted: $::atcs_tainted"
+    }
+    puts "ATCS:taint:clean"
+    return "closing after adapter receipt; session clean"
 }
 
 puts "ATCS:worker:$env(NAME_PREFIX)"

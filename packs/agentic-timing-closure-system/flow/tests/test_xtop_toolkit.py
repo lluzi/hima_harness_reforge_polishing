@@ -197,10 +197,16 @@ proc get_cells {args} {
         if {[info exists ::cells($owner)]} { return [list "cell:$owner"] }
         return {}
     }
-    set n [stub_strip [lindex $pos 0]]
-    if {[info exists ::cells($n)]} { return [list "cell:$n"] }
-    if {[dict exists $o -quiet]} { return {} }
-    error "get_cells: no cell named $n"
+    set r {}
+    foreach n [lindex $pos 0] {
+        set n [stub_strip $n]
+        if {[info exists ::cells($n)]} {
+            lappend r "cell:$n"
+        } elseif {![dict exists $o -quiet]} {
+            error "get_cells: no cell named $n"
+        }
+    }
+    return $r
 }
 proc get_pins {args} {
     stub_record get_pins {*}$args
@@ -726,6 +732,26 @@ class DomainConfinementTest(unittest.TestCase):
         self.assertEqual(session.ops, [])
         self.assertEqual(session.cells_line(), INITIAL_CELLS)
 
+    def test_exchange_partners_must_be_existing_domain_instances(self):
+        session = Session(self, domain={"instances": ["U1", "U2", "UGHOST"], "nets": [], "regions": []}).run(
+            f"T bracket {{atcs_exchange_cell U1 {{U[O]UT U2}} {PLAN}}}\n"
+            f"T elsewhere {{atcs_exchange_cell U1 u_other/SPARE {PLAN}}}\n"
+            f"T ghost {{atcs_exchange_cell U1 UGHOST {PLAN}}}\n"
+            f"T libcell {{atcs_exchange_cell U1 INVX2 {PLAN}}}\n"
+            f"set ::stub_exchange_effect {{U1 INVX1 U2 BUFX1}}\n"
+            f"T ok {{atcs_exchange_cell U1 U2 {PLAN}}}\n"
+        )
+        for tag in ("bracket", "elsewhere", "libcell"):
+            status, message = session.outcome(tag)
+            self.assertEqual(status, "ERR", tag)
+            self.assertIn("out-of-scope", message, tag)
+        status, message = session.outcome("ghost")
+        self.assertEqual(status, "ERR")
+        self.assertIn("does not exist", message)
+        self.assertEqual(session.outcome("ok")[0], "OK", session.stdout)
+        (call,) = session.calls_to("exchange_cell")
+        self.assertEqual(call[1:], ["cell:U1", "cell:U2"])
+
     def test_move_needs_an_edit_region(self):
         session = Session(self, domain={"instances": ["U3"], "nets": [], "regions": []}).run(
             f"T move {{atcs_move_cell U3 10 20 {PLAN}}}\n"
@@ -943,6 +969,17 @@ class TaintAndFailureTest(unittest.TestCase):
         self.assertEqual(session.outcome("dump")[0], "OK")
         marker = json.loads((session.root / "tainted.json").read_text(encoding="utf-8"))
         self.assertIn("get_eco_cells", marker["reason"])
+
+    def test_close_reports_the_taint_state(self):
+        clean = Session(self).run("T close {atcs_close}\n")
+        self.assertIn("ATCS:taint:clean", clean.stdout)
+        tainted = Session(self).run(
+            "set ::stub_fail {get_eco_cells}\n"
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            "T close {atcs_close}\n"
+        )
+        self.assertIn("ATCS:taint:tainted:", tainted.stdout)
+        self.assertIn("tainted", tainted.outcome("close")[1])
 
     def test_an_ops_log_that_cannot_be_written_taints_the_session(self):
         session = Session(self).run(
@@ -1296,6 +1333,37 @@ class ObservedEffectConfinementTest(unittest.TestCase):
             self.assertEqual(status, "ERR")
             self.assertIn(f"out-of-scope net: {new_net}", message)
 
+    def test_an_eco_action_that_leaves_masters_unchanged_is_kept_and_undoable(self):
+        for session in self._both():
+            session.run(
+                "set ::stub_fix_effect {U1 BUFX1}\n"
+                f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+                f"T undo {{atcs_undo {PLAN}}}\n"
+                f"T next {{atcs_size_cell U2 INVX2 {PLAN}}}\n"
+            )
+            self.assertEqual(session.outcome("fix")[0], "OK", session.stdout)
+            op = session.ops[0]
+            self.assertEqual(op["status"], "kept")
+            self.assertEqual(op["verified"], "eco-actions")
+            self.assertEqual(op["ecoCells"], ["U1"])
+            self.assertEqual(op["before"], {"instances": {"U1": "BUFX1"}})
+            self.assertEqual([gain["kind"] for gain in session.gains], ["reference", "mutation", "undo", "mutation"])
+            self.assertEqual(session.outcome("undo")[0], "OK", session.stdout)
+            self.assertEqual(session.ops[1]["undoes"], 1)
+            self.assertEqual(session.outcome("next")[0], "OK", session.stdout)
+
+    def test_an_eco_action_on_an_out_of_domain_cell_without_a_master_change_is_undone(self):
+        for session in self._both():
+            session.run(
+                "set ::stub_fix_effect {UOUT BUFX1}\n"
+                f"T fix {{{HOLD} U1/A medium 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            )
+            status, message = session.outcome("fix")
+            self.assertEqual(status, "ERR")
+            self.assertIn("UOUT", message)
+            self.assertEqual(session.ops[0]["status"], "reverted")
+            self.assertEqual(session.ops[0]["outOfDomain"], ["UOUT"])
+
     def test_fast_mode_refuses_a_new_net_it_cannot_prove_new(self):
         session = Session(self).run(
             f"set ::stub_fix_effect {{{PREFIX}eco_7 BUFX2}}\n"
@@ -1410,7 +1478,7 @@ class KnowledgeSurfaceTest(unittest.TestCase):
         "T c1 {atcs_candidates size_cell U1}\nT c2 {atcs_candidates insert_buffer U1/Y}\n"
         "T c3 {atcs_candidates exchange_cell U2}\n"
         f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
-        f"set ::stub_exchange_effect {{U2 INVX2}}\nT exch {{atcs_exchange_cell U2 INVX2 {PLAN}}}\n"
+        f"set ::stub_exchange_effect {{U2 INVX2}}\nT exch {{atcs_exchange_cell U2 U1 {PLAN}}}\n"
         f"T ins {{atcs_insert_buffer N1 UOUT/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
         f"T dummy {{atcs_insert_dummy U1/A BUFX1 {PREFIX}d1 {PLAN}}}\n"
         f"T sl {{atcs_split_load N2 {{{{U2/A}} {{U9/D}}}} BUFX2 {{{PREFIX}s1 {PREFIX}s2}} "
@@ -1452,7 +1520,8 @@ class KnowledgeSurfaceTest(unittest.TestCase):
                             "list_size_cell_candidates", "list_insert_buffer_candidates",
                             "list_exchange_cell_candidates", "count_eco_actions"):
                 self.assertIn(command, emitted, observe)
-            self.assertEqual("get_eco_cells" in emitted, observe == "fast")
+            # Fast mode always reads get_eco_cells; full mode reads it for ECO actions that change no master.
+            self.assertIn("get_eco_cells", emitted, observe)
             self.assertEqual([op["seq"] for op in session.ops], list(range(1, len(session.ops) + 1)))
             (move,) = session.calls_to("move_cell")
             self.assertEqual(move[1:], ["-to", "10.5 20", "cell:U3"])
