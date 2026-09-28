@@ -118,7 +118,7 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 21 | `apr-run` | siteProfile | reads `state/apr-task.json` then `run_tool` (stage batch) + `adapters.compile_innovus_export_task` + `run_tool` (export batch) | `state/implement.json` (same shape `implement` writes) |
 | 22 | `record-experience` | reasonSource(the SAME admitted integration-plan envelope row 10 reads -- only actually read when `_merge_commit_provenance` says `"merge"`; see "Task 12c fix round" below) | `experience.record` (lineage/decision/outcome composed from `state/working-state.json`, `state/implement.json`, `state/evaluation.json`, `state/contributions-collected.json`, `state/merge-commit.json`/`state/apr-task.json` (provenance), `state/sta.json`, `state/policy.json`/`state/pointers.json`) | `state/experience.json` |
 | 23 | `worker-slots` | workerSlots(`{from: strategy}`, an integer 1..6; Issue #64 Task 5) | validates the knob; slots up to it may be active and every slot above it must be parked | `state/worker-slots.json` (stamped `worker-slots`: `workerSlots`, `activeSlots`, `parkedSlots`) |
-| 24 | `operate-parked` | slot | the `xtop-operator` tool's batch path (Issue #64 Task 5): opens no XTop session for a slot `prepare-workers` parked or an active slot whose worker request is inadmissible (`workspaces.request_invalid_count` + `workspaces.bound_view` against the prepared package); refuses any other active slot (`slot-active`) | `<slot root>/parked.json` (stamped `parked-operate` receipt, `why` parked or inadmissible-request) |
+| 24 | `operate-parked` | slot | the `xtop-operator` tool's batch path (Issue #64 Task 5): opens no XTop session for a slot `prepare-workers` parked or an active slot whose worker request is inadmissible (`workspaces.request_invalid_count` + `workspaces.bound_view` against the prepared package); refuses any other active slot (`slot-active`) | `<slot root>/parked.json` (stamped `parked-operate` receipt, `why` parked or inadmissible-request; an unreadable request or working state refuses; `prepare-workers` removes a stale one) |
 
 Site-admin utility (not a Harness graph subcommand -- no workspace, no declared output)
 -------------------------------------------------------------------------------------------
@@ -1222,6 +1222,12 @@ def _cmd_prepare_workers(workspace, args):
             raise InputError("invalid-input", f"campaign plan workPackages is missing slot {slot!r}")
         validated = workspaces.validate_work_package(raw, base_state, site_capabilities)
         manifest = workspaces.prepare(validated, str(workspace), base_state)
+        # Issue #64 Task 5 fix round 1: `prepare` reuses the root of an identical package, so an
+        # earlier generation's `operate-parked` receipt is removed here; this preparation's own
+        # operate node decides afresh whether the slot runs a session.
+        stale_receipt = workspace / manifest["root"] / "parked.json"
+        if stale_receipt.is_file() or stale_receipt.is_symlink():
+            stale_receipt.unlink()
         if workspaces.is_parked(validated):
             # Issue #64 Task 5: a parked slot's branch still runs, as a no-op. It gets its private
             # workspace (so its parked Contribution is bound to this revision) but no XTop session:
@@ -1312,20 +1318,21 @@ def _worker_request_problems(workspace, slot, entry):
 
     `workspaces.request_invalid_count` against the working state, a `taskId` other than
     the slot, and every `workspaces.PREPARED_BINDING_FIELDS` field that differs from the
-    package `prepare-workers` prepared. An absent or unreadable request is one problem.
+    package `prepare-workers` prepared; an envelope with no candidate object is one problem.
+    An absent or unreadable request, or working state, refuses (exit 2/3) instead: the
+    owner never skips a slot whose request could not be read.
     It never admits what the worker-request Reader refused: the Reader also resolves the
     names against the base netlist and refuses the read outright on a miss.
     """
     path = Path(workspace) / "research" / "requests" / f"worker-request-{slot}.json"
-    try:
-        envelope = _read_plain(path)
-        candidate = envelope.get("candidate")
-        if not isinstance(candidate, dict):
-            return 1
-        site_capabilities = envelope.get("siteCapabilities")
-        working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
-    except (InputError, core.AtcsError, OSError, ValueError, AttributeError):
+    # Unreadable inputs refuse (InputError/AtcsError propagate): only a request that parses
+    # and then fails validation is skipped.
+    envelope = _read_plain(path)
+    working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
+    if not isinstance(envelope, dict) or not isinstance(envelope.get("candidate"), dict):
         return 1
+    candidate = envelope["candidate"]
+    site_capabilities = envelope.get("siteCapabilities")
     count = workspaces.request_invalid_count(candidate, working_state,
                                              site_capabilities if isinstance(site_capabilities, dict) else {})
     if candidate.get("taskId") != slot:
@@ -1566,6 +1573,7 @@ def _cmd_capture_contribution(workspace, args):
         ran += sorted(path.name for path in root.glob("xtop_log_*.txt"))
         if ran:
             raise core.AtcsError("parked-slot-ran", f"slot {slot!r} ran no session but holds Operator outputs {ran}")
+        refusal = None
         if plan_parked:
             reason = work_package.get("problem")
         else:
@@ -1574,7 +1582,10 @@ def _cmd_capture_contribution(workspace, args):
                     or receipt.get("revision") != workspace_manifest.get("revision")):
                 raise core.AtcsError("stale-receipt", f"{receipt_path} belongs to another preparation of slot {slot!r}")
             reason = receipt.get("reason")
-        body = contributions.seal_parked(base_ref, reason)
+            # Visible at the join: the skipped active slot's result carries this refusal, so its
+            # branch's `worker-result-admissible` verdict FAILs (both outcomes still collect).
+            refusal = {"code": "inadmissible-request", "detail": reason}
+        body = contributions.seal_parked(base_ref, reason, refusal=refusal)
         _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
         return _contribution_path(workspace, slot), body
     ops_log_path = Path(entry["opsLog"])

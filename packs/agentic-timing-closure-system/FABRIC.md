@@ -113,8 +113,10 @@ test asserts the fork shape with `forkFrom`), `test/contract/fork-interactive-te
 (concurrent interactive Team branches) and `flow/tests/test_worker_slots.py`. The campaign plan is
 blockers first: the campaign-plan Reader counts every instance two active slots claim (edit domain or
 target-pin owner), every worst setup or hold check of a required scenario (read from
-`state/observation.json` with `composition.worst_checks`, required scenarios from `state/policy.json`)
-that no active slot's `targetPins` ends at, an observation of another design-state, and every active
+`state/observation.json` with `composition.worst_check_endpoints`, required scenarios from
+`state/policy.json`) that no active slot covers by `composition.covers` -- the one rule the recipe's
+`blockerCoverage` also uses: the check key in `targets` (a top-level port), or the key's or PT's raw
+endpoint in `targetPins` -- an observation of another design-state, and every active
 slot above the `workerSlots` Strategy knob (1..6, default 6), which `bind-worker-slots` stamps into
 `state/worker-slots.json` on every way into the plan. A parked slot's package is exactly `{taskId,
 baseStateId, parked: true, problem}`; its branch still runs: `prepare-workers` gives it a workspace but
@@ -156,9 +158,12 @@ Schema limits and how the graph expresses them:
   their execution's `branchId`. The legacy auto-drive `driveBranch` path remains unexercised for
   Workshops and interactive nodes; ATCS runs owner-driven.
 - G2 A branch holds no Judge, so an inadmissible worker request (its Reader reading is not 0) is
-  skipped by the owner with the `operate-parked` no-op and seals a `parked` no-fix naming why; there is
-  no per-slot revise loop, so that slot contributes nothing this round until a later research revisit
-  re-plans it.
+  skipped by the owner with the `operate-parked` no-op and seals a `parked` no-fix naming why. That
+  no-fix carries the refusal `inadmissible-request`, so the skip shows at the join as that branch's
+  `worker-result-admissible` FAIL (the join still collects). There is no per-slot revise loop, so the
+  slot contributes nothing this round until a later research revisit re-plans it. `prepare-workers`
+  removes an earlier skip receipt (`parked.json`) from every root it (re)prepares, since `prepare`
+  reuses the root of an identical package.
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.
@@ -257,8 +262,12 @@ Known gaps carried from earlier tasks:
 - G22 (Task 9) Adoption is single-writer; `designStateId` honesty rests on `sta` building the
   design-state from the implemented DB, which M6 does not cross-check.
 - G23 (Tasks 15, 17) The XTop Operator runs an active slot only interactively (since Issue #64 Task 5
-  the tool is `hybrid`: its batch path is the Pack's `operate-parked` no-op, never XTop); its
-  settlement in a real Run is unproven. Task 15's Site wrapper (`sites/linglong-atcs28/atcs-xtop-operator.sh`, contract
+  the tool is `hybrid`: its batch path is the Pack's `operate-parked` no-op, never XTop, which still
+  holds the tool's `xtop: 1` licence for its few seconds); its settlement in a real Run is unproven.
+  A stranded worker Team (a required member ended without a result) settles its operate execution
+  `failed` whatever the tool mode (Harness fix "settle stranded Team executions regardless of tool
+  mode", `test/contract/delegation-team-settlement.host.test.ts`); the owner begins the node again
+  for fresh Team identities (`knowledge/agent-team.md`). Task 15's Site wrapper (`sites/linglong-atcs28/atcs-xtop-operator.sh`, contract
   `<wrapper> <workspace> <slot>`) and the administrator's interactive binding still need L4
   qualification.
 - G24 (Task 15) `checkPack` is fit against `linglong-atcs28` and the local Site; against the frozen

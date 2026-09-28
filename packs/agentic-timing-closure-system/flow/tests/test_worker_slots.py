@@ -177,8 +177,39 @@ class ParkedBranchTest(unittest.TestCase):
         result = _run("capture-contribution", self.workspace, "w02")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         contribution = core.read_artifact(self.workspace / "state" / "contribution-w02.json", "contribution")
-        self.assertEqual([contribution["kind"], contribution["parked"], contribution["admissible"]], ["no-fix", True, True])
+        self.assertEqual([contribution["kind"], contribution["parked"]], ["no-fix", True])
         self.assertIn("worker request has 1 problem", contribution["diagnosis"])
+        # Fix round 1: the skip is visible at the join -- the result carries a refusal, so its
+        # branch's `worker-result-admissible` verdict FAILs (both outcomes still collect).
+        self.assertFalse(contribution["admissible"])
+        self.assertEqual([refusal["code"] for refusal in contribution["refusals"]], ["inadmissible-request"])
+
+    def test_operate_parked_refuses_when_it_cannot_read_the_request_or_the_working_state(self):
+        """Fix round 1: only a request that parses and fails validation is skipped."""
+        result = _run("operate-parked", self.workspace, "w02")  # no request written yet
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self._request("w02", targetPins=["U2/A"])
+        (self.workspace / "state" / "working-state.json").rename(self.workspace / "state" / "working-state.moved")
+        result = _run("operate-parked", self.workspace, "w02")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertFalse((self.workspace / self.workers["workers"]["w02"]["root"] / "parked.json").exists())
+
+    def test_a_re_prepare_removes_an_earlier_skip_receipt(self):
+        """Fix round 1: an identical package reuses its root; a later generation's real session there
+        must not meet the earlier generation's skip receipt."""
+        self._request("w02", targetPins=["U2/A"])
+        self.assertEqual(_run("operate-parked", self.workspace, "w02").returncode, 0)
+        receipt = self.workspace / self.workers["workers"]["w02"]["root"] / "parked.json"
+        self.assertTrue(receipt.exists())
+        result = _run("prepare-workers", self.workspace, self.working_state_path, self.site_caps_path,
+                      self.eda_profile_path, self.plan_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        again = json.loads((self.workspace / "state" / "workers.json").read_text())
+        self.assertEqual(again["workers"]["w02"]["root"], self.workers["workers"]["w02"]["root"], "the root is reused")
+        self.assertFalse(receipt.exists())
+        result = _run("capture-contribution", self.workspace, "w02")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stderr)["code"], "missing-input", "an active slot's capture needs its session")
 
     def test_capture_seals_a_parked_no_fix_and_collect_takes_every_slot(self):
         for slot in self.PARKED:

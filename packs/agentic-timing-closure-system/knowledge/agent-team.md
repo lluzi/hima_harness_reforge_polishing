@@ -37,9 +37,17 @@ refused, not queued: retry it once another branch frees a slot. At operate-worke
 Team only when the slot is active and its request reading is `tc_request_invalid_count` 0. For a parked
 slot (`parked: true` in its prepared package), or an active slot whose request reading is not 0, create
 no Team member: `work` the operate node, whose batch path `operate-parked` opens no XTop session, then
-complete it; the capture seals a `parked` no-fix that names why no session ran. `operate-parked`
-refuses an active slot with an admissible request. To free a delegation place, observe a finished
-child's result instead of cancelling it.
+complete it; the capture seals a `parked` no-fix that names why no session ran. For a skipped active
+slot that no-fix carries the refusal `inadmissible-request`, so its branch's `check-worker-results`
+verdict is FAIL (the join still leads to `collect`). `operate-parked` refuses an active slot with an
+admissible request, and refuses (does not skip) when it cannot read the request or the working state.
+To free a delegation place, observe a finished child's result instead of cancelling it.
+
+Recovery: when a Team member the Operator depends on (Researcher, Reviewer or the Operator itself)
+ends without an observed result -- cancelled, expired, refused or uncertain -- the Host settles that
+operate execution `failed` at once and it spends one Retry. Begin the node again: the new execution
+gets fresh Team identities, and the Team is created again from the Researcher. Do not `work` an
+active slot's operate node to escape a stranded Team: `operate-parked` refuses it.
 
 Format repair: a `result` refusal that says the Researcher or Reviewer "must return one JSON object"
 or "does not satisfy" its schema is a formatting refusal, not a plan refusal. The recipe allows one

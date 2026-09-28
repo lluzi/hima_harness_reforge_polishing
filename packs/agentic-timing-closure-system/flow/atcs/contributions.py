@@ -929,7 +929,7 @@ def seal(base_ref, result_refs, operation_trace):
     return core.stamp("contribution", body)
 
 
-def seal_parked(base_ref, reason):
+def seal_parked(base_ref, reason, refusal=None):
     """Seal the `no-fix` of a slot that ran no session at all (Issue #64 Task 5).
 
     A slot the plan parked, or an active slot whose worker request was
@@ -939,6 +939,8 @@ def seal_parked(base_ref, reason):
     operations and no `beforeDumpSha256`; its diagnosis is `reason` (for a
     parked slot, the plan's own reason, the package's `problem`). The same
     identity checks as `seal` bind it to the slot's prepared workspace.
+    `refusal` (a ``{"code", "detail"}``), given for an active slot that was
+    skipped, makes the no-fix inadmissible so the skip shows at the join.
     """
     manifest = core.require(base_ref, "workspaceManifest", "base_ref")
     work_package = core.require(base_ref, "workPackage", "base_ref")
@@ -967,8 +969,8 @@ def seal_parked(base_ref, reason):
         "predicted": predicted,
         "validationLevel": validation_level,
         "diagnosis": f"parked: {reason.strip()}",
-        "admissible": True,
-        "refusals": [],
+        "admissible": refusal is None,
+        "refusals": [] if refusal is None else [dict(refusal)],
         "outOfScope": [],
     }
     return core.stamp("contribution", body)

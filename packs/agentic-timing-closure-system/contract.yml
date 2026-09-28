@@ -359,7 +359,9 @@ tools:
       mutation budget, logged to its ops.jsonl and followed by the XTop gain in gain.jsonl; atcs_undo
       reverts the last kept mutation. An active slot runs only interactively, as its worker Team
       Operator's session. The batch path is the Pack's operate-parked no-op: it opens no XTop session,
-      settles a parked slot's operate node and refuses an active slot (Issue #64 Task 5).
+      settles the operate node of a parked slot or of an active slot whose request is inadmissible, and
+      refuses any other active slot (Issue #64 Task 5). As a Job of this tool it still holds the xtop: 1
+      licence (and one Site Job) for its few seconds, so size the Site's xtop licences to the slots.
     inputs: [WORKSPACE, SLOT]
     licences: { xtop: 1 }
     interactive:
