@@ -231,8 +231,10 @@ batch:
 
 - **Rank.** Sessions are ordered by ``blockerCoverage`` (how many of this
   call's `worst_checks` -- the worst failing check per scenario and mode,
-  see `worst_checks` -- the session targets, by check key in its
-  ``targets`` or by endpoint pin in its ``targetPins``) descending, then
+  see `worst_checks` -- the session targets by `covers`: check key in its
+  ``targets``, or the key's endpoint or the check's raw PT endpoint
+  (`worst_endpoints`, from `worst_check_endpoints`) in its ``targetPins``;
+  the campaign-plan Reader applies the same rule) descending, then
   ``value`` (the predicted WNS gain of its worst target check, ns)
   descending, then ``valueDetail.rankTnsGain`` descending (the target
   checks' TNS gain plus the opposite checks' signed TNS change, so an
@@ -640,10 +642,44 @@ def _number(value):
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
 
 
-def _coverage(contribution, worst):
-    targets = set(contribution.get("targets") or [])
-    pins = set(contribution.get("targetPins") or [])
-    return sorted(key for key in worst if key in targets or key.split("|", 2)[-1] in pins)
+def worst_check_endpoints(observation):
+    """``{key: raw PT endpoint or None}`` for each `worst_checks` key of `observation`.
+
+    A check in a reserved PT path group is keyed ``<endpoint>@<group>``
+    (`atcs.reports.parse_path_report`); its raw ``endpoint`` is the pin a
+    work package's ``targetPins`` names.
+    """
+    checks = observation.get("checks") if isinstance(observation, dict) else None
+    checks = checks if isinstance(checks, dict) else {}
+    endpoints = {}
+    for key in worst_checks(observation):
+        entry = checks.get(key)
+        raw = entry.get("endpoint") if isinstance(entry, dict) else None
+        endpoints[key] = raw if isinstance(raw, str) and raw else None
+    return endpoints
+
+
+def covers(key, raw_endpoint, targets, target_pins):
+    """Whether a slot with `targets` and `target_pins` works the blocker check `key` (Issue #64 Task 5).
+
+    The one coverage rule the campaign-plan Reader (blockers first) and the
+    recipe's ``blockerCoverage`` both apply: the check key is in ``targets``
+    (which is how a check ending at a top-level port, with no pin path, is
+    named), or the key's endpoint or the check's raw PT endpoint is in
+    ``targetPins``.
+    """
+    pins = set(target_pins or [])
+    if key in set(targets or []):
+        return True
+    endpoint = key.split("|", 2)[-1] if isinstance(key, str) else None
+    return endpoint in pins or (raw_endpoint is not None and raw_endpoint in pins)
+
+
+def _coverage(contribution, worst, endpoints=None):
+    endpoints = endpoints or {}
+    targets = contribution.get("targets") or []
+    pins = contribution.get("targetPins") or []
+    return sorted(key for key in worst if covers(key, endpoints.get(key), targets, pins))
 
 
 def _session_base_mismatch(sessions):
@@ -664,11 +700,11 @@ def _session_base_mismatch(sessions):
     return {contribution["id"] for contribution in sessions if contribution.get("beforeDumpSha256") != majority}
 
 
-def _recipe(sessions, excluded, worst, identity_excluded=()):
+def _recipe(sessions, excluded, worst, identity_excluded=(), endpoints=None):
     """The ranked recipe over admitted `xtop-session` Contributions -- see the module docstring."""
     ranked = []
     for contribution in sessions:
-        covered = _coverage(contribution, worst)
+        covered = _coverage(contribution, worst, endpoints)
         tns_gain = (contribution.get("valueDetail") or {}).get("rankTnsGain")
         ranked.append((len(covered), _number(contribution.get("value")), _number(tns_gain), contribution, covered))
     ranked.sort(key=lambda item: (-item[0], -item[1], -item[2], item[3]["id"]))
@@ -728,7 +764,7 @@ def _recipe(sessions, excluded, worst, identity_excluded=()):
     }
 
 
-def analyze(base_state_id, contributions, resolutions, worst_checks=None):
+def analyze(base_state_id, contributions, resolutions, worst_checks=None, worst_endpoints=None):
     """Deterministic three-way composition facts over `contributions` on `base_state_id`.
 
     `contributions` is a list of sealed `contribution` artifacts (see the
@@ -793,7 +829,8 @@ def analyze(base_state_id, contributions, resolutions, worst_checks=None):
     conflicts.extend(pairwise_conflicts)
     conflicts.sort(key=lambda conflict: conflict["key"])
 
-    recipe = _recipe(session_contributions, excluded_sessions, worst, identity_excluded)
+    endpoints = worst_endpoints if isinstance(worst_endpoints, dict) else {}
+    recipe = _recipe(session_contributions, excluded_sessions, worst, identity_excluded, endpoints)
     ranked_ids = [entry["contribution"] for entry in recipe["sessions"]]
     ranked_set = set(ranked_ids)
     other_ids = [contribution_id for contribution_id in considered_ids if contribution_id not in ranked_set]

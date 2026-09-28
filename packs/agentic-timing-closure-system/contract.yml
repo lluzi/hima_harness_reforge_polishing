@@ -1118,10 +1118,13 @@ workshops:
       state/worker-slots.json (workerSlotPolicy): slots up to workerSlots may be active and every slot
       above workerSlots must be parked. Blockers first: the worst setup check and the worst hold check
       of every required scenario in the current observation (state/observation.json; the most negative
-      known slack per scenario and mode) must each end at a pin in some active slot's targetPins, and
-      the worst clusters take the lowest slots. Active slots share no instance: an instance in one
-      active slot's editDomain.instances, or owning one of its targetPins, is in no other active slot's
-      domain or target pins. An active slot's package holds problem, target check keys, edit domain
+      known slack per scenario and mode) must each be covered by some active slot: its endpoint pin
+      (the check key's, or PT's raw endpoint for a key <pin>@<group>) in the slot's targetPins, or,
+      for a check ending at a top-level port, its check key in the slot's targets. The worst clusters
+      take the lowest slots. Active slots share no instance: an instance in one active slot's
+      editDomain.instances, or owning one of its targetPins, is in no other active slot's domain or
+      target pins. Active slots may share edit-domain nets; the ranked recipe resolves any command
+      that touches an instance a higher-ranked session already changed. An active slot's package holds problem, target check keys, edit domain
       (instances, nets and regions [x1, y1, x2, y2] for moves), protected objects, may-affect checks,
       admissible actions (size_cell, insert_buffer, delete_buffer, and pg_local_adjust only when
       siteCapabilities.pgVerification is true), budget, targetPins (the blockers' full hierarchical

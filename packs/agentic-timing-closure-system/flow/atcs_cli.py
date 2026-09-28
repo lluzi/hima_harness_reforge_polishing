@@ -1779,9 +1779,10 @@ def _cmd_compose_facts(workspace, args):
     # working state's own (an observation of another state names no blocker here).
     observation = _read_json_or_default(_paths(workspace)["observation"], {})
     observed_state = observation.get("designStateId") if isinstance(observation, dict) else None
-    worst = (composition.worst_checks(observation)
-             if observed_state in (None, working_state["id"]) else [])
-    body = composition.analyze(working_state["id"], collected["contributions"], resolutions, worst_checks=worst)
+    endpoints = (composition.worst_check_endpoints(observation)
+                 if observed_state in (None, working_state["id"]) else {})
+    body = composition.analyze(working_state["id"], collected["contributions"], resolutions,
+                               worst_checks=sorted(endpoints), worst_endpoints=endpoints)
     return _paths(workspace)["composition_facts"], body
 
 

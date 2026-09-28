@@ -843,11 +843,12 @@ def _uncovered_blocker_problems(workspace, working_state_id, active, core, compo
     """One problem per blocker no active slot targets (Issue #64 Task 5: blockers first).
 
     The blockers are the worst setup check and the worst hold check of each required
-    scenario (`composition.worst_checks`, the same rule that ranks the merged recipe),
-    read from `state/observation.json` -- the evidence the plan Workshop cites -- with
-    the required scenarios from the stamped `state/policy.json`. A blocker is covered
-    when its endpoint (the check key's, or PT's raw endpoint) is in some active slot's
-    `targetPins`. An observation of another design-state than the working one, or an
+    scenario (`composition.worst_check_endpoints`), read from `state/observation.json`
+    -- the evidence the plan Workshop cites -- with the required scenarios from the
+    stamped `state/policy.json`. A blocker is covered when some active slot covers it by
+    `composition.covers`, the rule that also ranks the merged recipe: its check key in
+    the slot's `targets` (a top-level port has no pin path), or its key endpoint or PT's
+    raw endpoint in the slot's `targetPins`. An observation of another design-state than the working one, or an
     absent or unverifiable observation or policy, is one problem: the blockers cannot be
     established, so the plan cannot be shown to put them first.
     """
@@ -862,17 +863,12 @@ def _uncovered_blocker_problems(workspace, working_state_id, active, core, compo
     if (working_state_id is None or observation.get("designStateId") != working_state_id
             or not isinstance(required, list)):
         return 1
-    pins = set()
-    for package in active.values():
-        pins.update(pin for pin in package.get("targetPins") or [] if isinstance(pin, str))
-    checks = observation.get("checks") if isinstance(observation.get("checks"), dict) else {}
     uncovered = 0
-    for key in composition_mod.worst_checks(observation):
-        scenario, _mode, endpoint = key.split("|", 2)
-        if scenario not in required:
+    for key, raw in composition_mod.worst_check_endpoints(observation).items():
+        if key.split("|", 2)[0] not in required:
             continue
-        raw = (checks.get(key) or {}).get("endpoint") if isinstance(checks.get(key), dict) else None
-        if endpoint not in pins and raw not in pins:
+        if not any(composition_mod.covers(key, raw, package.get("targets") or [], package.get("targetPins") or [])
+                   for package in active.values()):
             uncovered += 1
     return uncovered
 

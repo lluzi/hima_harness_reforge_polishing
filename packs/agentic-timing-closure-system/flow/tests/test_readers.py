@@ -761,6 +761,15 @@ class CampaignPlanReaderTest(unittest.TestCase):
             k: v for k, v in observation.items() if k not in ("schema", "id")}))
         self.assertEqual(self._count(self._six()), 0)
 
+    def test_a_worst_check_at_a_top_level_port_is_covered_by_its_check_key_in_targets(self):
+        """Fix round 1: a port endpoint has no `/`, so no targetPin can name it; the check key in an
+        active slot's `targets` covers it (the same `composition.covers` rule the recipe ranks by)."""
+        self._write_observation({f"{self.SCENARIO}|setup|out_port": -0.20, f"{self.SCENARIO}|hold|U2/A": -0.10})
+        packages = self._six()
+        self.assertGreaterEqual(self._count(packages), 1, "a port blocker named nowhere is uncovered")
+        packages["w01"]["targets"].append(f"{self.SCENARIO}|setup|out_port")
+        self.assertEqual(self._count(packages), 0)
+
     def test_the_worst_check_of_a_scenario_that_is_not_required_may_wait(self):
         self._write_observation({f"{self.SCENARIO}|setup|U1/A": -0.20, f"{self.SCENARIO}|hold|U2/A": -0.10,
                                  "func_other|setup|U9/A": -0.50})

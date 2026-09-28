@@ -335,7 +335,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.to === 'bind-worker-slots').map(edge => [edge.from, edge.revisit === true]).sort(),
     [['revisit-research', true], ['risk-query', false]]);
   const planner = pack.contract.workshops.find(item => item.id === 'plan-campaign')!;
-  for (const words of [/parked/, /workerSlots/, /worst setup check and the worst hold check/, /targetPins/, /share no instance/]) {
+  for (const words of [/parked/, /workerSlots/, /worst setup check and the worst hold check/, /targetPins/, /share no instance/, /check key in the slot.s targets/, /may share edit-domain nets/]) {
     assert.match(planner.purpose, words, `plan-campaign purpose states ${words}`);
   }
   // A parked slot's operate node is the batch no-op `operate-parked`, never an XTop session; an active
