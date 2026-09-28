@@ -1037,6 +1037,23 @@ def _read_integration_state(report, workspace, extra, mods):
     ]
 
 
+def _recipe_batch_provenance(workspace):
+    """Whether the workspace's own state shows a recipe batch (Issue #64 Task 6)."""
+    state_dir = Path(workspace) / "state"
+    for name, test in (("replay-request.json", lambda doc: doc.get("mode") == "recipe"),
+                       ("integration-state.json",
+                        lambda doc: isinstance(doc.get("chosen"), dict) and bool(doc["chosen"].get("eco")))):
+        path = state_dir / name
+        if path.is_file() and not path.is_symlink():
+            try:
+                doc = _load_json(path)
+            except ValueError:
+                continue
+            if isinstance(doc, dict) and test(doc):
+                return True
+    return False
+
+
 def _read_precheck_evidence(report, workspace, extra, mods):
     """A stamped `atcs.precheck-evidence/1` artifact
     (`atcs.verification.precheck_evidence(merge_commit, spef_net_names_path)`):
@@ -1058,7 +1075,17 @@ def _read_precheck_evidence(report, workspace, extra, mods):
     _verify_identity(obj, "precheck-evidence", core)
 
     new_nets = obj.get("newNets")
-    if not isinstance(new_nets, list) or not all(isinstance(net, str) for net in new_nets):
+    batch_kind = obj.get("batchKind", "legacy")
+    if batch_kind not in ("legacy", "recipe"):
+        raise ValueError("precheck-evidence.batchKind must be legacy or recipe")
+    # A recipe pre-check never gates, so the claim needs provenance in the workspace itself: a
+    # recipe replay-request, or an integration-state that chose an ECO pair. Without it, the
+    # evidence gates exactly like a legacy batch.
+    recipe_provenance = _recipe_batch_provenance(workspace)
+    if batch_kind == "recipe" and new_nets is None:
+        if not isinstance(obj.get("newNetsUnknown"), str) or not obj["newNetsUnknown"]:
+            raise ValueError("precheck-evidence.newNets is null without newNetsUnknown")
+    elif not isinstance(new_nets, list) or not all(isinstance(net, str) for net in new_nets):
         raise ValueError("precheck-evidence.newNets must be a list of strings")
 
     source = obj.get("spefNetNames")
@@ -1076,7 +1103,23 @@ def _read_precheck_evidence(report, workspace, extra, mods):
         ]
 
     result = verification_mod.presta_qualification(new_nets, spef_net_names)
-    return [_emit("tc_unqualified_rc_net_count", "count", result["count"])]
+    count = result["count"]
+    if batch_kind == "recipe" and new_nets is None:
+        count = core.unknown(f"the batch's new nets are unknown: {obj['newNetsUnknown']}")
+    if batch_kind == "legacy" or not recipe_provenance:
+        # A legacy M5 batch uses the pre-check as its decision basis: its unqualified nets gate it.
+        gate = count
+    else:
+        # Issue #64 Task 6: a recipe batch's pre-check cannot model the nets auto-fix inserts, so
+        # it never gates the batch -- refreshed PrimeTime is the only judge. It must still state
+        # honestly whether it is predictive: exactly when every new net is known and qualified.
+        predictive = core.is_known(count) and core.value_of(count) == 0
+        if obj.get("predictive") is not predictive:
+            raise ValueError(
+                f"precheck-evidence.predictive is {obj.get('predictive')!r}, the evidence shows {predictive!r}"
+            )
+        gate = core.known(0)
+    return [_emit("tc_unqualified_rc_net_count", "count", count), _emit("tc_presta_gate_net_count", "count", gate)]
 
 
 _EVALUATION_FIELDS = (

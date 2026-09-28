@@ -426,8 +426,8 @@ tools:
     recommendedVersion: XTop 2025.09.tmp15
     file: flow/atcs_cli.py
     description: Validate the integration plan, prepare the replay request and replay its steps in XTop from the common base (M5).
-    inputs: [WORKSPACE, SITE_CAPABILITIES]
-    licences: { xtop: 1 }
+    inputs: [WORKSPACE, SITE_CAPABILITIES, AUTO_FINISH]
+    licences: { xtop: 2 }
     argv:
       - python3
       - ${WORKSPACE}/flow/atcs_cli.py
@@ -436,6 +436,7 @@ tools:
       - ${WORKSPACE}/state/working-state.json
       - ${WORKSPACE}/research/requests/integration-plan.json
       - ${SITE_CAPABILITIES}
+      - ${AUTO_FINISH}
 
   - id: reconcile
     file: flow/atcs_cli.py
@@ -623,12 +624,14 @@ strategy:
   # Issue #64 Task 5: how many of the six parallel worker branches may hold an active XTop expert
   # Team; slots above it are parked. Each active branch holds one Site Job at a time.
   workerSlots: { type: number, unit: slots, min: 1, max: 6, default: 6 }
+  autoFinish: { type: number, unit: flag, min: 0, max: 1, default: 1, precision: 0 }
 
 words:
   target_setup_wns_ns: { label: target setup WNS, unit: ns }
   target_hold_wns_ns: { label: target hold WNS, unit: ns }
   maxPaths: { label: max paths per scenario query, unit: paths }
   workerSlots: { label: parallel worker slots, unit: slots }
+  autoFinish: { label: "auto-finish after the expert recipe (1 on, 0 off)", unit: flag }
 
 knowledge:
   - file: method-and-benchmark.md

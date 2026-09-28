@@ -65,6 +65,13 @@ values:
       A candidate's newly-introduced nets that lack a qualifying SPEF entry
       (`atcs.verification.presta_qualification`); unknown net-name lists
       never qualify as clean.
+  tc_presta_gate_net_count:
+    unit: count
+    description: >-
+      New nets that block using the pre-check as a decision basis. A legacy batch: its
+      `tc_unqualified_rc_net_count`. A recipe batch (Issue #64 Task 6): 0, since its pre-check
+      cannot model the nets auto-fix inserts and refreshed PrimeTime is the only judge; the
+      evidence states `predictive: false` whenever a new net is unknown or unqualified.
   tc_xtop_setup_wns_ns:
     unit: ns
     mode: [setup]

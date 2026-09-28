@@ -276,6 +276,7 @@ nodes:
       tool: replay-prepare
       arguments:
         SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+        AUTO_FINISH: { from: strategy, name: autoFinish }
   - id: reconcile
     kind: act
     parameters: { tool: reconcile }
