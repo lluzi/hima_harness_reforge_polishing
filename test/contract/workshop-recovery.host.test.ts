@@ -107,6 +107,7 @@ test('the owner is told plainly that a Workshop entry is its one result and must
     const instruction = (advice.data as { instruction?: string }).instruction ?? '';
     assert.match(instruction, /single entry execution is this Workshop's result/);
     assert.match(instruction, /must write .*research\/analysis\/result\.txt/);
+    assert.match(instruction, /write or touch/);
     assert.match(instruction, /explor.*before writing the entry/i);
     assert.match(instruction, /missing .*failed attempt/i);
   } finally {
@@ -303,6 +304,69 @@ test('a person pausing and continuing a passed node only lifts that pause; nothi
     const plain = await act('continue', { nodeId: 'read-analysis' }, 'human');
     assert.equal(plain.kind, 'accepted', plain.reason);
     assert.equal(host.ctx.hima.ledger.run(runId)!.currentNode, before.currentNode);
+  } finally {
+    if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
+});
+
+test('clear the Reader first, then continue the producer: new work still starts at the producer', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(home);
+  await workshopPack(home);
+  const host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const actor = String(owner.id);
+    const started = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: actor });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    runId = started.run.id;
+    let serial = 0;
+    const act = (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}, origin: 'agent' | 'human' = 'agent') => {
+      const control = host.ctx.hima.ledger.run(runId!)!.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor, expectedEpoch: control.epoch, origin,
+        expectedRevision: control.revision, requestId: `order-${++serial}`, action, ...fields });
+    };
+    const settle = (id: string, phase: 'ready' | 'failed') => waitUntil(`${id} ${phase}`, () =>
+      host.ctx.hima.executionContext(runId!).executions.find((item) => item.id === id)?.phase === phase, 10_000, 25);
+    const a = await act('begin', { nodeId: 'analyze' }); const aId = a.receipt!.executionId!;
+    await act('recommend', { executionId: aId });
+    await act('write', { executionId: aId, path: 'entry.sh', content: writes });
+    await act('work', { executionId: aId }); await settle(aId, 'ready');
+    assert.equal((await act('complete', { executionId: aId })).kind, 'accepted');
+    await rm(path.join(started.workspace, 'research/analysis/result.txt'));
+    const r = await act('begin', { nodeId: 'read-analysis' }); const rId = r.receipt!.executionId!;
+    await act('work', { executionId: rId }); await settle(rId, 'failed');
+    const firstCode = host.ctx.hima.ledger.records({ runId, type: 'code' }).find((record) => record.type === 'code' && record.nodeId === 'analyze');
+    assert.ok(firstCode);
+
+    // The live order (#64 D2): the person clears the blocked Reader first, which lifts every pause.
+    const cleared = await act('continue', { nodeId: 'read-analysis' }, 'human');
+    assert.equal(cleared.kind, 'accepted', cleared.reason);
+    assert.deepEqual(cleared.context.run.control?.paused, []);
+    const producer = await act('continue', { nodeId: 'analyze' }, 'human');
+    assert.equal(producer.kind, 'accepted', producer.reason);
+    assert.equal(producer.context.run.currentNode, 'analyze', 'a cleared but not re-begun blocked Reader is still stuck work the producer supersedes');
+    const again = await act('begin', { nodeId: 'analyze' });
+    assert.equal(again.kind, 'accepted', again.reason);
+
+    // The superseded version is historical everywhere a person or the owner reads evidence (N2).
+    const remote = await import(new URL('../../packages/harness/lib/remote.js', import.meta.url).href);
+    const view = remote.runView(host.ctx.hima.ledger, host.ctx.hima.ledger.run(runId)!);
+    const restart = view.revisions?.find((entry: { revisionId: string }) => entry.revisionId.startsWith('continue:'));
+    assert.ok(restart, 'the restart is in the history view');
+    assert.ok(restart.invalidatedRecordIds.includes(firstCode.id));
+    assert.deepEqual(restart.changedNodes, ['analyze']);
+    assert.equal(view.resumes.some((resume: { nodeId: string }) => resume.nodeId === 'analyze'), false, 'a restart is not shown as a blocker resume');
+    const cited = await act('analyze', { nodeId: 'analyze', analysis: {
+      question: 'Does the first version explain the result?', hypotheses: [], comparisons: [],
+      claims: [{ text: 'The first version wrote the result.', cites: [firstCode.id], measurements: [] }],
+      limitations: ['probe'], nextExperiments: ['rerun'],
+    } });
+    assert.equal(cited.kind, 'refused');
+    assert.match(cited.reason ?? '', /historical, not current evidence/);
   } finally {
     if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
     await host.dispose(); await home.h.dispose();

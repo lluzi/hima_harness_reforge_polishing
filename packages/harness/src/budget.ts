@@ -154,7 +154,9 @@ export function waitedMsOf(ledger: Ledger, runId: string): number {
   let waited = 0;
   let since = 0;
   for (const resumed of records) {
-    if (resumed.type !== 'resumed') continue;
+    // A restart (#64 D2) closes no wait of its own; the blocked executions it supersedes each carry
+    // their own ordinary `resumed`.
+    if (resumed.type !== 'resumed' || resumed.kind === 'restart') continue;
     const blocker = records.findLast((r) => r.type === 'blocker' && r.seq > since && r.seq < resumed.seq);
     const packWait = blocker === undefined
       ? records.findLast((r) => r.type === 'node' && r.kind === 'wait' && r.state === 'blocked'
@@ -573,7 +575,7 @@ export interface RetryStanding {
 export function retryStanding(ledger: Ledger, runId: string, nodeId: string): RetryStanding {
   const allowance = existingRun(ledger, runId).budget?.retryAllowance ?? defaultRetryAllowance;
   const owned = existingRun(ledger, runId).control !== undefined;
-  const resumedAt = ledger.records({ runId }).findLast((r) => r.type === 'resumed' && (!owned || r.nodeId === nodeId))?.seq ?? 0;
+  const resumedAt = ledger.records({ runId }).findLast((r) => r.type === 'resumed' && r.kind !== 'restart' && (!owned || r.nodeId === nodeId))?.seq ?? 0;
   const failedSinceResume = nodeRecordsOfGeneration(ledger, runId).filter((r) => r.nodeId === nodeId && r.state === 'retrying' && r.seq > resumedAt).length;
   const spent = failedSinceResume + 1;
   return { spent, allowance, exhausted: spent >= allowance };
