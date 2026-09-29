@@ -15,7 +15,7 @@ import { appendFile, cp, mkdir, readFile, realpath, writeFile } from 'node:fs/pr
 import path from 'node:path';
 import { stringify } from 'yaml';
 import {
-  BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest, loadPack, packDigestExcludes, runDelegations,
+  BUILTIN_TCL_ADAPTER_DIGEST, delegationRuntimePolicy, interactiveCommandsDigest, loadPack, packDigestExcludes, runDelegations,
   type ExecutionActionRequest, type ExecutionActionResult, type JobRecord, type LedgerRecord, type RunView,
 } from '@hima/harness';
 import { homePatchFile, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
@@ -586,5 +586,58 @@ test('the owner advancing one branch leaves the other branch\'s Operator session
       assert.equal(sent.status, 'completed', `${name} in branch b after branch a advanced: ${JSON.stringify(sent)}`);
     }
     await waitUntil('branch b interactive execution is ready', () => phase(operate.get(b.id)!) === 'ready', 10_000, 25);
+  });
+});
+
+test('a pause on one branch\'s node holds only that branch: the other branch\'s Team result is adopted and the join is reached (#64 review I4)', async (t) => {
+  // Live: pause [operate-worker-02] refused every child-result adoption Run-wide, so no other
+  // branch could finish and the six-branch join stalled. A node pause holds that node's own
+  // execution and branch; the rest of the fork goes on.
+  await forkedCampaign(t, 2, async (driven) => {
+    const owner = ownerCalls(driven);
+    const { act, context, node } = owner;
+    const { operate, operatorOf, interactive, operateOnce, settleOperate, planHashOf } = await teamsReady(driven, owner);
+    const [a, b] = branches;
+    const opened = await Promise.all(branches.map((branch) => interactive(branch, { action: 'open', requestId: `open-${branch.id}` })));
+    for (const [index, result] of opened.entries()) assert.equal(result.status, 'opened', `branch ${branches[index]!.id}: ${JSON.stringify(result)}`);
+    // Branch a's Operator finishes its session; then the owner holds branch a's node.
+    await operateOnce(a, opened[0]!.session.toolSessionId);
+    await waitUntil('branch a interactive execution is ready', () => owner.phase(operate.get(a.id)!) === 'ready', 10_000, 25);
+    const paused = await act('pause', { nodeId: a.operate });
+    assert.equal(paused.kind, 'accepted', JSON.stringify(paused.reason ?? paused));
+    const deps = (driven.host.ctx.hima as any).deps();
+    assert.equal(delegationRuntimePolicy(deps, operatorOf.get(b.id)!)?.writesAllowed, true, 'branch b\'s Operator keeps its write grant');
+    assert.equal(delegationRuntimePolicy(deps, operatorOf.get(a.id)!)?.writesAllowed, false, 'branch a\'s Operator is held');
+
+    // Branch b runs its whole session, its Operator result is adopted and its capture runs.
+    await operateOnce(b, opened[1]!.session.toolSessionId);
+    await settleOperate(b);
+    await node(b.capture);
+
+    // Branch a stays held: its Operator's result cannot be adopted while the pause stands.
+    const row = runDelegations(deps, driven.runId).find((item) => item.childSessionId === operatorOf.get(a.id))!;
+    const text = JSON.stringify({ schema: 'fixture-operator/1', planSha256: planHashOf.get(a.id) });
+    const observed = await driven.host.ctx.hima.ledger.appendDelegation(driven.runId, { delegationId: row.delegationId, parentSessionId: driven.actor,
+      childSessionId: row.childSessionId, requestId: `result-${row.delegationId}-held`, requestDigest: 'b'.repeat(64),
+      event: 'result-observed', payload: { candidate: true, source: 'native-live-session', handoff: {
+        outputIdentity: createHash('sha256').update(JSON.stringify([{ type: 'text', text }])).digest('hex'),
+        contract: { recordId: row.contractRecordId, requestDigest: row.requestDigest },
+        output: { text, content: [{ type: 'text', text }], truncated: false }, completedTurn: { turn: 1, endSeq: 1 },
+        unknowns: [], evidence: { artifactRefs: [], diffRefs: [], testRefs: [], limitations: ['synthetic model result'] } } } });
+    const control = owner.control();
+    const heldAdoption = await driven.host.ctx.hima.delegate({ runId: driven.runId, actor: driven.actor, action: 'adopt', delegationId: row.delegationId,
+      resultRecordId: observed.id, requestId: `adopt-${row.delegationId}-held`, expectedEpoch: control.epoch, expectedRevision: control.revision } as never) as Record<string, any>;
+    assert.equal(heldAdoption.status, 'refused', JSON.stringify(heldAdoption));
+    assert.match(heldAdoption.reason, /unheld/);
+
+    // Lifting the pause lets branch a finish, and the join is reached.
+    const lifted = await act('continue', { nodeId: a.operate });
+    assert.equal(lifted.kind, 'accepted', JSON.stringify(lifted.reason ?? lifted));
+    await settleOperate(a);
+    await node(a.capture);
+    assert.deepEqual(context().available, ['judge'], 'the join is reached once both branches captured');
+    await node('judge');
+    assert.equal(context().run.fork, undefined, 'the join closed the fork');
+    void operate;
   });
 });

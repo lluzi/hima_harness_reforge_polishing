@@ -124,6 +124,30 @@ export function unreservedDelegationMs(deps: FabricDeps, run: RunRecord, entries
     if (!run.budget) return undefined;
     return delegationLanes(run) * run.budget.timeBoxMs - entries.reduce((total, entry) => total + chargedMs(deps, entry, now), 0);
 }
+/** The node execution a delegation belongs to, when it belongs to one. */
+interface DelegationTarget { readonly nodeId?: string; readonly executionId?: string }
+const targetOf = (effective: { readonly nodeRef?: string; readonly recipe?: { readonly executionId: string };
+    readonly operator?: { readonly nodeId: string; readonly executionId: string } }): DelegationTarget => ({
+    ...(effective.recipe?.executionId ?? effective.operator?.executionId) === undefined ? {} : { executionId: (effective.recipe?.executionId ?? effective.operator?.executionId)! },
+    ...(effective.nodeRef ?? effective.operator?.nodeId) === undefined ? {} : { nodeId: (effective.nodeRef ?? effective.operator?.nodeId)! },
+});
+/**
+ * Whether the Run's holds reach this delegation (#64 review I4). A hold is keyed as the execution
+ * authority is: `*` holds every delegation; a node pause holds that node's own execution and every
+ * execution in the same fork branch, and never another branch's Team or the join above them. A
+ * delegation bound to no node is held only by a Run-wide hold.
+ */
+function heldFor(run: RunRecord, target: DelegationTarget): boolean {
+    const control = run.control;
+    if (!control || control.paused.length === 0) return false;
+    if (control.paused.includes('*')) return true;
+    const execution = target.executionId === undefined ? undefined : control.executions[target.executionId];
+    const nodeId = execution?.nodeId ?? target.nodeId;
+    if (nodeId !== undefined && control.paused.includes(nodeId)) return true;
+    const branchId = execution?.branchId;
+    return branchId !== undefined && Object.values(control.executions).some(other => other.branchId === branchId
+        && other.supersededBy === undefined && control.paused.includes(other.nodeId));
+}
 function policy(deps: FabricDeps, run: RunRecord, entry: RunDelegationView, admitCompletedFollowup = false): Pick<DelegationRuntimePolicy, 'toolsAllowed' | 'writesAllowed' | 'reason'> {
     if (run.control?.owner !== entry.parentSessionId || run.control.epoch !== entry.reservation.admittedEpoch)
         return { toolsAllowed: false, writesAllowed: false, reason: 'The parent owner epoch changed.' };
@@ -135,8 +159,8 @@ function policy(deps: FabricDeps, run: RunRecord, entry: RunDelegationView, admi
         return { toolsAllowed: false, writesAllowed: false, reason: 'The original task or Run deadline has expired.' };
     if (!['intent', 'accepted'].includes(entry.state) && !(admitCompletedFollowup && entry.state === 'completed'))
         return { toolsAllowed: false, writesAllowed: false, reason: `The delegation is ${entry.state}.` };
-    if (run.control.paused.length)
-        return { toolsAllowed: true, writesAllowed: false, reason: 'The parent Run is paused; read-only observation remains available.' };
+    if (heldFor(run, targetOf(entry.effective)))
+        return { toolsAllowed: true, writesAllowed: false, reason: 'The parent Run holds this delegation\'s node or branch; read-only observation remains available.' };
     return { toolsAllowed: true, writesAllowed: true };
 }
 export function delegationRuntimePolicy(deps: FabricDeps, childSessionId: string): DelegationRuntimePolicy | undefined {
@@ -165,12 +189,12 @@ function authority(deps: FabricDeps, request: RunDelegationRequest): DelegationA
     const rows = () => records(deps, request.runId);
     const current = () => { const run = deps.ledger.run(request.runId); if (!run?.control)
         throw new Error('This Run has no native owner.'); return run; };
-    const authorized = (write = true) => {
+    const authorized = (write = true, target: DelegationTarget = {}) => {
         const run = current();
         const control = run.control!;
         if (control.epoch !== request.expectedEpoch || control.owner !== request.actor && !(request.origin === 'human' && control.guideSessionId === request.actor))
             throw new Error('Delegation owner or epoch is stale.');
-        if (write && (control.revision !== request.expectedRevision || run.status !== 'running' || control.stop || control.paused.length || runExitFence(run) || executionContext(deps, run.id).budget.phase !== 'active'))
+        if (write && (control.revision !== request.expectedRevision || run.status !== 'running' || control.stop || heldFor(run, target) || runExitFence(run) || executionContext(deps, run.id).budget.phase !== 'active'))
             throw new Error('Re-read the Run: its revision, hold, exit fence or budget does not permit delegation.');
         return run;
     };
@@ -191,7 +215,7 @@ function authority(deps: FabricDeps, request: RunDelegationRequest): DelegationA
                 const prior = runDelegations(deps, run.id).find(r => r.delegationId === input.contract.delegationId);
                 if (prior)
                     return { kind: 'duplicate', durable: { requestDigest: prior.requestDigest, state: prior.state, childSessionId: prior.state === 'intent' ? undefined : prior.childSessionId, effective: prior.effective, initialMessageId: prior.initialMessageId, reason: prior.reason } };
-                authorized();
+                authorized(true, targetOf({ ...input.proposed, ...(input.contract.nodeRef === undefined ? {} : { nodeRef: input.contract.nodeRef }) }));
                 if (input.contract.parentSessionId !== run.control!.owner || input.contract.runRef?.runId !== run.id || input.contract.recipient.sessionId !== run.control!.owner)
                     throw new Error('Delegation contract is not bound to this actual owner and Run.');
                 if (rows().some(r => r.requestId === request.requestId))
@@ -248,7 +272,7 @@ function authority(deps: FabricDeps, request: RunDelegationRequest): DelegationA
                             messageId?: string;
                         } | undefined)?.messageId, uncertain: !sent };
                 }
-                const run = authorized();
+                const run = authorized(true, targetOf(entry.effective));
                 // A proven result closes tool authority, but the same continuable child may take
                 // one explicitly admitted refinement. Only this locked admission ignores the
                 // completed state; every other owner/epoch/deadline/hold/budget fence remains.
@@ -319,7 +343,7 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
             if (prior) return prior.requestDigest === requestDigest && prior.event === 'result-adopted'
                 ? { status: 'duplicate', artifacts: [], unknowns: [], adoptedRecordId: prior.id }
                 : { status: 'refused', artifacts: [], unknowns: [], reason: 'Adoption request identity already names different intent.' };
-            if (latest.control.revision !== request.expectedRevision || latest.status !== 'running' || latest.control.stop || latest.control.paused.length
+            if (latest.control.revision !== request.expectedRevision || latest.status !== 'running' || latest.control.stop || heldFor(latest, targetOf(found.effective))
                 || runExitFence(latest) || executionContext(deps, latest.id).budget.phase !== 'active')
                 return { status: 'refused', artifacts: [], unknowns: [], reason: 'Re-read the active unheld Run before adopting a child result.' };
             const result = all.filter(row => row.delegationId === found.delegationId && row.event === 'result-observed').at(-1);
