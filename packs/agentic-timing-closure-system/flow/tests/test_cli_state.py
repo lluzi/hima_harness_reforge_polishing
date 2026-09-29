@@ -711,6 +711,69 @@ class TwoRoundFlowTest(unittest.TestCase):
         self.assertEqual(working_state_after_round2["id"], round2_state_id)
 
 
+class StaleXtopContextAfterAdoptTest(TwoRoundFlowTest):
+    """#64 Track B (from #63's dry path): after a physical refresh is adopted, a batch cannot start
+    on the XTop context `observe` bound to the pre-refresh state. This reproduces the exit through
+    the real CLI stages, then shows the next-decision Reader refuses the `research` that led there,
+    with the way out."""
+
+    def test_research_after_adopt_on_the_old_context_is_refused_with_observe_first(self):
+        workspace = self.workspace
+        manifest_path = workspace / "manifest.json"
+        _write_json(manifest_path, _make_baseline_manifest(workspace))
+        self.assertEqual(_run("baseline", workspace, manifest_path).returncode, 0)
+        baseline = json.loads((workspace / "state" / "baseline.json").read_text())
+        core.write_artifact(workspace / "state" / "observation.json", _baseline_observation(workspace, baseline))
+        self.assertEqual(_run("policy", workspace, _analysis_contract_dir(workspace), "0.0", "0.0").returncode, 0)
+        self.assertEqual(_run_physical_baseline(workspace).returncode, 0)
+        xtop_site = _write_xtop_context(workspace, baseline["id"])  # what observe-baseline binds
+
+        adopted_id = self._run_implement_round(baseline, instance="U1")  # the one physical refresh
+        working_state = json.loads((workspace / "state" / "working-state.json").read_text())
+        self.assertEqual(working_state["id"], adopted_id)
+
+        # Generation 2: route-research -> plan -> prepare-workers, one active slot and five parked.
+        site_path = workspace / "site-caps.json"
+        _write_json(site_path, {"design": "top", "techLef": "tech.lef", "cellLefGlob": "*.lef",
+                                "pgVerification": False, **xtop_site})
+        active = {
+            "taskId": "w01", "baseStateId": adopted_id, "problem": "round 2", "targets": [],
+            "editDomain": {"instances": ["U1"], "nets": [], "regions": []}, "protected": {"instances": [], "nets": []},
+            "mayAffect": [], "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+            "targetPins": ["U1/A"],
+            "scope": {"commands": list(workspaces.MUTATE_COMMANDS), "maxMutations": workspaces.SCOPE_MAX_MUTATIONS},
+        }
+        packages = {task_id: active if task_id == "w01" else
+                    {"taskId": task_id, "baseStateId": adopted_id, "parked": True, "problem": "no cluster"}
+                    for task_id in workspaces.TASK_IDS}
+        plan_path = workspace / "campaign-plan.json"
+        _write_json(plan_path, {"candidate": {"workPackages": packages, "reason": "round 2"},
+                                "baseState": working_state, "siteCapabilities": {"pgVerification": False}})
+        result = _run("prepare-workers", workspace, workspace / "state" / "working-state.json", site_path,
+                      site_path, plan_path)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stderr), {"code": "stale-base",
+                                                     "detail": "XTop context is not bound to the current design state"})
+
+        # The decision that led there is refused by its Reader, naming the way out.
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("read_atcs_stale", PACK_DIR / "tools" / "read-atcs.py")
+        read_atcs = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(read_atcs)
+        observation_id = json.loads((workspace / "state" / "observation.json").read_text())["id"]
+        decision = {
+            "stateRef": adopted_id, "observationRef": observation_id, "budgetRef": "budget-2",
+            "question": "another batch?", "action": "research", "targets": [], "reason": "residual violations",
+            "falsifier": "no candidate", "costBasis": {"xtopMinutes": 30}, "requiredArtifacts": [],
+        }
+        report = workspace / "research" / "requests" / "next-decision.json"
+        _write_json(report, decision)
+        found = read_atcs.problems("next-decision", report, workspace)
+        self.assertEqual(found, [f"action: observe first: the XTop context is bound to {baseline['id']!r}, "
+                                 f"the working state is {adopted_id!r}; research needs a context bound to the "
+                                 "working state, which only observe writes"])
+
+
 class AdoptConsistencyTest(TwoRoundFlowTest):
     """I9 (final review, adopt consistency): `adopt` must never silently leave
     `state/working-state.json` behind a pointers document it is supposed to mirror --

@@ -178,6 +178,17 @@ Schema limits and how the graph expresses them:
   declaration and finds no Team member, no interactive Job and no licence for w02..w06, and xtop 1 on
   w01's session. What a parked branch still runs is three short Site Jobs (its trivial Workshop, the
   no-op and the capture); removing those needs the Harness fork-branch skip named above.
+- G38 (Issue #64 Track B, ported from #63's dry path, main d1471985) A batch decision on a stale XTop
+  context is refused with "observe first". After a physical refresh is adopted,
+  `state/xtop-context.json` still names the pre-refresh state and only `observe` rebinds it, so
+  `prepare-workers` (reached by `research`) and `replay-prepare` and the recipe replay (reached by
+  `compose` and `revise`) exit 3 `stale-base`. The next-decision Reader counts `research`/`compose`/
+  `revise` on such a context with "observe first: the XTop context is bound to <old>, the working
+  state is <new>" (a context that does not verify is counted too); the refusal revisits
+  `decide-next`, whose purpose now says to observe first, and `observe` rebinds the context. No graph
+  growth. No context at all is left to those tools (a Site without `xtopContext`). Proving tests:
+  `test_cli_state.StaleXtopContextAfterAdoptTest` (the real stages through adopt, prepare-workers
+  exit 3, then the Reader's refusal) and three `NextDecisionReaderTest` cases.
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.

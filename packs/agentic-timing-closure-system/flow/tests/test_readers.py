@@ -1456,6 +1456,46 @@ class NextDecisionReaderTest(unittest.TestCase):
         _write(report, json.dumps(decision))
         return report
 
+    def _write_context_bound_to(self, design_state_id):
+        context = core.stamp("xtop-context", {"designStateId": design_state_id, "requiredScenarios": [],
+                                              "libraryFiles": {}, "ecoParameters": {}})
+        _write(self.workspace / "state" / "xtop-context.json", json.dumps(context))
+        return context
+
+    def test_a_batch_decision_on_a_stale_xtop_context_says_observe_first(self):
+        """#64 Track B (from #63's dry path): after adopt, prepare-workers and replay-prepare exit 3
+        stale-base because only `observe` rebinds state/xtop-context.json. research, compose and
+        revise all reach one of them, so on a stale context each is counted with the way out."""
+        old = core.digest({"marker": "the state observe last bound"})
+        self._write_context_bound_to(old)
+        for action in ("research", "compose", "revise"):
+            with self.subTest(action=action):
+                report = self._write_decision(self._decision(action=action))
+                found = read_atcs.problems("next-decision", report, self.workspace)
+                by_type = {v["type"]: v for v in read_atcs.read("next-decision", report, self.workspace)}
+                self.assertEqual(by_type["tc_request_invalid_count"]["value"], len(found))
+                self.assertEqual(found, [f"action: observe first: the XTop context is bound to {old!r}, "
+                                         f"the working state is {self.state_ref!r}; {action} needs a context "
+                                         "bound to the working state, which only observe writes"])
+                self.assertIsNone(by_type["tc_next_action"]["value"])
+
+    def test_observe_and_a_current_context_are_not_held_back(self):
+        self._write_context_bound_to(core.digest({"marker": "old"}))
+        report = self._write_decision(self._decision(action="observe"))
+        self.assertEqual(read_atcs.problems("next-decision", report, self.workspace), [])
+        self._write_context_bound_to(self.state_ref)
+        report = self._write_decision(self._decision(action="research"))
+        self.assertEqual(read_atcs.problems("next-decision", report, self.workspace), [])
+
+    def test_a_context_that_does_not_verify_is_counted(self):
+        context = self._write_context_bound_to(self.state_ref)
+        context["designStateId"] = "0" * 20  # edited after it was stamped
+        _write(self.workspace / "state" / "xtop-context.json", json.dumps(context))
+        report = self._write_decision(self._decision(action="compose"))
+        found = read_atcs.problems("next-decision", report, self.workspace)
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("state/xtop-context.json", found[0])
+
     def test_next_decision_cli_decodes_declared_report_file_with_string_workspace(self):
         # Retained ATCS-07 input shape: all ten fields, action=research,
         # string costBasis. REPORT is a file; sys.argv WORKSPACE is a str.

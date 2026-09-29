@@ -1887,8 +1887,10 @@ workshops:
       goal-met is
       legal only when the current final evaluation and accepted artifact support it. A temporarily
       degraded working state must name its follow-up and falsifier. research needs a current
-      observation of the working state (the campaign-plan Reader ranks blockers from it), so after the
-      working state moves choose observe first. Cite new information; never retry by revision alone.
+      observation of the working state (the campaign-plan Reader ranks blockers from it), and research,
+      compose and revise need state/xtop-context.json bound to the working state; after an adopted
+      refresh both still name the older state until observe runs, so after the working state moves
+      choose observe first. Cite new information; never retry by revision alone.
     directory: research/next
     entry: entry.py
     language: python
