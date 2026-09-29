@@ -234,6 +234,17 @@ Schema limits and how the graph expresses them:
   `maxTokensPerTurn` 8000 (8598 output tokens, 7190 reasoning): the Host read no completed reply and the
   Reviewer never ran. Every worker Team's Researcher now has 16000 (`flow/tests/test_team_turn_budget.py`);
   the rerun admitted Researcher and Reviewer 3/3, each Reviewer scope passing the Host's creation checks.
+- G43 (Issue #64 treatment Run run-9a5f197a, D-T01-1; **known limitation, not fixed in 0.2.0**)
+  `atcs_paths <check> <N> <end points>` fails in the Operator's PBA session: it hands XTop
+  `get_paths -delay_type max|min -end_points ...` as the path argument of
+  `analyze_<check>_path_violations`, and real XTop answers "Error: In PBA mode, only path collections
+  can be accepted. Please check if the given path collection is valid." (w01 record #185,
+  `xtop_log_1.txt:405-408`; w03 `xtop_log_1.txt:166-169`). `atcs_paths` with no end points still reads
+  the top paths, and `atcs_gain` reads endpoint slack. The fix belongs to
+  `flow/templates/xtop-operator.tcl`, which the atcs-v12 wrapper's flow digest (`a4736851...`) pins, so
+  it needs a new wrapper release and its requalification, not a byte change under v12.
+  `flow/tests/test_xtop_toolkit.py` `PbaEndPointPathsKnownLimitationTest` pins the exact message, and
+  its `expectedFailure` test turns into an unexpected success once the fix lands.
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.
