@@ -1654,6 +1654,9 @@ def _implement_batch_ready(workspace, mods):
     return True
 
 
+# One check key: `<scenario>|<setup|hold>|<endpoint>`, no whitespace and no wildcard anywhere.
+_CHECK_KEY_RE = re.compile(r"^[^|\s*?]+\|(?:setup|hold)\|[^|\s*?]+$")
+
 # Actions whose route reaches prepare-workers (research) or replay-prepare (compose, revise), both
 # of which refuse an XTop context not bound to the current working state (stale-base).
 _BATCH_ACTIONS = ("research", "compose", "revise")
@@ -1746,6 +1749,13 @@ def _collect_next_decision_problems(obj, workspace):
         problems.append("budgetRef must be a non-empty string")
     if "targets" in obj and not isinstance(obj.get("targets"), list):
         problems.append("targets must be a list")
+    elif isinstance(obj.get("targets"), list):
+        # Real-model probe: targets written as a bare scenario, wildcards or prose with counts.
+        for index, target in enumerate(obj["targets"]):
+            if not isinstance(target, str) or not _CHECK_KEY_RE.match(target):
+                problems.append(f"targets[{index}]: {target!r} is not a check key; each target is one exact "
+                                "<scenario>|<setup|hold>|<endpoint> from state/observation.json, never a "
+                                "wildcard, a bare scenario or prose")
     if "requiredArtifacts" in obj and not isinstance(obj.get("requiredArtifacts"), list):
         problems.append("requiredArtifacts must be a list")
 

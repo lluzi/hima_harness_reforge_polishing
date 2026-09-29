@@ -884,7 +884,9 @@ workshops:
       evaluation, pointers, residual cases, experience and remaining budget. Write one next-decision to
       research/requests/next-decision.json with stateRef, observationRef, budgetRef, question, action
       (observe, research, compose, revise, implement, earlier-apr, wait or goal-met), targets, reason,
-      falsifier, costBasis and requiredArtifacts. stateRef is the `id` (20 lowercase hex) of state/working-state.json;
+      falsifier, costBasis and requiredArtifacts. Each target is one exact check key
+      <scenario>|<setup|hold>|<endpoint> from state/observation.json, never a wildcard or prose.
+      stateRef is the `id` (20 lowercase hex) of state/working-state.json;
       observationRef is the `id` (20 lowercase hex) of the observation the decision cites, such as
       state/observation.json; both are plain strings, never objects or file sha256 values. budgetRef is a
       non-empty string naming the budget basis. earlier-apr is legal only when the scope is

@@ -26,6 +26,8 @@ sys.path.insert(0, str(TESTS_DIR))
 
 from test_readers import READ_ATCS_PATH, _make_workspace, _write  # noqa: E402
 
+from atcs import core  # noqa: E402
+
 
 def _fixture(name):
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
@@ -161,6 +163,67 @@ class ReviewerReplyFormatTest(unittest.TestCase):
             "evidenceRefs is not a list of record-id strings",
             "limitations is not at most three strings under 200 characters",
         ])
+
+
+class BufferForAndGateTest(_ProbeFixture):
+    """Probe loose admission: worker attempts 1 and 3 sized CKAN2D* AND gates to the setup
+    buffer BUFFD4BWP30P140 (taken from xtopContext.bufferListForSetup). The 0.1.10 Reader
+    checked only a safe name. C13 (4ed569ba, WorkerActionMasterReaderTest.
+    test_a_master_of_another_function_is_refused) counts a master of another function; this
+    reads the probe's own document with the Site's own sizing rule from the same request."""
+
+    CELLS = ("CKAN2D2BWP35P140HVT", "CKAN2D4BWP35P140HVT", "CKAN2D2BWP40P140HVT", "CKAN2D4BWP40P140HVT",
+             "BUFFD2BWP30P140", "BUFFD4BWP30P140")
+    # The retained Team input's researcher names each instance's current master (fromMaster).
+    CELL_OF = {"swerv_dec_tlu/g96219": "CKAN2D2BWP35P140HVT", "swerv_dec_tlu/g96216": "CKAN2D2BWP40P140HVT",
+               "swerv_dec_tlu/g96221": "CKAN2D2BWP35P140HVT"}
+
+    def test_the_probes_buffer_for_an_and_gate_is_counted(self):
+        document = _fixture("worker-request-w01-attempt-1.json")
+        library = _write(self.workspace / "libs" / "cells.lib", "library (probe) {\n"
+                         + "".join(f"  cell ({name}) {{ }}\n" for name in self.CELLS) + "}\n")
+        context = core.stamp("xtop-context", {
+            "designStateId": document["baseState"]["id"], "requiredScenarios": ["func_ssg_rcworst_m40"],
+            "libraryFiles": {"func_ssg_rcworst_m40": [{"path": str(library), "sha256": core.file_sha256(library)}]},
+            "ecoParameters": document["siteCapabilities"]["xtopContext"]["ecoParameters"],
+        })
+        _write(self.workspace / "state" / "xtop-context.json", json.dumps(context))
+        found = self._read(_probe_reader(self.CELL_OF), "worker-request", "worker-request-w01.json", document, "w01")
+        refused = [text for text in found if "changes cell function 'CKAN2'" in text and "'BUFF'" in text]
+        self.assertEqual(len(refused), len(document["actions"]), found)
+
+
+class NextDecisionTargetsTest(_ProbeFixture):
+    """Probe loose admission: evaluate-next-investment wrote targets as a bare scenario
+    (attempt 1), wildcards (attempt 2) and prose with counts (attempt 3). Each target must be one
+    exact check key `<scenario>|<setup|hold>|<endpoint>`."""
+
+    def _targets_problems(self, name):
+        document = _fixture(name)
+        found = self._read(_probe_reader(), "next-decision", "next-decision.json", document)
+        return document["targets"], [text for text in found if text.startswith("targets[")]
+
+    def test_the_probes_free_form_targets_are_counted_one_by_one(self):
+        expected_bad = {
+            "next-decision-attempt-1.json": ["func_ssg_rcworst_125"],
+            "next-decision-attempt-2.json": None,  # every one holds a wildcard
+            "next-decision-attempt-3.json": None,  # every one is prose
+        }
+        for name, bad in expected_bad.items():
+            with self.subTest(document=name):
+                targets, found = self._targets_problems(name)
+                bad = targets if bad is None else bad
+                self.assertEqual(len(found), len(bad), found)
+                for text, target in zip(found, bad):
+                    self.assertIn(repr(target), text)
+                    self.assertIn("<scenario>|<setup|hold>|<endpoint>", text)
+
+    def test_exact_check_keys_are_admitted(self):
+        document = _fixture("next-decision-attempt-1.json")
+        document["targets"] = ["func_ssg_rcworst_m40|setup|dec_tlu_perfcnt0[0]",
+                               "func_ffg_cbest_125|hold|swerv_dbg/axi_rdata_ff/dout_reg_0_"]
+        found = self._read(_probe_reader(), "next-decision", "next-decision.json", document)
+        self.assertEqual([text for text in found if text.startswith("targets[")], [])
 
 
 if __name__ == "__main__":

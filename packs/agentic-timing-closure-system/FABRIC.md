@@ -491,5 +491,13 @@ Known gaps carried from earlier tasks:
       evidenceRefs as record-id strings, at most three limitations under 200 characters. It keeps its
       example reply. `ReviewerReplyFormatTest` shows the retained admitted answer breaks the caps and
       the example keeps them.
+    - Item 3, loose admissions:
+      - Buffers chosen for AND gates (`research-worker-01` attempts 1 and 3, `BUFFD4BWP30P140` for
+        `CKAN2D*`) were closed by C13 (4ed569ba, `WorkerActionMasterReaderTest`).
+        `BufferForAndGateTest` reads the probe's own document.
+      - next-decision targets written as a bare scenario, wildcards or prose (`evaluate-next-
+        investment` attempts 1-3) are now counted one by one, naming the form
+        `<scenario>|<setup|hold>|<endpoint>`. The purpose states that form
+        (`NextDecisionTargetsTest`).
   - **Pending re-review**: this FABRIC.md's own G27-G33 and the four batches' combined diff have not
     yet had a second reviewer pass since batch C landed.
