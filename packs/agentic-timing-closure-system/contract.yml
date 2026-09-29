@@ -780,6 +780,7 @@ workshops:
       worth researching still gets a bounded package whose diagnosis-only outcome is a valid no-fix.
       Read knowledge example-campaign-plan.md; copy its shape and change only the values.
       Turn endpoints into instances only with the Pack resolver in knowledge endpoint-resolution.md.
+      Pass the resolver the endpoint part of each check key (after the last |, without an @** path group suffix). Never write a slot with an empty edit domain: when no endpoint of a slot resolves to a leaf cell, choose other endpoints or exit non-zero naming the unresolved endpoints.
       Before writing, read output campaignPlanProblems: after the Reader has read an earlier document it lists every problem it found, one line each naming the field, the slot and the required format; fix every line and write the whole document again (the file is absent before the first reading).
     directory: research/plan
     entry: entry.py

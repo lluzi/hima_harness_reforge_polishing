@@ -598,6 +598,17 @@ def _edit_domain_problems(package, base_state, workspace, where):
     nets = domain.get("nets") or []
     field = f"{prefix}.editDomain"
     if not instances and not nets:
+        targets = package.get("targets") if isinstance(package.get("targets"), list) else []
+        key = next((t for t in targets if isinstance(t, str) and "|" in t), None)
+        if key is not None:
+            # Probe run 2: the plan Workshop passed whole check keys to the resolver, resolved
+            # nothing and wrote the slot out empty.
+            name = package.get("taskId") if isinstance(package.get("taskId"), str) else prefix.rsplit(".", 1)[-1]
+            return [f"{field}{slot}: edit domain empty for slot {name} (it names no instance or net): if the "
+                    f"resolver got a check key, pass the endpoint ({_endpoint_part(key)!r} of {key!r}) and write "
+                    "only the leaf cells it resolves; when "
+                    "none resolves, choose other endpoints or exit non-zero naming the unresolved endpoints, never "
+                    "an empty edit domain"]
         return [f"{field}{slot}: names no instance or net; an active slot edits at least one leaf cell, "
                 "written as its full path from top such as u_a/reg0"]
     if not isinstance(instances, list):
@@ -1689,7 +1700,7 @@ def _implement_batch_ready(workspace, mods):
 
 
 # One check key: `<scenario>|<setup|hold>|<endpoint>`, no whitespace and no wildcard anywhere.
-_CHECK_KEY_RE = re.compile(r"^[^|\s*?]+\|(?:setup|hold)\|[^|\s*?]+$")
+_CHECK_KEY_RE = re.compile(r"^[^|\s*?]+\|(?:setup|hold)\|[^|\s*?@]+(?:@\*\*\w+\*\*)?$")
 
 # Actions whose route reaches prepare-workers (research) or replay-prepare (compose, revise), both
 # of which refuse an XTop context not bound to the current working state (stale-base).
@@ -1921,6 +1932,15 @@ def _spellings(name):
     return found
 
 
+_PATH_GROUP_SUFFIX_RE = re.compile(r"@\*\*\w+\*\*$")
+
+
+def _endpoint_part(name):
+    """The endpoint a check key names: the text after its last `|`, without a reserved path-group
+    suffix such as `@**async_default**` (`atcs.core` folds one into the key's endpoint)."""
+    return _PATH_GROUP_SUFFIX_RE.sub("", name.rsplit("|", 1)[-1].strip())
+
+
 def _path_segment(name):
     """One instance name as a path segment the Readers admit: escaped when it holds `/`."""
     return f"\\{name} " if "/" in name else name
@@ -2032,15 +2052,19 @@ def resolve_endpoints(workspace, endpoints):
         if not isinstance(endpoint, str) or not endpoint.strip():
             unresolved.append({"endpoint": endpoint, "unresolved": "an endpoint must be a non-empty string"})
             continue
-        name = endpoint.strip()
+        name = _endpoint_part(endpoint)  # a whole check key resolves by its endpoint (probe run 2)
+        if not name:
+            unresolved.append({"endpoint": endpoint, "unresolved": "the check key has no endpoint after its last '|'"})
+            continue
         segments = _split_instance_path(name)
         if segments is None or any(segment == "" for segment in segments):
             segments = [segment for segment in name.split("/") if segment]
         row, why = _walk_endpoint(modules, top, segments, [])
+        part = {} if name == endpoint.strip() else {"endpointPart": name}
         if row is None:
-            unresolved.append({"endpoint": endpoint, "unresolved": why})
+            unresolved.append({"endpoint": endpoint, "unresolved": why, **part})
         else:
-            resolved.append(dict(row, endpoint=endpoint))
+            resolved.append(dict(row, endpoint=endpoint, **part))
     return {"designStateId": working_state.get("id"), "top": top,
             "netlist": {"path": netlist["path"], "sha256": netlist["sha256"]},
             "resolved": resolved, "unresolved": unresolved}

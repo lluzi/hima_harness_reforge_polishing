@@ -512,5 +512,19 @@ Known gaps carried from earlier tasks:
         investment` attempts 1-3) are now counted one by one, naming the form
         `<scenario>|<setup|hold>|<endpoint>`. The purpose states that form
         (`NextDecisionTargetsTest`).
+  - Real-model probe run 2 on the final bytes (`notes/model-probe-run2`, report
+    `model-probe-report-2.md`): the plan was admitted 1/3. Attempt 3 passed the resolver whole check
+    keys, some ending `@**async_default**`, and wrote all three slots with empty edit domains;
+    attempt 2 wrote w01 empty instead of failing. Three changes:
+    - The knowledge and the plan purpose now say what to pass (the endpoint part after the last
+      `|`, with that suffix dropped), with a worked PR03 key.
+    - A whole check key now resolves by that part (`endpointPart`).
+    - An empty edit domain whose slot targets are check keys is itemized as "edit domain empty for
+      slot w0N: if the resolver got a check key, pass the endpoint (...)". Its alternative is to
+      choose other endpoints or exit non-zero; an empty domain is never written.
+
+    The next-decision target form, used when there is no observation, now admits the
+    `@**<group>**` suffix. Tests: `PlanEndpointPartTest`, the check-key test in
+    `test_endpoint_resolution`, and `NextDecisionTargetsTest`.
   - **Pending re-review**: this FABRIC.md's own G27-G33 and the four batches' combined diff have not
     yet had a second reviewer pass since batch C landed.
