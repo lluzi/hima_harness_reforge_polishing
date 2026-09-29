@@ -17,6 +17,12 @@ const timingPackId = 'xtop-timing-closure';
 const timingPackRelative = path.join('packs', timingPackId);
 const demoPackId = 'opene902-timing-probe';
 const demoPackRelative = path.join('packs', demoPackId);
+const atcsPackId = 'agentic-timing-closure-system';
+const atcsPackRelative = path.join('packs', atcsPackId);
+const atcsSiteId = 'linglong-atcs28';
+const atcsSiteRelative = path.join('sites', atcsSiteId);
+const bundledPackIds = [trialPackId, timingPackId, demoPackId, atcsPackId];
+const atcsBindingNone = 'none, kit installs it';
 const qualificationRelative = 'operator-qualification';
 const bindingsRelative = `${qualificationRelative}/interactive-bindings.json`;
 const args = process.argv.slice(2);
@@ -127,16 +133,108 @@ async function assertTimingPackAssets(packsRoot) {
   return { version, methodDigest: seal.methodDigest, testRun: seal.test.run };
 }
 
-async function inspectInteractiveBindings(file, packsRoot, evidenceRoot) {
+const harness = async (module) => import(pathToFileURL(path.join(root, 'packages/harness/lib', module)).href);
+
+/**
+ * ATCS ships in development: a seal is optional, but when TEST.md and VERSION.yml are there the
+ * native release authority must accept them, and a half seal is refused rather than guessed at.
+ */
+async function assertAtcsPackAssets(packsRoot) {
+  const pack = path.join(packsRoot, atcsPackId);
+  for (const file of ['contract.yml', 'graph.yml', 'flow/atcs_cli.py']) {
+    const at = path.join(pack, file);
+    if (!existsSync(at) || !lstatSync(at).isFile()) fail(`ATCS Pack ${atcsPackId} is missing ${file}`);
+  }
+  const contract = readFileSync(path.join(pack, 'contract.yml'), 'utf8');
+  const graph = readFileSync(path.join(pack, 'graph.yml'), 'utf8');
+  if (!new RegExp(`^id: ${atcsPackId}$`, 'm').test(contract)
+      || !new RegExp(`^id: ${atcsPackId}$`, 'm').test(graph)) fail('ATCS Pack contract/graph identity differs');
+  const version = /^version:\s*["']?([^"'\s]+)["']?/m.exec(contract)?.[1];
+  const graphVersion = /^version:\s*["']?([^"'\s]+)["']?/m.exec(graph)?.[1];
+  if (!version || version !== graphVersion) fail('ATCS Pack contract/graph versions differ');
+  const present = ['TEST.md', 'VERSION.yml'].filter(file => existsSync(path.join(pack, file)));
+  if (present.length === 1) fail(`ATCS Pack ${atcsPackId} carries only one of TEST.md and VERSION.yml`);
+  if (present.length === 0) return { version };
+  const { snapshotPackFolder } = await harness('pack-folder.js');
+  const { releaseIssue } = await harness('release.js');
+  const issue = releaseIssue(snapshotPackFolder(pack), { id: atcsPackId, version });
+  if (issue) fail(`ATCS Pack ${atcsPackId} native release seal: ${issue}`);
+  const seal = parse(readFileSync(path.join(pack, 'VERSION.yml'), 'utf8'));
+  if (!seal.methodDigest) fail(`ATCS Pack ${atcsPackId} native release seal lacks methodDigest`);
+  return { version, methodDigest: seal.methodDigest, testRun: seal.test.run };
+}
+
+/**
+ * The exact identity of each bundled Pack, in bundle order: its folder digest (the one a Run binds
+ * to), its version, its contract status, and its stage — `released` only on an accepted native seal,
+ * otherwise the native ladder's own rung.
+ */
+async function packIdentities(packsRoot) {
+  const trial = assertTrialPackAssets(packsRoot);
+  const timing = await assertTimingPackAssets(packsRoot);
+  assertDemoPackAssets(packsRoot);
+  const atcs = await assertAtcsPackAssets(packsRoot);
+  const { packDigestOf } = await harness('pack-folder.js');
+  const { packStage } = await harness('packs.js');
+  const seals = { [trialPackId]: trial, [timingPackId]: timing, [atcsPackId]: atcs };
+  return bundledPackIds.map(id => {
+    const dir = path.join(packsRoot, id);
+    const contract = readFileSync(path.join(dir, 'contract.yml'), 'utf8');
+    const version = /^version:\s*["']?([^"'\s]+)["']?/m.exec(contract)?.[1];
+    const status = /^status:\s*["']?([^"'\s]+)["']?/m.exec(contract)?.[1] ?? 'unstated';
+    const seal = seals[id];
+    return { id, version, packDigest: packDigestOf(dir), status,
+      stage: seal?.methodDigest ? 'released' : packStage(dir).stage,
+      ...(seal?.methodDigest ? { methodDigest: seal.methodDigest, testRun: seal.testRun } : {}) };
+  });
+}
+
+/** The ATCS Site the Pack's binding is qualified at, read from its administrator policy. */
+function atcsSiteIdentity(site) {
+  for (const file of ['site.yml', 'permit.yml']) {
+    if (!existsSync(path.join(site, file)) || !lstatSync(path.join(site, file)).isFile()) fail(`ATCS Site ${atcsSiteId} is missing ${file}`);
+  }
+  const pins = path.join(site, 'wrapper-pins.json');
+  return { id: atcsSiteId, siteSha256: hash(path.join(site, 'site.yml')), permitSha256: hash(path.join(site, 'permit.yml')),
+    wrapperPins: existsSync(pins) ? JSON.parse(readFileSync(pins, 'utf8')) : 'absent: wrapper-pins.json' };
+}
+
+const copyMethod = (from, to) => cpSync(from, to, { recursive: true, filter: (source) => {
+  const name = path.basename(source);
+  return !name.startsWith('.') && name !== 'run-assets' && name !== '.evidence';
+} });
+
+/** Copy the four bundled Packs into an App's resource tree and prove each landed at its source digest. */
+async function stageBundledPacks(fromPacks, resource) {
+  if (existsSync(path.join(resource, 'packs'))) fail(`refusing to stage over existing Packs in ${resource}`);
+  const source = await packIdentities(fromPacks);
+  mkdirSync(path.join(resource, 'packs'), { recursive: true });
+  copyMethod(path.join(fromPacks, trialPackId), path.join(resource, trialPackRelative));
+  copyMethod(path.join(fromPacks, timingPackId), path.join(resource, timingPackRelative));
+  cpSync(path.join(fromPacks, demoPackId), path.join(resource, demoPackRelative), { recursive: true });
+  copyMethod(path.join(fromPacks, atcsPackId), path.join(resource, atcsPackRelative));
+  const staged = await packIdentities(path.join(resource, 'packs'));
+  if (JSON.stringify(staged) !== JSON.stringify(source)) fail('a bundled Pack differs from its source identity after staging');
+  return staged;
+}
+
+async function inspectInteractiveBindings(file, packsRoot, evidenceRoot, atcsOnly = false) {
   if (!path.isAbsolute(file) || !existsSync(file) || !lstatSync(file).isFile()) {
     fail('--interactive-bindings must name an absolute regular administrator file');
   }
-  const authority = await import(pathToFileURL(path.join(root, 'packages/harness/lib/interactive-binding.js')).href);
-  const { snapshotPackFolder, packDigestExcludes } = await import(pathToFileURL(path.join(root, 'packages/harness/lib/pack-folder.js')).href);
-  const { loadPackFrom } = await import(pathToFileURL(path.join(root, 'packages/harness/lib/packs.js')).href);
-  const folder = snapshotPackFolder(path.join(packsRoot, timingPackId));
-  const pack = loadPackFrom(folder);
-  const packDigest = folder.digest(packDigestExcludes);
+  const authority = await harness('interactive-binding.js');
+  const { snapshotPackFolder, packDigestExcludes } = await harness('pack-folder.js');
+  const { loadPackFrom } = await harness('packs.js');
+  // Each row is judged against the Pack its environment names, never against one assumed Pack.
+  const interactivePacks = new Map();
+  const packFor = (id) => {
+    if (id !== timingPackId && id !== atcsPackId) return undefined;
+    if (!interactivePacks.has(id)) {
+      const folder = snapshotPackFolder(path.join(packsRoot, id));
+      interactivePacks.set(id, { pack: loadPackFrom(folder), digest: folder.digest(packDigestExcludes) });
+    }
+    return interactivePacks.get(id);
+  };
   const document = authority.interactiveBindingsDocument.parse(JSON.parse(readFileSync(file, 'utf8')));
   if (document.bindings.length === 0) fail('interactive bindings document has no qualified binding');
   const ids = new Set();
@@ -154,30 +252,40 @@ async function inspectInteractiveBindings(file, packsRoot, evidenceRoot) {
       fail(`interactive binding ${row.id} station administrator environment bytes differ`);
     }
     const environment = authority.interactiveEnvironmentEvidence.parse(JSON.parse(readFileSync(environmentFile, 'utf8')));
+    const packId = environment.pack.id;
+    if (atcsOnly && (packId !== atcsPackId || row.site !== atcsSiteId)) {
+      fail(`--atcs-binding carries only ${atcsPackId} bindings for Site ${atcsSiteId}; ${row.id} names ${packId} at ${row.site}`);
+    }
+    const bound = packFor(packId);
+    if (!bound) fail(`interactive binding ${row.id} names Pack ${packId}, which this App bundles no interactive tool for`);
+    const { pack, digest: packDigest } = bound;
     const tool = pack.contract.tools.find(tool => tool.id === row.toolId);
-    const templateRoot = realpathSync(path.join(packsRoot, timingPackId));
+    const templateRoot = realpathSync(path.join(packsRoot, packId));
     const template = path.resolve(templateRoot, environment.sourceTemplate.path);
     const inside = path.relative(templateRoot, template);
     if (inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)
         || !existsSync(template) || !lstatSync(template).isFile()) {
-      fail(`interactive binding ${row.id} source template is not a regular file inside the timing Pack`);
+      fail(`interactive binding ${row.id} source template is not a regular file inside the ${packId} Pack`);
     }
     const realInside = path.relative(templateRoot, realpathSync(template));
     if (realInside === '..' || realInside.startsWith(`..${path.sep}`) || path.isAbsolute(realInside)) {
-      fail(`interactive binding ${row.id} source template escapes the timing Pack`);
+      fail(`interactive binding ${row.id} source template escapes the ${packId} Pack`);
     }
     if (row.mutation !== 'qualified' || row.packDigest !== packDigest
         || row.adapterHash !== authority.BUILTIN_TCL_ADAPTER_DIGEST
         || !tool?.interactive || row.commandsDigest !== authority.interactiveCommandsDigest(tool)
         || environment.site !== row.site || environment.toolId !== row.toolId
-        || environment.pack.id !== timingPackId || environment.pack.digest !== row.packDigest
+        || environment.pack.digest !== row.packDigest
         || environment.adapter.id !== row.adapter || environment.adapter.digest !== row.adapterHash
         || environment.commandsDigest !== row.commandsDigest
         || environment.wrapper.path !== tool.interactive.argv[0]
         || hash(template) !== environment.sourceTemplate.sha256) {
-      fail(`interactive binding ${row.id} qualification differs from the timing Pack/tool/environment`);
+      fail(`interactive binding ${row.id} qualification differs from the ${packId} Pack/tool/environment`);
     }
-    return { id: row.id, site: row.site, toolId: row.toolId, packDigest: row.packDigest,
+    if (packId === atcsPackId && row.id !== `${row.environment.id}:${row.packDigest.slice(0, 16)}`) {
+      fail(`ATCS binding ${row.id} id is not ${row.environment.id}:${row.packDigest.slice(0, 16)}`);
+    }
+    return { id: row.id, pack: packId, site: row.site, toolId: row.toolId, packDigest: row.packDigest,
       environment: { ...row.environment, bundledFile }, wrapper: environment.wrapper,
       image: environment.image, sourceTemplate: environment.sourceTemplate };
   });
@@ -228,6 +336,45 @@ function collect(base, current = base, files = {}) {
   return files;
 }
 
+/**
+ * The identity half of --verify: every bundled Pack and interactive binding against the manifest.
+ * It reads only the App's resource tree, so it needs no signed launcher, bundled Node or Electron.
+ */
+async function verifyBundleIdentity(app, manifest) {
+  const resource = path.join(app, 'Contents/Resources/app');
+  const packsRoot = path.join(resource, 'packs');
+  const recorded = manifest.runtimeInputs?.packs;
+  if (!Array.isArray(recorded)) fail('manifest records no bundled Pack identities');
+  const actual = await packIdentities(packsRoot);
+  for (const pack of actual) {
+    const expected = recorded.find(entry => entry?.id === pack.id);
+    if (JSON.stringify(expected) !== JSON.stringify(pack)) {
+      fail(`bundled Pack ${pack.id} identity differs from the manifest (bundled ${pack.packDigest}, manifest ${expected?.packDigest ?? 'none'})`);
+    }
+    process.stdout.write(`package-trial: pack ${pack.id} ${pack.version} stage=${pack.stage} packDigest=${pack.packDigest}${pack.methodDigest ? ` methodDigest=${pack.methodDigest}` : ''}\n`);
+  }
+  if (recorded.length !== actual.length) fail('manifest records a Pack this App does not bundle');
+  const site = manifest.runtimeInputs?.atcsSite;
+  if (site) {
+    process.stdout.write(`package-trial: atcs site ${site.id} site.yml=${site.siteSha256} permit.yml=${site.permitSha256} wrapper-pins=${JSON.stringify(site.wrapperPins)}\n`);
+  }
+  const bundledBindings = path.join(resource, bindingsRelative);
+  let atcsIds = [];
+  if (manifest.runtimeInputs?.interactiveBindings || existsSync(bundledBindings)) {
+    const bindings = await inspectInteractiveBindings(bundledBindings, packsRoot, resource);
+    if (JSON.stringify(bindings) !== JSON.stringify(manifest.runtimeInputs?.interactiveBindings)) {
+      fail('manifest interactive binding identity differs from the bundled qualification evidence');
+    }
+    for (const binding of bindings.bindings) process.stdout.write(`package-trial: binding ${binding.id} (${binding.pack}) packDigest=${binding.packDigest}\n`);
+    atcsIds = bindings.bindings.filter(binding => binding.pack === atcsPackId).map(binding => binding.id);
+  }
+  const expectedAtcs = atcsIds.length ? atcsIds : atcsBindingNone;
+  if (JSON.stringify(manifest.runtimeInputs?.atcsBinding) !== JSON.stringify(expectedAtcs)) {
+    fail('manifest ATCS binding differs from the bundled qualification evidence');
+  }
+  process.stdout.write(`package-trial: atcs binding: ${atcsIds.length ? atcsIds.join(', ') : atcsBindingNone}\n`);
+}
+
 async function verify(app, allowPending = false) {
   const manifestAt = path.join(path.dirname(app), 'trial-manifest.json');
   if (!existsSync(manifestAt)) fail(`manifest missing: ${manifestAt}`);
@@ -240,7 +387,7 @@ async function verify(app, allowPending = false) {
       && manifest.artifactDigest !== createHash('sha256').update(JSON.stringify(actual)).digest('hex')) {
     fail('artifact digest does not match the signed App file inventory');
   }
-  for (const required of ['Contents/MacOS/HimaHarness', 'Contents/Resources/app/lib/main.js', 'Contents/Resources/app/node/bin/node', 'Contents/Resources/app/profiles/hima/package.json', `Contents/Resources/app/${trialPackRelative}/contract.yml`, `Contents/Resources/app/${trialPackRelative}/graph.yml`, `Contents/Resources/app/${trialPackRelative}/knowledge/manifest.yml`, `Contents/Resources/app/${timingPackRelative}/contract.yml`, `Contents/Resources/app/${timingPackRelative}/graph.yml`, `Contents/Resources/app/${demoPackRelative}/contract.yml`, `Contents/Resources/app/${demoPackRelative}/graph.yml`]) {
+  for (const required of ['Contents/MacOS/HimaHarness', 'Contents/Resources/app/lib/main.js', 'Contents/Resources/app/node/bin/node', 'Contents/Resources/app/profiles/hima/package.json', `Contents/Resources/app/${trialPackRelative}/contract.yml`, `Contents/Resources/app/${trialPackRelative}/graph.yml`, `Contents/Resources/app/${trialPackRelative}/knowledge/manifest.yml`, `Contents/Resources/app/${timingPackRelative}/contract.yml`, `Contents/Resources/app/${timingPackRelative}/graph.yml`, `Contents/Resources/app/${demoPackRelative}/contract.yml`, `Contents/Resources/app/${demoPackRelative}/graph.yml`, `Contents/Resources/app/${atcsPackRelative}/contract.yml`, `Contents/Resources/app/${atcsPackRelative}/graph.yml`]) {
     if (!existsSync(path.join(app, required))) fail(`required release file missing: ${required}`);
   }
   const trialPack = assertTrialPackAssets(path.join(resource, 'packs'));
@@ -257,14 +404,7 @@ async function verify(app, allowPending = false) {
       || manifest.runtimeInputs?.timingPack?.testRun !== timingPack.testRun) {
     fail('manifest timing Pack identity differs from the bundled native release seal');
   }
-  assertDemoPackAssets(path.join(resource, 'packs'));
-  const bundledBindings = path.join(resource, bindingsRelative);
-  if (manifest.runtimeInputs?.interactiveBindings || existsSync(bundledBindings)) {
-    const bindings = await inspectInteractiveBindings(bundledBindings, path.join(resource, 'packs'), resource);
-    if (JSON.stringify(bindings) !== JSON.stringify(manifest.runtimeInputs?.interactiveBindings)) {
-      fail('manifest interactive binding identity differs from the bundled qualification evidence');
-    }
-  }
+  await verifyBundleIdentity(app, manifest);
   const architecture = run('file', [path.join(app, 'Contents/MacOS/HimaHarness')]);
   if (!architecture.includes('arm64')) fail(`launcher is not arm64: ${architecture.trim()}`);
   const nodeVersion = run(path.join(resource, 'node/bin/node'), ['--version']).trim();
@@ -512,19 +652,38 @@ async function smokeVersionIsolatedTrialHome(app) {
 }
 
 if (args.includes('--help') || args.includes('-h')) {
-  process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] [--interactive-bindings <absolute administrator file>] | --verify <HimaHarness.app>\n');
+  process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] [--interactive-bindings <absolute administrator file>] [--atcs-binding <absolute administrator file>] | --verify <HimaHarness.app>\n');
 } else if (args[0] === '--check-interactive-bindings') {
   const file = value('--check-interactive-bindings');
   if (!file) fail('--check-interactive-bindings needs an absolute administrator file');
   const bindings = await inspectInteractiveBindings(file, path.join(root, 'packs'));
   process.stdout.write(`${JSON.stringify(bindings, null, 2)}\n`);
+} else if (args[0] === '--check-atcs-binding') {
+  const file = value('--check-atcs-binding');
+  if (!file) fail('--check-atcs-binding needs an absolute administrator file');
+  const bindings = await inspectInteractiveBindings(file, path.join(root, 'packs'), undefined, true);
+  process.stdout.write(`${JSON.stringify(bindings, null, 2)}\n`);
 } else if (args[0] === '--check-pack-assets') {
   const packs = value('--check-pack-assets');
   if (!packs) fail('--check-pack-assets needs a packs directory');
-  assertTrialPackAssets(path.resolve(packs));
-  await assertTimingPackAssets(path.resolve(packs));
-  assertDemoPackAssets(path.resolve(packs));
-  process.stdout.write(`package-trial: checked ${trialPackId}, ${timingPackId} and ${demoPackId} assets\n`);
+  const site = value('--site');
+  const identities = { packs: await packIdentities(path.resolve(packs)),
+    ...(site ? { atcsSite: atcsSiteIdentity(path.resolve(site)) } : {}) };
+  process.stdout.write(`package-trial: checked ${trialPackId}, ${timingPackId}, ${demoPackId} and ${atcsPackId} assets\n`);
+  process.stdout.write(`${JSON.stringify(identities, null, 2)}\n`);
+} else if (args[0] === '--stage-packs') {
+  const [from, resource] = [args[1], args[2]];
+  if (!from || !resource) fail('--stage-packs needs a packs directory and an App resource directory');
+  const packs = await stageBundledPacks(path.resolve(from), path.resolve(resource));
+  process.stdout.write(`${JSON.stringify({ packs }, null, 2)}\n`);
+} else if (args[0] === '--check-bundle-identity') {
+  const app = value('--check-bundle-identity');
+  if (!app) fail('--check-bundle-identity needs an app path');
+  const manifestAt = path.join(path.dirname(path.resolve(app)), 'trial-manifest.json');
+  if (!existsSync(manifestAt)) fail(`manifest missing: ${manifestAt}`);
+  const manifest = JSON.parse(readFileSync(manifestAt, 'utf8'));
+  if (manifest.status === 'building') fail('candidate validation has not finished');
+  await verifyBundleIdentity(path.resolve(app), manifest);
 } else if (args[0] === '--verify') {
   const app = value('--verify');
   if (!app) fail('--verify needs an app path');
@@ -551,7 +710,14 @@ if (args.includes('--help') || args.includes('-h')) {
   const timingPack = await assertTimingPackAssets(path.join(root, 'packs'));
   const bindingFile = value('--interactive-bindings');
   if (args.includes('--interactive-bindings') && !bindingFile) fail('--interactive-bindings needs an absolute administrator file');
-  const interactiveBindings = bindingFile ? await inspectInteractiveBindings(bindingFile, path.join(root, 'packs')) : undefined;
+  const atcsBindingFile = value('--atcs-binding');
+  if (args.includes('--atcs-binding') && !atcsBindingFile) fail('--atcs-binding needs an absolute administrator file');
+  const bindingSources = [
+    ...(bindingFile ? [await inspectInteractiveBindings(bindingFile, path.join(root, 'packs'))] : []),
+    ...(atcsBindingFile ? [await inspectInteractiveBindings(atcsBindingFile, path.join(root, 'packs'), undefined, true)] : []),
+  ];
+  const sourceBindings = bindingSources.flatMap(source => source.bindings);
+  const atcsSite = atcsSiteIdentity(path.join(root, atcsSiteRelative));
   // Rebuild the three shipped entry points from this source in this invocation.
   // Existing lib/ bytes are not evidence that they came from the source SHA.
   run(node24, [path.join(root, 'node_modules/typescript/bin/tsc'), '-p', 'packages/harness/tsconfig.json']);
@@ -588,29 +754,25 @@ if (args.includes('--help') || args.includes('-h')) {
     assertSourceTreeIsSafe(path.join(root, trialPackRelative));
     assertSourceTreeIsSafe(path.join(root, timingPackRelative));
     assertSourceTreeIsSafe(path.join(root, demoPackRelative));
+    assertSourceTreeIsSafe(path.join(root, atcsPackRelative));
     const trialPack = assertTrialPackAssets(path.join(root, 'packs'));
     await assertTimingPackAssets(path.join(root, 'packs'));
-    assertDemoPackAssets(path.join(root, 'packs'));
     cpSync(path.join(root, 'profiles'), path.join(resource, 'profiles'), { recursive: true });
-    mkdirSync(path.join(resource, 'packs'), { recursive: true });
-    cpSync(path.join(root, trialPackRelative), path.join(resource, trialPackRelative), { recursive: true, filter: (source) => {
-      const name = path.basename(source);
-      return !name.startsWith('.') && name !== 'run-assets' && name !== '.evidence';
-    } });
-    cpSync(path.join(root, timingPackRelative), path.join(resource, timingPackRelative), { recursive: true, filter: (source) => {
-      const name = path.basename(source);
-      return !name.startsWith('.') && name !== 'run-assets' && name !== '.evidence';
-    } });
-    cpSync(path.join(root, demoPackRelative), path.join(resource, demoPackRelative), { recursive: true });
-    if (interactiveBindings) {
+    const packs = await stageBundledPacks(path.join(root, 'packs'), resource);
+    let interactiveBindings;
+    if (bindingSources.length) {
+      // One bundled document carries the timing and the ATCS rows; each is re-judged against its own bundled Pack.
+      const rows = [bindingFile, atcsBindingFile].filter(Boolean)
+        .flatMap(file => JSON.parse(readFileSync(file, 'utf8')).bindings);
       mkdirSync(path.join(resource, qualificationRelative), { recursive: true });
-      cpSync(bindingFile, path.join(resource, bindingsRelative));
-      for (const binding of interactiveBindings.bindings) {
+      writeFileSync(path.join(resource, bindingsRelative), `${JSON.stringify({ schema: 'hima-interactive-bindings/1', bindings: rows }, null, 2)}\n`);
+      for (const binding of sourceBindings) {
         cpSync(binding.environment.file, path.join(resource, binding.environment.bundledFile));
       }
-      const copied = await inspectInteractiveBindings(path.join(resource, bindingsRelative), path.join(resource, 'packs'), resource);
-      if (JSON.stringify(copied) !== JSON.stringify(interactiveBindings)) fail('administrator qualification changed during packaging');
+      interactiveBindings = await inspectInteractiveBindings(path.join(resource, bindingsRelative), path.join(resource, 'packs'), resource);
+      if (JSON.stringify(interactiveBindings.bindings) !== JSON.stringify(sourceBindings)) fail('administrator qualification changed during packaging');
     }
+    const atcsBindingIds = (interactiveBindings?.bindings ?? []).filter(binding => binding.pack === atcsPackId).map(binding => binding.id);
     mkdirSync(path.join(resource, 'packages'), { recursive: true });
     symlinkSync('../node_modules/@hima/harness', path.join(resource, 'packages/harness'));
     mkdirSync(path.join(resource, 'node/bin'), { recursive: true });
@@ -636,7 +798,8 @@ if (args.includes('--help') || args.includes('-h')) {
       artifactDigest: createHash('sha256').update(JSON.stringify(files)).digest('hex'),
       platform: 'macos-arm64', signing: 'ad-hoc, not notarized',
       runtimeInputs: { node: '24', ledgerSchema: runtimeLedger.ledgerSpec.version,
-        bundledPacks: [trialPackId, timingPackId, demoPackId],
+        bundledPacks: bundledPackIds, packs, atcsSite,
+        atcsBinding: atcsBindingIds.length ? atcsBindingIds : atcsBindingNone,
         trialPack: { id: trialPackId, version: trialPack.version, methodDigest: trialPack.methodDigest,
           testRun: trialPack.testRun },
         timingPack: { id: timingPackId, version: timingPack.version, methodDigest: timingPack.methodDigest,
