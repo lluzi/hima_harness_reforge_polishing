@@ -1,0 +1,1 @@
+{"precision": "gba", "requiredScenarios": ["func_ssg_rcworst", "func_ffg_cbest"], "maxPaths": 1000, "nworst": 1}

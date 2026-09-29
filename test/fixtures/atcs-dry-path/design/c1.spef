@@ -1,0 +1,7 @@
+*SPEF "IEEE 1481-1999"
+*DESIGN "top"
+*NAME_MAP
+*1 in_a
+*2 n_q
+*D_NET *1 0.0010
+*D_NET *2 0.0020
