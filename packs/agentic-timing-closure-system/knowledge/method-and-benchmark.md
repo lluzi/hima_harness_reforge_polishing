@@ -36,6 +36,14 @@
   `contribution-and-merge.md`），不是增加更多并行分支。
 - **资源换时间但不允许模型自行提高硬上限。** Site 提供有限、可见的默认预算；报告成本时
   与「更早获得合格数据库」分开陈述，不把资源消耗包装成方法学收益。
+- **完整物理刷新次数有 Run 级硬上限，即 Goal 值 `max_physical_refreshes`（默认 1，1–4）。**
+  它由人在创建 Campaign/Run 时设定，Run 内任何决定都不能改变它。每次 Explore 回访都
+  消耗一个 generation，无论是否刷新，所以 generation 上限不等于刷新上限。`implement` 与
+  `apr-prepare` 之前各有 Judge 用 `refresh-budget` 核对账本中已完成的刷新数
+  `tc_refreshes_completed < max_physical_refreshes`；用尽时 Run 停在 `wait-for-person`，
+  该节点没有出边，清除后 Run 如实结束。需要更多刷新的人应以更高的 `max_physical_refreshes`
+  新建一个 Run。
+  选择 `implement`/`earlier-apr` 前先确认还剩一次刷新，并把它花在联合方案上。
 - **timing closure 不等同于整芯 signoff 或 tapeout-ready。** 遗留的全芯 DRC/PG 问题（例如
   Golden Flow 记录的 72,799 条全芯 DRC）不在本 Pack 的整改目标内；报告合格状态时必须与
   「设计已全面签核」明确区分。

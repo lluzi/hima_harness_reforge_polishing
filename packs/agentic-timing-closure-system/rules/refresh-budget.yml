@@ -1,0 +1,14 @@
+id: refresh-budget
+version: "1"
+title: Completed full physical refreshes stay below the Run's refresh cap
+# Every Explore revisit consumes a Harness generation, so generationLimit bounds revisits, not
+# Innovus/StarRC/PrimeTime refreshes; this rule caps the refreshes themselves. The parameter is
+# bound from the Run's Goal value max_physical_refreshes (graph.yml check-refresh-budget*), fixed
+# when the Run is created; its unit is the subject's (count), as is the Goal value's.
+parameter: { name: max_physical_refreshes, unit: count }
+requires: [{ type: tc_refreshes_completed }]
+subject: { type: tc_refreshes_completed }
+predicate:
+  op: lt
+  threshold: { parameter: max_physical_refreshes }
+  unit: count

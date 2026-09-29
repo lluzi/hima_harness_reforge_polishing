@@ -214,9 +214,20 @@ test('trial packager refuses a candidate Pack with no contract or a manifest who
     assert.match(wrongDemo.stderr, /local demo Pack contract\/graph identity differs/);
     await writeFile(path.join(demo, 'contract.yml'), 'id: opene902-timing-probe\nversion: "2"\n');
     await writeFile(path.join(demo, 'graph.yml'), 'id: opene902-timing-probe\nversion: "2"\n');
+    const missingAtcs = check();
+    assert.equal(missingAtcs.status, 1);
+    assert.match(missingAtcs.stderr, /ATCS Pack agentic-timing-closure-system is missing contract\.yml/);
+    const atcs = path.join(packs, 'agentic-timing-closure-system');
+    await mkdir(path.join(atcs, 'flow'), { recursive: true });
+    await writeFile(path.join(atcs, 'contract.yml'), 'id: agentic-timing-closure-system\nversion: "0.1.10"\nstatus: development\n');
+    await writeFile(path.join(atcs, 'graph.yml'), 'id: agentic-timing-closure-system\nversion: "0.1.10"\n');
+    const missingFlow = check();
+    assert.equal(missingFlow.status, 1);
+    assert.match(missingFlow.stderr, /ATCS Pack agentic-timing-closure-system is missing flow\/atcs_cli\.py/);
+    await writeFile(path.join(atcs, 'flow/atcs_cli.py'), '# fixture\n');
     const complete = check();
     assert.equal(complete.status, 0, complete.stderr);
-    assert.match(complete.stdout, /checked custom-cell-fmax-dtco, xtop-timing-closure and opene902-timing-probe assets/);
+    assert.match(complete.stdout, /checked custom-cell-fmax-dtco, xtop-timing-closure, opene902-timing-probe and agentic-timing-closure-system assets/);
     await writeTimingSeal('run-00000000-0000-4000-8000-000000000002');
     const wrongTimingRun = check();
     assert.equal(wrongTimingRun.status, 1);
@@ -235,5 +246,178 @@ test('trial packager refuses a candidate Pack with no contract or a manifest who
     const changedAfterRelease = check();
     assert.equal(changedAfterRelease.status, 1);
     assert.match(changedAfterRelease.stderr, /seal hash differs for TEST\.md/);
+  } finally { await (await import('node:fs/promises')).rm(output, { recursive: true, force: true }); }
+});
+
+const packager = path.join(repoRoot, 'scripts/package-trial.mjs');
+const packagerRun = (...args: string[]) => spawnSync(process.execPath, [packager, ...args],
+  { cwd: repoRoot, encoding: 'utf8', timeout: 60_000 });
+/** --check-pack-assets prints one line of text, then the Pack identities as JSON. */
+const identitiesFrom = (stdout: string) => JSON.parse(stdout.slice(stdout.indexOf('\n') + 1));
+const bundledPackIds = ['custom-cell-fmax-dtco', 'xtop-timing-closure', 'opene902-timing-probe', 'agentic-timing-closure-system'];
+
+test('the trial App stages the ATCS Pack at its exact source digest and its verifier refuses a changed byte', async () => {
+  const { packDigestOf } = await import('../../packages/harness/lib/pack-folder.js');
+  const output = await mkdtemp(path.join(os.tmpdir(), 'hima-atcs-bundle-'));
+  const app = path.join(output, 'HimaHarness.app');
+  const resource = path.join(app, 'Contents/Resources/app');
+  try {
+    const staged = packagerRun('--stage-packs', path.join(repoRoot, 'packs'), resource);
+    assert.equal(staged.status, 0, staged.stderr);
+    const identities = JSON.parse(staged.stdout);
+    assert.deepEqual(identities.packs.map((pack: { id: string }) => pack.id), bundledPackIds);
+    const atcs = identities.packs.find((pack: { id: string }) => pack.id === 'agentic-timing-closure-system');
+    const source = path.join(repoRoot, 'packs/agentic-timing-closure-system');
+    assert.equal(atcs.packDigest, packDigestOf(source));
+    assert.equal(atcs.packDigest, packDigestOf(path.join(resource, 'packs/agentic-timing-closure-system')));
+    assert.match(atcs.version, /^\d+\.\d+\.\d+$/);
+    const sealed = existsSync(path.join(source, 'VERSION.yml'));
+    assert.equal(atcs.stage === 'released', sealed, 'stage says released exactly when the source carries a release seal');
+    assert.equal(typeof atcs.methodDigest === 'string', sealed);
+    for (const pack of identities.packs) assert.equal(pack.packDigest, packDigestOf(path.join(repoRoot, 'packs', pack.id)));
+    await writeFile(path.join(output, 'trial-manifest.json'), JSON.stringify({ format: 2,
+      status: 'structurally-verified trial candidate',
+      runtimeInputs: { packs: identities.packs, atcsBinding: 'none, kit installs it' } }));
+    const verified = packagerRun('--check-bundle-identity', app);
+    assert.equal(verified.status, 0, verified.stderr);
+    for (const pack of identities.packs) {
+      assert.match(verified.stdout, new RegExp(`pack ${pack.id} ${pack.version.replaceAll('.', '\\.')} stage=${pack.stage} packDigest=${pack.packDigest}`));
+    }
+    assert.match(verified.stdout, /atcs binding: none, kit installs it/);
+    const changed = path.join(resource, 'packs/agentic-timing-closure-system/flow/atcs_cli.py');
+    const bytes = await readFile(changed);
+    bytes[0] = bytes[0]! ^ 1;
+    await writeFile(changed, bytes);
+    const refused = packagerRun('--check-bundle-identity', app);
+    assert.equal(refused.status, 1);
+    assert.match(refused.stderr, /bundled Pack agentic-timing-closure-system identity differs from the manifest/);
+  } finally { await (await import('node:fs/promises')).rm(output, { recursive: true, force: true }); }
+});
+
+test('the manifest ATCS stage follows its release seal and the ATCS Site identity is recorded exactly', async () => {
+  const { snapshotPackFolder, packDigestExcludes } = await import('../../packages/harness/lib/pack-folder.js');
+  const { cp, rm, unlink } = await import('node:fs/promises');
+  const output = await mkdtemp(path.join(os.tmpdir(), 'hima-atcs-stage-'));
+  const packs = path.join(output, 'packs');
+  const site = path.join(output, 'site');
+  const atcs = path.join(packs, 'agentic-timing-closure-system');
+  const sha = (text: string) => createHash('sha256').update(text).digest('hex');
+  try {
+    for (const id of bundledPackIds) await cp(path.join(repoRoot, 'packs', id), path.join(packs, id), { recursive: true });
+    await rm(path.join(atcs, 'TEST.md'), { force: true });
+    await rm(path.join(atcs, 'VERSION.yml'), { force: true });
+    await mkdir(site, { recursive: true });
+    await writeFile(path.join(site, 'site.yml'), 'id: linglong-atcs28\n');
+    await writeFile(path.join(site, 'permit.yml'), 'site: linglong-atcs28\n');
+    const unsealed = packagerRun('--check-pack-assets', packs, '--site', site);
+    assert.equal(unsealed.status, 0, unsealed.stderr);
+    const before = identitiesFrom(unsealed.stdout);
+    const developing = before.packs.find((pack: { id: string }) => pack.id === 'agentic-timing-closure-system');
+    assert.notEqual(developing.stage, 'released');
+    assert.equal(developing.status, 'development');
+    assert.equal(developing.methodDigest, undefined);
+    assert.deepEqual(before.atcsSite, { id: 'linglong-atcs28', siteSha256: sha('id: linglong-atcs28\n'),
+      permitSha256: sha('site: linglong-atcs28\n'), wrapperPins: 'absent: wrapper-pins.json' });
+    const pins = { wrapper: { version: 'atcs-v9', path: '/fixture/atcs-xtop-operator-v9.sh', sha256: 'c'.repeat(64) },
+      adapterSha256: 'd'.repeat(64), flowDigest: 'e'.repeat(64) };
+    await writeFile(path.join(site, 'wrapper-pins.json'), JSON.stringify(pins));
+    const pinned = identitiesFrom(packagerRun('--check-pack-assets', packs, '--site', site).stdout);
+    assert.deepEqual(pinned.atcsSite.wrapperPins, pins);
+
+    const run = 'run-00000000-0000-4000-8000-000000000009';
+    await writeFile(path.join(atcs, 'TEST.md'), `## Run\n\nrun: ${run}\n`);
+    const folder = snapshotPackFolder(atcs);
+    const methodDigest = folder.digest(packDigestExcludes);
+    const version = /^version:\s*["']?([^"'\s]+)["']?/m.exec(await readFile(path.join(atcs, 'contract.yml'), 'utf8'))![1];
+    await writeFile(path.join(atcs, 'VERSION.yml'), [
+      'pack: agentic-timing-closure-system', `version: "${version}"`, `methodDigest: ${methodDigest}`,
+      'released: "2026-09-28T00:00:00.000Z"', 'test:', '  record: TEST.md', `  run: ${run}`, 'files:',
+      ...folder.sealFiles().map(([file, digest]: [string, string]) => `  '${file}': '${digest}'`), '',
+    ].join('\n'));
+    const sealed = packagerRun('--check-pack-assets', packs, '--site', site);
+    assert.equal(sealed.status, 0, sealed.stderr);
+    const released = identitiesFrom(sealed.stdout).packs.find((pack: { id: string }) => pack.id === 'agentic-timing-closure-system');
+    assert.equal(released.stage, 'released');
+    assert.equal(released.methodDigest, methodDigest);
+    assert.equal(released.testRun, run);
+
+    await writeFile(path.join(atcs, 'flow/atcs_cli.py'), '# changed after release\n');
+    const drifted = packagerRun('--check-pack-assets', packs, '--site', site);
+    assert.equal(drifted.status, 1);
+    assert.match(drifted.stderr, /ATCS Pack agentic-timing-closure-system native release seal: .*flow\/atcs_cli\.py no longer hashes/);
+    await unlink(path.join(atcs, 'TEST.md'));
+    const halfSealed = packagerRun('--check-pack-assets', packs, '--site', site);
+    assert.equal(halfSealed.status, 1);
+    assert.match(halfSealed.stderr, /ATCS Pack agentic-timing-closure-system carries only one of TEST\.md and VERSION\.yml/);
+  } finally { await (await import('node:fs/promises')).rm(output, { recursive: true, force: true }); }
+});
+
+test('each interactive binding is checked against its own Pack and an ATCS binding carries the ATCS identity', async () => {
+  const output = await mkdtemp(path.join(os.tmpdir(), 'hima-atcs-binding-'));
+  try {
+    const { snapshotPackFolder, packDigestExcludes } = await import('../../packages/harness/lib/pack-folder.js');
+    const { loadPackFrom } = await import('../../packages/harness/lib/packs.js');
+    const { BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest } = await import('../../packages/harness/lib/interactive-binding.js');
+    const sha = 'a'.repeat(64);
+    const rowFor = async (packId: string, toolId: string, site: string, environmentId: string, id?: string) => {
+      const folder = snapshotPackFolder(path.join(repoRoot, 'packs', packId));
+      const tool = loadPackFrom(folder).contract.tools.find((tool: { id: string }) => tool.id === toolId)!;
+      const digest = folder.digest(packDigestExcludes);
+      const commandsDigest = interactiveCommandsDigest(tool);
+      const environment = {
+        schema: 'hima-interactive-environment/1', site, toolId, pack: { id: packId, digest },
+        adapter: { id: 'hima-tcl-line-v1', digest: BUILTIN_TCL_ADAPTER_DIGEST }, commandsDigest,
+        wrapper: { path: tool.interactive!.argv[0], sha256: sha }, image: { reference: 'fixture', digest: `sha256:${sha}` },
+        sourceTemplate: { path: 'flow/templates/xtop-operator.tcl', sha256: createHash('sha256').update(
+          await readFile(path.join(repoRoot, 'packs', packId, 'flow/templates/xtop-operator.tcl'))).digest('hex') },
+        confinement: { rootFilesystem: 'read-only', dataRoot: '/fixture/data', dataMount: 'read-only',
+          privateWriteRoot: '/fixture/write', network: 'host-localhost-licence-only', capabilities: 'dropped-all', noNewPrivileges: true },
+        qualification: { status: 'passed', transcriptSha256: sha, logicalEcoSha256: sha, physicalEcoSha256: sha,
+          xtopReady: true, identityQuery: true, mutation: true, save: true, sourceWriteDenied: true, execWriteDenied: true, normalExit: true },
+      };
+      const bytes = JSON.stringify(environment);
+      const environmentFile = path.join(output, `${packId}-environment.json`);
+      await writeFile(environmentFile, bytes);
+      return { digest, environment, environmentFile, row: { id: id ?? `${environmentId}:${digest.slice(0, 16)}`, site, packDigest: digest, toolId,
+        adapter: 'hima-tcl-line-v1', adapterHash: BUILTIN_TCL_ADAPTER_DIGEST, commandsDigest,
+        environment: { id: environmentId, file: environmentFile, sha256: createHash('sha256').update(bytes).digest('hex') },
+        mutation: 'qualified' } };
+    };
+    const xtop = await rowFor('xtop-timing-closure', 'run-xtop-fix', 'fixture-site', 'fixture-environment', 'fixture-qualified');
+    const atcs = await rowFor('agentic-timing-closure-system', 'xtop-operator', 'linglong-atcs28', 'linglong-atcs28:xtop-operator-v9');
+    assert.equal(atcs.row.id, `linglong-atcs28:xtop-operator-v9:${atcs.digest.slice(0, 16)}`);
+    const file = path.join(output, 'bindings.json');
+    const write = (at: string, rows: object[]) => writeFile(at, JSON.stringify({ schema: 'hima-interactive-bindings/1', bindings: rows }));
+    await write(file, [xtop.row, atcs.row]);
+    const both = packagerRun('--check-interactive-bindings', file);
+    assert.equal(both.status, 0, both.stderr);
+    assert.deepEqual(JSON.parse(both.stdout).bindings.map((binding: { id: string; pack: string }) => [binding.id, binding.pack]),
+      [['fixture-qualified', 'xtop-timing-closure'], [atcs.row.id, 'agentic-timing-closure-system']]);
+
+    const atcsFile = path.join(output, 'atcs-bindings.json');
+    await write(atcsFile, [atcs.row]);
+    const atcsOnly = packagerRun('--check-atcs-binding', atcsFile);
+    assert.equal(atcsOnly.status, 0, atcsOnly.stderr);
+    assert.equal(JSON.parse(atcsOnly.stdout).bindings[0].packDigest, atcs.digest);
+
+    // An ATCS row that names the timing Pack's digest is judged against the ATCS Pack, and refused.
+    const foreignDigest = { ...atcs.environment, pack: { ...atcs.environment.pack, digest: xtop.digest } };
+    const foreignBytes = JSON.stringify(foreignDigest);
+    await writeFile(atcs.environmentFile, foreignBytes);
+    await write(atcsFile, [{ ...atcs.row, packDigest: xtop.digest, environment: { ...atcs.row.environment,
+      sha256: createHash('sha256').update(foreignBytes).digest('hex') } }]);
+    const wrongPack = packagerRun('--check-atcs-binding', atcsFile);
+    assert.equal(wrongPack.status, 1);
+    assert.match(wrongPack.stderr, /qualification differs from the agentic-timing-closure-system Pack/);
+    await writeFile(atcs.environmentFile, JSON.stringify(atcs.environment));
+
+    await write(atcsFile, [{ ...atcs.row, id: 'linglong-atcs28:xtop-operator-v9:0000000000000000' }]);
+    const wrongId = packagerRun('--check-atcs-binding', atcsFile);
+    assert.equal(wrongId.status, 1);
+    assert.match(wrongId.stderr, /ATCS binding .* id is not linglong-atcs28:xtop-operator-v9:[0-9a-f]{16}/);
+    await write(atcsFile, [xtop.row]);
+    const notAtcs = packagerRun('--check-atcs-binding', atcsFile);
+    assert.equal(notAtcs.status, 1);
+    assert.match(notAtcs.stderr, /--atcs-binding carries only agentic-timing-closure-system bindings for Site linglong-atcs28/);
   } finally { await (await import('node:fs/promises')).rm(output, { recursive: true, force: true }); }
 });

@@ -1324,8 +1324,8 @@ class SemanticsCoverageTest(unittest.TestCase):
         "tc_final_setup_wns_ns", "tc_final_hold_wns_ns", "tc_missing_required_check_count",
         "tc_final_identity_error_count", "tc_applicable_constraint_failure_count",
         "tc_applicable_constraint_unknown_count", "tc_fixed_check_count", "tc_missing_prior_check_count",
-        "tc_refresh_count", "tc_accepted_artifact_ready", "tc_stop_required", "tc_next_action",
-        "tc_selected_contribution_count",
+        "tc_refresh_count", "tc_refreshes_completed", "tc_accepted_artifact_ready", "tc_stop_required",
+        "tc_next_action", "tc_selected_contribution_count",
     }
 
     def _load_yaml_light(self, path):

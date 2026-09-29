@@ -111,6 +111,15 @@ values:
   tc_refresh_count:
     unit: count
     description: Completed actual full physical refreshes recorded in the pointers history as of this acceptance record; kept separate from research/generation counts.
+  tc_refreshes_completed:
+    unit: count
+    description: >-
+      Completed full physical refreshes counted at the refresh-budget gate, from the same
+      `atcs.refresh` ledger as tc_refresh_count: the identity-verified ledger's entry count; 0 when
+      the ledger was never created and no STA receipt (state/sta.json) exists, because the first
+      refresh must not be blocked by an unknown; unknown for a corrupt, tampered or symlinked ledger,
+      or a missing ledger beside an STA receipt. Kept apart from tc_refresh_count, whose acceptance
+      reader never reports a missing ledger as 0.
   tc_accepted_artifact_ready:
     unit: count
     description: >-

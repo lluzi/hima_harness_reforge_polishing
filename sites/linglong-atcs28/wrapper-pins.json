@@ -1,0 +1,15 @@
+{
+  "wrapper": {
+    "version": "atcs-v9",
+    "path": "/data/eda/project/hima_harness/operator-admin/atcs-v9/atcs-xtop-operator-v9.sh",
+    "sha256": "259c67b3610d727192b57ca5270876c2ee3b93d01126e38a660ab41b6b9293be"
+  },
+  "adapterSha256": "d1fb9b6be74b5c7a798f6078b2d1b4ed58e89bbaa2b291213e940da055dd26ab",
+  "flowDigest": "e6ccfabcd1f56a71f8233c90aa956612816f006eeae8466665c882f6cbbcac80",
+  "flowDigestCommand": "python3 flow/atcs_cli.py flow-digest flow",
+  "qualifiedWith": {
+    "pack": "0.1.9",
+    "kit": "atcs63-pr03-39748aa3",
+    "run": "run-1ca6cdd3-bd35-457f-9270-c5a063e848c7"
+  }
+}
