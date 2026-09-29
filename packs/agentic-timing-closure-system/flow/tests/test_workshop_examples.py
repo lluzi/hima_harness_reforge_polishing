@@ -33,6 +33,9 @@ Recorded RED (slice 3 gap 2, on 4b3af279): 19 errors and 1 failure across test_r
 module -- every malformed-shape, slot-taskId and w01-action case raised ValueError instead of
 counting, and the Reader process exited 1 on a w01 request without `actions`; the ATCS contract
 test failed on 110 !== 111 nodes (no retry-worker-01).
+Recorded RED (slice 3 gap 3, on 2d3678a1): 3 failures and 4 errors -- neither
+example-observation-request.md nor example-integration-plan.md existed, was declared, or was
+named by its Workshop's purpose, and the purpose-field check had no example to read.
 """
 from __future__ import annotations
 
@@ -63,6 +66,8 @@ EXAMPLE_WORKSHOPS = {
     "example-campaign-plan.md": ("plan-campaign",),
     "example-worker-request.md": ("research-worker-01", "research-worker-02", "research-worker-03"),
     "example-next-decision.md": ("evaluate-next-investment",),
+    "example-observation-request.md": ("diagnose-and-observe",),
+    "example-integration-plan.md": ("compose-contributions",),
 }
 
 # The nested netlist every example's baseState describes: leaf cells live inside
@@ -147,7 +152,7 @@ class ExampleKnowledgeIsReachableTest(unittest.TestCase):
                     self.assertIn(f"knowledge {name}", purpose)
                     self.assertIn(name, files)
 
-    def test_every_shipped_example_is_one_of_the_three(self):
+    def test_every_shipped_example_is_one_of_the_five(self):
         shipped = {p.name for p in KNOWLEDGE_DIR.glob("example-*")}
         self.assertEqual(shipped, set(EXAMPLE_WORKSHOPS))
         self.assertFalse((PACK_DIR / "examples").exists(), "examples/ is unreachable by a Workshop; ship knowledge instead")
@@ -166,6 +171,8 @@ def _all_keys(value):
 PURPOSE_LISTED_FIELDS = {
     "plan-campaign": ("workPackages", "reason"),
     "research-worker-01": ("actions", "instance", "toMaster"),
+    "diagnose-and-observe": ("designStateId", "precision", "requiredScenarios", "maxPaths", "nworst"),
+    "compose-contributions": ("batchId", "baseStateId", "select", "resolutions", "deferred", "reason"),
     "evaluate-next-investment": (
         "stateRef", "observationRef", "budgetRef", "question", "action", "targets", "reason",
         "falsifier", "costBasis", "requiredArtifacts",
@@ -483,6 +490,53 @@ class ProblemsDeliveryTest(_HierarchicalFixture):
                 self.assertIn(sidecar_name, _workshop_reads(text, workshop_id))
                 purpose, _ = _workshop(text, workshop_id)
                 self.assertIn(f"output {sidecar_name}", purpose)
+
+
+class ObservationRequestExampleTest(_HierarchicalFixture):
+    """Issue #63 gap 3: diagnose-and-observe had only purpose prose for its document."""
+
+    def test_observation_request_example_is_admitted_for_the_working_state(self):
+        example = _load_example("example-observation-request.md")
+        self.assertEqual(example["designStateId"], self.design["id"], "names the working design-state it observes")
+        self.assertEqual(self._read("observation-request", "observation-request.json", example),
+                         {"tc_request_invalid_count": 0})
+
+
+def _example_facts():
+    """The composition facts example-integration-plan.md embeds: three slot Contributions
+    against the examples' common base, w01 and w02 sizing the same instance differently."""
+    ids = {slot: core.digest({"example-contribution": slot}) for slot in ("w01", "w02", "w03")}
+    members = sorted([ids["w01"], ids["w02"]])
+    conflict = {"key": "same-instance-different-master|" + ",".join(members) + "|u_a/reg0",
+                "kind": "same-instance-different-master", "contributions": members, "objects": ["u_a/reg0"]}
+    facts = core.stamp("composition-facts", {
+        "baseStateId": "3956975ce47374c313fc", "considered": [ids["w01"], ids["w02"], ids["w03"]],
+        "duplicates": [], "conflicts": [conflict], "interactions": [], "staleBase": [],
+        "order": [ids["w01"], ids["w02"], ids["w03"]], "unresolvedCount": 1, "unknownResolutions": [],
+    })
+    return facts, ids
+
+
+class IntegrationPlanExampleTest(_HierarchicalFixture):
+    """Issue #63 gap 3: compose-contributions had only purpose prose for its document."""
+
+    def test_integration_plan_example_is_admitted_against_its_facts(self):
+        example = _load_example("example-integration-plan.md")
+        facts, ids = _example_facts()
+        self.assertEqual(example["facts"], facts, "example facts drifted from the fixture it documents")
+        self.assertEqual(example["plan"]["baseStateId"], self.design["id"])
+        values = self._read("integration-plan", "integration-plan.json", example)
+        self.assertEqual(values, {"tc_request_invalid_count": 0,
+                                  "tc_selected_contribution_count": len(example["plan"]["select"])})
+        self.assertEqual(example["plan"]["resolutions"][0]["conflictKey"], facts["conflicts"][0]["key"])
+
+    def test_dropping_the_resolution_leaves_the_conflict_counted(self):
+        example = _load_example("example-integration-plan.md")
+        example["plan"]["select"] = list(example["facts"]["considered"])
+        example["plan"]["resolutions"] = []
+        example["plan"]["deferred"] = []
+        values = self._read("integration-plan", "integration-plan.json", example)
+        self.assertEqual(values["tc_request_invalid_count"], 1)
 
 
 class NextDecisionExampleTest(unittest.TestCase):

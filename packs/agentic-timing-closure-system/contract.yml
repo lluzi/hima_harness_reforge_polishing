@@ -628,6 +628,10 @@ knowledge:
     purpose: One worker request the worker-request Reader admits, carrying the plan example's w01 package and hierarchical action instances, for the research workers to copy the shape of.
   - file: example-next-decision.md
     purpose: One next-decision the next-decision Reader admits, for evaluate-next-investment to copy the shape of.
+  - file: example-observation-request.md
+    purpose: One observation request the observation-request Reader admits for the examples' working state, for diagnose-and-observe to copy the shape of.
+  - file: example-integration-plan.md
+    purpose: One integration plan the integration-plan Reader admits against its embedded composition facts, including a conflict resolution, for compose-contributions to copy the shape of.
 
 agentTeams:
   - id: atcs-worker-01
@@ -711,12 +715,13 @@ workshops:
       design-state it observes; the Run's maxPaths Strategy knob caps the value the observe tool
       uses; the tool builds every scenario's PT inputs from the working state itself. Every required scenario stays in the request; the request never
       changes frequency, exceptions or required checks. It is a plan, not a measurement.
+      Read knowledge example-observation-request.md; copy its shape and change only the values.
       Before writing, read output observationRequestProblems: after the Reader has read an earlier document it lists every problem it found, one line each naming the field, the slot and the required format; fix every line and write the whole document again (the file is absent before the first reading).
     directory: research/diagnose
     entry: entry.py
     language: python
     reads: [workingState, inputReadiness, currentObservations, riskAtlas, campaignExperience, statePointers, observationRequestProblems]
-    knowledge: [observation-strategy.md, mechanisms-and-falsifiers.md, state-and-evidence.md, experience-transfer.md]
+    knowledge: [observation-strategy.md, mechanisms-and-falsifiers.md, state-and-evidence.md, experience-transfer.md, example-observation-request.md]
     produces: observationRequest
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -816,12 +821,13 @@ workshops:
       research/requests/integration-plan.json, as {plan: {batchId, baseStateId, select, resolutions,
       deferred, reason}, facts: <the stamped compositionFacts>}. Never split an atomic group without a record;
       an empty select needs a stated waiting-value reason.
+      Read knowledge example-integration-plan.md; copy its shape and change only the values.
       Before writing, read output integrationPlanProblems: after the Reader has read an earlier document it lists every problem it found, one line each naming the field, the slot and the required format; fix every line and write the whole document again (the file is absent before the first reading).
     directory: research/compose
     entry: entry.py
     language: python
     reads: [contributionIndex, compositionFacts, integrationState, campaignPlan, campaignExperience, integrationPlanProblems]
-    knowledge: [contribution-and-merge.md, cheap-verification.md, method-and-benchmark.md]
+    knowledge: [contribution-and-merge.md, cheap-verification.md, method-and-benchmark.md, example-integration-plan.md]
     produces: integrationPlan
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
