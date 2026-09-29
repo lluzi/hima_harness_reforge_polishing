@@ -404,3 +404,27 @@ test('C21: a Python Workshop entry that does not compile is refused only when th
     await host.dispose(); await h.dispose();
   }
 });
+
+test('C33: an Agent-owned Workshop Job that fails records its log tail on the retrying node record', async () => {
+  const home = await nodeHome();
+  const { host, ctx } = home; // nodeHome builds ctx with nonblocking: true — the live owner-driven path.
+  try {
+    const node = ctx.pack.graph.nodes.find((n) => n.id === 'mine');
+    assert.ok(node?.kind === 'act' && node.parameters.workshop !== undefined);
+    const built = await buildWorkshopScope({ ...ctx, executionId: 'execution-i3' }, node, 1, 'conversation-owner');
+    assert.equal(built.ok, true); if (!built.ok) return;
+    // A Workshop entry whose Job prints a diagnostic and exits non-zero: an Agent-owned coding-loop
+    // failure, which retries without human clearance and must still leave its log tail in the Ledger.
+    assert.equal((await writeIntoWorkshop(built.scope, 'miner.sh', 'echo "workshop failure detail line"\nexit 1\n')).wrote, true);
+    const launched = await launchWrittenWorkshop({ ...ctx, executionId: 'execution-i3' }, node, 1, 'conversation-owner');
+    assert.equal(launched.kind, 'pending'); if (launched.kind !== 'pending') return;
+    const settled = await resumeNode(ctx, node, 1, launched.session);
+    assert.equal(settled.kind, 'retrying', 'an Agent-owned Workshop failure retries in its coding loop');
+    const record = host.ctx.hima.ledger.records({ runId: ctx.runId, type: 'node' })
+      .findLast((r) => r.type === 'node' && r.nodeId === 'mine' && r.state === 'retrying');
+    assert.ok(record?.type === 'node', 'a retrying node record was written for the Workshop node');
+    assert.ok(record.logTail, `the owner-driven Workshop retry carries the Job log tail: ${JSON.stringify(record)}`);
+    assert.match(record.logTail!, /workshop failure detail line/, 'the log tail carries the failed Workshop Job diagnostic');
+    assert.ok(record.logTail!.length <= 16 * 1024);
+  } finally { await home.dispose(); }
+});

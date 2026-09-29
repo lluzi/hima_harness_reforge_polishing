@@ -754,7 +754,12 @@ export async function settleFailedAttempt(ctx: Driving, node: PackNode, attempt:
   // node available and let the Run's existing research-write, attempt and time budgets bound it.
   if (ctx.nonblocking === true && node.kind === 'act' && node.parameters.workshop !== undefined && failure.exitCode !== undefined) {
     const session = failure.jobSession === undefined ? {} : { jobSession: failure.jobSession };
-    await appendNode(ctx, node, 'retrying', attempt, { ...session,
+    // This is the live owner-driven path — every owned execution sets `nonblocking` — so the failed
+    // Job's log tail is copied into the retrying record here too (#C33), the way a blocker carries it,
+    // rather than only in the moment-driven branch below.
+    const tailed = failure.jobSession === undefined ? undefined : await tailOfJob(ctx, failure.jobSession);
+    const tail = tailed?.ok === true && tailed.text !== '' ? { logTail: tailed.text } : {};
+    await appendNode(ctx, node, 'retrying', attempt, { ...session, ...tail,
       reason: `${failure.reason}; the Workshop code may be revised by its owning Campaign Agent without human clearance` });
     return { kind: 'retrying' };
   }
