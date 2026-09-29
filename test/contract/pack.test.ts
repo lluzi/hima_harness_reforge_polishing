@@ -20,7 +20,7 @@ import { graphForLegacyTimingPush, installDrillDown, installPack, packsDirOf, sh
 import { writeStandinFlow } from './support/standin-flow.ts';
 import { killSessions } from './support/fabric.ts';
 import { bundledReaderValues } from './support/readings.ts';
-import { checkPack, clearRemoteCommands, heldToOneInode, HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS, jobPlumbing, loadPack, loadSite, packDigestOf, packStageOf, packVersionFile, quote, readOnlyProbes, readSemanticsFile, remoteCommands, shippedSemanticsFile, workspacePlumbing } from '@hima/harness';
+import { checkPack, clearRemoteCommands, harnessVersion, heldToOneInode, HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS, jobPlumbing, loadPack, loadSite, packDigestOf, packStageOf, packVersionFile, quote, readOnlyProbes, readSemanticsFile, remoteCommands, shippedSemanticsFile, workspacePlumbing } from '@hima/harness';
 // The bundled reader library's own declarations, which this file holds against the bundle's own
 // semantics: a reader's `emits` is TypeScript and the vocabulary it draws on is a YAML file, and
 // nothing else in the suite has both open at once.
@@ -224,7 +224,7 @@ ontology:
     await writePackVariant(packsDir, 'metadata-too-new', [['title: opene902 timing probe', `title: opene902 timing probe\nstatus: released\nminimumHarnessVersion: 0.2.0`]]);
     const tooNew = checkPack(loadPack(packsDir, 'metadata-too-new'), site);
     assert.equal(tooNew.fit, false);
-    assert.match(tooNew.errors.join('\n'), /requires HimaHarness 0\.2\.0 or later, but this Harness is 0\.1\.0/);
+    assert.match(tooNew.errors.join('\n'), new RegExp(`requires HimaHarness 0\\.2\\.0 or later, but this Harness is ${harnessVersion.replace(/\./g, '\\.')}`));
   } finally {
     await dispose();
   }
