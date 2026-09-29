@@ -334,6 +334,22 @@ Schema limits and how the graph expresses them:
   requalification. Proving tests: `ComposeFactsSecondPassTest.test_a_refused_plan_with_malformed_resolutions_is_not_applied`
   (RED: exit 3), `IntegrationPlanExampleTest.test_a_resolution_for_a_no_fix_contribution_is_counted`,
   `test_wild_contribution_flow.py` (green on arrival).
+- G49 (Issue #64 treatment attempt 1, retry slot hygiene; Site side, no flow change) Every Operator
+  attempt should start in a fresh slot. `prepare-workers` (`workspaces.prepare`) picks a slot's round
+  directory `workspaces/<slot>/r<N>` once per plan and bakes it into `state/workers.json` and the session
+  Tcl; the interactive argv is `<wrapper> <workspace> <slot>` with no attempt, and the v12 wrapper and
+  its verifier read `r<N>` from that record. So every retry of one plan lands in the same `r<N>`: slot
+  w02's retries met attempt 1's XTop workspaces and 44 hard-linked `.exclusive.cdslck*` files
+  (`flow/tests/live_fixtures/t01-w02-stale-locks-list.txt`); the verifier refused attempts 2 and 5 and
+  attempt 4's XTop stopped at `save_workspace` ("Directory exists"). Neither the Pack nor the Harness can
+  pass an attempt number without a flow or Harness change, so the fix is the Site's: the `atcs-v13`
+  wrapper template runs `sites/linglong-atcs28/fresh-worker-slot.py` (pinned) before the verifier, moving
+  every entry of `r<N>` except the three prepared files into `r<N>.attempt-<k>/` (nothing deleted). Not
+  installed: the Pack still names the v12 wrapper until an administrator installs and qualifies v13
+  (`sites/linglong-atcs28/README.md`). A close the Harness records as `process-survived` still needs a
+  person to end the wrapper's process and container (a v12 limitation that v13 keeps; see G43's and
+  attempt 1's D-T01-3). Proving tests: `sites/linglong-atcs28/test_verify_worker_startup.py`
+  `RetrySlotTest` on the retained listing (RED: 5 of 6; the sixth characterizes the reuse and the refusal).
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.

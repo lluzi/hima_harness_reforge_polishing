@@ -1,5 +1,20 @@
 # linglong-atcs28 Site administration
 
+Next candidate, not installed (Issue 64, before treatment attempt 2): `atcs-xtop-operator-v13.sh` under
+`operator-admin/atcs-v13/`, v12 with the `atcs-v13` paths and one pinned step before the verifier,
+`fresh-worker-slot.py`. `prepare-workers` picks a slot's round directory `workspaces/<slot>/r<N>` once per
+plan and the Harness retries the operate node with the same argv, so every attempt of one plan lands in the
+same `r<N>`; in treatment attempt 1 slot w02's retries met attempt 1's XTop workspaces and 44 hard-linked
+`.exclusive.cdslck*` files (the verifier refused attempts 2 and 5, "writable slot contains a multiply linked
+file"; attempt 4's XTop stopped at `save_workspace`, "Directory exists"). The step moves every entry of
+`r<N>` except `manifest.json`, `operator.tcl` and `xtop-analysis-manual.tcl` into
+`workspaces/<slot>/r<N>.attempt-<k>/` (nothing is deleted) and leaves a first attempt alone
+(`test_verify_worker_startup.RetrySlotTest`). It never ends a process: a close the Harness records as
+`process-survived` still needs a person to end that wrapper's container before the retry (a v12 and v13
+limitation). To install: copy the installed v12 to `atcs-v13/`, apply the template's diff, pin
+`fresh-worker-slot.py`'s sha, qualify with a retried slot, then point the Pack's `xtop-operator` binding and
+the Permit at `atcs-v13` (the Pack contract still names v12).
+
 Current candidate (Issue 64 Task 7 fix round 2, Pack 0.2.0): `atcs-xtop-operator-v12.sh` under
 `operator-admin/atcs-v12/` (wrapper sha `6656badf...`, installed mode 0555), with the six-slot
 administrator verifier copied beside it (`verify-worker-startup.py`, sha `014fcfa5...`, the same bytes as

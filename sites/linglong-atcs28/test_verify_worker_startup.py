@@ -19,7 +19,9 @@ spec = importlib.util.spec_from_file_location("admin_verifier", VERIFIER)
 verify_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(verify_module)
 
-class VerifierTest(unittest.TestCase):
+class _VerifierFixture(unittest.TestCase):
+    """A prepared Campaign workspace and slot w01, and the verifier run against them."""
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -112,6 +114,8 @@ class VerifierTest(unittest.TestCase):
             "--profile-hash", core.file_sha256(self.profile_path), "--admin-root", str(self.admin)],
             capture_output=True, text=True)
 
+
+class VerifierTest(_VerifierFixture):
     def test_untouched_fixture_produces_readonly_admin_startup_and_slot_identity(self):
         result = self.run_verifier()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -269,6 +273,100 @@ class VerifierTest(unittest.TestCase):
         cache.mkdir()
         (cache / "core.cpython-312.pyc").write_bytes(b"untrusted cache")
         self.assertEqual(self.run_verifier().returncode, 0)
+
+
+FRESH = Path(__file__).with_name("fresh-worker-slot.py")
+WRAPPER_V13 = Path(__file__).with_name("atcs-xtop-operator-v13.sh")
+# #64 treatment attempt 1, slot w02: the 44 multiply linked files attempt 1's orphaned XTop left in
+# workspaces/w02/r1 (the retained `find -links +1` listing, one "<links> <inode> <path>" row each).
+STALE_LOCKS = REPO / "packs/agentic-timing-closure-system/flow/tests/live_fixtures/t01-w02-stale-locks-list.txt"
+
+
+class RetrySlotTest(_VerifierFixture):
+    """Every Operator attempt starts in a slot holding no earlier attempt (#64 treatment attempt 1, w02).
+
+    `prepare-workers` picks `workspaces/<slot>/r<N>` once per plan and the Harness retries the operate
+    node with the same argv, so attempt 2 met attempt 1's XTop workspaces and hard-linked locks: the
+    verifier refused it, and after a person cleared the locks attempt 4's XTop stopped at
+    `save_workspace` ("Directory exists"). The v13 wrapper runs `fresh-worker-slot.py` first."""
+
+    def leave_attempt_one(self):
+        """The shapes attempt 1 left in the slot: its XTop workspaces with the retained hard-linked
+        lock pairs, its session outputs and its private home."""
+        rows = [line.split() for line in STALE_LOCKS.read_text().splitlines() if line.strip()]
+        self.assertEqual(len(rows), 44)
+        by_inode = {}
+        for _links, inode, rel in rows:
+            by_inode.setdefault(inode, []).append(rel)
+        for first, *others in by_inode.values():
+            target = self.slot / first
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("lock\n")
+            for other in others:
+                os.link(target, self.slot / other)
+        (self.slot / "swerv_wrapper_operator_baseline").mkdir()
+        (self.slot / "swerv_wrapper_operator_baseline" / "workspace.db").write_text("baseline\n")
+        for name in ("ops.jsonl", "before.dump", "xtop_log_1.txt"):
+            (self.slot / name).write_text("attempt 1\n")
+        (self.slot / ".operator-home-2343326").mkdir()
+        return len(by_inode)
+
+    def run_fresh(self, slot="w01"):
+        return subprocess.run([sys.executable, "-I", str(FRESH), "--workspace", str(self.w), "--slot", slot],
+                              capture_output=True, text=True)
+
+    def test_the_retry_lands_in_the_same_round_directory_and_the_verifier_refuses_it(self):
+        pairs = self.leave_attempt_one()
+        self.assertEqual(pairs, 22)
+        package = self.index["workers"]["w01"]["workPackage"]
+        again = workspaces.prepare(package, str(self.w), self.base)
+        self.assertEqual(self.w / again["root"], self.slot, "prepare-workers returns the same r<N> for the retry")
+        result = self.run_verifier()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("multiply linked", result.stderr)
+
+    def test_a_retry_starts_in_a_slot_holding_only_its_prepared_files(self):
+        self.leave_attempt_one()
+        result = self.run_fresh()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertEqual(sorted(path.name for path in self.slot.iterdir()),
+                         ["manifest.json", "operator.tcl", "xtop-analysis-manual.tcl"])
+        retired = Path(receipt["retired"])
+        self.assertEqual(retired, self.slot.with_name(self.slot.name + ".attempt-1"))
+        self.assertEqual(len([path for path in retired.rglob("*.exclusive.cdslck*")]), 44, "nothing is deleted")
+        self.assertIn("swerv_wrapper_operator_baseline", receipt["moved"])
+        verified = self.run_verifier()
+        self.assertEqual(verified.returncode, 0, verified.stderr)
+        self.assertEqual(json.loads(verified.stdout)["slotRoot"], str(self.slot))
+
+    def test_each_further_attempt_is_retired_beside_the_last(self):
+        self.leave_attempt_one()
+        self.assertEqual(self.run_fresh().returncode, 0)
+        (self.slot / "ops.jsonl").write_text("attempt 2\n")
+        second = json.loads(self.run_fresh().stdout)
+        self.assertEqual(Path(second["retired"]).name, self.slot.name + ".attempt-2")
+        self.assertEqual(second["moved"], ["ops.jsonl"])
+
+    def test_a_first_attempt_is_left_alone(self):
+        result = self.run_fresh()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["retired"], None)
+        self.assertFalse(self.slot.with_name(self.slot.name + ".attempt-1").exists())
+
+    def test_a_parked_slot_is_refused(self):
+        self.prepare_slot("w02", parked=True)
+        result = self.run_fresh("w02")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("parked", result.stderr)
+
+    def test_the_v13_wrapper_runs_the_step_pinned_before_the_verifier(self):
+        text = WRAPPER_V13.read_text()
+        self.assertIn("fresh_slot=/data/eda/project/hima_harness/operator-admin/atcs-v13/fresh-worker-slot.py", text)
+        self.assertIn("fresh_slot_sha256=", text)
+        self.assertLess(text.index('python3 -I "$fresh_slot"'), text.index('python3 -I "$verifier"'))
+        self.assertIn("operator-admin/atcs-v13/verify-worker-startup.py", text)
+
 
 if __name__ == "__main__":
     unittest.main()
