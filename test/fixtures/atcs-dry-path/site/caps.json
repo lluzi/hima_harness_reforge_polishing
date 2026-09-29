@@ -9,10 +9,10 @@
       {"name": "func_ffg_cbest", "corner": "c1", "libertyGlob": "${SITE}/design/libs/*.lib"}
     ],
     "ecoParameters": {
-      "bufferListForHold": ["BUF1"], "bufferListForSetup": ["BUF2"],
+      "bufferListForHold": ["BUFFD1BWP"], "bufferListForSetup": ["BUFFD2BWP"],
       "cellClassifyRule": "cell_attribute", "cellMatchAttribute": "footprint",
       "cellNominalSwapKeywords": ["ULVT", "LVT", "", "HVT"],
-      "cellNominalSizingPattern": "BUF([0-9]+)", "gainThreshold": 0.001
+      "cellNominalSizingPattern": "D([0-9]+)BWP", "gainThreshold": 0.001
     }
   }
 }

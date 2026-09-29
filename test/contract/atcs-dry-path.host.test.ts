@@ -180,8 +180,8 @@ async function decisions(variant: string): Promise<{ observe: string; reobserve:
   const observe = await example(variant, 'next-decision');
   const reobserve = JSON.stringify({ ...JSON.parse(observe),
     question: 'which setup paths remain on the adopted candidate before a second sizing batch?',
-    targets: ['func_ssg_rcworst|setup|u_a/reg0/D'],
-    reason: 'the refreshed candidate is adopted but still fails setup on u_a/reg0/D; observe the adopted state before researching again',
+    targets: ['func_ssg_rcworst|setup|u_a/reg0/I'],
+    reason: 'the refreshed candidate is adopted but still fails setup on u_a/reg0/I; observe the adopted state before researching again',
     falsifier: 'if the adopted state shows no remaining setup path, stop and decide on the evidence at hand' }, null, 2);
   return { observe, reobserve };
 }
@@ -455,7 +455,7 @@ test('ATCS dry path: bind-inputs to an ended-budget-exhausted Run with one worke
   assert.equal(result.interactiveOpens, 1, `${row}: one Operator session`);
   const collected = JSON.parse(await readFile(path.join(workspace, 'state/contributions-collected.json'), 'utf8'));
   assert.equal(collected.contributions.length, 1, `${row}: one Contribution collected`);
-  assert.deepEqual(collected.contributions[0].operations.map((op: any) => [op.instance, op.toMaster]), [['u_a/reg0', 'BUF2']]);
+  assert.deepEqual(collected.contributions[0].operations.map((op: any) => [op.instance, op.toMaster]), [['u_a/reg0', 'BUFFD2BWP']]);
 
   // 3. Refresh: one implement/extract/sta chain, one ledger entry, and the budget reader's count.
   for (const nodeId of ['implement', 'extract', 'sta']) assert.equal(jobsOf(nodeId).length, 1, `${row}: ${nodeId} ran once`);

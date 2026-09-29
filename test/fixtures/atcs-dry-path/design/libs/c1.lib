@@ -1,1 +1,5 @@
-library(synthetic_c1) {}
+library(synthetic_c1) {
+  cell (BUFFD1BWP) {}
+  cell (BUFFD2BWP) {}
+  cell (BUFFD4BWP) {}
+}

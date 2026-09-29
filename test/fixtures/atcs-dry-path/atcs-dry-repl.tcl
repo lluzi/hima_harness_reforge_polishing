@@ -8,7 +8,14 @@ cd [lindex [lsort -dictionary [glob -directory [file join $workspace workspaces 
 set fh [open [file join $workspace state working-state.json]]; set state [read $fh]; close $fh
 regexp {"netlist":\s*\{[^\}]*"path":\s*"([^"]+)"} $state -> netlist
 set fh [open [file join $workspace $netlist]]; set text [read $fh]; close $fh
-regexp -line "^\\s*(\\w+)\\s+[lindex [split $instance /] end]\\s*\\(" $text -> master
+# Walk the instance path from top: each parent names the module the next segment lives in.
+set module top
+foreach name [lrange [split $instance /] 0 end-1] {
+    regexp "(?w)^module\\s+$module\\y.*?^endmodule" $text block
+    regexp -line "^\\s*(\\w+)\\s+$name\\s*\\(" $block -> module
+}
+regexp "(?w)^module\\s+$module\\y.*?^endmodule" $text block
+regexp -line "^\\s*(\\w+)\\s+[lindex [split $instance /] end]\\s*\\(" $block -> master
 set done 0
 proc atcs_query_paths {} { return {synthetic path} }
 proc atcs_query_cells {object attr} { return $::master }
