@@ -410,6 +410,20 @@ Known gaps carried from earlier tasks:
   takes the latest reading Run-wide, so each gate reads afresh). FAIL and UNDETERMINED stop at
   `wait-for-person`, whose clearance ends the Run. Graph now 136 nodes / 178 edges; proving tests
   `flow/tests/test_refresh_budget.py` and the ATCS contract test.
+- G37 (Issue #64 Track B, ported from #63 slice 3 gap 1) Itemized refusals. Live02's plan was refused
+  at 41 problems and the owner saw only the count. Every request kind of `tools/read-atcs.py` returns
+  one problem string per counted problem (`problems()`), each starting with its field and slot and,
+  where a format is required, stating it; `main()` writes them beside the document as
+  `<document>.problems.txt` before OUT (the refusal reason when a companion's identity does not
+  verify). Ten outputs `<output>Problems` (observation request, campaign plan, worker requests
+  w01..w06, integration plan, next decision) declare those files with no reader; each producing
+  Workshop reads its own, and `evaluate-next-investment` also reads the campaign-plan and
+  integration-plan ones, whose FAILs route to it. A document of the wrong shape, a worker request
+  for another slot, and an edit-domain instance or target pin the base netlist does not hold are
+  now counted problems instead of Reader exceptions (which re-read the same bytes until a Hard
+  blocker parked the Run); fail-closed identity (`baseState`, `facts`) stays a refusal. Proving
+  tests: `flow/tests/test_request_problems.py` (the live02 plan bytes, `flow/tests/live_fixtures/`,
+  itemized at exactly 41) and the ATCS contract test.
 
 ## Reviews
 

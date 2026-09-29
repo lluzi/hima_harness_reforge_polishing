@@ -496,6 +496,18 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual(edgesFrom('check-presta-model'), ['FAIL->decide-next', 'PASS->read-refresh-budget']);
   assert.ok(pack.contract.rules.includes('refresh-budget'));
 
+  // #64 Track B (from #63 slice 3 gap 1): every request output has an itemized `<output>Problems`
+  // beside it (written by tools/read-atcs.py, no reader), read by the Workshop that produces it.
+  for (const workshop of pack.contract.workshops) {
+    const problems = pack.contract.outputs.find(output => output.name === `${workshop.produces}Problems`)!;
+    const request = pack.contract.outputs.find(output => output.name === workshop.produces)!;
+    assert.ok(problems, `${workshop.produces} has its Problems output`);
+    assert.equal(problems.path, request.path.replace(/\.json$/, '.problems.txt'));
+    assert.equal(problems.reader, undefined);
+    assert.ok(workshop.reads.includes(problems.name), `${workshop.id} reads ${problems.name}`);
+    assert.match(workshop.purpose, new RegExp(`read output ${problems.name} first`));
+  }
+
   // Issue 63 (fresh03 `sta` blocked: "references ${MAX_PATHS}, which nothing bound"): every
   // `${NAME}` a node's tool command line uses is bound by that node or is a Harness-reserved value.
   const reserved = new Set(['WORKSPACE', 'SLOT', 'ENTRY', 'WORKSHOP', 'READER', 'REPORT', 'OUT']);

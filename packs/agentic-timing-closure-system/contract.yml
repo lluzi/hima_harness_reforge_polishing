@@ -80,6 +80,12 @@ outputs:
     path: research/requests/observation-request.json
     reader: atcs-observation-request
     description: The diagnose Workshop's bounded PT query request; its shape is the observe tool's query spec.
+  - name: observationRequestProblems
+    path: research/requests/observation-request.problems.txt
+    description: >-
+      The Reader's itemized refusal of research/requests/observation-request.json: one line per problem, each naming its field and the
+      format it needs, written beside the document by tools/read-atcs.py on every reading ("0 problems"
+      once admitted). No reader: the producing Workshop reads it after a refusal.
   - name: campaignPlan
     path: research/requests/campaign-plan.json
     reader: atcs-campaign-plan
@@ -89,6 +95,12 @@ outputs:
       baseState and siteCapabilities alongside, for the Reader's own validation) and nowhere else. The campaign-plan Reader admits candidate.workPackages, and
       prepare-workers reads that exact same field; a top-level workPackages key is refused
       (ambiguous-plan) if present at all, since a second copy is never allowed to exist.
+  - name: campaignPlanProblems
+    path: research/requests/campaign-plan.problems.txt
+    description: >-
+      The Reader's itemized refusal of research/requests/campaign-plan.json: one line per problem, each naming its field and the
+      format it needs, written beside the document by tools/read-atcs.py on every reading ("0 problems"
+      once admitted). No reader: the producing Workshop reads it after a refusal.
   - name: workerManifests
     path: state/workers.json
     description: >-
@@ -103,26 +115,62 @@ outputs:
     path: research/requests/worker-request-w01.json
     reader: atcs-worker-request-01
     description: Slot w01's research request in the worker-request read envelope.
+  - name: workerRequest01Problems
+    path: research/requests/worker-request-w01.problems.txt
+    description: >-
+      The Reader's itemized refusal of research/requests/worker-request-w01.json: one line per problem, each naming its field and the
+      format it needs, written beside the document by tools/read-atcs.py on every reading ("0 problems"
+      once admitted). No reader: the producing Workshop reads it after a refusal.
   - name: workerRequest02
     path: research/requests/worker-request-w02.json
     reader: atcs-worker-request-02
     description: Slot w02's research request in the worker-request read envelope.
+  - name: workerRequest02Problems
+    path: research/requests/worker-request-w02.problems.txt
+    description: >-
+      The Reader's itemized refusal of research/requests/worker-request-w02.json: one line per problem, each naming its field and the
+      format it needs, written beside the document by tools/read-atcs.py on every reading ("0 problems"
+      once admitted). No reader: the producing Workshop reads it after a refusal.
   - name: workerRequest03
     path: research/requests/worker-request-w03.json
     reader: atcs-worker-request-03
     description: Slot w03's research request in the worker-request read envelope.
+  - name: workerRequest03Problems
+    path: research/requests/worker-request-w03.problems.txt
+    description: >-
+      The Reader's itemized refusal of research/requests/worker-request-w03.json: one line per problem, each naming its field and the
+      format it needs, written beside the document by tools/read-atcs.py on every reading ("0 problems"
+      once admitted). No reader: the producing Workshop reads it after a refusal.
   - name: workerRequest04
     path: research/requests/worker-request-w04.json
     reader: atcs-worker-request-04
     description: Slot w04's research request in the worker-request read envelope.
+  - name: workerRequest04Problems
+    path: research/requests/worker-request-w04.problems.txt
+    description: >-
+      The Reader's itemized refusal of research/requests/worker-request-w04.json: one line per problem, each naming its field and the
+      format it needs, written beside the document by tools/read-atcs.py on every reading ("0 problems"
+      once admitted). No reader: the producing Workshop reads it after a refusal.
   - name: workerRequest05
     path: research/requests/worker-request-w05.json
     reader: atcs-worker-request-05
     description: Slot w05's research request in the worker-request read envelope.
+  - name: workerRequest05Problems
+    path: research/requests/worker-request-w05.problems.txt
+    description: >-
+      The Reader's itemized refusal of research/requests/worker-request-w05.json: one line per problem, each naming its field and the
+      format it needs, written beside the document by tools/read-atcs.py on every reading ("0 problems"
+      once admitted). No reader: the producing Workshop reads it after a refusal.
   - name: workerRequest06
     path: research/requests/worker-request-w06.json
     reader: atcs-worker-request-06
     description: Slot w06's research request in the worker-request read envelope.
+  - name: workerRequest06Problems
+    path: research/requests/worker-request-w06.problems.txt
+    description: >-
+      The Reader's itemized refusal of research/requests/worker-request-w06.json: one line per problem, each naming its field and the
+      format it needs, written beside the document by tools/read-atcs.py on every reading ("0 problems"
+      once admitted). No reader: the producing Workshop reads it after a refusal.
   - name: workerResult01
     path: state/contribution-w01.json
     reader: atcs-worker-result-01
@@ -161,6 +209,12 @@ outputs:
     description: >-
       The compose Workshop's integration plan in the integration-plan read envelope ({plan, facts});
       compose-facts (second pass), replay-prepare and record-experience read this same file.
+  - name: integrationPlanProblems
+    path: research/requests/integration-plan.problems.txt
+    description: >-
+      The Reader's itemized refusal of research/requests/integration-plan.json: one line per problem, each naming its field and the
+      format it needs, written beside the document by tools/read-atcs.py on every reading ("0 problems"
+      once admitted). No reader: the producing Workshop reads it after a refusal.
   - name: replayRequest
     path: state/replay-request.json
     description: M5 replay request (batch id, common base, ordered steps with their XTop Tcl).
@@ -220,6 +274,12 @@ outputs:
     path: research/requests/next-decision.json
     reader: atcs-next-decision
     description: The next-investment Workshop's decision; tc_next_action encodes its action for the routing Judges.
+  - name: nextDecisionProblems
+    path: research/requests/next-decision.problems.txt
+    description: >-
+      The Reader's itemized refusal of research/requests/next-decision.json: one line per problem, each naming its field and the
+      format it needs, written beside the document by tools/read-atcs.py on every reading ("0 problems"
+      once admitted). No reader: the producing Workshop reads it after a refusal.
 
 environment:
   wrappers:
@@ -1106,6 +1166,9 @@ agentTeams:
 workshops:
   - id: diagnose-and-observe
     purpose: >-
+      After a refusal, read output observationRequestProblems first: the Reader wrote there, one line per problem,
+      what it refused in your last observation-request.json and the format each field needs; fix every line and write
+      the whole document again.
       Diagnose the current timing problem from the declared baseline state, current observation, risk
       atlas and experience: name the competing root causes and the cheapest query that separates them.
       Write the observation request to research/requests/observation-request.json as one JSON object
@@ -1116,13 +1179,16 @@ workshops:
     directory: research/diagnose
     entry: entry.py
     language: python
-    reads: [workingState, inputReadiness, currentObservations, riskAtlas, campaignExperience, statePointers]
+    reads: [workingState, inputReadiness, currentObservations, riskAtlas, campaignExperience, statePointers, observationRequestProblems]
     knowledge: [observation-strategy.md, mechanisms-and-falsifiers.md, state-and-evidence.md, experience-transfer.md]
     produces: observationRequest
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
   - id: plan-campaign
     purpose: >-
+      After a refusal, read output campaignPlanProblems first: the Reader wrote there, one line per problem,
+      what it refused in your last campaign-plan.json and the format each field needs; fix every line and write
+      the whole document again.
       Decompose the current problem into blocker clusters for the six worker slots w01..w06, blockers
       first, all against the working design-state (workingState). The slots run at once as parallel
       fork branches from the same base, each an XTop expert Team working one cluster. Read
@@ -1241,13 +1307,16 @@ workshops:
     directory: research/plan
     entry: entry.py
     language: python
-    reads: [workingState, workerSlotPolicy, inputReadiness, currentObservations, acceptancePolicy, riskAtlas, contributionIndex, campaignExperience, statePointers, residualCases]
+    reads: [workingState, workerSlotPolicy, inputReadiness, currentObservations, acceptancePolicy, riskAtlas, contributionIndex, campaignExperience, statePointers, residualCases, campaignPlanProblems]
     knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md, xtop-expert-operator.md]
     produces: campaignPlan
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
   - id: research-worker-01
     purpose: >-
+      After a refusal, read output workerRequest01Problems first: the Reader wrote there, one line per problem,
+      what it refused in your last worker-request-w01.json and the format each field needs; fix every line and write
+      the whole document again.
       Research worker slot w01 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
       evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
@@ -1325,13 +1394,16 @@ workshops:
     directory: research/worker-01
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult01, residualCases]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult01, residualCases, workerRequest01Problems]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest01
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
   - id: research-worker-02
     purpose: >-
+      After a refusal, read output workerRequest02Problems first: the Reader wrote there, one line per problem,
+      what it refused in your last worker-request-w02.json and the format each field needs; fix every line and write
+      the whole document again.
       Research worker slot w02 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
       evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
@@ -1409,13 +1481,16 @@ workshops:
     directory: research/worker-02
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult02, residualCases]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult02, residualCases, workerRequest02Problems]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest02
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
   - id: research-worker-03
     purpose: >-
+      After a refusal, read output workerRequest03Problems first: the Reader wrote there, one line per problem,
+      what it refused in your last worker-request-w03.json and the format each field needs; fix every line and write
+      the whole document again.
       Research worker slot w03 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
       evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
@@ -1493,13 +1568,16 @@ workshops:
     directory: research/worker-03
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult03, residualCases]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult03, residualCases, workerRequest03Problems]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest03
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
   - id: research-worker-04
     purpose: >-
+      After a refusal, read output workerRequest04Problems first: the Reader wrote there, one line per problem,
+      what it refused in your last worker-request-w04.json and the format each field needs; fix every line and write
+      the whole document again.
       Research worker slot w04 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
       evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
@@ -1577,13 +1655,16 @@ workshops:
     directory: research/worker-04
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult04, residualCases]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult04, residualCases, workerRequest04Problems]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest04
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
   - id: research-worker-05
     purpose: >-
+      After a refusal, read output workerRequest05Problems first: the Reader wrote there, one line per problem,
+      what it refused in your last worker-request-w05.json and the format each field needs; fix every line and write
+      the whole document again.
       Research worker slot w05 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
       evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
@@ -1661,13 +1742,16 @@ workshops:
     directory: research/worker-05
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult05, residualCases]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult05, residualCases, workerRequest05Problems]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest05
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
   - id: research-worker-06
     purpose: >-
+      After a refusal, read output workerRequest06Problems first: the Reader wrote there, one line per problem,
+      what it refused in your last worker-request-w06.json and the format each field needs; fix every line and write
+      the whole document again.
       Research worker slot w06 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
       evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
@@ -1745,13 +1829,16 @@ workshops:
     directory: research/worker-06
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult06, residualCases]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult06, residualCases, workerRequest06Problems]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
     produces: workerRequest06
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
   - id: compose-contributions
     purpose: >-
+      After a refusal, read output integrationPlanProblems first: the Reader wrote there, one line per problem,
+      what it refused in your last integration-plan.json and the format each field needs; fix every line and write
+      the whole document again.
       Compose the current batch from the ready Contributions and the deterministic composition facts:
       select, order, drop duplicates and resolve each conflict locally (keep, drop, or revise with a
       re-sealed revisedContribution); defer what is not worth waiting for. Write one file,
@@ -1761,13 +1848,18 @@ workshops:
     directory: research/compose
     entry: entry.py
     language: python
-    reads: [contributionIndex, compositionFacts, integrationState, campaignPlan, campaignExperience]
+    reads: [contributionIndex, compositionFacts, integrationState, campaignPlan, campaignExperience, integrationPlanProblems]
     knowledge: [contribution-and-merge.md, cheap-verification.md, method-and-benchmark.md]
     produces: integrationPlan
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
   - id: evaluate-next-investment
     purpose: >-
+      After a refusal, read output nextDecisionProblems first: the Reader wrote there, one line per
+      problem, what it refused in your last next-decision.json and the format each field needs; fix every
+      line and write the whole document again. A refused campaign plan or integration plan also comes
+      here: campaignPlanProblems and integrationPlanProblems list what was refused, so the next research
+      or compose round can fix it.
       Decide the next investment from the evidence: pre-check evidence, physical delta, final
       evaluation, pointers, residual cases, experience and remaining budget. Write one next-decision to
       research/requests/next-decision.json with stateRef, observationRef, budgetRef, question, action
@@ -1786,7 +1878,7 @@ workshops:
     directory: research/next
     entry: entry.py
     language: python
-    reads: [inputReadiness, workingState, acceptancePolicy, currentObservations, riskAtlas, contributionIndex, integrationState, precheckEvidence, physicalDelta, finalEvaluation, statePointers, residualCases, campaignExperience]
+    reads: [inputReadiness, workingState, acceptancePolicy, currentObservations, riskAtlas, contributionIndex, integrationState, precheckEvidence, physicalDelta, finalEvaluation, statePointers, residualCases, campaignExperience, nextDecisionProblems, campaignPlanProblems, integrationPlanProblems]
     knowledge: [method-and-benchmark.md, state-and-evidence.md, cheap-verification.md, lifecycle-and-input-modes.md, innovus-stage-interventions.md, experience-transfer.md]
     produces: nextDecision
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']

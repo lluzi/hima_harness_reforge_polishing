@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -316,10 +317,14 @@ class WorkPackageReaderTest(unittest.TestCase):
         values = read_atcs.read("work-package", report, self.workspace)
         self.assertEqual(values[0]["value"], 0)
 
-    def test_wrong_task_id_for_slot_is_refused(self):
+    def test_wrong_task_id_for_slot_is_counted(self):
+        """#64 Track B: a request for the wrong slot is a counted, named problem the owner revises,
+        never a Reader exception that blocks the reading until the Run is parked."""
         report = self._write_envelope(self._valid_candidate(taskId="w01"))
-        with self.assertRaises(ValueError):
-            read_atcs.read("worker-request", report, self.workspace, extra=["w02"])
+        found = read_atcs.problems("worker-request", report, self.workspace, "w02")
+        self.assertTrue(any(line.startswith("candidate.taskId (slot w02): must be 'w02'") for line in found), found)
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w02"])
+        self.assertEqual(values[0]["value"], len(found))
 
     def test_an_expert_worker_request_needs_no_pinned_action_list(self):
         """Issue #64 Task 4: the Team's Reviewer approves a scope, not one of a list of
@@ -424,10 +429,11 @@ class WorkPackageReaderTest(unittest.TestCase):
                 values = read_atcs.read("worker-request", report, self.workspace, extra=["w05"])
                 self.assertGreaterEqual(values[0]["value"], 1, label)
 
-    def test_a_target_pin_whose_owner_is_not_in_the_netlist_is_refused(self):
+    def test_a_target_pin_whose_owner_is_not_in_the_netlist_is_counted(self):
         report = self._write_envelope(self._valid_candidate(targetPins=["OUTSIDE/A"]))
-        with self.assertRaisesRegex(ValueError, "not a hierarchical pin"):
-            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        found = read_atcs.problems("worker-request", report, self.workspace, "w01")
+        self.assertTrue(any(line.startswith("candidate.targetPins (slot w01): 'OUTSIDE/A' is not a hierarchical pin")
+                            for line in found), found)
 
     def test_tampered_base_state_is_refused(self):
         tampered_design = dict(self.design)
@@ -487,12 +493,19 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
         _prepare_slot(self.workspace, candidate)
         return report
 
+    def _counted(self, report, pattern, count):
+        """#64 Track B: each name the base netlist does not hold is a counted, named problem."""
+        found = read_atcs.problems("worker-request", report, self.workspace, "w01")
+        self.assertEqual(len(found), count, found)
+        self.assertTrue(any(re.search(pattern, line) for line in found), found)
+        self.assertEqual(read_atcs.read("worker-request", report, self.workspace, extra=["w01"])[0]["value"], count)
+
     def test_bare_leaf_name_is_refused(self):
         """The real Issue #63 failure: `g96219` alone, admitted by the Reader
-        before this fix, is not resolvable against a hierarchical netlist."""
+        before this fix, is not resolvable against a hierarchical netlist
+        (the instance and its target pin are both bare leaf names)."""
         report = self._write_envelope("g96219", domain=["g96219"])
-        with self.assertRaisesRegex(ValueError, "not a hierarchical instance"):
-            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self._counted(report, r"^candidate\.editDomain \(slot w01\): instance 'g96219' is not a hierarchical instance", 2)
 
     def test_full_hierarchical_path_is_admitted(self):
         report = self._write_envelope("u_sub/g96219", domain=["u_sub/g96219"])
@@ -501,19 +514,16 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
 
     def test_wrong_middle_segment_is_refused(self):
         report = self._write_envelope("wrong_sub/g96219", domain=["wrong_sub/g96219"])
-        with self.assertRaisesRegex(ValueError, "not a hierarchical instance"):
-            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self._counted(report, r"'wrong_sub/g96219' is not a hierarchical instance", 2)
 
     def test_a_bare_leaf_target_pin_is_refused(self):
         report = self._write_envelope("u_sub/g96219", domain=["u_sub/g96219"], target_pins=["g96219/A1"])
-        with self.assertRaisesRegex(ValueError, "not a hierarchical pin"):
-            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self._counted(report, r"^candidate\.targetPins \(slot w01\): 'g96219/A1' is not a hierarchical pin", 1)
 
     def test_a_pin_on_a_module_instance_is_refused(self):
         """A target pin names a leaf cell's pin; `u_sub` is a module instance, not a cell."""
         report = self._write_envelope("u_sub/g96219", domain=["u_sub/g96219"], target_pins=["u_sub/X"])
-        with self.assertRaisesRegex(ValueError, "not a hierarchical pin"):
-            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self._counted(report, r"'u_sub/X' is not a hierarchical pin", 1)
 
     def test_a_full_hierarchical_target_pin_outside_the_domain_is_admitted(self):
         """Target pins are the blockers' endpoints; they need not be edit-domain cells."""

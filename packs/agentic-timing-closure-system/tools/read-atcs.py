@@ -68,6 +68,12 @@ companion. `precheck-evidence` needs **no** envelope at all as of this
 task's review round: `atcs.verification.precheck_evidence` now stamps it as
 a real artifact this script reads and identity-checks directly, exactly
 like `evaluation` or `composition-facts`.
+
+Itemized problems (Issue #64 Track B): for a request kind (`observation-request`,
+`campaign-plan`, `worker-request`, `integration-plan`, `next-decision`) `main()` also
+writes `<document>.problems.txt` beside the REPORT -- one line per counted problem, the
+same list `problems()` returns -- before OUT, or the refusal reason when the document is
+refused outright. It is the one file besides OUT this script writes.
 """
 from __future__ import annotations
 
@@ -533,6 +539,127 @@ def _read_readiness(report, workspace, extra, mods):
     ]
 
 
+# ---------------------------------------------------------------------------
+# Itemized request problems (Issue #64 Track B, from #63 slice 3 gap 1)
+# ---------------------------------------------------------------------------
+#
+# Live02 (Pack 0.2.0): the campaign-plan Reader counted 41 problems and the Judge refused
+# the plan, but the owner saw only the count and re-wrote the plan blind. Each request
+# kind below now returns `(values, problems)`: `tc_request_invalid_count` is
+# `len(problems)`, and `main()` writes the same list beside the document as
+# `<document>.problems.txt`, which the producing Workshop declares as a readable output
+# (`contract.yml`, `<output>Problems`). Each problem starts with the field it is about
+# (and its slot) and, where a format is required, says it.
+#
+# A document of the wrong shape (not an object, a missing companion, a taskId that is not
+# the slot's, an instance or pin the base netlist does not hold) is a counted problem the
+# owner revises -- never a Reader exception that re-reads the same bytes until a Hard
+# blocker parks the Run. Fail-closed identity stays an exception: a `baseState` or `facts`
+# whose id or source files do not verify is a companion that cannot be trusted, and the
+# sidecar then names that refusal.
+
+_WORK_PACKAGE_FORMATS = {
+    "taskId": "exactly the slot key, w01..w06, never a description such as 'w01-setup+hold' or 'w04-parked'",
+    "baseStateId": "the id of baseState, which is state/working-state.json copied unchanged",
+    "problem": "a one-line string naming the blocker cluster (or, for a parked slot, why it is parked)",
+    "targets": 'a list of "<scenario>|<setup|hold>|<endpoint>" check keys',
+    "editDomain": ('{"instances": [full hierarchical leaf-cell paths such as "u_core/u_lsu/data_reg_3_"], '
+                   '"nets": [], "regions": [[x1, y1, x2, y2]]}'),
+    "protected": '{"instances": [], "nets": []}, required even when both lists are empty',
+    "mayAffect": "a list of check keys, [] when none",
+    "actions": "a list drawn from size_cell, insert_buffer, delete_buffer (pg_local_adjust only with pgVerification)",
+    "budget": 'an object such as {"xtopMinutes": 60, "attempts": 3}',
+    "targetPins": 'a list of "<instance path>/<pin>" pins of leaf cells, full hierarchical paths, never a top-level port',
+    "scope": ('{"commands": [toolkit mutations only, always with atcs_undo; never atcs_ref, atcs_paths, atcs_gain, '
+              'atcs_candidates, atcs_fail_reasons, atcs_dump_cells, atcs_export_changes or atcs_close], '
+              '"maxMutations": 120}'),
+    "observe": '"fast" or "full"',
+    "parked": ('a parked slot is exactly {"taskId", "baseStateId", "parked": true, "problem"} and no other key'),
+}
+
+_WORK_PACKAGE_FIELD_OF = (
+    (re.compile(r"^missing field: (\w+)"), None),
+    (re.compile(r"^taskId\b"), "taskId"),
+    (re.compile(r"^baseStateId\b"), "baseStateId"),
+    (re.compile(r"^editDomain\b"), "editDomain"),
+    (re.compile(r"^action\b"), "actions"),
+    (re.compile(r"^scope\b"), "scope"),
+    (re.compile(r"^targetPin"), "targetPins"),
+    (re.compile(r"^observe\b"), "observe"),
+    (re.compile(r"^parked\b"), "parked"),
+    (re.compile(r"^a parked package states why"), "problem"),
+    (re.compile(r"^a parked package carries"), "parked"),
+)
+
+
+def _work_package_problems(package, base_state, site_capabilities, workspaces_mod, where):
+    """`workspaces._collect_problems` (the one work-package validator), each named by field.
+
+    `where` is `(prefix, slot)`, e.g. `("candidate.workPackages.w01", " (slot w01)")`.
+    """
+    found = []
+    for message in workspaces_mod._collect_problems(package, base_state, site_capabilities):
+        field = None
+        for pattern, name in _WORK_PACKAGE_FIELD_OF:
+            match = pattern.match(message)
+            if match:
+                field = name or match.group(1)
+                break
+        path = f"{where[0]}.{field}{where[1]}" if field else f"{where[0]}{where[1]}"
+        hint = _WORK_PACKAGE_FORMATS.get(field)
+        found.append(f"{path}: {message}" + (f"; required format: {hint}" if hint else ""))
+    return found
+
+
+def _problems_file(report):
+    """`<dir>/<name>.json` -> `<dir>/<name>.problems.txt`, beside the document."""
+    report = Path(report)
+    stem = report.name[: -len(".json")] if report.name.endswith(".json") else report.name
+    return report.with_name(stem + ".problems.txt")
+
+
+def _write_problems_file(report, found, refused=None):
+    """Best effort: the count in OUT is the verdict's evidence; this file is its explanation."""
+    name = Path(report).name
+    if refused is not None:
+        text = (f"{name} was refused before its problems could be counted: {refused}\n"
+                "Fix that and write the whole document again.\n")
+    elif not found:
+        text = f"0 problems in {name}: the Reader admits it (tc_request_invalid_count = 0).\n"
+    else:
+        noun = "problem" if len(found) == 1 else "problems"
+        lines = [f"{len(found)} {noun} in {name} (tc_request_invalid_count = {len(found)}); "
+                 "fix every line and write the whole document again:"]
+        lines += ["- " + " ".join(str(item).split()) for item in found]
+        text = "\n".join(lines) + "\n"
+    try:
+        _problems_file(report).write_text(text, encoding="utf-8")
+    except OSError:
+        pass
+
+
+_SHAPE_FORMATS = {
+    "candidate": "an object holding the unstamped fields, as in the knowledge example",
+    "baseState": "the stamped design-state object, state/working-state.json copied unchanged",
+    "siteCapabilities": 'an object such as {"pgVerification": false}',
+    "plan": "an object {batchId, baseStateId, select, resolutions, deferred, reason}",
+    "facts": "the stamped composition-facts object, state/composition-facts.json copied unchanged",
+}
+
+
+def _shape_problems(envelope, keys, slot=""):
+    """The envelope keys that are not objects, one problem each; empty when the shape holds."""
+    if not isinstance(envelope, dict):
+        return [f"document{slot}: must be one JSON object {{{', '.join(keys)}}}"]
+    found = []
+    for key in keys:
+        value = envelope.get(key)
+        if not isinstance(value, dict):
+            state = "missing" if key not in envelope else f"a {type(value).__name__}"
+            found.append(f"{key}{slot}: must be {_SHAPE_FORMATS[key]}; it is {state}")
+    return found
+
+
 def _read_observation_request(report, workspace, extra, mods):
     """A raw `observationRequest` candidate (diagnose-and-observe Workshop output), self-contained.
 
@@ -540,34 +667,39 @@ def _read_observation_request(report, workspace, extra, mods):
     `capture`'s own `query_spec` binding, `atcs/state.py`'s module
     docstring), so this handler is this script's own structural check.
     """
-    core = mods["core"]
     obj = _load_json(report)
-    problems = []
+    found = []
     if not isinstance(obj, dict):
-        problems.append("observation request must be a JSON object")
+        found.append("document: must be one JSON object {designStateId, precision, requiredScenarios, maxPaths}")
         obj = {}
-    for key in ("designStateId", "precision", "requiredScenarios", "maxPaths"):
+    formats = {
+        "designStateId": "the 20-hex-char id of state/working-state.json",
+        "precision": "'gba' or 'pba'",
+        "requiredScenarios": 'a non-empty list of scenario names such as ["func_ssg_rcworst_m40"]',
+        "maxPaths": "a positive integer",
+    }
+    for key, fmt in formats.items():
         if key not in obj:
-            problems.append(f"missing field: {key}")
+            found.append(f"{key}: missing field; required format: {fmt}")
     if "precision" in obj and obj.get("precision") not in ("gba", "pba"):
-        problems.append(f"precision must be 'gba' or 'pba', got {obj.get('precision')!r}")
+        found.append(f"precision: must be 'gba' or 'pba', got {obj.get('precision')!r}")
     if "requiredScenarios" in obj:
         required = obj.get("requiredScenarios")
         if not isinstance(required, list) or not required or not all(isinstance(s, str) and s for s in required):
-            problems.append("requiredScenarios must be a non-empty list of non-empty strings")
+            found.append(f"requiredScenarios: must be a non-empty list of non-empty scenario names, got {required!r}")
     if "maxPaths" in obj:
         max_paths = obj.get("maxPaths")
         if isinstance(max_paths, bool) or not isinstance(max_paths, int) or max_paths <= 0:
-            problems.append("maxPaths must be a positive integer")
+            found.append(f"maxPaths: must be a positive integer, got {max_paths!r}")
     if "designStateId" in obj:
         state_id = obj.get("designStateId")
         if not isinstance(state_id, str) or not re.fullmatch(r"[0-9a-f]{20}", state_id):
-            problems.append("designStateId must be a 20-hex-char design-state id")
-    return [_emit_count("tc_request_invalid_count", len(problems))]
+            found.append(f"designStateId: must be the 20-hex-char id of state/working-state.json, got {state_id!r}")
+    return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
 def _read_request_envelope(report, workspace, expected_task_id, mods):
-    """Shared handler for `work-package`/`worker-request` kinds.
+    """Shared handler for `work-package`/`worker-request` kinds: `(values, problems)`.
 
     **Read envelope** (this script's own contract for whichever Tool/Workshop
     T14 binds to this reader's output)::
@@ -581,47 +713,42 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
     `baseState` is schema/id- and source-verified in full
     (`_verify_design_state_refs`) before `candidate` is ever validated
     against it, so a tampered or stale companion state can never launder a
-    request's `tc_request_invalid_count` to 0. `workspaces.request_invalid_
-    count` (never `validate_work_package`, which raises) is the one helper
-    this handler defers to for the actual count, per this task's brief.
+    request's `tc_request_invalid_count` to 0 (that refusal stays an
+    exception). `workspaces._collect_problems` (never `validate_work_package`,
+    which raises) is the one validator the candidate's own problems come from.
 
-    Issue #64 Task 4: that count covers the expert Operator fields (`scope`
+    Issue #64 Task 4: that validator covers the expert Operator fields (`scope`
     commands within the toolkit mutations and keeping `atcs_undo`,
     `scope.maxMutations` at the recipe cap, `targetPins`, `observe`,
     `editDomain.regions`). A slot argument outside `workspaces.TASK_IDS`
-    (w01..w06) is refused, and every edit-domain instance and target pin
-    must resolve as a full hierarchical path in the verified base netlist
-    (the pin's owner a leaf cell), or the read is refused. There is no
-    top-level `actions` list any more: the worker Team approves a scope.
-    For a worker slot the candidate is also bound to the package
-    `prepare-workers` prepared for it (`_prepared_package_problems`).
+    (w01..w06) is a declaration error and is refused. Every edit-domain
+    instance and target pin must resolve as a full hierarchical path in the
+    verified base netlist (the pin's owner a leaf cell); each one that does not
+    is a counted problem. There is no top-level `actions` list: the worker Team
+    approves a scope. For a worker slot the candidate is also bound to the
+    package `prepare-workers` prepared for it (`_prepared_package_problems`).
     """
     core = mods["core"]
     workspaces_mod = mods["workspaces"]
+    if expected_task_id is not None and expected_task_id not in workspaces_mod.TASK_IDS:
+        raise ValueError(f"worker slot {expected_task_id!r} is not one of {workspaces_mod.TASK_IDS}")
+    slot = f" (slot {expected_task_id})" if expected_task_id else ""
     envelope = _load_json(report)
-    if not isinstance(envelope, dict):
-        raise ValueError("request envelope must be a JSON object")
-    candidate = envelope.get("candidate")
-    base_state = envelope.get("baseState")
-    site_capabilities = envelope.get("siteCapabilities")
-    if not isinstance(candidate, dict):
-        raise ValueError("envelope.candidate must be a JSON object")
-    if not isinstance(base_state, dict):
-        raise ValueError("envelope.baseState must be a JSON object")
-    if not isinstance(site_capabilities, dict):
-        raise ValueError("envelope.siteCapabilities must be a JSON object")
+    found = _shape_problems(envelope, ("candidate", "baseState", "siteCapabilities"), slot)
+    if found:
+        return [_emit_count("tc_request_invalid_count", len(found))], found
+    candidate = envelope["candidate"]
+    base_state = envelope["baseState"]
+    site_capabilities = envelope["siteCapabilities"]
 
     _verify_identity(base_state, "design-state", core)
     _verify_design_state_refs(base_state, workspace, core)
 
-    if expected_task_id is not None and expected_task_id not in workspaces_mod.TASK_IDS:
-        raise ValueError(f"worker slot {expected_task_id!r} is not one of {workspaces_mod.TASK_IDS}")
     if expected_task_id is not None and candidate.get("taskId") != expected_task_id:
-        raise ValueError(f"candidate.taskId must be {expected_task_id!r}, got {candidate.get('taskId')!r}")
-
-    count = workspaces_mod.request_invalid_count(candidate, base_state, site_capabilities)
+        found.append(f"candidate.taskId{slot}: must be {expected_task_id!r} for this slot, got {candidate.get('taskId')!r}")
+    found += _work_package_problems(candidate, base_state, site_capabilities, workspaces_mod, ("candidate", slot))
     if expected_task_id is not None:
-        count += _prepared_package_problems(workspace, expected_task_id, candidate, core, workspaces_mod)
+        found += _prepared_package_problems(workspace, expected_task_id, candidate, core, workspaces_mod)
     # T63 real-run failure: a bare LEAF instance name (no hierarchy) is not
     # resolvable against the actual post-route netlist, whose leaf cells live
     # inside deeply nested modules (the real `g96219` example). The expert
@@ -640,17 +767,18 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
         top = base_state.get("top")
         for name in instances:
             if not _is_hierarchical_instance(hierarchy, top, name):
-                raise ValueError(
-                    f"editDomain instance {name!r} is not a hierarchical instance under top {top!r} "
-                    "in the base netlist"
+                found.append(
+                    f"candidate.editDomain{slot}: instance {name!r} is not a hierarchical instance under top {top!r} "
+                    "in the base netlist; required format: a full path of a leaf cell such as u_core/u_lsu/data_reg_3_, "
+                    "never a bare leaf name"
                 )
         for pin in pins:
             if not _is_hierarchical_pin(hierarchy, top, pin):
-                raise ValueError(
-                    f"targetPin {pin!r} is not a hierarchical pin of a leaf cell under top {top!r} "
-                    "in the base netlist"
+                found.append(
+                    f"candidate.targetPins{slot}: {pin!r} is not a hierarchical pin of a leaf cell under top {top!r} "
+                    "in the base netlist; required format: <full leaf-cell path>/<pin>, never a top-level port"
                 )
-    return [_emit_count("tc_request_invalid_count", count)]
+    return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
 def _prepared_package_problems(workspace, slot, candidate, core, workspaces_mod):
@@ -665,22 +793,26 @@ def _prepared_package_problems(workspace, slot, candidate, core, workspaces_mod)
     unreadable or identity-failing prepared package is one problem too: a
     request for a slot that was never prepared is never admissible.
     """
+    copy = (f"copy state/workers.json workers.{slot}.workPackage unchanged, without its schema and id")
     try:
         workers = _load_json(Path(workspace) / "state" / "workers.json")
         package = ((workers.get("workers") or {}).get(slot) or {}).get("workPackage")
         if not isinstance(package, dict):
             raise ValueError(f"state/workers.json has no prepared work package for slot {slot!r}")
         _verify_identity(package, "work-package", core)
-    except (ValueError, OSError, AttributeError):
-        return 1
+    except (ValueError, OSError, AttributeError) as error:
+        return [f"candidate (slot {slot}): no verified package prepare-workers prepared for this slot ({error}); "
+                "the request must be written after prepare-workers, from its state/workers.json"]
     if package.get("taskId") != slot:
-        return 1
+        return [f"candidate (slot {slot}): state/workers.json holds slot {package.get('taskId')!r}'s package "
+                "under this slot"]
     prepared, requested = workspaces_mod.bound_view(package), workspaces_mod.bound_view(candidate)
-    return sum(1 for field in workspaces_mod.PREPARED_BINDING_FIELDS if prepared[field] != requested[field])
+    return [f"candidate.{field} (slot {slot}): differs from the package prepare-workers prepared for this slot; {copy}"
+            for field in workspaces_mod.PREPARED_BINDING_FIELDS if prepared[field] != requested[field]]
 
 
 def _read_campaign_plan(report, workspace, extra, mods):
-    """The plan Workshop's ONE campaign-plan document, holding every slot's work package (Task 12c item 4a).
+    """The plan Workshop's ONE campaign-plan document, holding every slot's work package: `(values, problems)`.
 
     Envelope (this script's own contract; see module docstring)::
 
@@ -691,15 +823,13 @@ def _read_campaign_plan(report, workspace, extra, mods):
 
     `baseState` is schema/id- and source-verified in full
     (`_verify_design_state_refs`) before any package is validated against
-    it, exactly like `_read_request_envelope`. `tc_request_invalid_count`
-    is the sum of `workspaces.request_invalid_count` (never
-    `validate_work_package`, which raises) over each slot in
-    `workspaces.TASK_IDS` (w01..w06; a parked slot's package is checked as
-    parked), plus one structural problem for each of: a missing/non-dict
-    `workPackages` object, a missing or non-dict entry for any slot, and a
-    missing or blank `reason` string -- so a Reader-visible problem exists
-    for every way the *shape* itself (not just one slot's own content) can
-    be wrong.
+    it, exactly like `_read_request_envelope`. The problems are those of
+    `workspaces._collect_problems` for each slot in `workspaces.TASK_IDS`
+    (w01..w06; a parked slot's package is checked as parked), plus one
+    structural problem for each of: a missing/non-dict `workPackages` object,
+    a missing or non-dict entry for any slot, and a missing or blank `reason`
+    string -- so a Reader-visible problem exists for every way the *shape*
+    itself (not just one slot's own content) can be wrong.
 
     Issue #64 Task 5 (the six slots run as parallel fork branches) adds, over
     the active (unparked) slots: `_worker_slot_problems` (an active slot
@@ -707,49 +837,31 @@ def _read_campaign_plan(report, workspace, extra, mods):
     net two active slots claim) and `_uncovered_blocker_problems` (a worst setup
     or hold check of a required scenario no active slot targets).
 
-    Fix round 2 item 3 (Minor) adds two more Reader-visible problems, both
-    counted even though `prepare-workers` (`atcs_cli.py`) independently
-    refuses the same conditions outright -- a Judge should see a nonzero
-    `tc_request_invalid_count` for these before that Tool ever runs, not
-    only discover them as a Tool-side exit-3 refusal:
-
-    - a top-level `workPackages` key on the envelope itself (a second,
-      unenforced copy of the same data `candidate.workPackages` already
-      carries -- `prepare-workers` refuses this as `ambiguous-plan`
-      regardless of whether the two copies happen to agree);
-    - `envelope.baseState`'s own `id` disagreeing with the id currently
-      recorded in `state/working-state.json` (read from `workspace`, the
-      same Campaign root this handler already resolves every other
-      workspace-relative reference against) -- a stale `baseState` snapshot
-      from an earlier round admitted against a base this campaign has since
-      moved on from. When `state/working-state.json` itself cannot be read
-      or identity-verified, that is counted as a problem too (an "unknown"
-      current state can never be treated as "matches").
+    Fix round 2 item 3 (Minor) adds two more problems, both counted even
+    though `prepare-workers` (`atcs_cli.py`) independently refuses the same
+    conditions outright: a top-level `workPackages` key on the envelope itself
+    (`prepare-workers` refuses it as `ambiguous-plan`), and `envelope.baseState`'s
+    own `id` disagreeing with the id currently recorded in
+    `state/working-state.json` (a stale snapshot), or that file not verifying.
     """
     core = mods["core"]
     workspaces_mod = mods["workspaces"]
     envelope = _load_json(report)
-    if not isinstance(envelope, dict):
-        raise ValueError("campaign-plan envelope must be a JSON object")
-    candidate = envelope.get("candidate")
-    base_state = envelope.get("baseState")
-    site_capabilities = envelope.get("siteCapabilities")
-    if not isinstance(candidate, dict):
-        raise ValueError("envelope.candidate must be a JSON object")
-    if not isinstance(base_state, dict):
-        raise ValueError("envelope.baseState must be a JSON object")
-    if not isinstance(site_capabilities, dict):
-        raise ValueError("envelope.siteCapabilities must be a JSON object")
+    found = _shape_problems(envelope, ("candidate", "baseState", "siteCapabilities"))
+    if found:
+        return [_emit_count("tc_request_invalid_count", len(found))], found
+    candidate = envelope["candidate"]
+    base_state = envelope["baseState"]
+    site_capabilities = envelope["siteCapabilities"]
 
     _verify_identity(base_state, "design-state", core)
     _verify_design_state_refs(base_state, workspace, core)
 
-    problems = 0
-
     if "workPackages" in envelope:
         # A second, top-level copy -- `prepare-workers` refuses this outright
         # (ambiguous-plan); the Reader must not report zero problems for it.
-        problems += 1
+        found.append("workPackages: a second copy at the top level of the document; keep exactly one copy, "
+                     "under candidate.workPackages")
 
     working_state_id = None
     try:
@@ -758,31 +870,37 @@ def _read_campaign_plan(report, workspace, extra, mods):
         working_state_id = working_state.get("id")
     except (ValueError, OSError):
         working_state_id = None
-    if working_state_id is None or base_state.get("id") != working_state_id:
-        problems += 1
+    if working_state_id is None:
+        found.append("baseState: state/working-state.json cannot be read or verified, so the plan's base cannot "
+                     "be shown to be the working state")
+    elif base_state.get("id") != working_state_id:
+        found.append(f"baseState: id {base_state.get('id')!r} is not the working state {working_state_id!r}; "
+                     "copy state/working-state.json unchanged")
 
     work_packages = candidate.get("workPackages")
     if not isinstance(work_packages, dict):
-        problems += 1
+        found.append("candidate.workPackages: must be an object keyed w01..w06, one package per slot")
         work_packages = {}
     active = {}
     for task_id in workspaces_mod.TASK_IDS:
         package = work_packages.get(task_id)
+        where = f"candidate.workPackages.{task_id}"
         if not isinstance(package, dict):
-            problems += 1
+            found.append(f"{where}: missing slot; every slot w01..w06 holds an active package or the parked shape "
+                         f"{_WORK_PACKAGE_FORMATS['parked']}")
             continue
-        problems += workspaces_mod.request_invalid_count(package, base_state, site_capabilities)
+        found += _work_package_problems(package, base_state, site_capabilities, workspaces_mod, (where, ""))
         if not workspaces_mod.is_parked(package):
             active[task_id] = package
 
     reason = candidate.get("reason")
     if not isinstance(reason, str) or not reason.strip():
-        problems += 1
+        found.append("candidate.reason: must be a non-empty string saying why these clusters, in this order")
 
-    problems += _worker_slot_problems(workspace, active, core, workspaces_mod)
-    problems += _shared_domain_problems(active)
-    problems += _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])
-    return [_emit_count("tc_request_invalid_count", problems)]
+    found += _worker_slot_problems(workspace, active, core, workspaces_mod)
+    found += _shared_domain_problems(active)
+    found += _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])
+    return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
 def _worker_slot_problems(workspace, active, core, workspaces_mod):
@@ -797,9 +915,11 @@ def _worker_slot_problems(workspace, active, core, workspaces_mod):
         count = record.get("workerSlots")
         if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= len(workspaces_mod.TASK_IDS):
             raise ValueError(f"workerSlots {count!r} is not 1..{len(workspaces_mod.TASK_IDS)}")
-    except (ValueError, OSError):
-        return 1
-    return sum(1 for task_id in active if workspaces_mod.slot_number(task_id) > count)
+    except (ValueError, OSError) as error:
+        return [f"candidate.workPackages: state/worker-slots.json cannot be verified ({error}), so no slot can be "
+                "shown to be within workerSlots"]
+    return [f"candidate.workPackages.{task_id}: active, but only slots up to workerSlots {count} may be active; "
+            "park it" for task_id in active if workspaces_mod.slot_number(task_id) > count]
 
 
 def _pin_owner(pin):
@@ -839,7 +959,9 @@ def _shared_domain_problems(active):
         nets = {("net", name) for name in domain.get("nets") or [] if isinstance(name, str)}
         for claim in {("instance", name) for name in _claimed_instances(package)} | nets:
             owners.setdefault(claim, set()).add(task_id)
-    return sum(1 for slots in owners.values() if len(slots) > 1)
+    return [f"candidate.workPackages: {kind} {name!r} is claimed by active slots {', '.join(sorted(slots))}; "
+            "active slots share no instance (edit domain or target-pin owner) and no edit-domain net"
+            for (kind, name), slots in sorted(owners.items()) if len(slots) > 1]
 
 
 def _uncovered_blocker_problems(workspace, working_state_id, active, core, composition_mod):
@@ -860,19 +982,22 @@ def _uncovered_blocker_problems(workspace, working_state_id, active, core, compo
         _verify_identity(observation, "observation-set", core)
         policy = _load_json(Path(workspace) / "state" / "policy.json")
         _verify_identity(policy, "policy", core)
-    except (ValueError, OSError):
-        return 1
+    except (ValueError, OSError) as error:
+        return [f"candidate.workPackages: the blockers cannot be established ({error}); state/observation.json "
+                "and state/policy.json must verify"]
     required = policy.get("requiredScenarios")
-    if (working_state_id is None or observation.get("designStateId") != working_state_id
-            or not isinstance(required, list)):
-        return 1
-    uncovered = 0
+    if working_state_id is None or observation.get("designStateId") != working_state_id or not isinstance(required, list):
+        return [f"candidate.workPackages: state/observation.json observes {observation.get('designStateId')!r}, not the "
+                f"working state {working_state_id!r}; observe the working state before planning"]
+    uncovered = []
     for key, raw in composition_mod.worst_check_endpoints(observation).items():
         if key.split("|", 2)[0] not in required:
             continue
         if not any(composition_mod.covers(key, raw, package.get("targets") or [], package.get("targetPins") or [])
                    for package in active.values()):
-            uncovered += 1
+            uncovered.append(f"candidate.workPackages: blocker {key} (PT endpoint {raw!r}) is covered by no active "
+                             "slot; put its endpoint pin in an active slot's targetPins, or, for a top-level port, "
+                             "its check key in targets")
     return uncovered
 
 
@@ -957,39 +1082,35 @@ def _read_composition_facts(report, workspace, extra, mods):
 
 
 def _read_integration_plan(report, workspace, extra, mods):
-    """`integration-plan` reviewed against its `composition-facts`.
+    """`integration-plan` reviewed against its `composition-facts`: `(values, problems)`.
 
     Envelope::
 
         {"plan": {...unstamped or stamped "integration-plan" fields...},
          "facts": {...a stamped "composition-facts" artifact...}}
 
-    `integration.plan_invalid_count(plan, facts)` is the exact helper this
-    task's brief names; `facts` is schema/id-verified first.
+    `integration._collect_plan_problems(plan, facts)` (the helper behind
+    `plan_invalid_count`) gives the problems; `facts` is schema/id-verified
+    first (a refusal, not a count). A `select` that is not a list makes
+    `tc_selected_contribution_count` unknown and is counted.
     """
     core = mods["core"]
     integration_mod = mods["integration"]
     envelope = _load_json(report)
-    if not isinstance(envelope, dict):
-        raise ValueError("integration-plan review envelope must be a JSON object")
-    plan = envelope.get("plan")
-    facts = envelope.get("facts")
-    if not isinstance(plan, dict):
-        raise ValueError("envelope.plan must be a JSON object")
-    if not isinstance(facts, dict):
-        raise ValueError("envelope.facts must be a JSON object")
-
+    found = _shape_problems(envelope, ("plan", "facts"))
+    if found:
+        return [_emit_count("tc_request_invalid_count", len(found)),
+                _emit("tc_selected_contribution_count", "count", core.unknown("the integration plan is not an object"))], found
+    plan = envelope["plan"]
+    facts = envelope["facts"]
     _verify_identity(facts, "composition-facts", core)
 
+    found = [message if message.startswith("plan.") else f"plan.{message}"
+             for message in integration_mod._collect_plan_problems(plan, facts)]
     select = plan.get("select")
-    if not isinstance(select, list):
-        raise ValueError("integration-plan.select must be a list")
-
-    count = integration_mod.plan_invalid_count(plan, facts)
-    return [
-        _emit_count("tc_request_invalid_count", count),
-        _emit_count("tc_selected_contribution_count", len(select)),
-    ]
+    selected = (_emit_count("tc_selected_contribution_count", len(select)) if isinstance(select, list)
+                else _emit("tc_selected_contribution_count", "count", core.unknown("plan.select is not a list")))
+    return [_emit_count("tc_request_invalid_count", len(found)), selected], found
 
 
 def _read_integration_state(report, workspace, extra, mods):
@@ -1459,36 +1580,57 @@ def _read_next_decision(report, workspace, extra, mods):
         code = _ACTION_CODES[obj["action"]]
         values.append(_emit_count("tc_next_action", code))
         values.append(_emit_count("tc_stop_required", 1 if code == _ACTION_CODES["wait"] else 0))
-    return values
+    return values, problems
 
 
 _HANDLERS = {
     "readiness": lambda report, workspace, extra, mods: _read_readiness(report, workspace, extra, mods),
-    "observation-request": lambda report, workspace, extra, mods: _read_observation_request(report, workspace, extra, mods),
-    "work-package": lambda report, workspace, extra, mods: _read_request_envelope(report, workspace, None, mods),
-    "campaign-plan": lambda report, workspace, extra, mods: _read_campaign_plan(report, workspace, extra, mods),
-    "worker-request": lambda report, workspace, extra, mods: _read_request_envelope(report, workspace, extra[0] if extra else None, mods),
     "worker-result": lambda report, workspace, extra, mods: _read_worker_result(report, workspace, extra[0] if extra else None, mods),
     "contribution-index": lambda report, workspace, extra, mods: _read_contribution_index(report, workspace, extra, mods),
     "composition-facts": lambda report, workspace, extra, mods: _read_composition_facts(report, workspace, extra, mods),
-    "integration-plan": lambda report, workspace, extra, mods: _read_integration_plan(report, workspace, extra, mods),
     "integration-state": lambda report, workspace, extra, mods: _read_integration_state(report, workspace, extra, mods),
     "precheck-evidence": lambda report, workspace, extra, mods: _read_precheck_evidence(report, workspace, extra, mods),
     "evaluation": lambda report, workspace, extra, mods: _read_evaluation(report, workspace, extra, mods),
     "acceptance-record": lambda report, workspace, extra, mods: _read_acceptance_record(report, workspace, extra, mods),
-    "next-decision": lambda report, workspace, extra, mods: _read_next_decision(report, workspace, extra, mods),
     "refresh-budget": lambda report, workspace, extra, mods: _read_refresh_budget(report, workspace, extra, mods),
 }
+
+# Request kinds: each returns `(values, problems)`, its count being `len(problems)`.
+_REQUEST_HANDLERS = {
+    "observation-request": lambda report, workspace, extra, mods: _read_observation_request(report, workspace, extra, mods),
+    "work-package": lambda report, workspace, extra, mods: _read_request_envelope(report, workspace, None, mods),
+    "campaign-plan": lambda report, workspace, extra, mods: _read_campaign_plan(report, workspace, extra, mods),
+    "worker-request": lambda report, workspace, extra, mods: _read_request_envelope(report, workspace, extra[0] if extra else None, mods),
+    "integration-plan": lambda report, workspace, extra, mods: _read_integration_plan(report, workspace, extra, mods),
+    "next-decision": lambda report, workspace, extra, mods: _read_next_decision(report, workspace, extra, mods),
+}
+
+
+def _read(kind, report, workspace, extra):
+    """`(values, problems)`; `problems` is None for a kind that is not a request."""
+    extra = extra or []
+    if kind not in _HANDLERS and kind not in _REQUEST_HANDLERS:
+        raise ValueError(f"unknown reader kind: {kind!r}; known kinds: {sorted(set(_HANDLERS) | set(_REQUEST_HANDLERS))}")
+    mods = _atcs_modules(workspace)
+    if kind in _REQUEST_HANDLERS:
+        return _REQUEST_HANDLERS[kind](report, workspace, extra, mods)
+    return _HANDLERS[kind](report, workspace, extra, mods), None
 
 
 def read(kind, report, workspace, extra=None):
     """Read `report` (kind `kind`) into a list of Harness value dicts. Never writes anything."""
-    extra = extra or []
-    handler = _HANDLERS.get(kind)
-    if handler is None:
-        raise ValueError(f"unknown reader kind: {kind!r}; known kinds: {sorted(_HANDLERS)}")
-    mods = _atcs_modules(workspace)
-    return handler(report, workspace, extra, mods)
+    return _read(kind, report, workspace, extra)[0]
+
+
+def problems(kind, report, workspace, slot=None):
+    """Every problem the Reader finds in the request document `report`, one string each.
+
+    The same list whose length is the kind's `tc_request_invalid_count`; each
+    string starts with the field it is about. Never writes anything.
+    """
+    if kind not in _REQUEST_HANDLERS:
+        raise ValueError(f"{kind!r} is not a request kind; request kinds: {sorted(_REQUEST_HANDLERS)}")
+    return _read(kind, report, workspace, [slot] if slot else [])[1]
 
 
 def main():
@@ -1496,7 +1638,16 @@ def main():
         raise SystemExit("usage: read-atcs.py <kind> REPORT OUT WORKSPACE [extra...]")
     kind, report, out, workspace = sys.argv[1:5]
     extra = sys.argv[5:]
-    values = read(kind, report, workspace, extra)
+    try:
+        values, found = _read(kind, report, workspace, extra)
+    except Exception as error:
+        if kind in _REQUEST_HANDLERS:
+            _write_problems_file(report, [], refused=f"{type(error).__name__}: {error}")
+        raise
+    if found is not None:
+        # Beside the document, before OUT: the Judge that reads OUT's count finds the
+        # owner's explanation of it already in place (`<output>Problems`, contract.yml).
+        _write_problems_file(report, found)
     document = json.dumps({"values": values}, sort_keys=True, allow_nan=False) + "\n"
     Path(out).write_text(document, encoding="utf-8")
 
