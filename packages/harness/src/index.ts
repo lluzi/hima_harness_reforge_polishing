@@ -78,7 +78,7 @@ import {
 
 // The Site-facing pieces are part of the bundle's surface: an operator inspects a Site's warm channel
 // and the commands it has run, and the contract suite reads both.
-export { channelFor, controlPathFor, remoteCommands, clearRemoteCommands, remoteCommandWindow, remoteCommandWindowFilled, readOnlyProbes, siteDiscoveryProbes, discoverSiteFacts, jobPlumbing, workspacePlumbing, quote, LocalChannel, SshChannel } from './channel.js';
+export { channelFor, controlPathFor, remoteCommands, clearRemoteCommands, remoteCommandWindow, remoteCommandWindowFilled, readOnlyProbes, siteDiscoveryProbes, discoverSiteFacts, jobPlumbing, workspacePlumbing, processProbes, quote, LocalChannel, SshChannel } from './channel.js';
 export type { Channel, ExecResult, ExecOptions, RemoteCommand, SiteDiscoveryFact } from './channel.js';
 export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discoveryIsStale, siteSaveIdentity, SiteDiscoveryConflictError } from './sites.js';
 export { WORK_MEMORY_SCHEMA, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, recordExperienceAdoption } from './experience.js';

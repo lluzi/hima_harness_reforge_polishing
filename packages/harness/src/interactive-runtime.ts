@@ -591,7 +591,14 @@ async function survivingSlotJob(deps: InteractiveRuntimeDeps, run: RunRecord, no
   if (survivors.length === 0) return undefined;
   const on: InteractiveChannel = channelFor(loadSite(deps.fabric.sitesDir, run.siteId));
   for (const session of survivors) {
-    if (await jobProcessGroupAlive(on, session.survivedPid!)) {
+    let alive: boolean;
+    try { alive = await jobProcessGroupAlive(on, session.survivedPid!); }
+    catch (error) {
+      // Unknown is its own answer: the slot is neither admitted nor declared held by a live group.
+      return `whether process group ${String(session.survivedPid)} of the previous interactive Job ${session.toolSessionId} of node ${nodeId}`
+        + ` still runs could not be asked: ${error instanceof Error ? error.message : String(error)}; open again once Site ${run.siteId} answers`;
+    }
+    if (alive) {
       return `the previous interactive Job ${session.toolSessionId} of node ${nodeId} survived its close: process group ${String(session.survivedPid)}`
         + ' still runs and holds this tool slot; end that process group on the Site, then open again';
     }

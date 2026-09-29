@@ -554,16 +554,24 @@ export async function endJobProcessGroup(on: InteractiveChannel, target: JobProc
 
 /**
  * Whether a Job's recorded process group still has a live process, asked of the process group
- * itself rather than of its tmux session (#64 review I2). `tmux run-shell` runs the one-line probe
- * on the Site through the job plumbing's own verb; `start-server` lets it ask with no session left.
+ * itself rather than of its tmux session (#64 review I2), and asked through the Site channel as the
+ * one plain command `kill -s 0 -- -<pgid>` (#64 D-T02-4). It no longer goes through `tmux
+ * run-shell`: on the Site's tmux 3.4 run-shell prints nothing, so every answer read through it was
+ * "" and a slot whose survivor had long ended stayed refused for the rest of the Run.
+ *
+ * Exit 0 is a group with a live process. A refusal to signal it ("not permitted") is a live process
+ * too, one this login may not signal. Any other exit 1 — "no such process", or no text at all — is
+ * the group gone. Every other exit (a missing `kill`, an ssh that could not connect) is a question
+ * that was not answered, and throws: nothing is concluded from it.
  */
 export async function jobProcessGroupAlive(on: InteractiveChannel, pid: number): Promise<boolean> {
   if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error(`invalid process group ${String(pid)}`);
-  const said = await mustRun(on, ['tmux', 'start-server', ';', 'run-shell', `kill -s 0 -- -${String(pid)} 2>/dev/null && echo alive || echo gone`],
-    `ask whether process group ${String(pid)} still runs`);
-  const answer = said.trim();
-  if (answer !== 'alive' && answer !== 'gone') throw new Error(`process group probe for ${String(pid)} answered ${JSON.stringify(answer)}`);
-  return answer === 'alive';
+  const asked = await on.exec(['kill', '-s', '0', '--', `-${String(pid)}`]);
+  if (asked.code === 0) return true;
+  const said = asked.stderr.trim();
+  if (asked.code === 1 && /not permitted|permission denied/i.test(said)) return true;
+  if (asked.code === 1) return false;
+  throw new Error(`cannot tell whether process group ${String(pid)} still runs: kill exited ${String(asked.code)}${said ? `: ${said}` : ''}`);
 }
 
 /**
