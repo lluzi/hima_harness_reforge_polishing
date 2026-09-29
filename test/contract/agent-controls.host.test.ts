@@ -480,3 +480,69 @@ test('pending stop I/O does not hold the conversational admission path', async (
     await host.dispose(); await home.h.dispose();
   }
 });
+
+// Gate 4 falsifier: a node paused by a person between a failed attempt (with Retry allowance still
+// unspent) and the next launch must not be relaunched. In the owned model the next attempt is an
+// explicit owner begin/work, and both consult executionPauseReason; the drive-loop retry
+// continuation that relaunches without that check runs only for an unowned Run (drive throws for an
+// owned one). This pins that a paused retrying node stays unlaunched and reports the pause, and that
+// clearing the pause — nothing else — lets the same execution proceed.
+test('a node paused before its next attempt is not relaunched, and the retrying node reports the pause', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0.01, failures: 9 });
+  assert.ok(home);
+  const host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, retryAllowance: 3, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    runId = started.run.id;
+    const nodeId = started.run.currentNode!;
+    let counter = 0;
+    const act = (action: 'begin' | 'work' | 'pause' | 'continue', executionId?: string, origin: 'agent' | 'human' = 'agent', scope = nodeId) => {
+      const control = host.ctx.hima.executionContext(runId!).run.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), action, executionId, nodeId: scope, origin, expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: `gate4-${++counter}` });
+    };
+
+    // Attempt 1 fails with the allowance still unspent, so the node stays a retry, not a Hard blocker.
+    const first = await act('begin');
+    assert.equal(first.kind, 'accepted');
+    const firstExec = first.receipt?.executionId; assert.ok(firstExec);
+    assert.equal((await act('work', firstExec)).kind, 'accepted');
+    await waitUntil('the first attempt failed with allowance left', () =>
+      host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === firstExec && execution.phase === 'failed'), 8000);
+    const retrying = host.ctx.hima.ledger.records({ runId, type: 'node' }).findLast((record) => record.type === 'node' && record.nodeId === nodeId);
+    assert.ok(retrying?.type === 'node');
+    assert.equal(retrying.state, 'retrying', 'attempt 1 leaves the node retrying, not blocked');
+    assert.ok(host.ctx.hima.executionContext(runId).available.includes(nodeId), 'absent any pause the node would retry');
+    assert.equal(sessionsOf(host, runId).length, 1, 'exactly one Job has been launched so far');
+
+    // The owner opens the next attempt, then a person pauses the node before it launches its Job.
+    const second = await act('begin');
+    assert.equal(second.kind, 'accepted');
+    const secondExec = second.receipt?.executionId; assert.ok(secondExec);
+    assert.equal((await act('pause', undefined, 'human')).kind, 'accepted');
+    assert.deepEqual(host.ctx.hima.executionContext(runId).run.control?.paused, [nodeId]);
+
+    // The next attempt does not launch: work is refused naming the pause, no new Job appears, and the
+    // node is no longer an available candidate. A fresh begin is refused the same way.
+    const worked = await act('work', secondExec);
+    assert.equal(worked.kind, 'refused', 'a paused retrying node is not relaunched');
+    assert.match(worked.reason ?? '', /pause/i);
+    assert.equal(sessionsOf(host, runId).length, 1, 'no second Job was launched while paused');
+    assert.equal(host.ctx.hima.executionContext(runId).available.includes(nodeId), false, 'a paused node is not an available candidate');
+    const begunAnyway = await act('begin');
+    assert.equal(begunAnyway.kind, 'refused');
+    assert.match(begunAnyway.reason ?? '', /pause/i);
+
+    // Clearing the pause — and nothing else — lets the same opened execution launch its attempt.
+    assert.equal((await act('continue', undefined, 'human')).kind, 'accepted');
+    assert.deepEqual(host.ctx.hima.executionContext(runId).run.control?.paused, []);
+    assert.equal((await act('work', secondExec)).kind, 'accepted');
+    await waitUntil('the cleared node launches its next attempt', () => sessionsOf(host, runId!).length === 2, 8000);
+  } finally {
+    if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
+});
