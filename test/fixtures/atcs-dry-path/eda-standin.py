@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A local stand-in for the Site's `edaShell` in the ATCS dry path (Issue #63). No EDA runs here.
+"""A local stand-in for the Site's `edaShell` in the ATCS dry path (Issues #63, #64). No EDA runs here.
 
 The Pack launches every Innovus, StarRC, PrimeTime and XTop batch through
 `site_profile["edaShell"] + [<one shell line>]` (`flow/atcs/adapters.py` `run_tool`). This script
@@ -11,23 +11,27 @@ Report text comes from the Pack's own synthetic generators (`flow/tests/fixtures
 grammar `atcs.reports`/`atcs.verification`/`atcs.adapters` parse. Nothing here is a timing,
 extraction or physical result: the numbers are fixed by which netlist a task reads.
 
-The design has three blocks u_a/u_b/u_c, each with leaf cells reg0 and reg1 (design/top.v). The stand-in "database" (`*.enc`)
-is the netlist text itself, so an Innovus ECO restores it, applies `ecoChangeCell`, and saves it.
-Timing: a netlist that still has `u_a/reg0` as `BUFFD1BWP` (the baseline) fails setup by 0.0500 ns on the
-setup scenario; once an ECO resized it, the refreshed STA still fails, by 0.0300 ns.
+The design has six blocks u_a..u_f, each with leaf cells reg0 and reg1 (design/top.v). The stand-in
+"database" (`*.enc`) is the netlist text itself, so an Innovus ECO restores it, applies every
+`ecoChangeCell` of the ECO it sources, and saves it. Timing (the same model as xtop-standin.tcl):
+the setup endpoint u_X/reg0/I of func_ssg_rcworst fails by 0.0500 ns while u_X/reg0 is BUFFD1BWP,
+0.0300 ns at BUFFD2BWP, 0.0100 ns at BUFFD4BWP and 0.0050 ns at BUFFD8BWP; nothing else fails.
+
+An XTop batch (the recipe replay, one process per arm) is the Pack's own rendered `xtop-replay.tcl`
+run by `tclsh` over the in-memory XTop of xtop-standin.tcl, so the replayed kept commands, the
+auto-finish lines and the exported ECO pair are the Pack's real Tcl over a stand-in design.
 """
 import argparse
 import json
 import re
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 
 SETUP_SCENARIO = "func_ssg_rcworst"
-ENDPOINT = "u_a/reg0/I"
-STARTPOINT = "U_START_0"
-BASELINE_SLACK = "-0.0500"
-REFRESHED_SLACK = "-0.0300"
+SLACK_BY_MASTER = {"BUFFD1BWP": -0.0500, "BUFFD2BWP": -0.0300, "BUFFD4BWP": -0.0100, "BUFFD8BWP": -0.0050}
+XTOP_STANDIN = Path(__file__).resolve().parent / "xtop-standin.tcl"
 
 
 def tcl_env(task_text):
@@ -84,10 +88,16 @@ def set_master(netlist_text, instance_path, master):
     return netlist_text[:start] + master + netlist_text[end:]
 
 
-def slack_for(netlist_path):
-    """The baseline slack while u_a/reg0 is still BUFFD1BWP; the refreshed slack once an ECO resized it."""
-    master = _leaf(Path(netlist_path).read_text(encoding="utf-8"), "u_a/reg0")[2]
-    return BASELINE_SLACK if master == "BUFFD1BWP" else REFRESHED_SLACK
+def endpoint_slacks(netlist_path):
+    """`{endpoint: slack}` of every failing setup endpoint of the netlist, worst first."""
+    cells = dict(netlist_cells(Path(netlist_path).read_text(encoding="utf-8")))
+    slacks = {f"{inst}/I": SLACK_BY_MASTER.get(master, -0.0500)
+              for inst, master in cells.items() if re.fullmatch(r"u_[a-z]+/reg0", inst)}
+    return dict(sorted(slacks.items(), key=lambda item: (item[1], item[0])))
+
+
+def _ns(value):
+    return f"{value:.4f}"
 
 
 def pt_scenario(env, fixtures):
@@ -95,9 +105,10 @@ def pt_scenario(env, fixtures):
     out = Path(env["REPORT_ROOT"]) / scenario
     out.mkdir(parents=True, exist_ok=True)
     if scenario == SETUP_SCENARIO:
-        slack = slack_for(env["NETLIST"])
-        glob = fixtures.global_report(slack, slack, "1", "0.00", "0.00", "0")
-        setup = fixtures.path_report([(ENDPOINT, slack)], "setup")
+        slacks = endpoint_slacks(env["NETLIST"])
+        glob = fixtures.global_report(_ns(min(slacks.values())), _ns(sum(slacks.values())), str(len(slacks)),
+                                      "0.00", "0.00", "0")
+        setup = fixtures.path_report([(endpoint, _ns(slack)) for endpoint, slack in slacks.items()], "setup")
     else:
         glob = fixtures.global_report("0.00", "0.00", "0", "0.00", "0.00", "0")
         setup = fixtures.path_report([], "setup")
@@ -115,30 +126,37 @@ def pt_query(env, task_text, fixtures):
     targets = re.search(r"(?m)^set ::ATCS_QUERY_TARGETS \{(.*)\}$", task_text)
     out = Path(env["REPORT_ROOT"])
     out.mkdir(parents=True, exist_ok=True)
-    slack = slack_for(env["NETLIST"])
+    slacks = endpoint_slacks(env["NETLIST"])
     for startpoint, endpoint, mode, name in re.findall(r"\{(\S+) (\S+) (\S+) (\S+)\}", targets.group(1)):
+        cell = endpoint.rsplit("/", 1)[0]
         detail = fixtures.path_detail_report([
-            ("u_a/reg0/I", "u_a/reg0/Z", "BUFFD1BWP", 0.0100, 0.0050, 0.0120, 0.0400, "n_q", 1, 0.0010),
+            (endpoint, f"{cell}/Z", "BUFFD1BWP", 0.0100, 0.0050, 0.0120, 0.0400, "n1", 1, 0.0010),
         ])
-        verdict = "VIOLATED" if slack.startswith("-") else "MET"
+        slack = slacks.get(endpoint, 0.0100)
+        verdict = "VIOLATED" if slack < 0 else "MET"
         (out / f"{name}.rpt").write_text(
             f"  Startpoint: {startpoint}\n  Endpoint: {endpoint}\n  Path Type: {'max' if mode == 'setup' else 'min'}\n"
-            f"{detail}  slack ({verdict})   {slack}\n", encoding="utf-8")
+            f"{detail}  slack ({verdict})   {_ns(slack)}\n", encoding="utf-8")
 
 
 def pt_presta(env, fixtures):
     out = Path(env["REPORT_ROOT"]) / env["SCENARIO"]
     out.mkdir(parents=True, exist_ok=True)
-    slack = slack_for(env["NETLIST"])
-    (out / "global_timing.rpt").write_text(fixtures.global_report(slack, slack, "1", "0.00", "0.00", "0"), encoding="utf-8")
+    slacks = endpoint_slacks(env["NETLIST"]) if env["SCENARIO"] == SETUP_SCENARIO else {}
+    wns = _ns(min(slacks.values())) if slacks else "0.00"
+    tns = _ns(sum(slacks.values())) if slacks else "0.00"
+    (out / "global_timing.rpt").write_text(fixtures.global_report(wns, tns, str(len(slacks)), "0.00", "0.00", "0"),
+                                           encoding="utf-8")
 
 
 def innovus(env, task_name, fixtures):
     root = Path(env["OUTPUT_ROOT"])
     design = Path(env["CURRENT_DB"]).read_text(encoding="utf-8")
-    if task_name == "innovus-eco.tcl":
-        for instance, master in re.findall(r"ecoChangeCell -inst \{(\S+)\} -cell \{(\S+)\}",
-                                           Path(env["ECO_TCL"]).read_text(encoding="utf-8")):
+    # A recipe batch's pair task (innovus-eco-pair.tcl, written as innovus-eco.tcl) sources NETLIST_ECO.
+    eco = env.get("NETLIST_ECO") or env.get("ECO_TCL")
+    if task_name in ("innovus-eco.tcl", "innovus-eco-pair.tcl"):
+        for instance, master in re.findall(r"ecoChangeCell -inst \{?([^\s{}]+)\}? -cell \{?([^\s{}]+)\}?",
+                                           Path(eco).read_text(encoding="utf-8")):
             design = set_master(design, instance, master)
     for sub in ("RPT", "EXPORT", "DBS"):
         (root / sub).mkdir(parents=True, exist_ok=True)
@@ -147,7 +165,7 @@ def innovus(env, task_name, fixtures):
     (root / "EXPORT" / "design.v").write_text(design, encoding="utf-8")
     (root / "EXPORT" / "design.def").write_text(
         "VERSION 5.8 ;\nDESIGN top ;\n# stand-in DEF of the netlist beside it\nEND DESIGN\n", encoding="utf-8")
-    if task_name == "innovus-eco.tcl":
+    if task_name in ("innovus-eco.tcl", "innovus-eco-pair.tcl"):
         enc = root / "DBS" / f"{env['DESIGN']}.enc"
         enc.write_text(design, encoding="utf-8")
         dat = root / "DBS" / f"{env['DESIGN']}.enc.dat"
@@ -166,29 +184,16 @@ def starxtract(cmd_path, fixtures):
                     encoding="utf-8")
 
 
-def xtop_replay(env):
-    dump_dir = Path(env["DUMP_DIR"])
-    dump_dir.mkdir(parents=True, exist_ok=True)
-    cells = dict(netlist_cells(Path(env["NETLIST"]).read_text(encoding="utf-8")))
-
-    def dump(index):
-        path = dump_dir / f"{index:03d}.dump"
-        path.write_text("".join(f"{inst} {master}\n" for inst, master in sorted(cells.items())), encoding="utf-8")
-        return path
-
-    dump(0)
-    steps = Path(env["STEPS_TCL"]).read_text(encoding="utf-8")
-    with open(env["RECEIPTS_LOG"], "a", encoding="utf-8") as receipts:
-        for step_id, op, index in re.findall(r'(?m)^atcs_replay_step "([^"]+)" \{(.*)\} (\d+)$', steps):
-            sized = re.fullmatch(r"size_cell \{(\S+)\} \{(\S+)\}", op)
-            if not sized or sized.group(1) not in cells:
-                receipts.write(json.dumps({"stepId": step_id, "status": "error", "error": f"stand-in cannot apply {op}"}) + "\n")
-                raise SystemExit(f"replay stopped at step {step_id}")
-            before = dump_dir / f"{int(index) - 1:03d}.dump"
-            cells[sized.group(1)] = sized.group(2)
-            after = dump(int(index))
-            receipts.write(json.dumps({"stepId": step_id, "status": "ok",
-                                       "beforeDump": str(before), "afterDump": str(after)}) + "\n")
+def xtop_replay(task, log_path):
+    """One replay arm: `tclsh` on the stand-in XTop, then the Pack's rendered replay Tcl, in the arm root."""
+    script = task.parent / "xtop-standin-run.tcl"
+    script.write_text(f"source {{{XTOP_STANDIN}}}\n" + task.read_text(encoding="utf-8"), encoding="utf-8")
+    env = tcl_env(task.read_text(encoding="utf-8"))
+    with open(Path(env["RUN_ROOT"]) / "xtop_log_1.txt", "a", encoding="utf-8") as transcript:
+        result = subprocess.run(["tclsh", str(script)], cwd=env["RUN_ROOT"], stdout=transcript,
+                                stderr=subprocess.STDOUT)
+    if result.returncode != 0:
+        raise SystemExit(f"stand-in xtop replay exited {result.returncode}; see {env['RUN_ROOT']}/xtop_log_1.txt")
 
 
 def main():
@@ -223,7 +228,7 @@ def main():
         if tool == "innovus":
             innovus(env, task.name, fixtures)
         elif tool == "xtop":
-            xtop_replay(env)
+            xtop_replay(task, config["log"])
         elif task.name == "pt-scenario.tcl":
             pt_scenario(env, fixtures)
         elif task.name == "pt-query.tcl":
