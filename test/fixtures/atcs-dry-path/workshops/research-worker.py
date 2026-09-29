@@ -24,13 +24,15 @@ if not package.get("parked"):
     netlist = (workspace / working["netlist"]["path"]).read_text(encoding="utf-8")
     module = re.search(rf"(?m)^\s*(\w+)\s+{block}\s*\(", netlist.split("module top", 1)[1]).group(1)
     body = re.search(rf"(?ms)^module\s+{module}\b.*?^endmodule", netlist).group(0)
+    up = {"BUFFD1BWP": "BUFFD2BWP", "BUFFD2BWP": "BUFFD4BWP", "BUFFD4BWP": "BUFFD8BWP"}
     master = re.search(r"(?m)^\s*(\w+)\s+reg0\s*\(", body).group(1)
-    step = {"BUFFD1BWP": "BUFFD2BWP", "BUFFD2BWP": "BUFFD4BWP", "BUFFD4BWP": "BUFFD8BWP"}[master]
+    step = up[master]
+    reg1_step = up[re.search(r"(?m)^\s*(\w+)\s+reg1\s*\(", body).group(1)]
     trial = EXAMPLE["sessionPlan"][0]
-    request["sessionPlan"] = ([dict(trial, command="atcs_size_cell", object=f"{block}/reg1",
+    request["sessionPlan"] = ([dict(trial, command="atcs_size_cell", object=f"{block}/reg1", toMaster=reg1_step,
                                     hypothesis="a stronger reg1 may speed the path out of the block",
                                     falsifier="no setup gain at the target: undo it")] if SLOT == "w01" else []) + [
-        dict(trial, command="atcs_size_cell", object=f"{block}/reg0",
+        dict(trial, command="atcs_size_cell", object=f"{block}/reg0", toMaster=step,
              hypothesis=f"{master} at {block}/reg0 is too weak to meet setup at {block}/reg0/I; size it to {step}",
              falsifier="atcs_gain shows no setup gain at the target, or hold breaks; then atcs_undo")]
 out = workspace / "research" / "requests" / f"worker-request-{SLOT}.json"

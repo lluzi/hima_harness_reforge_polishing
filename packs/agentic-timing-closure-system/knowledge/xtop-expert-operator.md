@@ -2,14 +2,12 @@
 
 ## Source
 
-- The user's XTop knowledge pack, `XTOP_ADVANCED_TIMING_CLOSURE_SKILL_AND_STRATEGY_MAP.md`
-  (research version 2026-09-24, installed ICExplorer-XTop `2025.09.tmp15`, read-only; server copy
-  `/data/eda/project/design_zoo/docs/xtop_advanced_timing_closure/`): Level 2 diagnosis, Level 3
-  manual ECO, Level 4 setup and hold ladders, Level 5 effort, section 7 fail-reason strategy,
-  section 8.2 target and guardband, section 17 principles. Condensed here.
+- The user's XTop knowledge pack, `XTOP_ADVANCED_TIMING_CLOSURE_SKILL_AND_STRATEGY_MAP.md` (research version
+  2026-09-24, installed ICExplorer-XTop `2025.09.tmp15`, read-only; server copy
+  `/data/eda/project/design_zoo/docs/xtop_advanced_timing_closure/`): Level 2 diagnosis, Level 3 manual ECO,
+  Level 4 ladders, Level 5 effort, section 7 fail reasons, 8.2 target and guardband, 17 principles. Condensed.
 - The same pack's `evidence/man_catalog.tsv` (sha256 `591caecac2a7bf9661153b87e550e61e554d7514818d4b821885abe26f391ded`;
-  all 112 fail reasons) and `evidence/command_surface.tsv`
-  (sha256 `fcbcab580ee0fe41ad0d55e6669086801f3bf2eec325efc26d2ca8763bf1ae92`).
+  all 112 fail reasons) and `evidence/command_surface.tsv` (sha256 `fcbcab580ee0fe41ad0d55e6669086801f3bf2eec325efc26d2ca8763bf1ae92`).
 - Man pages under `/data/eda/software/eda_tools/empyrean/xtop-2025.09.tmp15/share/doc/man/man1/`,
   one row per toolkit procedure of `flow/templates/xtop-operator.tcl` (row = `command_surface.tsv`
   line; `man+completion` unless marked):
@@ -46,8 +44,7 @@
   proposes ladder moves with falsifiers, the Reviewer sizes the scope (commands and a mutation
   budget), the Operator runs the loop below in its interactive `xtop-operator` session. The Team's
   Operator template condenses this loop; the Operator cannot read this file.
-- Not for clock ECO, useful skew, pin-rank commits, PBA path fixes or slack adjustment: these are
-  outside Issue #64 and outside the toolkit.
+- Not for clock ECO, useful skew, pin-rank commits, PBA path fixes or slack adjustment: outside Issue #64 and the toolkit.
 
 ## Changes this decision
 
@@ -81,13 +78,16 @@ edits. XTop's gain only screens trials; only refreshed PrimeTime judges converge
    ladder gains, or when the blockers are clear. Then `atcs_dump_cells after.dump`,
    `atcs_export_changes` and `atcs_close`.
 
-What a refusal costs. A Host refusal (a command outside the scope, another plan hash, the budget
-spent) writes no intent and is free. A mutation the Host admits but the toolkit refuses (a pin or
-instance outside the domain, a move point outside every region, a master already in place, a timing
-window with size-only) changes nothing, yet the toolkit refusal costs one approved mutation of the
-Reviewer's budget. So check the domain, pins, regions and candidates with the read procedures, which
-are free, before sending. Read every refusal and choose again; never resend the same mutation. A
-tainted session (an `uncertain` line) refuses every further mutation: dump, close and report it.
+What a refusal costs. A Host refusal (a command outside the scope, another plan hash, the budget spent) is
+free. A mutation the Host admits but the toolkit refuses (a pin or instance outside the domain, a point outside
+every region, a master already in place or not in the library, a timing window with size-only) changes
+nothing, yet costs one approved mutation. So check the domain, pins, regions and candidates with the free read
+procedures first; read every refusal, choose again, never resend. A master is one library cell name of the
+cell's own function: a size move's `toMaster` comes from the Liberty cells `state/xtop-context.json` lists and
+the Site's `cellNominalSizingPattern` (#64 attempt 1: w01 twice sent `SDGCNQOPTMC D12BWP30P140`, two
+`atcs_candidates` columns joined; w03's `SDFCNQARD1BWP35P140` to `SDFCNQD2BWP35P140` dropped the reset and
+was rightly undone). A tainted session (an `uncertain` line) refuses every further mutation: dump, close and
+report it.
 
 The Reviewer's budget must fit the loop: trials, one undo each, and a margin for toolkit refusals.
 

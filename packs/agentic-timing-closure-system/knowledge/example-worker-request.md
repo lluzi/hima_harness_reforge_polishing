@@ -10,7 +10,12 @@ from the campaign plan. The Reader's refusal, one line per problem, is `workerRe
 ## Active slot
 
 `sessionPlan` is yours: the ordered typed `atcs_*` commands to try, each with its hypothesis and its
-falsifier.
+falsifier. An `atcs_size_cell` entry also names `toMaster`: one cell of this design's libraries with the
+object's cell function, the name up to the drive digits of `ecoParameters.cellNominalSizingPattern` in
+`state/xtop-context.json` (`BUFFD2BWP35P140` is function `BUFFD`, drive 2, so `BUFFD4BWP35P140` sizes it
+up); the drive or the VT may change, the function may not. The cells are the `cell (NAME)` groups of the
+Liberty files that file lists in `libraryFiles` (it holds no cell table itself);
+`hima-readers/atcs-readiness/read-atcs.py masters` lists the ones the Reader admits for each instance.
 
 ```json
 {
@@ -81,6 +86,7 @@ falsifier.
     {
       "command": "atcs_size_cell",
       "object": "u_core/u_lsu/U2231",
+      "toMaster": "BUFFD4BWP35P140",
       "hypothesis": "the weak driver of the data_reg_3_/D path limits setup",
       "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"
     },

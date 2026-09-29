@@ -42,11 +42,12 @@ STATE_ID = "<id of state/working-state.json>"
 STATE_OBJECT = "<the whole JSON object in state/working-state.json, verbatim>"
 
 SCENARIO = "func_ssg_rcworst_m40"
-# The example's hierarchy: top/u_core (module core)/u_lsu (module lsu)/<leaf cells>.
+# The example's hierarchy: top/u_core (module core)/u_lsu (module lsu)/<leaf cells>. Masters follow the
+# Site's sizing pattern D([0-9]+)BWP; LIBRARY is the Liberty the sealed XTop context names.
 NETLIST = """module lsu (clk);
-  DFFQ_X1 data_reg_3_ (.D(n4410), .CK(clk));
-  DFFQ_X1 addr_reg_0_ (.D(n4411), .CK(clk));
-  BUF_X2 U2231 (.A(n4409), .Z(n4410));
+  SDFQD1BWP35P140 data_reg_3_ (.D(n4410), .CP(clk));
+  SDFQD1BWP35P140 addr_reg_0_ (.D(n4411), .CP(clk));
+  BUFFD2BWP35P140 U2231 (.I(n4409), .Z(n4410));
 endmodule
 module core (clk);
   lsu u_lsu (.clk(clk));
@@ -55,6 +56,26 @@ module top (clk);
   core u_core (.clk(clk));
 endmodule
 """
+
+LIBRARY = ("SDFQD1BWP35P140", "SDFQD2BWP35P140", "BUFFD1BWP35P140", "BUFFD2BWP35P140", "BUFFD4BWP35P140")
+ECO_PARAMETERS = {
+    "bufferListForHold": ["BUFFD1BWP35P140"], "bufferListForSetup": ["BUFFD4BWP35P140"],
+    "cellClassifyRule": "cell_attribute", "cellMatchAttribute": "footprint",
+    "cellNominalSwapKeywords": ["ULVT", "LVT", "", "HVT"], "cellNominalSizingPattern": "D([0-9]+)BWP",
+    "gainThreshold": 0.001,
+}
+
+
+def seal_xtop_context(workspace, design, cells=LIBRARY):
+    """`state/xtop-context.json` as `observe` seals it for `design`, over a Liberty holding `cells`."""
+    liberty = _write(workspace / "inputs" / "libs" / "standin.lib",
+                     "library(standin) {\n" + "".join(f"  cell ({name}) {{}}\n" for name in cells) + "}\n")
+    files = [{"path": str(liberty), "sha256": core.file_sha256(liberty)}]
+    core.write_artifact(workspace / "state" / "xtop-context.json", core.stamp("xtop-context", {
+        "designStateId": design["id"], "requiredScenarios": [SCENARIO], "libraryFiles": {SCENARIO: files},
+        "ecoParameters": dict(ECO_PARAMETERS), "siteMap": ["unit", "core"], "removableFillers": ["FILL*"],
+    }))
+
 
 # What the retained live plan got wrong (the diagnostic of 2026-09-28).
 READ_PROCS = ["atcs_ref", "atcs_paths", "atcs_gain", "atcs_candidates", "atcs_fail_reasons", "atcs_dump_cells"]
@@ -145,6 +166,7 @@ class ExampleWorkspace(unittest.TestCase):
         self.workspace = _make_workspace(self.tmp.name)
         self.design = _build_design_state(self.workspace, netlist_text=NETLIST)
         core.write_artifact(self.workspace / "state" / "working-state.json", self.design)
+        seal_xtop_context(self.workspace, self.design)
         policy = core.stamp("policy", {"requiredScenarios": [SCENARIO], "baselineStateId": self.design["id"]})
         core.write_artifact(self.workspace / "state" / "policy.json", policy)
         slacks = {

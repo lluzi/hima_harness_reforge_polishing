@@ -442,6 +442,29 @@ def _is_hierarchical_pin(hierarchy, top, pin_path):
     return False
 
 
+def _instance_type(hierarchy, top, instance_path):
+    """The declared type of the instance `instance_path` names under `top`, or None.
+
+    The same walk as `_is_hierarchical_instance`: every non-final segment must be a
+    user-module instance, the final one any instance of the module reached. A leaf cell's
+    type is its library master; a type that is itself a key of `hierarchy` is a module.
+    """
+    if not isinstance(instance_path, str) or not instance_path:
+        return None
+    segments = _split_instance_path(instance_path)
+    if segments is None or any(segment == "" for segment in segments):
+        return None
+    current_module = top
+    for index, segment in enumerate(segments):
+        instances = hierarchy.get(current_module)
+        if instances is None or segment not in instances:
+            return None
+        if index == len(segments) - 1:
+            return instances[segment]
+        current_module = instances[segment]
+    return None
+
+
 def _resolve_id_in_workspace(workspace, artifact_id, exclude_dirnames=("hima-readers",)):
     """Best-effort: find a JSON file under `workspace` whose own `id` matches.
 
@@ -779,6 +802,8 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
                     f"candidate.targetPins{slot}: {pin!r} is not a hierarchical pin of a leaf cell under top {top!r} "
                     "in the base netlist; required format: <full leaf-cell path>/<pin>, never a top-level port"
                 )
+    if not workspaces_mod.is_parked(candidate):
+        found += _session_plan_master_problems(envelope, candidate, base_state, workspace, core, slot)
     return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
@@ -829,6 +854,232 @@ def _prepared_package_problems(workspace, slot, candidate, core, workspaces_mod)
     prepared, requested = workspaces_mod.bound_view(package), workspaces_mod.bound_view(candidate)
     return [f"candidate.{field} (slot {slot}): differs from the package prepare-workers prepared for this slot; {copy}"
             for field in workspaces_mod.PREPARED_BINDING_FIELDS if prepared[field] != requested[field]]
+
+
+# C13 (Issue #63 failure catalogue, ported to the six-slot 0.2.0 request; #64 treatment attempt 1):
+# a size move names a master of this design's libraries with the cell's own function. Attempt 1's
+# w01 Operator sized to 'SDGCNQOPTMC D12BWP30P140' (two columns of atcs_candidates joined), which
+# XTop refused twice as an invalid library cell; w03 sized SDFCNQARD1BWP35P140 to SDFCNQD2BWP35P140,
+# a flop without the asynchronous reset, and undid it. The library is the Pack-sealed
+# `state/xtop-context.json`: `observe` stamps each scenario's Liberty files (hashed) and the Site's
+# sizing rule (`ecoParameters.cellNominalSizingPattern`, `cellNominalSwapKeywords`); the context holds
+# no cell table itself (#63 live finding #250), the cells are the Liberty files' `cell (NAME)` groups.
+
+_LIBERTY_CELL_RE = re.compile(rb'^\s*cell\s*\(\s*"?([^"\s)]+)"?\s*\)')
+_library_cache = {}
+
+
+def _library_cells(files):
+    """Every `cell (NAME)` of the Liberty `files` ([{path, sha256}]), each re-hashed as read.
+
+    One streaming pass per file both hashes it and collects its cell names, so a file that
+    changed since `observe` sealed it is refused, not trusted. Memoized per file list.
+    """
+    import hashlib
+    key = tuple((ref.get("path"), ref.get("sha256")) for ref in files)
+    if key in _library_cache:
+        return _library_cache[key]
+    cells = set()
+    for path, expected in key:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for line in handle:
+                digest.update(line)
+                match = _LIBERTY_CELL_RE.match(line)
+                if match:
+                    cells.add(match.group(1).decode("latin-1"))
+        if digest.hexdigest() != expected:
+            raise ValueError(f"Liberty file {path} changed since state/xtop-context.json sealed it")
+    _library_cache[key] = cells
+    return cells
+
+
+def _library_context(workspace, base_state, core):
+    """`(cells, ecoParameters, None)` from the sealed `state/xtop-context.json`, or `(None, None, why)`.
+
+    The cells are those of the first scenario (sorted) the context names; `prepare-workers`
+    re-verifies the same file before XTop starts. The request's own `siteCapabilities` is
+    model-written and is never read for this.
+    """
+    try:
+        context = _load_json(Path(workspace) / "state" / "xtop-context.json")
+        _verify_identity(context, "xtop-context", core)
+    except (ValueError, OSError) as error:
+        return None, None, f"state/xtop-context.json (the Site's sealed XTop library context) cannot be read: {error}"
+    if context.get("designStateId") != base_state.get("id"):
+        return None, None, ("state/xtop-context.json was sealed for design state "
+                            f"{context.get('designStateId')!r}, not baseState {base_state.get('id')!r}; observe first")
+    library_files = context.get("libraryFiles")
+    eco = context.get("ecoParameters")
+    if not isinstance(library_files, dict) or not library_files or not isinstance(eco, dict):
+        return None, None, "state/xtop-context.json declares no libraryFiles or ecoParameters"
+    scenario = sorted(library_files)[0]
+    try:
+        cells = _library_cells(library_files[scenario])
+    except (ValueError, OSError, TypeError, AttributeError) as error:
+        return None, None, f"the Liberty files of scenario {scenario!r} in state/xtop-context.json cannot be read: {error}"
+    if not cells:
+        return None, None, f"the Liberty files of scenario {scenario!r} declare no cell"
+    return cells, eco, None
+
+
+def _sizing_family(master, eco):
+    """`(function, VT)` of `master` under the Site's sizing rule, or None when it does not apply.
+
+    `cellNominalSizingPattern` (the Site's `D([0-9]+)BWP`) marks the drive strength, its first
+    group the drive digits: the text before them is the cell function (`SDFCNQARD` of
+    `SDFCNQARD1BWP35P140`, `SDFCNQD` of `SDFCNQD2BWP35P140`), the same for every size of one family.
+    A pattern without a group marks the drive by its whole match. `cellNominalSwapKeywords` lists
+    the VT suffixes (the empty keyword is the standard VT); the longest one the name ends with is
+    its VT.
+    """
+    pattern = eco.get("cellNominalSizingPattern")
+    if not isinstance(pattern, str) or not pattern:
+        return None
+    try:
+        match = re.search(pattern, master)
+    except re.error:
+        return None
+    if match is None:
+        return None
+    function = master[:match.start(1) if match.re.groups else match.start()]
+    if not function:
+        return None
+    tail = master[match.end():]
+    keywords = sorted((k for k in eco.get("cellNominalSwapKeywords") or [] if isinstance(k, str) and k),
+                      key=len, reverse=True)
+    vt = next((k for k in keywords if tail.endswith(k)), "")
+    return function, vt
+
+
+def _plain_master(master, core):
+    return (isinstance(master, str) and bool(master) and not core.is_tcl_unsafe(master)
+            and "*" not in master and "?" not in master)
+
+
+def _session_plan_master_problems(envelope, candidate, base_state, workspace, core, slot):
+    """C13 for an active slot's `sessionPlan`: each `atcs_size_cell` entry names its `toMaster`.
+
+    The Operator's `atcs_size_cell` takes the master to size to, and a toolkit refusal of an
+    admitted mutation spends one approved mutation. So each size entry carries `toMaster`: one
+    plain cell name of this design's libraries (`_library_context`), not the object's current
+    master, with the object's cell function under the Site's sizing rule. The drive and the VT may
+    change (the hold ladder's size-down or VT swap, the setup ladder's size-up or VT swap); the
+    function may not. The object is a leaf cell of `candidate.editDomain.instances`, since the
+    toolkit sizes only a domain instance. Other entries are not read here.
+    """
+    plan = envelope.get("sessionPlan")
+    if not isinstance(plan, list):
+        return []
+    entries = [(index, entry) for index, entry in enumerate(plan)
+               if isinstance(entry, dict) and entry.get("command") == "atcs_size_cell"]
+    if not entries:
+        return []
+    domain = candidate.get("editDomain") if isinstance(candidate.get("editDomain"), dict) else {}
+    instances = [name for name in domain.get("instances") or [] if isinstance(name, str)]
+    netlist = base_state.get("netlist") if isinstance(base_state.get("netlist"), dict) else {}
+    hierarchy = _netlist_hierarchy(_safe_join(workspace, netlist.get("path"), "worker-request.netlist"))
+    top = base_state.get("top")
+    source = ("choose it from the cells of the Liberty files state/xtop-context.json names in libraryFiles "
+              "with the object's function under ecoParameters.cellNominalSizingPattern (read-atcs.py masters "
+              "lists them); the context file holds no cell table itself")
+    found, checkable = [], []
+    for index, entry in entries:
+        where = f"sessionPlan[{index}]"
+        target, master = entry.get("object"), entry.get("toMaster")
+        if not isinstance(target, str) or target not in instances:
+            found.append(f"{where}.object{slot}: {target!r} is not in candidate.editDomain.instances; "
+                         "atcs_size_cell sizes one edit-domain leaf cell")
+            continue
+        current = _instance_type(hierarchy, top, target)
+        if current is None or current in hierarchy:
+            continue  # the edit-domain check above already names this instance
+        if "toMaster" not in entry:
+            found.append(f"{where}.toMaster{slot}: missing; an atcs_size_cell entry names the master it sizes "
+                         f"{target!r} ({current}) to; {source}")
+        elif not _plain_master(master, core):
+            found.append(f"{where}.toMaster{slot}: {master!r} is not one plain cell name (no space, Tcl "
+                         f"metacharacter, * or ?); {source}")
+        elif master == current:
+            found.append(f"{where}.toMaster{slot}: {master!r} is already the master of {target!r}; a size move "
+                         "changes the drive strength or the VT")
+        else:
+            checkable.append((where, target, current, master))
+    if not checkable:
+        return found
+    cells, eco, why = _library_context(workspace, base_state, core)
+    if why is not None:
+        return found + [f"sessionPlan{slot}: no toMaster can be checked against this design's libraries: {why}"]
+    for where, target, current, master in checkable:
+        if master not in cells:
+            found.append(f"{where}.toMaster{slot}: {master!r} is not a cell of this design's libraries; {source}")
+            continue
+        want, got = _sizing_family(current, eco), _sizing_family(master, eco)
+        if want is None or got is None:
+            found.append(f"{where}.toMaster{slot}: {master!r} or the current master {current!r} of {target!r} does "
+                         f"not follow the Site's sizing pattern {eco.get('cellNominalSizingPattern')!r}, so the move "
+                         "cannot be shown to keep the cell function; size another cell of the path")
+        elif got[0] != want[0]:
+            found.append(f"{where}.toMaster{slot}: {master!r} changes the cell function {want[0]!r} of {target!r} "
+                         f"({current}) to {got[0]!r}; a size move keeps the function and changes only the drive "
+                         "strength or the VT")
+    return found
+
+
+def library_masters(workspace, instances):
+    """For each leaf-cell path, its current master and the library cells of the same function.
+
+    `read-atcs.py masters WORKSPACE INSTANCES_JSON OUT`: the source a research Workshop picks a
+    size move's `toMaster` from, the same cells and rule `_session_plan_master_problems` admits.
+    Read against the working state's sha-verified netlist and the sealed XTop context; writes
+    nothing but OUT.
+    """
+    core = _atcs_modules(workspace)["core"]
+    working_state = _load_json(Path(workspace) / "state" / "working-state.json")
+    _verify_identity(working_state, "design-state", core)
+    netlist = working_state.get("netlist")
+    if not _has_keys(netlist, ("path", "sha256")):
+        raise ValueError("design-state.netlist must be {path, sha256}")
+    _require_file(workspace, netlist["path"], netlist["sha256"], core, "design-state.netlist")
+    hierarchy = _netlist_hierarchy(_safe_join(workspace, netlist["path"], "design-state.netlist"))
+    cells, eco, why = _library_context(workspace, working_state, core)
+    if why is not None:
+        raise ValueError(why)
+    top = working_state.get("top")
+    rows, unresolved = [], []
+    for name in instances:
+        current = _instance_type(hierarchy, top, name) if isinstance(name, str) else None
+        if current is None:
+            unresolved.append({"instance": name, "unresolved": f"not an instance under top {top!r}; "
+                               "write the leaf cell's full path from top"})
+            continue
+        if current in hierarchy:
+            unresolved.append({"instance": name, "unresolved": f"a module instance (of {current!r}), not a leaf cell"})
+            continue
+        family = _sizing_family(current, eco)
+        if family is None:
+            unresolved.append({"instance": name, "master": current, "unresolved": (
+                f"{current!r} does not follow the sizing pattern {eco.get('cellNominalSizingPattern')!r}")})
+            continue
+        same = sorted(cell for cell in cells
+                      if cell != current and (_sizing_family(cell, eco) or (None,))[0] == family[0])
+        rows.append({"instance": name, "master": current, "function": family[0], "vt": family[1],
+                     "toMasters": same})
+    return {"designStateId": working_state.get("id"), "sizingPattern": eco.get("cellNominalSizingPattern"),
+            "masters": rows, "unresolved": unresolved}
+
+
+def _masters_main(argv):
+    if len(argv) != 3:
+        raise SystemExit("usage: read-atcs.py masters WORKSPACE INSTANCES_JSON OUT_JSON")
+    workspace, instances_path, out = argv
+    instances = _load_json(instances_path)
+    if isinstance(instances, dict):
+        instances = instances.get("instances")
+    if not isinstance(instances, list):
+        raise ValueError("INSTANCES_JSON must be a list of leaf-cell paths or {\"instances\": [...]}")
+    answer = library_masters(workspace, instances)
+    Path(out).write_text(json.dumps(answer, indent=1, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _read_campaign_plan(report, workspace, extra, mods):
@@ -1689,6 +1940,9 @@ def problems(kind, report, workspace, slot=None):
 
 
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == "masters":
+        _masters_main(sys.argv[2:])
+        return
     if len(sys.argv) < 5:
         raise SystemExit("usage: read-atcs.py <kind> REPORT OUT WORKSPACE [extra...]")
     kind, report, out, workspace = sys.argv[1:5]

@@ -19,3 +19,17 @@ that reads these stubs `read-atcs.py`'s `_verify_design_state_refs` (the file re
 (the #63 real-model probe, run `notes/model-probe-run1`, Pack 0.1.10): a Team reviewer's admitted answer
 with nested `evidenceRefs` and long `limitations`, the shape that broke inside arrays in 2 of 5 answers.
 Its `review/1` fields differ from this Pack's `review/2`, but the two format caps it breaks are the same.
+
+## Treatment attempt 1 fixtures (Issue #64, `run-9a5f197a`, Pack 0.2.0 `ea5d0356`)
+
+Copied from that Run's assets (`.hima-tmp/atcs64-t01-12950dac/T01 Data/.../run-assets/.evidence/<run>/`).
+Its working state and worker-slots record are byte-identical to `live02-working-state.json`
+(`d0c9c5bf...`) and `live02-worker-slots.json` (`53ebcf98...`), so the tests reuse those files.
+
+| File | Source contentSha256 | Bytes |
+|------|----------------------|-------|
+| `t01-worker-request-w01.json` | `649ca0d5a31842d3953ee61375bbe4ba8f2822147afa212ece61cfad83c2a0e8` | verbatim: w01's admitted request (Ledger `#000144`) |
+| `t01-worker-request-w03.json` | `0a434f5f1950e19d40f3e24a288cc512bfbdb48e9d9a96c7866cfe1f23ed2eb0` | verbatim: w03's admitted request (Ledger `#000254`) |
+
+`flow/tests/test_t01_regressions.py` writes a stand-in netlist and Liberty file for them and lists
+which masters are proven by the Run and which are assumed.
