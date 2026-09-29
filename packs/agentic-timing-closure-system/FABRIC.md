@@ -11,9 +11,11 @@ helper from `flow/atcs_cli.py`.
   (24 `python3` subcommand tools of `flow/atcs_cli.py`, 1 interactive-only XTop Operator tool),
   7 Workshops (5 families, the worker family expanded to slots 01–03), 24 rules, 3 Goal parameters
   (`target_setup_wns_ns`, `target_hold_wns_ns`, `max_physical_refreshes`), 1 Strategy knob
-  (`maxPaths`), 15 knowledge files (10 method files and 5 Reader-admitted Workshop examples,
-  `example-*.md`, Issue #63; slice 3 added the observation-request and integration-plan examples, so
-  every request-producing Workshop has one).
+  (`maxPaths`), 16 knowledge files (10 method files, 5 Reader-admitted Workshop examples,
+  `example-*.md`, Issue #63 -- slice 3 added the observation-request and integration-plan examples, so
+  every request-producing Workshop has one -- and `agent-team.md`, the owner's Team guidance, declared
+  in slice 3 so the owner's Pack knowledge search reaches it). Each worker Team member's
+  `taskTemplate` ends with one example reply holding exactly its `resultSchema.required` fields.
 - `graph.yml` — 111 nodes (62 act, 38 judge, 10 explore, 1 wait), 150 edges, 10 revisit edges.
   Issue #63 slice 3 (G37): `check-worker-request-01` FAIL goes to `retry-worker-01` (Explore,
   `atcs-revisit`), which revisits `research-worker-01` (+1 node, +1 edge), replacing its FAIL edge

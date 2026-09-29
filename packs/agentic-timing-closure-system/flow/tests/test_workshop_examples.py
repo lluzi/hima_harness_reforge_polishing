@@ -36,6 +36,8 @@ test failed on 110 !== 111 nodes (no retry-worker-01).
 Recorded RED (slice 3 gap 3, on 2d3678a1): 3 failures and 4 errors -- neither
 example-observation-request.md nor example-integration-plan.md existed, was declared, or was
 named by its Workshop's purpose, and the purpose-field check had no example to read.
+Recorded RED (slice 3 gap 6, on e4266f19): TeamRepairGuidanceTest -- 4 failures and 1 error: no
+member taskTemplate held an example reply, and knowledge/agent-team.md was not declared.
 """
 from __future__ import annotations
 
@@ -537,6 +539,53 @@ class IntegrationPlanExampleTest(_HierarchicalFixture):
         example["plan"]["deferred"] = []
         values = self._read("integration-plan", "integration-plan.json", example)
         self.assertEqual(values["tc_request_invalid_count"], 1)
+
+
+def _team_members(contract_text):
+    """`{role: (taskTemplate text, resultSchema id, required fields)}` of the worker Team."""
+    section = contract_text[contract_text.index("\nagentTeams:\n"):contract_text.index("\nworkshops:\n")]
+    members = {}
+    for match in re.finditer(r"^      - id: (\w+)\n(.*?)(?=^      - id: |\Z)", section, re.S | re.M):
+        body = match.group(2)
+        folded = re.search(r"^        taskTemplate: >-\n((?:^          .*\n)+)", body, re.M)
+        plain = re.search(r"^        taskTemplate: (?!>-)(.*)$", body, re.M)
+        template = " ".join(folded.group(1).split()) if folded else plain.group(1)
+        schema = re.search(r"^          id: (\S+)$", body, re.M).group(1)
+        required = [f.strip() for f in re.search(r"^          required: \[(.*)\]$", body, re.M).group(1).split(",")]
+        members[match.group(1)] = (template, schema, required)
+    return members
+
+
+class TeamRepairGuidanceTest(unittest.TestCase):
+    """Issue #63 gap 6: the Team's format guidance must reach the model that needs it. Each
+    member's taskTemplate (the child's own prompt) carries one example reply with every
+    required field, and knowledge/agent-team.md, which tells the owner to spend the one
+    same-child follow-up on a formatting refusal, is declared knowledge the owner can search."""
+
+    def test_each_member_template_holds_one_example_reply_with_its_required_fields(self):
+        members = _team_members(_contract_text())
+        self.assertEqual(sorted(members), ["operator", "researcher", "reviewer"])
+        for role, (template, schema, required) in members.items():
+            with self.subTest(role=role):
+                match = re.search(r"Example reply \(shape only\): (\{.*\})\s*$", template)
+                self.assertIsNotNone(match, f"{role}'s taskTemplate has no example reply")
+                example = json.loads(match.group(1))
+                self.assertEqual(example["schema"], schema)
+                self.assertEqual(sorted(example), sorted(required), f"{role}'s example fields")
+
+    def test_reviewer_example_arguments_are_the_typed_command_minus_the_host_hash(self):
+        text = _contract_text()
+        template = _team_members(text)["reviewer"][0]
+        example = json.loads(re.search(r"Example reply \(shape only\): (\{.*\})\s*$", template).group(1))
+        declared = re.search(r"^        atcs_size_cell: \[(.*)\]$", text, re.M).group(1)
+        names = re.findall(r"name: (\w+)", declared)
+        self.assertEqual(example["command"], "atcs_size_cell")
+        self.assertEqual(sorted(example["arguments"]), sorted(n for n in names if n != "planSha256"))
+        worker = _load_example("example-worker-request.md")
+        self.assertIn(example["arguments"], worker["actions"], "the example reviews an action of the worker example")
+
+    def test_agent_team_guidance_is_declared_knowledge(self):
+        self.assertIn("agent-team.md", _declared_knowledge(_contract_text()))
 
 
 class NextDecisionExampleTest(unittest.TestCase):

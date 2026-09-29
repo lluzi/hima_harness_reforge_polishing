@@ -630,6 +630,8 @@ knowledge:
     purpose: One next-decision the next-decision Reader admits, for evaluate-next-investment to copy the shape of.
   - file: example-observation-request.md
     purpose: One observation request the observation-request Reader admits for the examples' working state, for diagnose-and-observe to copy the shape of.
+  - file: agent-team.md
+    purpose: For the Run owner operating the atcs-worker-01 Team at operate-worker-01, the adoption order and the one same-child follow-up to spend on a formatting refusal before escalating.
   - file: example-integration-plan.md
     purpose: One integration plan the integration-plan Reader admits against its embedded composition facts, including a conflict resolution, for compose-contributions to copy the shape of.
 
@@ -641,7 +643,14 @@ agentTeams:
       - id: researcher
         role: researcher
         node: operate-worker-01
-        taskTemplate: Read the exact admitted workerRequest01. Return bounded hypotheses and falsifiers for its declared actions. Do not invent or execute actions; request a Workshop revision when none is suitable. Return one compact schema-complete JSON object in this turn; at most one hypothesis per declared action, shared evidenceRefs once, and concise limitations. Do not enumerate every target check or repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.
+        taskTemplate: >-
+          Read the exact admitted workerRequest01. Return bounded hypotheses and falsifiers for its
+          declared actions. Do not invent or execute actions; request a Workshop revision when none is
+          suitable. Return one compact schema-complete JSON object in this turn; at most one hypothesis
+          per declared action, shared evidenceRefs once, and concise limitations. Do not enumerate every
+          target check or repeat the input document. If the owner returns a refusal of your reply, answer
+          with the corrected single JSON object only. Example reply (shape only):
+          {"schema": "atcs-worker-research/1", "hypotheses": [{"instance": "u_a/reg0", "toMaster": "DFQD2BWP35P140", "mechanism": "undersized driver on the hold-critical path", "falsifier": "hold slack at X does not improve after the resize"}], "evidenceRefs": ["<a Runtime input record id>"], "limitations": ["parasitics unchanged until the next refresh"]}
         inputs: [workerRequest01]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -660,7 +669,13 @@ agentTeams:
       - id: reviewer
         role: reviewer
         node: operate-worker-01
-        taskTemplate: Read the adopted Researcher result and exact workerRequest01. Select one atcs_size_cell action from actions; return its exact instance and toMaster, the observation content SHA as planSha256, and limitations. Refuse if no safe action exists. Return one compact schema-complete JSON object in this turn, with at most three short limitations. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.
+        taskTemplate: >-
+          Read the adopted Researcher result and exact workerRequest01. Select one atcs_size_cell action
+          from actions; return its exact instance and toMaster, the observation content SHA as planSha256,
+          and limitations. Refuse if no safe action exists. Return one compact schema-complete JSON object
+          in this turn, with at most three short limitations. If the owner returns a refusal of your
+          reply, answer with the corrected single JSON object only. Example reply (shape only):
+          {"schema": "atcs-worker-review/1", "planSha256": "<the workerRequest01 observation content SHA-256>", "command": "atcs_size_cell", "arguments": {"instance": "u_a/reg0", "toMaster": "DFQD2BWP35P140"}, "evidenceRefs": ["<a Runtime input record id>"], "limitations": ["one candidate reviewed"]}
         inputs: [workerRequest01]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -679,7 +694,11 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-01
-        taskTemplate: Read the immutable Host-injected reviewed action. Dump before.dump, query the falsifier, apply that one action once, dump after.dump, export the route-preserving ECO pair, finalize through the qualified Runtime and close. Preserve uncertain outcomes and never replay a mutation.
+        taskTemplate: >-
+          Read the immutable Host-injected reviewed action. Dump before.dump, query the falsifier, apply
+          that one action once, dump after.dump, export the route-preserving ECO pair, finalize through
+          the qualified Runtime and close. Preserve uncertain outcomes and never replay a mutation. Example reply (shape only):
+          {"schema": "atcs-worker-receipts/1", "planSha256": "<the immutable reviewed action's planSha256>", "mutationReceipt": "<the commandId of the one atcs_size_cell input>", "limitations": ["XTop estimate only; PT confirms after the refresh"]}
         inputs: [workerRequest01]
         allowedTools: [hima_interactive]
         scopePolicy: site-qualified-interactive-only
