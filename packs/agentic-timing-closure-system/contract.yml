@@ -747,8 +747,9 @@ workshops:
   - id: plan-campaign
     purpose: >-
       Decompose the current problem into exactly three bounded worker work packages (taskId w01, w02,
-      w03), each against the baseline design-state: problem, target check keys, edit domain, protected
-      objects, may-affect checks, admissible actions (size_cell, insert_buffer, delete_buffer, and
+      w03), each against the baseline design-state: problem, target check keys, edit domain (every
+      instance a leaf cell written as its full path from top, such as u_a/reg0), protected objects,
+      may-affect checks, admissible actions (size_cell, insert_buffer, delete_buffer, and
       pg_local_adjust only when siteCapabilities.pgVerification is true) and budget, all against the
       working design-state (workingState). Write one document, research/requests/campaign-plan.json:
       {candidate: {workPackages: {w01, w02, w03}, reason}, baseState: <the stamped workingState>,

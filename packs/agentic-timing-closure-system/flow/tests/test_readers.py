@@ -451,8 +451,10 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
         found = read_atcs.problems("worker-request", report, self.workspace, "w01")
         values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
         self.assertEqual(values[0]["value"], len(found))
-        self.assertEqual(len(found), 1, found)
-        self.assertRegex(found[0], r"^actions\[0\]\.instance \(slot w01\): 'g96219' is not a hierarchical instance")
+        # The bare leaf is refused in the edit domain (C23) and as the action's instance.
+        self.assertEqual(len(found), 2, found)
+        self.assertRegex(found[0], r"^candidate\.editDomain\.instances \(slot w01\): 'g96219' is not an instance")
+        self.assertRegex(found[1], r"^actions\[0\]\.instance \(slot w01\): 'g96219' is not a hierarchical instance")
 
     def test_full_hierarchical_path_is_admitted(self):
         report = self._write_envelope("u_sub/g96219", domain=["u_sub/g96219"])
@@ -462,8 +464,8 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
     def test_wrong_middle_segment_is_refused(self):
         report = self._write_envelope("wrong_sub/g96219", domain=["wrong_sub/g96219"])
         values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
-        self.assertEqual(values[0]["value"], 1)
-        self.assertIn("not a hierarchical instance", read_atcs.problems("worker-request", report, self.workspace, "w01")[0])
+        self.assertEqual(values[0]["value"], 2)  # edit domain (C23) and action instance
+        self.assertIn("not a hierarchical instance", read_atcs.problems("worker-request", report, self.workspace, "w01")[1])
 
     def test_escaped_identifier_instance_works(self):
         """`g96219` is declared in the netlist as the Verilog escaped

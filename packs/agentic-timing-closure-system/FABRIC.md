@@ -378,6 +378,12 @@ Known gaps carried from earlier tasks:
   `retry-worker-01`, like `check-observation-request`. w02/w03 FAILs still move on to the next
   slot: an Explore with the one-edge `atcs-revisit` chooser always revisits, so a retry there would
   let one hopeless slot spend the Run's generations instead of dropping it.
+- G38 (Issue #63, failure catalogue C23) An active slot's `editDomain` must name something XTop
+  can edit. The campaign-plan and worker-request Readers count, per slot, an edit domain with no
+  instance and no net, and each instance that is not a leaf cell of the sha-verified base netlist
+  written as its full path from `top` (a port or net name, a bare leaf, an absent path, or a module
+  instance). Before, all five shapes read 0 and cost PR02, PR03 and Fresh03 2-4 Workshop attempts
+  each before any XTop.
 
 ## Reviews
 

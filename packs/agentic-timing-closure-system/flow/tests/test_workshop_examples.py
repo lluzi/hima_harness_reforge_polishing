@@ -226,6 +226,31 @@ class CampaignPlanExampleTest(_HierarchicalFixture):
         values = self._read("campaign-plan", "campaign-plan.json", example)
         self.assertEqual(values["tc_request_invalid_count"], 0)
 
+    def test_active_slot_with_unusable_edit_domain_is_counted(self):
+        """C23 (failure catalogue): PR02, PR03 and Fresh03 each lost 2-4 Workshop attempts on a
+        plan whose edit domain named nothing XTop can size. Each slot of the 0.1.10 plan is an
+        active worker, so its editDomain must name leaf cells of the base netlist by full path."""
+        cases = (
+            ([], "empty", "names no instance"),
+            (["a"], "top port / net", "not an instance"),
+            (["u_a"], "module instance", "module instance"),
+            (["reg0"], "bare leaf", "not an instance"),
+            (["u_z/reg9"], "absent", "not an instance"),
+        )
+        for instances, label, needle in cases:
+            with self.subTest(label=label):
+                document = _load_example("example-campaign-plan.md")
+                document["candidate"]["workPackages"]["w01"]["editDomain"]["instances"] = instances
+                document["candidate"]["workPackages"]["w01"]["protected"]["instances"] = []
+                report = self.workspace / "research" / "requests" / "campaign-plan.json"
+                _write(report, json.dumps(document))
+                values = self._read("campaign-plan", "campaign-plan.json", document)
+                found = read_atcs.problems("campaign-plan", report, self.workspace)
+                self.assertEqual(values["tc_request_invalid_count"], len(found))
+                self.assertEqual(len(found), 1, found)
+                self.assertTrue(found[0].startswith("candidate.workPackages.w01.editDomain"), found)
+                self.assertIn(needle, found[0])
+
 
 class WorkerRequestExampleTest(_HierarchicalFixture):
     def test_worker_request_example_is_admitted_in_every_slot(self):
@@ -266,7 +291,8 @@ class WorkerRequestExampleTest(_HierarchicalFixture):
         for action, leaf in zip(document["actions"], leaves):
             action["instance"] = leaf
         values = self._read("worker-request", "worker-request-w01.json", document, extra=["w01"])
-        self.assertEqual(values["tc_request_invalid_count"], len(leaves))
+        # Each bare leaf is refused twice: in the edit domain (C23) and as the action's instance.
+        self.assertEqual(values["tc_request_invalid_count"], 2 * len(leaves))
 
 
 # Every Reader-owned request kind, its contract output, and the output its itemized
@@ -402,7 +428,10 @@ class RefusalTextTest(_HierarchicalFixture):
         for action, leaf in zip(document["actions"], leaves):
             action["instance"] = leaf
         found = self._problems("worker-request", "worker-request-w01.json", document, "w01")
-        self.assertEqual(len(found), len(leaves), found)
+        self.assertEqual(len(found), 2 * len(leaves), found)
+        domain = [t for t in found if t.startswith("candidate.editDomain.instances (slot w01)")]
+        self.assertEqual(len(domain), len(leaves), found)
+        found = [t for t in found if t.startswith("actions[")]
         for index, (text, leaf) in enumerate(zip(found, leaves)):
             self.assertTrue(text.startswith(f"actions[{index}].instance (slot w01): {leaf!r} is not a hierarchical"), text)
             self.assertIn("u_a/reg0", text)

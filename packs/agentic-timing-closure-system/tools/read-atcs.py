@@ -392,6 +392,68 @@ def _split_instance_path(instance_path):
     return segments
 
 
+def _instance_type(hierarchy, top, instance_path):
+    """The declared type of the instance `instance_path` names under `top`, or None.
+
+    The same walk as `_is_hierarchical_instance`: every non-final segment must be a
+    user-module instance, the final one any instance of the module reached.
+    """
+    if not isinstance(instance_path, str) or not instance_path:
+        return None
+    segments = _split_instance_path(instance_path)
+    if segments is None or any(segment == "" for segment in segments):
+        return None
+    current_module = top
+    for index, segment in enumerate(segments):
+        instances = hierarchy.get(current_module)
+        if instances is None or segment not in instances:
+            return None
+        if index == len(segments) - 1:
+            return instances[segment]
+        current_module = instances[segment]
+    return None
+
+
+def _edit_domain_problems(package, base_state, workspace, where):
+    """C23 (failure catalogue): an active slot's editDomain must name something XTop can edit.
+
+    Every 0.1.10 slot is an active worker, so its `editDomain` names at least one instance or
+    net, and every instance is a leaf cell of the sha-verified base netlist written as its full
+    `/`-separated path from `top` -- never empty, a port or net name, a module instance, a bare
+    leaf or a path absent from the netlist. `where` is `(field prefix, slot suffix)`.
+    """
+    prefix, slot = where
+    domain = package.get("editDomain") if isinstance(package, dict) else None
+    if not isinstance(domain, dict):
+        return []  # `workspaces._collect_problems` already names a missing editDomain
+    instances = domain.get("instances") or []
+    nets = domain.get("nets") or []
+    field = f"{prefix}.editDomain"
+    if not instances and not nets:
+        return [f"{field}{slot}: names no instance or net; an active slot edits at least one leaf cell, "
+                "written as its full path from top such as u_a/reg0"]
+    if not isinstance(instances, list):
+        return []
+    netlist = base_state.get("netlist") if isinstance(base_state, dict) else None
+    if not isinstance(netlist, dict):
+        return []
+    hierarchy = _netlist_hierarchy(_safe_join(workspace, netlist.get("path"), "design-state.netlist"))
+    top = base_state.get("top")
+    found = []
+    for name in instances:
+        if not isinstance(name, str) or not name:
+            continue  # `workspaces._collect_problems` names an unsafe or empty name
+        kind = _instance_type(hierarchy, top, name)
+        if kind is None:
+            found.append(f"{field}.instances{slot}: {name!r} is not an instance under top {top!r} in the base "
+                         "netlist; write each leaf cell's full path from top such as u_a/reg0 (never a port, "
+                         "a net or a bare leaf name)")
+        elif kind in hierarchy:
+            found.append(f"{field}.instances{slot}: {name!r} is a module instance (of {kind!r}), not a leaf "
+                         "cell; name the leaf cells inside it by full path")
+    return found
+
+
 def _is_hierarchical_instance(hierarchy, top, instance_path):
     """True when `instance_path` walks real instances from `top` in `hierarchy`.
 
@@ -698,6 +760,7 @@ def _request_envelope(report, workspace, expected_task_id, mods):
     if expected_task_id is not None and candidate.get("taskId") != expected_task_id:
         found.append(f"candidate.taskId{slot}: must be {expected_task_id!r} for this slot, got {candidate.get('taskId')!r}")
     found += _work_package_problems(candidate, base_state, site_capabilities, workspaces_mod, ("candidate", slot))
+    found += _edit_domain_problems(candidate, base_state, workspace, ("candidate", slot))
     if expected_task_id == "w01":
         found += _worker_action_problems(envelope.get("actions"), candidate, base_state, workspace, core, slot)
     return [_emit_count("tc_request_invalid_count", len(found))], found
@@ -831,6 +894,7 @@ def _campaign_plan(report, workspace, extra, mods):
                          "as in knowledge example-campaign-plan.md")
             continue
         found += _work_package_problems(package, base_state, site_capabilities, workspaces_mod, (where, ""))
+        found += _edit_domain_problems(package, base_state, workspace, (where, ""))
 
     reason = candidate.get("reason")
     if not isinstance(reason, str) or not reason.strip():
