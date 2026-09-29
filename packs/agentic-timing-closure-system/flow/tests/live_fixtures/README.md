@@ -19,3 +19,23 @@ that reads these stubs `read-atcs.py`'s `_verify_design_state_refs` (the file re
 (the #63 real-model probe, run `notes/model-probe-run1`, Pack 0.1.10): a Team reviewer's admitted answer
 with nested `evidenceRefs` and long `limitations`, the shape that broke inside arrays in 2 of 5 answers.
 Its `review/1` fields differ from this Pack's `review/2`, but the two format caps it breaks are the same.
+
+## Treatment attempt 1 fixtures (Issue #64, `run-9a5f197a`, Pack 0.2.0 `ea5d0356`)
+
+Copied from that Run's assets (`.hima-tmp/atcs64-t01-12950dac/T01 Data/.../run-assets/.evidence/<run>/`).
+Its working state and worker-slots record are byte-identical to `live02-working-state.json`
+(`d0c9c5bf...`) and `live02-worker-slots.json` (`53ebcf98...`), so the tests reuse those files.
+
+| File | Source contentSha256 | Bytes |
+|------|----------------------|-------|
+| `t01-worker-request-w01.json` | `649ca0d5a31842d3953ee61375bbe4ba8f2822147afa212ece61cfad83c2a0e8` | verbatim: w01's admitted request (Ledger `#000144`) |
+| `t01-worker-request-w03.json` | `0a434f5f1950e19d40f3e24a288cc512bfbdb48e9d9a96c7866cfe1f23ed2eb0` | verbatim: w03's admitted request (Ledger `#000254`) |
+| `t01-campaign-plan.json` | `b09ca014cdd5327a99806d62216106c44f62986922a0efeb7dfa2cc3759a513b` | verbatim: the plan admitted at 0 (Ledger `#000117`, PASS `#000119`): 3 active slots, 3 parked |
+| `t01-policy.json` | `213425acb8b8ca9ddada5482595a09ba7d1597fe70b4ac4652c15df0132253e4` | verbatim |
+| `t01-w02-stale-locks-list.txt` | `af8ce7def900d9639733f8d81fa1447a737d8954dcae2797f1c6c38f7095ae92` | verbatim: the cycle folder's `evidence/w02-stale-locks-list.txt`, the 44 multiply linked files in `workspaces/w02/r1` (used by `sites/linglong-atcs28/test_verify_worker_startup.py`) |
+| `t01-w03-team-results.json` | Ledger `#000258`, `#000271`, `#000321` | extracted: w03's Researcher, Reviewer and Operator replies as the Ledger holds them |
+| `t01-observation-top.json` | from `b56d01a2933fedabd43008a12688ae56dd1d2de031db082e2f35f30d581607f0` | reduced: the eight worst violating checks of each scenario and mode (48 of the 2016), re-stamped; `composition.worst_checks` are unchanged |
+
+`flow/tests/test_t01_regressions.py` writes a stand-in netlist and Liberty file for them;
+`test_request_problems.live02_workspace` writes a stand-in netlist for the live02 plan and lists
+which masters are proven by the Run and which are assumed.

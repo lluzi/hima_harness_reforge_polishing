@@ -39,6 +39,14 @@ from test_readers import READ_ATCS_PATH, _make_workspace, _write, read_atcs  # n
 LIVE = TESTS_DIR / "live_fixtures"
 LIVE02_PLAN_SHA256 = "4f60f78d9b4d2d4f7ddf26465e68cbfce80b371235004b0e0ac171632073a772"
 SLOTS = ("w01", "w02", "w03", "w04", "w05", "w06")
+LIVE02_LEAVES = {
+    "swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_": "SDFCNQD1BWP35P140",
+    "swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_": "SDFQD1BWP35P140",
+    "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_": "SDFCNQD1BWP35P140",
+}
+# C23 (#64 port, advice): the lines the plan Reader writes as advice, beside the live 41, once it reads
+# the netlist.
+LIVE02_C23_LINES = 10
 
 # Each request output, its document path and the Workshop that writes it (contract.yml).
 REQUEST_OUTPUTS = {
@@ -61,6 +69,12 @@ def live02_workspace(root):
                          ("live02-campaign-plan.json", "research/requests/campaign-plan.json")):
         (workspace / target).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(LIVE / name, workspace / target)
+    # C23 (#64 port): the plan Reader reads the netlist. A stand-in at the working state's path holds
+    # the Run's leaf cells under their SweRV modules (swerv_dma_ctrl and lsu_axi_rdata_ff_genblock_dff
+    # are module instances, ifu_axi_araddr[*] top ports), and nothing else.
+    from test_t01_regressions import standin_netlist
+    working = json.loads((LIVE / "live02-working-state.json").read_text())
+    _write(workspace / working["netlist"]["path"], standin_netlist(working["top"], LIVE02_LEAVES))
     return workspace
 
 
@@ -86,6 +100,10 @@ class Live02PlanProblemsTest(unittest.TestCase):
         (value,) = read_atcs.read("campaign-plan", self.plan, self.workspace)
         self.assertEqual(value["value"], 41, "the live count")
         self.assertEqual(len(found), 41)
+        c23 = [line for line in read_atcs.advice("campaign-plan", self.plan, self.workspace)
+               if re.match(r"^candidate\.workPackages\.w0[1-6]\.(editDomain|targetPins): ", line)]
+        self.assertEqual(len(c23), LIVE02_C23_LINES, c23)
+        self.assertTrue(all(re.match(r"^candidate\.workPackages\.w0[1-3]\.(editDomain|targetPins): ", line) for line in c23), c23)
         for line in found:
             self.assertRegex(line, r"^(candidate\.workPackages(\.w0[1-6]\.\w+)?|baseState|workPackages|candidate\.reason): ")
 
@@ -119,11 +137,15 @@ class Live02PlanProblemsTest(unittest.TestCase):
         with mock.patch.object(sys, "argv", ["read-atcs.py", "campaign-plan", str(self.plan), str(out), str(self.workspace)]):
             read_atcs.main()
         sidecar = (self.workspace / "research" / "requests" / "campaign-plan.problems.txt").read_text().splitlines()
-        self.assertEqual(sidecar[0], "41 problems in campaign-plan.json (tc_request_invalid_count = 41); "
+        count = 41
+        self.assertEqual(sidecar[0], f"{count} problems in campaign-plan.json (tc_request_invalid_count = {count}); "
                                      "fix every line and write the whole document again:")
         found = read_atcs.problems("campaign-plan", self.plan, self.workspace)
-        self.assertEqual(sidecar[1:], ["- " + " ".join(line.split()) for line in found])
-        self.assertEqual(json.loads(out.read_text())["values"][0]["value"], 41)
+        advice = read_atcs.advice("campaign-plan", self.plan, self.workspace)
+        self.assertEqual(sidecar[1:1 + count], ["- " + " ".join(line.split()) for line in found])
+        self.assertTrue(sidecar[1 + count].startswith(f"Advice ({len(advice)}, not counted"), sidecar[1 + count])
+        self.assertEqual(sidecar[2 + count:], ["- " + " ".join(line.split()) for line in advice])
+        self.assertEqual(json.loads(out.read_text())["values"][0]["value"], count)
 
 
 class RequestProblemsTest(unittest.TestCase):
@@ -242,7 +264,7 @@ class ProblemsWiringTest(unittest.TestCase):
                 purpose = self._workshop(f"research-worker-{slot[1:]}").split("    directory:")[0]
                 flat = " ".join(purpose.split())
                 self.assertIn(f"After a refusal (read-worker-request-{slot[1:]} counts a problem)", flat)
-                self.assertIn("Fix every line by revising this Workshop's code: the revision reruns this branch "
+                self.assertIn("Fix every counted line by revising this Workshop's code: the revision reruns this branch "
                               "from here, in the same generation", flat)
                 self.assertIn("Never park an active slot because its request was refused", flat)
         operator = self.CONTRACT.split("  - id: xtop-operator\n", 1)[1].split("\n  - id: ", 1)[0]

@@ -15,7 +15,8 @@ PARKED = json.loads(r'''__PARKED_JSON__''')
 workspace = Path(sys.argv[1])
 working = json.loads((workspace / "state" / "working-state.json").read_text(encoding="utf-8"))
 active_example = EXAMPLE["candidate"]["workPackages"]["w01"]
-parked_example = EXAMPLE["candidate"]["workPackages"]["w02"]
+# The example fills all six seats; a parked slot takes the parked shape its text states.
+parked_example = {"taskId": None, "baseStateId": None, "parked": True, "problem": None}
 packages = {}
 for index, slot in enumerate(["w01", "w02", "w03", "w04", "w05", "w06"]):
     block = "u_" + "abcdef"[index]

@@ -288,10 +288,6 @@ def _verify_design_state_refs(design_state, workspace, core):
         _require_file(workspace, entry["path"], entry["sha256"], core, "design-state.sdc")
 
 
-_NETLIST_MODULE_RE = re.compile(r'^\s*module\s+(\\[^\s]+|[A-Za-z_$][A-Za-z0-9_$]*)')
-_NETLIST_ENDMODULE_RE = re.compile(r'^\s*endmodule\b')
-_NETLIST_IDENT = r'(?:\\[^\s]+|[A-Za-z_$][A-Za-z0-9_$]*)'
-_NETLIST_INSTANCE_RE = re.compile(rf'^\s*({_NETLIST_IDENT})\s+({_NETLIST_IDENT})\s*\(')
 _NETLIST_KEYWORDS = {
     "input", "output", "inout", "wire", "reg", "assign", "supply0", "supply1",
     "tri", "tri0", "tri1", "triand", "trior", "trireg", "wand", "wor",
@@ -300,52 +296,224 @@ _NETLIST_KEYWORDS = {
     "initial", "always", "always_comb", "always_ff", "always_latch",
     "generate", "endgenerate", "module", "endmodule", "typedef", "logic",
     "integer", "real", "time", "event", "package", "endpackage",
-    "interface", "endinterface", "class", "endclass",
+    "interface", "endinterface", "class", "endclass", "macromodule",
 }
+# One Verilog token: an escaped identifier (to the next whitespace), a plain identifier, a
+# sized or plain number, a string, or one punctuation character.
+_NETLIST_TOKEN_RE = re.compile(
+    r"\\\S+|[A-Za-z_$][A-Za-z0-9_$]*|\d+\s*'[sS]?[bBoOdDhH]\s*[0-9a-fA-FxXzZ_?]+|\d+|\"[^\"]*\"|\S"
+)
+# The common one-line instantiation `TYPE NAME ( ... );`, taken without tokenizing when only the
+# hierarchy is wanted (a 650k-line netlist is read on every plan and worker-request reading).
+_ONE_LINE_INSTANCE_RE = re.compile(
+    r"^\s*(\\\S+|[A-Za-z_$][A-Za-z0-9_$]*)\s+(\\\S+|[A-Za-z_$][A-Za-z0-9_$]*)\s*\([^;]*\)\s*;\s*$"
+)
 _netlist_hierarchy_cache = {}
+_netlist_index_cache = {}
 
 
 def _strip_verilog_escape(name):
     return name[1:] if name.startswith("\\") else name
 
 
-def _parse_netlist_hierarchy(netlist_path):
-    """One pass over a (possibly ~650k line) structural Verilog netlist.
+def _netlist_statements(netlist_path, one_line_instances=False):
+    """Yield each statement of a structural Verilog netlist as its token list.
 
-    Returns ``{module_name: {instance_name: instance_type}}`` for every
-    ``module ... endmodule`` block: `instance_type` is the declared cell/
-    module type, with a leading Verilog escaped-identifier backslash
-    stripped from both the type and the instance name. Only used to answer
-    "is this a real hierarchical instance path", never to interpret the
-    design otherwise.
+    A statement ends at `;`, and `endmodule` is a statement of its own, so an instantiation
+    or a declaration may span any number of lines (C22). `//` and `/* ... */` comments and
+    compiler directives are dropped. Every line is read: there is no line cap. With
+    `one_line_instances`, a complete one-line instantiation outside any pending statement is
+    yielded as `["#instance", TYPE, NAME]` without tokenizing its connections.
+    """
+    tokens = []
+    in_block_comment = False
+    with open(netlist_path, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if in_block_comment:
+                end = line.find("*/")
+                if end < 0:
+                    continue
+                line = line[end + 2:]
+                in_block_comment = False
+            if "/*" in line or "//" in line:
+                kept = []
+                index = 0
+                while index < len(line):
+                    if line.startswith("//", index):
+                        break
+                    if line.startswith("/*", index):
+                        end = line.find("*/", index + 2)
+                        if end < 0:
+                            in_block_comment = True
+                            break
+                        index = end + 2
+                        kept.append(" ")
+                        continue
+                    if line[index] == "\\":  # an escaped identifier may hold `/`
+                        end = index
+                        while end < len(line) and not line[end].isspace():
+                            end += 1
+                        kept.append(line[index:end])
+                        index = end
+                        continue
+                    kept.append(line[index])
+                    index += 1
+                line = "".join(kept)
+            stripped = line.lstrip()
+            if not stripped or stripped.startswith("`"):
+                continue
+            if one_line_instances and not tokens and not in_block_comment:
+                match = _ONE_LINE_INSTANCE_RE.match(line)
+                if match and _strip_verilog_escape(match.group(1)) not in _NETLIST_KEYWORDS \
+                        and match.group(2) not in _NETLIST_KEYWORDS:
+                    yield ["#instance", match.group(1), match.group(2)]
+                    continue
+            for token in _NETLIST_TOKEN_RE.findall(line):
+                if token == ";":
+                    if tokens:
+                        yield tokens
+                    tokens = []
+                elif token == "endmodule":
+                    if tokens:
+                        yield tokens
+                    yield ["endmodule"]
+                    tokens = []
+                else:
+                    tokens.append(token)
+    if tokens:
+        yield tokens
+
+
+def _net_expression(tokens):
+    """A connection's net as one normalized name (`n1`, `bus[3]`, `bus`), or None when it
+    is a concatenation, a constant, a part-select or empty."""
+    if not tokens or tokens[0] in ("{", "'") or tokens[0][0].isdigit():
+        return None
+    name = _strip_verilog_escape(tokens[0])
+    if len(tokens) == 1:
+        return name
+    if len(tokens) == 4 and tokens[1] == "[" and tokens[2].isdigit() and tokens[3] == "]":
+        return f"{name}[{tokens[2]}]"
+    return None
+
+
+def _group(tokens, start):
+    """The tokens inside the parenthesized group opening at `tokens[start]`, and the index after it."""
+    depth = 0
+    for index in range(start, len(tokens)):
+        if tokens[index] == "(":
+            depth += 1
+        elif tokens[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return tokens[start + 1:index], index + 1
+    return tokens[start + 1:], len(tokens)
+
+
+def _parse_netlist(netlist_path, connections=False):
+    """One pass over a structural Verilog netlist (possibly ~650k lines, never capped).
+
+    Returns ``{module: {"instances": {name: type}, "ports": {name: direction}, "conns":
+    {instance: {pin: net}}, "assigns": {lhs: rhs}}}``; `conns` and `assigns` are filled
+    only when `connections` is true (the endpoint resolver; the Readers need only the
+    hierarchy). Instance and type names have their Verilog escape stripped.
     """
     modules = {}
     current = None
-    current_instances = None
-    with open(netlist_path, "r", encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            stripped = line.strip()
-            if not stripped or stripped.startswith("//") or stripped.startswith("`"):
+    for statement in _netlist_statements(netlist_path, one_line_instances=not connections):
+        head = statement[0]
+        if head == "#instance":
+            if current is not None:
+                current["instances"][_strip_verilog_escape(statement[2])] = _strip_verilog_escape(statement[1])
+            continue
+        if head in ("module", "macromodule"):
+            name = _strip_verilog_escape(statement[1]) if len(statement) > 1 else ""
+            current = modules.setdefault(name, {"instances": {}, "ports": {}, "conns": {}, "assigns": {}})
+            direction = None
+            if len(statement) > 2 and "(" in statement[2:]:
+                inside, _ = _group(statement, statement.index("(", 2))
+                depth = 0
+                for token in inside:
+                    if token == "[":
+                        depth += 1
+                    elif token == "]":
+                        depth -= 1
+                    elif depth == 0 and token in ("input", "output", "inout"):
+                        direction = token
+                    elif depth == 0 and token not in _NETLIST_KEYWORDS and token not in (",", "(", ")") \
+                            and (token[0].isalpha() or token[0] in "_\\$"):
+                        current["ports"][_strip_verilog_escape(token)] = direction
+            continue
+        if head == "endmodule":
+            current = None
+            continue
+        if current is None:
+            continue
+        if head in ("input", "output", "inout"):
+            depth = 0
+            for token in statement[1:]:
+                if token == "[":
+                    depth += 1
+                elif token == "]":
+                    depth -= 1
+                elif depth == 0 and token not in _NETLIST_KEYWORDS and token != "," \
+                        and (token[0].isalpha() or token[0] in "_\\$"):
+                    current["ports"][_strip_verilog_escape(token)] = head
+            continue
+        if head == "assign":
+            if connections and "=" in statement:
+                split = statement.index("=")
+                lhs, rhs = _net_expression(statement[1:split]), _net_expression(statement[split + 1:])
+                if lhs is not None and rhs is not None:
+                    current["assigns"][lhs] = rhs
+            continue
+        if _strip_verilog_escape(head) in _NETLIST_KEYWORDS or not (head[0].isalpha() or head[0] in "_\\$"):
+            continue
+        # An instantiation: TYPE [#( params )] NAME [ [range] ] ( connections ) [, NAME (...)]...
+        index = 1
+        if index < len(statement) and statement[index] == "#":
+            _, index = _group(statement, index + 1) if index + 1 < len(statement) and statement[index + 1] == "(" \
+                else (None, index + 1)
+        cell = _strip_verilog_escape(head)
+        while index < len(statement):
+            instance = statement[index]
+            if instance == ",":
+                index += 1
                 continue
-            match = _NETLIST_MODULE_RE.match(line)
-            if match:
-                current = _strip_verilog_escape(match.group(1))
-                current_instances = modules.setdefault(current, {})
-                continue
-            if _NETLIST_ENDMODULE_RE.match(line):
-                current = None
-                current_instances = None
-                continue
-            if current is None:
-                continue
-            match = _NETLIST_INSTANCE_RE.match(line)
-            if not match:
-                continue
-            type_token, inst_token = match.group(1), match.group(2)
-            if _strip_verilog_escape(type_token) in _NETLIST_KEYWORDS:
-                continue
-            current_instances[_strip_verilog_escape(inst_token)] = _strip_verilog_escape(type_token)
+            if not (instance[0].isalpha() or instance[0] in "_\\$"):
+                break
+            index += 1
+            if index < len(statement) and statement[index] == "[":
+                while index < len(statement) and statement[index] != "]":
+                    index += 1
+                index += 1
+            if index >= len(statement) or statement[index] != "(":
+                break
+            inside, index = _group(statement, index)
+            name = _strip_verilog_escape(instance)
+            current["instances"][name] = cell
+            if connections:
+                pins = {}
+                position = 0
+                while position < len(inside):
+                    if inside[position] == "." and position + 1 < len(inside):
+                        pin = _strip_verilog_escape(inside[position + 1])
+                        if position + 2 < len(inside) and inside[position + 2] == "(":
+                            net_tokens, position = _group(inside, position + 2)
+                            pins[pin] = _net_expression(net_tokens)
+                            continue
+                    position += 1
+                current["conns"][name] = pins
     return modules
+
+
+def _parse_netlist_hierarchy(netlist_path):
+    """``{module_name: {instance_name: instance_type}}`` of every module of the netlist.
+
+    Only used to answer "is this a real hierarchical instance path" and "is it a leaf cell",
+    never to interpret the design otherwise.
+    """
+    return {name: module["instances"] for name, module in _parse_netlist(netlist_path).items()}
 
 
 def _netlist_hierarchy(netlist_path):
@@ -440,6 +608,29 @@ def _is_hierarchical_pin(hierarchy, top, pin_path):
             return False
         current_module = instance_type
     return False
+
+
+def _instance_type(hierarchy, top, instance_path):
+    """The declared type of the instance `instance_path` names under `top`, or None.
+
+    The same walk as `_is_hierarchical_instance`: every non-final segment must be a
+    user-module instance, the final one any instance of the module reached. A leaf cell's
+    type is its library master; a type that is itself a key of `hierarchy` is a module.
+    """
+    if not isinstance(instance_path, str) or not instance_path:
+        return None
+    segments = _split_instance_path(instance_path)
+    if segments is None or any(segment == "" for segment in segments):
+        return None
+    current_module = top
+    for index, segment in enumerate(segments):
+        instances = hierarchy.get(current_module)
+        if instances is None or segment not in instances:
+            return None
+        if index == len(segments) - 1:
+            return instances[segment]
+        current_module = instances[segment]
+    return None
 
 
 def _resolve_id_in_workspace(workspace, artifact_id, exclude_dirnames=("hima-readers",)):
@@ -618,7 +809,17 @@ def _problems_file(report):
     return report.with_name(stem + ".problems.txt")
 
 
-def _write_problems_file(report, found, refused=None):
+class Advice(str):
+    """A Reader finding that is advice, not a problem: written to the sidecar, never counted.
+
+    #64 worker/aggregation principle (FABRIC.md, 2026-09-29): the parallel worker stage is
+    exploratory, so a request is refused only for what breaks identity or merge integrity; what the
+    Operator and XTop will find out for themselves (a master outside the library, a module instance
+    in an edit domain, a parked seat) is advice to the Workshop.
+    """
+
+
+def _write_problems_file(report, found, refused=None, advice=None):
     """Best effort: the count in OUT is the verdict's evidence; this file is its explanation."""
     name = Path(report).name
     if refused is not None:
@@ -632,6 +833,11 @@ def _write_problems_file(report, found, refused=None):
                  "fix every line and write the whole document again:"]
         lines += ["- " + " ".join(str(item).split()) for item in found]
         text = "\n".join(lines) + "\n"
+    if refused is None and advice:
+        lines = [f"Advice ({len(advice)}, not counted: the Reader does not refuse for these; the Operator and "
+                 "XTop would find them out at a cost):"]
+        lines += ["- " + " ".join(str(item).split()) for item in advice]
+        text += "\n".join(lines) + "\n"
     try:
         _problems_file(report).write_text(text, encoding="utf-8")
     except OSError:
@@ -750,35 +956,12 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
     if expected_task_id is not None:
         found += _prepared_package_problems(workspace, expected_task_id, candidate, core, workspaces_mod)
     found += _no_safe_action_problems(envelope, candidate, workspaces_mod, slot)
-    # T63 real-run failure: a bare LEAF instance name (no hierarchy) is not
-    # resolvable against the actual post-route netlist, whose leaf cells live
-    # inside deeply nested modules (the real `g96219` example). The expert
-    # Operator names edit-domain instances and target pins exactly
-    # (`get_cells -exact`/`get_pins -exact`), so every one must be a full
-    # `/`-separated hierarchical path from `base_state["top"]`, walked directly
-    # against the sha-verified base netlist (never trusted from the candidate).
-    # Names the package validation already counted as unsafe are left to that count.
-    edit_domain = candidate.get("editDomain") if isinstance(candidate.get("editDomain"), dict) else {}
-    instances = [name for name in (edit_domain.get("instances") or []) if isinstance(name, str)]
-    pins = candidate.get("targetPins") if isinstance(candidate.get("targetPins"), list) else []
-    pins = [pin for pin in pins if isinstance(pin, str) and "/" in pin]
-    if instances or pins:
-        netlist_path = _safe_join(workspace, base_state["netlist"]["path"], "worker-request.netlist")
-        hierarchy = _netlist_hierarchy(netlist_path)
-        top = base_state.get("top")
-        for name in instances:
-            if not _is_hierarchical_instance(hierarchy, top, name):
-                found.append(
-                    f"candidate.editDomain{slot}: instance {name!r} is not a hierarchical instance under top {top!r} "
-                    "in the base netlist; required format: a full path of a leaf cell such as u_core/u_lsu/data_reg_3_, "
-                    "never a bare leaf name"
-                )
-        for pin in pins:
-            if not _is_hierarchical_pin(hierarchy, top, pin):
-                found.append(
-                    f"candidate.targetPins{slot}: {pin!r} is not a hierarchical pin of a leaf cell under top {top!r} "
-                    "in the base netlist; required format: <full leaf-cell path>/<pin>, never a top-level port"
-                )
+    # T63 real-run failure, then C23 (#63, ported): every edit-domain instance is a leaf cell and
+    # every target pin a leaf cell's pin, each a full path from `top` in the sha-verified base netlist.
+    if not workspaces_mod.is_parked(candidate):
+        found += _edit_domain_problems(candidate, base_state, workspace, ("candidate", slot))
+    if not workspaces_mod.is_parked(candidate):
+        found += _session_plan_master_problems(envelope, candidate, base_state, workspace, core, slot)
     return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
@@ -829,6 +1012,277 @@ def _prepared_package_problems(workspace, slot, candidate, core, workspaces_mod)
     prepared, requested = workspaces_mod.bound_view(package), workspaces_mod.bound_view(candidate)
     return [f"candidate.{field} (slot {slot}): differs from the package prepare-workers prepared for this slot; {copy}"
             for field in workspaces_mod.PREPARED_BINDING_FIELDS if prepared[field] != requested[field]]
+
+
+def _edit_domain_problems(package, base_state, workspace, where):
+    """C23 (#63 failure catalogue, ported as advice): what an active slot names that XTop cannot edit.
+
+    An `editDomain.instances` entry should be a leaf cell of the base netlist written as its full
+    `/`-separated path from `top`, not a port or net name, a bare leaf, an absent path or a module
+    instance (the toolkit's `get_cells -exact` finds none of these); a `targetPins` entry should be
+    `<leaf-cell path>/<pin>`. Each finding is `Advice`, never counted (the #64 worker/aggregation
+    principle, FABRIC.md): the Operator and XTop find a wrong name out inside the slot, and the
+    aggregation and refreshed PrimeTime judge the result. An empty domain gets no advice: target pins
+    are toolkit domain pins. Names the package validation already counts as unsafe are left to that
+    count. `where` is `(prefix, slot suffix)`, e.g. `("candidate.workPackages.w01", "")` or
+    `("candidate", " (slot w01)")`.
+    """
+    prefix, slot = where
+    domain = package.get("editDomain") if isinstance(package.get("editDomain"), dict) else {}
+    instances = domain.get("instances") if isinstance(domain.get("instances"), list) else []
+    instances = [name for name in instances if isinstance(name, str) and name]
+    pins = package.get("targetPins") if isinstance(package.get("targetPins"), list) else []
+    pins = [pin for pin in pins if isinstance(pin, str) and "/" in pin]
+    netlist = base_state.get("netlist") if isinstance(base_state, dict) else None
+    if not (instances or pins) or not isinstance(netlist, dict):
+        return []
+    hierarchy = _netlist_hierarchy(_safe_join(workspace, netlist.get("path"), "design-state.netlist"))
+    top = base_state.get("top")
+    resolver = ("resolve each PT endpoint with hima-readers/atcs-readiness/read-atcs.py resolve-instances "
+                "(knowledge endpoint-resolution.md); pass the endpoint, not the check key")
+    found = []
+    for name in instances:
+        kind = _instance_type(hierarchy, top, name)
+        if kind is None:
+            found.append(Advice(f"{prefix}.editDomain{slot}: instance {name!r} is not a hierarchical instance under top "
+                         f"{top!r} in the base netlist; required format: a full path of a leaf cell such as "
+                         f"u_core/u_lsu/data_reg_3_, never a bare leaf name, a port or a net; {resolver}"))
+        elif kind in hierarchy:
+            found.append(Advice(f"{prefix}.editDomain{slot}: instance {name!r} is a module instance (of {kind!r}), "
+                                "not a leaf cell; name the leaf cells inside it by full path"))
+    for pin in pins:
+        if not _is_hierarchical_pin(hierarchy, top, pin):
+            found.append(Advice(f"{prefix}.targetPins{slot}: {pin!r} is not a hierarchical pin of a leaf cell under "
+                                f"top {top!r} in the base netlist; required format: <full leaf-cell path>/<pin>, never "
+                                f"a top-level port; {resolver}"))
+    return found
+
+
+# C13 (Issue #63 failure catalogue, ported to the six-slot 0.2.0 request as advice; #64 treatment
+# attempt 1): a size move should name a master of this design's libraries with the cell's own function. Attempt 1's
+# w01 Operator sized to 'SDGCNQOPTMC D12BWP30P140' (two columns of atcs_candidates joined), which
+# XTop refused twice as an invalid library cell; w03 sized SDFCNQARD1BWP35P140 to SDFCNQD2BWP35P140,
+# a flop without the asynchronous reset, and undid it. The library is the Pack-sealed
+# `state/xtop-context.json`: `observe` stamps each scenario's Liberty files (hashed) and the Site's
+# sizing rule (`ecoParameters.cellNominalSizingPattern`, `cellNominalSwapKeywords`); the context holds
+# no cell table itself (#63 live finding #250), the cells are the Liberty files' `cell (NAME)` groups.
+
+_LIBERTY_CELL_RE = re.compile(rb'^\s*cell\s*\(\s*"?([^"\s)]+)"?\s*\)')
+_library_cache = {}
+
+
+def _library_cells(files):
+    """Every `cell (NAME)` of the Liberty `files` ([{path, sha256}]), each re-hashed as read.
+
+    One streaming pass per file both hashes it and collects its cell names, so a file that
+    changed since `observe` sealed it is refused, not trusted. Memoized per file list.
+    """
+    import hashlib
+    key = tuple((ref.get("path"), ref.get("sha256")) for ref in files)
+    if key in _library_cache:
+        return _library_cache[key]
+    cells = set()
+    for path, expected in key:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for line in handle:
+                digest.update(line)
+                match = _LIBERTY_CELL_RE.match(line)
+                if match:
+                    cells.add(match.group(1).decode("latin-1"))
+        if digest.hexdigest() != expected:
+            raise ValueError(f"Liberty file {path} changed since state/xtop-context.json sealed it")
+    _library_cache[key] = cells
+    return cells
+
+
+def _library_context(workspace, base_state, core):
+    """`(cells, ecoParameters, None)` from the sealed `state/xtop-context.json`, or `(None, None, why)`.
+
+    The cells are those of the first scenario (sorted) the context names; `prepare-workers`
+    re-verifies the same file before XTop starts. The request's own `siteCapabilities` is
+    model-written and is never read for this.
+    """
+    try:
+        context = _load_json(Path(workspace) / "state" / "xtop-context.json")
+        _verify_identity(context, "xtop-context", core)
+    except (ValueError, OSError) as error:
+        return None, None, f"state/xtop-context.json (the Site's sealed XTop library context) cannot be read: {error}"
+    if context.get("designStateId") != base_state.get("id"):
+        return None, None, ("state/xtop-context.json was sealed for design state "
+                            f"{context.get('designStateId')!r}, not baseState {base_state.get('id')!r}; observe first")
+    library_files = context.get("libraryFiles")
+    eco = context.get("ecoParameters")
+    if not isinstance(library_files, dict) or not library_files or not isinstance(eco, dict):
+        return None, None, "state/xtop-context.json declares no libraryFiles or ecoParameters"
+    scenario = sorted(library_files)[0]
+    try:
+        cells = _library_cells(library_files[scenario])
+    except (ValueError, OSError, TypeError, AttributeError) as error:
+        return None, None, f"the Liberty files of scenario {scenario!r} in state/xtop-context.json cannot be read: {error}"
+    if not cells:
+        return None, None, f"the Liberty files of scenario {scenario!r} declare no cell"
+    return cells, eco, None
+
+
+def _sizing_family(master, eco):
+    """`(function, VT)` of `master` under the Site's sizing rule, or None when it does not apply.
+
+    `cellNominalSizingPattern` (the Site's `D([0-9]+)BWP`) marks the drive strength, its first
+    group the drive digits: the text before them is the cell function (`SDFCNQARD` of
+    `SDFCNQARD1BWP35P140`, `SDFCNQD` of `SDFCNQD2BWP35P140`), the same for every size of one family.
+    A pattern without a group marks the drive by its whole match. `cellNominalSwapKeywords` lists
+    the VT suffixes (the empty keyword is the standard VT); the longest one the name ends with is
+    its VT.
+    """
+    pattern = eco.get("cellNominalSizingPattern")
+    if not isinstance(pattern, str) or not pattern:
+        return None
+    try:
+        match = re.search(pattern, master)
+    except re.error:
+        return None
+    if match is None:
+        return None
+    function = master[:match.start(1) if match.re.groups else match.start()]
+    if not function:
+        return None
+    tail = master[match.end():]
+    keywords = sorted((k for k in eco.get("cellNominalSwapKeywords") or [] if isinstance(k, str) and k),
+                      key=len, reverse=True)
+    vt = next((k for k in keywords if tail.endswith(k)), "")
+    return function, vt
+
+
+def _plain_master(master, core):
+    return (isinstance(master, str) and bool(master) and not core.is_tcl_unsafe(master)
+            and "*" not in master and "?" not in master)
+
+
+def _session_plan_master_problems(envelope, candidate, base_state, workspace, core, slot):
+    """C13 for an active slot's `sessionPlan`, as advice: each `atcs_size_cell` entry's `toMaster`.
+
+    The Operator's `atcs_size_cell` takes the master to size to, and a toolkit refusal of an
+    admitted mutation spends one approved mutation. So a size entry should carry `toMaster`: one
+    plain cell name of this design's libraries (`_library_context`), not the object's current
+    master, with the object's cell function under the Site's sizing rule (drive and VT may change).
+    Under the #64 worker/aggregation principle (FABRIC.md) every master finding is `Advice`: the
+    Operator and XTop find a wrong master out, and the aggregation and refreshed PrimeTime judge
+    the result. Only an object outside `candidate.editDomain.instances` is counted: an action
+    outside the slot's edit domain breaks merge integrity. Other entries are not read here.
+    """
+    plan = envelope.get("sessionPlan")
+    if not isinstance(plan, list):
+        return []
+    entries = [(index, entry) for index, entry in enumerate(plan)
+               if isinstance(entry, dict) and entry.get("command") == "atcs_size_cell"]
+    if not entries:
+        return []
+    domain = candidate.get("editDomain") if isinstance(candidate.get("editDomain"), dict) else {}
+    instances = [name for name in domain.get("instances") or [] if isinstance(name, str)]
+    netlist = base_state.get("netlist") if isinstance(base_state.get("netlist"), dict) else {}
+    hierarchy = _netlist_hierarchy(_safe_join(workspace, netlist.get("path"), "worker-request.netlist"))
+    top = base_state.get("top")
+    source = ("choose it from the cells of the Liberty files state/xtop-context.json names in libraryFiles "
+              "with the object's function under ecoParameters.cellNominalSizingPattern (read-atcs.py masters "
+              "lists them); the context file holds no cell table itself")
+    found, checkable = [], []
+    for index, entry in entries:
+        where = f"sessionPlan[{index}]"
+        target, master = entry.get("object"), entry.get("toMaster")
+        if not isinstance(target, str) or target not in instances:
+            found.append(f"{where}.object{slot}: {target!r} is not in candidate.editDomain.instances; "
+                         "atcs_size_cell sizes one edit-domain leaf cell")
+            continue
+        current = _instance_type(hierarchy, top, target)
+        if current is None or current in hierarchy:
+            continue  # the edit-domain check above already names this instance
+        if "toMaster" not in entry:
+            found.append(Advice(f"{where}.toMaster{slot}: missing; an atcs_size_cell entry names the master it sizes "
+                         f"{target!r} ({current}) to; {source}"))
+        elif not _plain_master(master, core):
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} is not one plain cell name (no space, Tcl "
+                                f"metacharacter, * or ?); {source}"))
+        elif master == current:
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} is already the master of {target!r}; a size "
+                                "move changes the drive strength or the VT"))
+        else:
+            checkable.append((where, target, current, master))
+    if not checkable:
+        return found
+    cells, eco, why = _library_context(workspace, base_state, core)
+    if why is not None:
+        return found + [Advice(f"sessionPlan{slot}: no toMaster can be checked against this design's libraries: {why}")]
+    for where, target, current, master in checkable:
+        if master not in cells:
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} is not a cell of this design's libraries; {source}"))
+            continue
+        want, got = _sizing_family(current, eco), _sizing_family(master, eco)
+        if want is None or got is None:
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} or the current master {current!r} of {target!r} "
+                                f"does not follow the Site's sizing pattern {eco.get('cellNominalSizingPattern')!r}, so "
+                                "the move cannot be shown to keep the cell function"))
+        elif got[0] != want[0]:
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} changes the cell function {want[0]!r} of "
+                                f"{target!r} ({current}) to {got[0]!r}; a size move keeps the function and changes "
+                                "only the drive strength or the VT"))
+    return found
+
+
+def library_masters(workspace, instances):
+    """For each leaf-cell path, its current master and the library cells of the same function.
+
+    `read-atcs.py masters WORKSPACE INSTANCES_JSON OUT`: the source a research Workshop picks a
+    size move's `toMaster` from, the same cells and rule `_session_plan_master_problems` advises by.
+    Read against the working state's sha-verified netlist and the sealed XTop context; writes
+    nothing but OUT.
+    """
+    core = _atcs_modules(workspace)["core"]
+    working_state = _load_json(Path(workspace) / "state" / "working-state.json")
+    _verify_identity(working_state, "design-state", core)
+    netlist = working_state.get("netlist")
+    if not _has_keys(netlist, ("path", "sha256")):
+        raise ValueError("design-state.netlist must be {path, sha256}")
+    _require_file(workspace, netlist["path"], netlist["sha256"], core, "design-state.netlist")
+    hierarchy = _netlist_hierarchy(_safe_join(workspace, netlist["path"], "design-state.netlist"))
+    cells, eco, why = _library_context(workspace, working_state, core)
+    if why is not None:
+        raise ValueError(why)
+    top = working_state.get("top")
+    rows, unresolved = [], []
+    for name in instances:
+        current = _instance_type(hierarchy, top, name) if isinstance(name, str) else None
+        if current is None:
+            unresolved.append({"instance": name, "unresolved": f"not an instance under top {top!r}; "
+                               "write the leaf cell's full path from top"})
+            continue
+        if current in hierarchy:
+            unresolved.append({"instance": name, "unresolved": f"a module instance (of {current!r}), not a leaf cell"})
+            continue
+        family = _sizing_family(current, eco)
+        if family is None:
+            unresolved.append({"instance": name, "master": current, "unresolved": (
+                f"{current!r} does not follow the sizing pattern {eco.get('cellNominalSizingPattern')!r}")})
+            continue
+        same = sorted(cell for cell in cells
+                      if cell != current and (_sizing_family(cell, eco) or (None,))[0] == family[0])
+        rows.append({"instance": name, "master": current, "function": family[0], "vt": family[1],
+                     "toMasters": same})
+    return {"designStateId": working_state.get("id"), "sizingPattern": eco.get("cellNominalSizingPattern"),
+            "masters": rows, "unresolved": unresolved}
+
+
+def _masters_main(argv):
+    if len(argv) != 3:
+        raise SystemExit("usage: read-atcs.py masters WORKSPACE INSTANCES_JSON OUT_JSON")
+    workspace, instances_path, out = argv
+    instances = _load_json(instances_path)
+    if isinstance(instances, dict):
+        instances = instances.get("instances")
+    if not isinstance(instances, list):
+        raise ValueError("INSTANCES_JSON must be a list of leaf-cell paths or {\"instances\": [...]}")
+    answer = library_masters(workspace, instances)
+    Path(out).write_text(json.dumps(answer, indent=1, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _read_campaign_plan(report, workspace, extra, mods):
@@ -912,6 +1366,7 @@ def _read_campaign_plan(report, workspace, extra, mods):
         found += _work_package_problems(package, base_state, site_capabilities, workspaces_mod, (where, ""))
         if not workspaces_mod.is_parked(package):
             active[task_id] = package
+            found += _edit_domain_problems(package, base_state, workspace, (where, ""))
 
     reason = candidate.get("reason")
     if not isinstance(reason, str) or not reason.strip():
@@ -920,6 +1375,10 @@ def _read_campaign_plan(report, workspace, extra, mods):
     found += _worker_slot_problems(workspace, active, core, workspaces_mod)
     found += _shared_domain_problems(active)
     found += _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])
+    parked = [task_id for task_id in workspaces_mod.TASK_IDS
+              if isinstance(work_packages.get(task_id), dict) and task_id not in active]
+    found += _parked_seat_problems(workspace, working_state_id, active, parked, core, workspaces_mod,
+                                   mods["composition"])
     return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
@@ -1019,6 +1478,74 @@ def _uncovered_blocker_problems(workspace, working_state_id, active, core, compo
                              "slot; put its endpoint pin in an active slot's targetPins, or, for a top-level port, "
                              "its check key in targets")
     return uncovered
+
+
+def _violating_checks(workspace, working_state_id, core):
+    """`[(slack, key, raw endpoint)]` of every violating check of a required scenario, worst first.
+
+    From `state/observation.json` of the working state and the stamped `state/policy.json`; None when
+    either cannot be read or the observation is of another state (`_uncovered_blocker_problems`
+    already names that as one problem).
+    """
+    try:
+        observation = _load_json(Path(workspace) / "state" / "observation.json")
+        _verify_identity(observation, "observation-set", core)
+        policy = _load_json(Path(workspace) / "state" / "policy.json")
+        _verify_identity(policy, "policy", core)
+    except (ValueError, OSError):
+        return None
+    required = policy.get("requiredScenarios")
+    if working_state_id is None or observation.get("designStateId") != working_state_id or not isinstance(required, list):
+        return None
+    rows = []
+    for key, entry in (observation.get("checks") or {}).items():
+        if not isinstance(entry, dict) or not isinstance(key, str) or key.split("|", 2)[0] not in required:
+            continue
+        slack = entry.get("slack")
+        value = slack.get("value") if isinstance(slack, dict) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value >= 0:
+            continue
+        raw = entry.get("endpoint")
+        rows.append((value, key, raw if isinstance(raw, str) and raw else None))
+    return sorted(rows)
+
+
+def _parked_seat_problems(workspace, working_state_id, active, parked, core, workspaces_mod, composition_mod):
+    """One `Advice` per slot parked within `workerSlots` while a violating check is covered by no active slot.
+
+    #64 treatment attempt 1: the plan took only each required scenario's single worst check as a
+    blocker, made 3 clusters and parked w04..w06 although six seats existed and 2016 checks violated,
+    many in disjoint leaf cells (the dma FIFO and the dmi sync flops, `lsu_axi_arvalid`,
+    `sb_axi_wdata[0]`). Blockers first means the seats go to the worst violating checks: while one is
+    covered by no active slot (`composition.covers`, the rule of `_uncovered_blocker_problems`), a
+    seat up to `workerSlots` should not be parked. The i-th such parked slot (in slot order) is named with the
+    i-th worst uncovered check. A slot above `workerSlots` is parked by rule and never named here. Under
+    the worker/aggregation principle (FABRIC.md G45) this is advice, never a refusal for parking a slot.
+    """
+    try:
+        record = _load_json(Path(workspace) / "state" / "worker-slots.json")
+        _verify_identity(record, "worker-slots", core)
+        count = record.get("workerSlots")
+    except (ValueError, OSError):
+        return []  # `_worker_slot_problems` names the unverifiable record
+    if isinstance(count, bool) or not isinstance(count, int):
+        return []
+    seats = [task_id for task_id in parked if workspaces_mod.slot_number(task_id) <= count]
+    if not seats:
+        return []
+    checks = _violating_checks(workspace, working_state_id, core)
+    if not checks:
+        return []
+    uncovered = [(slack, key, raw) for slack, key, raw in checks
+                 if not any(composition_mod.covers(key, raw, package.get("targets") or [], package.get("targetPins") or [])
+                            for package in active.values())]
+    return [Advice(f"candidate.workPackages.{task_id}: parked, but workerSlots is {count} and the violating check {key} "
+            f"(slack {slack:g} ns, PT endpoint {raw!r}) is covered by no active slot; make {task_id} active on a "
+            "cluster of the worst uncovered checks whose leaf cells no other active slot claims (resolve their "
+            "endpoints with read-atcs.py resolve-instances), or add the check to the targets of the active slot "
+            "whose edit domain holds its cells. Park a slot up to workerSlots only when every violating check of "
+            "a required scenario is covered")
+            for task_id, (slack, key, raw) in zip(seats, uncovered)]
 
 
 def _read_worker_result(report, workspace, expected_task_id, mods):
@@ -1661,15 +2188,30 @@ _REQUEST_HANDLERS = {
 }
 
 
-def _read(kind, report, workspace, extra):
-    """`(values, problems)`; `problems` is None for a kind that is not a request."""
+def _read_with_advice(kind, report, workspace, extra):
+    """`(values, problems, advice)`; `problems` and `advice` are None for a kind that is not a request.
+
+    A request handler returns its findings in one list; the `Advice` ones are split off here and
+    not counted: `tc_request_invalid_count` is the number of the others.
+    """
     extra = extra or []
     if kind not in _HANDLERS and kind not in _REQUEST_HANDLERS:
         raise ValueError(f"unknown reader kind: {kind!r}; known kinds: {sorted(set(_HANDLERS) | set(_REQUEST_HANDLERS))}")
     mods = _atcs_modules(workspace)
-    if kind in _REQUEST_HANDLERS:
-        return _REQUEST_HANDLERS[kind](report, workspace, extra, mods)
-    return _HANDLERS[kind](report, workspace, extra, mods), None
+    if kind not in _REQUEST_HANDLERS:
+        return _HANDLERS[kind](report, workspace, extra, mods), None, None
+    values, found = _REQUEST_HANDLERS[kind](report, workspace, extra, mods)
+    counted = [str(item) for item in found if not isinstance(item, Advice)]
+    advice = [str(item) for item in found if isinstance(item, Advice)]
+    values = [_emit_count("tc_request_invalid_count", len(counted)) if value.get("type") == "tc_request_invalid_count"
+              else value for value in values]
+    return values, counted, advice
+
+
+def _read(kind, report, workspace, extra):
+    """`(values, problems)`; `problems` is None for a kind that is not a request."""
+    values, found, _advice = _read_with_advice(kind, report, workspace, extra)
+    return values, found
 
 
 def read(kind, report, workspace, extra=None):
@@ -1688,13 +2230,208 @@ def problems(kind, report, workspace, slot=None):
     return _read(kind, report, workspace, [slot] if slot else [])[1]
 
 
+def advice(kind, report, workspace, slot=None):
+    """The advisory findings on the request document `report`, one string each; never counted."""
+    if kind not in _REQUEST_HANDLERS:
+        raise ValueError(f"{kind!r} is not a request kind; request kinds: {sorted(_REQUEST_HANDLERS)}")
+    return _read_with_advice(kind, report, workspace, [slot] if slot else [])[2]
+
+
+# ---------------------------------------------------------------------------
+# Endpoint resolution (C22): `read-atcs.py resolve-instances WORKSPACE ENDPOINTS OUT`
+# ---------------------------------------------------------------------------
+#
+# Every post-route Campaign rewrote this in model-authored Workshop code and got the same shapes
+# wrong (failure catalogue C22). It lives here, beside the parser the Readers admit instances with,
+# because this is the one Pack file the Harness ships to the Site (`hima-readers/<id>/`); a
+# Workshop runs it from the copy shipped for the Run's first reader,
+# `<workspace>/hima-readers/atcs-readiness/read-atcs.py` (knowledge endpoint-resolution.md).
+
+# Leaf-cell output pins by name. A Liberty file would say it exactly; the resolver reads only the
+# netlist, so a net whose driver pin is not named like this is reported unresolved, never guessed.
+_OUTPUT_PIN_RE = re.compile(r"^(Z|ZN|Q|QN|Y|YN|CO|CON|S|SN|SO|O|OUT)\d*$")
+_BIT_RE = re.compile(r"^(.*)\[(\d+)\]$")
+
+
+def _spellings(name):
+    """`name` first, then its other bus-bit spellings: `x[0]`, `x_0_` and `x_0` name one bit."""
+    found = []
+    for candidate in (
+        name,
+        re.sub(r"\[(\d+)\]", r"_\1_", name),
+        re.sub(r"\[(\d+)\]$", r"_\1", re.sub(r"\[(\d+)\](?!$)", r"_\1_", name)),
+        re.sub(r"_(\d+)_", r"[\1]", name),
+        re.sub(r"_(\d+)$", r"[\1]", name),
+    ):
+        if candidate not in found:
+            found.append(candidate)
+    return found
+
+
+_PATH_GROUP_SUFFIX_RE = re.compile(r"@\*\*\w+\*\*$")
+
+
+def _endpoint_part(name):
+    """The endpoint a check key names: the text after its last `|`, without a reserved path-group
+    suffix such as `@**async_default**` (`atcs.core` folds one into the key's endpoint)."""
+    return _PATH_GROUP_SUFFIX_RE.sub("", name.rsplit("|", 1)[-1].strip())
+
+
+def _path_segment(name):
+    """One instance name as a path segment the Readers admit: escaped when it holds `/`."""
+    return f"\\{name} " if "/" in name else name
+
+
+def _net_driver(modules, module_name, net, prefix, depth=0):
+    """The leaf cell pin driving `net` inside `module_name`, followed through output ports."""
+    module = modules[module_name]
+    where = "/".join(prefix) or module_name
+    if depth > 64:
+        return None, f"net {net!r} is driven through more than 64 module levels"
+    if net in module["assigns"]:
+        return _net_driver(modules, module_name, module["assigns"][net], prefix, depth + 1)
+    bit = _BIT_RE.match(net)
+    base, index = (bit.group(1), bit.group(2)) if bit else (net, None)
+    drivers = []
+    for instance, pins in module["conns"].items():
+        kind = module["instances"].get(instance)
+        for pin, expression in pins.items():
+            if expression is None:
+                continue
+            if expression == net:
+                inner = pin
+            elif index is not None and expression == base:
+                inner = f"{pin}[{index}]"  # a whole bus connected to a bus port
+            else:
+                continue
+            if kind in modules:
+                if modules[kind]["ports"].get(pin) == "output":
+                    drivers.append((instance, kind, inner, True))
+            elif _OUTPUT_PIN_RE.match(pin):
+                drivers.append((instance, kind, pin, False))
+    if not drivers:
+        if module["ports"].get(base) == "input":
+            if not prefix:
+                return None, f"{net!r} is a primary port of top {module_name!r}; a port is not a cell to edit"
+            return None, f"net {net!r} of {where} enters through an input port; it is driven outside {where}"
+        return None, (f"net {net!r} of {where} has no driving cell pin named like an output "
+                      f"({_OUTPUT_PIN_RE.pattern}); resolve it from the timing report's driver instead")
+    if len(drivers) > 1:
+        named = ", ".join(sorted(f"{instance}/{pin}" for instance, _, pin, _ in drivers))
+        return None, f"net {net!r} of {where} has {len(drivers)} drivers ({named})"
+    instance, kind, pin, through = drivers[0]
+    path = prefix + [_path_segment(instance)]
+    if through:
+        return _net_driver(modules, kind, pin, path, depth + 1)
+    return {"instance": "/".join(path), "cell": kind, "pin": pin, "via": "net-driver"}, None
+
+
+def _walk_endpoint(modules, module_name, segments, prefix):
+    module = modules.get(module_name)
+    if module is None:
+        return None, f"module {module_name!r} is not defined in the netlist"
+    instances = module["instances"]
+    for count in range(len(segments), 0, -1):  # longest first: a flattened `\u_a/u_b/reg_0_ ` is one name
+        joined = "/".join(segments[:count])
+        for spelling in _spellings(joined):
+            if spelling not in instances:
+                continue
+            kind = instances[spelling]
+            path = prefix + [_path_segment(spelling)]
+            rest = segments[count:]
+            if kind in modules:
+                if not rest:
+                    return None, f"{'/'.join(path)} is a module instance, not a leaf cell (module {kind!r})"
+                if len(rest) == 1 and rest[0] not in modules[kind]["instances"]:
+                    return _net_driver(modules, kind, rest[0], path)  # a hierarchical pin or a net
+                return _walk_endpoint(modules, kind, rest, path)
+            if not rest:
+                return {"instance": "/".join(path), "cell": kind, "pin": None, "via": "instance"}, None
+            if len(rest) == 1:
+                return {"instance": "/".join(path), "cell": kind, "pin": rest[0], "via": "pin"}, None
+            return None, f"{'/'.join(path)} is a leaf cell ({kind}); {'/'.join(rest)!r} below it is not one pin"
+    name = segments[0]
+    if len(segments) == 1:
+        bit = _BIT_RE.match(name)
+        base = bit.group(1) if bit else name
+        if not prefix and base in module["ports"]:
+            return None, f"{name!r} is a primary port of top {module_name!r}; a port is not a cell to edit"
+        return _net_driver(modules, module_name, name, prefix)
+    where = "/".join(prefix) or "top"
+    return None, (f"{name!r} is not an instance of module {module_name!r} ({where}) under any spelling "
+                  f"{_spellings(name)}")
+
+
+def resolve_endpoints(workspace, endpoints):
+    """Resolve PT endpoint names against the working design state's sha-verified netlist.
+
+    Each endpoint (an instance, `instance/pin`, a net, or a port, hierarchical from top) becomes
+    a leaf cell by full path -- the form the plan and worker-request Readers admit -- or is
+    reported unresolved with its reason. Bus bits match under the `x[0]`, `x_0_` and `x_0`
+    spellings; a flattened escaped name matches as one segment; a net resolves to its one
+    driving cell pin through port connections. Never writes anything.
+    """
+    core = _atcs_modules(workspace)["core"]
+    working_state = _load_json(Path(workspace) / "state" / "working-state.json")
+    _verify_identity(working_state, "design-state", core)
+    netlist = working_state.get("netlist")
+    if not _has_keys(netlist, ("path", "sha256")):
+        raise ValueError("design-state.netlist must be {path, sha256}")
+    _require_file(workspace, netlist["path"], netlist["sha256"], core, "design-state.netlist")
+    netlist_path = str(_safe_join(workspace, netlist["path"], "design-state.netlist"))
+    if netlist_path not in _netlist_index_cache:
+        _netlist_index_cache[netlist_path] = _parse_netlist(netlist_path, connections=True)
+    modules = _netlist_index_cache[netlist_path]
+    top = working_state.get("top")
+    resolved, unresolved = [], []
+    for endpoint in endpoints:
+        if not isinstance(endpoint, str) or not endpoint.strip():
+            unresolved.append({"endpoint": endpoint, "unresolved": "an endpoint must be a non-empty string"})
+            continue
+        name = _endpoint_part(endpoint)  # a whole check key resolves by its endpoint (probe run 2)
+        if not name:
+            unresolved.append({"endpoint": endpoint, "unresolved": "the check key has no endpoint after its last '|'"})
+            continue
+        segments = _split_instance_path(name)
+        if segments is None or any(segment == "" for segment in segments):
+            segments = [segment for segment in name.split("/") if segment]
+        row, why = _walk_endpoint(modules, top, segments, [])
+        part = {} if name == endpoint.strip() else {"endpointPart": name}
+        if row is None:
+            unresolved.append({"endpoint": endpoint, "unresolved": why, **part})
+        else:
+            resolved.append(dict(row, endpoint=endpoint, **part))
+    return {"designStateId": working_state.get("id"), "top": top,
+            "netlist": {"path": netlist["path"], "sha256": netlist["sha256"]},
+            "resolved": resolved, "unresolved": unresolved}
+
+
+def _resolve_instances_main(argv):
+    if len(argv) != 3:
+        raise SystemExit("usage: read-atcs.py resolve-instances WORKSPACE ENDPOINTS_JSON OUT_JSON")
+    workspace, endpoints_path, out = argv
+    endpoints = _load_json(endpoints_path)
+    if isinstance(endpoints, dict):
+        endpoints = endpoints.get("endpoints")
+    if not isinstance(endpoints, list):
+        raise ValueError("ENDPOINTS_JSON must be a list of endpoint names or {\"endpoints\": [...]}")
+    answer = resolve_endpoints(workspace, endpoints)
+    Path(out).write_text(json.dumps(answer, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == "resolve-instances":
+        _resolve_instances_main(sys.argv[2:])
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "masters":
+        _masters_main(sys.argv[2:])
+        return
     if len(sys.argv) < 5:
         raise SystemExit("usage: read-atcs.py <kind> REPORT OUT WORKSPACE [extra...]")
     kind, report, out, workspace = sys.argv[1:5]
     extra = sys.argv[5:]
     try:
-        values, found = _read(kind, report, workspace, extra)
+        values, found, advisory = _read_with_advice(kind, report, workspace, extra)
     except Exception as error:
         if kind in _REQUEST_HANDLERS:
             _write_problems_file(report, [], refused=f"{type(error).__name__}: {error}")
@@ -1702,7 +2439,7 @@ def main():
     if found is not None:
         # Beside the document, before OUT: the Judge that reads OUT's count finds the
         # owner's explanation of it already in place (`<output>Problems`, contract.yml).
-        _write_problems_file(report, found)
+        _write_problems_file(report, found, advice=advisory)
     document = json.dumps({"values": values}, sort_keys=True, allow_nan=False) + "\n"
     Path(out).write_text(document, encoding="utf-8")
 

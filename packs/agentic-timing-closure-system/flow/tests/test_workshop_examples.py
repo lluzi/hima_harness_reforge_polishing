@@ -42,19 +42,64 @@ STATE_ID = "<id of state/working-state.json>"
 STATE_OBJECT = "<the whole JSON object in state/working-state.json, verbatim>"
 
 SCENARIO = "func_ssg_rcworst_m40"
-# The example's hierarchy: top/u_core (module core)/u_lsu (module lsu)/<leaf cells>.
+# The example's hierarchy: top/u_core (module core)/u_lsu (module lsu)/<leaf cells>. Masters follow the
+# Site's sizing pattern D([0-9]+)BWP; LIBRARY is the Liberty the sealed XTop context names.
+# The six clusters of the plan example: u_core/u_lsu (w01), u_core/u_ifu, u_core/u_dec, u_core/u_exu,
+# u_dma and u_dbg (w02..w06), each holding the leaf cells its slot edits.
 NETLIST = """module lsu (clk);
-  DFFQ_X1 data_reg_3_ (.D(n4410), .CK(clk));
-  DFFQ_X1 addr_reg_0_ (.D(n4411), .CK(clk));
-  BUF_X2 U2231 (.A(n4409), .Z(n4410));
+  SDFQD1BWP35P140 data_reg_3_ (.D(n4410), .CP(clk));
+  SDFQD1BWP35P140 addr_reg_0_ (.D(n4411), .CP(clk));
+  BUFFD2BWP35P140 U2231 (.I(n4409), .Z(n4410));
+endmodule
+module ifu (clk);
+  SDFQD1BWP35P140 pc_reg_1_ (.D(n212), .CP(clk));
+  BUFFD2BWP35P140 U880 (.I(n211), .Z(n212));
+endmodule
+module dec (clk);
+  SDFQD1BWP35P140 ins_reg_7_ (.D(n98), .CP(clk));
+  BUFFD2BWP35P140 U517 (.I(n97), .Z(n98));
+endmodule
+module exu (clk);
+  SDFQD1BWP35P140 mul_reg_2_ (.D(n5), .CP(clk));
+endmodule
+module dma (clk);
+  SDFQD1BWP35P140 fifo_reg_0_ (.D(n7), .CP(clk));
+endmodule
+module dbg (clk);
+  SDFQD1BWP35P140 dmactive_reg_0_ (.D(n9), .CP(clk));
 endmodule
 module core (clk);
   lsu u_lsu (.clk(clk));
+  ifu u_ifu (.clk(clk));
+  dec u_dec (.clk(clk));
+  exu u_exu (.clk(clk));
 endmodule
 module top (clk);
   core u_core (.clk(clk));
+  dma u_dma (.clk(clk));
+  dbg u_dbg (.clk(clk));
 endmodule
 """
+
+LIBRARY = ("SDFQD1BWP35P140", "SDFQD2BWP35P140", "BUFFD1BWP35P140", "BUFFD2BWP35P140", "BUFFD4BWP35P140")
+ECO_PARAMETERS = {
+    "bufferListForHold": ["BUFFD1BWP35P140"], "bufferListForSetup": ["BUFFD4BWP35P140"],
+    "cellClassifyRule": "cell_attribute", "cellMatchAttribute": "footprint",
+    "cellNominalSwapKeywords": ["ULVT", "LVT", "", "HVT"], "cellNominalSizingPattern": "D([0-9]+)BWP",
+    "gainThreshold": 0.001,
+}
+
+
+def seal_xtop_context(workspace, design, cells=LIBRARY):
+    """`state/xtop-context.json` as `observe` seals it for `design`, over a Liberty holding `cells`."""
+    liberty = _write(workspace / "inputs" / "libs" / "standin.lib",
+                     "library(standin) {\n" + "".join(f"  cell ({name}) {{}}\n" for name in cells) + "}\n")
+    files = [{"path": str(liberty), "sha256": core.file_sha256(liberty)}]
+    core.write_artifact(workspace / "state" / "xtop-context.json", core.stamp("xtop-context", {
+        "designStateId": design["id"], "requiredScenarios": [SCENARIO], "libraryFiles": {SCENARIO: files},
+        "ecoParameters": dict(ECO_PARAMETERS), "siteMap": ["unit", "core"], "removableFillers": ["FILL*"],
+    }))
+
 
 # What the retained live plan got wrong (the diagnostic of 2026-09-28).
 READ_PROCS = ["atcs_ref", "atcs_paths", "atcs_gain", "atcs_candidates", "atcs_fail_reasons", "atcs_dump_cells"]
@@ -145,11 +190,15 @@ class ExampleWorkspace(unittest.TestCase):
         self.workspace = _make_workspace(self.tmp.name)
         self.design = _build_design_state(self.workspace, netlist_text=NETLIST)
         core.write_artifact(self.workspace / "state" / "working-state.json", self.design)
+        seal_xtop_context(self.workspace, self.design)
         policy = core.stamp("policy", {"requiredScenarios": [SCENARIO], "baselineStateId": self.design["id"]})
         core.write_artifact(self.workspace / "state" / "policy.json", policy)
+        # Seven violating checks: the worst setup and hold (w01's cluster) and five more, one per cluster.
         slacks = {
-            f"{SCENARIO}|setup|u_core/u_lsu/data_reg_3_/D": -0.20, f"{SCENARIO}|setup|u_core/u_lsu/U2231/A": -0.05,
-            f"{SCENARIO}|hold|u_core/u_lsu/addr_reg_0_/D": -0.10,
+            f"{SCENARIO}|setup|u_core/u_lsu/data_reg_3_/D": -0.20, f"{SCENARIO}|hold|u_core/u_lsu/addr_reg_0_/D": -0.10,
+            f"{SCENARIO}|setup|u_core/u_ifu/pc_reg_1_/D": -0.15, f"{SCENARIO}|setup|u_core/u_dec/ins_reg_7_/D": -0.12,
+            f"{SCENARIO}|hold|u_core/u_exu/mul_reg_2_/D": -0.08, f"{SCENARIO}|hold|u_dma/fifo_reg_0_/D": -0.07,
+            f"{SCENARIO}|hold|u_dbg/dmactive_reg_0_/D": -0.05,
         }
         checks = {key: {"slack": core.known(value), "violated": True, "endpoint": key.split("|", 2)[2]}
                   for key, value in slacks.items()}
@@ -184,8 +233,33 @@ class PlanCampaignExampleTest(ExampleWorkspace):
         self.assertEqual(list(packages), list(workspaces.TASK_IDS))
         for slot, package in packages.items():
             self.assertEqual(package["taskId"], slot)
-        self.assertEqual(workspaces.is_parked(packages["w01"]), False)
-        self.assertEqual(sorted(packages["w02"]), sorted(workspaces.PARKED_FIELDS))
+
+    def test_the_example_fills_every_seat_with_a_disjoint_cluster_and_gets_no_advice(self):
+        """#64 treatment attempt 1 parked three of six seats while disjoint violating checks remained. The
+        example shows six active clusters, worst first, and the plan Reader admits it with no advice; the
+        parked shape is stated in its text (every key of workspaces.PARKED_FIELDS)."""
+        plan = self.plan()
+        packages = plan["candidate"]["workPackages"]
+        self.assertEqual([slot for slot, package in packages.items() if not workspaces.is_parked(package)],
+                         list(workspaces.TASK_IDS))
+        report = _write(self.workspace / "research" / "requests" / "campaign-plan.json", json.dumps(plan))
+        self.assertEqual(read_atcs.problems("campaign-plan", report, self.workspace), [])
+        self.assertEqual(read_atcs.advice("campaign-plan", report, self.workspace), [])
+        text = (KNOWLEDGE / "example-campaign-plan.md").read_text().split("```json", 1)[0]
+        for field in workspaces.PARKED_FIELDS:
+            self.assertIn(f'"{field}"', text)
+
+    def test_parking_a_seat_while_checks_are_uncovered_is_advice_not_a_refusal(self):
+        plan = self.plan()
+        plan["candidate"]["workPackages"]["w06"] = {"taskId": "w06", "baseStateId": self.design["id"], "parked": True,
+                                                    "problem": "no cluster left"}
+        report = _write(self.workspace / "research" / "requests" / "campaign-plan.json", json.dumps(plan))
+        self.assertEqual(read_atcs.problems("campaign-plan", report, self.workspace), [])
+        (line,) = read_atcs.advice("campaign-plan", report, self.workspace)
+        self.assertIn(f"{SCENARIO}|hold|u_dbg/dmactive_reg_0_/D", line)
+        code = _snippet("plan-campaign", "like this:")
+        _run_snippet(code, self.workspace, {"packages": plan["candidate"]["workPackages"],
+                                            "site_capabilities": plan["siteCapabilities"]})
 
     def test_the_active_example_shows_every_required_field(self):
         active = self.plan()["candidate"]["workPackages"]["w01"]
@@ -506,6 +580,40 @@ class IntegrationPlanExampleTest(ExampleWorkspace):
         values = {value["type"]: value["value"] for value in read_atcs.read("integration-plan", report, self.workspace)}
         self.assertEqual(values, {"tc_request_invalid_count": 0, "tc_selected_contribution_count": 2})
 
+    def test_a_resolution_for_a_no_fix_contribution_is_counted(self):
+        """C05 (#63 failure catalogue, 9737b28f, ported for #64): PR03 lost a generation on a plan that
+        wrote a resolution for a no-fix Contribution, which is considered but in no conflict. A
+        resolution exists only for a facts.conflicts key and has exactly {conflictKey, decision}; the
+        example with the no-fix id added to `deferred` is admitted, and each live shape is counted."""
+        facts, known = self.facts()
+        no_fix = core.digest({"contribution": "w04-no-fix"})
+        body = {k: v for k, v in facts.items() if k not in ("schema", "id")}
+        body["considered"] = sorted(body["considered"] + [no_fix])
+        body["order"] = body["order"] + [no_fix]
+        facts = core.stamp("composition-facts", body)
+        known["<the whole JSON object in state/composition-facts.json, verbatim>"] = facts
+        admitted = _fill(_example("example-integration-plan.md"), self.design, known)
+        admitted["plan"]["deferred"] = [no_fix]
+        report = self.workspace / "research" / "requests" / "integration-plan.json"
+        _write(report, json.dumps(admitted))
+        self.assertEqual(read_atcs.problems("integration-plan", report, self.workspace), [])
+        for label, resolution in (
+            ("decision only", {"decision": "drop"}),
+            ("live PR03 shape", {"contributionId": no_fix, "decision": "drop", "reason": "no-fix", "taskId": "w04"}),
+            ("drop by id, no conflict", {"conflictKey": "no-fix", "decision": "drop:" + no_fix}),
+        ):
+            with self.subTest(label=label):
+                document = copy.deepcopy(admitted)
+                document["plan"]["resolutions"].append(resolution)
+                _write(report, json.dumps(document))
+                found = read_atcs.problems("integration-plan", report, self.workspace)
+                (count,) = [v["value"] for v in read_atcs.read("integration-plan", report, self.workspace)
+                            if v["type"] == "tc_request_invalid_count"]
+                self.assertEqual(count, len(found))
+                self.assertGreaterEqual(len(found), 1, found)
+                self.assertTrue(all(text.startswith("plan.") for text in found), found)
+                self.assertTrue(any(text.startswith("plan.resolution") for text in found), found)
+
     def test_selecting_both_sides_of_the_conflict_without_its_resolution_is_counted(self):
         facts, known = self.facts()
         example = _fill(_example("example-integration-plan.md"), self.design, known)
@@ -527,7 +635,8 @@ class NextDecisionExampleTest(ExampleWorkspace):
 
 
 class Live02ToExampleShapeTest(unittest.TestCase):
-    """The live02 plan reads 41; corrected along its 41 lines into the example's shape, it reads 0.
+    """The live02 plan reads 41; corrected along its 41 lines (and its netlist advice) into the example's shape,
+    it reads 0 with no advice.
 
     The success path of the refusal, on the retained bytes and state: every line of
     campaign-plan.problems.txt says what to change, and changing exactly that is admitted."""
@@ -559,6 +668,10 @@ class Live02ToExampleShapeTest(unittest.TestCase):
         # scope lists toolkit mutations only, with atcs_undo; ports are named by check key, never in targetPins.
         w01["scope"]["commands"] = [c for c in w01["scope"]["commands"] if c in workspaces.MUTATE_COMMANDS]
         w01["targetPins"] = [pin for pin in w01["targetPins"] if "/" in pin]
+        # C23: the edit domain names the leaf cells the endpoints end at, never a port or a module
+        # instance, and each target pin is a pin of one of them.
+        w01["editDomain"]["instances"] = list(w01["targetPins"])
+        w01["targetPins"] = [f"{cell}/D" for cell in w01["editDomain"]["instances"]]
         # w02 and w03 worked w01's hold endpoint at other corners, so their instance was shared:
         # w01 takes their checks and they are parked in the exact parked shape.
         for slot in ("w02", "w03"):
@@ -576,6 +689,7 @@ class Live02ToExampleShapeTest(unittest.TestCase):
         plan["candidate"]["workPackages"] = {"w01": w01, "w02": parked["w02"], "w03": parked["w03"], "w04": w04,
                                              "w05": parked["w05"], "w06": parked["w06"]}
         self.assertEqual(self.read(plan), [])
+        self.assertEqual(read_atcs.advice("campaign-plan", self.report, self.workspace), [])
 
 
 def _live02_blockers(workspace):

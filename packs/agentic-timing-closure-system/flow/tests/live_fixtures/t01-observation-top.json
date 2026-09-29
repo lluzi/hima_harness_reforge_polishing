@@ -1,0 +1,643 @@
+{
+  "checks": {
+    "func_ffg_cbest_125|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**": {
+      "endpoint": "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_",
+      "pathGroup": "**async_default**",
+      "slack": {
+        "value": -0.0888
+      },
+      "startpoint": "rst_l",
+      "violated": true
+    },
+    "func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_0__fifo_done_bus_dff_dffsc_dout_reg_0_": {
+      "endpoint": "swerv_dma_ctrl/GenFifo_0__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0678
+      },
+      "startpoint": "dma_bus_clk_en",
+      "violated": true
+    },
+    "func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_1__fifo_done_bus_dff_dffsc_dout_reg_0_": {
+      "endpoint": "swerv_dma_ctrl/GenFifo_1__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0748
+      },
+      "startpoint": "dma_bus_clk_en",
+      "violated": true
+    },
+    "func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_": {
+      "endpoint": "swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0749
+      },
+      "startpoint": "dma_bus_clk_en",
+      "violated": true
+    },
+    "func_ffg_cbest_125|hold|swerv_dma_ctrl/rdbuf_addrff_genblock_dff/dout_reg_27_": {
+      "endpoint": "swerv_dma_ctrl/rdbuf_addrff_genblock_dff/dout_reg_27_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0675
+      },
+      "startpoint": "dma_axi_araddr[27]",
+      "violated": true
+    },
+    "func_ffg_cbest_125|hold|swerv_dma_ctrl/wrbuf_dataff_genblock_dff/dout_reg_32_": {
+      "endpoint": "swerv_dma_ctrl/wrbuf_dataff_genblock_dff/dout_reg_32_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.068
+      },
+      "startpoint": "dma_axi_wdata[32]",
+      "violated": true
+    },
+    "func_ffg_cbest_125|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_arready_ff_dout_reg_0_": {
+      "endpoint": "swerv_lsu/bus_intf/bus_buffer/lsu_axi_arready_ff_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0699
+      },
+      "startpoint": "lsu_axi_arready",
+      "violated": true
+    },
+    "func_ffg_cbest_125|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_": {
+      "endpoint": "swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0714
+      },
+      "startpoint": "lsu_axi_rdata[59]",
+      "violated": true
+    },
+    "func_ffg_cbest_m40|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**": {
+      "endpoint": "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_",
+      "pathGroup": "**async_default**",
+      "slack": {
+        "value": -0.079
+      },
+      "startpoint": "rst_l",
+      "violated": true
+    },
+    "func_ffg_cbest_m40|hold|swerv_dma_ctrl/GenFifo_1__fifo_done_bus_dff_dffsc_dout_reg_0_": {
+      "endpoint": "swerv_dma_ctrl/GenFifo_1__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0691
+      },
+      "startpoint": "dma_bus_clk_en",
+      "violated": true
+    },
+    "func_ffg_cbest_m40|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_": {
+      "endpoint": "swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0693
+      },
+      "startpoint": "dma_bus_clk_en",
+      "violated": true
+    },
+    "func_ffg_cbest_m40|hold|swerv_dma_ctrl/rdbuf_addrff_genblock_dff/dout_reg_27_": {
+      "endpoint": "swerv_dma_ctrl/rdbuf_addrff_genblock_dff/dout_reg_27_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0636
+      },
+      "startpoint": "dma_axi_araddr[27]",
+      "violated": true
+    },
+    "func_ffg_cbest_m40|hold|swerv_dma_ctrl/wrbuf_dataff_genblock_dff/dout_reg_32_": {
+      "endpoint": "swerv_dma_ctrl/wrbuf_dataff_genblock_dff/dout_reg_32_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0642
+      },
+      "startpoint": "dma_axi_wdata[32]",
+      "violated": true
+    },
+    "func_ffg_cbest_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_arready_ff_dout_reg_0_": {
+      "endpoint": "swerv_lsu/bus_intf/bus_buffer/lsu_axi_arready_ff_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0658
+      },
+      "startpoint": "lsu_axi_arready",
+      "violated": true
+    },
+    "func_ffg_cbest_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_bresp_ff_dout_reg_0_": {
+      "endpoint": "swerv_lsu/bus_intf/bus_buffer/lsu_axi_bresp_ff_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0634
+      },
+      "startpoint": "lsu_axi_bresp[0]",
+      "violated": true
+    },
+    "func_ffg_cbest_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_": {
+      "endpoint": "swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0673
+      },
+      "startpoint": "lsu_axi_rdata[59]",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**": {
+      "endpoint": "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_",
+      "pathGroup": "**async_default**",
+      "slack": {
+        "value": -0.1799
+      },
+      "startpoint": "rst_l",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|hold|swerv_dma_ctrl/GenFifo_1__fifo_done_bus_dff_dffsc_dout_reg_0_": {
+      "endpoint": "swerv_dma_ctrl/GenFifo_1__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1378
+      },
+      "startpoint": "dma_bus_clk_en",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_": {
+      "endpoint": "swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1382
+      },
+      "startpoint": "dma_bus_clk_en",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|hold|swerv_dma_ctrl/wrbuf_dataff_genblock_dff/dout_reg_32_": {
+      "endpoint": "swerv_dma_ctrl/wrbuf_dataff_genblock_dff/dout_reg_32_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1309
+      },
+      "startpoint": "dma_axi_wdata[32]",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_@**async_default**": {
+      "endpoint": "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_",
+      "pathGroup": "**async_default**",
+      "slack": {
+        "value": -0.1466
+      },
+      "startpoint": "rst_l",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_@**async_default**": {
+      "endpoint": "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_",
+      "pathGroup": "**async_default**",
+      "slack": {
+        "value": -0.1444
+      },
+      "startpoint": "rst_l",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_arready_ff_dout_reg_0_": {
+      "endpoint": "swerv_lsu/bus_intf/bus_buffer/lsu_axi_arready_ff_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1326
+      },
+      "startpoint": "lsu_axi_arready",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_": {
+      "endpoint": "swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1352
+      },
+      "startpoint": "lsu_axi_rdata[59]",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|setup|ifu_axi_araddr[3]": {
+      "endpoint": "ifu_axi_araddr[3]",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0755
+      },
+      "startpoint": "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|setup|ifu_axi_araddr[4]": {
+      "endpoint": "ifu_axi_araddr[4]",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0851
+      },
+      "startpoint": "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|setup|ifu_axi_araddr[5]": {
+      "endpoint": "ifu_axi_araddr[5]",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0824
+      },
+      "startpoint": "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|setup|lsu_axi_arvalid": {
+      "endpoint": "lsu_axi_arvalid",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0828
+      },
+      "startpoint": "swerv_lsu/bus_intf/bus_buffer/genblk9_1__buf_state_ff_dffs_dout_reg_0_",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|setup|lsu_axi_awvalid": {
+      "endpoint": "lsu_axi_awvalid",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0633
+      },
+      "startpoint": "swerv_lsu/bus_intf/bus_buffer/genblk9_1__buf_state_ff_dffs_dout_reg_0_",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|setup|lsu_axi_wvalid": {
+      "endpoint": "lsu_axi_wvalid",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0651
+      },
+      "startpoint": "swerv_lsu/bus_intf/bus_buffer/genblk9_1__buf_state_ff_dffs_dout_reg_0_",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|setup|sb_axi_wdata[0]": {
+      "endpoint": "sb_axi_wdata[0]",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0563
+      },
+      "startpoint": "swerv_dbg/sbcs_misc_reg_dffs_dout_reg_4_",
+      "violated": true
+    },
+    "func_ssg_rcworst_125|setup|sb_axi_wdata[4]": {
+      "endpoint": "sb_axi_wdata[4]",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.0562
+      },
+      "startpoint": "swerv_dbg/sbcs_misc_reg_dffs_dout_reg_4_",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**": {
+      "endpoint": "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_",
+      "pathGroup": "**async_default**",
+      "slack": {
+        "value": -0.2016
+      },
+      "startpoint": "rst_l",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|hold|swerv_dma_ctrl/GenFifo_1__fifo_done_bus_dff_dffsc_dout_reg_0_": {
+      "endpoint": "swerv_dma_ctrl/GenFifo_1__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1514
+      },
+      "startpoint": "dma_bus_clk_en",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_": {
+      "endpoint": "swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1523
+      },
+      "startpoint": "dma_bus_clk_en",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|hold|swerv_dma_ctrl/wrbuf_dataff_genblock_dff/dout_reg_32_": {
+      "endpoint": "swerv_dma_ctrl/wrbuf_dataff_genblock_dff/dout_reg_32_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1484
+      },
+      "startpoint": "dma_axi_wdata[32]",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_@**async_default**": {
+      "endpoint": "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_",
+      "pathGroup": "**async_default**",
+      "slack": {
+        "value": -0.1708
+      },
+      "startpoint": "rst_l",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_@**async_default**": {
+      "endpoint": "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_",
+      "pathGroup": "**async_default**",
+      "slack": {
+        "value": -0.1681
+      },
+      "startpoint": "rst_l",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_arready_ff_dout_reg_0_": {
+      "endpoint": "swerv_lsu/bus_intf/bus_buffer/lsu_axi_arready_ff_dout_reg_0_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1503
+      },
+      "startpoint": "lsu_axi_arready",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_": {
+      "endpoint": "swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1531
+      },
+      "startpoint": "lsu_axi_rdata[59]",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|setup|ifu_axi_araddr[3]": {
+      "endpoint": "ifu_axi_araddr[3]",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1487
+      },
+      "startpoint": "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_0_",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|setup|ifu_axi_araddr[4]": {
+      "endpoint": "ifu_axi_araddr[4]",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1542
+      },
+      "startpoint": "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|setup|ifu_axi_araddr[5]": {
+      "endpoint": "ifu_axi_araddr[5]",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1567
+      },
+      "startpoint": "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_0_",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|setup|lsu_axi_arvalid": {
+      "endpoint": "lsu_axi_arvalid",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1488
+      },
+      "startpoint": "swerv_lsu/bus_intf/bus_buffer/obuf_addrff_genblock_dff/dout_reg_19_",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|setup|sb_axi_wdata[0]": {
+      "endpoint": "sb_axi_wdata[0]",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1497
+      },
+      "startpoint": "swerv_dbg/sbcs_misc_reg_dffs_dout_reg_2_",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|setup|sb_axi_wdata[2]": {
+      "endpoint": "sb_axi_wdata[2]",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1484
+      },
+      "startpoint": "swerv_dbg/sbcs_misc_reg_dffs_dout_reg_2_",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|setup|sb_axi_wdata[4]": {
+      "endpoint": "sb_axi_wdata[4]",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1496
+      },
+      "startpoint": "swerv_dbg/sbcs_misc_reg_dffs_dout_reg_2_",
+      "violated": true
+    },
+    "func_ssg_rcworst_m40|setup|sb_axi_wdata[7]": {
+      "endpoint": "sb_axi_wdata[7]",
+      "pathGroup": "core_clock",
+      "slack": {
+        "value": -0.1469
+      },
+      "startpoint": "swerv_dbg/sbcs_misc_reg_dffs_dout_reg_2_",
+      "violated": true
+    }
+  },
+  "coverage": {
+    "complete": false,
+    "reasons": [
+      "scenario func_ssg_rcworst_m40 setup paths incomplete",
+      "scenario func_ssg_rcworst_m40 hold paths incomplete",
+      "scenario func_ssg_rcworst_125 hold paths incomplete",
+      "scenario func_ffg_cbest_m40 hold paths incomplete",
+      "scenario func_ffg_cbest_125 hold paths incomplete"
+    ]
+  },
+  "designStateId": "089c9d07c3338b120fa7",
+  "id": "9cf38d20fc643acaeea6",
+  "missingScenarios": [],
+  "precision": "gba",
+  "scenarios": {
+    "func_ffg_cbest_125": {
+      "complete": {
+        "hold": false,
+        "setup": true
+      },
+      "hold": {
+        "tns": {
+          "value": -44.0882
+        },
+        "violations": {
+          "value": 2514
+        },
+        "wns": {
+          "value": -0.0888
+        }
+      },
+      "setup": {
+        "tns": {
+          "value": 0.0
+        },
+        "violations": {
+          "value": 0
+        },
+        "wns": {
+          "value": 0.0
+        }
+      },
+      "unconstrained": {
+        "value": 3
+      }
+    },
+    "func_ffg_cbest_m40": {
+      "complete": {
+        "hold": false,
+        "setup": true
+      },
+      "hold": {
+        "tns": {
+          "value": -41.648
+        },
+        "violations": {
+          "value": 3490
+        },
+        "wns": {
+          "value": -0.079
+        }
+      },
+      "setup": {
+        "tns": {
+          "value": 0.0
+        },
+        "violations": {
+          "value": 0
+        },
+        "wns": {
+          "value": 0.0
+        }
+      },
+      "unconstrained": {
+        "value": 3
+      }
+    },
+    "func_ssg_rcworst_125": {
+      "complete": {
+        "hold": false,
+        "setup": true
+      },
+      "hold": {
+        "tns": {
+          "value": -180.6474
+        },
+        "violations": {
+          "value": 4587
+        },
+        "wns": {
+          "value": -0.1799
+        }
+      },
+      "setup": {
+        "tns": {
+          "value": -2.7588
+        },
+        "violations": {
+          "value": 86
+        },
+        "wns": {
+          "value": -0.0851
+        }
+      },
+      "unconstrained": {
+        "value": 3
+      }
+    },
+    "func_ssg_rcworst_m40": {
+      "complete": {
+        "hold": false,
+        "setup": false
+      },
+      "hold": {
+        "tns": {
+          "value": -274.5294
+        },
+        "violations": {
+          "value": 5675
+        },
+        "wns": {
+          "value": -0.2016
+        }
+      },
+      "setup": {
+        "tns": {
+          "value": -15.4228
+        },
+        "violations": {
+          "value": 281
+        },
+        "wns": {
+          "value": -0.1567
+        }
+      },
+      "unconstrained": {
+        "value": 3
+      }
+    }
+  },
+  "schema": "atcs.observation-set/1",
+  "sources": [
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ssg_rcworst_m40/global_timing.rpt",
+      "sha256": "9a1462f8a2e1925e0d8f5da720c9d2e9db993983f046c6d2a42b3fdf5119a489"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ssg_rcworst_m40/setup.rpt",
+      "sha256": "c2143c3099dc5456c3b7cf2ef4cceb16f8ace05c86bdf701c75f2e958df24220"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ssg_rcworst_m40/hold.rpt",
+      "sha256": "280d9c69002986294a8b712a0cccdca466d6e9d0aaf4a94b3fee8a77e98c9df3"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ssg_rcworst_m40/check_timing.rpt",
+      "sha256": "eabafdaf6e7cf26039ef1c706c5b10a62059ead33f266f36df79e63490d9df09"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ssg_rcworst_125/global_timing.rpt",
+      "sha256": "0eb27c908762d5e3aade2f63601670bbb92fbdebba6a508af3a1e052175837a0"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ssg_rcworst_125/setup.rpt",
+      "sha256": "146218bd87cedeb6f383b2575261ca1f2da43b04efece4780eea3088ffa76d14"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ssg_rcworst_125/hold.rpt",
+      "sha256": "74f947032ba9986e9f721318252b6a6bdd1d85948013c0aac804459fa1568e03"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ssg_rcworst_125/check_timing.rpt",
+      "sha256": "eabafdaf6e7cf26039ef1c706c5b10a62059ead33f266f36df79e63490d9df09"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ffg_cbest_m40/global_timing.rpt",
+      "sha256": "c8c140815ce8eb7da37bc6923dd34ead2b0269c6b5c51e7126f22b5e00a681a2"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ffg_cbest_m40/setup.rpt",
+      "sha256": "83e87fdf550e0f4e9a15b83592837f0d21f25d816f29ae969f47530cc8d2453b"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ffg_cbest_m40/hold.rpt",
+      "sha256": "65029d90f5205002d9d5700dfd8d9fb9fb00e4e6b4684fad80c39a6840d1e2e3"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ffg_cbest_m40/check_timing.rpt",
+      "sha256": "eabafdaf6e7cf26039ef1c706c5b10a62059ead33f266f36df79e63490d9df09"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ffg_cbest_125/global_timing.rpt",
+      "sha256": "41dd0a7d39742b274e913a4183934a155bebf957b2c197ffb0b509d0546d3a30"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ffg_cbest_125/setup.rpt",
+      "sha256": "b35c8c500053b0c0a8bfede4d29dce4b8c0a715a995a525d71e8bffa6bbbad31"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ffg_cbest_125/hold.rpt",
+      "sha256": "65fcef7802e35b6b0ce904f097644d03f60a18b15bc6468c2fa9faa5b13e8eb6"
+    },
+    {
+      "path": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5/research/observe/g1/func_ffg_cbest_125/check_timing.rpt",
+      "sha256": "eabafdaf6e7cf26039ef1c706c5b10a62059ead33f266f36df79e63490d9df09"
+    }
+  ]
+}

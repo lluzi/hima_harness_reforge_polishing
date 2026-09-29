@@ -2,14 +2,12 @@
 
 ## Source
 
-- The user's XTop knowledge pack, `XTOP_ADVANCED_TIMING_CLOSURE_SKILL_AND_STRATEGY_MAP.md`
-  (research version 2026-09-24, installed ICExplorer-XTop `2025.09.tmp15`, read-only; server copy
-  `/data/eda/project/design_zoo/docs/xtop_advanced_timing_closure/`): Level 2 diagnosis, Level 3
-  manual ECO, Level 4 setup and hold ladders, Level 5 effort, section 7 fail-reason strategy,
-  section 8.2 target and guardband, section 17 principles. Condensed here.
+- The user's XTop knowledge pack, `XTOP_ADVANCED_TIMING_CLOSURE_SKILL_AND_STRATEGY_MAP.md` (research version
+  2026-09-24, installed ICExplorer-XTop `2025.09.tmp15`, read-only; server copy
+  `/data/eda/project/design_zoo/docs/xtop_advanced_timing_closure/`): Level 2 diagnosis, Level 3 manual ECO,
+  Level 4 ladders, Level 5 effort, section 7 fail reasons, 8.2 target and guardband, 17 principles. Condensed.
 - The same pack's `evidence/man_catalog.tsv` (sha256 `591caecac2a7bf9661153b87e550e61e554d7514818d4b821885abe26f391ded`;
-  all 112 fail reasons) and `evidence/command_surface.tsv`
-  (sha256 `fcbcab580ee0fe41ad0d55e6669086801f3bf2eec325efc26d2ca8763bf1ae92`).
+  all 112 fail reasons) and `evidence/command_surface.tsv` (sha256 `fcbcab580ee0fe41ad0d55e6669086801f3bf2eec325efc26d2ca8763bf1ae92`).
 - Man pages under `/data/eda/software/eda_tools/empyrean/xtop-2025.09.tmp15/share/doc/man/man1/`,
   one row per toolkit procedure of `flow/templates/xtop-operator.tcl` (row = `command_surface.tsv`
   line; `man+completion` unless marked):
@@ -42,23 +40,21 @@
   `<instance path>/<pin>`, not primary ports), a disjoint `editDomain`, and a `scope` whose commands
   name the moves the cluster may need. `editDomain.nets` are XTop's names: a pin inside a module sits on
   its local net (`swerv_dbg/rst_l`), not PrimeTime's flattened one (`FE_OCPN9798_rst_l`; Task 7).
-- A research Workshop writes a slot's worker request, and the worker Team runs: the Researcher
-  proposes ladder moves with falsifiers, the Reviewer sizes the scope (commands and a mutation
-  budget), the Operator runs the loop below in its interactive `xtop-operator` session. The Team's
-  Operator template condenses this loop; the Operator cannot read this file.
-- Not for clock ECO, useful skew, pin-rank commits, PBA path fixes or slack adjustment: these are
-  outside Issue #64 and outside the toolkit.
+- A research Workshop writes a slot's worker request, and the worker Team runs: the Researcher proposes
+  ladder moves with falsifiers, the Reviewer sharpens the plan and sets the scope, the Operator runs the
+  loop below in its `xtop-operator` session (its template condenses it; it cannot read this file).
+- Not for clock ECO, useful skew, pin-rank commits, PBA path fixes or slack adjustment: outside Issue #64 and the toolkit.
 
 ## Changes this decision
 
-The Operator is a trial-and-measure expert, not the executor of one pinned action. Each trial is
-probabilistic: XTop's gain against the session reference shows whether it helped; keep what helps,
-undo what does not. The merge ranks sessions by value (blocker coverage, then XTop's best per-scenario
-gain on a violating target check) and replays them before auto-finish; a plain auto-fix control arm
-guards the batch. XTop's prediction decides, WNS first: control when merged is worse on setup or hold
-WNS (> 1e-4); merged when better on one WNS; with both equal, merged only when no worse on setup and
-hold TNS (1e-3) and better on one, or all four tie. So a short, clean kept log beats many marginal
-edits. XTop's gain only screens trials; only refreshed PrimeTime judges convergence.
+The Operator is a trial-and-measure expert, not the executor of one pinned action; each trial is probabilistic.
+Try freely inside your domain (manual ECO and targeted fixes), measure the gain, keep what helps, undo what
+does not: there is no wrong attempt, only an unmeasured one (FABRIC G45, 2026-09-29). The merge ranks
+sessions by value (blocker coverage, then XTop's best per-scenario gain on a violating target check) and
+replays them before auto-finish; a plain auto-fix control arm guards the batch. XTop's prediction decides,
+WNS first: control when merged is worse on setup or hold WNS (> 1e-4); merged when better on one WNS; with
+both equal, merged only when no worse on setup and hold TNS (1e-3) and better on one, or all four tie. So a
+short, clean kept log beats many marginal edits. XTop's gain screens trials; refreshed PrimeTime judges.
 
 ### The expert loop
 
@@ -70,26 +66,31 @@ edits. XTop's gain only screens trials; only refreshed PrimeTime judges converge
    `atcs_fail_reasons` on the target pins after the slot's own fix, setup reasons after a setup fix.
 3. Choose one move from the failing check's ladder, steered by the fail-reason table. Change one
    principal variable per trial (method, master, margin or pin set), or the gain cannot be attributed.
-4. Trial it: one manual ECO; every mutation, `atcs_undo` too, ends in `planSha256`, the approved plan
-   hash the Host checks. A targeted fix is no trial: XTop commits its actions and `atcs_undo` cannot revert them ("The committed actions cannot be undone", Task 7). Send
-   `atcs_fix_hold_pins` or `atcs_fix_setup_pins` only as a keep, after the manual trials; one that may
-   insert (hold unless `sizeCellOnly` without `useDummyCell`, setup `insert_buffer`/`split_net`) needs its pins' nets in the domain.
+4. Trial it; every mutation, `atcs_undo` too, ends in `planSha256`, the plan hash the Host checks. XTop
+   commits a targeted fix ("The committed actions cannot be undone", Task 7): try `atcs_fix_hold_pins` or
+   `atcs_fix_setup_pins` after the manual moves you can undo, and measure it the same way. One that may insert
+   (hold unless `sizeCellOnly` without `useDummyCell`, setup `insert_buffer`/`split_net`) needs its pins' nets in the domain.
 5. `atcs_gain` for the target and the opposite check; the toolkit also logs both after each kept mutation.
 6. Keep the trial only if the target slack improved and the opposite check did not break. Otherwise
-   `atcs_undo` at once, before the next trial.
-7. Stop when the budget is spent (every mutation and every undo counts), when no candidate on the
-   ladder gains, or when the blockers are clear. Then `atcs_dump_cells after.dump`,
-   `atcs_export_changes` and `atcs_close`.
+   `atcs_undo` at once, then try the next rung (another master, method, margin or pin set): an undo is never
+   a stop (#64 attempt 1: w03 undid its one size, rightly, then stopped with 13 of 15 mutations left).
+7. Stop when the budget is spent (every mutation and every undo counts), when every rung the scope allows
+   has been tried on the targets without gain, or when the blockers are clear. Then
+   `atcs_dump_cells after.dump`, `atcs_export_changes` and `atcs_close`.
 
-What a refusal costs. A Host refusal (a command outside the scope, another plan hash, the budget
-spent) writes no intent and is free. A mutation the Host admits but the toolkit refuses (a pin or
-instance outside the domain, a move point outside every region, a master already in place, a timing
-window with size-only) changes nothing, yet the toolkit refusal costs one approved mutation of the
-Reviewer's budget. So check the domain, pins, regions and candidates with the read procedures, which
-are free, before sending. Read every refusal and choose again; never resend the same mutation. A
-tainted session (an `uncertain` line) refuses every further mutation: dump, close and report it.
+What a refusal costs. A Host refusal (a command outside the scope, another plan hash, the budget spent) is
+free. A mutation the Host admits but the toolkit refuses (a pin or instance outside the domain, a point outside
+every region, a master already in place or not in the library, a timing window with size-only) changes
+nothing, yet costs one approved mutation. So check the domain, pins, regions and candidates with the free read
+procedures first; read every refusal, choose again, never resend. A master is one library cell name of the
+cell's own function: a size move's `toMaster` comes from the Liberty cells `state/xtop-context.json` lists and
+the Site's `cellNominalSizingPattern` (#64 attempt 1: w01 twice sent `SDGCNQOPTMC D12BWP30P140`, two
+`atcs_candidates` columns joined; w03's `SDFCNQARD1BWP35P140` to `SDFCNQD2BWP35P140` dropped the reset and
+was rightly undone). A tainted session (an `uncertain` line) refuses every further mutation: dump, close and
+report it.
 
-The Reviewer's budget must fit the loop: trials, one undo each, and a margin for toolkit refusals.
+The Reviewer sharpens the plan and records concerns; by default its scope is every candidate command and a
+budget of 50 mutations: room for trials, one undo each, the next rungs and toolkit refusals.
 
 ### Hold ladder
 
@@ -153,28 +154,27 @@ a region only when the analysis blames distance (net delay) and a region was pla
 
 ### Blockers vs bulk
 
-- A blocker is an endpoint that XTop's auto-fix leaves violating, with a fail reason
-  (`atcs_fail_reasons`, `summarize_gba_violations -with_fail_reason`): its reason is not "no violation
-  left". The worst check of every required scenario is a blocker until it is repaired.
-- The bulk is everything auto-fix clears by itself. It is not worker work. The batch's auto-finish
-  runs the control arm's exact qualified plain auto-fix sequence (setup size, setup buffer, hold
-  size-only, hold; `packs/xtop-timing-closure/flow/closure.py`) after the expert repairs, which are
-  locked with `set_dont_touch` first, so the two arms differ only by the recipe. Both arms then read
-  `summarize_gba_violations -exclude_path -with_top_n N -with_fail_reason` per check; the chosen
-  arm's reasons reach the next plan through the residual cases. Auto-finish ends with a hold flow, so
-  its setup reasons are unread: a setup worker reads them in its own session after its setup fix.
-- Workers spend their budget on blockers only. A worker that fixes bulk endpoints takes area and
-  routing from auto-finish and blurs its own gain. One mechanism per slot, in disjoint edit domains:
-  no instance and no net in two active slots.
+- A blocker is an endpoint that XTop's auto-fix leaves violating, with a fail reason (`atcs_fail_reasons`,
+  `summarize_gba_violations -with_fail_reason`): its reason is not "no violation left". The worst check of
+  every required scenario is a blocker until it is repaired.
+- The bulk is everything auto-fix clears by itself. It is not worker work. The batch's auto-finish runs the
+  control arm's exact qualified plain auto-fix sequence (setup size, setup buffer, hold size-only, hold;
+  `packs/xtop-timing-closure/flow/closure.py`) after the expert repairs, which are locked with
+  `set_dont_touch` first, so the two arms differ only by the recipe. Both arms then read
+  `summarize_gba_violations -exclude_path -with_top_n N -with_fail_reason` per check; the chosen arm's
+  reasons reach the next plan through the residual cases. Auto-finish ends with a hold flow, so its setup
+  reasons are unread: a setup worker reads them in its own session after its setup fix.
+- Workers spend their budget on blockers only: fixing bulk endpoints takes area and routing from
+  auto-finish and blurs a worker's own gain. Disjoint edit domains: no instance or net in two active slots.
 
 ## Counterexample
 
-Global high effort before the blockers. Serial round 1 (Issue #64, Further Notes): global auto-fix took
-hold violations from 7,430 to 148 (2,908 buffers inserted, 919 cells resized). Serial round 2 ran the
-global fixes again at high effort with the blockers still in place and over-fixed: WNS stayed at
--0.154 ns hold and -0.0383 ns setup, and PrimeTime after the round-2 ECO measured hold -0.16 ns. Higher
-effort adds internal pin groups and runtime, not a new mechanism for the endpoints that set WNS. The
-order that works: diagnose the blockers, repair them with targeted moves, lock them, then auto-finish.
+Global high effort before the blockers. Serial round 1 (Issue #64, Further Notes): global auto-fix took hold
+violations from 7,430 to 148 (2,908 buffers inserted, 919 cells resized). Serial round 2 ran the global
+fixes again at high effort with the blockers still in place and over-fixed: WNS stayed at -0.154 ns hold and
+-0.0383 ns setup, and PrimeTime after the round-2 ECO measured hold -0.16 ns. Higher effort adds internal
+pin groups and runtime, not a new mechanism for the endpoints that set WNS. The order that works: diagnose
+the blockers, repair them with targeted moves, lock them, then auto-finish.
 
-The loop has its own limit (strategy map, judgement 2): with many violations one GBA auto pass
-converges faster than any expert loop. Use the loop on the residual, not on round 1.
+The loop has its own limit (strategy map, judgement 2): with many violations one GBA auto pass converges
+faster than any expert loop. Use the loop on the residual, not on round 1.

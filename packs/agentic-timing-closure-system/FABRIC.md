@@ -191,7 +191,7 @@ Schema limits and how the graph expresses them:
   exit 3, then the Reader's refusal) and three `NextDecisionReaderTest` cases.
 - G39 (Issue #64 Track B, ported from #63 slice 1 fix, gap 3, probe items 1-2 and review 2 I2)
   Examples as declared knowledge. Every model-written document has one admitted example in
-  `knowledge/example-*.md` (observation request, the six-slot campaign plan with its parked shape,
+  `knowledge/example-*.md` (observation request, the six-slot campaign plan (six active clusters since G46),
   worker requests for an active slot, an active slot with no safe move and a parked slot, the
   integration plan with one conflict resolution, the next decision), declared in `contract.yml`
   (16 knowledge files) and in the knowledge list of the Workshop that writes it; the purposes name
@@ -234,7 +234,123 @@ Schema limits and how the graph expresses them:
   `maxTokensPerTurn` 8000 (8598 output tokens, 7190 reasoning): the Host read no completed reply and the
   Reviewer never ran. Every worker Team's Researcher now has 16000 (`flow/tests/test_team_turn_budget.py`);
   the rerun admitted Researcher and Reviewer 3/3, each Reviewer scope passing the Host's creation checks.
-- G43 (Issue #64 treatment Run run-9a5f197a, D-T01-1; **known limitation, not fixed in 0.2.0**)
+- G43 (Issue #64 treatment attempt 1, #63 C13 and live finding #250 ported) A size move names a
+  library master of the cell's own function. Attempt 1's w01 Operator sized its register to
+  `SDGCNQOPTMC D12BWP30P140` (two `atcs_candidates` columns joined) and XTop refused it twice as an
+  invalid library cell, two approved mutations spent; w03 sized `SDFCNQARD1BWP35P140` to
+  `SDFCNQD2BWP35P140`, a flop without the asynchronous reset, and undid it. Both requests' size entries
+  named no master and read 0 (Ledger #144, #254). For each `atcs_size_cell` entry of an active slot's
+  `sessionPlan` the worker-request Reader counts an object outside `editDomain.instances` (merge
+  integrity) and, since the worker/aggregation principle (G45; first committed as counts in 3b851486,
+  turned to advice in the next commit), writes as `Advice`, never counted: a missing `toMaster`; a name that is not one plain token; the current master; a name that is no
+  `cell (NAME)` of the Liberty files the sealed `state/xtop-context.json` lists (re-hashed as read;
+  the first scenario's); a function change under the Site's `cellNominalSizingPattern` (the name up
+  to the drive digits); and an unreadable or other-state context. The drive and the VT may change
+  (both ladders size or VT-swap with `atcs_size_cell`), which is wider than #63's same-VT rule.
+  `read-atcs.py masters WORKSPACE INSTANCES OUT` lists each leaf cell's master and its function's
+  library cells; the six research purposes, the worker-request example and the expert knowledge say
+  the cells are the Liberty files' `cell (NAME)` groups, not a table in `xtop-context.json`, and the
+  six Operator templates say a master is one token and "invalid library cell" means read
+  `atcs_candidates` again. Proving tests: `flow/tests/test_t01_regressions.py` `SizeMoveMasterTest`
+  on the retained w01 and w03 requests (RED on 12950dac: no advice, no command) and
+  `SizeMoveGuidanceTest`; the dry path sizes to a named master.
+- G44 (Issue #64, #63 C23 45257f24/5e95d542 and C22 e00d06cb ported, as advice) Leaf-cell edit
+  domains and the Pack's endpoint resolver. The six-slot plan Reader never read the netlist, so a plan
+  naming a module instance (live02's `swerv_dma_ctrl`), a port, a bare leaf or an absent path as an
+  edit-domain cell reached the Operator with no word to the Workshop. Under the worker/aggregation
+  principle below, the plan Reader (each active slot) and the worker-request Reader share
+  `_edit_domain_problems`, whose findings are `Advice`: written to the sidecar after the counted
+  problems ("Advice (N, not counted ...)"), never counted, never failing `request-admissible`. The
+  worker-request Reader's earlier hierarchical-name count (T63) is advice now too. An empty domain gets
+  no advice: target pins are toolkit domain pins. The netlist parser is #63's statement parser (multi-line instantiations,
+  comments, no line cap), and `read-atcs.py resolve-instances WORKSPACE ENDPOINTS OUT` resolves PT
+  endpoints (bus spellings, flattened escaped names, a net to its driver, a whole check key by its
+  endpoint part). `knowledge/endpoint-resolution.md` (17 knowledge files) gives the shipped copy
+  `hima-readers/atcs-readiness/read-atcs.py` and says to pass the endpoint, not the check key; the
+  plan checklist and the six worker purposes point at it, and each advice line names it. The live02
+  plan still reads 41, with 10 advice lines (stand-in netlist). Proving tests:
+  `flow/tests/test_endpoint_resolution.py` (RED: 11 errors, 3 failures) and
+  `test_t01_regressions.LeafCellEditDomainTest` on the retained attempt-1 plan (RED: no advice
+  existed).
+- G45 The worker/aggregation principle (user design decision, 2026-09-29, Issue #64 before treatment
+  attempt 2). The parallel worker stage is exploratory and divergent; over-restricting it cramps the
+  design space. Quality is guaranteed downstream, by the aggregation (composition facts, the ranked
+  recipe replayed from the common base, reconcile, the plain auto-fix control arm, pre-STA) and by
+  refreshed PrimeTime, the sole arbiter of convergence, not by upstream refusals. A worker request or a
+  plan is refused only for what breaks identity or merge integrity: an unparseable document, a
+  `baseState`/`planSha256`/prepared-package mismatch, an action outside the slot's edit domain or two
+  active slots claiming one instance or net, and whatever the Site Permit or the wrapper forbids.
+  Everything the Operator and XTop find out for themselves (a master outside the library, a function
+  change, a name XTop has no cell for, a parked seat while checks are uncovered) is `Advice` in the
+  sidecar. The Reviewer sharpens the plan and records concerns; its scope is no bottleneck.
+
+- G46 (Issue #64 treatment attempt 1, plan coverage; guidance and advice under G45) Fill the seats.
+  Attempt 1's plan took only each required scenario's single worst check as a blocker, made 3
+  clusters and parked w04..w06 although `workerSlots` was 6 and the observation held disjoint
+  violating checks (the dma FIFO and dmi sync flops, `lsu_axi_arvalid`, `sb_axi_wdata[0]`); its
+  stated reason was that the first generation has no batch fail reasons. The plan purpose now says to
+  fill every seat up to `workerSlots` while any violating check of a required scenario is uncovered,
+  taking the next worst checks in leaf cells no other active slot claims, and that missing fail reasons
+  are no reason to park; its self-check snippet prints advice for a parked seat. The example plan
+  holds six active clusters, worst first, with the parked shape in its text. The plan Reader writes one
+  `Advice` per parked seat up to `workerSlots` naming the worst uncovered check, never a counted
+  problem (G45). The dry path's plan builds the parked shape itself. Proving tests:
+  `test_t01_regressions.ParkedSeatTest` on the retained plan (RED: no advice) and
+  `test_workshop_examples.PlanCampaignExampleTest` (the six-cluster example admitted with no advice;
+  RED: the one-active example parked five seats).
+- G47 (Issue #64 treatment attempt 1, the Operator loop; G45) An undo is never a stop, and the Reviewer
+  is no bottleneck. Attempt 1's w03 (Ledger #258, #271, #321; `flow/tests/live_fixtures/t01-w03-team-results.json`):
+  the Researcher's falsifier said "atcs_undo and stop this cluster", the Reviewer approved 15 mutations,
+  and the Operator sized `SDFCNQARD1BWP35P140` to `SDFCNQD2BWP35P140`, undid it (correctly: the new
+  master drops the reset) and stopped with `no-candidate-gains` and 13 mutations unspent (its context
+  also ran out before the close). The knowledge and the six Operator templates now say: try freely inside
+  your domain, manual moves and targeted fixes alike (a targeted fix after the undoable manual moves, since
+  XTop commits it), there is no wrong attempt, only an unmeasured one; after an undo try the next rung;
+  stop only when every rung the scope allows was tried without gain, the budget is spent or the blockers
+  are clear. The Researcher gives the next rung with each falsifier and never says to stop after one undo.
+  The Reviewer sharpens the plan and records concerns: scope.commands defaults to every command of the
+  candidate's scope, `maxMutations` to 50 (never below 3; the recipe cap stays 120), and it refuses only a
+  request that is not for its slot's edit domain. The plan and worker examples list every toolkit
+  mutation, the plan checklist's default. Proving tests: `test_t01_regressions.OperatorLoopTest` (RED: 13
+  failures).
+- G48 (Issue #64, #63 C06 ea3993f3 and C05 9737b28f ported; the downstream half of G45) The first
+  composition pass never reads an integration plan, and a wild session flows to the replay. C06
+  applied to 0.2.0: `compose-facts` (the first-pass node, also the `revisit-revise` target) read
+  `research/requests/integration-plan.json`, so a refused generation-2 plan with malformed resolutions
+  still on disk made generation 3's first pass exit 3. The first pass now runs a tool whose plan
+  argument names a file nothing writes; the new `compose-facts-admitted` tool, reached only through
+  `check-integration-plan` PASS, reads the admitted plan (no graph growth; the node's tool changed).
+  C05 was already counted by this Reader (a resolution for a no-fix Contribution names no current
+  conflict); its test is added, green on arrival. `flow/tests/test_wild_contribution_flow.py` runs a
+  domain-clean wild session (a trial that hurt its target, undone, then a master of another function
+  the plan never named) through capture, compose and replay without an upstream refusal: the
+  composition keeps every session with its predicted value and marks a shared-instance command
+  skipped, naming its holder; `reconcile` records the session that did not reproduce (the skipped
+  command, `deltaMatches: false`, a `replayMismatch` warning) and chooses the arm on XTop's prediction.
+  Known limit, flow code (the wrapper-pinned digest): `capture-contribution`'s value gates
+  (`contributions._session_value`: `no-predicted-gain`, `breaks-target-check`,
+  `breaks-opposite-check`) still refuse a session whose kept commands XTop measured as no gain or as
+  harmful in some required scenario; lifting them to advice needs a flow change and a wrapper
+  requalification. Proving tests: `ComposeFactsSecondPassTest.test_a_refused_plan_with_malformed_resolutions_is_not_applied`
+  (RED: exit 3), `IntegrationPlanExampleTest.test_a_resolution_for_a_no_fix_contribution_is_counted`,
+  `test_wild_contribution_flow.py` (green on arrival).
+- G49 (Issue #64 treatment attempt 1, retry slot hygiene; Site side, no flow change) Every Operator
+  attempt should start in a fresh slot. `prepare-workers` (`workspaces.prepare`) picks a slot's round
+  directory `workspaces/<slot>/r<N>` once per plan and bakes it into `state/workers.json` and the session
+  Tcl; the interactive argv is `<wrapper> <workspace> <slot>` with no attempt, and the v12 wrapper and
+  its verifier read `r<N>` from that record. So every retry of one plan lands in the same `r<N>`: slot
+  w02's retries met attempt 1's XTop workspaces and 44 hard-linked `.exclusive.cdslck*` files
+  (`flow/tests/live_fixtures/t01-w02-stale-locks-list.txt`); the verifier refused attempts 2 and 5 and
+  attempt 4's XTop stopped at `save_workspace` ("Directory exists"). Neither the Pack nor the Harness can
+  pass an attempt number without a flow or Harness change, so the fix is the Site's: the `atcs-v13`
+  wrapper template runs `sites/linglong-atcs28/fresh-worker-slot.py` (pinned) before the verifier, moving
+  every entry of `r<N>` except the three prepared files into `r<N>.attempt-<k>/` (nothing deleted). Installed
+  and qualified on 2026-09-29 (`operator-admin/atcs-v13/`, wrapper sha `9f54c9cd...`): the Pack's
+  `xtop-operator` binding and the Permit name v13 (`sites/linglong-atcs28/README.md`). A close the Harness records as `process-survived` still needs a
+  person to end the wrapper's process and container (a v12 limitation that v13 keeps; see G43's and
+  attempt 1's D-T01-3). Proving tests: `sites/linglong-atcs28/test_verify_worker_startup.py`
+  `RetrySlotTest` on the retained listing (RED: 5 of 6; the sixth characterizes the reuse and the refusal).
+- G50 (Issue #64 treatment Run run-9a5f197a, D-T01-1; **known limitation, not fixed in 0.2.0**)
   `atcs_paths <check> <N> <end points>` fails in the Operator's PBA session: it hands XTop
   `get_paths -delay_type max|min -end_points ...` as the path argument of
   `analyze_<check>_path_violations`, and real XTop answers "Error: In PBA mode, only path collections
