@@ -166,7 +166,13 @@ Schema limits and how the graph expresses them:
   reuses the root of an identical package. Known limitation: a parked branch still runs its research
   Workshop (a trivial parked request) and a few seconds of batch no-op; removing that cost needs a
   Harness feature that skips a fork branch, not built here (with `workerSlots` defaulting to 6,
-  parking is rare).
+  parking is rare). #64 Track B: a refused active request is no longer a reason to park.
+  The owner reads `workerRequestNNProblems` and revises `research-worker-NN`; the Harness revision
+  reruns that branch from its Workshop in the same generation while the other branches keep their
+  place (no Explore can stand inside a branch, and none is needed: an Explore retry would spend a
+  generation, which is how live02 ran out). The worker purposes and the `xtop-operator` description
+  say so; the ATCS contract test drives it for slot w02 (refused at 2 problems, revised, re-read at 0,
+  generation unchanged, no decision record).
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.

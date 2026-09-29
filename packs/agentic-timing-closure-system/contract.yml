@@ -421,7 +421,8 @@ tools:
       reverts the last kept mutation. An active slot runs only interactively, as its worker Team
       Operator's session. The batch path is the Pack's operate-parked no-op: it opens no XTop session,
       settles the operate node of a parked slot or of an active slot whose request is inadmissible, and
-      refuses any other active slot (Issue #64 Task 5). As a Job of this tool it still holds the xtop: 1
+      refuses any other active slot (Issue #64 Task 5). A refused active request is revised, not parked:
+      the owner revises research-worker-NN, which reruns that branch in the same generation (#64 Track B). As a Job of this tool it still holds the xtop: 1
       licence (and one Site Job) for its few seconds, so size the Site's xtop licences to the slots.
     inputs: [WORKSPACE, SLOT]
     licences: { xtop: 1 }
@@ -1314,9 +1315,11 @@ workshops:
 
   - id: research-worker-01
     purpose: >-
-      After a refusal, read output workerRequest01Problems first: the Reader wrote there, one line per problem,
-      what it refused in your last worker-request-w01.json and the format each field needs; fix every line and write
-      the whole document again.
+      After a refusal (read-worker-request-01 counts a problem), read output workerRequest01Problems first: the
+      Reader wrote there, one line per problem, what it refused in your last worker-request-w01.json and the
+      format each field needs. Fix every line by revising this Workshop's code: the revision reruns this
+      branch from here, in the same generation, while the other branches keep their results. Never park an
+      active slot because its request was refused; the parked no-op is for a parked package.
       Research worker slot w01 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
       evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
@@ -1401,9 +1404,11 @@ workshops:
 
   - id: research-worker-02
     purpose: >-
-      After a refusal, read output workerRequest02Problems first: the Reader wrote there, one line per problem,
-      what it refused in your last worker-request-w02.json and the format each field needs; fix every line and write
-      the whole document again.
+      After a refusal (read-worker-request-02 counts a problem), read output workerRequest02Problems first: the
+      Reader wrote there, one line per problem, what it refused in your last worker-request-w02.json and the
+      format each field needs. Fix every line by revising this Workshop's code: the revision reruns this
+      branch from here, in the same generation, while the other branches keep their results. Never park an
+      active slot because its request was refused; the parked no-op is for a parked package.
       Research worker slot w02 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
       evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
@@ -1488,9 +1493,11 @@ workshops:
 
   - id: research-worker-03
     purpose: >-
-      After a refusal, read output workerRequest03Problems first: the Reader wrote there, one line per problem,
-      what it refused in your last worker-request-w03.json and the format each field needs; fix every line and write
-      the whole document again.
+      After a refusal (read-worker-request-03 counts a problem), read output workerRequest03Problems first: the
+      Reader wrote there, one line per problem, what it refused in your last worker-request-w03.json and the
+      format each field needs. Fix every line by revising this Workshop's code: the revision reruns this
+      branch from here, in the same generation, while the other branches keep their results. Never park an
+      active slot because its request was refused; the parked no-op is for a parked package.
       Research worker slot w03 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
       evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
@@ -1575,9 +1582,11 @@ workshops:
 
   - id: research-worker-04
     purpose: >-
-      After a refusal, read output workerRequest04Problems first: the Reader wrote there, one line per problem,
-      what it refused in your last worker-request-w04.json and the format each field needs; fix every line and write
-      the whole document again.
+      After a refusal (read-worker-request-04 counts a problem), read output workerRequest04Problems first: the
+      Reader wrote there, one line per problem, what it refused in your last worker-request-w04.json and the
+      format each field needs. Fix every line by revising this Workshop's code: the revision reruns this
+      branch from here, in the same generation, while the other branches keep their results. Never park an
+      active slot because its request was refused; the parked no-op is for a parked package.
       Research worker slot w04 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
       evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
@@ -1662,9 +1671,11 @@ workshops:
 
   - id: research-worker-05
     purpose: >-
-      After a refusal, read output workerRequest05Problems first: the Reader wrote there, one line per problem,
-      what it refused in your last worker-request-w05.json and the format each field needs; fix every line and write
-      the whole document again.
+      After a refusal (read-worker-request-05 counts a problem), read output workerRequest05Problems first: the
+      Reader wrote there, one line per problem, what it refused in your last worker-request-w05.json and the
+      format each field needs. Fix every line by revising this Workshop's code: the revision reruns this
+      branch from here, in the same generation, while the other branches keep their results. Never park an
+      active slot because its request was refused; the parked no-op is for a parked package.
       Research worker slot w05 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
       evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's
@@ -1749,9 +1760,11 @@ workshops:
 
   - id: research-worker-06
     purpose: >-
-      After a refusal, read output workerRequest06Problems first: the Reader wrote there, one line per problem,
-      what it refused in your last worker-request-w06.json and the format each field needs; fix every line and write
-      the whole document again.
+      After a refusal (read-worker-request-06 counts a problem), read output workerRequest06Problems first: the
+      Reader wrote there, one line per problem, what it refused in your last worker-request-w06.json and the
+      format each field needs. Fix every line by revising this Workshop's code: the revision reruns this
+      branch from here, in the same generation, while the other branches keep their results. Never park an
+      active slot because its request was refused; the parked no-op is for a parked package.
       Research worker slot w06 inside its prepared private workspace. Read the slot's prepared
       manifest, its work package (targetPins, editDomain with regions, scope, observe) and the recorded
       evidence, including the prior generation's XTop fail reasons (the slot's own Contribution's

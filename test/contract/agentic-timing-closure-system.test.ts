@@ -125,6 +125,8 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
     'packages={s:({"taskId":s,"baseStateId":base["id"],"parked":True,"problem":"one blocker cluster; slot "+s+" has none"} if s!="w01" else active) for s in workspaces.TASK_IDS}',
     'f._write_json(w/"research/requests/campaign-plan.json",{"candidate":{"workPackages":packages,"reason":"one blocker cluster"},"baseState":base,"siteCapabilities":{"pgVerification":False}})',
     '[f._write_json(w/"seed"/("worker-request-"+s+".json"),{"candidate":p,"baseState":base,"siteCapabilities":{"pgVerification":False}}) for s,p in packages.items()]',
+    // Live02's refused shape: a descriptive taskId instead of the slot key.
+    'f._write_json(w/"seed"/"worker-request-w02-refused.json",{"candidate":dict(packages["w02"],taskId="w02-parked"),"baseState":base,"siteCapabilities":{"pgVerification":False}})',
   ].join('\n'), path.join(repoRoot, 'packs', packId, 'flow'),
     path.join(repoRoot, 'packs', packId, 'flow/tests'), workspace, capsPath], { encoding: 'utf8' });
   assert.equal(seeded.status, 0, seeded.stderr);
@@ -161,14 +163,48 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   assert.deepEqual(slots.filter(slot => workers.workers[slot].parked === true), slots.slice(1));
 
   // Each branch's Workshop writes its own slot's request, and its own Reader admits it.
+  const copyEntry = (slot: string, seed: string) => `import shutil, sys\nshutil.copyfile(sys.argv[1] + "/seed/${seed}.json", sys.argv[1] + "/research/requests/worker-request-${slot}.json")\n`;
   for (const slot of slots) {
     const id = await begin(`research-worker-${nn(slot)}`);
     assert.equal((await act('recommend', { executionId: id })).kind, 'accepted');
-    const entry = `import shutil, sys\nshutil.copyfile(sys.argv[1] + "/seed/worker-request-${slot}.json", sys.argv[1] + "/research/requests/worker-request-${slot}.json")\n`;
+    // #64 Track B: slot w02's first request is refused, as live02's were.
+    const entry = copyEntry(slot, slot === 'w02' ? 'worker-request-w02-refused' : `worker-request-${slot}`);
     const written = await act('write', { executionId: id, path: 'entry.py', content: entry });
     assert.equal(written.kind, 'accepted', JSON.stringify(written));
     await workAndComplete(`research-worker-${nn(slot)}`, id);
     await node(`read-worker-request-${nn(slot)}`);
+    if (slot === 'w02') {
+      // A refused request is revised, not parked, and costs no generation (#64 Track B, from #63 gap 2):
+      // the Reader counts it and writes why beside it, the owner revises the branch's Workshop, and
+      // the Harness reruns that branch from the Workshop while every other branch keeps its place.
+      const refused = records().findLast(record => record.type === 'observation' && record.reader.id === 'atcs-worker-request-02');
+      assert.ok(refused?.type === 'observation');
+      assert.deepEqual(refused.values.map(value => [value.type, value.value]), [['tc_request_invalid_count', 2]]);
+      const why = await readFile(path.join(workspace, 'research/requests/worker-request-w02.problems.txt'), 'utf8');
+      assert.match(why, /^2 problems in worker-request-w02\.json/);
+      assert.match(why, /^- candidate\.taskId \(slot w02\): must be 'w02' for this slot, got 'w02-parked'/m);
+      assert.match(why, /^- candidate\.taskId \(slot w02\): taskId must be one of .*required format: exactly the slot key/m);
+      const generation = context().run.generation;
+      const branchesBefore = context().run.fork!.branches;
+      const revised = await host.ctx.tools.execute({ name: 'hima_execute', agent: owner, callId: 'revise-w02' as never,
+        signal: AbortSignal.timeout(10_000), arguments: { run: runId, action: 'revise', expectedEpoch: control().epoch,
+          expectedRevision: control().revision, requestId: 'revise-research-worker-02', revision: {
+            revisionId: 'w02-request-v2', reason: 'workerRequest02Problems: taskId must be w02', changedNodes: ['research-worker-02'],
+            changes: [{ nodeId: 'research-worker-02', scope: 'workshop', path: 'entry.py', content: copyEntry('w02', 'worker-request-w02') }] } } });
+      assert.equal(revised.isError, false, JSON.stringify(revised));
+      assert.equal((revised as unknown as { value: { kind: string } }).value.kind, 'accepted', JSON.stringify(revised));
+      assert.equal(context().run.generation, generation, 'the retry spends no generation');
+      assert.equal(records().filter(record => record.type === 'decision').length, 0, 'no Explore decided the retry');
+      const branchesAfter = context().run.fork!.branches;
+      assert.deepEqual(branchesAfter['research-worker-02'], { currentNode: 'research-worker-02', state: 'running' });
+      assert.deepEqual(branchesAfter['research-worker-01'], branchesBefore['research-worker-01'], 'slot w01 keeps its place');
+      const rerun = await begin('research-worker-02');
+      assert.equal((await act('recommend', { executionId: rerun })).kind, 'accepted');
+      await workAndComplete('research-worker-02', rerun);
+      await node('read-worker-request-02');
+      assert.match(await readFile(path.join(workspace, 'research/requests/worker-request-w02.problems.txt'), 'utf8'),
+        /^0 problems in worker-request-w02\.json/);
+    }
     const reading = records().findLast(record => record.type === 'observation' && record.reader.id === `atcs-worker-request-${nn(slot)}`);
     assert.ok(reading?.type === 'observation');
     assert.equal(reading.branchId, `research-worker-${nn(slot)}`, `slot ${slot}'s request is read in its own branch`);

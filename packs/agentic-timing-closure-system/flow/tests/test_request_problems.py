@@ -233,6 +233,21 @@ class ProblemsWiringTest(unittest.TestCase):
                 self.assertIn(f"{name}Problems", reads)
                 self.assertIn(f"read output {name}Problems first", workshop)
 
+    def test_a_refused_worker_request_is_revised_never_parked(self):
+        """A branch holds act nodes only, so no Judge or Explore can retry inside it; the retry is the
+        owner's revision of the branch's Workshop, which the Harness reruns in the same generation
+        (the ATCS contract test drives it for slot w02)."""
+        for slot in SLOTS:
+            with self.subTest(slot):
+                purpose = self._workshop(f"research-worker-{slot[1:]}").split("    directory:")[0]
+                flat = " ".join(purpose.split())
+                self.assertIn(f"After a refusal (read-worker-request-{slot[1:]} counts a problem)", flat)
+                self.assertIn("Fix every line by revising this Workshop's code: the revision reruns this branch "
+                              "from here, in the same generation", flat)
+                self.assertIn("Never park an active slot because its request was refused", flat)
+        operator = self.CONTRACT.split("  - id: xtop-operator\n", 1)[1].split("\n  - id: ", 1)[0]
+        self.assertIn("A refused active request is revised, not parked", " ".join(operator.split()))
+
     def test_the_decision_workshop_also_reads_the_plan_refusals_routed_to_it(self):
         workshop = self._workshop("evaluate-next-investment")
         reads = re.search(r"^    reads: \[(.*)\]$", workshop, re.M).group(1).split(", ")
