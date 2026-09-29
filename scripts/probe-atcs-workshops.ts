@@ -135,37 +135,50 @@ function workshopSnapshot(retained: Retained, workshopId: string, reads: readonl
   }
   return { files, unavailable, basis: `Workshop ${workshopId} execution ${last.nodeId} generation ${last.generation} attempt ${last.attempt} (captures seq ${start}..${Math.max(...group.map((item) => item.seq))})` };
 }
-/** Hierarchical instance paths the retained data proves (for the Reader's hierarchy stand-in). */
-function knownInstances(retained: Retained): string[] {
-  const names = new Set<string>();
+/** Hierarchical instance paths, instance masters and library cells the retained data proves (Reader stand-ins). */
+function knownInstances(retained: Retained): { instances: string[]; masters: Record<string, string>; cells: string[] } {
+  const names = new Set<string>(); const masters: Record<string, string> = {}; const cells = new Set<string>();
   const walk = (value: unknown, key?: string): void => {
     if (Array.isArray(value)) { for (const item of value) walk(item, key); return; }
-    if (value && typeof value === 'object') { for (const [k, v] of Object.entries(value)) walk(v, k); return; }
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      // A current master is proven by the retained sealed Contribution (preconditions, fromMaster) and the
+      // DEF-resolved worker request; a changed-to master by the ECO that really ran.
+      if (typeof record.instance === 'string') {
+        for (const field of ['master', 'fromMaster']) if (typeof record[field] === 'string') { masters[record.instance] = record[field] as string; cells.add(record[field] as string); }
+        if (typeof record.toMaster === 'string' && record.op === 'size_cell') cells.add(record.toMaster);
+      }
+      for (const [k, v] of Object.entries(value)) walk(v, k);
+      return;
+    }
     if (typeof value !== 'string' || !value.includes('/')) return;
     if (key === 'instances' || key === 'instance' || key === 'endpoint' || key === 'startpoint') names.add(value);
   };
   for (const sha of new Set(retained.items.map((item) => item.sha))) {
     try { walk(JSON.parse(retainedBytes(retained, sha).toString('utf8'))); } catch { /* not JSON */ }
   }
-  return [...names].sort();
+  return { instances: [...names].sort(), masters, cells: [...cells].sort() };
 }
 
 // -------------------------------------------------------------------------------------------------
 // The Reader, run as the Pack ships it, with the two reported stand-ins and an itemizer
 // -------------------------------------------------------------------------------------------------
 const READER_PY = String.raw`
-import importlib.util, json, re, sys, traceback
+import importlib.util, json, re, sys
 from pathlib import Path
 reader_path, kind, report, out, workspace, known_path, *extra = sys.argv[1:]
 spec = importlib.util.spec_from_file_location("read_atcs", reader_path)
 ra = importlib.util.module_from_spec(spec); spec.loader.exec_module(ra)
-stand_ins = []
-def skip_design_refs(design_state, ws, core):
-    stand_ins.append("design-state file re-hash skipped: database, netlist, DEF, SPEF and SDC bytes live only on the Site")
-ra._verify_design_state_refs = skip_design_refs
 known = json.load(open(known_path))
+stand_ins = set(); assumed = set()
+# Stand-in 1: the design-state file re-hash (the design bytes live only on the Site).
+def skip_design_refs(design_state, ws, core):
+    stand_ins.add("design-state file re-hash skipped: database, netlist, DEF, SPEF and SDC bytes live only on the Site")
+ra._verify_design_state_refs = skip_design_refs
+# Stand-in 2: the netlist hierarchy, built from instance paths proven in the retained data; a leaf's
+# type is its master where the retained data proves it, else the marker ~leaf.
 def hierarchy_stand_in(netlist_path):
-    stand_ins.append("netlist hierarchy walked over %d instance paths proven in the retained data, not the netlist" % len(known["instances"]))
+    stand_ins.add("netlist hierarchy stand-in: %d instance paths proven in the retained data (%d with a proven master), not the netlist" % (len(known["instances"]), len(known.get("masters", {}))))
     tree = {}
     for name in known["instances"]:
         segs = ra._split_instance_path(name)
@@ -175,7 +188,7 @@ def hierarchy_stand_in(netlist_path):
         for i, seg in enumerate(segs):
             level = tree.setdefault(module, {})
             if i == len(segs) - 1:
-                level.setdefault(seg, "~leaf")
+                level.setdefault(seg, known.get("masters", {}).get(name, "~leaf"))
             else:
                 child = module + "/" + seg
                 level[seg] = child
@@ -183,65 +196,104 @@ def hierarchy_stand_in(netlist_path):
                 module = child
     return tree
 ra._netlist_hierarchy = hierarchy_stand_in
+# Stand-in 3 (C13): the sealed Liberty library is Site-only. A toMaster is a library cell when the
+# retained data proves it; otherwise it is assumed one when it follows the Site's sizing pattern
+# (reported). The function/VT family check runs as shipped wherever the current master is proven.
+class LibraryStandIn:
+    def __contains__(self, name):
+        if name in known.get("cells", []):
+            return True
+        pattern = known.get("eco", {}).get("cellNominalSizingPattern") or ""
+        if pattern and isinstance(name, str) and re.search(pattern, name):
+            assumed.add(name); return True
+        return False
+if hasattr(ra, "_library_context"):
+    def library_stand_in(ws, base_state, core):
+        stand_ins.add("library stand-in: %d cells proven in the retained data; other names following the Site sizing pattern are assumed library cells; the family/VT check runs where the current master is proven" % len(known.get("cells", [])))
+        return LibraryStandIn(), known.get("eco", {}), None
+    ra._library_context = library_stand_in
+    original_master_problems = ra._master_problems
+    def master_problems(actions, hierarchy, top, base_state, ws, core, slot):
+        pruned = {m: {i: t for i, t in inst.items() if t != "~leaf"} for m, inst in hierarchy.items()}
+        return original_master_problems(actions, pruned, top, base_state, ws, core, slot)
+    ra._master_problems = master_problems
 result = {"kind": kind, "extra": extra}
+sidecar = None
 try:
-    values = ra.read(kind, report, workspace, extra)
-    result["exit"] = "ok"; result["values"] = values
+    if hasattr(ra, "_read"):
+        values, found = ra._read(kind, report, workspace, extra)
+        if found is not None:
+            ra._write_problems_file(report, found)
+    else:
+        values, found = ra.read(kind, report, workspace, extra), None
+    result["exit"] = "ok"; result["values"] = values; result["problems"] = list(found or [])
 except Exception as error:
-    result["exit"] = "refused"; result["exception"] = "%s: %s" % (type(error).__name__, error)
-problems = []
+    result["exit"] = "refused"; result["exception"] = "%s: %s" % (type(error).__name__, error); result["problems"] = []
+    if hasattr(ra, "_REQUEST_HANDLERS") and kind in ra._REQUEST_HANDLERS:
+        ra._write_problems_file(report, [], refused=result["exception"])
+if hasattr(ra, "_problems_file") and ra._problems_file(report).exists():
+    result["sidecar"] = {"path": str(ra._problems_file(report)), "text": ra._problems_file(report).read_text()}
+result["standIns"] = sorted(stand_ins)
+result["assumedLibraryCells"] = sorted(assumed)
+counts = {v["type"]: v.get("value") for v in result.get("values", [])}
+result["admitted"] = result["exit"] == "ok" and counts.get("tc_request_invalid_count") == 0 and (kind != "next-decision" or counts.get("tc_next_action") is not None)
 try:
     doc = json.load(open(report))
-    mods = ra._atcs_modules(workspace)
-    ws_mod, integ = mods["workspaces"], mods["integration"]
-    if kind == "campaign-plan" and isinstance(doc, dict):
-        cand = doc.get("candidate") if isinstance(doc.get("candidate"), dict) else {}
-        base = doc.get("baseState"); caps = doc.get("siteCapabilities")
-        if "workPackages" in doc:
-            problems.append("top-level workPackages present; keep only candidate.workPackages")
-        try:
-            state = json.load(open(Path(workspace) / "state" / "working-state.json"))
-            if not isinstance(base, dict) or base.get("id") != state.get("id"):
-                problems.append("baseState.id %r is not the working state id %r" % (base.get("id") if isinstance(base, dict) else None, state.get("id")))
-        except Exception as error:
-            problems.append("working state unreadable: %s" % error)
-        wps = cand.get("workPackages")
-        if not isinstance(wps, dict):
-            problems.append("candidate.workPackages must be an object"); wps = {}
-        for slot in ("w01", "w02", "w03"):
-            if not isinstance(wps.get(slot), dict):
-                problems.append("candidate.workPackages.%s missing" % slot); continue
-            problems += ["%s: %s" % (slot, p) for p in ws_mod._collect_problems(wps[slot], base, caps)]
-        if not isinstance(cand.get("reason"), str) or not cand.get("reason", "").strip():
-            problems.append("candidate.reason must be a non-blank string")
-    elif kind == "worker-request" and isinstance(doc, dict):
-        problems += ws_mod._collect_problems(doc.get("candidate"), doc.get("baseState"), doc.get("siteCapabilities"))
-    elif kind == "integration-plan" and isinstance(doc, dict):
-        problems += integ._collect_plan_problems(doc.get("plan"), doc.get("facts"))
-    elif kind == "observation-request":
-        obj = doc if isinstance(doc, dict) else {}
-        if not isinstance(doc, dict): problems.append("observation request must be a JSON object")
-        problems += ["missing field: %s" % k for k in ("designStateId", "precision", "requiredScenarios", "maxPaths") if k not in obj]
-        if "precision" in obj and obj.get("precision") not in ("gba", "pba"): problems.append("precision must be 'gba' or 'pba', got %r" % obj.get("precision"))
-        req = obj.get("requiredScenarios")
-        if "requiredScenarios" in obj and (not isinstance(req, list) or not req or not all(isinstance(s, str) and s for s in req)): problems.append("requiredScenarios must be a non-empty list of non-empty strings")
-        mp = obj.get("maxPaths")
-        if "maxPaths" in obj and (isinstance(mp, bool) or not isinstance(mp, int) or mp <= 0): problems.append("maxPaths must be a positive integer")
-        sid = obj.get("designStateId")
-        if "designStateId" in obj and (not isinstance(sid, str) or not re.fullmatch(r"[0-9a-f]{20}", sid)): problems.append("designStateId must be a 20-hex-char design-state id")
-    elif kind == "next-decision":
-        problems += ra._collect_next_decision_problems(doc, workspace)
-except Exception as error:
-    problems.append("itemizer could not parse the document: %s: %s" % (type(error).__name__, error))
-result["problems"] = problems
-result["standIns"] = sorted(set(stand_ins))
-counts = {v["type"]: v.get("value") for v in result.get("values", [])}
-invalid = counts.get("tc_request_invalid_count")
-result["admitted"] = result["exit"] == "ok" and invalid == 0 and (kind != "next-decision" or counts.get("tc_next_action") is not None)
+    if kind == "worker-request" and isinstance(doc, dict) and "noSafeAction" in doc:
+        result["noSafeAction"] = doc["noSafeAction"]
+except Exception:
+    pass
 Path(out).write_text(json.dumps(result, indent=1, sort_keys=True) + "\n")
 `;
 
-interface ReaderResult { kind: string; exit: 'ok' | 'refused'; exception?: string; values?: { type: string; value: number | null; unknownReason?: string }[]; problems: string[]; standIns: string[]; admitted: boolean }
+// The Pack's resolver (knowledge endpoint-resolution.md) reads the Site-only netlist. In the scratch
+// workspace, where the Harness would ship hima-readers/atcs-readiness/read-atcs.py, this stand-in
+// answers resolve-instances from the instance paths the retained data proves and passes every other
+// command to the Pack's own Reader beside it (reported in every Workshop result).
+const RESOLVER_PY = String.raw`
+import json, os, re, sys
+from pathlib import Path
+here = Path(__file__).resolve().parent
+if len(sys.argv) < 2 or sys.argv[1] != "resolve-instances":
+    os.execv(sys.executable, [sys.executable, str(here / "read-atcs.real.py")] + sys.argv[1:])
+workspace, endpoints_path, out = sys.argv[2:5]
+known = json.load(open(here / "probe-known-instances.json"))
+names = set(known["instances"]); masters = known.get("masters", {})
+endpoints = json.load(open(endpoints_path))
+if isinstance(endpoints, dict):
+    endpoints = endpoints.get("endpoints")
+if not isinstance(endpoints, list):
+    raise ValueError('ENDPOINTS_JSON must be a list of endpoint names or {"endpoints": [...]}')
+def spellings(name):
+    found = [name]
+    bit = re.match(r"^(.*)\[(\d+)\]$", name)
+    if bit:
+        found += ["%s_%s_" % bit.groups(), "%s_%s" % bit.groups()]
+    return found
+resolved, unresolved = [], []
+for endpoint in endpoints:
+    if not isinstance(endpoint, str) or not endpoint.strip():
+        unresolved.append({"endpoint": endpoint, "unresolved": "an endpoint must be a non-empty string"}); continue
+    name = endpoint.strip(); row = None
+    for spelled in spellings(name):
+        if spelled in names:
+            row = {"instance": spelled, "pin": None, "via": "instance"}; break
+    if row is None and "/" in name:
+        head, pin = name.rsplit("/", 1)
+        if head in names:
+            row = {"instance": head, "pin": pin, "via": "pin"}
+    if row is None:
+        unresolved.append({"endpoint": endpoint, "unresolved": "not an instance or instance pin proven in this probe's retained data (the netlist is Site-only; nets and ports are not resolved here)"})
+    else:
+        row.update(endpoint=endpoint, cell=masters.get(row["instance"]))
+        resolved.append(row)
+working = json.load(open(Path(workspace) / "state" / "working-state.json"))
+Path(out).write_text(json.dumps({"designStateId": working.get("id"), "top": working.get("top"), "netlist": working.get("netlist"),
+    "resolved": resolved, "unresolved": unresolved, "standIn": "probe resolver over retained instance paths, not the netlist"}, indent=1, sort_keys=True) + "\n")
+`;
+
+interface ReaderResult { kind: string; exit: 'ok' | 'refused'; exception?: string; values?: { type: string; value: number | null; unknownReason?: string }[]; problems: string[]; standIns: string[]; admitted: boolean;
+  sidecar?: { path: string; text: string }; assumedLibraryCells?: string[]; noSafeAction?: unknown }
 function runReader(dir: string, readerFile: string, kind: string, report: string, workspace: string, known: string, extra: readonly string[], label: string): ReaderResult {
   const wrapper = path.join(dir, 'probe-reader.py'); if (!existsSync(wrapper)) writeFileSync(wrapper, READER_PY);
   const out = path.join(dir, `${label}.reader.json`);
@@ -337,7 +389,7 @@ async function child(opts: Options): Promise<void> {
   }
   const clean = <T>(value: T): T => (key ? JSON.parse(JSON.stringify(value).split(key).join('[REDACTED]')) as T : value);
   const retained = readRetained(opts.retained);
-  const known = { top: '', instances: knownInstances(retained) };
+  const known: Record<string, unknown> & { top: string; instances: string[] } = { top: '', ...knownInstances(retained) };
   const pack = loadPack(path.join(repoRoot, 'packs'), PACK_ID);
   const outputPath = (name: string) => { const output = pack.contract.outputs.find((item) => item.name === name); assert.ok(output, `no output ${name}`); return output.path; };
   // The Site capabilities the retained Run's Workshops stamped (siteCapabilities of its latest worker request).
@@ -345,6 +397,10 @@ async function child(opts: Options): Promise<void> {
   assert.ok(latestRequest, 'the retained Run holds no worker request observation');
   const requestDoc = JSON.parse(retainedBytes(retained, latestRequest.sha).toString('utf8')) as Record<string, any>;
   known.top = requestDoc.baseState.top;
+  const eco = requestDoc.siteCapabilities?.xtopContext?.ecoParameters ?? {};
+  known.eco = eco;
+  for (const list of ['bufferListForSetup', 'bufferListForHold']) for (const cell of eco[list] ?? []) (known.cells as string[]).push(cell);
+  known.cells = [...new Set(known.cells as string[])].sort();
   const knownFile = path.join(dir, 'known-instances.json'); writeFileSync(knownFile, `${JSON.stringify(known, null, 1)}\n`);
   const entry = doc === 'team' ? 'operate-worker-01' : WORKSHOPS[doc as WorkshopDoc].node;
   const { scratch, key: copied } = await scratchHome(entry, opts.credentialHome, requestDoc.siteCapabilities); key = copied;
@@ -352,8 +408,9 @@ async function child(opts: Options): Promise<void> {
     dirty: execFileSync('git', ['status', '--short'], { cwd: repoRoot, encoding: 'utf8' }).trim(), node: process.version,
     pack: { id: PACK_ID, version: pack.contract.version, sourceDigest: scratch.sourceDigest, installedVariantDigest: scratch.variantDigest,
       variant: `graph.yml entry = ${entry} (only difference)`, readerSha256: sha256(readFileSync(scratch.readerFile)) },
+    resolverStandIn: doc === 'team' ? undefined : 'hima-readers/atcs-readiness/read-atcs.py answers resolve-instances from retained instance paths; every other command runs the Pack Reader',
     retained: { home: opts.retained, runId: retained.runId, ledgerSha256: retained.ledgerSha256 }, scratchHome: scratch.h.home, privateRoot,
-    readerStandIns: { knownInstances: known.instances.length, top: known.top } };
+    readerStandIns: { knownInstances: known.instances.length, provenMasters: Object.keys(known.masters as object).length, provenCells: (known.cells as string[]).length, top: known.top } };
   const attempts: AttemptRecord[] = [];
   const write = () => writeFileSync(path.join(dir, 'result.json'), `${JSON.stringify(clean({ ...summary, attempts }), null, 2)}\n`);
   write();
@@ -426,6 +483,11 @@ async function child(opts: Options): Promise<void> {
       const at = path.join(workspace, file.rel); mkdirSync(path.dirname(at), { recursive: true });
       writeFileSync(at, retainedBytes(retained, file.sha));
     }
+    // Where the Harness ships the Pack's Reader for the Run's first reader (knowledge endpoint-resolution.md).
+    const readers = path.join(workspace, 'hima-readers/atcs-readiness'); mkdirSync(readers, { recursive: true });
+    writeFileSync(path.join(readers, 'read-atcs.py'), RESOLVER_PY);
+    cpSync(scratch.readerFile, path.join(readers, 'read-atcs.real.py'));
+    cpSync(knownFile, path.join(readers, 'probe-known-instances.json'));
     const produced = path.join(workspace, outputPath(declaration.produces));
     assert.equal(existsSync(produced), false, 'the output must not be seeded');
     record.details.snapshot = { basis: snapshot.basis, files: snapshot.files, unavailable: snapshot.unavailable, workspace };
@@ -463,12 +525,13 @@ async function child(opts: Options): Promise<void> {
     const read = runReader(dir, scratch.readerFile, spec.kind, produced, workspace, knownFile, spec.extra, `attempt-${record.attempt}`);
     record.details.reader = read;
     record.admitted = read.admitted;
-    record.outcome = read.admitted ? 'admitted' : 'refused';
+    record.outcome = read.admitted ? (read.noSafeAction !== undefined ? 'admitted (noSafeAction)' : 'admitted') : 'refused';
     if (!read.admitted) {
       if (read.exception) record.refusals.push(read.exception);
       const counts = (read.values ?? []).map((value) => `${value.type}=${value.value}${value.unknownReason ? ` (${value.unknownReason})` : ''}`);
       if (counts.length) record.refusals.push(`Reader values: ${counts.join('; ')}`);
       record.refusals.push(...read.problems);
+      if (read.sidecar) record.details.sidecar = read.sidecar;
     }
     cancelTestAgent(owner, 'probe attempt finished');
   }
@@ -670,7 +733,12 @@ async function parent(opts: Options): Promise<void> {
     ...rows.map((row) => `| ${row.document} | ${row.admitted}/${row.attempts} | ${(row.rate * 100).toFixed(0)}% | ${row.modelRequests} | ${tokenText(row.tokens)} | ${(row.wallMs / 1000).toFixed(0)} |`), '',
     '## Refusals (exact text)', '',
     ...rows.flatMap((row) => row.refusals.length === 0 ? [] : [`### ${row.document}`, '', ...row.refusals.map((item) => `- attempt ${item.attempt} [${item.class}]: ${item.text.replace(/\n/g, ' ')}`), '']),
-    '## Reader stand-ins', '', '- The design-state file re-hash is skipped: database, netlist, DEF, SPEF and SDC bytes live only on the Site.', '- The w01 hierarchy walk uses instance paths proven in the retained data instead of the netlist.', ''].join('\n');
+    '## Reader sidecars of refused documents', '',
+    ...results.flatMap((result: any) => (result.attempts as AttemptRecord[]).filter((item) => (item.details as any)?.sidecar).map((item) => `### ${result.document} attempt ${item.attempt}\n\n\`\`\`\n${(item.details as any).sidecar.text.trim()}\n\`\`\`\n`)),
+    '## Stand-ins', '', '- Reader: the design-state file re-hash is skipped (database, netlist, DEF, SPEF and SDC bytes live only on the Site).',
+    '- Reader: the netlist hierarchy is built from instance paths proven in the retained data; a leaf carries its master where the retained data proves it.',
+    '- Reader (C13): library membership is proven for retained cells and assumed for other names following the Site sizing pattern (listed per result); the function/VT check runs where the current master is proven.',
+    '- Workshop: hima-readers/atcs-readiness/read-atcs.py answers resolve-instances from the retained instance paths; all other commands run the Pack Reader.', ''].join('\n');
   writeFileSync(path.join(opts.out, 'report.md'), md);
   process.stdout.write(`${md}\n\nevidence: ${opts.out}\n`);
 }
