@@ -70,8 +70,8 @@ edits. XTop's gain only screens trials; only refreshed PrimeTime judges converge
    `atcs_fail_reasons` on the target pins after the slot's own fix, setup reasons after a setup fix.
 3. Choose one move from the failing check's ladder, steered by the fail-reason table. Change one
    principal variable per trial (method, master, margin or pin set), or the gain cannot be attributed.
-4. Trial it: one manual ECO, with the plan hash. A targeted fix is no trial: XTop commits its actions
-   and `atcs_undo` cannot revert them ("The committed actions cannot be undone", Task 7). Send
+4. Trial it: one manual ECO; every mutation, `atcs_undo` too, ends in `planSha256`, the approved plan
+   hash the Host checks. A targeted fix is no trial: XTop commits its actions and `atcs_undo` cannot revert them ("The committed actions cannot be undone", Task 7). Send
    `atcs_fix_hold_pins` or `atcs_fix_setup_pins` only as a keep, after the manual trials; one that may
    insert (hold unless `sizeCellOnly` without `useDummyCell`, setup `insert_buffer`/`split_net`) needs its pins' nets in the domain.
 5. `atcs_gain` for the target and the opposite check; the toolkit also logs both after each kept mutation.

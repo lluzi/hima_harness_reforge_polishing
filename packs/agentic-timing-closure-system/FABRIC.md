@@ -215,6 +215,19 @@ Schema limits and how the graph expresses them:
   the baseline and the first decision, and each refresh its own research batch generation. The
   Harness refuses a Run created below the floor, naming both numbers; a kit or Guide that creates the
   #64 Campaign with 2 generations must now ask for 3 or more.
+- G41 (Issue #64 Track B, readiness before the treatment Campaign) What the expert Operator is told
+  matches the session it gets. `flow/tests/test_expert_operator_readiness.py` renders a slot's session
+  Tcl (`xtop-operator.tcl` + `xtop-analysis-manual.tcl`) and requires every `atcs_*` name in
+  `knowledge/xtop-expert-operator.md` and in each worker Team's Operator `taskTemplate` to be a
+  procedure of it; the typed procedures ending in `plan_sha256` to be exactly the contract's
+  `interactive.commands.mutate`, each ending in `planSha256`; and both texts to name every interactive
+  command, `planSha256`, the loop, both ladders and the fail-reason moves. It found the knowledge
+  naming no `planSha256` and the six templates omitting `atcs_move_cell` (fixed; no flow byte changed).
+  `test/contract/atcs-expert-operator.host.test.ts` drives the same session through the Team seam
+  (scope of three: three admitted, the fourth refused by the Host, the undo logged against its trial,
+  an out-of-domain object refused by the toolkit, the sealed command log without the undone trial),
+  and `test/contract/atcs-dry-path.host.test.ts` (group `atcs-dry`) runs the 0.2.0 graph from
+  `bind-inputs` with six concurrent sessions, two refreshes and the third refused, no model and no EDA.
 - G42 (Issue #64 Track B, real-model probe) Researcher turn budget. The ported
   `scripts/probe-atcs-workshops.ts` (0.2.0 inputs derived from the retained PR03 Run by the Pack's own
   code) admitted every Workshop document 3/3, but two of three Researcher turns ended `max-tokens` at
