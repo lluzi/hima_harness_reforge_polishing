@@ -340,7 +340,14 @@ test('C33: a failed tool Job with retries left records its log tail on the retry
   } finally { await home.dispose(); }
 });
 
-test('C21: a Python Workshop entry that does not compile is refused at write time and spends no attempt', async () => {
+test('C21: a Python Workshop entry that does not compile is refused only when the Host and Site interpreters match, and warned otherwise', async () => {
+  const hostVersion = (() => {
+    const r = spawnSync('python3', ['-c', 'import sys;print("%d.%d" % (sys.version_info[0], sys.version_info[1]))'], { encoding: 'utf8' });
+    return r.status === 0 ? (r.stdout ?? '').trim() : undefined;
+  })();
+  if (hostVersion === undefined) { return; } // No host python3 to check with; the check fails open and this test cannot exercise it.
+  const otherVersion = `${Number(hostVersion.split('.')[0]) + 1}.0`; // A version that cannot equal the Host's.
+
   const h = await createHimaHome();
   const installed = await installPack(h);
   // A Workshop whose declared entry is a Python file, so its write is syntax-checked before it lands.
@@ -349,30 +356,47 @@ test('C21: a Python Workshop entry that does not compile is refused at write tim
   const host = await bootInProcess(h);
   try {
     const run = await host.ctx.hima.ledger.createRun({ campaignId: 'python-workshop', siteId: 'local', status: 'running', strategy: { periodNs: 2 } });
+    const base = loadSite(siteFiles.sitesDir, 'local');
     const ctx: Driving = {
       deps: { ledger: host.ctx.hima.ledger, judge: host.ctx.hima.judge, sitesDir: siteFiles.sitesDir, packsDir: installed.packsDir },
-      runId: run.id, site: loadSite(siteFiles.sitesDir, 'local'), pack: loadPack(installed.packsDir, id),
+      runId: run.id, site: base, pack: loadPack(installed.packsDir, id),
       bindings: { flowRoot: h.workspace, design: 'test', MINED_ROUTE: 'one' }, workspace: h.workspace,
       campaignId: run.campaignId, waitedMs: 0, nonblocking: true,
     };
     const node = ctx.pack.graph.nodes.find((n) => n.id === 'mine');
     assert.ok(node?.kind === 'act');
-    const scope = await buildWorkshopScope({ ...ctx, executionId: 'execution-py' }, node, 1, 'conversation-owner');
-    assert.equal(scope.ok, true); if (!scope.ok) return;
+    const built = await buildWorkshopScope({ ...ctx, executionId: 'execution-py' }, node, 1, 'conversation-owner');
+    assert.equal(built.ok, true); if (!built.ok) return;
+    // A Site whose discovery declares a Python interpreter version, so the check knows whether the
+    // Host interpreter it ran is the one the entry will actually run under.
+    const withPython = (version: string | undefined) => ({ ...built.scope, site: { ...built.scope.site,
+      discovery: version === undefined ? undefined : { observedAt: new Date().toISOString(), inputFingerprint: 'a'.repeat(64),
+        facts: [{ probe: ['python3', '--version'], code: 0, stdout: `Python ${version}.0\n` }], unknowns: [], stale: false } } });
 
+    // Host == Site: a SyntaxError here is a SyntaxError where the entry runs, so it is refused.
     const attemptsBefore = host.ctx.hima.ledger.run(run.id)?.meters?.attempts ?? 0;
-    const wrote = await writeIntoWorkshop(scope.scope, 'entry.py', 'def f(:\n');
-    assert.equal(wrote.wrote, false, 'a non-compiling Python entry is not written');
-    assert.match(wrote.reason ?? '', /SyntaxError/, `the refusal carries the compile error: ${wrote.reason}`);
-    assert.match(wrote.reason ?? '', /entry\.py/);
-    assert.equal(host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).length, 0, 'no Job was launched for the bad entry');
-    assert.equal(host.ctx.hima.ledger.records({ runId: run.id, type: 'code' })
-      .some((r) => r.type === 'code' && r.path === 'entry.py'), false, 'no code record stands for the rejected entry');
-    assert.equal(host.ctx.hima.ledger.run(run.id)?.meters?.attempts ?? 0, attemptsBefore, 'the rejected write spends no attempt');
+    const refused = await writeIntoWorkshop(withPython(hostVersion), 'entry.py', 'def f(:\n');
+    assert.equal(refused.wrote, false, 'a non-compiling entry is refused when Host and Site Python versions match');
+    assert.match(refused.reason ?? '', /SyntaxError/); assert.match(refused.reason ?? '', /entry\.py/);
+    assert.equal(host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).length, 0, 'no Job launched for the bad entry');
+    assert.equal(host.ctx.hima.ledger.records({ runId: run.id, type: 'code' }).some((r) => r.type === 'code' && r.path === 'entry.py'), false, 'no code record for the refused entry');
+    assert.equal(host.ctx.hima.ledger.run(run.id)?.meters?.attempts ?? 0, attemptsBefore, 'the refused write spends no attempt');
 
-    // A subsequent compiling entry is accepted, so the check refuses only what does not compile.
-    const good = await writeIntoWorkshop(scope.scope, 'entry.py', 'import sys\nprint("ok")\n');
-    assert.equal(good.wrote, true, `a compiling Python entry is written: ${good.reason ?? ''}`);
+    // Host != Site: a 3.10-only construct (this Host is older) fails on the Host but is valid where it
+    // runs, so it is written with a warning naming the Host version, never a false refusal.
+    const mismatch = await writeIntoWorkshop(withPython(otherVersion), 'entry.py', 'match value:\n    case _:\n        pass\n');
+    assert.equal(mismatch.wrote, true, `a Host-only compile failure is not a refusal when the Site runs a different Python: ${mismatch.reason ?? ''}`);
+    assert.ok(mismatch.warning, 'the write carries a warning'); assert.match(mismatch.warning!, new RegExp(hostVersion.replace('.', '\\.')));
+
+    // A Site that declares no Python version: the check cannot judge the interpreter, so still a warning.
+    const undeclared = await writeIntoWorkshop(withPython(undefined), 'entry.py', 'def f(:\n');
+    assert.equal(undeclared.wrote, true, 'with no declared Site Python version, a compile failure is a warning, not a refusal');
+    assert.ok(undeclared.warning, 'the write carries a warning');
+
+    // A compiling entry is written cleanly with no warning, whatever the Site version.
+    const good = await writeIntoWorkshop(withPython(hostVersion), 'entry.py', 'import sys\nprint("ok")\n');
+    assert.equal(good.wrote, true, `a compiling entry is written: ${good.reason ?? ''}`);
+    assert.equal(good.warning, undefined, 'a compiling entry carries no warning');
   } finally {
     for (const r of host.ctx.hima.ledger.runs().flatMap((r) => host.ctx.hima.ledger.records({ runId: r.id, type: 'job' }))) {
       if (r.type === 'job' && r.event === 'launched') spawnSync('tmux', ['kill-session', '-t', `=${r.job.session}`]);
