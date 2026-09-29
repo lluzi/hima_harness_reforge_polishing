@@ -1,21 +1,66 @@
 # linglong-atcs28 Site administration
 
-Next candidate, not installed (Issue 64, before treatment attempt 2): `atcs-xtop-operator-v13.sh` under
-`operator-admin/atcs-v13/`, v12 with the `atcs-v13` paths and one pinned step before the verifier,
-`fresh-worker-slot.py`. `prepare-workers` picks a slot's round directory `workspaces/<slot>/r<N>` once per
-plan and the Harness retries the operate node with the same argv, so every attempt of one plan lands in the
-same `r<N>`; in treatment attempt 1 slot w02's retries met attempt 1's XTop workspaces and 44 hard-linked
-`.exclusive.cdslck*` files (the verifier refused attempts 2 and 5, "writable slot contains a multiply linked
-file"; attempt 4's XTop stopped at `save_workspace`, "Directory exists"). The step moves every entry of
-`r<N>` except `manifest.json`, `operator.tcl` and `xtop-analysis-manual.tcl` into
-`workspaces/<slot>/r<N>.attempt-<k>/` (nothing is deleted) and leaves a first attempt alone
-(`test_verify_worker_startup.RetrySlotTest`). It never ends a process: a close the Harness records as
-`process-survived` still needs a person to end that wrapper's container before the retry (a v12 and v13
-limitation). To install: copy the installed v12 to `atcs-v13/`, apply the template's diff, pin
-`fresh-worker-slot.py`'s sha, qualify with a retried slot, then point the Pack's `xtop-operator` binding and
-the Permit at `atcs-v13` (the Pack contract still names v12).
+Current candidate (Issue 64, before treatment attempt 2, Pack 0.2.0): `atcs-xtop-operator-v13.sh` under
+`operator-admin/atcs-v13/` (wrapper sha `9f54c9cd...`, installed 2026-09-29, mode 0555), with the six-slot
+verifier copied beside it (`verify-worker-startup.py`, sha `014fcfa5...`, the same bytes as v10-v12's), the
+slot step `fresh-worker-slot.py` (sha `293b2a3f...`, the bytes in this directory) and bootstrap root
+`operator-admin/atcs-v13/bootstraps/`. The Pack's `xtop-operator` binding names v13 and the Permit reads
+`atcs-v13`.
 
-Current candidate (Issue 64 Task 7 fix round 2, Pack 0.2.0): `atcs-xtop-operator-v12.sh` under
+Why: `prepare-workers` picks a slot's round directory `workspaces/<slot>/r<N>` once per plan, and the Harness
+retries the operate node with the same argv. So every attempt of one plan lands in the same `r<N>`. In
+treatment attempt 1, slot w02's retries met attempt 1's XTop workspaces and 44 hard-linked
+`.exclusive.cdslck*` files. The verifier refused attempts 2 and 5 ("writable slot contains a multiply linked
+file"), and attempt 4's XTop stopped at `save_workspace` ("Directory exists"). Before the verifier, v13 runs
+the pinned slot step. It moves every entry of `r<N>` except `manifest.json`, `operator.tcl` and
+`xtop-analysis-manual.tcl` into `workspaces/<slot>/r<N>.attempt-<k>/`. Nothing is deleted, and a first
+attempt is left alone (`test_verify_worker_startup.RetrySlotTest`). It never ends a process: a close the
+Harness records as `process-survived` still needs a person to end that wrapper's container before the retry.
+This is a v12 and v13 limitation.
+
+Derivation (`qual-tools/derive-v13.sh`): v13 was derived on the server from the *installed* v12 bytes (sha
+`6656badf...`, checked first). Only the template's v12 to v13 change was applied: the `atcs-v13` paths, the
+usage name, the header comment, the `fresh_slot`/`fresh_slot_sha256` pins, and the slot step before the
+verifier. The image, adapter (`2b001eda...`), flow (`a4736851...`), verifier and Site-profile pins are
+v12's, unchanged. Two checks confirm the derivation:
+- `diff` against installed v12 shows exactly those hunks.
+- `atcs-xtop-operator-v13.sh` in this directory, with its six placeholders filled from those pins, is
+  byte-identical to the installed file.
+
+`grep REPLACE` hits one comment line. The kit's `wrapper-pins-pack-flow` check passes against the
+installed v13.
+
+Qualification (2026-09-29, `atcs-runs/qual-atcs13-20260929`: a native baseline, plan and
+`prepare-workers` on this branch's flow, digest `a4736851...`):
+- **Own preflight** (`qual-tools/v13-preflight.sh`, the installed wrapper's lines up to the container
+  launch):
+  - OK for w01..w03.
+  - Refused for parked w04..w06 (exit 3, by the slot step) and for w07 (exit 2).
+  - Refused for the older `e6ccfabc...` flow at the adapter check (exit 3,
+    `qual-atcs13neg-20260929`).
+  - Refused with a slot-step pin changed by one digit (exit 3, "administrator slot step identity
+    changed").
+- **Retry slot, w02:** the retained attempt-1 shape was planted (22 hard-linked lock pairs, the XTop
+  workspace directories, session outputs and a private home).
+  - The verifier alone refused it ("multiply linked file").
+  - v13 moved all of it to `r1.attempt-1/` with the same inodes and paths (nothing deleted or copied),
+    then passed.
+  - A second leftover went to `r1.attempt-2/`.
+- **Real session, w01:** one real wrapper-launched XTop session on a retried slot. The planted attempt-1
+  shape, including an old `swerv_wrapper_operator_candidate/`, moved to `r1.attempt-1/`, and XTop then:
+  - reached READY and answered the identity query;
+  - kept one size mutation;
+  - was denied source and exec writes;
+  - exported, with `save_workspace` succeeding and no "Directory exists";
+  - closed clean with exit 0 and no SyntaxWarning, in 38 s.
+  
+  Afterwards no XTop process and no `hima-atcs-xtop-operator` container remained. The licence status
+  stayed `selected=old` throughout. The transcript sha is `3bbd8820...`.
+
+v12 is retired for new kits. It stays installed as evidence, and the Permit keeps it in `allowedWrappers` for
+retained Runs.
+
+Previous candidate (Issue 64 Task 7 fix round 2, Pack 0.2.0): `atcs-xtop-operator-v12.sh` under
 `operator-admin/atcs-v12/` (wrapper sha `6656badf...`, installed mode 0555), with the six-slot
 administrator verifier copied beside it (`verify-worker-startup.py`, sha `014fcfa5...`, the same bytes as
 v10's, v11's and this directory's) and bootstrap root `operator-admin/atcs-v12/bootstraps/`. It was
@@ -27,7 +72,7 @@ refused for parked w04..w06 and for w07, refused for the v11 flow by the verifie
 bytes differ from the qualified source", since its `atcs_cli.py` is byte-identical) and for the v10 and
 0.1.8 flows at the adapter check; and by a real wrapper-launched XTop session (READY, identity query,
 one kept mutation, source and exec writes denied, export, clean close, no SyntaxWarning). The Permit
-reads `atcs-v12` only. Capacity is `parallelJobs: 6` and `xtop: 6` for the six parallel worker branches;
+read `atcs-v12` only until v13. Capacity is `parallelJobs: 6` and `xtop: 6` for the six parallel worker branches;
 Innovus, StarRC and PrimeTime stay 1 (the refresh is serial).
 
 Previous candidate (Issue 64 Task 7 fix round 1): `atcs-xtop-operator-v11.sh` under

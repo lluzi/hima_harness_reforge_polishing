@@ -344,9 +344,9 @@ Schema limits and how the graph expresses them:
   attempt 4's XTop stopped at `save_workspace` ("Directory exists"). Neither the Pack nor the Harness can
   pass an attempt number without a flow or Harness change, so the fix is the Site's: the `atcs-v13`
   wrapper template runs `sites/linglong-atcs28/fresh-worker-slot.py` (pinned) before the verifier, moving
-  every entry of `r<N>` except the three prepared files into `r<N>.attempt-<k>/` (nothing deleted). Not
-  installed: the Pack still names the v12 wrapper until an administrator installs and qualifies v13
-  (`sites/linglong-atcs28/README.md`). A close the Harness records as `process-survived` still needs a
+  every entry of `r<N>` except the three prepared files into `r<N>.attempt-<k>/` (nothing deleted). Installed
+  and qualified on 2026-09-29 (`operator-admin/atcs-v13/`, wrapper sha `9f54c9cd...`): the Pack's
+  `xtop-operator` binding and the Permit name v13 (`sites/linglong-atcs28/README.md`). A close the Harness records as `process-survived` still needs a
   person to end the wrapper's process and container (a v12 limitation that v13 keeps; see G43's and
   attempt 1's D-T01-3). Proving tests: `sites/linglong-atcs28/test_verify_worker_startup.py`
   `RetrySlotTest` on the retained listing (RED: 5 of 6; the sixth characterizes the reuse and the refusal).
