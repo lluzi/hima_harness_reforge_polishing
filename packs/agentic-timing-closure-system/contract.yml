@@ -693,6 +693,7 @@ workshops:
       candidate; never repeat it at the top level. The Reader admits candidate.workPackages, and
       prepare-workers prepares that same field. Do not repeat a failed trial without new evidence; a slot with nothing
       worth researching still gets a bounded package whose diagnosis-only outcome is a valid no-fix.
+      Copy the shape of examples/campaign-plan.json; change only the values.
     directory: research/plan
     entry: entry.py
     language: python
@@ -715,6 +716,7 @@ workshops:
       Also include top-level actions with one to three objects {instance, toMaster}; each instance
       must be in candidate.editDomain.instances and each action proposes one size_cell mutation.
       The Agent Team reviews and selects one exact action from this admitted list.
+      Copy the shape of examples/worker-request.json; change only the values (and taskId to w01).
     directory: research/worker-01
     entry: entry.py
     language: python
@@ -734,6 +736,7 @@ workshops:
       of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
       slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
       dependencies}. A prediction is a hypothesis for the tool to test, never a result.
+      Copy the shape of examples/worker-request.json; change only the values (and taskId to w02).
     directory: research/worker-02
     entry: entry.py
     language: python
@@ -753,6 +756,7 @@ workshops:
       of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
       slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
       dependencies}. A prediction is a hypothesis for the tool to test, never a result.
+      Copy the shape of examples/worker-request.json; change only the values (and taskId to w03).
     directory: research/worker-03
     entry: entry.py
     language: python
@@ -793,6 +797,7 @@ workshops:
       legal only when the current final evaluation and accepted artifact support it. A temporarily
       degraded working state must name its follow-up and falsifier. Cite new information; never retry
       by revision alone.
+      Copy the shape of examples/next-decision.json; change only the values.
     directory: research/next
     entry: entry.py
     language: python
