@@ -66,15 +66,7 @@ Liberty files that file lists in `libraryFiles` (it holds no cell table itself);
       "u_core/u_lsu/addr_reg_0_/D"
     ],
     "scope": {
-      "commands": [
-        "atcs_size_cell",
-        "atcs_exchange_cell",
-        "atcs_insert_buffer",
-        "atcs_insert_dummy",
-        "atcs_fix_setup_pins",
-        "atcs_fix_hold_pins",
-        "atcs_undo"
-      ],
+      "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo"],
       "maxMutations": 120
     },
     "observe": "fast"
@@ -157,15 +149,7 @@ honest no-fix.
       "u_core/u_lsu/addr_reg_0_/D"
     ],
     "scope": {
-      "commands": [
-        "atcs_size_cell",
-        "atcs_exchange_cell",
-        "atcs_insert_buffer",
-        "atcs_insert_dummy",
-        "atcs_fix_setup_pins",
-        "atcs_fix_hold_pins",
-        "atcs_undo"
-      ],
+      "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo"],
       "maxMutations": 120
     },
     "observe": "fast"

@@ -298,6 +298,21 @@ Schema limits and how the graph expresses them:
   `test_t01_regressions.ParkedSeatTest` on the retained plan (RED: no advice) and
   `test_workshop_examples.PlanCampaignExampleTest` (the six-cluster example admitted with no advice;
   RED: the one-active example parked five seats).
+- G47 (Issue #64 treatment attempt 1, the Operator loop; G45) An undo is never a stop, and the Reviewer
+  is no bottleneck. Attempt 1's w03 (Ledger #258, #271, #321; `flow/tests/live_fixtures/t01-w03-team-results.json`):
+  the Researcher's falsifier said "atcs_undo and stop this cluster", the Reviewer approved 15 mutations,
+  and the Operator sized `SDFCNQARD1BWP35P140` to `SDFCNQD2BWP35P140`, undid it (correctly: the new
+  master drops the reset) and stopped with `no-candidate-gains` and 13 mutations unspent (its context
+  also ran out before the close). The knowledge and the six Operator templates now say: try freely inside
+  your domain, manual moves and targeted fixes alike (a targeted fix after the undoable manual moves, since
+  XTop commits it), there is no wrong attempt, only an unmeasured one; after an undo try the next rung;
+  stop only when every rung the scope allows was tried without gain, the budget is spent or the blockers
+  are clear. The Researcher gives the next rung with each falsifier and never says to stop after one undo.
+  The Reviewer sharpens the plan and records concerns: scope.commands defaults to every command of the
+  candidate's scope, `maxMutations` to 50 (never below 3; the recipe cap stays 120), and it refuses only a
+  request that is not for its slot's edit domain. The plan and worker examples list every toolkit
+  mutation, the plan checklist's default. Proving tests: `test_t01_regressions.OperatorLoopTest` (RED: 13
+  failures).
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.

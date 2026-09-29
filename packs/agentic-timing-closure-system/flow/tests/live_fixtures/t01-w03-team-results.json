@@ -1,0 +1,94 @@
+{
+ "operator": {
+  "at": "2026-09-29T12:26:58.317Z",
+  "delegationId": "team-atcs-worker-03-operator-8942a6f9aa09b976",
+  "ledgerSeq": 321,
+  "output": {
+   "limitations": [
+    "Recorded input reader unavailable in this effective tool grant: run-9a5f197a-...-#000254 (worker request) and #000271 could not be read, so the request's declared targetPins list, its auto-fix fail-reason evidence and any editDomain region plan were not available; inputDigests and the reviewed scope were used instead.",
+    "Session bootstrap (debug domain read) fixed the whole edit domain for slot w03: instances {swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_}, pins {swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_/D}, nets {}, regions {462.2 315.5 472.2 325.2} (462.2 315.5 472.2 325.5). No net is in the domain, so atcs_insert_buffer / atcs_split_load / atcs_split_net / atcs_insert_dummy were not admissible for this worker; only the single instance is mutable.",
+    "atcs_paths reported 'analyze setup paths size: 1502' (>1000 truncated to first 1000) and wrote ./analyze_setup_path_violations.txt; path rows were not returned inline, and atcs_paths with endPoints=<target pin> failed ('In PBA mode, only path collections can be accepted'), so the target-pin setup path cells could not be enumerated.",
+    "atcs_fail_reasons on the target pin returned an empty table (no reasons retained before a first fix), as the brief predicted for generation 1/2; no reason-directed method choice was therefore possible before the first mutation.",
+    "Only one trial was made: atcs_size_cell swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_ -> SDFCNQD2BWP35P140 (admitted, requestId w03r7, seq 1, status kept, ecoActions 1). Its own with-delta report showed setup total worst -0.1567 -> -0.1567 (D_Worst +0.0000), setup TNS +0.0006, hold total worst/TNS +0.0000, transition/capacitance worst +0.0000, and 'setup paths current worst -0.154 delta +0.000'; target slack did not improve, so per the loop rule an atcs_undo was sent (commandId w03c9, requestId w03r9) to revert the cell from SDFCNQD2BWP35P140 to SDFCNQARD1BWP35P140.",
+    "Context budget ran out before the atcs_undo completion could be observed and before atcs_dump_cells after.dump, atcs_export_changes and atcs_close could be sent. atcs_dump_cells before.dump was sent and completed (commandId cmd-w03-001 -> w03c1), atcs_ref completed (seq 0 reference: setup total 281 paths / worst -0.1567 ns / TNS -15.4228 ns; hold total 7430 / worst -0.2016 ns / TNS -279.7907 ns). after.dump was NOT written and export/close did NOT run in this session.",
+    "Uncertain outcome preserved, not resolved: the undo (w03r9) was acknowledged by the Host but its business result was never observed; the session therefore may still hold the single kept size_cell swap, and the Host may count up to 2 of the 15 admitted mutations (w03r7 + w03r9). The session hima-9a5f197a-operate-worker-03-interactive-7c0917 is left open, not closed.",
+    "No setup/hold gain check (atcs_gain) was executed and no candidate comparison was completed, so stopReason 'no-candidate-gains' means the ladder produced no measurable gain on the only admissible target (one instance, no nets); it does not assert that other pins or a wider domain have no candidates."
+   ],
+   "mutationReceipts": [
+    "w03r7"
+   ],
+   "planSha256": "0a434f5f1950e19d40f3e24a288cc512bfbdb48e9d9a96c7866cfe1f23ed2eb0",
+   "schema": "atcs-worker-session/1",
+   "stopReason": "no-candidate-gains"
+  }
+ },
+ "researcher": {
+  "at": "2026-09-29T12:23:10.333Z",
+  "delegationId": "team-atcs-worker-03-researcher-8942a6f9aa09b976",
+  "ledgerSeq": 258,
+  "output": {
+   "evidenceRefs": [
+    {
+     "contentSha256": "0a434f5f1950e19d40f3e24a288cc512bfbdb48e9d9a96c7866cfe1f23ed2eb0",
+     "reader": "atcs-worker-request/1 tools/read-atcs.py sha256 5f44d334d7b8b029235f3c75fa44c4d2aa80f4e7b5b9da563ccbc12033be11f8",
+     "ref": "run-9a5f197a-523d-4860-bfb3-d6d87644ee81#000254",
+     "what": "admitted workerRequest03 for slot w03: candidate.targetPins swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_/D, candidate.targets/mayAffect func_ssg_rcworst_125|setup|ifu_axi_araddr[4], editDomain instance swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_ + region [462.2,315.5,472.2,325.5], scope.commands atcs_size_cell/atcs_exchange_cell/atcs_insert_buffer/atcs_split_load/atcs_fix_setup_pins/atcs_undo with maxMutations 120, sessionPlan 5 hypotheses/falsifiers, tc_request_invalid_count=0"
+    }
+   ],
+   "hypotheses": [
+    {
+     "cluster": "func_ssg_rcworst_125|setup|ifu_axi_araddr[4]",
+     "falsifier": "After the move, atcs_gain reports no setup gain on func_ssg_rcworst_125|setup|ifu_axi_araddr[4], or reports the opposite (hold) check regressing by more than the setup gain; either reading makes the Operator atcs_undo and stop this cluster (setup ladder exhausted at this pin; request a Workshop revision before another move).",
+     "firstMove": {
+      "alternateMoveIfObjectRefused": {
+       "command": "atcs_size_cell",
+       "object": "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_"
+      },
+      "command": "atcs_fix_setup_pins",
+      "ladder": "setup",
+      "object": "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_/D",
+      "oppositeMargin": "hold margin of the same check/startpoint: atcs_gain must show the setup gain bought on ifu_axi_araddr[4] without hold loss that exceeds it, and no new violation on the m40 checks that were not in mayAffect",
+      "target": "func_ssg_rcworst_125|setup|ifu_axi_araddr[4]"
+     },
+     "mechanism": "The single failing check launches from swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_ (target pin .../D) and is only reported at rcworst_125, while the m40 corner is not in mayAffect; the cited launch register sits inside the region [462.2,315.5]-[472.2,325.5] with nets [] and no protected instances/nets, so the delay that eats the endpoint margin is most consistent with a weak/loaded launching register plus a long high-RC startpoint net at the worst-corner temperature, not with a downstream endpoint-side cell. The XTop fail reason and analyze-report evidence admitted here are only the problem string and this one timing check, so a pin-side driver/load mechanism is the reading supported; a pure routing-detour reading is not separable from it with the supplied evidence."
+    }
+   ],
+   "limitations": [
+    "One blocker cluster only: candidate.targets holds a single check, so one hypothesis is returned; no noSafeAction was stated and tc_request_invalid_count=0, so a move is admissible.",
+    "Mechanism is inferred from the cited path/pin/corner evidence in the admitted request; no separate analyze report or XTop fail-reason artifact was granted to this member.",
+    "Site capability pgVerification=false, so any buffer/size move must be verified by the target check reading, not by PG equivalence.",
+    "No execution, claim or file change is made here; the moves above are candidate proposals, and disagreement with this reading must go back as a Workshop revision."
+   ],
+   "schema": "atcs-worker-research/1"
+  }
+ },
+ "reviewer": {
+  "at": "2026-09-29T12:23:34.792Z",
+  "delegationId": "team-atcs-worker-03-reviewer-8942a6f9aa09b976",
+  "ledgerSeq": 271,
+  "output": {
+   "evidenceRefs": [
+    "run-9a5f197a-523d-4860-bfb3-d6d87644ee81#000254",
+    "run-9a5f197a-523d-4860-bfb3-d6d87644ee81#000258"
+   ],
+   "limitations": [
+    "planSha256 is the contentSha256 of record 000254, read via the record-000258 research handoff rather than directly.",
+    "One blocker cluster adopted; budget covers the five planned w03 trials, one undo each, plus margin for refusals.",
+    "Scope includes the cluster's alternate move; pgVerification=false, so gain must be read from the target check."
+   ],
+   "planSha256": "0a434f5f1950e19d40f3e24a288cc512bfbdb48e9d9a96c7866cfe1f23ed2eb0",
+   "schema": "atcs-worker-review/2",
+   "scope": {
+    "commands": [
+     "atcs_fix_setup_pins",
+     "atcs_size_cell",
+     "atcs_exchange_cell",
+     "atcs_split_load",
+     "atcs_insert_buffer",
+     "atcs_undo"
+    ],
+    "maxMutations": 15
+   }
+  }
+ }
+}

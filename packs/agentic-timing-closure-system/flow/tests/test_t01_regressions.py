@@ -387,5 +387,69 @@ class ParkedSeatTest(T01PlanWorkspace):
         self.assertTrue(found[0].startswith("candidate.workPackages.w06: parked, but workerSlots is 6"), found)
 
 
+def team_members(slot):
+    team = CONTRACT.split(f"  - id: atcs-worker-{slot}\n", 1)[1].split("\n  - id: atcs-worker-", 1)[0]
+    members = {}
+    for block in team.split("      - id: ")[1:]:
+        name = block.split("\n", 1)[0]
+        members[name] = " ".join(block.split())
+    return members
+
+
+class OperatorLoopTest(unittest.TestCase):
+    """Treatment attempt 1's w03 (Ledger #258, #271, #321; live_fixtures/t01-w03-team-results.json): the
+    Researcher's falsifier said "atcs_undo and stop this cluster", the Reviewer approved 15 mutations, and
+    the Operator sized once, undid it (rightly: the new master dropped the reset) and stopped with
+    no-candidate-gains, 13 mutations unspent. The worker/aggregation principle (FABRIC G45): an undo is
+    never a stop, the Operator tries freely inside its domain, and the Reviewer sharpens the plan with a
+    wide default scope. RED on acb5d45f: no text said so."""
+
+    def test_the_retained_w03_session_undid_its_one_trial_and_stopped(self):
+        results = json.loads((LIVE / "t01-w03-team-results.json").read_text())
+        operator = results["operator"]["output"]
+        self.assertEqual((operator["stopReason"], operator["mutationReceipts"]), ("no-candidate-gains", ["w03r7"]))
+        self.assertIn("atcs_undo", " ".join(operator["limitations"]))
+        self.assertIn("stop this cluster", results["researcher"]["output"]["hypotheses"][0]["falsifier"])
+        self.assertEqual(results["reviewer"]["output"]["scope"]["maxMutations"], 15)
+
+    def test_the_knowledge_says_an_undo_is_never_a_stop_and_to_try_freely(self):
+        text = " ".join((PACK_DIR / "knowledge" / "xtop-expert-operator.md").read_text().split())
+        for words in ("then try the next rung", "an undo is never a stop", "Try freely inside your domain",
+                      "no wrong attempt, only an unmeasured one", "every rung the scope allows"):
+            self.assertIn(words, text)
+
+    def test_each_team_carries_the_next_rung_and_the_wide_default_scope(self):
+        for slot in SLOTS:
+            members = team_members(slot)
+            with self.subTest(slot=slot):
+                self.assertIn("then try the next rung of the ladder", members["operator"])
+                self.assertIn("an undo is never the end of the session", members["operator"])
+                self.assertIn("no wrong attempt, only an unmeasured one", members["operator"])
+                self.assertIn("never tell the Operator to stop after one undo", members["researcher"])
+                reviewer = members["reviewer"]
+                self.assertIn("sharpen the plan and record concerns", reviewer)
+                self.assertIn("scope.commands defaults to every command of candidate.scope.commands", reviewer)
+                self.assertIn("scope.maxMutations defaults to 50", reviewer)
+                self.assertIn("never below 3", reviewer)
+                example = json.loads(reviewer.split("Example reply (shape only): ", 1)[1].split("'", 1)[0])
+                self.assertGreaterEqual(example["scope"]["maxMutations"], 3)
+                self.assertIn("atcs_undo", example["scope"]["commands"])
+
+    def test_the_recipe_cap_leaves_room_for_the_default(self):
+        from atcs import workspaces
+        self.assertGreaterEqual(workspaces.SCOPE_MAX_MUTATIONS, 50)
+        for slot in SLOTS:
+            operator = CONTRACT.split(f"  - id: atcs-worker-{slot}\n", 1)[1].split("reviewedAction:", 1)[1]
+            self.assertIn(f"maxMutations: {workspaces.SCOPE_MAX_MUTATIONS}", operator.split("\n  - id:", 1)[0])
+
+    def test_the_examples_list_every_toolkit_mutation(self):
+        from atcs import workspaces
+        text = (PACK_DIR / "knowledge" / "example-campaign-plan.md").read_text()
+        plan = json.loads(text.split("```json\n", 1)[1].split("\n```", 1)[0])
+        for slot, package in plan["candidate"]["workPackages"].items():
+            with self.subTest(slot=slot):
+                self.assertEqual(sorted(package["scope"]["commands"]), sorted(workspaces.MUTATE_COMMANDS))
+
+
 if __name__ == "__main__":
     unittest.main()
