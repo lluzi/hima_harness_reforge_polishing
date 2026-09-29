@@ -130,6 +130,11 @@ from pathlib import Path
 #                           refresh has completed), in which case `tc_refresh_count` is
 #                           `unknown`, never a guessed `0`.
 #
+#   refresh-budget          no envelope: the stamped `design-state` at state/working-state.json
+#                           is the anchor REPORT (it exists from `baseline` on); the count itself
+#                           is read from the fixed workspace path state/refresh-ledger.json, which
+#                           does not exist before the first refresh -- see the handler.
+#
 #   next-decision           no envelope: the raw candidate document itself.
 #                           `stateRef`/`observationRef` are instead resolved by a
 #                           bounded workspace scan (`_resolve_id_in_workspace`) —
@@ -967,6 +972,91 @@ def _read_acceptance_record(report, workspace, extra, mods):
     return [_emit("tc_accepted_artifact_ready", "count", ready), refresh_value]
 
 
+_REFRESH_LEDGER_REL = "state/refresh-ledger.json"
+_STA_RECEIPT_REL = "state/sta.json"
+_STA_ARCHIVE_GLOB = "implementations/*/sta.json"
+
+
+def _refresh_ledger_entry_count(ledger_path, core):
+    """Entry count of the identity-verified ledger at `ledger_path`, or the reason it is not one."""
+    try:
+        ledger = _load_json(ledger_path)
+        _verify_identity(ledger, "refresh-ledger", core)
+    except (OSError, ValueError) as exc:
+        return None, f"refresh ledger {_REFRESH_LEDGER_REL} cannot be verified: {exc}"
+    entries = ledger.get("entries")
+    if not isinstance(entries, list):
+        return None, f"refresh ledger {_REFRESH_LEDGER_REL}: entries is not a list"
+    merge_ids = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return None, f"refresh ledger {_REFRESH_LEDGER_REL}: an entry is not an object"
+        for key in ("mergeCommitId", "designStateId"):
+            if not isinstance(entry.get(key), str) or not entry[key]:
+                return None, f"refresh ledger {_REFRESH_LEDGER_REL}: an entry has no {key}"
+        merge_ids.append(entry["mergeCommitId"])
+    if len(set(merge_ids)) != len(merge_ids):
+        return None, f"refresh ledger {_REFRESH_LEDGER_REL}: a merge commit is recorded twice"
+    return len(entries), None
+
+
+def _read_refresh_budget(report, workspace, extra, mods):
+    """`tc_refreshes_completed`: completed full physical refreshes, read right before one more.
+
+    Issue #63: every Explore revisit consumes a Harness generation whether or not it refreshes
+    anything, so the Pack caps Innovus/StarRC/PrimeTime refreshes itself -- the `refresh-budget`
+    rule holds this count below the Run's Goal value `max_physical_refreshes` at the Judges
+    `check-refresh-budget` (before `implement`) and `check-refresh-budget-apr` (before
+    `apr-prepare`). The graph reads this afresh right before each of them, because a Judge takes a
+    type's latest reading Run-wide and `sta` can record a refresh with no later reading of it.
+
+    REPORT is the stamped `design-state` at state/working-state.json, identity-checked (never its
+    file references: this reading does not use them). It is only the anchor: the Harness refuses a
+    missing report, and `refreshLedger` (state/refresh-ledger.json) does not exist before the first
+    refresh, so it cannot be the report. The count comes from that ledger at its fixed workspace
+    path (`atcs_cli._paths`), through the same `_load_json`/`_verify_identity` checks the
+    acceptance-record reader applies to it:
+
+    - ledger absent, no STA receipt (state/sta.json, nor its archive
+      implementations/<mergeId>/sta.json): `known(0)` -- `atcs.refresh.load_ledger`'s own reading
+      of a ledger never written. `sta` records the ledger entry before its receipt and archive are
+      written, so no receipt means no refresh completed. An `unknown` here would stop the Run
+      before its first refresh.
+    - ledger absent beside an STA receipt or archive: `unknown` (the ledger was lost, not never
+      written).
+    - ledger present: `known(n)` for an identity-verified ledger of `n` well-formed entries with
+      distinct merge commits; `unknown` for a corrupt, tampered, malformed or symlinked one. Fail
+      closed: the Judge is UNDETERMINED and the Run waits for a person, never a guessed count.
+
+    Why a new type and not `tc_refresh_count`: the acceptance-record reader reports a missing
+    ledger as `unknown` unconditionally and refuses a tampered one outright; this reader must
+    report `known(0)` for a ledger never written and `unknown` for a tampered one. Two readers
+    with different absence rules under one type name would let whichever read last decide.
+    """
+    core = mods["core"]
+    refresh_mod = mods["refresh"]
+    anchor = _load_json(report)
+    _verify_identity(anchor, "design-state", core)
+
+    root = Path(workspace)
+    ledger_path = root / _REFRESH_LEDGER_REL
+    if ledger_path.is_symlink():
+        measure = core.unknown(f"refresh ledger {_REFRESH_LEDGER_REL} is a symlink")
+    elif not ledger_path.exists():
+        receipts = [_STA_RECEIPT_REL] if (root / _STA_RECEIPT_REL).exists() else []
+        receipts += sorted(str(p.relative_to(root)) for p in root.glob(_STA_ARCHIVE_GLOB))
+        if receipts:
+            measure = core.unknown(
+                f"refresh ledger {_REFRESH_LEDGER_REL} is missing although {receipts[0]} records a completed STA"
+            )
+        else:
+            measure = core.known(len(refresh_mod.load_ledger(ledger_path)["entries"]))
+    else:
+        count, reason = _refresh_ledger_entry_count(ledger_path, core)
+        measure = core.unknown(reason) if reason is not None else core.known(count)
+    return [_emit("tc_refreshes_completed", "count", measure)]
+
+
 _ACTION_CODES = {
     "observe": 1, "research": 2, "compose": 3, "revise": 4,
     "implement": 5, "earlier-apr": 6, "wait": 7, "goal-met": 8,
@@ -1161,6 +1251,7 @@ _HANDLERS = {
     "precheck-evidence": lambda report, workspace, extra, mods: _read_precheck_evidence(report, workspace, extra, mods),
     "evaluation": lambda report, workspace, extra, mods: _read_evaluation(report, workspace, extra, mods),
     "acceptance-record": lambda report, workspace, extra, mods: _read_acceptance_record(report, workspace, extra, mods),
+    "refresh-budget": lambda report, workspace, extra, mods: _read_refresh_budget(report, workspace, extra, mods),
     "next-decision": lambda report, workspace, extra, mods: _read_next_decision(report, workspace, extra, mods),
 }
 

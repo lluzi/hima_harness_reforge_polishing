@@ -6,6 +6,8 @@
 
 建议的 Goal 参数为 `target_setup_wns_ns = 0.0`、`target_hold_wns_ns = 0.0`，单位 ns，表示最终有效分析中必要 checks 的最差 slack 下限；项目若另有已批准的正 margin 要求，在开始前固定，不在探索中改变。最终分析允许采用预先确定、覆盖合格的 PBA 口径，不要求 GBA 同时 clean。
 
+Goal 另含 `max_physical_refreshes`（count，1–4，默认 1）：本 Run 允许完成的完整物理刷新次数上限。它由人在创建 Run 时固定，Run 内的 Strategy 决定或修订都不能改变它；用尽后 Run 停在 `wait-for-person` 并结束，需要更多刷新须以更高的值新建 Run。
+
 主要业务结果是可恢复、与最终证据一致的 Innovus 数据库。优化优先级是：在生效资源/成本硬上限内最早获得合格结果；其后报告 seat-hours、工程师时间、完整物理刷新次数与其他代价。不给本 SPEC 写未经测量的倍数承诺。
 
 不将原数据库已有的 PG/物理问题全面整改列为目标。与本次改变直接相关、保证结果仍是有效设计的必要检查，按固定动作合同执行。Timing closure 不等同于整芯 signoff 或 tapeout-ready。
@@ -167,6 +169,7 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 | `tc_fixed_check_count` | count | 同一身份 check 明确负转非负的数量 | 从报告消失不计 fixed |
 | `tc_missing_prior_check_count` | count | 需要对比而无法再次定位/观察的旧 checks | 与结构替换 lineage 分开解释 |
 | `tc_refresh_count` | count | 已完成的实际完整物理刷新次数 | 与研究次数、generation 分开 |
+| `tc_refreshes_completed` | count | 刷新预算 gate 处读取的已完成完整物理刷新次数（`state/refresh-ledger.json`） | 与 `tc_refresh_count` 同一事实、不同缺席规则：从未写过账本且无 STA 回执为 known(0)；账本缺失但存在 STA 回执或其归档、或账本不可验证为 unknown |
 | `tc_accepted_artifact_ready` | count | 对应选择的实际 DB/恢复材料核验完备为 1 | 存在同名文件不足以为 1 |
 | `tc_stop_required` | count | 当前研究合同内必须等待外部输入/范围条件成立为 1 | 配套明确 reason；不是全局不可行证明 |
 | `tc_next_action` | count | 下一项投资决策；来自通过 schema 校验的 `next-decision` 产物的 `action` 字段编码 | 编码为 1 observe、2 research、3 compose、4 revise、5 implement、6 earlier-apr、7 wait、8 goal-met；只在 `next-decision` 通过 schema 校验时产生对应编码，否则为 unknown |
@@ -201,6 +204,7 @@ Judge 只执行已声明谓词，不解释根因、不选择最佳修复。Reade
 | `hold-goal` | `tc_final_hold_wns_ns >= target_hold_wns_ns` | 联合 Goal 的一部分 | 同上 |
 | `artifact-ready` | `tc_accepted_artifact_ready == 1` | 支持交付/最终化 | 恢复或完成产物核验 |
 | `continue-or-wait` | `tc_stop_required == 0` | 合法下一研究动作 | FAIL 到声明 wait，带具体外部需求 |
+| `refresh-budget` | `tc_refreshes_completed < max_physical_refreshes` | 允许再做一次完整物理刷新（`implement`/`apr-prepare`） | FAIL/UNDETERMINED 到 `wait-for-person`，Run 结束；更多刷新须新建 Run |
 
 表中复合条件在未来 FABRIC 中编译为当前 schema 支持的多个规则及顺序，不假装现有单谓词 YAML 支持任意表达式。证据/约束规则先于 Goal；所有最终必需规则都通过才允许 goal-met 决定。一个 Judge 第一条规则的路由不能被误当作全部规则已经通过。
 
@@ -210,7 +214,7 @@ Judge 只执行已声明谓词，不解释根因、不选择最佳修复。Reade
 - `final-evidence-ready` 拆分为 `final-evidence-ready-coverage`（谓词 `tc_missing_required_check_count == 0`）与 `final-evidence-ready-identity`（谓词 `tc_final_identity_error_count == 0`），按此顺序串联。
 - `required-constraints-pass` 拆分为 `required-constraints-pass-failures`（谓词 `tc_applicable_constraint_failure_count == 0`）与 `required-constraints-pass-unknowns`（谓词 `tc_applicable_constraint_unknown_count == 0`），按此顺序串联。
 
-其余 8 条规则（`inputs-ready`、`request-admissible`、`composition-ready`、`presta-model-qualified`、`setup-goal`、`hold-goal`、`artifact-ready`、`continue-or-wait`）本身即单谓词，编译时不拆分，直接对应一个 Judge 节点。
+其余 9 条规则（`inputs-ready`、`request-admissible`、`composition-ready`、`presta-model-qualified`、`setup-goal`、`hold-goal`、`artifact-ready`、`continue-or-wait`、`refresh-budget`）本身即单谓词，编译时不拆分，直接对应一个 Judge 节点。
 
 定性根因置信度或未经校准的预测不作为硬拒绝谓词。模型内不利与已证实非法分开，允许预算内有范围的真实试验。
 

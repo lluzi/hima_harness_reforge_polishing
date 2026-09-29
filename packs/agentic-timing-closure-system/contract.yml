@@ -58,9 +58,12 @@ outputs:
     description: M1 design-state of the starting database, fixed for the whole Campaign (policy anchor).
   - name: workingState
     path: state/working-state.json
+    reader: atcs-refresh-budget
     description: >-
       The design-state every batch is based on: seeded from the baseline by baseline, rewritten by
-      adopt whenever the working pointer moves to an adopted candidate.
+      adopt whenever the working pointer moves to an adopted candidate. Observed right before every
+      physical refresh: its reader counts the completed refreshes in the refresh ledger beside it
+      (refreshLedger itself does not exist before the first refresh, and a missing report blocks).
   - name: acceptancePolicy
     path: state/policy.json
     description: >-
@@ -535,6 +538,7 @@ rules:
   - setup-goal
   - hold-goal
   - artifact-ready
+  - refresh-budget
   - continue-or-wait
   - next-action-observe
   - next-action-research
@@ -560,6 +564,12 @@ goal:
   # evidence can never satisfy. See FABRIC.md's Gaps for the SPEC-consistent framing.
   target_setup_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }
   target_hold_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }
+  # Issue #63: caps completed Innovus+StarRC+PrimeTime refreshes for the whole Run (Judges
+  # check-refresh-budget*, rule refresh-budget). Every Explore revisit consumes a Harness
+  # generation whether or not it refreshes anything, so generationLimit cannot stand in for it.
+  # A Goal value, not a Strategy knob: the person fixes it when the Run is created and nothing in
+  # the Run changes it (an owner's next-strategy or a revision cannot reach a Goal value).
+  max_physical_refreshes: { type: number, unit: count, min: 1, max: 4, default: 1, precision: 0 }
 
 strategy:
   maxPaths: { type: number, unit: paths, min: 100, max: 5000, default: 1000 }
@@ -567,6 +577,7 @@ strategy:
 words:
   target_setup_wns_ns: { label: target setup WNS, unit: ns }
   target_hold_wns_ns: { label: target hold WNS, unit: ns }
+  max_physical_refreshes: { label: max full physical refreshes per Run, unit: count }
   maxPaths: { label: max paths per scenario query, unit: paths }
 
 knowledge:
@@ -590,6 +601,12 @@ knowledge:
     purpose: The strict full-flow/post-route-only scopes, lifecycle completeness and when an earlier APR stage is justified.
   - file: experience-transfer.md
     purpose: Success and failure conditions, predicted versus measured, and version/region applicability of recorded experience.
+  - file: example-campaign-plan.md
+    purpose: One campaign-plan document the campaign-plan Reader admits, for plan-campaign to copy the shape of.
+  - file: example-worker-request.md
+    purpose: One worker request the worker-request Reader admits, carrying the plan example's w01 package and hierarchical action instances, for the research workers to copy the shape of.
+  - file: example-next-decision.md
+    purpose: One next-decision the next-decision Reader admits, for evaluate-next-investment to copy the shape of.
 
 agentTeams:
   - id: atcs-worker-01
@@ -693,11 +710,12 @@ workshops:
       candidate; never repeat it at the top level. The Reader admits candidate.workPackages, and
       prepare-workers prepares that same field. Do not repeat a failed trial without new evidence; a slot with nothing
       worth researching still gets a bounded package whose diagnosis-only outcome is a valid no-fix.
+      Read knowledge example-campaign-plan.md; copy its shape and change only the values.
     directory: research/plan
     entry: entry.py
     language: python
     reads: [workingState, inputReadiness, currentObservations, riskAtlas, contributionIndex, campaignExperience, statePointers]
-    knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md]
+    knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md, example-campaign-plan.md]
     produces: campaignPlan
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -708,18 +726,19 @@ workshops:
       and manual/auto strategy and the typed atcs_* procedures the Operator session will run. Write the
       slot's request to research/requests/worker-request-w01.json as {candidate: <the w01 work
       package, never wider than the prepared edit domain>, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
-      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
+      siteCapabilities: <the Site capabilities>}. The typed commands and the falsifier of each belong
+      to the Operator session, not to this file. The Operator session must write before.dump and
+      after.dump (atcs_dump_cells) in the slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
       dependencies}. A prediction is a hypothesis for the tool to test, never a result.
       Also include top-level actions with one to three objects {instance, toMaster}; each instance
       must be in candidate.editDomain.instances and each action proposes one size_cell mutation.
       The Agent Team reviews and selects one exact action from this admitted list.
+      Read knowledge example-worker-request.md; copy its shape and change only the values (and taskId to w01); every instance is a full hierarchical path such as u_a/reg0, never a bare leaf name.
     directory: research/worker-01
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult01]
-    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
+    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
     produces: workerRequest01
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -730,15 +749,16 @@ workshops:
       and manual/auto strategy and the typed atcs_* procedures the Operator session will run. Write the
       slot's request to research/requests/worker-request-w02.json as {candidate: <the w02 work
       package, never wider than the prepared edit domain>, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
-      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
+      siteCapabilities: <the Site capabilities>}. The typed commands and the falsifier of each belong
+      to the Operator session, not to this file. The Operator session must write before.dump and
+      after.dump (atcs_dump_cells) in the slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
       dependencies}. A prediction is a hypothesis for the tool to test, never a result.
+      Read knowledge example-worker-request.md; copy its shape and change only the values (and taskId to w02); every instance is a full hierarchical path such as u_a/reg0, never a bare leaf name.
     directory: research/worker-02
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult02]
-    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
+    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
     produces: workerRequest02
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -749,15 +769,16 @@ workshops:
       and manual/auto strategy and the typed atcs_* procedures the Operator session will run. Write the
       slot's request to research/requests/worker-request-w03.json as {candidate: <the w03 work
       package, never wider than the prepared edit domain>, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
-      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
+      siteCapabilities: <the Site capabilities>}. The typed commands and the falsifier of each belong
+      to the Operator session, not to this file. The Operator session must write before.dump and
+      after.dump (atcs_dump_cells) in the slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
       dependencies}. A prediction is a hypothesis for the tool to test, never a result.
+      Read knowledge example-worker-request.md; copy its shape and change only the values (and taskId to w03); every instance is a full hierarchical path such as u_a/reg0, never a bare leaf name.
     directory: research/worker-03
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult03]
-    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
+    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
     produces: workerRequest03
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -793,10 +814,11 @@ workshops:
       legal only when the current final evaluation and accepted artifact support it. A temporarily
       degraded working state must name its follow-up and falsifier. Cite new information; never retry
       by revision alone.
+      Read knowledge example-next-decision.md; copy its shape and change only the values.
     directory: research/next
     entry: entry.py
     language: python
     reads: [inputReadiness, workingState, acceptancePolicy, currentObservations, riskAtlas, contributionIndex, integrationState, precheckEvidence, physicalDelta, finalEvaluation, statePointers, residualCases, campaignExperience]
-    knowledge: [method-and-benchmark.md, state-and-evidence.md, cheap-verification.md, lifecycle-and-input-modes.md, innovus-stage-interventions.md, experience-transfer.md]
+    knowledge: [method-and-benchmark.md, state-and-evidence.md, cheap-verification.md, lifecycle-and-input-modes.md, innovus-stage-interventions.md, experience-transfer.md, example-next-decision.md]
     produces: nextDecision
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']

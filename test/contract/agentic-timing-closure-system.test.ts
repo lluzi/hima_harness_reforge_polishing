@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { cp, mkdir, readFile, writeFile, appendFile, realpath } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
-import { loadPack, checkPack, loadSite, packStage, installPackMethod } from '@hima/harness';
+import { loadPack, checkPack, loadSite, packStage, installPackMethod, strategyFrom } from '@hima/harness';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { localHome, waitUntil } from './support/fabric.ts';
@@ -85,10 +85,25 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   const host = await bootInProcess(h); let cleanupRunId: string | undefined;
   t.after(async () => { if (cleanupRunId) await host.ctx.hima.cancelRun(cleanupRunId); await host.dispose(); await h.dispose(); });
   const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
+  // Issue 63: the physical-refresh cap is a Goal value fixed when the Run is created. 2, not the
+  // default 1, so the assertions below prove the creation value reached the Run's goal and is what
+  // both refresh-budget Judges bind.
   const started = await host.ctx.hima.startRun({ pack: packId, site: 'local',
-    goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0 }, ownerSessionId: actor, timeBoxMs: 60000 });
+    goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0, max_physical_refreshes: 2 }, ownerSessionId: actor, timeBoxMs: 60000 });
   assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
   const runId = started.run.id; cleanupRunId = runId;
+  const createdRun = host.ctx.hima.ledger.run(runId)!;
+  assert.equal(createdRun.goal?.max_physical_refreshes, 2);
+  assert.equal(createdRun.strategy?.max_physical_refreshes, undefined);
+  for (const judgeId of ['check-refresh-budget', 'check-refresh-budget-apr']) {
+    const reference = (pack.graph.nodes.find(node => node.id === judgeId) as any).parameters.bind.max_physical_refreshes;
+    assert.deepEqual(reference, { from: 'goal', name: 'max_physical_refreshes' });
+    assert.equal(createdRun.goal?.[reference.name], 2, `${judgeId} binds the Run's creation value`);
+  }
+  // An owner's next-strategy Explore decision (and a revision) is admitted through strategyFrom
+  // over the Run's Strategy (fabric.ts completeAdmittedNode, revisionAction); the cap is no knob there.
+  assert.ok('error' in strategyFrom(pack.contract.strategy, { ...createdRun.strategy, max_physical_refreshes: 4 }));
+  assert.ok('error' in strategyFrom(pack.contract.strategy, { refreshLimit: 4 }));
   const workspace = started.workspace;
   assert.ok(workspace);
   // Real Pack producers seed the base, private slot and worker manifest. All files are synthetic.
@@ -226,12 +241,48 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.equal(member.budgetShare.maxFollowups, followups);
   }
   assert.equal(packStage(packDir).stage, 'compiled');
-  assert.equal(pack.graph.nodes.length, 106);
+  // Issue 63 slice 2: +4 nodes (a fresh refresh-budget reading and its Judge before `implement`
+  // and before `apr-prepare`), +6 edges.
+  assert.equal(pack.graph.nodes.length, 110);
   // Final review (Minor): +2 edges -- check-setup-goal/check-hold-goal each gain
   // an explicit UNDETERMINED edge to `residual` (an unknown final WNS is an
   // evidence gap, not a person-facing wait) instead of falling through to the
   // engine's own unlabelled-UNDETERMINED default (wait-for-person).
-  assert.equal(pack.graph.edges.length, 143);
+  assert.equal(pack.graph.edges.length, 149);
+
+  // Issue 63 slice 2: every Explore revisit consumes a Harness generation, so `generationLimit`
+  // bounds revisits, not Innovus/StarRC/PrimeTime refreshes. The Run's Goal value
+  // `max_physical_refreshes`, fixed at Run creation, caps them: a fresh reading of the refresh
+  // ledger, then a Judge, right before each physical refresh.
+  assert.deepEqual((pack.contract.goal as any).max_physical_refreshes,
+    { type: 'number', unit: 'count', min: 1, max: 4, default: 1, precision: 0 });
+  assert.equal((pack.contract.words as any).max_physical_refreshes.unit, 'count');
+  assert.deepEqual(Object.keys(pack.contract.strategy), ['maxPaths']);
+  const workingState = pack.contract.outputs.find(output => output.name === 'workingState')!;
+  assert.equal(workingState.reader, 'atcs-refresh-budget');
+  const nodeOf = (id: string) => (pack.graph.nodes as any[]).find(node => node.id === id);
+  const edgesFrom = (id: string) => (pack.graph.edges as any[]).filter(edge => edge.from === id)
+    .map(edge => `${edge.outcome ?? ''}${edge.revisit ? 'revisit' : ''}->${edge.to}`).sort();
+  const edgesTo = (id: string) => (pack.graph.edges as any[]).filter(edge => edge.to === id)
+    .map(edge => `${edge.from}->${edge.outcome ?? ''}${edge.revisit ? 'revisit' : ''}`).sort();
+  for (const [read, check, refresh] of [['read-refresh-budget', 'check-refresh-budget', 'implement'],
+    ['read-refresh-budget-apr', 'check-refresh-budget-apr', 'apr-prepare']] as const) {
+    assert.equal(nodeOf(read).kind, 'act');
+    assert.equal(nodeOf(read).parameters.observes, 'workingState');
+    assert.equal(nodeOf(check).kind, 'judge');
+    assert.deepEqual(nodeOf(check).parameters.rules, ['refresh-budget']);
+    assert.deepEqual(nodeOf(check).parameters.bind, { max_physical_refreshes: { from: 'goal', name: 'max_physical_refreshes' } });
+    assert.deepEqual(edgesFrom(read), [`->${check}`]);
+    assert.deepEqual(edgesFrom(check), ['FAIL->wait-for-person', `PASS->${refresh}`]);
+    assert.deepEqual(edgesTo(refresh), [`${check}->PASS`], `${refresh} is entered only through ${check}`);
+  }
+  assert.deepEqual(edgesTo('read-refresh-budget'), ['check-presta-model->PASS', 'revisit-implement->revisit']);
+  assert.deepEqual(edgesTo('read-refresh-budget-apr'), ['revisit-earlier-apr->revisit']);
+  // Review C-5: the refreshing nodes behind the two gates are entered only from behind them.
+  assert.deepEqual(edgesTo('apr-run'), ['apr-prepare->']);
+  assert.deepEqual(edgesTo('extract'), ['apr-run->', 'implement->']);
+  assert.deepEqual(edgesFrom('check-presta-model'), ['FAIL->decide-next', 'PASS->read-refresh-budget']);
+  assert.ok(pack.contract.rules.includes('refresh-budget'));
 
   // Issue 63 (fresh03 `sta` blocked: "references ${MAX_PATHS}, which nothing bound"): every
   // `${NAME}` a node's tool command line uses is bound by that node or is a Harness-reserved value.
@@ -328,4 +379,28 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     encoding: 'utf8',
   });
   assert.equal(tests.status, 0, `${tests.stdout}\n${tests.stderr}`);
+});
+
+// Issue 63: nothing in the repo fails when flow/ drifts away from the installed v9 wrapper's
+// pinned adapter/flow identities -- linglong-atcs28/wrapper-pins.json records what that Site
+// administrator's installed wrapper actually pins, and this test is the gate: a flow/ change
+// without a matching wrapper update (a new sha256, a new flowDigest) fails here first.
+test('linglong-atcs28 wrapper-pins.json matches the Pack flow/ this repo ships', async () => {
+  const pinsPath = path.join(repoRoot, 'sites/linglong-atcs28/wrapper-pins.json');
+  const pins = JSON.parse(await readFile(pinsPath, 'utf8'));
+
+  const packDir = path.join(repoRoot, 'packs', packId);
+  const adapterSha256 = createHash('sha256')
+    .update(await readFile(path.join(packDir, 'flow/atcs_cli.py')))
+    .digest('hex');
+  assert.equal(pins.adapterSha256, adapterSha256,
+    'wrapper-pins.json adapterSha256 must equal sha256(flow/atcs_cli.py); update the pinned wrapper before this file');
+
+  const digest = spawnSync('python3', ['flow/atcs_cli.py', 'flow-digest', 'flow'], {
+    cwd: packDir,
+    encoding: 'utf8',
+  });
+  assert.equal(digest.status, 0, `${digest.stdout}\n${digest.stderr}`);
+  assert.equal(pins.flowDigest, digest.stdout.trim(),
+    'wrapper-pins.json flowDigest must equal `python3 flow/atcs_cli.py flow-digest flow`\'s current output');
 });

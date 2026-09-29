@@ -239,6 +239,22 @@ nodes:
   - id: check-presta-model
     kind: judge
     parameters: { rules: [presta-model-qualified] }
+  # Physical-refresh budget (Issue #63): every Explore revisit consumes a Harness generation whether
+  # or not it refreshes anything, so generationLimit bounds revisits, not refreshes. Right before
+  # each refresh (implement here, apr-prepare below) the ledger is read afresh -- a Judge takes a
+  # type's latest reading Run-wide, and sta records a refresh no later node reads -- and
+  # refresh-budget holds tc_refreshes_completed below the Run's Goal value max_physical_refreshes,
+  # fixed when the Run is created. FAIL and UNDETERMINED (an unverifiable ledger) stop at
+  # wait-for-person, which has no outgoing edge: clearing it ends the Run. More refreshes need a
+  # new Run created with a higher max_physical_refreshes.
+  - id: read-refresh-budget
+    kind: act
+    parameters: { observes: workingState }
+  - id: check-refresh-budget
+    kind: judge
+    parameters:
+      rules: [refresh-budget]
+      bind: { max_physical_refreshes: { from: goal, name: max_physical_refreshes } }
 
   # 7. One joint implementation and full refresh, then evidence before Goal.
   - id: implement
@@ -369,7 +385,8 @@ nodes:
 
   # 9. Earlier APR: full-flow only, re-checked on a fresh readiness reading; apr-prepare takes the
   #    stage from the admitted next-decision, and the stage run joins the implement chain at extract
-  #    (same refresh, evaluation, judges and adoption).
+  #    (same refresh, evaluation, judges and adoption), so the revisit enters through the same
+  #    refresh-budget gate as implement before apr-prepare.
   - id: route-earlier-apr
     kind: judge
     parameters: { rules: [next-action-earlier-apr, continue-or-wait] }
@@ -382,6 +399,14 @@ nodes:
   - id: revisit-earlier-apr
     kind: explore
     parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
+  - id: read-refresh-budget-apr
+    kind: act
+    parameters: { observes: workingState }
+  - id: check-refresh-budget-apr
+    kind: judge
+    parameters:
+      rules: [refresh-budget]
+      bind: { max_physical_refreshes: { from: goal, name: max_physical_refreshes } }
   - id: apr-prepare
     kind: act
     parameters: { tool: apr-prepare }
@@ -451,7 +476,9 @@ nodes:
     parameters: { chooser: atcs-goal-met, bind: { paths: 1000 } }
 
   # The one wait node: missing minimum inputs (inputs-ready FAIL), a next decision requiring an
-  # external input/scope/capability (continue-or-wait FAIL), and every UNDETERMINED verdict.
+  # external input/scope/capability (continue-or-wait FAIL), the Run's max_physical_refreshes
+  # spent (refresh-budget FAIL), and every UNDETERMINED verdict. It has no outgoing edge, so a
+  # person clearing it ends the Run.
   - id: wait-for-person
     kind: wait
     parameters: { blocker: scope-or-input-required }
@@ -528,7 +555,10 @@ edges:
 
   - { from: presta, to: read-precheck }
   - { from: read-precheck, to: check-presta-model }
-  - { from: check-presta-model, to: implement, outcome: PASS }
+  - { from: check-presta-model, to: read-refresh-budget, outcome: PASS }
+  - { from: read-refresh-budget, to: check-refresh-budget }
+  - { from: check-refresh-budget, to: implement, outcome: PASS }
+  - { from: check-refresh-budget, to: wait-for-person, outcome: FAIL }
   - { from: check-presta-model, to: decide-next, outcome: FAIL }
 
   - { from: implement, to: extract }
@@ -590,14 +620,17 @@ edges:
   - { from: revisit-revise, to: compose-facts, revisit: true }
   - { from: route-implement, to: revisit-implement, outcome: PASS }
   - { from: route-implement, to: route-earlier-apr, outcome: FAIL }
-  - { from: revisit-implement, to: implement, revisit: true }
+  - { from: revisit-implement, to: read-refresh-budget, revisit: true }
 
   - { from: route-earlier-apr, to: reread-readiness, outcome: PASS }
   - { from: route-earlier-apr, to: route-goal-met, outcome: FAIL }
   - { from: reread-readiness, to: check-apr-scope }
   - { from: check-apr-scope, to: revisit-earlier-apr, outcome: PASS }
   - { from: check-apr-scope, to: revisit-next-decision, outcome: FAIL }
-  - { from: revisit-earlier-apr, to: apr-prepare, revisit: true }
+  - { from: revisit-earlier-apr, to: read-refresh-budget-apr, revisit: true }
+  - { from: read-refresh-budget-apr, to: check-refresh-budget-apr }
+  - { from: check-refresh-budget-apr, to: apr-prepare, outcome: PASS }
+  - { from: check-refresh-budget-apr, to: wait-for-person, outcome: FAIL }
   - { from: apr-prepare, to: apr-run }
   - { from: apr-run, to: extract }
 
