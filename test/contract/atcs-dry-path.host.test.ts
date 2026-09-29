@@ -517,7 +517,11 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
         log.push(`operate-worker-${nn(session.slot)} attempt ${first.attempt}: close process-survived, then its process group ended; ${first.result?.kind}`);
         if (first.result?.kind === 'hard-blocker') {
           // With this drive's retry allowance of one, the failed attempt is a Hard blocker: a person
-          // continues the node once its process group is gone, as the tester did in attempt 2.
+          // continues the node once its process group is gone, as the tester did in attempt 2. The
+          // settlement writes the attempt and then the node's hold; the person acts on what they see
+          // once both are there, so the continue is not sent against a revision about to move.
+          await waitUntil(`the Hard blocker holds operate-worker-${nn(session.slot)}`,
+            () => control().paused.includes(`operate-worker-${nn(session.slot)}`), 10_000, 25);
           const continued = await act('continue', { nodeId: `operate-worker-${nn(session.slot)}`, origin: 'human' });
           assert.equal(continued.kind, 'accepted', `a person continues the node once its survivor is gone: ${continued.reason}`);
           log.push(`operate-worker-${nn(session.slot)}: continued by a person (${continued.reason ?? 'accepted'})`);
