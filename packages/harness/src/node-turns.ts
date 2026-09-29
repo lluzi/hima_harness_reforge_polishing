@@ -1958,7 +1958,7 @@ export interface ExploreEvidence {
 }
 
 /** Current evidence is independent of whether the Pack's recommended arithmetic is valid. */
-export function exploreEvidence(ctx: Driving, node: Extract<PackNode, { kind: 'explore' }>): ExploreEvidence | { readonly ok: false; readonly reason: string } {
+export function exploreEvidence(ctx: Pick<Driving, 'deps' | 'runId' | 'pack'>, node: Extract<PackNode, { kind: 'explore' }>): ExploreEvidence | { readonly ok: false; readonly reason: string } {
   const no = (reason: string): { readonly ok: false; readonly reason: string } => ({ ok: false, reason });
   const named = node.parameters.chooser;
   if (named === undefined) {
@@ -2021,6 +2021,39 @@ export function exploreEvidence(ctx: Driving, node: Extract<PackNode, { kind: 'e
   const goal = required.findLast((r) => matchesRule(r, goalRule))!;
   const observation = citedObservations.at(-1)!;
   return { ok: true, chooser, chooserOrigin, constraint, goal, observation, verdicts: required, cites: [...new Set([...required.map((r) => r.id), ...citedObservations.map((r) => r.id)])] };
+}
+
+/**
+ * What an Explore completion must cite, said to its owner before it completes (#64 D4): the ids
+ * {@link exploreEvidence} requires — the very selection the completion checks — each with the reader
+ * and node that took the reading, or the rule and outcome of the verdict. Bounded by the Judge's
+ * rules and the fork's branches, so it is a few lines and never the Ledger.
+ */
+export interface ExploreCitation {
+  readonly nodeId: string;
+  /** Every id here must be cited; other current-generation observation or verdict ids may be added. */
+  readonly cites?: readonly string[];
+  readonly records?: readonly (
+    | { readonly id: string; readonly type: 'observation'; readonly reader: string; readonly nodeId?: string; readonly branchId?: string }
+    | { readonly id: string; readonly type: 'verdict'; readonly ruleId: string; readonly outcome: VerdictOutcome; readonly branchId?: string })[];
+  /** Why no citation can be named yet, in the words the completion would refuse with. */
+  readonly unavailable?: string;
+}
+
+export function exploreCitation(ctx: Pick<Driving, 'deps' | 'runId' | 'pack'>, node: Extract<PackNode, { kind: 'explore' }>): ExploreCitation {
+  const evidence = exploreEvidence(ctx, node);
+  if (!evidence.ok) return { nodeId: node.id, unavailable: evidence.reason };
+  const records = ctx.deps.ledger.records({ runId: ctx.runId });
+  const nodes = nodeRecordsOf(ctx);
+  const branch = (branchId: string | undefined) => (branchId === undefined ? {} : { branchId });
+  return { nodeId: node.id, cites: evidence.cites, records: evidence.cites.flatMap((id): NonNullable<ExploreCitation['records']>[number][] => {
+    const record = records.find((candidate) => candidate.id === id);
+    if (record?.type === 'verdict') return [{ id, type: 'verdict', ruleId: record.ruleId, outcome: record.outcome, ...branch(record.branchId) }];
+    if (record?.type !== 'observation') return [];
+    // The node that took the reading is the one whose completion follows it in its branch.
+    const reading = nodes.find((candidate) => candidate.seq > record.seq && candidate.state === 'done' && candidate.branchId === record.branchId);
+    return [{ id, type: 'observation', reader: record.reader.id, ...(reading === undefined ? {} : { nodeId: reading.nodeId }), ...branch(record.branchId) }];
+  }) };
 }
 
 /** Read the Pack chooser's advice without accepting a decision or changing any Run fact. */
@@ -2138,7 +2171,7 @@ export const stillDriving = (ctx: Driving): boolean => driving(existingRun(ctx.d
 // while, which is one module standing between two that already know each other (the final review of
 // step 3b, J10).
 
-export const nodeRecordsOf = (ctx: Driving): NodeRecord[] => nodeRecordsIn(ctx.deps.ledger, ctx.runId);
+export const nodeRecordsOf = (ctx: Pick<Driving, 'deps' | 'runId'>): NodeRecord[] => nodeRecordsIn(ctx.deps.ledger, ctx.runId);
 
 /** One node transition of the Run this drive is carrying, in the ledger's own shape. */
 export async function appendNode(
