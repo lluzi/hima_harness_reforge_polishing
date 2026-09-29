@@ -7,8 +7,9 @@ next-decision `stage` check in `tools/read-atcs.py`, and the removal of the unus
 helper from `flow/atcs_cli.py`.
 
 - `contract.yml` — 4 inputs, 42 outputs (18 with a reader, every `readers/*.yml` bound; 7
-  `<output>Problems` sidecars, G36), 25 tools
-  (24 `python3` subcommand tools of `flow/atcs_cli.py`, 1 interactive-only XTop Operator tool),
+  `<output>Problems` sidecars, G36), 26 tools
+  (25 `python3` subcommand tools of `flow/atcs_cli.py` -- `compose-facts` and `compose-facts-admitted`
+  both run its `compose-facts`, G40 -- and 1 interactive-only XTop Operator tool),
   7 Workshops (5 families, the worker family expanded to slots 01–03), 24 rules, 3 Goal parameters
   (`target_setup_wns_ns`, `target_hold_wns_ns`, `max_physical_refreshes`), 1 Strategy knob
   (`maxPaths`), 16 knowledge files (10 method files, 5 Reader-admitted Workshop examples,
@@ -396,6 +397,15 @@ Known gaps carried from earlier tasks:
   cell, one that changes the cell function or the VT, one equal to the current master, and a
   missing, unreadable or other-design-state context. Channel length is not constrained: XTop's
   footprint match decides that. Cost: one pass over one corner's Liberty files for each w01 read.
+- G40 (Issue #63, failure catalogue C06) The first composition pass never reads an integration
+  plan. In PR03, generation 3's first pass exited 3 (`missing-input`) on generation 2's integration
+  plan: the Reader had refused that plan, and its malformed `resolutions` were still on disk.
+  `compose-facts` (first pass, and the target of `revisit-revise`) now passes a plan path that
+  nothing writes. `compose-facts-admitted` (second pass, reached only through
+  `check-integration-plan` PASS) passes `research/requests/integration-plan.json`. So only an
+  admitted plan's resolutions are applied, and its `conflictKey`/`decision` shape has already
+  been checked. `flow/atcs_cli.py` is unchanged; its own stale-plan rules still apply to the
+  second pass.
 
 ## Reviews
 
