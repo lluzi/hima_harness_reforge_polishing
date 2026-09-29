@@ -55,7 +55,10 @@ const inputOutcomeRecord = z.strictObject({ ...common, event: z.enum(['input-sen
   inputDigest: sha256, cursorAfter: z.number().int().nonnegative().optional(), reason: z.string().optional() });
 const signalRecord = z.strictObject({ ...common, event: z.enum(['signal-intent', 'signal-delivered', 'signal-uncertain']),
   signal: z.literal('interrupt'), reason: z.string().optional() });
-const closeRecord = z.strictObject({ ...common, event: z.enum(['close-intent', 'closed', 'close-uncertain']), reason: z.string().optional() });
+const closeRecord = z.strictObject({ ...common, event: z.enum(['close-intent', 'closed', 'close-uncertain', 'process-survived']),
+  reason: z.string().optional(),
+  /** `process-survived` only: the Job's process group that outlived hangup and TERM (#64 D-T01-3). */
+  pid: z.number().int().positive().optional() });
 
 /** Payload stored under one narrow Ledger interactive record. Existing Job records own process state. */
 export const interactiveRecord = z.union([openIntentRecord, openOutcomeRecord, openReleasedRecord, inputIntentRecord, inputOutcomeRecord, signalRecord, closeRecord]);
@@ -249,8 +252,13 @@ export async function openInteractiveJob(on: InteractiveChannel, request: OpenIn
       try {
         const wasRunning = await interactiveSessionThere(on, job.session, true);
         if (wasRunning) {
-          const stopped = await on.exec(['tmux', 'kill-session', '-t', exactJobSession(job.session)]);
-          if (stopped.code !== 0) reason += `; cleanup kill exited ${String(stopped.code)}${stopped.stderr.trim() ? `: ${stopped.stderr.trim()}` : ''}`;
+          // The same process-group stop as a close (#64 review I2): never a bare kill-session.
+          const stopped = await endJobProcessGroup(on, { session: job.session, pid: job.pid, dir: path.posix.dirname(exitPath) }, `open-cleanup-${request.requestId}`);
+          if (stopped.kind === 'survived') reason += `; cleanup: process-survived: process group ${String(stopped.pid)} outlived hangup and TERM and still holds this slot`;
+          else if (await interactiveSessionThere(on, job.session, true)) {
+            const leftover = await on.exec(['tmux', 'kill-session', '-t', exactJobSession(job.session)]);
+            if (leftover.code !== 0 && leftover.code !== 1) reason += `; cleanup kill exited ${String(leftover.code)}${leftover.stderr.trim() ? `: ${leftover.stderr.trim()}` : ''}`;
+          }
         }
         sessionStillAlive = await interactiveSessionThere(on, job.session, true);
         await authority.recordJobStop(job, { wasRunning, observedGone: !sessionStillAlive });
@@ -462,10 +470,109 @@ export async function signalInteractiveJob(on: InteractiveChannel, request: Inte
 export type InteractiveCloseResult =
   | { readonly status: 'closed' | 'duplicate'; readonly process: 'exited' }
   | { readonly status: 'refused'; readonly reason: string }
-  | { readonly status: 'uncertain'; readonly reason: string };
+  | { readonly status: 'uncertain'; readonly reason: string }
+  | { readonly status: 'process-survived'; readonly pid: number; readonly reason: string };
 
-/** Force-close transport only. Adapter save/exit is a separately recorded typed input. */
-export async function closeInteractiveJob(on: InteractiveChannel, request: InteractiveAddress & { readonly callerDigest: string; readonly session: InteractiveSession }, authority: InteractiveAuthority): Promise<InteractiveCloseResult> {
+/** How long a close waits for the Job's process group after the hangup, and again after TERM. */
+export interface InteractiveCloseGrace { readonly hangupMs: number; readonly terminateMs: number }
+export const defaultInteractiveCloseGrace: InteractiveCloseGrace = { hangupMs: 15_000, terminateMs: 10_000 };
+
+/**
+ * The close watcher, run by tmux in the Job's own pane in place of the tool (`respawn-pane -k`).
+ * Replacing the pane hangs up the tool's terminal exactly as `kill-session` did, so the wrapper's
+ * own hangup path (its traps, its container cleanup) runs; the watcher then waits for the whole
+ * process group the Job started ($1, the recorded pane pid) to be gone, sends TERM to that group
+ * once after the hangup grace, and writes one receipt line: `gone` or `survived <pgid>`. A group
+ * that survives both keeps the Job's tmux session alive (the watcher keeps watching), so the Job
+ * stays running in every existing sense — its Site slot, its licence and `has-session` — until the
+ * group really ends. Signals go to the Job's own group only, from the Job's own pane; the channel
+ * gains no verb and nothing on the Site is removed.
+ */
+const closeWatcher = [
+  'g=$1; r=$2; hangup=$3; term=$4',
+  'alive() { kill -s 0 -- "-$g" 2>/dev/null; }',
+  'gone_within() { end=$(( $(date +%s) + $1 )); while alive; do [ "$(date +%s)" -ge "$end" ] && return 1; sleep 0.2 2>/dev/null || sleep 1; done; }',
+  'if gone_within "$hangup"; then printf \'gone hangup\\n\' > "$r"; exit 0; fi',
+  'kill -s TERM -- "-$g" 2>/dev/null',
+  'if gone_within "$term"; then printf \'gone terminate\\n\' > "$r"; exit 0; fi',
+  'printf \'survived %s\\n\' "$g" > "$r"',
+  'while alive; do sleep 1; done',
+  'printf \'gone later\\n\' > "$r"',
+].join('\n');
+const graceSeconds = (ms: number): number => Math.max(1, Math.ceil(ms / 1000));
+
+/** Ask the pane itself which process it runs, for a Job whose launch recorded no pid. */
+async function panePid(on: InteractiveChannel, session: string): Promise<number> {
+  const printed = await mustRun(on, ['tmux', 'display-message', '-p', '-t', jobPane(session), '#{pane_pid}'], `read the process of interactive session ${session}`);
+  const pid = Number(printed.trim());
+  if (!Number.isInteger(pid) || pid <= 0) throw new Error(`tmux reported ${JSON.stringify(printed.trim())} instead of a pane pid`);
+  return pid;
+}
+
+/** The Job a process-group stop acts on: its tmux session, its recorded pane pid (the group), and
+ *  the directory its launch writes its exit file in, where the stop's receipt is written too. */
+export interface JobProcessTarget { readonly session: string; readonly pid?: number; readonly dir: string }
+export type JobProcessGroupStop = { readonly kind: 'absent' | 'gone' } | { readonly kind: 'survived'; readonly pid: number };
+
+/**
+ * Hang up a Job and wait, bounded, for its whole process group to be gone (#64 D-T01-3, review I2).
+ * The one stop every path uses — an interactive close, an open's cleanup, and `jobKill` for a cancel,
+ * a time-box end, a node stop or an App quit — so no path records a Job stopped while its tool runs.
+ * `absent` is a session that was not there to stop; `gone` is a group the watcher saw end;
+ * `survived` names the group that outlived hangup and TERM, whose session the watcher keeps.
+ */
+export async function endJobProcessGroup(on: InteractiveChannel, target: JobProcessTarget, key: string,
+  grace: InteractiveCloseGrace = defaultInteractiveCloseGrace): Promise<JobProcessGroupStop> {
+  let group = target.pid;
+  if (group === undefined) {
+    if (!await interactiveSessionThere(on, target.session, true)) return { kind: 'absent' };
+    group = await panePid(on, target.session);
+  }
+  const receipt = path.posix.join(target.dir, `${target.session}.close-${createHash('sha256').update(key).digest('hex').slice(0, 16)}`);
+  const hangup = graceSeconds(grace.hangupMs); const term = graceSeconds(grace.terminateMs);
+  const watcher = `exec /bin/sh -c ${quote(closeWatcher)} hima-close ${String(group)} ${quote(receipt)} ${String(hangup)} ${String(term)}`;
+  const respawned = await on.exec(['tmux', 'respawn-pane', '-k', '-t', jobPane(target.session), watcher]);
+  if (respawned.code !== 0) {
+    // The session ended between the caller's look and this stop: nothing is left to hang up.
+    if (!await interactiveSessionThere(on, target.session, true)) return { kind: 'absent' };
+    throw new Error(`cannot hang up job session ${target.session}: tmux exited ${String(respawned.code)}${respawned.stderr.trim() ? `: ${respawned.stderr.trim()}` : ''}`);
+  }
+  const deadline = Date.now() + (hangup + term + 10) * 1000;
+  for (;;) {
+    const read = await on.exec(['cat', '--', receipt]);
+    const said = read.code === 0 ? Buffer.from(read.stdout).toString('utf8').trim() : '';
+    if (said.startsWith('gone')) {
+      // The watcher leaves right after its receipt; the session ends with it.
+      while (await interactiveSessionThere(on, target.session, true) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+      return { kind: 'gone' };
+    }
+    if (said.startsWith('survived')) return { kind: 'survived', pid: group };
+    if (Date.now() >= deadline) throw new Error(`job stop watcher wrote no receipt for process group ${String(group)} within ${String(hangup + term + 10)} s`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/**
+ * Whether a Job's recorded process group still has a live process, asked of the process group
+ * itself rather than of its tmux session (#64 review I2). `tmux run-shell` runs the one-line probe
+ * on the Site through the job plumbing's own verb; `start-server` lets it ask with no session left.
+ */
+export async function jobProcessGroupAlive(on: InteractiveChannel, pid: number): Promise<boolean> {
+  if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error(`invalid process group ${String(pid)}`);
+  const said = await mustRun(on, ['tmux', 'start-server', ';', 'run-shell', `kill -s 0 -- -${String(pid)} 2>/dev/null && echo alive || echo gone`],
+    `ask whether process group ${String(pid)} still runs`);
+  const answer = said.trim();
+  if (answer !== 'alive' && answer !== 'gone') throw new Error(`process group probe for ${String(pid)} answered ${JSON.stringify(answer)}`);
+  return answer === 'alive';
+}
+
+/**
+ * Force-close transport. Adapter save/exit is a separately recorded typed input. The close hangs the
+ * Job up and returns `closed` only after its whole process group is observed gone; a group that
+ * outlives hangup and TERM is recorded `process-survived` with its pid and the Job stays open.
+ */
+export async function closeInteractiveJob(on: InteractiveChannel, request: InteractiveAddress & { readonly callerDigest: string; readonly session: InteractiveSession;
+  readonly grace?: InteractiveCloseGrace }, authority: InteractiveAuthority): Promise<InteractiveCloseResult> {
   const operationDigest = digest({ session: request.session.toolSessionId, close: true });
   const record = parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, operationDigest), event: 'close-intent' }) as CloseRecord;
   const admitted = await authority.admit({ action: 'close', record });
@@ -477,9 +584,21 @@ export async function closeInteractiveJob(on: InteractiveChannel, request: Inter
     assertQualificationStable(request.session.qualification, admitted.qualification);
     assertQualificationStable(admitted.qualification, authorized.qualification);
     const wasRunning = await interactiveSessionThere(on, request.session.toolSessionId);
-    const killed = wasRunning ? await on.exec(['tmux', 'kill-session', '-t', exactJobSession(request.session.toolSessionId)]) : undefined;
-    if (killed !== undefined && killed.code !== 0 && killed.code !== 1) throw new Error(`tmux kill-session exited ${String(killed.code)}: ${killed.stderr}`);
-    const observedGone = !await interactiveSessionThere(on, request.session.toolSessionId);
+    if (wasRunning) {
+      const ended = await endJobProcessGroup(on, { session: request.session.toolSessionId, pid: request.session.job.pid,
+        dir: path.posix.dirname(request.session.exitPath) }, request.requestId, request.grace ?? defaultInteractiveCloseGrace);
+      if (ended.kind === 'survived') {
+        const reason = `process-survived: process group ${String(ended.pid)} of interactive Job ${request.session.toolSessionId} outlived hangup and TERM;`
+          + ' the Job stays open and holds its Site slot until that group ends';
+        await authority.record(parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, operationDigest),
+          event: 'process-survived', pid: ended.pid, reason }));
+        return { status: 'process-survived', pid: ended.pid, reason };
+      }
+      const leftover = await interactiveSessionThere(on, request.session.toolSessionId, true)
+        ? await on.exec(['tmux', 'kill-session', '-t', exactJobSession(request.session.toolSessionId)]) : undefined;
+      if (leftover !== undefined && leftover.code !== 0 && leftover.code !== 1) throw new Error(`tmux kill-session exited ${String(leftover.code)}: ${leftover.stderr}`);
+    }
+    const observedGone = !await interactiveSessionThere(on, request.session.toolSessionId, true);
     if (!observedGone) throw new Error('interactive tmux session remained after close request');
     await authority.recordJobStop(request.session.job, { wasRunning, observedGone });
     await authority.record(parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, operationDigest), event: 'closed' }));

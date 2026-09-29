@@ -11,7 +11,7 @@ import { releaseExitFence } from './host-exit.js';
 // Those two are what the whole of this module is written around: nothing here may say a licence was
 // released while the tool still holds it, and nothing here may pay a second licence-minute for an
 // attempt that is already running on the Site.
-import { boundInputs, positionOf, substitute, workspaceFileName, type Pack, type PackNode } from './packs.js';
+import { boundInputs, recordedInputs, positionOf, substitute, workspaceFileName, type Pack, type PackNode } from './packs.js';
 import { createHash } from 'node:crypto';
 import { channelFor } from './channel.js';
 import { decideRead } from './shell.js';
@@ -517,14 +517,15 @@ async function reconcileFork(deps: FabricDeps, run: RunRecord, ctx: Driving, for
 function drivingFor(deps: FabricDeps, run: RunRecord): Driving {
   const site = loadSite(deps.sitesDir, run.siteId);
   const pack = packOf(deps, run);
-  const workspace = deps.ledger
+  const prepared = deps.ledger
     .records({ runId: run.id, type: 'workspace' })
-    .findLast((r): r is WorkspaceRecord => r.type === 'workspace')?.workspace;
-  if (workspace === undefined) throw new Error(`run ${run.id} holds no workspace record, so there is no campaign workspace to carry it on in`);
+    .findLast((r): r is WorkspaceRecord => r.type === 'workspace');
+  if (prepared === undefined) throw new Error(`run ${run.id} holds no workspace record, so there is no campaign workspace to carry it on in`);
+  const workspace = prepared.workspace;
   // Read from the records, exactly as `resumeRun` reads it: the wait a Run did for a person before its
   // host went away is still what its time box is widened by, and a reconciliation that rebuilt the
   // drive without it would hold the resumed Run to a deadline the process it replaces did not have.
-  return { deps, runId: run.id, site, pack, bindings: boundInputs(pack, site), workspace, campaignId: run.campaignId, waitedMs: waitedMsOf(deps.ledger, run.id) };
+  return { deps, runId: run.id, site, pack, bindings: recordedInputs(pack, site, prepared.bindings), workspace, campaignId: run.campaignId, waitedMs: waitedMsOf(deps.ledger, run.id) };
 }
 
 /** The pack a Run runs, as its own row says. Throws when this machine no longer has that pack. */
@@ -760,7 +761,9 @@ async function workshopOutputOf(deps: FabricDeps, run: RunRecord, launch: JobRec
     const node = positionOf(pack, nodeId)?.node;
     if (node?.kind !== 'act' || node.parameters.workshop === undefined) return `Workshop output of node ${nodeId ?? '(unknown)'} cannot be verified: the retained method no longer declares that Workshop node`;
     const site = loadSite(deps.sitesDir, launch.siteId);
-    return await workshopOutputProblem({ site, pack, bindings: boundInputs(pack, site), workspace: launch.job.workspace,
+    const prepared = deps.ledger.records({ runId: run.id, type: 'workspace' })
+      .findLast((r): r is WorkspaceRecord => r.type === 'workspace' && r.workspace === launch.job.workspace);
+    return await workshopOutputProblem({ site, pack, bindings: recordedInputs(pack, site, prepared?.bindings), workspace: launch.job.workspace,
       node, session: launch.job.session, entryPath: launch.workshop.entry.path });
   } catch (err) {
     return `Workshop output of node ${nodeId ?? '(unknown)'} cannot be verified: ${(err as Error).message}`;

@@ -319,7 +319,7 @@ export type {
 // the day this one is tuned (#18). A test that has to act **between** two looks needs the third for
 // the same reason: how long it has is which interval the waiter has settled into (#61).
 export { jobPollFastForMs, jobPollFastMs, jobPollSlowMs } from './jobs.js';
-export { launchJob, reconcileLaunchIntent, jobStatus, nodeLogTail, nodeLogTailMaxLines } from './jobs.js';
+export { launchJob, reconcileLaunchIntent, jobStatus, jobKill, nodeLogTail, nodeLogTailMaxLines } from './jobs.js';
 export type { LaunchIntent, JobDeps, LaunchRequest, LaunchResult, ReconciledLaunch, NodeLogTailResult } from './jobs.js';
 export { claimSlot, claimSlotAndLaunch } from './job-cap.js';
 export { toolNode, observeNode, resumeNode, buildWorkshopScope, resolveWorkshop, launchWrittenWorkshop, exploreRecommendation } from './node-turns.js';
@@ -855,7 +855,7 @@ export default class Hima extends Service {
       ...(testFixtureCanRunHere()&&process.env.HIMA_TEST_INTERACTIVE_BINDING_ID?{trustedTestQualification:{bindingId:process.env.HIMA_TEST_INTERACTIVE_BINDING_ID}}:{}),
       resolveOperation:async(run,execution)=>{
         const driving=interactiveDriving(this.deps(),run,execution);
-        return bridge.resolve({pack:driving.pack,run,execution,site:driving.site,workspace:driving.workspace});
+        return bridge.resolve({pack:driving.pack,run,execution,site:driving.site,workspace:driving.workspace,bindings:driving.bindings});
       },verifyAdminBinding:binding=>bridge.verifyAdminBinding(binding),encodeCommand:(binding,request)=>bridge.encodeCommand(binding,request),
       claimJobSlot:async request=>{
         if(!request.run.budget)return {kind:'stopped',reason:'Original Run budget is unavailable.'};

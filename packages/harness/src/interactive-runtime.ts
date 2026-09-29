@@ -5,11 +5,11 @@ import path from 'node:path';
 import { testFixtureCanRunHere } from './interactive-binding.js';
 import { z } from 'zod';
 import { advance, budgetStanding, ownedWaitedMs } from './budget.js';
-import { controlling, identityOf, type FabricDeps } from './fabric.js';
+import { controlling, identityOf, updateExecution, type FabricDeps } from './fabric.js';
 import {
-  closeInteractiveJob, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
+  closeInteractiveJob, jobProcessGroupAlive, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
   sendInteractiveInput, signalInteractiveJob,
-  type InteractiveAddress, type InteractiveAuthority, type InteractiveChannel, type InteractiveCloseResult,
+  type InteractiveAddress, type InteractiveAuthority, type InteractiveChannel, type InteractiveCloseGrace, type InteractiveCloseResult,
   type InteractiveInputResult, type InteractiveJobIdentity, type InteractiveOpenResult, type InteractiveQualification,
   type InteractiveReceipt, type InteractiveRecord as ProtocolRecord, type InteractiveSession,
   type InteractiveSignalResult, type TranscriptRead,
@@ -92,6 +92,8 @@ export interface InteractiveRuntimeDeps {
   readonly mintProtocolToken?: () => string;
   /** Required Host callback: issue the qualified interrupt/close path and record its actual outcome. */
   readonly onDeadline: (deadline: InteractiveDeadline) => Promise<void>;
+  /** How long a close waits for the Job's process group after hangup and after TERM; defaults apply when absent. */
+  readonly closeGrace?: InteractiveCloseGrace;
 }
 
 export interface InteractiveSessionView {
@@ -107,6 +109,8 @@ export interface InteractiveSessionView {
     readonly callerDigest: string; readonly requestDigest: string; readonly operationDigest: string; readonly protocolToken: string; readonly cursorBefore: number;
     readonly commandDeadlineAt: string; readonly state: 'intent' | 'sent' | 'uncertain' };
   readonly lastCursor?: number; readonly reason?: string;
+  /** The Job's process group a close recorded as surviving hangup and TERM (#64 D-T01-3). */
+  readonly survivedPid?: number;
 }
 
 export type InteractiveOperateRequest = InteractiveAddress & ({
@@ -196,8 +200,13 @@ function validateControl(run: RunRecord, request: InteractiveAddress, operation:
   if (runExitFence(run) && (operation === 'open' || operation === 'input' && effect !== 'read')) return 'the App is closing; no new interactive mutation may start before recovery';
   if (run.status !== 'running' && !['signal', 'close'].includes(operation) && !(operation === 'input' && effect === 'read')) return `run ${run.id} is ${run.status ?? 'not running'}`;
   if (control.stop !== undefined && operation !== 'close' && operation !== 'signal') return 'the Run has a stop request; no new interactive command may start';
+  // Interactive authority is keyed by the execution, not by the Run-wide control cursor: every owner
+  // action in any fork branch bumps `revision`, so exact equality would let progress in one branch
+  // revoke another branch's in-flight session (#64 D-T01-2). What this execution depends on is read
+  // below as current facts (owner, epoch, hold, stop, budget, the execution itself); the caller's
+  // revision need only not come from the future.
   if ((control.owner !== request.actor && control.owner !== request.authorityOwner)
-      || control.epoch !== request.ownerEpoch || control.revision !== request.controlRevision) return 'owner, delegated authority, epoch or control revision is stale';
+      || control.epoch !== request.ownerEpoch || request.controlRevision > control.revision) return 'owner, delegated authority, epoch or control revision is stale';
   if (!currentExecution(run, request.executionId, request.nodeId, ['signal', 'close'].includes(operation) || operation === 'input' && effect === 'read')) return 'the interactive execution is absent, settled, failed or superseded';
   const execution = run.control?.executions[request.executionId];
   if (operation === 'open' && (execution?.phase !== 'begun' || execution.intent !== undefined
@@ -327,7 +336,8 @@ function reconstructSessions(ledger: Ledger, runId: string): InteractiveSessionV
       continue;
     }
     if (record.event === 'closed') sessions.set(record.toolSessionId, { ...previous, status: 'closed', activeCommand: undefined });
-    if (record.event === 'close-uncertain') sessions.set(record.toolSessionId, { ...previous, status: 'uncertain', reason: record.reason });
+    if (record.event === 'close-uncertain' || record.event === 'process-survived') sessions.set(record.toolSessionId, { ...previous, status: 'uncertain', reason: record.reason,
+      ...(record.event === 'process-survived' && record.pid !== undefined ? { survivedPid: record.pid } : {}) });
   }
   return [...sessions.values()].map((session) => {
     // A finished Job is authoritative process exit even when the tool's normal
@@ -370,7 +380,10 @@ function duplicateReceipt(kind: AdmissionKind, records: ReturnType<typeof protoc
   }
   if (kind === 'signal') return lastEvent(records, ['signal-delivered']) ? { status: 'duplicate', process: 'running-or-exited' }
     : { status: 'uncertain', reason: 'signal intent has no delivered receipt' };
-  return lastEvent(records, ['closed']) ? { status: 'duplicate', process: 'exited' }
+  if (lastEvent(records, ['closed'])) return { status: 'duplicate', process: 'exited' };
+  const survived = lastEvent(records, ['process-survived']);
+  return survived?.event === 'process-survived' && survived.pid !== undefined
+    ? { status: 'process-survived', pid: survived.pid, reason: survived.reason ?? `process group ${String(survived.pid)} survived the close` }
     : { status: 'uncertain', reason: 'close intent has no confirmed process exit' };
 }
 
@@ -491,7 +504,26 @@ class RunInteractiveAuthority implements InteractiveAuthority {
         executionId: parsed.executionId, toolSessionId: parsed.toolSessionId,
         requestId: parsed.requestId, event: parsed.event, payload: parsed as never,
       });
+      if (parsed.event === 'process-survived') await this.raiseSurvivor(parsed as ProtocolRecord & { readonly event: 'process-survived'; readonly reason?: string; readonly pid?: number });
     });
+  }
+
+  /**
+   * A tool that outlived its close holds its node, its Site slot and its locks (#64 review I1). That
+   * is a person's to see and act on, so it is raised as a blocker on the node, the execution names
+   * the surviving process group, and the owner is told — never a node silently `working` until the
+   * time box ends. Called under the Run lock, right after the `process-survived` record.
+   */
+  private async raiseSurvivor(record: ProtocolRecord & { readonly event: 'process-survived'; readonly reason?: string; readonly pid?: number }): Promise<void> {
+    const run = this.deps.fabric.ledger.run(this.request.runId);
+    const execution = run?.control?.executions[record.executionId];
+    if (!run?.control || !execution) return;
+    const reason = record.reason ?? `process group ${String(record.pid)} of interactive Job ${record.toolSessionId} survived its close`;
+    await this.deps.fabric.ledger.appendBlocker(run.id, { nodeId: execution.nodeId, attempts: execution.attempt,
+      ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }), reason });
+    if (!['completed', 'failed'].includes(execution.phase)) await updateExecution(this.deps.fabric, run.id, execution.id, { phase: 'uncertain', reason });
+    this.deps.fabric.notify?.(run.control.owner, run.id, execution.id,
+      `Node ${execution.nodeId}: ${reason}. It is a blocker on that node: a person must end that process group on Site ${run.siteId} before the node's tool slot can be used again. Other nodes are not held by it.`);
   }
 
   async recordJobLaunch(job: InteractiveJobIdentity): Promise<void> {
@@ -545,6 +577,28 @@ async function resolved(deps: InteractiveRuntimeDeps, request: InteractiveAddres
   catch (error) { return { reason: error instanceof Error ? error.message : String(error) }; }
 }
 
+/**
+ * A retry of a node opens the same tool slot. While an earlier Job of that node has a recorded
+ * `process-survived` close and its tmux session (kept by the close watcher) is still there, the
+ * surviving tool still owns the slot and its locks: refuse naming the group rather than launch a
+ * wrapper into those locks.
+ */
+async function survivingSlotJob(deps: InteractiveRuntimeDeps, run: RunRecord, nodeId: string): Promise<string | undefined> {
+  // Asked of each recorded survivor's process group itself (#64 review I2): its tmux session may be
+  // gone (a bare kill by an older Host or a person) while the tool still holds the slot's locks.
+  const survivors = listInteractiveSessions(deps.fabric.ledger, run.id)
+    .filter((session) => session.nodeId === nodeId && session.survivedPid !== undefined);
+  if (survivors.length === 0) return undefined;
+  const on: InteractiveChannel = channelFor(loadSite(deps.fabric.sitesDir, run.siteId));
+  for (const session of survivors) {
+    if (await jobProcessGroupAlive(on, session.survivedPid!)) {
+      return `the previous interactive Job ${session.toolSessionId} of node ${nodeId} survived its close: process group ${String(session.survivedPid)}`
+        + ' still runs and holds this tool slot; end that process group on the Site, then open again';
+    }
+  }
+  return undefined;
+}
+
 function sessionFor(ledger: Ledger, request: InteractiveAddress & { readonly toolSessionId: string }): InteractiveSessionView | undefined {
   return listInteractiveSessions(ledger, request.runId, request.executionId)
     .find((session) => session.toolSessionId === request.toolSessionId && session.nodeId === request.nodeId);
@@ -581,6 +635,8 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
     if (!deps.claimJobSlot) return { status: 'refused', reason: 'interactive Job/licence slot authority is unavailable' };
     const refused = validateControl(facts.run, request, 'open');
     if (refused) return { status: 'refused', reason: refused };
+    const survivor = await survivingSlotJob(deps, facts.run, request.nodeId);
+    if (survivor) return { status: 'refused', reason: survivor };
     const at = nowOf(deps); const runDeadline = hardDeadline(facts.run, at);
     const sessionDeadline = Math.min(at + facts.derived.binding.limits.sessionMaxMs, runDeadline ?? Number.MAX_SAFE_INTEGER);
     const claimed = await deps.claimJobSlot({ run: facts.run, site: facts.derived.site, licences: facts.derived.licences,
@@ -635,7 +691,7 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
       commandDeadlineAt: new Date(commandDeadline).toISOString() }, authority);
   }
   if (request.action === 'signal') return signalInteractiveJob(on, { ...request, callerDigest, session }, authority);
-  return closeInteractiveJob(on, { ...request, callerDigest, session }, authority);
+  return closeInteractiveJob(on, { ...request, callerDigest, session, ...(deps.closeGrace === undefined ? {} : { grace: deps.closeGrace }) }, authority);
 }
 
 export interface InteractiveTimerController {
@@ -661,7 +717,7 @@ export async function reconcileInteractiveState(deps: InteractiveRuntimeDeps): P
         if (intent.event === 'open-intent') return ['opened', 'open-uncertain', 'open-released'].includes(item.payload.event);
         if (intent.event === 'input-intent') return ['input-sent', 'input-uncertain', 'command-completed', 'command-failed'].includes(item.payload.event);
         if (intent.event === 'signal-intent') return ['signal-delivered', 'signal-uncertain'].includes(item.payload.event);
-        return ['closed', 'close-uncertain'].includes(item.payload.event);
+        return ['closed', 'close-uncertain', 'process-survived'].includes(item.payload.event);
       });
       if (settled) continue;
       let outcome: ProtocolRecord;

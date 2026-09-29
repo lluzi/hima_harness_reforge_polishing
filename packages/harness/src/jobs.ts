@@ -15,7 +15,7 @@ import { existingRun, runFor } from './runs.js';
 import { currentRecordsIn } from './ledger.js';
 import type { InteractiveRecord as LedgerInteractiveRecord, JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, NodeRecord, RefusalRecord, RunRecord } from './ledger.js';
 import { RunReferenceError, SiteUnreadableError, LaunchNotDispatchedError } from './errors.js';
-import { openInteractiveJob, parseInteractiveRecord, type InteractiveAuthority, type InteractiveOpenResult, type InteractiveRecord as ProtocolRecord } from './interactive-job.js';
+import { endJobProcessGroup, openInteractiveJob, parseInteractiveRecord, type InteractiveCloseGrace, type InteractiveAuthority, type InteractiveOpenResult, type InteractiveRecord as ProtocolRecord } from './interactive-job.js';
 
 /** What a Job's name defaults to when the caller does not give one. */
 const defaultJobName = 'job';
@@ -82,6 +82,8 @@ export type JobState =
 export interface KillOutcome {
   readonly wasRunning: boolean;
   readonly gone: boolean;
+  /** The Job's process group that outlived hangup and TERM (#64 review I2); its session is kept. */
+  readonly survivedPid?: number;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -372,11 +374,19 @@ async function tailLog(on: Channel, job: JobIdentity, lines: number): Promise<st
  * gone: that is an answer, not a fault. A kill that does not take within the bounded wait says so
  * rather than claiming a stop nobody saw.
  */
-async function killSession(on: Channel, job: JobIdentity): Promise<KillOutcome> {
+async function killSession(on: Channel, job: JobIdentity, grace?: InteractiveCloseGrace): Promise<KillOutcome> {
   // Ticket #18: a Site that cannot be asked raises out of here rather than answering. There is no
   // outcome to report — nothing was seen to stop and nothing was seen to be already over — and a
   // `killed` record written on a guess would say a licence was released while the tool still holds it.
   if (!(await sessionThere(on, job.session))) return { wasRunning: false, gone: true };
+  // The one process-group stop every path shares (#64 review I2): the hangup reaches the Job's own
+  // shutdown path, TERM follows once, and the whole group must be seen gone. A tool that outlives
+  // both is not stopped, whatever becomes of its tmux session, so nothing may record it killed.
+  const ended = await endJobProcessGroup(on, { session: job.session, ...(job.pid === undefined ? {} : { pid: job.pid }), dir: job.workspace },
+    `kill-${randomBytes(8).toString('hex')}`, grace);
+  if (ended.kind === 'survived') return { wasRunning: true, gone: false, survivedPid: ended.pid };
+  if (ended.kind === 'absent') return { wasRunning: false, gone: true };
+  if (!(await sessionThere(on, job.session))) return { wasRunning: true, gone: true };
   // Exit 1 is tmux saying the session went away between the question and the kill — the outcome the
   // caller wanted, reached without us. Anything else is a fault.
   const killed = await on.exec(['tmux', 'kill-session', '-t', exactly(job.session)]);
@@ -731,11 +741,11 @@ export interface JobKillResult {
  * found a session and saw it go: a Job that was already gone is answered, not recorded again, and a
  * kill that did not take within the bounded wait records nothing at all.
  */
-export async function jobKill(deps: JobDeps, req: { readonly run: string; readonly session: string }): Promise<JobKillResult> {
+export async function jobKill(deps: JobDeps, req: { readonly run: string; readonly session: string; readonly grace?: InteractiveCloseGrace }): Promise<JobKillResult> {
   const run = existingRun(deps.ledger, req.run);
   const job = mustBeLaunched(deps, run, req.session);
   const site = loadSite(deps.sitesDir, run.siteId);
-  const outcome = await killSession(channelFor(site), job);
+  const outcome = await killSession(channelFor(site), job, req.grace);
   if (!outcome.wasRunning || !outcome.gone) return { run, job, outcome, record: undefined };
   return { run, job, outcome, record: await deps.ledger.appendJob(run.id, { event: 'killed', job, ...belongsTo(deps, run, req.session) }) };
 }

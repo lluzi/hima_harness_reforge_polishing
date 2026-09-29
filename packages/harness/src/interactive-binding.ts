@@ -91,6 +91,8 @@ export interface ResolveInteractiveBindingRequest {
   readonly execution: NodeExecution;
   readonly site: Site;
   readonly workspace: string;
+  /** The Run's recorded input bindings (#64 D-C01-1); the Site's own only for a Run that recorded none. */
+  readonly bindings?: Readonly<Record<string, string>>;
   /** Optional exact node supplied by Fabric; otherwise resolved from the retained Pack graphs. */
   readonly node?: Extract<PackNode, { kind: 'act' }>;
 }
@@ -279,7 +281,7 @@ export function createInteractiveBindingBridge(config: InteractiveBindingBridgeC
       if (row.adapterHash !== BUILTIN_TCL_ADAPTER_DIGEST) throw new Error(`interactive binding ${row.id} pins unsupported adapter hash ${row.adapterHash}`);
       if (row.commandsDigest !== interactiveCommandsDigest(tool)) throw new Error(`interactive binding ${row.id} does not pin the retained Pack command classification`);
       if (row.adapter !== tool.interactive.adapter) throw new Error(`interactive binding ${row.id} and retained tool ${tool.id} name different adapters`);
-      const bindings = boundInputs(request.pack, request.site);
+      const bindings = request.bindings ?? boundInputs(request.pack, request.site);
       const taken = nodeArguments(node, request.run, bindings);
       if (!taken.ok) throw new Error(taken.reason);
       // FLOW_ROOT/DESIGN are legacy aliases used by Packs that actually declare those inputs.

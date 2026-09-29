@@ -594,3 +594,70 @@ test('Case 19: PUT with an unknown top-level body field answers 400 naming it', 
     assert.match(body.error?.message ?? '', /unknown Campaign file field/, JSON.stringify(body));
   } finally { await teardown(f); }
 });
+
+// #64 ATCS-08 D-C01-1: the control Run's preparation recorded the Campaign file's
+// `inputInnovusDatabase` override (workspace record, workspace.json), but its first Job was built
+// from the Site file re-read at execution time and staged the Site's own default instead. The
+// recorded Run input bindings are the one source of every Job's inputs.
+test('Case 20: a Campaign-file input override reaches the owner-driven Job\'s command line, and a Job whose inputs differ from the Run\'s recorded ones is refused before launch', async (t) => {
+  const { waitUntil, sessionsOf, killSessions } = await import('./support/fabric.ts');
+  const h = await createHimaHome();
+  const flow = await writeStandinFlow(t, h, { sleepSeconds: 0.01 });
+  assert.ok(flow, 'the stand-in flow is written');
+  await installPack(h);
+  await writeLocalSite(h, { allowedReadRoots: [h.workspace, flow!.root], allowedWriteRoots: [h.workspace],
+    bindings: { flowRoot: flow!.root, design: flow!.design, workspaceRoot: h.workspace } });
+  await addOverrideDesign(flow!.root, 'guide');
+  assert.notEqual(flow!.design, 'guide');
+  const host = await bootInProcess(h);
+  const runIds: string[] = [];
+  try {
+    const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
+    const start = async () => {
+      const started = await host.ctx.hima.startRun({ pack: 'opene902-timing-probe', site: 'local', goal: { target_period_ns: 2 },
+        ownerSessionId: actor, inputs: { design: 'guide' } });
+      assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') throw new Error('unreachable');
+      runIds.push(started.run.id);
+      return started.run;
+    };
+    let serial = 0;
+    const act = (runId: string, action: 'begin' | 'work', fields: { nodeId?: string; executionId?: string }) => {
+      const control = host.ctx.hima.ledger.run(runId)!.control!;
+      return host.ctx.hima.executionAction({ runId, actor, action, ...fields, expectedEpoch: control.epoch,
+        expectedRevision: control.revision, requestId: `override-${++serial}` });
+    };
+
+    const run = await start();
+    const recorded = host.ctx.hima.ledger.records({ runId: run.id, type: 'workspace' }).findLast((record) => record.type === 'workspace');
+    assert.equal(recorded?.type === 'workspace' ? recorded.bindings?.design : undefined, 'guide', 'preparation recorded the override');
+    const begun = await act(run.id, 'begin', { nodeId: run.currentNode! });
+    assert.equal(begun.kind, 'accepted', JSON.stringify(begun.reason ?? begun));
+    const worked = await act(run.id, 'work', { executionId: begun.receipt!.executionId! });
+    assert.equal(worked.kind, 'accepted', JSON.stringify(worked.reason ?? worked));
+    await waitUntil('the first Job is launched', () => host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).some((record) => record.type === 'job' && record.event === 'launched'), 30_000, 25);
+    const launched = host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).find((record) => record.type === 'job' && record.event === 'launched');
+    const wire = launched?.type === 'job' ? launched.job.wire : '';
+    assert.match(wire, /DESIGN=guide(\s|'|$)/, `the Job's command line carries the Campaign file's design: ${wire}`);
+    assert.doesNotMatch(wire, new RegExp(`DESIGN=${flow!.design}(\\s|'|$)`), 'never the Site file\'s own design');
+
+    // The Run's recorded inputs move after an execution was admitted: its Job is refused before launch.
+    await host.ctx.hima.cancelRun(run.id); killSessions(sessionsOf(host, run.id));
+    const second = await start();
+    const secondBegun = await act(second.id, 'begin', { nodeId: second.currentNode! });
+    assert.equal(secondBegun.kind, 'accepted', JSON.stringify(secondBegun.reason ?? secondBegun));
+    const prepared = host.ctx.hima.ledger.records({ runId: second.id, type: 'workspace' }).findLast((record) => record.type === 'workspace');
+    assert.ok(prepared?.type === 'workspace');
+    const { id: _id, runId: _runId, siteId: _siteId, seq: _seq, at: _at, writer: _writer, generation: _generation, type: _type, ...fields } = prepared as any;
+    await host.ctx.hima.ledger.appendWorkspace(second.id, { ...fields, event: 'reused', bindings: { ...prepared.bindings, design: flow!.design } });
+    const refused = await act(second.id, 'work', { executionId: secondBegun.receipt!.executionId! });
+    const execution = () => host.ctx.hima.ledger.run(second.id)!.control!.executions[secondBegun.receipt!.executionId!]!;
+    await waitUntil('the mismatched launch settles', () => refused.kind !== 'accepted' || execution().result !== undefined || execution().phase !== 'begun', 30_000, 25);
+    assert.equal(host.ctx.hima.ledger.records({ runId: second.id, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched').length, 0,
+      'nothing was launched with inputs the Run no longer records');
+    assert.match(JSON.stringify({ refused, execution: execution() }), /recorded input bindings|recorded "?design/i,
+      `the refusal names the recorded input mismatch: ${JSON.stringify({ refused, execution: execution() })}`);
+  } finally {
+    for (const runId of runIds) { try { await host.ctx.hima.cancelRun(runId); } catch { /* ended */ } finally { killSessions(sessionsOf(host, runId)); } }
+    await host.dispose(); await h.dispose();
+  }
+});

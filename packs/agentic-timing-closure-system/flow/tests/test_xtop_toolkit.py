@@ -1498,6 +1498,47 @@ class ObservedEffectConfinementTest(unittest.TestCase):
         self.assertEqual(fast.ops[0]["after"], {"instances": {"U1": "BUFX4"}})
 
 
+# Real XTop in the Operator's PBA session (#64 treatment Run run-9a5f197a, w01 record #185,
+# workspaces/w01/r1/xtop_log_1.txt:405-408; the same in w03 at xtop_log_1.txt:166-169).
+PBA_PATHS_REFUSAL = ("Error: In PBA mode, only path collections can be accepted. "
+                     "Please check if the given path collection is valid.")
+# Stub XTop in PBA mode: the analysis accepts no end-point path argument, as real XTop refused it.
+PBA_STUB = (
+    "proc analyze_setup_path_violations {args} { stub_record analyze_setup_path_violations {*}$args\n"
+    "  if {![string match -* [lindex $args 0]]} { puts \"%s\"; error \"\" }; return SETUP-ANALYSIS }\n"
+    "proc analyze_hold_path_violations {args} { stub_record analyze_hold_path_violations {*}$args\n"
+    "  if {![string match -* [lindex $args 0]]} { puts \"%s\"; error \"\" }; return HOLD-ANALYSIS }\n"
+) % (PBA_PATHS_REFUSAL, PBA_PATHS_REFUSAL)
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class PbaEndPointPathsKnownLimitationTest(unittest.TestCase):
+    """D-T01-1, a known limitation of Pack 0.2.0 (FABRIC.md G43), pinned rather than fixed.
+
+    `atcs_paths <check> <N> <end points>` hands XTop `get_paths -end_points ...` as the analysis's
+    path argument, which the Operator's PBA session refuses with the message above; `atcs_paths` with
+    no end points still reads the top paths. Fixing it changes `flow/templates/xtop-operator.tcl`,
+    hence the flow digest the atcs-v12 wrapper verifies (`a4736851...`), so it needs a new wrapper and
+    its requalification. When that lands, `test_end_point_paths_read_under_pba` passes (an unexpected
+    success) and this class is rewritten to the fixed behaviour.
+    """
+
+    def _session(self):
+        return Session(self).run(PBA_STUB + "T end {atcs_paths setup 5 {U9/D}}\nT top {atcs_paths setup 5 {}}\n")
+
+    def test_end_point_paths_fail_under_pba_with_the_live_message(self):
+        session = self._session()
+        self.assertEqual(session.outcome("end")[0], "ERR", session.stdout)
+        self.assertIn(PBA_PATHS_REFUSAL, session.stdout.splitlines())
+        (get_paths,) = session.calls_to("get_paths")
+        self.assertEqual(get_paths[1:], ["-delay_type", "max", "-end_points", "U9/D"])
+        self.assertEqual(session.outcome("top"), ("OK", "SETUP-ANALYSIS"), "without end points the top paths still read")
+
+    @unittest.expectedFailure
+    def test_end_point_paths_read_under_pba(self):
+        self.assertEqual(self._session().outcome("end")[0], "OK")
+
+
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class ReadProceduresTest(unittest.TestCase):
     def test_reads_call_the_documented_commands(self):

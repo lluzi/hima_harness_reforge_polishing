@@ -3320,6 +3320,26 @@ export function boundInputs(pack: Pack, site: Site): Record<string, string> {
   return bindings;
 }
 
+/**
+ * The Run's input bindings as its preparation recorded them (#64 D-C01-1): the workspace record's
+ * `bindings`, which already carry a Campaign file's input overrides merged over the Site's own. Every
+ * Job of a prepared Run takes its inputs from here, never from the Site file read again at launch
+ * time, which knows nothing of those overrides. A workspace recorded before `bindings` existed has
+ * nothing recorded, and only then are the Site's own bindings read, as they always were.
+ *
+ * @throws when the record names bindings but not one of the contract's inputs.
+ */
+export function recordedInputs(pack: Pack, site: Site, recorded: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  if (recorded === undefined) return boundInputs(pack, site);
+  const bindings: Record<string, string> = {};
+  for (const input of pack.contract.inputs) {
+    const value = recorded[input.name];
+    if (value === undefined || value === '') throw new Error(`the prepared workspace recorded no "${input.name}" input for pack ${pack.id}`);
+    bindings[input.name] = value;
+  }
+  return bindings;
+}
+
 // ---------------------------------------------------------------------------------------------
 // The stage: how far up the pack authoring pipeline a folder has come (#63).
 // ---------------------------------------------------------------------------------------------

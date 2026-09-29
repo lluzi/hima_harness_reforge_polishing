@@ -199,7 +199,8 @@ interface ShadowedTmux {
    *  launch. Everything a Run does before `tmux new-session` goes through to the real tmux. */
   launchNeverAnswers(): Promise<void>;
   /** A tmux that takes `seconds` over every launch and then really makes it, answers every question,
-   *  and dies unheard on `kill-session` alone: a Site that is slow to start a Job and cannot be
+   *  and dies unheard on the commands that stop one (`respawn-pane`, the hangup every stop now
+   *  begins with since #64 review I2, and `kill-session`): a Site that is slow to start a Job and cannot be
    *  asked to stop one. */
   slowLaunchNoKill(seconds: number): Promise<void>;
   restore(): Promise<void>;
@@ -248,7 +249,7 @@ async function shadowedTmux(): Promise<ShadowedTmux> {
       const sleepAt = findOnPath('sleep', saved);
       if (!sleepAt) throw new Error('this machine has no "sleep" on its PATH, and this shadow waits with it');
       await shim(
-        `#!/bin/sh\nif [ "$1" = "kill-session" ]; then kill -9 $$; fi\nif [ "$1" = "new-session" ]; then '${sleepAt}' ${String(seconds)}; fi\nexec '${real}' "$@"\n`,
+        `#!/bin/sh\nif [ "$1" = "kill-session" ] || [ "$1" = "respawn-pane" ]; then kill -9 $$; fi\nif [ "$1" = "new-session" ]; then '${sleepAt}' ${String(seconds)}; fi\nexec '${real}' "$@"\n`,
         `${dir}:${saved}`,
       );
     },
