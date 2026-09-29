@@ -683,7 +683,7 @@ class WorkerActionMasterReaderTest(_HierarchicalFixture):
         found = self._master("BUFFD4BWP35P140")
         self.assertEqual(len(found), 1, found)
         self.assertIn("changes cell function", found[0])
-        self.assertIn("'DFQ'", found[0])
+        self.assertIn("'DFQD'", found[0])  # the function is what precedes the drive digits
 
     def test_a_master_of_another_vt_is_refused(self):
         found = self._master("DFQD2BWP35P140LVT")

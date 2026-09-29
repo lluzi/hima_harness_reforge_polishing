@@ -93,15 +93,18 @@ class EmptyWorkerActionsTest(_ProbeFixture):
         self.assertEqual(document["actions"], [])
         found = self._read(_probe_reader(), "worker-request", "worker-request-w01.json", document, "w01")
         self.assertIn("actions (slot w01): must be a list of one to three {instance, toMaster} size_cell "
-                      "candidates, each instance in candidate.editDomain.instances; got 0 entries", found)
+                      "candidates, each instance in candidate.editDomain.instances; got 0 entries; when none "
+                      "is safe, write \"actions\": [] with a top-level \"noSafeAction\" reason", found)
 
-    def test_the_worker_purpose_and_example_say_to_exit_non_zero_instead(self):
-        """The cheapest honest equivalent of a no-fix request: no admissible w01 request can
-        carry zero actions (operate-worker-01's Team reviews one of them), so the Workshop's
-        entry exits non-zero with the reason, a coding diagnostic its owner revises."""
+    def test_the_worker_purpose_and_example_say_how_to_state_no_safe_action(self):
+        """Review 2 (I2) replaced "exit non-zero": a non-zero Workshop exit retries without limit in
+        one generation. An empty list with its noSafeAction reason is admitted and reaches
+        decide-next (test_success_paths.NoSafeActionTest)."""
         contract = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
         body = " ".join(contract.split("  - id: research-worker-01\n", 1)[1].split("\n  - id: ", 1)[0].split())
-        rule = "If no safe size_cell action can be resolved, exit non-zero printing the reason; never write an empty or placeholder actions list."
+        rule = ('If no safe size_cell action can be resolved, write "actions": [] and a top-level "noSafeAction" '
+                "string stating why; the Reader admits that request and it goes to evaluate-next-investment "
+                "instead of the Team.")
         self.assertIn(rule, body)
         example = (PACK_DIR / "knowledge" / "example-worker-request.md").read_text(encoding="utf-8")
         self.assertIn(rule, " ".join(example.split()))
@@ -189,7 +192,7 @@ class BufferForAndGateTest(_ProbeFixture):
         })
         _write(self.workspace / "state" / "xtop-context.json", json.dumps(context))
         found = self._read(_probe_reader(self.CELL_OF), "worker-request", "worker-request-w01.json", document, "w01")
-        refused = [text for text in found if "changes cell function 'CKAN2'" in text and "'BUFF'" in text]
+        refused = [text for text in found if "changes cell function 'CKAN2D'" in text and "'BUFFD'" in text]
         self.assertEqual(len(refused), len(document["actions"]), found)
 
 

@@ -574,6 +574,7 @@ rules:
   - hold-goal
   - artifact-ready
   - refresh-budget
+  - worker-action-proposed
   - continue-or-wait
   - next-action-observe
   - next-action-research
@@ -804,7 +805,7 @@ workshops:
       Each toMaster is a cell of this design's libraries (state/xtop-context.json) with the same
       function and VT as the instance's current cell; only the drive strength changes.
       The Agent Team reviews and selects one exact action from this admitted list.
-      If no safe size_cell action can be resolved, exit non-zero printing the reason; never write an empty or placeholder actions list.
+      If no safe size_cell action can be resolved, write "actions": [] and a top-level "noSafeAction" string stating why; the Reader admits that request and it goes to evaluate-next-investment instead of the Team. Never write a placeholder action.
       Read knowledge example-worker-request.md; copy its shape and change only the values (and taskId to w01); every instance is a full hierarchical path such as u_a/reg0, never a bare leaf name.
       Turn endpoints into instances only with the Pack resolver in knowledge endpoint-resolution.md.
       Before writing, read output workerRequest01Problems: after the Reader has read an earlier document it lists every problem it found, one line each naming the field, the slot and the required format; fix every line and write the whole document again (the file is absent before the first reading).
@@ -899,11 +900,11 @@ workshops:
       older state until observe runs, so choose observe first. Cite new information; never retry
       by revision alone.
       Read knowledge example-next-decision.md; copy its shape and change only the values.
-      Before writing, read output nextDecisionProblems: after the Reader has read an earlier document it lists every problem it found, one line each naming the field, the slot and the required format; fix every line and write the whole document again (the file is absent before the first reading). A refused campaign plan or integration plan also routes here; outputs campaignPlanProblems and integrationPlanProblems name what was wrong with it.
+      Before writing, read output nextDecisionProblems: after the Reader has read an earlier document it lists every problem it found, one line each naming the field, the slot and the required format; fix every line and write the whole document again (the file is absent before the first reading). A refused campaign plan or integration plan also routes here; outputs campaignPlanProblems and integrationPlanProblems name what was wrong with it. So does a w01 request that states no safe action; its noSafeAction is in output workerRequest01.
     directory: research/next
     entry: entry.py
     language: python
-    reads: [inputReadiness, workingState, acceptancePolicy, currentObservations, riskAtlas, contributionIndex, integrationState, precheckEvidence, physicalDelta, finalEvaluation, statePointers, residualCases, campaignExperience, nextDecisionProblems, campaignPlanProblems, integrationPlanProblems]
+    reads: [inputReadiness, workingState, acceptancePolicy, currentObservations, riskAtlas, contributionIndex, integrationState, precheckEvidence, physicalDelta, finalEvaluation, statePointers, residualCases, campaignExperience, nextDecisionProblems, campaignPlanProblems, integrationPlanProblems, workerRequest01]
     knowledge: [method-and-benchmark.md, state-and-evidence.md, cheap-verification.md, lifecycle-and-input-modes.md, innovus-stage-interventions.md, experience-transfer.md, example-next-decision.md]
     produces: nextDecision
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']

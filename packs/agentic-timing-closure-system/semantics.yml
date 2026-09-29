@@ -30,6 +30,11 @@ values:
       check and found none; unknown when the corresponding artifact was
       never fully checked (e.g. a companion reference could not be
       resolved).
+  tc_worker_action_count:
+    unit: count
+    description: >-
+      Size_cell actions an admitted w01 worker request proposes for the Team to review; 0 for a
+      request that states noSafeAction (routed to decide-next, never to the Team).
   tc_pending_research_count:
     unit: count
     description: Currently unfinished research tasks recorded in the current `contributionIndex`.

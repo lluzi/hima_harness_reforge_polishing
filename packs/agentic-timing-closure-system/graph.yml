@@ -135,6 +135,11 @@ nodes:
   - id: retry-worker-01
     kind: explore
     parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
+  # Review 2 (Issue #63, I2): an admitted w01 request with no safe action has no action for the
+  # Team to review; it goes to decide-next with its noSafeAction reason (workerRequest01).
+  - id: route-worker-action-01
+    kind: judge
+    parameters: { rules: [worker-action-proposed] }
   - id: operate-worker-01
     kind: act
     parameters: { tool: xtop-operator, arguments: { SLOT: w01 } }
@@ -519,7 +524,11 @@ edges:
 
   - { from: research-worker-01, to: read-worker-request-01 }
   - { from: read-worker-request-01, to: check-worker-request-01 }
-  - { from: check-worker-request-01, to: operate-worker-01, outcome: PASS }
+  # Review 2 (Issue #63, I2): an admitted request with no safe action (actions [] and noSafeAction)
+  # reaches decide-next, where its reason is read; one with actions goes to the Team.
+  - { from: check-worker-request-01, to: route-worker-action-01, outcome: PASS }
+  - { from: route-worker-action-01, to: operate-worker-01, outcome: PASS }
+  - { from: route-worker-action-01, to: decide-next, outcome: FAIL }
   - { from: check-worker-request-01, to: retry-worker-01, outcome: FAIL }
   - { from: retry-worker-01, to: research-worker-01, revisit: true }
   - { from: operate-worker-01, to: capture-worker-01 }

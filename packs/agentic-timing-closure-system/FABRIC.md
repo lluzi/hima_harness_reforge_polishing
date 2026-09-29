@@ -17,7 +17,10 @@ helper from `flow/atcs_cli.py`.
   every request-producing Workshop has one -- and `agent-team.md`, the owner's Team guidance, declared
   in slice 3 so the owner's Pack knowledge search reaches it). Each worker Team member's
   `taskTemplate` ends with one example reply holding exactly its `resultSchema.required` fields.
-- `graph.yml` — 111 nodes (62 act, 38 judge, 10 explore, 1 wait), 150 edges, 10 revisit edges.
+- `graph.yml` — 112 nodes (62 act, 39 judge, 10 explore, 1 wait), 152 edges, 10 revisit edges.
+  Review 2 (Issue #63, I2): `check-worker-request-01` PASS goes to `route-worker-action-01`
+  (judge, `worker-action-proposed`), which sends a request with actions to `operate-worker-01` and
+  an admitted "no safe action" request to `decide-next` (+1 node, +2 edges); FAIL still retries.
   Issue #63 slice 3 (G37): `check-worker-request-01` FAIL goes to `retry-worker-01` (Explore,
   `atcs-revisit`), which revisits `research-worker-01` (+1 node, +1 edge), replacing its FAIL edge
   to `wait-for-person`.
@@ -379,6 +382,13 @@ Known gaps carried from earlier tasks:
   `retry-worker-01`, like `check-observation-request`. w02/w03 FAILs still move on to the next
   slot: an Explore with the one-edge `atcs-revisit` chooser always revisits, so a retry there would
   let one hopeless slot spend the Run's generations instead of dropping it.
+- G42 (Issue #63, review 2) Three refusals got a success path. C13: the cell function is the text
+  before the sizing pattern's drive digits (its first group), so a pattern matching at the start of
+  the name (`BUF([0-9]+)`) gives family `BUF` instead of refusing every resize; the function
+  strings in C13 problems now include the pattern's own prefix (`CKAN2D`, `DFQD`). I1: a
+  next-decision target that is a key of `state/observation.json`'s `checks` is admitted as
+  written (PR03 had 209 keys ending `@**async_default**`); the key-form check applies only when
+  no observation can be read. I2: see the graph line above.
 - G38 (Issue #63, failure catalogue C23) An active slot's `editDomain` must name something XTop
   can edit. The campaign-plan and worker-request Readers count, per slot, an edit domain with no
   instance and no net, and each instance that is not a leaf cell of the sha-verified base netlist
@@ -482,9 +492,12 @@ Known gaps carried from earlier tasks:
     `flow/tests/probe_fixtures/`):
     - Item 1, empty w01 actions (`research-worker-01/attempt-2`, `ValueError: worker actions must
       contain one to three sizing candidates`). This was already counted by slice 3 (2d3678a1), and
-      `EmptyWorkerActionsTest` now reads the probe's own document. The purpose and the example now
-      say to exit non-zero with the reason rather than write an empty list. That is the honest
-      equivalent of a no-fix request: operate-worker-01's Team needs one action to review.
+      `EmptyWorkerActionsTest` now reads the probe's own document. Review 2 (I2) replaced the first
+      answer ("exit non-zero with the reason": a non-zero Workshop exit retries without limit in
+      one generation, and a refused request burns a generation per retry): `actions: []` with a
+      top-level `noSafeAction` reason is admitted, the w01 Reader emits `tc_worker_action_count`
+      0, and `route-worker-action-01` sends it to `decide-next`, which reads `workerRequest01`.
+      An empty list without the reason is still a counted problem and retries.
     - Item 2, reviewer JSON format (`model-probe-run1` team attempts 2 and 3, first answer "Expected
       ',' or ']' after array element"). The reviewer taskTemplate now names every field with its form
       and caps the free text: exactly one JSON object, no prose, no fence, no trailing commas,

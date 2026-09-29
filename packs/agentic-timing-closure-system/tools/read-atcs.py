@@ -889,6 +889,22 @@ def _observation_request(report, workspace, slot, mods):
     return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
+_ABSENT = object()
+
+
+def _action_count(envelope, expected_task_id):
+    """w01 only: `tc_worker_action_count`, the number of size_cell actions the request proposes.
+
+    Review 2 (Issue #63, I2): 0 for an admitted "no safe action" request routes it past the Team
+    (graph.yml `route-worker-action-01`) to decide-next; anything but a list reads as 0 too, and
+    such a request is refused anyway.
+    """
+    if expected_task_id != "w01":
+        return []
+    actions = envelope.get("actions") if isinstance(envelope, dict) else None
+    return [_emit_count("tc_worker_action_count", len(actions) if isinstance(actions, list) else 0)]
+
+
 def _request_envelope(report, workspace, expected_task_id, mods):
     """Shared handler for `work-package`/`worker-request` kinds.
 
@@ -915,7 +931,7 @@ def _request_envelope(report, workspace, expected_task_id, mods):
     keys = ("candidate", "baseState", "siteCapabilities") + (("actions",) if expected_task_id == "w01" else ())
     found = _shape_problems(envelope, keys, slot)
     if found:
-        return [_emit_count("tc_request_invalid_count", len(found))], found
+        return [_emit_count("tc_request_invalid_count", len(found))] + _action_count(envelope, expected_task_id), found
     candidate = envelope["candidate"]
     base_state = envelope["baseState"]
     site_capabilities = envelope["siteCapabilities"]
@@ -930,8 +946,9 @@ def _request_envelope(report, workspace, expected_task_id, mods):
     found += _work_package_problems(candidate, base_state, site_capabilities, workspaces_mod, ("candidate", slot))
     found += _edit_domain_problems(candidate, base_state, workspace, ("candidate", slot))
     if expected_task_id == "w01":
-        found += _worker_action_problems(envelope.get("actions"), candidate, base_state, workspace, core, slot)
-    return [_emit_count("tc_request_invalid_count", len(found))], found
+        found += _worker_action_problems(envelope.get("actions"), candidate, base_state, workspace, core, slot,
+                                         envelope.get("noSafeAction", _ABSENT))
+    return [_emit_count("tc_request_invalid_count", len(found))] + _action_count(envelope, expected_task_id), found
 
 
 _LIBERTY_CELL_RE = re.compile(rb'^\s*cell\s*\(\s*"?([^"\s)]+)"?\s*\)')
@@ -997,21 +1014,28 @@ def _library_context(workspace, base_state, core):
 def _sizing_family(master, eco):
     """`(function, VT)` of `master` under the Site's sizing rule, or None when it does not apply.
 
-    `cellNominalSizingPattern` (for example `D([0-9]+)BWP`) marks the drive strength: the text
-    before it is the cell function. `cellNominalSwapKeywords` lists the VT suffixes (the empty
-    keyword is the standard VT); the longest one the name ends with is its VT.
+    `cellNominalSizingPattern` (for example `D([0-9]+)BWP`, or `BUF([0-9]+)`) marks the drive
+    strength, its first group being the drive digits: the text before those digits is the cell
+    function (`CKAN2D` of `CKAN2D4BWP35P140HVT`, `BUF` of `BUF4`), the same for every size of one
+    family. A pattern without a group marks the drive by its whole match. Review 2 (Issue #63): a
+    pattern matching at the start of the name used to give no family at all, so a Site whose
+    pattern begins with the function refused every resize. `cellNominalSwapKeywords` lists the VT
+    suffixes (the empty keyword is the standard VT); the longest one the name ends with is its VT.
     """
     try:
         match = re.search(eco.get("cellNominalSizingPattern") or "", master)
     except re.error:
         return None
-    if match is None or match.start() == 0 or not eco.get("cellNominalSizingPattern"):
+    if match is None or not eco.get("cellNominalSizingPattern"):
+        return None
+    function = master[:match.start(1) if match.re.groups else match.start()]
+    if not function:
         return None
     tail = master[match.end():]
     keywords = sorted((k for k in eco.get("cellNominalSwapKeywords") or [] if isinstance(k, str) and k),
                       key=len, reverse=True)
     vt = next((k for k in keywords if tail.endswith(k)), "")
-    return master[:match.start()], vt
+    return function, vt
 
 
 def _master_problems(actions, hierarchy, top, base_state, workspace, core, slot):
@@ -1055,7 +1079,7 @@ def _master_problems(actions, hierarchy, top, base_state, workspace, core, slot)
     return found
 
 
-def _worker_action_problems(actions, candidate, base_state, workspace, core, slot):
+def _worker_action_problems(actions, candidate, base_state, workspace, core, slot, no_safe_action=_ABSENT):
     """Slot w01's `actions`: one to three `{instance, toMaster}` size_cell candidates.
 
     T63 real-run failure: a worker action naming a bare LEAF instance name (no
@@ -1065,10 +1089,20 @@ def _worker_action_problems(actions, candidate, base_state, workspace, core, slo
     `base_state["top"]`, walked directly against the sha-verified base netlist
     (never trusted from the candidate).
     """
+    # Review 2 (Issue #63, I2): the honest answer "no safe size_cell action" has one admitted form,
+    # an empty list with its reason; it reaches decide-next, never the Team.
+    if no_safe_action is not _ABSENT:
+        if not isinstance(no_safe_action, str) or not no_safe_action.strip():
+            return [f"noSafeAction{slot}: must be a non-empty string stating why no size_cell action is safe"]
+        if actions != []:
+            return [f"noSafeAction{slot}: only an empty actions list states no safe action; drop noSafeAction "
+                    "or write \"actions\": []"]
+        return []
     if not isinstance(actions, list) or not 1 <= len(actions) <= 3:
         got = f"{len(actions)} entries" if isinstance(actions, list) else ("missing" if actions is None else type(actions).__name__)
         return [f"actions{slot}: must be a list of one to three {{instance, toMaster}} size_cell candidates, "
-                f"each instance in candidate.editDomain.instances; got {got}"]
+                f"each instance in candidate.editDomain.instances; got {got}; when none is safe, write "
+                "\"actions\": [] with a top-level \"noSafeAction\" reason"]
     editable = candidate.get("editDomain")
     domain = (editable.get("instances") if isinstance(editable, dict) else None) or []
     top = base_state.get("top")
@@ -1689,6 +1723,16 @@ def _stale_xtop_context_problems(workspace, action):
             f"{action} needs a context bound to the working state, which only observe writes"]
 
 
+def _observation_check_keys(workspace):
+    """The check keys of `state/observation.json`, or None when it cannot be read."""
+    try:
+        observation = _load_json(Path(workspace) / "state" / "observation.json")
+    except (ValueError, OSError):
+        return None
+    checks = observation.get("checks") if isinstance(observation, dict) else None
+    return set(checks) if isinstance(checks, dict) else None
+
+
 def _collect_next_decision_problems(obj, workspace):
     workspace = Path(workspace)
     problems = []
@@ -1751,8 +1795,17 @@ def _collect_next_decision_problems(obj, workspace):
         problems.append("targets must be a list")
     elif isinstance(obj.get("targets"), list):
         # Real-model probe: targets written as a bare scenario, wildcards or prose with counts.
+        # Review 2 (Issue #63): an exact key of the current observation is admitted as written --
+        # PR03's reserved-group keys end in `@**async_default**` -- and the key form is checked
+        # only when no observation can be read.
+        observed = _observation_check_keys(workspace)
         for index, target in enumerate(obj["targets"]):
-            if not isinstance(target, str) or not _CHECK_KEY_RE.match(target):
+            if observed is not None:
+                if not isinstance(target, str) or target not in observed:
+                    problems.append(f"targets[{index}]: {target!r} is not a check key of state/observation.json; "
+                                    "copy each target unchanged from its checks, never a wildcard, a bare "
+                                    "scenario or prose")
+            elif not isinstance(target, str) or not _CHECK_KEY_RE.match(target):
                 problems.append(f"targets[{index}]: {target!r} is not a check key; each target is one exact "
                                 "<scenario>|<setup|hold>|<endpoint> from state/observation.json, never a "
                                 "wildcard, a bare scenario or prose")

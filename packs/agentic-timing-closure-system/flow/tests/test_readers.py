@@ -274,7 +274,8 @@ class SubprocessIdentityTest(unittest.TestCase):
         result = self._run("worker-request", report, out, extra=("w01",))
         self.assertEqual(result.returncode, 0, result.stderr)
         values = json.loads(out.read_text())["values"]
-        self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 3}])
+        self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 3},
+                                  {"type": "tc_worker_action_count", "unit": "count", "value": 0}])
         sidecar = (self.workspace / "research" / "requests" / "worker-request-w01.problems.txt").read_text()
         self.assertTrue(sidecar.startswith("3 problems in worker-request-w01.json"), sidecar)
         for field in ("candidate.taskId (slot w01)", "actions (slot w01)"):
@@ -1512,6 +1513,8 @@ class SemanticsCoverageTest(unittest.TestCase):
         "tc_applicable_constraint_unknown_count", "tc_fixed_check_count", "tc_missing_prior_check_count",
         "tc_refresh_count", "tc_refreshes_completed", "tc_accepted_artifact_ready", "tc_stop_required",
         "tc_next_action", "tc_selected_contribution_count",
+        # Review 2 (Issue #63, I2): routes an admitted "no safe action" w01 request to decide-next.
+        "tc_worker_action_count",
     }
 
     def _load_yaml_light(self, path):

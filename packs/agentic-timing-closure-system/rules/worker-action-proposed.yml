@@ -1,0 +1,8 @@
+id: worker-action-proposed
+version: "1"
+title: The admitted w01 request proposes at least one size_cell action for the Team to review
+# Review 2 (Issue #63, I2): an admitted request may state that no size_cell action is safe
+# (actions [] with a noSafeAction reason). FAIL routes it to decide-next instead of the Team.
+requires: [{ type: tc_worker_action_count }]
+subject: { type: tc_worker_action_count }
+predicate: { op: gt, threshold: 0, unit: count }
