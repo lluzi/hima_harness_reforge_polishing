@@ -481,9 +481,23 @@ tools:
   - id: compose-facts
     file: flow/atcs_cli.py
     description: >-
-      Deterministic composition facts over the collected Contributions (M4 analyze): with no
-      resolutions before the compose Workshop, and with the admitted integration plan's resolutions
-      on the second pass.
+      Deterministic composition facts over the collected Contributions (M4 analyze), first pass:
+      no resolutions, before the compose Workshop writes this batch's plan. Its plan argument names
+      a file nothing writes, so an earlier integration plan still on disk (refused, stale or
+      malformed) is never read here (#63 failure catalogue C06, ported for #64).
+    inputs: [WORKSPACE]
+    argv:
+      - python3
+      - ${WORKSPACE}/flow/atcs_cli.py
+      - compose-facts
+      - ${WORKSPACE}
+      - ${WORKSPACE}/state/no-integration-plan-on-the-first-pass.json
+
+  - id: compose-facts-admitted
+    file: flow/atcs_cli.py
+    description: >-
+      Deterministic composition facts, second pass: with the resolutions of the integration plan
+      request-admissible has just admitted (it runs only behind check-integration-plan PASS).
     inputs: [WORKSPACE]
     argv:
       - python3

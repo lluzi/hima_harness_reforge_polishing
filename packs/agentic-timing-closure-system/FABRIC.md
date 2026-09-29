@@ -313,6 +313,27 @@ Schema limits and how the graph expresses them:
   request that is not for its slot's edit domain. The plan and worker examples list every toolkit
   mutation, the plan checklist's default. Proving tests: `test_t01_regressions.OperatorLoopTest` (RED: 13
   failures).
+- G48 (Issue #64, #63 C06 ea3993f3 and C05 9737b28f ported; the downstream half of G45) The first
+  composition pass never reads an integration plan, and a wild session flows to the replay. C06
+  applied to 0.2.0: `compose-facts` (the first-pass node, also the `revisit-revise` target) read
+  `research/requests/integration-plan.json`, so a refused generation-2 plan with malformed resolutions
+  still on disk made generation 3's first pass exit 3. The first pass now runs a tool whose plan
+  argument names a file nothing writes; the new `compose-facts-admitted` tool, reached only through
+  `check-integration-plan` PASS, reads the admitted plan (no graph growth; the node's tool changed).
+  C05 was already counted by this Reader (a resolution for a no-fix Contribution names no current
+  conflict); its test is added, green on arrival. `flow/tests/test_wild_contribution_flow.py` runs a
+  domain-clean wild session (a trial that hurt its target, undone, then a master of another function
+  the plan never named) through capture, compose and replay without an upstream refusal: the
+  composition keeps every session with its predicted value and marks a shared-instance command
+  skipped, naming its holder; `reconcile` records the session that did not reproduce (the skipped
+  command, `deltaMatches: false`, a `replayMismatch` warning) and chooses the arm on XTop's prediction.
+  Known limit, flow code (the wrapper-pinned digest): `capture-contribution`'s value gates
+  (`contributions._session_value`: `no-predicted-gain`, `breaks-target-check`,
+  `breaks-opposite-check`) still refuse a session whose kept commands XTop measured as no gain or as
+  harmful in some required scenario; lifting them to advice needs a flow change and a wrapper
+  requalification. Proving tests: `ComposeFactsSecondPassTest.test_a_refused_plan_with_malformed_resolutions_is_not_applied`
+  (RED: exit 3), `IntegrationPlanExampleTest.test_a_resolution_for_a_no_fix_contribution_is_counted`,
+  `test_wild_contribution_flow.py` (green on arrival).
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.

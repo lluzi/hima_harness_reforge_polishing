@@ -3589,6 +3589,41 @@ class ComposeFactsSecondPassTest(unittest.TestCase):
         self.assertEqual(facts["unresolvedCount"], 1)  # resolutions NOT applied
 
 
+
+    def _graph_tool_argv(self, node_id):
+        """The argv the shipped contract gives the tool that graph node `node_id` runs,
+        `${WORKSPACE}` bound to this test's workspace (read from graph.yml and contract.yml)."""
+        import re
+        graph = (PACK_DIR / "graph.yml").read_text(encoding="utf-8")
+        contract = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+        node = re.search(rf"^  - id: {re.escape(node_id)}\n    kind: act\n    parameters: \{{ tool: ([\w-]+) \}}$",
+                         graph, re.M)
+        self.assertIsNotNone(node, f"graph node {node_id} runs no tool")
+        tool = re.search(rf"^  - id: {re.escape(node.group(1))}\n(.*?)(?=^  - id: |^\S)", contract, re.S | re.M)
+        argv = re.findall(r"^      - (\S+)$", tool.group(1).split("    argv:\n", 1)[1], re.M)
+        return [word.replace("${WORKSPACE}", str(self.workspace)) for word in argv]
+
+    def test_a_refused_plan_with_malformed_resolutions_is_not_applied(self):
+        """C06 (#63 failure catalogue, ea3993f3, ported for #64): PR03's generation-3 first pass exited 3
+        (missing-input `resolutions[].conflictKey is required`) on the integration plan the Reader had
+        refused in generation 2, still on disk. The first pass runs before the compose Workshop writes
+        this batch's plan, so the graph's first-pass node must never read that file; only the second
+        pass, behind request-admissible PASS, applies a plan's resolutions."""
+        plan_path = self.workspace / "research" / "requests" / "integration-plan.json"
+        _write_json(plan_path, {"plan": {
+            "batchId": "batch-g2", "baseStateId": self.base_state_id, "select": [],
+            "resolutions": [{"contributionId": "contrib-a", "decision": "drop", "reason": "no-fix", "taskId": "w01"}],
+            "deferred": [], "reason": "gen-2 plan the Reader refused"}, "facts": {}})
+        first = self._graph_tool_argv("compose-facts")
+        self.assertEqual(first[:3], ["python3", f"{self.workspace}/flow/atcs_cli.py", "compose-facts"])
+        result = _run("compose-facts", self.workspace, *first[4:])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        facts = json.loads((self.workspace / "state" / "composition-facts.json").read_text())
+        self.assertEqual(facts["unresolvedCount"], 1)  # the refused plan's resolutions are not applied
+        second = self._graph_tool_argv("compose-facts-admitted")
+        self.assertEqual(second[4:], [str(plan_path)], "the second pass reads the admitted plan")
+
+
 class RecordExperienceProvenanceTest(unittest.TestCase):
     """Task 12c item 5: `record-experience` decides merge-vs-APR by comparing ids
     (`state/implement.json`'s `mergeCommitId` against `state/merge-commit.json`'s

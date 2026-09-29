@@ -580,6 +580,40 @@ class IntegrationPlanExampleTest(ExampleWorkspace):
         values = {value["type"]: value["value"] for value in read_atcs.read("integration-plan", report, self.workspace)}
         self.assertEqual(values, {"tc_request_invalid_count": 0, "tc_selected_contribution_count": 2})
 
+    def test_a_resolution_for_a_no_fix_contribution_is_counted(self):
+        """C05 (#63 failure catalogue, 9737b28f, ported for #64): PR03 lost a generation on a plan that
+        wrote a resolution for a no-fix Contribution, which is considered but in no conflict. A
+        resolution exists only for a facts.conflicts key and has exactly {conflictKey, decision}; the
+        example with the no-fix id added to `deferred` is admitted, and each live shape is counted."""
+        facts, known = self.facts()
+        no_fix = core.digest({"contribution": "w04-no-fix"})
+        body = {k: v for k, v in facts.items() if k not in ("schema", "id")}
+        body["considered"] = sorted(body["considered"] + [no_fix])
+        body["order"] = body["order"] + [no_fix]
+        facts = core.stamp("composition-facts", body)
+        known["<the whole JSON object in state/composition-facts.json, verbatim>"] = facts
+        admitted = _fill(_example("example-integration-plan.md"), self.design, known)
+        admitted["plan"]["deferred"] = [no_fix]
+        report = self.workspace / "research" / "requests" / "integration-plan.json"
+        _write(report, json.dumps(admitted))
+        self.assertEqual(read_atcs.problems("integration-plan", report, self.workspace), [])
+        for label, resolution in (
+            ("decision only", {"decision": "drop"}),
+            ("live PR03 shape", {"contributionId": no_fix, "decision": "drop", "reason": "no-fix", "taskId": "w04"}),
+            ("drop by id, no conflict", {"conflictKey": "no-fix", "decision": "drop:" + no_fix}),
+        ):
+            with self.subTest(label=label):
+                document = copy.deepcopy(admitted)
+                document["plan"]["resolutions"].append(resolution)
+                _write(report, json.dumps(document))
+                found = read_atcs.problems("integration-plan", report, self.workspace)
+                (count,) = [v["value"] for v in read_atcs.read("integration-plan", report, self.workspace)
+                            if v["type"] == "tc_request_invalid_count"]
+                self.assertEqual(count, len(found))
+                self.assertGreaterEqual(len(found), 1, found)
+                self.assertTrue(all(text.startswith("plan.") for text in found), found)
+                self.assertTrue(any(text.startswith("plan.resolution") for text in found), found)
+
     def test_selecting_both_sides_of_the_conflict_without_its_resolution_is_counted(self):
         facts, known = self.facts()
         example = _fill(_example("example-integration-plan.md"), self.design, known)

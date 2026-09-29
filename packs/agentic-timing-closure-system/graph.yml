@@ -263,7 +263,7 @@ nodes:
     parameters: { rules: [request-admissible] }
   - id: compose-facts-admitted
     kind: act
-    parameters: { tool: compose-facts }
+    parameters: { tool: compose-facts-admitted }
   - id: read-composition-facts-admitted
     kind: act
     parameters: { observes: compositionFacts }
