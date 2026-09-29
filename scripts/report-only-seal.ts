@@ -101,7 +101,7 @@ export async function sealEndedTestRun(host: InProcessHost, o: ReportOnlySeal): 
       return packStage(installedPackDirectory).stage === stage && checked?.run === o.runId && checked.error === undefined;
     };
     const instruction = stage === 'tested'
-      ? `/hima-test Reporting only for the already ended native test Run ${o.runId}. Do not resume the Run or create anything. Read its retained records and write TEST.md through the native test path. Preserve method bytes and report the exact ${initial.status} ending. ${GRANT_SAID(installedPackDirectory)}`
+      ? `/hima-test Reporting only for the already ended native test Run ${o.runId}. Do not resume the Run or create anything. Read its retained records through hima_status ${o.runId} — every fact about the Run, including each refusal record's id and reason and each code record's sha256, comes from that answer, even when it is long — and write TEST.md through the native test path. Preserve method bytes and report the exact ${initial.status} ending. ${GRANT_SAID(installedPackDirectory)}`
       : `/hima-release ${o.packId}. Seal only the tested method using hima_pack_release; never handwrite VERSION.yml.`;
     for (let attempt = 0; attempt < 3 && !reached(); attempt++) await o.say(owner, instruction);
     if (!reached()) throw new Error(`report-only native pipeline did not reach ${stage} for this exact Run: ${JSON.stringify(packStage(installedPackDirectory))}`);
