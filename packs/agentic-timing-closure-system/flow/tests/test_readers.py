@@ -1713,7 +1713,7 @@ class SemanticsCoverageTest(unittest.TestCase):
         "tc_applicable_constraint_unknown_count", "tc_fixed_check_count", "tc_missing_prior_check_count",
         "tc_refresh_count", "tc_accepted_artifact_ready", "tc_stop_required", "tc_next_action",
         "tc_selected_contribution_count", "tc_worker_refusal_count", "tc_presta_gate_net_count",
-        "tc_batch_guarantee_unevidenced",
+        "tc_batch_guarantee_unevidenced", "tc_refreshes_completed",
     }
 
     def _load_yaml_light(self, path):

@@ -408,9 +408,12 @@ test('two revisit arcs whose spans overlap without nesting peak at distinct heig
   assert.ok(apex('d') - apex('g') >= 8, `the wider arc g -> b peaks clear above d -> a (${apex('g').toFixed(1)} vs ${apex('d').toFixed(1)})`);
 });
 
-test('the 132-node ATCS reference graph spreads into lanes where no two nodes or their labels overlap', () => {
+test('the ATCS reference graph spreads into lanes where no two nodes or their labels overlap', () => {
   const scene = shippedScene('agentic-timing-closure-system');
-  assert.equal(scene.nodes.length, 132);
+  // Every node of the shipped graph is placed, however many it has (the count is read from graph.yml,
+  // not written here, so a Pack change does not leave a stale number behind).
+  assert.equal(scene.nodes.length, loadPack(packsDir, 'agentic-timing-closure-system').graph.nodes.length);
+  assert.ok(scene.nodes.length > 100);
   const rows = new Set(scene.nodes.map((n) => n.row));
   assert.ok(rows.size >= 3, `expected several lanes, got rows ${[...rows].join(', ')}`);
   for (let i = 0; i < scene.nodes.length; i++) {
@@ -495,7 +498,10 @@ test('the ATCS outcome chips sit clear of one another and of every node\'s glyph
 test('the ATCS revisit arcs nest by span above the lanes instead of drawing over one another', () => {
   const scene = shippedScene('agentic-timing-closure-system');
   const arcs = scene.edges.filter((e) => e.kind === 'revisit');
-  assert.equal(arcs.length, 9);
+  // One arc per `revisit: true` edge of the shipped graph, counted from graph.yml.
+  assert.equal(arcs.length, (loadPack(packsDir, 'agentic-timing-closure-system').graph.edges as { revisit?: boolean }[])
+    .filter((edge) => edge.revisit === true).length);
+  assert.ok(arcs.length >= 9);
   const apex = (d: string) => Math.min(...samplePath(d).map((p) => p.y));
   const top = Math.min(...scene.nodes.map((n) => n.y)) - NODE / 2;
   for (const arc of arcs) {

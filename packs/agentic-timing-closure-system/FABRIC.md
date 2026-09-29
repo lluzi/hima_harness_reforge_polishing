@@ -396,6 +396,20 @@ Known gaps carried from earlier tasks:
   Researcher, Reviewer and Operator cannot read `knowledge/xtop-expert-operator.md` itself; the
   slot's research Workshop (`research-worker-NN`) reads it and writes the request they work from.
   Closing the gap needs a generic Harness seam for declaring Pack knowledge on a Team member.
+- G36 (Issue #64 Track B, ported from #63 slice 2 and its Goal fix) The physical-refresh cap is
+  the Goal value `max_physical_refreshes` (count, 1..4, default 2 -- the two refreshes of the #64
+  deal, integer), admitted once when the Run is created, so no next-strategy decision or revision
+  can raise it. Live02 spent both generations on two `revisit-research` decisions with zero
+  refreshes: the generation limit bounds revisits, not refreshes. The reader `atcs-refresh-budget`
+  on output `workingState` (the anchor; the ledger does not exist before the first refresh and the
+  Harness blocks on a missing report) emits `tc_refreshes_completed` from `state/refresh-ledger.json`:
+  known(0) with no ledger and no STA receipt or archive, the verified entry count otherwise, unknown
+  for a lost, corrupt or tampered ledger. `read-refresh-budget -> check-refresh-budget` sits between
+  `check-presta-model` PASS and `implement`, `read-refresh-budget-apr -> check-refresh-budget-apr`
+  before `apr-prepare`; `revisit-implement` and `revisit-earlier-apr` enter at the reading (a Judge
+  takes the latest reading Run-wide, so each gate reads afresh). FAIL and UNDETERMINED stop at
+  `wait-for-person`, whose clearance ends the Run. Graph now 136 nodes / 178 edges; proving tests
+  `flow/tests/test_refresh_budget.py` and the ATCS contract test.
 
 ## Reviews
 

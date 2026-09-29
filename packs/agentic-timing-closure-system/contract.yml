@@ -58,6 +58,7 @@ outputs:
     description: M1 design-state of the starting database, fixed for the whole Campaign (policy anchor).
   - name: workingState
     path: state/working-state.json
+    reader: atcs-refresh-budget
     description: >-
       The design-state every batch is based on: seeded from the baseline by baseline, rewritten by
       adopt whenever the working pointer moves to an adopted candidate.
@@ -596,6 +597,7 @@ rules:
   - hold-goal
   - artifact-ready
   - continue-or-wait
+  - refresh-budget
   - next-action-observe
   - next-action-research
   - next-action-compose
@@ -620,6 +622,12 @@ goal:
   # evidence can never satisfy. See FABRIC.md's Gaps for the SPEC-consistent framing.
   target_setup_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }
   target_hold_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }
+  # Issue #64 Track B (from #63): the Run's cap on completed full physical refreshes
+  # (implement/apr-run -> extract -> sta). Every Explore revisit consumes a generation whether
+  # or not it refreshes, so the generation limit does not bound refreshes; the refresh-budget
+  # Judges before implement and apr-prepare do. A Goal value, fixed when the Run is created: no
+  # next-strategy decision or revision changes it. Default 2, the two refreshes of the #64 deal.
+  max_physical_refreshes: { type: number, unit: count, min: 1, max: 4, default: 2, precision: 0 }
 
 strategy:
   maxPaths: { type: number, unit: paths, min: 100, max: 5000, default: 1000 }
@@ -631,6 +639,7 @@ strategy:
 words:
   target_setup_wns_ns: { label: target setup WNS, unit: ns }
   target_hold_wns_ns: { label: target hold WNS, unit: ns }
+  max_physical_refreshes: { label: max full physical refreshes per Run, unit: count }
   maxPaths: { label: max paths per scenario query, unit: paths }
   workerSlots: { label: parallel worker slots, unit: slots }
   autoFinish: { label: "auto-finish after the expert recipe (1 on, 0 off)", unit: flag }
