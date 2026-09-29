@@ -1,0 +1,4 @@
+VERSION 5.8 ;
+DESIGN top ;
+# synthetic DEF of design/top.v
+END DESIGN

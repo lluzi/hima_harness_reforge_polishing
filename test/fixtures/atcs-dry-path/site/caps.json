@@ -1,0 +1,18 @@
+{
+  "edaShell": ["python3", "${STANDIN}", "--config", "${SITE}/eda-standin.json"],
+  "design": "top", "techLef": "${SITE}/design/tech.lef", "cellLefGlob": "${SITE}/design/cells/*.lef",
+  "starrcHome": "${SITE}/starrc-toolkit", "pgVerification": false,
+  "xtopContext": {
+    "siteMap": ["unit", "core"], "removableFillers": ["FILL*", "DCAP*"],
+    "scenarios": [
+      {"name": "func_ssg_rcworst", "corner": "c1", "libertyGlob": "${SITE}/design/libs/*.lib"},
+      {"name": "func_ffg_cbest", "corner": "c1", "libertyGlob": "${SITE}/design/libs/*.lib"}
+    ],
+    "ecoParameters": {
+      "bufferListForHold": ["BUF1"], "bufferListForSetup": ["BUF2"],
+      "cellClassifyRule": "cell_attribute", "cellMatchAttribute": "footprint",
+      "cellNominalSwapKeywords": ["ULVT", "LVT", "", "HVT"],
+      "cellNominalSizingPattern": "BUF([0-9]+)", "gainThreshold": 0.001
+    }
+  }
+}
