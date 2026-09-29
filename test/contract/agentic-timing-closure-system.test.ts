@@ -38,7 +38,9 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   // `operate-parked` no-op, which is how a parked slot's operate node settles without XTop.
   tool.interactive.argv = [wrapper, '${WORKSPACE}/flow/atcs-repl.tcl', '${WORKSPACE}/workspaces/w01/r1'];
   tool.licences = {};
-  for (const member of contract.agentTeams[0].members) member.budgetShare.maxElapsedMs = 10000;
+  // Each member's elapsed share is sized for a loaded host: at 10 s the Operator child could expire
+  // before its interactive open on a busy machine ("no available project workspace").
+  for (const member of contract.agentTeams[0].members) member.budgetShare.maxElapsedMs = 60000;
   await writeFile(path.join(variant, 'contract.yml'), stringify(contract));
   const graph = parse(await readFile(path.join(variant, 'graph.yml'), 'utf8')) as any;
   graph.entry = 'prepare-workers'; // Start at the fork; pre-EDA preparation is separately Python-tested.
