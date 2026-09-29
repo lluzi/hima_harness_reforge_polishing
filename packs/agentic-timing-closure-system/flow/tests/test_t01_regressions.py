@@ -275,9 +275,13 @@ class T01PlanWorkspace(T01Workspace):
         self.assertEqual(value["value"], len(found), found)
         return found
 
-    def plan_advice(self, plan):
+    def plan_advice(self, plan, fields=None):
+        """The advice lines on `plan`; with `fields`, only those about `candidate.workPackages.wNN.<field>`."""
         report = _write(self.workspace / "research" / "requests" / "campaign-plan.json", json.dumps(plan))
-        return read_atcs.advice("campaign-plan", report, self.workspace)
+        found = read_atcs.advice("campaign-plan", report, self.workspace)
+        if fields is None:
+            return found
+        return [line for line in found if line.split(":", 1)[0].rsplit(".", 1)[-1] in fields]
 
 
 class LeafCellEditDomainTest(T01PlanWorkspace):
@@ -289,7 +293,7 @@ class LeafCellEditDomainTest(T01PlanWorkspace):
 
     def test_the_fixture_is_the_retained_plan_and_its_domains_are_leaf_cells(self):
         self.assertEqual(hashlib.sha256((LIVE / "t01-campaign-plan.json").read_bytes()).hexdigest(), T01_PLAN_SHA256)
-        self.assertEqual(self.plan_advice(self.plan), [])
+        self.assertEqual(self.plan_advice(self.plan, ("editDomain", "targetPins")), [])
 
     def test_an_unusable_edit_domain_instance_is_advised(self):
         for label, name, needle in (
@@ -302,7 +306,7 @@ class LeafCellEditDomainTest(T01PlanWorkspace):
                 plan = copy.deepcopy(self.plan)
                 plan["candidate"]["workPackages"]["w02"]["editDomain"]["instances"] = [name]
                 self.assertEqual([line for line in self.plan_problems(plan) if ".editDomain" in line], [])
-                lines = self.plan_advice(plan)
+                lines = self.plan_advice(plan, ("editDomain", "targetPins"))
                 self.assertEqual(len(lines), 1, lines)
                 self.assertTrue(lines[0].startswith(f"candidate.workPackages.w02.editDomain: instance {name!r} "), lines)
                 self.assertIn(needle, lines[0])
@@ -314,7 +318,7 @@ class LeafCellEditDomainTest(T01PlanWorkspace):
         plan = copy.deepcopy(self.plan)
         plan["candidate"]["workPackages"]["w03"]["targetPins"] = ["swerv_ifu/mem_ctl/D"]
         self.assertEqual([line for line in self.plan_problems(plan) if ".targetPins" in line], [])
-        lines = self.plan_advice(plan)
+        lines = self.plan_advice(plan, ("editDomain", "targetPins"))
         self.assertEqual(len(lines), 1, lines)
         self.assertTrue(lines[0].startswith("candidate.workPackages.w03.targetPins: 'swerv_ifu/mem_ctl/D' is not a "
                                             "hierarchical pin of a leaf cell"), lines)
@@ -329,6 +333,58 @@ class LeafCellEditDomainTest(T01PlanWorkspace):
         (line,) = read_atcs.advice("worker-request", report, self.workspace, "w03")
         self.assertTrue(line.startswith("candidate.editDomain (slot w03): instance 'swerv_ifu/mem_ctl' is a module "
                                         "instance"), line)
+
+
+class ParkedSeatTest(T01PlanWorkspace):
+    """Treatment attempt 1's plan made 3 clusters from the scenarios' single worst checks and parked w04..w06
+    although workerSlots was 6 and the observation held disjoint violating checks (the dma FIFO and dmi sync
+    flops, lsu_axi_arvalid, sb_axi_wdata[0]). Guidance and advice, never a refusal for parking (the #64
+    worker/aggregation principle): each parked seat is one advice line naming the worst uncovered check.
+    RED on c1269571: the retained plan got no advice."""
+
+    def test_the_retained_plan_is_advised_once_per_parked_seat_with_the_worst_uncovered_check(self):
+        self.assertEqual(self.plan_problems(self.plan), [])
+        found = self.plan_advice(self.plan)
+        self.assertEqual([line.split(":", 1)[0] for line in found],
+                         ["candidate.workPackages.w04", "candidate.workPackages.w05", "candidate.workPackages.w06"], found)
+        observation = json.loads((LIVE / "t01-observation-top.json").read_text())
+        named = [line.split("violating check ", 1)[1].split(" ", 1)[0] for line in found]
+        self.assertEqual(len(set(named)), 3)
+        slacks = [observation["checks"][key]["slack"]["value"] for key in named]
+        self.assertEqual(slacks, sorted(slacks), "worst first")
+        for line in found:
+            self.assertIn("parked, but workerSlots is 6", line)
+            self.assertIn("resolve-instances", line)
+
+    def test_a_plan_filling_the_seats_with_disjoint_clusters_gets_no_advice(self):
+        """The success path: w04..w06 take the next worst uncovered checks in their own leaf cells, and
+        every remaining violating check goes into the targets of an active slot."""
+        plan = copy.deepcopy(self.plan)
+        packages = plan["candidate"]["workPackages"]
+        observation = json.loads((LIVE / "t01-observation-top.json").read_text())
+        clusters = {"w04": "swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+                    "w05": "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_",
+                    "w06": "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_"}
+        leaves = dict(MASTERS, **{cell: "SDFCNQD1BWP35P140" for cell in clusters.values()})
+        _write(self.workspace / self.working["netlist"]["path"], standin_netlist(self.working["top"], leaves))
+        read_atcs._netlist_hierarchy_cache.clear()
+        for slot, cell in clusters.items():
+            keys = sorted(key for key, check in observation["checks"].items() if check["endpoint"] == cell)
+            packages[slot] = dict(copy.deepcopy(packages["w01"]), taskId=slot, problem=f"hold checks at {cell}",
+                                  targets=keys, mayAffect=[], targetPins=[f"{cell}/D"],
+                                  editDomain={"instances": [cell], "nets": [], "regions": []})
+        for key, check in sorted(observation["checks"].items()):
+            if not any(read_atcs._atcs_modules(self.workspace)["composition"].covers(
+                    key, check["endpoint"], p["targets"], p["targetPins"]) for p in packages.values()):
+                packages["w01"]["targets"].append(key)
+        self.assertEqual(self.plan_problems(plan), [])
+        self.assertEqual(self.plan_advice(plan), [])
+        packages["w06"] = {"taskId": "w06", "baseStateId": self.working["id"], "parked": True,
+                           "problem": "no cluster left"}
+        self.assertEqual(self.plan_problems(plan), [], "parking is never refused")
+        found = self.plan_advice(plan)
+        self.assertEqual(len(found), 1, found)
+        self.assertTrue(found[0].startswith("candidate.workPackages.w06: parked, but workerSlots is 6"), found)
 
 
 if __name__ == "__main__":

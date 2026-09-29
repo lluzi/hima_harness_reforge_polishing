@@ -742,7 +742,7 @@ knowledge:
   - file: example-observation-request.md
     purpose: An admitted research/requests/observation-request.json, to copy in shape.
   - file: example-campaign-plan.md
-    purpose: An admitted six-slot research/requests/campaign-plan.json (one active slot, five parked), to copy in shape.
+    purpose: An admitted six-slot research/requests/campaign-plan.json (six active clusters filling workerSlots 6, the parked shape in its text), to copy in shape.
   - file: example-worker-request.md
     purpose: Admitted worker requests for an active slot, an active slot with no safe move, and a parked slot, to copy in shape.
   - file: example-integration-plan.md
@@ -1224,14 +1224,23 @@ workshops:
       known slack per scenario and mode) must each be covered by some active slot: its endpoint pin
       (the check key's, or PT's raw endpoint for a key <pin>@<group>) in the slot's targetPins, or,
       for a check ending at a top-level port, its check key in the slot's targets. The worst clusters
-      take the lowest slots. Active slots share no instance: an instance in one active slot's
+      take the lowest slots. Then fill the seats: while any violating check of a required scenario is
+      covered by no active slot, every slot up to workerSlots works a cluster. After the worst checks,
+      take the next worst violating checks (the checks of state/observation.json by slack, and the
+      cases of state/residual-cases.json), resolve their endpoints, and give each seat one cluster whose
+      leaf cells no other active slot claims; a check whose cells an active slot already holds goes into
+      that slot's targets. Treatment attempt 1 made three clusters from the scenarios' single worst
+      checks and parked three of six seats while many disjoint checks violated; the Reader never refuses
+      a parked seat, but names each with the worst uncovered check in an advice line. Active slots share
+      no instance: an instance in one active slot's
       editDomain.instances, or owning one of its targetPins, is in no other active slot's domain or
       target pins. Active slots also share no edit-domain net: a net in one active slot's
       editDomain.nets is in no other's. Read the prior batch's XTop fail reasons after auto-finish
       (state/residual-cases.json, batchFailReasons and each case's failReasons): the clusters plain
       auto-fix could not fix, and why, are the expert slots' work. The first generation has no
-      evaluated batch, so it carries no batchFailReasons: plan from the observation's blockers. A slot
-      with no cluster worth an expert session is parked: its branch runs as a no-op and seals a parked
+      evaluated batch, so it carries no batchFailReasons: plan from the observation's blockers; the
+      missing fail reasons are no reason to park. A slot is parked only above workerSlots, or when every
+      violating check of a required scenario is covered: its branch runs as a no-op and seals a parked
       no-fix. Write one document, research/requests/campaign-plan.json, in exactly the shape of knowledge
       example-campaign-plan.md. There is exactly one copy of workPackages, under candidate; never repeat it at the
       top level. The Reader admits candidate.workPackages, and prepare-workers prepares that same field.
@@ -1271,8 +1280,11 @@ workshops:
         7. The worst setup check and the worst hold check of each required scenario is covered by an
            active slot, through its check key "<scenario>|<mode>|<endpoint>" in targets or its endpoint
            pin in targetPins.
-        8. Every slot above workerSlots, and every slot without a cluster, uses the parked shape exactly:
-           {"taskId", "baseStateId", "parked": true, "problem": "<why it is parked>"} and no other key.
+        8. Every slot above workerSlots uses the parked shape exactly: {"taskId", "baseStateId",
+           "parked": true, "problem": "<why it is parked>"} and no other key. A slot up to workerSlots is
+           parked only when every violating check of a required scenario is covered by an active slot;
+           otherwise each parked seat is an advice line (never a counted problem) naming the worst
+           uncovered check.
         9. candidate.reason is a non-empty string.
 
       Where the values come from:
@@ -1304,11 +1316,20 @@ workshops:
           active = [p for p in packages.values() if not workspaces.is_parked(p)]
           for key, pin in blockers.items():
               assert any(composition.covers(key, pin, p["targets"], p["targetPins"]) for p in active), key
+          seats = load("state", "worker-slots.json")["workerSlots"]
+          parked_seats = [t for t, p in packages.items() if workspaces.is_parked(p) and int(t[1:]) <= seats]
+          uncovered = [key for key, check in sorted(load("state", "observation.json")["checks"].items())
+                       if key.split("|", 2)[0] in policy["requiredScenarios"]
+                       and ((check.get("slack") or {}).get("value") or 0) < 0
+                       and not any(composition.covers(key, check.get("endpoint"), p["targets"], p["targetPins"])
+                                   for p in active)]
+          if parked_seats and uncovered:
+              print("advice: seats", parked_seats, "are parked while", uncovered[:len(parked_seats)], "are uncovered")
       Fix or park a package the check refuses; never write a plan that fails it.
 
-      Read knowledge example-campaign-plan.md: it holds an admitted campaign-plan.json with one active
-      slot and five parked ones. Copy its shape and change only the values; a real plan fills active
-      slots from w01 up to workerSlots, one cluster each.
+      Read knowledge example-campaign-plan.md: it holds an admitted campaign-plan.json whose six active
+      slots fill workerSlots 6, one cluster each, worst first, with the parked shape in its text. Copy
+      its shape and change only the values.
     directory: research/plan
     entry: entry.py
     language: python

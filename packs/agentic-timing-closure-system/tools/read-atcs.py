@@ -1375,6 +1375,10 @@ def _read_campaign_plan(report, workspace, extra, mods):
     found += _worker_slot_problems(workspace, active, core, workspaces_mod)
     found += _shared_domain_problems(active)
     found += _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])
+    parked = [task_id for task_id in workspaces_mod.TASK_IDS
+              if isinstance(work_packages.get(task_id), dict) and task_id not in active]
+    found += _parked_seat_problems(workspace, working_state_id, active, parked, core, workspaces_mod,
+                                   mods["composition"])
     return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
@@ -1474,6 +1478,74 @@ def _uncovered_blocker_problems(workspace, working_state_id, active, core, compo
                              "slot; put its endpoint pin in an active slot's targetPins, or, for a top-level port, "
                              "its check key in targets")
     return uncovered
+
+
+def _violating_checks(workspace, working_state_id, core):
+    """`[(slack, key, raw endpoint)]` of every violating check of a required scenario, worst first.
+
+    From `state/observation.json` of the working state and the stamped `state/policy.json`; None when
+    either cannot be read or the observation is of another state (`_uncovered_blocker_problems`
+    already names that as one problem).
+    """
+    try:
+        observation = _load_json(Path(workspace) / "state" / "observation.json")
+        _verify_identity(observation, "observation-set", core)
+        policy = _load_json(Path(workspace) / "state" / "policy.json")
+        _verify_identity(policy, "policy", core)
+    except (ValueError, OSError):
+        return None
+    required = policy.get("requiredScenarios")
+    if working_state_id is None or observation.get("designStateId") != working_state_id or not isinstance(required, list):
+        return None
+    rows = []
+    for key, entry in (observation.get("checks") or {}).items():
+        if not isinstance(entry, dict) or not isinstance(key, str) or key.split("|", 2)[0] not in required:
+            continue
+        slack = entry.get("slack")
+        value = slack.get("value") if isinstance(slack, dict) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value >= 0:
+            continue
+        raw = entry.get("endpoint")
+        rows.append((value, key, raw if isinstance(raw, str) and raw else None))
+    return sorted(rows)
+
+
+def _parked_seat_problems(workspace, working_state_id, active, parked, core, workspaces_mod, composition_mod):
+    """One `Advice` per slot parked within `workerSlots` while a violating check is covered by no active slot.
+
+    #64 treatment attempt 1: the plan took only each required scenario's single worst check as a
+    blocker, made 3 clusters and parked w04..w06 although six seats existed and 2016 checks violated,
+    many in disjoint leaf cells (the dma FIFO and the dmi sync flops, `lsu_axi_arvalid`,
+    `sb_axi_wdata[0]`). Blockers first means the seats go to the worst violating checks: while one is
+    covered by no active slot (`composition.covers`, the rule of `_uncovered_blocker_problems`), a
+    seat up to `workerSlots` should not be parked. The i-th such parked slot (in slot order) is named with the
+    i-th worst uncovered check. A slot above `workerSlots` is parked by rule and never named here. Under
+    the worker/aggregation principle (FABRIC.md G45) this is advice, never a refusal for parking a slot.
+    """
+    try:
+        record = _load_json(Path(workspace) / "state" / "worker-slots.json")
+        _verify_identity(record, "worker-slots", core)
+        count = record.get("workerSlots")
+    except (ValueError, OSError):
+        return []  # `_worker_slot_problems` names the unverifiable record
+    if isinstance(count, bool) or not isinstance(count, int):
+        return []
+    seats = [task_id for task_id in parked if workspaces_mod.slot_number(task_id) <= count]
+    if not seats:
+        return []
+    checks = _violating_checks(workspace, working_state_id, core)
+    if not checks:
+        return []
+    uncovered = [(slack, key, raw) for slack, key, raw in checks
+                 if not any(composition_mod.covers(key, raw, package.get("targets") or [], package.get("targetPins") or [])
+                            for package in active.values())]
+    return [Advice(f"candidate.workPackages.{task_id}: parked, but workerSlots is {count} and the violating check {key} "
+            f"(slack {slack:g} ns, PT endpoint {raw!r}) is covered by no active slot; make {task_id} active on a "
+            "cluster of the worst uncovered checks whose leaf cells no other active slot claims (resolve their "
+            "endpoints with read-atcs.py resolve-instances), or add the check to the targets of the active slot "
+            "whose edit domain holds its cells. Park a slot up to workerSlots only when every violating check of "
+            "a required scenario is covered")
+            for task_id, (slack, key, raw) in zip(seats, uncovered)]
 
 
 def _read_worker_result(report, workspace, expected_task_id, mods):

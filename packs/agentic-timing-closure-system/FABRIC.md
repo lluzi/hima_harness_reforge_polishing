@@ -191,7 +191,7 @@ Schema limits and how the graph expresses them:
   exit 3, then the Reader's refusal) and three `NextDecisionReaderTest` cases.
 - G39 (Issue #64 Track B, ported from #63 slice 1 fix, gap 3, probe items 1-2 and review 2 I2)
   Examples as declared knowledge. Every model-written document has one admitted example in
-  `knowledge/example-*.md` (observation request, the six-slot campaign plan with its parked shape,
+  `knowledge/example-*.md` (observation request, the six-slot campaign plan (six active clusters since G46),
   worker requests for an active slot, an active slot with no safe move and a parked slot, the
   integration plan with one conflict resolution, the next decision), declared in `contract.yml`
   (16 knowledge files) and in the knowledge list of the Workshop that writes it; the purposes name
@@ -284,6 +284,20 @@ Schema limits and how the graph expresses them:
   change, a name XTop has no cell for, a parked seat while checks are uncovered) is `Advice` in the
   sidecar. The Reviewer sharpens the plan and records concerns; its scope is no bottleneck.
 
+- G46 (Issue #64 treatment attempt 1, plan coverage; guidance and advice under G45) Fill the seats.
+  Attempt 1's plan took only each required scenario's single worst check as a blocker, made 3
+  clusters and parked w04..w06 although `workerSlots` was 6 and the observation held disjoint
+  violating checks (the dma FIFO and dmi sync flops, `lsu_axi_arvalid`, `sb_axi_wdata[0]`); its
+  stated reason was that the first generation has no batch fail reasons. The plan purpose now says to
+  fill every seat up to `workerSlots` while any violating check of a required scenario is uncovered,
+  taking the next worst checks in leaf cells no other active slot claims, and that missing fail reasons
+  are no reason to park; its self-check snippet prints advice for a parked seat. The example plan
+  holds six active clusters, worst first, with the parked shape in its text. The plan Reader writes one
+  `Advice` per parked seat up to `workerSlots` naming the worst uncovered check, never a counted
+  problem (G45). The dry path's plan builds the parked shape itself. Proving tests:
+  `test_t01_regressions.ParkedSeatTest` on the retained plan (RED: no advice) and
+  `test_workshop_examples.PlanCampaignExampleTest` (the six-cluster example admitted with no advice;
+  RED: the one-active example parked five seats).
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.

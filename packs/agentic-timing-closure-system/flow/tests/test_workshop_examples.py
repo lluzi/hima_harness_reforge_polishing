@@ -44,16 +44,40 @@ STATE_OBJECT = "<the whole JSON object in state/working-state.json, verbatim>"
 SCENARIO = "func_ssg_rcworst_m40"
 # The example's hierarchy: top/u_core (module core)/u_lsu (module lsu)/<leaf cells>. Masters follow the
 # Site's sizing pattern D([0-9]+)BWP; LIBRARY is the Liberty the sealed XTop context names.
+# The six clusters of the plan example: u_core/u_lsu (w01), u_core/u_ifu, u_core/u_dec, u_core/u_exu,
+# u_dma and u_dbg (w02..w06), each holding the leaf cells its slot edits.
 NETLIST = """module lsu (clk);
   SDFQD1BWP35P140 data_reg_3_ (.D(n4410), .CP(clk));
   SDFQD1BWP35P140 addr_reg_0_ (.D(n4411), .CP(clk));
   BUFFD2BWP35P140 U2231 (.I(n4409), .Z(n4410));
 endmodule
+module ifu (clk);
+  SDFQD1BWP35P140 pc_reg_1_ (.D(n212), .CP(clk));
+  BUFFD2BWP35P140 U880 (.I(n211), .Z(n212));
+endmodule
+module dec (clk);
+  SDFQD1BWP35P140 ins_reg_7_ (.D(n98), .CP(clk));
+  BUFFD2BWP35P140 U517 (.I(n97), .Z(n98));
+endmodule
+module exu (clk);
+  SDFQD1BWP35P140 mul_reg_2_ (.D(n5), .CP(clk));
+endmodule
+module dma (clk);
+  SDFQD1BWP35P140 fifo_reg_0_ (.D(n7), .CP(clk));
+endmodule
+module dbg (clk);
+  SDFQD1BWP35P140 dmactive_reg_0_ (.D(n9), .CP(clk));
+endmodule
 module core (clk);
   lsu u_lsu (.clk(clk));
+  ifu u_ifu (.clk(clk));
+  dec u_dec (.clk(clk));
+  exu u_exu (.clk(clk));
 endmodule
 module top (clk);
   core u_core (.clk(clk));
+  dma u_dma (.clk(clk));
+  dbg u_dbg (.clk(clk));
 endmodule
 """
 
@@ -169,9 +193,12 @@ class ExampleWorkspace(unittest.TestCase):
         seal_xtop_context(self.workspace, self.design)
         policy = core.stamp("policy", {"requiredScenarios": [SCENARIO], "baselineStateId": self.design["id"]})
         core.write_artifact(self.workspace / "state" / "policy.json", policy)
+        # Seven violating checks: the worst setup and hold (w01's cluster) and five more, one per cluster.
         slacks = {
-            f"{SCENARIO}|setup|u_core/u_lsu/data_reg_3_/D": -0.20, f"{SCENARIO}|setup|u_core/u_lsu/U2231/A": -0.05,
-            f"{SCENARIO}|hold|u_core/u_lsu/addr_reg_0_/D": -0.10,
+            f"{SCENARIO}|setup|u_core/u_lsu/data_reg_3_/D": -0.20, f"{SCENARIO}|hold|u_core/u_lsu/addr_reg_0_/D": -0.10,
+            f"{SCENARIO}|setup|u_core/u_ifu/pc_reg_1_/D": -0.15, f"{SCENARIO}|setup|u_core/u_dec/ins_reg_7_/D": -0.12,
+            f"{SCENARIO}|hold|u_core/u_exu/mul_reg_2_/D": -0.08, f"{SCENARIO}|hold|u_dma/fifo_reg_0_/D": -0.07,
+            f"{SCENARIO}|hold|u_dbg/dmactive_reg_0_/D": -0.05,
         }
         checks = {key: {"slack": core.known(value), "violated": True, "endpoint": key.split("|", 2)[2]}
                   for key, value in slacks.items()}
@@ -206,8 +233,33 @@ class PlanCampaignExampleTest(ExampleWorkspace):
         self.assertEqual(list(packages), list(workspaces.TASK_IDS))
         for slot, package in packages.items():
             self.assertEqual(package["taskId"], slot)
-        self.assertEqual(workspaces.is_parked(packages["w01"]), False)
-        self.assertEqual(sorted(packages["w02"]), sorted(workspaces.PARKED_FIELDS))
+
+    def test_the_example_fills_every_seat_with_a_disjoint_cluster_and_gets_no_advice(self):
+        """#64 treatment attempt 1 parked three of six seats while disjoint violating checks remained. The
+        example shows six active clusters, worst first, and the plan Reader admits it with no advice; the
+        parked shape is stated in its text (every key of workspaces.PARKED_FIELDS)."""
+        plan = self.plan()
+        packages = plan["candidate"]["workPackages"]
+        self.assertEqual([slot for slot, package in packages.items() if not workspaces.is_parked(package)],
+                         list(workspaces.TASK_IDS))
+        report = _write(self.workspace / "research" / "requests" / "campaign-plan.json", json.dumps(plan))
+        self.assertEqual(read_atcs.problems("campaign-plan", report, self.workspace), [])
+        self.assertEqual(read_atcs.advice("campaign-plan", report, self.workspace), [])
+        text = (KNOWLEDGE / "example-campaign-plan.md").read_text().split("```json", 1)[0]
+        for field in workspaces.PARKED_FIELDS:
+            self.assertIn(f'"{field}"', text)
+
+    def test_parking_a_seat_while_checks_are_uncovered_is_advice_not_a_refusal(self):
+        plan = self.plan()
+        plan["candidate"]["workPackages"]["w06"] = {"taskId": "w06", "baseStateId": self.design["id"], "parked": True,
+                                                    "problem": "no cluster left"}
+        report = _write(self.workspace / "research" / "requests" / "campaign-plan.json", json.dumps(plan))
+        self.assertEqual(read_atcs.problems("campaign-plan", report, self.workspace), [])
+        (line,) = read_atcs.advice("campaign-plan", report, self.workspace)
+        self.assertIn(f"{SCENARIO}|hold|u_dbg/dmactive_reg_0_/D", line)
+        code = _snippet("plan-campaign", "like this:")
+        _run_snippet(code, self.workspace, {"packages": plan["candidate"]["workPackages"],
+                                            "site_capabilities": plan["siteCapabilities"]})
 
     def test_the_active_example_shows_every_required_field(self):
         active = self.plan()["candidate"]["workPackages"]["w01"]
