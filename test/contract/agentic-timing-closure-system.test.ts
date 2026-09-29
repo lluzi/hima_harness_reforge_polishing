@@ -37,7 +37,7 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   // The interactive session is the synthetic REPL for slot w01; the batch path stays the Pack's own
   // `operate-parked` no-op, which is how a parked slot's operate node settles without XTop.
   tool.interactive.argv = [wrapper, '${WORKSPACE}/flow/atcs-repl.tcl', '${WORKSPACE}/workspaces/w01/r1'];
-  tool.licences = {};
+  // The Pack's own licence declaration stands: the xtop seat is the interactive session's.
   // Each member's elapsed share is sized for a loaded host: at 10 s the Operator child could expire
   // before its interactive open on a busy machine ("no available project workspace").
   for (const member of contract.agentTeams[0].members) member.budgetShare.maxElapsedMs = 60000;
@@ -293,6 +293,16 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   const interactiveJobs = records().filter(record => record.type === 'job' && record.event === 'launched' && record.nodeId?.startsWith('operate-worker-'));
   assert.deepEqual(interactiveJobs.map(record => record.type === 'job' ? [record.nodeId, record.branchId] : []).sort(),
     slots.map(slot => [`operate-worker-${nn(slot)}`, `research-worker-${nn(slot)}`]), 'each operate Job runs in its own branch');
+  // #64 Track B: a parked slot costs no Team, no interactive (XTop) Job and no licence claim; only the
+  // active slot's interactive session holds the xtop seat.
+  assert.deepEqual(interactiveJobs.map(record => record.type === 'job' ? [record.nodeId, record.licences ?? null] : []).sort(),
+    slots.map(slot => [`operate-worker-${nn(slot)}`, slot === 'w01' ? { xtop: 1 } : null]), 'only the session holds a seat');
+  for (const slot of slots.slice(1)) {
+    assert.equal(records().filter(record => record.type === 'job' && record.event === 'launched' && record.licences !== undefined
+      && record.branchId === `research-worker-${nn(slot)}`).length, 0, `parked slot ${slot} claims no licence`);
+  }
+  assert.equal(runDelegations((host.ctx.hima as any).deps(), runId).length, 3,
+    'the Run holds exactly slot w01\'s three Team members and none for a parked slot');
 
   // Every branch captures and reads its own result; the join then judges all six.
   for (const slot of slots) {

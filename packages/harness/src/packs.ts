@@ -273,6 +273,13 @@ export const packTool = z.strictObject({
     adapter: z.literal('hima-tcl-line-v1'),
     /** Optional PTY startup command. Omission preserves the historical same-argv behavior. */
     argv: z.array(z.string().min(1)).min(1).optional(),
+    /**
+     * What the interactive session holds of the Site, when that differs from the batch path's
+     * `licences`: a hybrid tool whose batch path is a no-op that runs none of the licensed tool
+     * declares its seats here and none on the tool, so the no-op holds no seat while every session
+     * holds its own. Omission keeps the tool's `licences` for both paths, as before.
+     */
+    licences: z.record(licenceName, z.number().int().positive()).optional(),
     commands: interactiveCommandClasses,
     /** Optional named argument contract in Tcl positional order. Older Packs retain positional arrays. */
     arguments: z.record(interactiveCommandName, z.array(interactiveArgumentDeclaration).max(32)
@@ -3185,6 +3192,9 @@ export function checkPack(pack: Pack, site: Site): PackCheck {
   // its time box ran out. What each entry names is the declaration to go and edit.
   const holders: readonly { readonly id: string; readonly holder: 'tool' | 'workshop'; readonly licences: Readonly<Record<string, number>> }[] = [
     ...pack.contract.tools.map((tool) => ({ id: tool.id, holder: 'tool' as const, licences: tool.licences })),
+    // An interactive session's own seats, when it declares them, are held against the Site the same way.
+    ...pack.contract.tools.flatMap((tool) => tool.interactive?.licences === undefined ? []
+      : [{ id: `${tool.id} (interactive)`, holder: 'tool' as const, licences: tool.interactive.licences }]),
     ...pack.contract.workshops.map((workshop) => ({ id: workshop.id, holder: 'workshop' as const, licences: workshop.licences })),
   ];
   const licences: LicenceCheck[] = holders.flatMap(({ id, holder, licences: held_ }) =>

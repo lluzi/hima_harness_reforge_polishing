@@ -422,13 +422,14 @@ tools:
       Operator's session. The batch path is the Pack's operate-parked no-op: it opens no XTop session,
       settles the operate node of a parked slot or of an active slot whose request is inadmissible, and
       refuses any other active slot (Issue #64 Task 5). A refused active request is revised, not parked:
-      the owner revises research-worker-NN, which reruns that branch in the same generation (#64 Track B). As a Job of this tool it still holds the xtop: 1
-      licence (and one Site Job) for its few seconds, so size the Site's xtop licences to the slots.
+      the owner revises research-worker-NN, which reruns that branch in the same generation (#64 Track B).
+      The xtop seat is the interactive session's (interactive.licences): the batch no-op of a parked slot
+      holds no licence, only one short Site Job (#64 Track B).
     inputs: [WORKSPACE, SLOT]
-    licences: { xtop: 1 }
     interactive:
       mode: hybrid
       adapter: hima-tcl-line-v1
+      licences: { xtop: 1 }
       argv: [/data/eda/project/hima_harness/operator-admin/atcs-v12/atcs-xtop-operator-v12.sh, '${WORKSPACE}', '${SLOT}']
       commands:
         read: [atcs_ref, atcs_gain, atcs_paths, atcs_fail_reasons, atcs_candidates]

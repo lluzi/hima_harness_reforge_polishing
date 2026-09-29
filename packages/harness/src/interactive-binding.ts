@@ -298,7 +298,8 @@ export function createInteractiveBindingBridge(config: InteractiveBindingBridgeC
           sessionMaxMs: 60 * 60_000, idleMaxMs: 10 * 60_000 },
       };
       return { binding, site: request.site.name, workspace: request.workspace, argv,
-        name: `${node.id}-interactive`, licences: tool.licences, commands: interactiveCommandContracts(tool) };
+        name: `${node.id}-interactive`, licences: tool.interactive?.licences ?? tool.licences,
+        commands: interactiveCommandContracts(tool) };
     },
 
     async verifyAdminBinding(binding) {

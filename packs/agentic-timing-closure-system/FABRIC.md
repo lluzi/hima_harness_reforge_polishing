@@ -172,7 +172,12 @@ Schema limits and how the graph expresses them:
   place (no Explore can stand inside a branch, and none is needed: an Explore retry would spend a
   generation, which is how live02 ran out). The worker purposes and the `xtop-operator` description
   say so; the ATCS contract test drives it for slot w02 (refused at 2 problems, revised, re-read at 0,
-  generation unchanged, no decision record).
+  generation unchanged, no decision record). A parked slot costs no model, Team, XTop session or
+  licence: `xtop-operator` declares its `xtop: 1` seat as `interactive.licences` (a generic Harness
+  field, #64 Track B), so the batch no-op holds none; the ATCS contract test runs the real
+  declaration and finds no Team member, no interactive Job and no licence for w02..w06, and xtop 1 on
+  w01's session. What a parked branch still runs is three short Site Jobs (its trivial Workshop, the
+  no-op and the capture); removing those needs the Harness fork-branch skip named above.
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.
@@ -271,8 +276,9 @@ Known gaps carried from earlier tasks:
 - G22 (Task 9) Adoption is single-writer; `designStateId` honesty rests on `sta` building the
   design-state from the implemented DB, which M6 does not cross-check.
 - G23 (Tasks 15, 17) The XTop Operator runs an active slot only interactively (since Issue #64 Task 5
-  the tool is `hybrid`: its batch path is the Pack's `operate-parked` no-op, never XTop, which still
-  holds the tool's `xtop: 1` licence for its few seconds); its settlement in a real Run is unproven.
+  the tool is `hybrid`: its batch path is the Pack's `operate-parked` no-op, never XTop; since #64
+  Track B the `xtop: 1` seat is declared as `interactive.licences`, so that no-op holds no licence and
+  only the Operator's session does); its settlement in a real Run is unproven.
   A stranded worker Team (a required member ended without a result) settles its operate execution
   `failed` whatever the tool mode (Harness fix "settle stranded Team executions regardless of tool
   mode", `test/contract/delegation-team-settlement.host.test.ts`); the owner begins the node again
