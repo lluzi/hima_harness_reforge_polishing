@@ -333,6 +333,19 @@ class WorkPackageReaderTest(unittest.TestCase):
         found = self._counted(report, "w02")
         self.assertEqual(found, ["candidate.taskId (slot w02): must be 'w02' for this slot, got 'w01'"])
 
+    def test_wrong_task_id_for_w03_slot_is_counted(self):
+        """Issue #63 gap 9: slot w03's own reader binding (extra=["w03"]) had no negative;
+        a w02 package sent to slot w03 is named, not admitted."""
+        report = self._write_envelope(self._valid_candidate(taskId="w02"))
+        found = self._counted(report, "w03")
+        self.assertEqual(found, ["candidate.taskId (slot w03): must be 'w03' for this slot, got 'w02'"])
+
+    def test_invalid_action_kind_in_w03_slot_is_counted(self):
+        report = self._write_envelope(self._valid_candidate(taskId="w03", actions=["resize_cell"]))
+        found = self._counted(report, "w03")
+        self.assertEqual(len(found), 1, found)
+        self.assertTrue(found[0].startswith("candidate.actions (slot w03): action 'resize_cell'"), found)
+
     def test_envelope_shape_problems_are_counted(self):
         for mutate, field in ((lambda e: e.update(candidate=[]), "candidate"),
                               (lambda e: e.update(baseState="state/working-state.json"), "baseState"),
