@@ -14,6 +14,7 @@ import { packDigestExcludes } from './pack-folder.js';
 import type { NodeExecution, RunRecord } from './ledger.js';
 import { loadSite, type Site } from './sites.js';
 import { channelFor } from './channel.js';
+import { defaultInteractiveCloseGraceMs } from './interactive-job.js';
 import type {
   DerivedInteractiveOperation, EncodedInteractiveCommand, InteractiveBinding,
   VerifiedBindingEvidence,
@@ -296,7 +297,8 @@ export function createInteractiveBindingBridge(config: InteractiveBindingBridgeC
         source, adapter: { id: BUILTIN_TCL_ADAPTER_ID, version: '1', digest: BUILTIN_TCL_ADAPTER_DIGEST,
           completionProtocol: 'versioned-marker', allowsMultiline: false },
         environment: { id: row.environment.id, digest: row.environment.sha256 }, mutation: row.mutation,
-        limits: { startupWaitMs: 60_000, callWaitMaxMs: 60_000, commandMaxMs: 10 * 60_000,
+        limits: { closeGraceMs: tool.interactive.closeGraceMs ?? defaultInteractiveCloseGraceMs,
+          startupWaitMs: 60_000, callWaitMaxMs: 60_000, commandMaxMs: 10 * 60_000,
           sessionMaxMs: 60 * 60_000, idleMaxMs: 10 * 60_000 },
       };
       return { binding, site: request.site.name, workspace: request.workspace, argv,

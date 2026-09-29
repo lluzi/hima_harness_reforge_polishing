@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { advance, budgetStanding, ownedWaitedMs } from './budget.js';
 import { controlling, identityOf, updateExecution, type FabricDeps } from './fabric.js';
 import {
-  closeInteractiveJob, jobProcessGroupAlive, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
+  closeInteractiveJob, interactiveCloseGrace, jobProcessGroupAlive, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
   sendInteractiveInput, signalInteractiveJob,
   type InteractiveAddress, type InteractiveAuthority, type InteractiveChannel, type InteractiveCloseGrace, type InteractiveCloseResult,
   type InteractiveInputResult, type InteractiveJobIdentity, type InteractiveOpenResult, type InteractiveQualification,
@@ -40,7 +40,9 @@ export interface InteractiveBinding {
   readonly environment: { readonly id: string; readonly digest: string };
   readonly mutation: 'qualified' | 'unavailable';
   readonly limits: { readonly startupWaitMs: number; readonly callWaitMaxMs: number;
-    readonly commandMaxMs: number; readonly sessionMaxMs: number; readonly idleMaxMs: number };
+    readonly commandMaxMs: number; readonly sessionMaxMs: number; readonly idleMaxMs: number;
+    /** The retained tool's declared close grace (`interactive.closeGraceMs`); the default when absent. */
+    readonly closeGraceMs?: number };
 }
 
 export interface DerivedInteractiveOperation {
@@ -92,7 +94,8 @@ export interface InteractiveRuntimeDeps {
   readonly mintProtocolToken?: () => string;
   /** Required Host callback: issue the qualified interrupt/close path and record its actual outcome. */
   readonly onDeadline: (deadline: InteractiveDeadline) => Promise<void>;
-  /** How long a close waits for the Job's process group after hangup and after TERM; defaults apply when absent. */
+  /** How long a close waits for the Job's process group after hangup and after TERM, for every
+   *  binding; absent, each binding's declared `closeGraceMs` (or the default) applies. */
   readonly closeGrace?: InteractiveCloseGrace;
 }
 
@@ -230,7 +233,7 @@ function validateBindingShape(run: RunRecord, execution: NodeExecution, derived:
   if (binding.packId !== run.packId || binding.packDigest !== run.packDigest || binding.nodeId !== execution.nodeId) return 'interactive binding does not match the retained Run method and execution';
   if (!path.posix.isAbsolute(derived.workspace) || derived.argv.length === 0 || derived.argv.some((word) => word.includes('\0'))) return 'retained interactive workspace/argv is invalid';
   const limits = binding.limits;
-  if (![limits.startupWaitMs, limits.callWaitMaxMs, limits.commandMaxMs, limits.sessionMaxMs, limits.idleMaxMs]
+  if (![limits.startupWaitMs, limits.callWaitMaxMs, limits.commandMaxMs, limits.sessionMaxMs, limits.idleMaxMs, limits.closeGraceMs ?? 1]
       .every((value) => Number.isSafeInteger(value) && value > 0)) return 'interactive binding limits must be positive safe integers';
   return undefined;
 }
@@ -599,23 +602,35 @@ async function resolved(deps: InteractiveRuntimeDeps, request: InteractiveAddres
   catch (error) { return { reason: error instanceof Error ? error.message : String(error) }; }
 }
 
+/** The close grace for one binding: the Host's override when it has one, else the declared one. */
+const closeGraceFor = (deps: InteractiveRuntimeDeps, binding: InteractiveBinding): InteractiveCloseGrace =>
+  deps.closeGrace ?? interactiveCloseGrace(binding.limits.closeGraceMs);
+
 /**
  * A retry of a node opens the same tool slot. While an earlier Job of that node has a recorded
- * `process-survived` close and its tmux session (kept by the close watcher) is still there, the
- * surviving tool still owns the slot and its locks: refuse naming the group rather than launch a
- * wrapper into those locks.
+ * `process-survived` close and its process group still runs, the surviving tool still owns the slot
+ * and its locks: refuse naming the group rather than launch a wrapper into those locks. A group that
+ * is still finishing its own shutdown (a container stop can take longer than the close waited) is
+ * asked again through the Site channel until the close grace has passed, and only a group still
+ * running after that refuses the slot.
  */
-async function survivingSlotJob(deps: InteractiveRuntimeDeps, run: RunRecord, nodeId: string): Promise<string | undefined> {
+async function survivingSlotJob(deps: InteractiveRuntimeDeps, run: RunRecord, nodeId: string, grace: InteractiveCloseGrace): Promise<string | undefined> {
   // Asked of each recorded survivor's process group itself (#64 review I2): its tmux session may be
   // gone (a bare kill by an older Host or a person) while the tool still holds the slot's locks.
   const survivors = listInteractiveSessions(deps.fabric.ledger, run.id)
     .filter((session) => session.nodeId === nodeId && session.survivedPid !== undefined);
   if (survivors.length === 0) return undefined;
   const on: InteractiveChannel = channelFor(loadSite(deps.fabric.sitesDir, run.siteId));
+  const until = nowOf(deps) + grace.hangupMs + grace.terminateMs;
   for (const session of survivors) {
     let alive: boolean;
-    try { alive = await jobProcessGroupAlive(on, session.survivedPid!); }
-    catch (error) {
+    try {
+      alive = await jobProcessGroupAlive(on, session.survivedPid!);
+      while (alive && nowOf(deps) < until) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(1_000, Math.max(1, until - nowOf(deps)))));
+        alive = await jobProcessGroupAlive(on, session.survivedPid!);
+      }
+    } catch (error) {
       // Unknown is its own answer: the slot is neither admitted nor declared held by a live group.
       return `whether process group ${String(session.survivedPid)} of the previous interactive Job ${session.toolSessionId} of node ${nodeId}`
         + ` still runs could not be asked: ${error instanceof Error ? error.message : String(error)}; open again once Site ${run.siteId} answers`;
@@ -664,7 +679,7 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
     if (!deps.claimJobSlot) return { status: 'refused', reason: 'interactive Job/licence slot authority is unavailable' };
     const refused = validateControl(facts.run, request, 'open');
     if (refused) return { status: 'refused', reason: refused };
-    const survivor = await survivingSlotJob(deps, facts.run, request.nodeId);
+    const survivor = await survivingSlotJob(deps, facts.run, request.nodeId, closeGraceFor(deps, facts.derived.binding));
     if (survivor) return { status: 'refused', reason: survivor };
     const at = nowOf(deps); const runDeadline = hardDeadline(facts.run, at);
     const sessionDeadline = Math.min(at + facts.derived.binding.limits.sessionMaxMs, runDeadline ?? Number.MAX_SAFE_INTEGER);
@@ -677,7 +692,7 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
         requestId: request.requestId, callerDigest, actor: request.actor, ownerEpoch: request.ownerEpoch,
         controlRevision: request.controlRevision, workspace: facts.derived.workspace, argv: facts.derived.argv,
         name: facts.derived.name, sessionDeadlineAt: new Date(sessionDeadline).toISOString(),
-        startupWaitMs: facts.derived.binding.limits.startupWaitMs,
+        startupWaitMs: facts.derived.binding.limits.startupWaitMs, closeGrace: closeGraceFor(deps, facts.derived.binding),
       }, authority, { readiness: 'after-claim' }) }));
     if (claimed.kind !== 'claimed') return { status: 'refused', reason: claimed.reason };
     return claimed.launched.ready ? claimed.launched.ready() : claimed.launched.result;
@@ -727,7 +742,7 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
       commandDeadlineAt: new Date(commandDeadline).toISOString() }, authority);
   }
   if (request.action === 'signal') return signalInteractiveJob(on, { ...request, callerDigest, session }, authority);
-  return closeInteractiveJob(on, { ...request, callerDigest, session, ...(deps.closeGrace === undefined ? {} : { grace: deps.closeGrace }) }, authority);
+  return closeInteractiveJob(on, { ...request, callerDigest, session, grace: closeGraceFor(deps, facts.derived.binding) }, authority);
 }
 
 export interface InteractiveTimerController {

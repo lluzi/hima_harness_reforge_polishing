@@ -678,6 +678,75 @@ test('a survivor\'s process group is asked through the Site channel, so a silent
   }
 });
 
+// Coordinator addition to #64 attempt 3: the qualified wrapper v14 stops its container on hangup or
+// TERM (`podman stop -t 20`, XTop ignoring TERM), so every signalled close takes about 21 s before
+// the process group is gone; the Harness's 15 s + 10 s turned ordinary closes into
+// `process-survived`. The close grace is declared by the tool (`interactive.closeGraceMs`), 60 s
+// when it is not, and the whole of it is waited through before a group is called a survivor.
+test('a close waits through the declared close grace: a tool that ends 30 s after TERM is closed under the default and survives a declared 10 s', { timeout: 240_000 }, async (t) => {
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const site = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
+    allowedWrappers: ['sh'], parallelJobs: 2, licences: { fixture: 2 } });
+  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const parent = await createRootAgent(host.ctx, home.workspace);
+  // Hangup is ignored; TERM starts a shutdown that takes 30 s, as a container stop of a tool that ignores TERM does.
+  const wrapper = path.join(home.workspace, 'slow-stop-wrapper.sh');
+  await writeFile(wrapper, ['node=$1; repl=$2', 'trap \'\' HUP', 'trap \'sleep 30; exit 0\' TERM',
+    '"$node" "$repl" fixture-repl 1', 'while :; do sleep 1; done', ''].join('\n'));
+  await mkdir(path.join(home.workspace, 'slow-stop'), { recursive: true });
+  const run = await host.ctx.hima.ledger.createRun({
+    campaignId: 'declared-close-grace', siteId: 'local', packId: 'fixture-pack', packDigest: digest('a'), status: 'running', currentNode: 'manual', generation: 1,
+    budget: { timeBoxMs: 600_000, closingReserveMs: 1_000, retryAllowance: 3, jobCap: 2, licences: { fixture: 2 }, generationLimit: 1 },
+    control: { mode: 'agent', owner: String(parent.id), epoch: 1, revision: 0, paused: [], requests: {},
+      executions: Object.fromEntries(['patient', 'short'].map((id, index) => [id, { ...execution, id, attempt: index + 1 }])) },
+  });
+  let declared: number | undefined;
+  const deps = {
+    fabric: { ledger: host.ctx.hima.ledger, sitesDir: site.sitesDir, notify: () => ({ status: 'queued' }) } as never,
+    resolveOperation: async () => ({ binding: { ...binding, limits: { ...binding.limits, ...(declared === undefined ? {} : { closeGraceMs: declared }) } },
+      site: 'local', workspace: home.workspace, argv: ['sh', wrapper, process.execPath, fixture], name: 'slow-stop', licences: { fixture: 1 },
+      commands: [{ name: 'get', effect: 'read' as const }, { name: 'exit', effect: 'close' as const }] }),
+    verifyAdminBinding: async (effective: InteractiveBinding) => ({ bindingFileRealpath: '/trusted/test/binding',
+      bindingFileSha256: digest('0'), environmentDigest: effective.environment.digest, confinement: 'unqualified' as const }),
+    encodeCommand: async (_binding: InteractiveBinding, request: { commandId: string; protocolToken: string; name: string; args: unknown }) => ({
+      text: JSON.stringify({ id: request.commandId, _himaToken: request.protocolToken, op: request.name, ...(request.args as object) }),
+      submit: true, effect: request.name === 'get' ? 'read' as const : 'close' as const }),
+    claimJobSlot: async (request: Parameters<NonNullable<InteractiveRuntimeDeps['claimJobSlot']>>[0]) => {
+      const claimed = await claimSlot({ ledger: host.ctx.hima.ledger as never, sitesDir: site.sitesDir }, {
+        site: { name: request.site, jobs: request.run.budget!.jobCap, licences: request.run.budget!.licences },
+        holds: request.licences, launch: request.launch });
+      return claimed.kind === 'claimed' ? { kind: 'claimed' as const, launched: claimed.launched }
+        : { kind: 'at-cap' as const, reason: claimed.kind === 'at-cap' ? 'site Job/licence cap is full' : String((claimed as { error?: Error }).error?.message ?? claimed.kind) };
+    },
+    trustedTestQualification: { bindingId: 'fixture-binding' },
+    onDeadline: async () => {},
+  } as InteractiveRuntimeDeps;
+  const owner = { runId: run.id, nodeId: 'manual', actor: String(parent.id), ownerEpoch: 1, controlRevision: 0 };
+  const groups: number[] = []; const sessions: string[] = [];
+  const openAndClose = async (executionId: string) => {
+    const opened = await operateInteractive(deps, { ...owner, executionId, action: 'open', requestId: `open-${executionId}` });
+    assert.equal(opened.status, 'opened', JSON.stringify(opened)); if (opened.status !== 'opened') throw new Error('unreachable');
+    groups.push(opened.session.job.pid!); sessions.push(opened.session.toolSessionId);
+    const started = Date.now();
+    const closed = await operateInteractive(deps, { ...owner, executionId, action: 'close', requestId: `close-${executionId}`,
+      toolSessionId: opened.session.toolSessionId });
+    return { closed, seconds: (Date.now() - started) / 1000 };
+  };
+  try {
+    const patient = await openAndClose('patient');
+    assert.equal(patient.closed.status, 'closed', `the default 60 s grace outlasts a 30 s shutdown after TERM: ${JSON.stringify(patient)}`);
+    assert.ok(patient.seconds >= 30, `the close waited for the shutdown to finish (${patient.seconds} s)`);
+    declared = 10_000;
+    const short = await openAndClose('short');
+    assert.equal(short.closed.status, 'process-survived', `a declared 10 s grace is what the close waits: ${JSON.stringify(short)}`);
+    assert.ok(short.seconds < 25, `the declared grace, not the default, bounded the wait (${short.seconds} s)`);
+  } finally {
+    for (const session of sessions) spawnSync('tmux', ['kill-session', '-t', `=${session}`], { timeout: 15_000 });
+    for (const group of groups) { try { process.kill(-group, 'SIGKILL'); } catch { /* already gone */ } }
+  }
+});
+
 /** Every command the channel audit holds whose wire matches `pattern`. */
 const remoteCommandsOf = (pattern: RegExp) => remoteCommands().filter((command) => pattern.test(command.wire));
 

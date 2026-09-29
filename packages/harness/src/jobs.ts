@@ -545,6 +545,7 @@ export interface InteractiveLaunchRequest {
   readonly name?: string;
   readonly sessionDeadlineAt: string;
   readonly startupWaitMs: number;
+  readonly closeGrace?: InteractiveCloseGrace;
 }
 
 export interface InteractiveJobLaunchResult {
@@ -580,6 +581,7 @@ export async function launchInteractiveJob(deps: JobDeps, req: InteractiveLaunch
     requestId: req.requestId, callerDigest: req.callerDigest, actor: req.actor, ownerEpoch: req.ownerEpoch, controlRevision: req.controlRevision,
     workspace: decision.workspace, argv: req.argv,
     name: req.name ?? defaultJobName, sessionDeadlineAt: req.sessionDeadlineAt, startupWaitMs: req.startupWaitMs,
+    ...(req.closeGrace === undefined ? {} : { closeGrace: req.closeGrace }),
   };
   if (options.readiness !== 'after-claim') return { run, result: await openInteractiveJob(channel, request, authority) };
   const started = await startInteractiveJob(channel, request, authority);

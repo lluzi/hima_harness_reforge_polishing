@@ -137,6 +137,8 @@ export interface OpenInteractiveRequest extends InteractiveAddress {
   readonly callerDigest: string;
   readonly siteName: string; readonly workspace: string; readonly argv: readonly string[];
   readonly name: string; readonly sessionDeadlineAt: string; readonly startupWaitMs: number;
+  /** How long a failed open's cleanup waits for the Job's process group; the default when absent. */
+  readonly closeGrace?: InteractiveCloseGrace;
 }
 
 const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -244,7 +246,8 @@ export async function startInteractiveJob(on: InteractiveChannel, request: OpenI
         const wasRunning = await interactiveSessionThere(on, job.session, true);
         if (wasRunning) {
           // The same process-group stop as a close (#64 review I2): never a bare kill-session.
-          const stopped = await endJobProcessGroup(on, { session: job.session, pid: job.pid, dir: path.posix.dirname(exitPath) }, `open-cleanup-${request.requestId}`);
+          const stopped = await endJobProcessGroup(on, { session: job.session, pid: job.pid, dir: path.posix.dirname(exitPath) }, `open-cleanup-${request.requestId}`,
+            request.closeGrace ?? defaultInteractiveCloseGrace);
           if (stopped.kind === 'survived') reason += `; cleanup: process-survived: process group ${String(stopped.pid)} outlived hangup and TERM and still holds this slot`;
           else if (await interactiveSessionThere(on, job.session, true)) {
             const leftover = await on.exec(['tmux', 'kill-session', '-t', exactJobSession(job.session)]);
@@ -510,7 +513,21 @@ export type InteractiveCloseResult =
 
 /** How long a close waits for the Job's process group after the hangup, and again after TERM. */
 export interface InteractiveCloseGrace { readonly hangupMs: number; readonly terminateMs: number }
-export const defaultInteractiveCloseGrace: InteractiveCloseGrace = { hangupMs: 15_000, terminateMs: 10_000 };
+
+/**
+ * The whole time a close gives a Job's process group to be gone, split into the hangup part and the
+ * TERM part: up to 15 s for the tool's own hangup path, the rest after TERM. A declared value
+ * (`tools[].interactive.closeGraceMs`) replaces the default; 60 s by default because a qualified
+ * wrapper that stops its container on hangup or TERM (`podman stop -t 20`, XTop ignoring TERM)
+ * takes about 21 s every time, and a 25 s grace turned ordinary closes into `process-survived`.
+ */
+export const defaultInteractiveCloseGraceMs = 60_000;
+export function interactiveCloseGrace(totalMs: number = defaultInteractiveCloseGraceMs): InteractiveCloseGrace {
+  const total = Number.isSafeInteger(totalMs) && totalMs >= 2_000 ? totalMs : defaultInteractiveCloseGraceMs;
+  const hangupMs = Math.min(15_000, Math.floor(total / 2));
+  return { hangupMs, terminateMs: total - hangupMs };
+}
+export const defaultInteractiveCloseGrace: InteractiveCloseGrace = interactiveCloseGrace();
 
 /**
  * The close watcher, run by tmux in the Job's own pane in place of the tool (`respawn-pane -k`).
