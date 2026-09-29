@@ -55,6 +55,7 @@ import { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop, captureWorksh
 import type {
   BlockerRecord,
   DecisionRecord,
+  InteractiveRecord,
   JobRecord,
   Ledger,
   LoopOutcome,
@@ -2029,9 +2030,10 @@ function executionHolds(control: RunControl): NonNullable<ExecutionContext['hold
  * un-continuable for the rest of the Run).
  */
 async function settleEndedSurvivors(deps: FabricDeps, run: RunRecord, open: readonly JobRecord[]): Promise<boolean> {
-  const interactive = deps.ledger.records({ runId: run.id, type: 'interactive' });
-  const survivors = open.map((job) => ({ job, pid: (interactive.findLast((record) => record.type === 'interactive'
-    && record.toolSessionId === job.job.session && record.event === 'process-survived')?.payload as { pid?: number } | undefined)?.pid }));
+  const interactive = deps.ledger.records({ runId: run.id, type: 'interactive' })
+    .filter((record): record is InteractiveRecord => record.type === 'interactive');
+  const survivors = open.map((job) => ({ job, pid: (interactive.findLast((record) => record.toolSessionId === job.job.session
+    && record.event === 'process-survived')?.payload as { pid?: number } | undefined)?.pid }));
   if (survivors.some((survivor) => survivor.pid === undefined)) return false;
   const on = channelFor(loadSite(deps.sitesDir, run.siteId));
   for (const survivor of survivors) {

@@ -658,17 +658,18 @@ test('ATCS 0.2.0 dry path: six parallel worker branches, two refreshes, ended by
   // 2b. Site faults of attempt 2: the survivor slot's close was recorded process-survived with one
   //     blocker naming its group, the group ended by itself, and the retry opened through the retry
   //     guard with the Site's run-shell answering nothing; no liveness question went through run-shell.
-  assert.ok(result.survivor, `${row}: the survivor slot ran`);
+  const survivor = result.survivor;
+  assert.ok(survivor, `${row}: the survivor slot ran`);
   const survived = records.filter(r => r.type === 'interactive' && r.event === 'process-survived') as any[];
   assert.equal(survived.length, 1, `${row}: exactly one close was process-survived`);
-  assert.equal(survived[0].payload.pid, result.survivor.close.pid);
+  assert.equal(survived[0].payload.pid, survivor.close.pid);
   assert.equal(records.filter(r => r.type === 'blocker' && (r as any).nodeId === `operate-worker-${nn(SURVIVOR)}`
-    && (r as any).reason.includes(`process group ${result.survivor.close.pid}`)).length, 1, `${row}: the survivor is one visible blocker on its node, naming its process group`);
+    && (r as any).reason.includes(`process group ${survivor.close.pid}`)).length, 1, `${row}: the survivor is one visible blocker on its node, naming its process group`);
   // Its Job is recorded stopped once, and only after the person's continue found its group gone.
   const survivorEnds = records.filter(r => r.type === 'job' && (r as any).event !== 'launched' && (r as any).job.session === survived[0].toolSessionId) as any[];
   assert.deepEqual(survivorEnds.map(r => r.event), ['killed'], `${row}: the survivor's Job is recorded stopped once`);
   assert.ok(survivorEnds[0].seq > survived[0].seq, `${row}: recorded stopped only after its group was observed gone`);
-  assert.equal(result.survivor.retryOpen.status, 'opened');
+  assert.equal(survivor.retryOpen.status, 'opened');
   const { remoteCommands } = await import('@hima/harness');
   assert.deepEqual(remoteCommands().filter(command => /run-shell/.test(command.wire)), [], `${row}: no Site question went through tmux run-shell`);
   assert.equal(records.filter(r => r.type === 'interactive' && /Host restarted/.test(JSON.stringify((r as any).payload))).length, 0,
