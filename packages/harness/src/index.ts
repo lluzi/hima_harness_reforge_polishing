@@ -319,7 +319,7 @@ export type {
 // the day this one is tuned (#18). A test that has to act **between** two looks needs the third for
 // the same reason: how long it has is which interval the waiter has settled into (#61).
 export { jobPollFastForMs, jobPollFastMs, jobPollSlowMs } from './jobs.js';
-export { launchJob, reconcileLaunchIntent, jobStatus, nodeLogTail, nodeLogTailMaxLines } from './jobs.js';
+export { launchJob, reconcileLaunchIntent, jobStatus, jobKill, nodeLogTail, nodeLogTailMaxLines } from './jobs.js';
 export type { LaunchIntent, JobDeps, LaunchRequest, LaunchResult, ReconciledLaunch, NodeLogTailResult } from './jobs.js';
 export { claimSlot, claimSlotAndLaunch } from './job-cap.js';
 export { toolNode, observeNode, resumeNode, buildWorkshopScope, resolveWorkshop, launchWrittenWorkshop, exploreRecommendation } from './node-turns.js';

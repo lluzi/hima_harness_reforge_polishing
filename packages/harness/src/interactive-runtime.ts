@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { advance, budgetStanding, ownedWaitedMs } from './budget.js';
 import { controlling, identityOf, updateExecution, type FabricDeps } from './fabric.js';
 import {
-  closeInteractiveJob, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
+  closeInteractiveJob, jobProcessGroupAlive, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
   sendInteractiveInput, signalInteractiveJob,
   type InteractiveAddress, type InteractiveAuthority, type InteractiveChannel, type InteractiveCloseGrace, type InteractiveCloseResult,
   type InteractiveInputResult, type InteractiveJobIdentity, type InteractiveOpenResult, type InteractiveQualification,
@@ -584,13 +584,14 @@ async function resolved(deps: InteractiveRuntimeDeps, request: InteractiveAddres
  * wrapper into those locks.
  */
 async function survivingSlotJob(deps: InteractiveRuntimeDeps, run: RunRecord, nodeId: string): Promise<string | undefined> {
+  // Asked of each recorded survivor's process group itself (#64 review I2): its tmux session may be
+  // gone (a bare kill by an older Host or a person) while the tool still holds the slot's locks.
   const survivors = listInteractiveSessions(deps.fabric.ledger, run.id)
-    .filter((session) => session.nodeId === nodeId && session.status !== 'closed' && session.survivedPid !== undefined);
+    .filter((session) => session.nodeId === nodeId && session.survivedPid !== undefined);
   if (survivors.length === 0) return undefined;
   const on: InteractiveChannel = channelFor(loadSite(deps.fabric.sitesDir, run.siteId));
   for (const session of survivors) {
-    const probe = await on.exec(['tmux', 'has-session', '-t', `=${session.toolSessionId}`]);
-    if (probe.code === 0 || !/can't find session|session not found|no server running on|error connecting to/.test(probe.stderr)) {
+    if (await jobProcessGroupAlive(on, session.survivedPid!)) {
       return `the previous interactive Job ${session.toolSessionId} of node ${nodeId} survived its close: process group ${String(session.survivedPid)}`
         + ' still runs and holds this tool slot; end that process group on the Site, then open again';
     }

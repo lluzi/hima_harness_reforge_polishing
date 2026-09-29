@@ -524,10 +524,26 @@ test('interactive close waits for the wrapper\'s own shutdown, and a surviving t
     assert.match((refused as { reason: string }).reason, new RegExp(`process group ${pid}`), 'the retry names the surviving process group');
     assert.doesNotMatch(JSON.stringify(refused), /live tool lock/);
 
+    // #64 review I2: every other stop (cancel, time box, node stop, App quit) goes through the same
+    // process-group stop, so none of them records `killed` while the tool is alive.
+    const { jobKill } = await import('@hima/harness');
+    const stopped = await jobKill({ ledger: host.ctx.hima.ledger as never, sitesDir: site.sitesDir },
+      { run: run.id, session: stubborn.session.toolSessionId, grace: { hangupMs: 1_000, terminateMs: 1_000 } });
+    assert.deepEqual(stopped.outcome, { wasRunning: true, gone: false, survivedPid: pid }, JSON.stringify(stopped.outcome));
+    assert.equal(stopped.record, undefined);
+    assert.equal(host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).filter((record) => record.type === 'job'
+      && record.job.session === stubborn.session.toolSessionId && record.event === 'killed').length, 0, 'a stop that left the tool alive records no kill');
+    // The retry guard asks about the process group itself, not the tmux session: with the Job's
+    // session gone (a bare kill by an older Host or by hand), the survivor still refuses the slot.
+    spawnSync('tmux', ['kill-session', '-t', `=${stubborn.session.toolSessionId}`]);
+    assert.equal(tmuxThere(stubborn.session.toolSessionId), false);
+    const stillRefused = await open('stubborn-2', 'open-stubborn-2-sessionless');
+    assert.equal(stillRefused.status, 'refused', JSON.stringify(stillRefused));
+    assert.match((stillRefused as { reason: string }).reason, new RegExp(`process group ${pid}`));
+
     // A person ends the survivor; the same retry then opens in the freed slot.
     process.kill(-pid, 'SIGINT');
-    await waitFor(() => !tmuxThere(stubborn.session.toolSessionId), 'the Job session ends once its process group is gone');
-    assert.equal(existsSync(path.join(slot(), 'tool.lock')), false);
+    await waitFor(() => !existsSync(path.join(slot(), 'tool.lock')), 'the survivor releases its slot lock once a person ends it');
     const reopened = await open('stubborn-2', 'open-stubborn-2-after');
     assert.equal(reopened.status, 'opened', JSON.stringify(reopened)); if (reopened.status !== 'opened') return;
     assert.equal(reopened.readiness, 'ready');
