@@ -728,13 +728,15 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
 }
 
 export interface InteractiveTimerController {
+  /** Project the durable deadlines onto this process's timers; it records nothing. */
   reconcile(): Promise<readonly InteractiveDeadline[]>;
   dispose(): void;
 }
 
 /**
  * Turn pre-crash intents into durable uncertainty before any route can consider retrying them.
- * It never sends transport input and never manufactures a Job outcome.
+ * It never sends transport input and never manufactures a Job outcome. Only for a Host that has just
+ * started: while a Host runs, an intent without its outcome is an operation still in flight.
  */
 export async function reconcileInteractiveState(deps: InteractiveRuntimeDeps): Promise<InteractiveSessionView[]> {
   for (const siteName of new Set(deps.fabric.ledger.runs().map((run) => run.siteId))) {
@@ -796,8 +798,11 @@ export function createInteractiveTimerController(deps: InteractiveRuntimeDeps): 
     fire();
   };
   return {
+    // Deadlines only. Turning cut-off intents into uncertainty is a restart's work
+    // (`reconcileInteractiveState`, run once when a Host starts): run after every interactive call, it
+    // read another Operator's open or close that was simply still in flight as one a crash had cut
+    // off, and wrote "Host restarted" over it while the Host never restarted (#64 D-T02-3).
     async reconcile() {
-      await reconcileInteractiveState(deps);
       const deadlines: InteractiveDeadline[] = [];
       for (const run of deps.fabric.ledger.runs()) for (const session of listInteractiveSessions(deps.fabric.ledger, run.id)) {
         if (session.status === 'closed') continue;

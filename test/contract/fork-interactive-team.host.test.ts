@@ -681,3 +681,33 @@ test('an Operator open waiting for its tool\'s ready line and the owner\'s batch
     assert.equal(closed.status, 'closed', JSON.stringify(closed));
   });
 });
+
+// #64 D-T02-3, the signs before the stall: while the App never restarted, records saying "Host
+// restarted with an open intent lacking a confirmed native receipt" landed on w05's and w06's opens
+// seconds after their intents, and "... close intent ..." on w01's and w02's closes. The restart
+// reconciliation ran again after every interactive call, and it read another Operator's operation
+// that was simply still in flight as one a crash had cut off.
+test('an Operator\'s open still in flight is not marked cut off by a Host restart when another Operator\'s input completes (#64 D-T02-3)', { timeout: 180_000 }, async (t) => {
+  await forkedCampaign(t, 2, async (driven) => {
+    const owner = ownerCalls(driven);
+    const [a, b] = branches;
+    const { interactive, send } = await teamsReady(driven, owner);
+    const openedB = await interactive(b, { action: 'open', requestId: 'open-b' });
+    assert.equal(openedB.status, 'opened', JSON.stringify(openedB));
+    await writeFile(path.join(owner.slot(a), 'startup-delay-ms'), '3000\n');
+    const opening = interactive(a, { action: 'open', requestId: 'open-slow-a' });
+    await waitUntil('operator a\'s Job is launched and waiting for its ready line', () => owner.interactiveJobs('launched').length === 2, 10_000, 10);
+    // Operator b works while a's open is in flight; each of its calls ends with the Host's interactive bookkeeping.
+    const read = await within(30_000, 'operator b\'s read', send(b, openedB.session.toolSessionId, 'atcs_query_paths', {}, 'query'));
+    assert.equal(read.status, 'completed', JSON.stringify(read));
+    const openedA = await within(30_000, 'operator a\'s open', opening);
+    assert.equal(openedA.status, 'opened', JSON.stringify(openedA));
+    const restarted = owner.records().filter((record) => record.type === 'interactive' && /Host restarted/.test(JSON.stringify(record.payload)));
+    assert.deepEqual(restarted.map((record) => record.type === 'interactive' ? `${record.event} ${record.toolSessionId}` : ''), [],
+      'no record says the Host restarted: it never did');
+    for (const [branch, opened] of [[a, openedA], [b, openedB]] as const) {
+      const closed = await within(30_000, `close ${branch.id}`, interactive(branch, { action: 'close', requestId: `close-${branch.id}`, toolSessionId: opened.session.toolSessionId }));
+      assert.equal(closed.status, 'closed', JSON.stringify(closed));
+    }
+  });
+});
