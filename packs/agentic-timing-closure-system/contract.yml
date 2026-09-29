@@ -726,9 +726,9 @@ workshops:
       and manual/auto strategy and the typed atcs_* procedures the Operator session will run. Write the
       slot's request to research/requests/worker-request-w01.json as {candidate: <the w01 work
       package, never wider than the prepared edit domain>, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
-      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
+      siteCapabilities: <the Site capabilities>}. The typed commands and the falsifier of each belong
+      to the Operator session, not to this file. The Operator session must write before.dump and
+      after.dump (atcs_dump_cells) in the slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
       dependencies}. A prediction is a hypothesis for the tool to test, never a result.
       Also include top-level actions with one to three objects {instance, toMaster}; each instance
       must be in candidate.editDomain.instances and each action proposes one size_cell mutation.
@@ -749,9 +749,9 @@ workshops:
       and manual/auto strategy and the typed atcs_* procedures the Operator session will run. Write the
       slot's request to research/requests/worker-request-w02.json as {candidate: <the w02 work
       package, never wider than the prepared edit domain>, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
-      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
+      siteCapabilities: <the Site capabilities>}. The typed commands and the falsifier of each belong
+      to the Operator session, not to this file. The Operator session must write before.dump and
+      after.dump (atcs_dump_cells) in the slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
       dependencies}. A prediction is a hypothesis for the tool to test, never a result.
       Read knowledge example-worker-request.md; copy its shape and change only the values (and taskId to w02); every instance is a full hierarchical path such as u_a/reg0, never a bare leaf name.
     directory: research/worker-02
@@ -769,9 +769,9 @@ workshops:
       and manual/auto strategy and the typed atcs_* procedures the Operator session will run. Write the
       slot's request to research/requests/worker-request-w03.json as {candidate: <the w03 work
       package, never wider than the prepared edit domain>, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
-      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
+      siteCapabilities: <the Site capabilities>}. The typed commands and the falsifier of each belong
+      to the Operator session, not to this file. The Operator session must write before.dump and
+      after.dump (atcs_dump_cells) in the slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
       dependencies}. A prediction is a hypothesis for the tool to test, never a result.
       Read knowledge example-worker-request.md; copy its shape and change only the values (and taskId to w03); every instance is a full hierarchical path such as u_a/reg0, never a bare leaf name.
     directory: research/worker-03

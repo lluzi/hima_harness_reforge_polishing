@@ -144,6 +144,48 @@ class ExampleKnowledgeIsReachableTest(unittest.TestCase):
         self.assertFalse((PACK_DIR / "examples").exists(), "examples/ is unreachable by a Workshop; ship knowledge instead")
 
 
+def _all_keys(value):
+    """Every object key at any depth of a parsed JSON document."""
+    if isinstance(value, dict):
+        return set(value) | {k for v in value.values() for k in _all_keys(v)}
+    if isinstance(value, list):
+        return {k for v in value for k in _all_keys(v)}
+    return set()
+
+
+# Fields each purpose names in prose lists rather than in a `{name: <...>}` skeleton.
+PURPOSE_LISTED_FIELDS = {
+    "plan-campaign": ("workPackages", "reason"),
+    "research-worker-01": ("actions", "instance", "toMaster"),
+    "evaluate-next-investment": (
+        "stateRef", "observationRef", "budgetRef", "question", "action", "targets", "reason",
+        "falsifier", "costBasis", "requiredArtifacts",
+    ),
+}
+
+
+class PurposeFieldsMatchTheirExampleTest(unittest.TestCase):
+    """A purpose and the example it points at never disagree on a field: every field the
+    purpose tells the model to write is in the example (review re-check: the worker
+    purposes demanded a `sessionPlan` the example and the Reader never had)."""
+
+    def test_every_field_a_purpose_names_is_in_its_example(self):
+        text = _contract_text()
+        for name, workshop_ids in EXAMPLE_WORKSHOPS.items():
+            keys = _all_keys(_load_example(name))
+            for workshop_id in workshop_ids:
+                purpose, _ = _workshop(text, workshop_id)
+                # The document skeleton the purpose spells out: `{field: <...>, field: {...}}`.
+                named = set(re.findall(r"[{,] ?(\w+): [<{]", purpose))
+                listed = set(PURPOSE_LISTED_FIELDS.get(workshop_id, ()))
+                for field in listed:
+                    self.assertRegex(purpose, rf"\b{field}\b", f"{workshop_id}'s purpose no longer names {field}")
+                self.assertTrue(named | listed, f"{workshop_id}'s purpose names no field")
+                with self.subTest(workshop=workshop_id):
+                    self.assertEqual(sorted((named | listed) - keys), [],
+                                     f"{workshop_id}'s purpose names fields {name} does not contain")
+
+
 class _HierarchicalFixture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
