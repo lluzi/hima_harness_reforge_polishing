@@ -290,6 +290,54 @@ test('Case 8: hima_run confirms a file that sets a Strategy knob and a Budget ov
   } finally { await host.dispose(); await h.dispose(); }
 });
 
+// #64 D-T02-1: the person asked for a 150-minute time box and six generations in the conversation,
+// the Guide's proposal showed them, and the confirmed Run was created with the Pack's own time box.
+// With no Campaign file in the workspace, the budget the person asked for is part of the reviewed
+// proposal (hima_prepare) and the confirmation of that exact proposal (hima_run) creates the Run
+// with exactly that budget; confirming without it, or with another, is a different proposal.
+test('Case 8b: a time box and generation limit asked for in the conversation reach the proposal and the confirmed Run exactly', async (t) => {
+  const h = await createHimaHome();
+  const flow = await writeStandinFlow(t, h, {});
+  assert.ok(flow, 'the stand-in flow is written');
+  await installCampaignFilePack(h);
+  await writeLocalSite(h, {
+    allowedReadRoots: [h.workspace, flow!.root],
+    allowedWriteRoots: [h.workspace],
+    bindings: { flowRoot: flow!.root, design: flow!.design, workspaceRoot: h.workspace },
+  });
+  const host: InProcessHost = await bootInProcess(h);
+  try {
+    const agent = await createRootAgent(host.ctx, h.workspace);
+    const call = (callId: string, name: string, args: Record<string, unknown>) => host.ctx.tools.execute({
+      callId: callId as never, name, arguments: args, agent, signal: AbortSignal.timeout(20_000) }) as unknown as Promise<ToolResult>;
+    const budget = { timeBoxMinutes: 150, generations: 6 };
+    const preparedResult = await call('prepare-asked-budget', 'hima_prepare', { pack: campaignFilePackId, site: 'local', budget });
+    assert.equal(preparedResult.isError, false, JSON.stringify(preparedResult));
+    const prepared = jsonOf(preparedResult);
+    assert.equal(prepared.ready, true, JSON.stringify(prepared));
+    assert.equal(prepared.campaignFile?.applied, false, 'no Campaign file is in this workspace');
+    assert.deepEqual(prepared.budget?.timeBoxMinutes, { value: 150, source: 'request' }, JSON.stringify(prepared.budget));
+    assert.deepEqual(prepared.budget?.generations, { value: 6, source: 'request' }, JSON.stringify(prepared.budget));
+
+    // Confirming that proposal without the budget it was reviewed with is not that proposal.
+    const without = await call('run-without-budget', 'hima_run', { proposalId: prepared.id, pack: campaignFilePackId, site: 'local',
+      goal: prepared.goal });
+    assert.equal(without.isError, true, JSON.stringify(without));
+    assert.match(JSON.stringify(without.content), /Campaign preparation changed|budget/i);
+    assert.equal(host.ctx.hima.ledger.runs().length, 0, 'no Run was created by a confirmation of another budget');
+
+    const started = await call('run-asked-budget', 'hima_run', { proposalId: prepared.id, pack: campaignFilePackId, site: 'local',
+      goal: prepared.goal, budget });
+    assert.equal(started.isError, false, JSON.stringify(started));
+    const startedJson = jsonOf(started);
+    assert.equal(startedJson.kind, 'ran', JSON.stringify(startedJson));
+    const run = host.ctx.hima.ledger.run(startedJson.runId as string);
+    assert.ok(run, 'the run exists in the ledger');
+    assert.equal(run!.budget!.timeBoxMs, 150 * 60_000, JSON.stringify(run!.budget));
+    assert.equal(run!.budget!.generationLimit, 6, JSON.stringify(run!.budget));
+  } finally { await host.dispose(); await h.dispose(); }
+});
+
 // Review item IMPORTANT 2: a malformed file on disk (bad YAML content or a value the schema
 // refuses) is the caller's own mistake, not this Host's fault — it must answer 400 with the one
 // sentence naming the field, never 500.

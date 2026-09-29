@@ -1634,13 +1634,17 @@ export default class Hima extends Service {
       ...(declaration.precision === undefined ? {} : { precision: declaration.precision }),
     }]));
     const generationLimit = convergeOf(pack)?.generationLimit;
+    // A Budget value the person asked for in the conversation (#64 D-T02-1) says so; one the Campaign
+    // file wrote says 'file'. Both are the same override and join the proposal's facts the same way.
+    const overridden = (key: 'timeBoxMinutes' | 'retries' | 'generations'): 'request' | 'file' =>
+      overrides?.requestedBudget?.includes(key) ? 'request' : 'file';
     const budget: PreparationView['budget'] = {
-      timeBoxMinutes: overrides?.budget?.timeBoxMinutes !== undefined ? { value: overrides.budget.timeBoxMinutes, source: 'file' }
+      timeBoxMinutes: overrides?.budget?.timeBoxMinutes !== undefined ? { value: overrides.budget.timeBoxMinutes, source: overridden('timeBoxMinutes') }
         : pack.contract.budget.timeBoxMs !== undefined ? { value: pack.contract.budget.timeBoxMs / 60_000, source: 'pack' }
         : { value: defaultTimeBoxMs / 60_000, source: 'harness' },
-      retries: overrides?.budget?.retries !== undefined ? { value: overrides.budget.retries, source: 'file' }
+      retries: overrides?.budget?.retries !== undefined ? { value: overrides.budget.retries, source: overridden('retries') }
         : { value: defaultRetryAllowance, source: 'harness' },
-      generations: overrides?.budget?.generations !== undefined ? { value: overrides.budget.generations, source: 'file' }
+      generations: overrides?.budget?.generations !== undefined ? { value: overrides.budget.generations, source: overridden('generations') }
         : generationLimit !== undefined ? { value: generationLimit, source: 'pack' }
         : { value: defaultGenerationLimit, source: 'harness' },
       ...(site === undefined ? {} : { jobCap: site.capacity.parallelJobs }),
