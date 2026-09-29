@@ -400,3 +400,136 @@ test('interactive runtime derives authority from Run/Ledger, preserves single-wr
     for (const session of sessions) spawnSync('tmux', ['kill-session', '-t', `=${session}`], { timeout: 15_000 });
   }
 });
+
+// #64 D-T01-3: the Harness "closed" worker 02's interactive session, but the tool it had launched
+// kept running and kept its locks in the slot, so every retry in that slot was refused by the
+// wrapper's startup lock check. A close must end with the Job's process group observed gone, or
+// with a recorded `process-survived` naming the process group, which the next open of the same
+// node then refuses on instead of launching into the stale lock.
+test('interactive close waits for the wrapper\'s own shutdown, and a surviving tool is recorded and refused by the retry', async (t) => {
+  const { existsSync } = await import('node:fs');
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const site = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
+    allowedWrappers: ['sh'], parallelJobs: 2, licences: { fixture: 2 } });
+  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const parent = await createRootAgent(host.ctx, home.workspace);
+  // The stand-in wrapper owns one slot lock for its tool's lifetime, as XTop's `.cdslck` files are:
+  // a start refuses while the lock exists, and only the wrapper's own shutdown path releases it.
+  // `slow` takes two seconds to shut down after the hangup; `stubborn` ignores hangup and TERM
+  // entirely and ends only on an interrupt from a person.
+  const wrapper = path.join(home.workspace, 'slot-wrapper.sh');
+  await writeFile(wrapper, [
+    'slot=$1; mode=$2; node=$3; repl=$4',
+    'if [ -e "$slot/tool.lock" ]; then echo "writable slot holds a live tool lock" >&2; exit 3; fi',
+    'echo $$ > "$slot/tool.lock"',
+    'release() { rm -f "$slot/tool.lock"; }',
+    'if [ "$mode" = slow ]; then trap \'sleep 2; release; exit 0\' HUP TERM; fi',
+    'if [ "$mode" = stubborn ]; then trap \'\' HUP TERM; trap \'release; exit 0\' INT; fi',
+    '"$node" "$repl" fixture-repl 1',
+    'if [ "$mode" = stubborn ]; then while :; do sleep 1; done; fi',
+    'release', '',
+  ].join('\n'));
+  const executions = ['slow-1', 'slow-2', 'stubborn-1', 'stubborn-2'];
+  const run = await host.ctx.hima.ledger.createRun({
+    campaignId: 'interactive-close', siteId: 'local', packId: 'fixture-pack', packDigest: digest('a'), status: 'running', currentNode: 'manual', generation: 1,
+    budget: { timeBoxMs: 120_000, closingReserveMs: 1_000, retryAllowance: 3, jobCap: 2, licences: { fixture: 2 }, generationLimit: 1 },
+    control: { mode: 'agent', owner: String(parent.id), epoch: 1, revision: 0, paused: [], requests: {},
+      executions: Object.fromEntries(executions.map((id, index) => [id, { ...execution, id, attempt: index % 2 + 1 }])) },
+  });
+  let mode = 'slow';
+  const slot = () => path.join(home.workspace, `slot-${mode}`);
+  const deps = {
+    fabric: { ledger: host.ctx.hima.ledger, sitesDir: site.sitesDir } as never,
+    resolveOperation: async () => ({ binding, site: 'local', workspace: home.workspace,
+      argv: ['sh', wrapper, slot(), mode, process.execPath, fixture], name: `close-${mode}`, licences: { fixture: 1 },
+      commands: [{ name: 'get', effect: 'read' as const }, { name: 'exit', effect: 'close' as const }] }),
+    verifyAdminBinding: async (effective: InteractiveBinding) => ({ bindingFileRealpath: '/trusted/test/binding',
+      bindingFileSha256: digest('0'), environmentDigest: effective.environment.digest, confinement: 'unqualified' as const }),
+    encodeCommand: async (_binding: InteractiveBinding, request: { commandId: string; protocolToken: string; name: string; args: unknown }) => ({
+      text: JSON.stringify({ id: request.commandId, _himaToken: request.protocolToken, op: request.name, ...(request.args as object) }),
+      submit: true, effect: request.name === 'get' ? 'read' as const : 'close' as const }),
+    claimJobSlot: async (request: Parameters<NonNullable<InteractiveRuntimeDeps['claimJobSlot']>>[0]) => {
+      const claimed = await claimSlot({ ledger: host.ctx.hima.ledger as never, sitesDir: site.sitesDir }, {
+        site: { name: request.site, jobs: request.run.budget!.jobCap, licences: request.run.budget!.licences },
+        holds: request.licences, launch: request.launch });
+      return claimed.kind === 'claimed' ? { kind: 'claimed' as const, launched: claimed.launched }
+        : { kind: 'at-cap' as const, reason: claimed.kind === 'at-cap' ? 'site Job/licence cap is full' : String((claimed as { error?: Error }).error?.message ?? claimed.kind) };
+    },
+    trustedTestQualification: { bindingId: 'fixture-binding' },
+    closeGrace: { hangupMs: 4_000, terminateMs: 1_000 },
+    onDeadline: async () => {},
+  } as InteractiveRuntimeDeps;
+  const owner = { runId: run.id, nodeId: 'manual', actor: String(parent.id), ownerEpoch: 1, controlRevision: 0 };
+  const sessions: string[] = []; const groups: number[] = [];
+  const tmuxThere = (session: string) => spawnSync('tmux', ['has-session', '-t', `=${session}`]).status === 0;
+  const open = async (executionId: string, requestId: string) => {
+    const opened = await operateInteractive(deps, { ...owner, executionId, action: 'open', requestId });
+    if (opened.status === 'opened') { sessions.push(opened.session.toolSessionId); groups.push(opened.session.job.pid!); }
+    return opened;
+  };
+  try {
+    // A wrapper that takes a while to shut down: close waits for it, so the retry finds the slot free.
+    await mkdir(slot(), { recursive: true });
+    const first = await open('slow-1', 'open-slow-1');
+    assert.equal(first.status, 'opened', JSON.stringify(first)); if (first.status !== 'opened') return;
+    assert.equal(first.readiness, 'ready');
+    assert.ok(existsSync(path.join(slot(), 'tool.lock')), 'the running tool holds its slot lock');
+    const closed = await operateInteractive(deps, { ...owner, executionId: 'slow-1', action: 'close', requestId: 'close-slow-1',
+      toolSessionId: first.session.toolSessionId });
+    assert.equal(closed.status, 'closed', JSON.stringify(closed));
+    assert.equal(existsSync(path.join(slot(), 'tool.lock')), false, 'a close returns only after the wrapper\'s own shutdown released its lock');
+    assert.equal(tmuxThere(first.session.toolSessionId), false);
+    const retry = await open('slow-2', 'open-slow-2');
+    assert.equal(retry.status, 'opened', JSON.stringify(retry)); if (retry.status !== 'opened') return;
+    assert.equal(retry.readiness, 'ready', 'the retry in the same slot is not refused by a lock the previous session left');
+    const retryClosed = await operateInteractive(deps, { ...owner, executionId: 'slow-2', action: 'close', requestId: 'close-slow-2',
+      toolSessionId: retry.session.toolSessionId });
+    assert.equal(retryClosed.status, 'closed', JSON.stringify(retryClosed));
+
+    // A tool that ignores hangup and TERM: close records process-survived with the Job's process group.
+    mode = 'stubborn'; await mkdir(slot(), { recursive: true });
+    const stubborn = await open('stubborn-1', 'open-stubborn-1');
+    assert.equal(stubborn.status, 'opened', JSON.stringify(stubborn)); if (stubborn.status !== 'opened') return;
+    const pid = stubborn.session.job.pid!;
+    assert.ok(Number.isInteger(pid) && pid > 0);
+    const survived = await operateInteractive(deps, { ...owner, executionId: 'stubborn-1', action: 'close', requestId: 'close-stubborn-1',
+      toolSessionId: stubborn.session.toolSessionId }) as Record<string, any>;
+    assert.equal(survived.status, 'process-survived', JSON.stringify(survived));
+    assert.equal(survived.pid, pid, 'the survivor is named by the Job\'s recorded process group');
+    const records = host.ctx.hima.ledger.records({ runId: run.id });
+    const receipt = records.findLast((record) => record.type === 'interactive' && record.requestId === 'close-stubborn-1');
+    assert.equal(receipt?.type === 'interactive' ? receipt.event : undefined, 'process-survived');
+    assert.equal(receipt?.type === 'interactive' ? (receipt.payload as { pid?: number }).pid : undefined, pid);
+    assert.deepEqual(records.filter((record) => record.type === 'job' && record.job.session === stubborn.session.toolSessionId).map((record) => record.type === 'job' ? record.event : ''),
+      ['launched'], 'a surviving tool is not recorded as a killed Job');
+    assert.equal(listInteractiveSessions(host.ctx.hima.ledger as never, run.id, 'stubborn-1')[0]?.status, 'uncertain');
+    assert.ok(existsSync(path.join(slot(), 'tool.lock')), 'the survivor still holds its slot lock');
+    const refused = await open('stubborn-2', 'open-stubborn-2');
+    assert.equal(refused.status, 'refused', JSON.stringify(refused));
+    assert.match((refused as { reason: string }).reason, new RegExp(`process group ${pid}`), 'the retry names the surviving process group');
+    assert.doesNotMatch(JSON.stringify(refused), /live tool lock/);
+
+    // A person ends the survivor; the same retry then opens in the freed slot.
+    process.kill(-pid, 'SIGINT');
+    await waitFor(() => !tmuxThere(stubborn.session.toolSessionId), 'the Job session ends once its process group is gone');
+    assert.equal(existsSync(path.join(slot(), 'tool.lock')), false);
+    const reopened = await open('stubborn-2', 'open-stubborn-2-after');
+    assert.equal(reopened.status, 'opened', JSON.stringify(reopened)); if (reopened.status !== 'opened') return;
+    assert.equal(reopened.readiness, 'ready');
+    const exited = await operateInteractive(deps, { ...owner, executionId: 'stubborn-2', action: 'input', requestId: 'exit-stubborn-2',
+      toolSessionId: reopened.session.toolSessionId, commandId: 'exit-stubborn-2', command: { name: 'exit', args: {} }, waitMs: 2_000 });
+    assert.equal(exited.status, 'completed', JSON.stringify(exited));
+  } finally {
+    for (const session of sessions) spawnSync('tmux', ['kill-session', '-t', `=${session}`], { timeout: 15_000 });
+    for (const group of groups) { try { process.kill(-group, 'SIGKILL'); } catch { /* already gone */ } }
+  }
+});
+
+async function waitFor(check: () => boolean, what: string, timeoutMs = 15_000): Promise<void> {
+  const until = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() > until) throw new Error(`timed out: ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}

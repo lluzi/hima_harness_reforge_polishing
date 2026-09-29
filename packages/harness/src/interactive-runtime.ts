@@ -9,7 +9,7 @@ import { controlling, identityOf, type FabricDeps } from './fabric.js';
 import {
   closeInteractiveJob, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
   sendInteractiveInput, signalInteractiveJob,
-  type InteractiveAddress, type InteractiveAuthority, type InteractiveChannel, type InteractiveCloseResult,
+  type InteractiveAddress, type InteractiveAuthority, type InteractiveChannel, type InteractiveCloseGrace, type InteractiveCloseResult,
   type InteractiveInputResult, type InteractiveJobIdentity, type InteractiveOpenResult, type InteractiveQualification,
   type InteractiveReceipt, type InteractiveRecord as ProtocolRecord, type InteractiveSession,
   type InteractiveSignalResult, type TranscriptRead,
@@ -92,6 +92,8 @@ export interface InteractiveRuntimeDeps {
   readonly mintProtocolToken?: () => string;
   /** Required Host callback: issue the qualified interrupt/close path and record its actual outcome. */
   readonly onDeadline: (deadline: InteractiveDeadline) => Promise<void>;
+  /** How long a close waits for the Job's process group after hangup and after TERM; defaults apply when absent. */
+  readonly closeGrace?: InteractiveCloseGrace;
 }
 
 export interface InteractiveSessionView {
@@ -107,6 +109,8 @@ export interface InteractiveSessionView {
     readonly callerDigest: string; readonly requestDigest: string; readonly operationDigest: string; readonly protocolToken: string; readonly cursorBefore: number;
     readonly commandDeadlineAt: string; readonly state: 'intent' | 'sent' | 'uncertain' };
   readonly lastCursor?: number; readonly reason?: string;
+  /** The Job's process group a close recorded as surviving hangup and TERM (#64 D-T01-3). */
+  readonly survivedPid?: number;
 }
 
 export type InteractiveOperateRequest = InteractiveAddress & ({
@@ -332,7 +336,8 @@ function reconstructSessions(ledger: Ledger, runId: string): InteractiveSessionV
       continue;
     }
     if (record.event === 'closed') sessions.set(record.toolSessionId, { ...previous, status: 'closed', activeCommand: undefined });
-    if (record.event === 'close-uncertain') sessions.set(record.toolSessionId, { ...previous, status: 'uncertain', reason: record.reason });
+    if (record.event === 'close-uncertain' || record.event === 'process-survived') sessions.set(record.toolSessionId, { ...previous, status: 'uncertain', reason: record.reason,
+      ...(record.event === 'process-survived' && record.pid !== undefined ? { survivedPid: record.pid } : {}) });
   }
   return [...sessions.values()].map((session) => {
     // A finished Job is authoritative process exit even when the tool's normal
@@ -375,7 +380,10 @@ function duplicateReceipt(kind: AdmissionKind, records: ReturnType<typeof protoc
   }
   if (kind === 'signal') return lastEvent(records, ['signal-delivered']) ? { status: 'duplicate', process: 'running-or-exited' }
     : { status: 'uncertain', reason: 'signal intent has no delivered receipt' };
-  return lastEvent(records, ['closed']) ? { status: 'duplicate', process: 'exited' }
+  if (lastEvent(records, ['closed'])) return { status: 'duplicate', process: 'exited' };
+  const survived = lastEvent(records, ['process-survived']);
+  return survived?.event === 'process-survived' && survived.pid !== undefined
+    ? { status: 'process-survived', pid: survived.pid, reason: survived.reason ?? `process group ${String(survived.pid)} survived the close` }
     : { status: 'uncertain', reason: 'close intent has no confirmed process exit' };
 }
 
@@ -550,6 +558,27 @@ async function resolved(deps: InteractiveRuntimeDeps, request: InteractiveAddres
   catch (error) { return { reason: error instanceof Error ? error.message : String(error) }; }
 }
 
+/**
+ * A retry of a node opens the same tool slot. While an earlier Job of that node has a recorded
+ * `process-survived` close and its tmux session (kept by the close watcher) is still there, the
+ * surviving tool still owns the slot and its locks: refuse naming the group rather than launch a
+ * wrapper into those locks.
+ */
+async function survivingSlotJob(deps: InteractiveRuntimeDeps, run: RunRecord, nodeId: string): Promise<string | undefined> {
+  const survivors = listInteractiveSessions(deps.fabric.ledger, run.id)
+    .filter((session) => session.nodeId === nodeId && session.status !== 'closed' && session.survivedPid !== undefined);
+  if (survivors.length === 0) return undefined;
+  const on: InteractiveChannel = channelFor(loadSite(deps.fabric.sitesDir, run.siteId));
+  for (const session of survivors) {
+    const probe = await on.exec(['tmux', 'has-session', '-t', `=${session.toolSessionId}`]);
+    if (probe.code === 0 || !/can't find session|session not found|no server running on|error connecting to/.test(probe.stderr)) {
+      return `the previous interactive Job ${session.toolSessionId} of node ${nodeId} survived its close: process group ${String(session.survivedPid)}`
+        + ' still runs and holds this tool slot; end that process group on the Site, then open again';
+    }
+  }
+  return undefined;
+}
+
 function sessionFor(ledger: Ledger, request: InteractiveAddress & { readonly toolSessionId: string }): InteractiveSessionView | undefined {
   return listInteractiveSessions(ledger, request.runId, request.executionId)
     .find((session) => session.toolSessionId === request.toolSessionId && session.nodeId === request.nodeId);
@@ -586,6 +615,8 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
     if (!deps.claimJobSlot) return { status: 'refused', reason: 'interactive Job/licence slot authority is unavailable' };
     const refused = validateControl(facts.run, request, 'open');
     if (refused) return { status: 'refused', reason: refused };
+    const survivor = await survivingSlotJob(deps, facts.run, request.nodeId);
+    if (survivor) return { status: 'refused', reason: survivor };
     const at = nowOf(deps); const runDeadline = hardDeadline(facts.run, at);
     const sessionDeadline = Math.min(at + facts.derived.binding.limits.sessionMaxMs, runDeadline ?? Number.MAX_SAFE_INTEGER);
     const claimed = await deps.claimJobSlot({ run: facts.run, site: facts.derived.site, licences: facts.derived.licences,
@@ -640,7 +671,7 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
       commandDeadlineAt: new Date(commandDeadline).toISOString() }, authority);
   }
   if (request.action === 'signal') return signalInteractiveJob(on, { ...request, callerDigest, session }, authority);
-  return closeInteractiveJob(on, { ...request, callerDigest, session }, authority);
+  return closeInteractiveJob(on, { ...request, callerDigest, session, ...(deps.closeGrace === undefined ? {} : { grace: deps.closeGrace }) }, authority);
 }
 
 export interface InteractiveTimerController {
@@ -666,7 +697,7 @@ export async function reconcileInteractiveState(deps: InteractiveRuntimeDeps): P
         if (intent.event === 'open-intent') return ['opened', 'open-uncertain', 'open-released'].includes(item.payload.event);
         if (intent.event === 'input-intent') return ['input-sent', 'input-uncertain', 'command-completed', 'command-failed'].includes(item.payload.event);
         if (intent.event === 'signal-intent') return ['signal-delivered', 'signal-uncertain'].includes(item.payload.event);
-        return ['closed', 'close-uncertain'].includes(item.payload.event);
+        return ['closed', 'close-uncertain', 'process-survived'].includes(item.payload.event);
       });
       if (settled) continue;
       let outcome: ProtocolRecord;
