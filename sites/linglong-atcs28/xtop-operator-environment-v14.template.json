@@ -1,0 +1,48 @@
+{
+  "schema": "hima-interactive-environment/1",
+  "site": "linglong-atcs28",
+  "toolId": "xtop-operator",
+  "pack": {
+    "id": "agentic-timing-closure-system",
+    "digest": "<current-pack-digest>"
+  },
+  "adapter": {
+    "id": "hima-tcl-line-v1",
+    "digest": "<current-adapter-digest>"
+  },
+  "commandsDigest": "<current-commands-digest>",
+  "wrapper": {
+    "path": "/data/eda/project/hima_harness/operator-admin/atcs-v14/atcs-xtop-operator-v14.sh",
+    "sha256": "<64-lowercase-hex>"
+  },
+  "image": {
+    "reference": "localhost/edarunner",
+    "digest": "sha256:<64-lowercase-hex>"
+  },
+  "sourceTemplate": {
+    "path": "flow/templates/xtop-operator.tcl",
+    "sha256": "<64-lowercase-hex>"
+  },
+  "confinement": {
+    "rootFilesystem": "read-only",
+    "dataRoot": "/data/eda",
+    "dataMount": "read-only",
+    "privateWriteRoot": "/data/eda/project/hima_harness/atcs-runs",
+    "network": "host-localhost-licence-only",
+    "capabilities": "dropped-all",
+    "noNewPrivileges": true
+  },
+  "qualification": {
+    "status": "<passed-after-fresh-production-root-qualification>",
+    "transcriptSha256": "<64-lowercase-hex>",
+    "logicalEcoSha256": "<64-lowercase-hex>",
+    "physicalEcoSha256": "<64-lowercase-hex>",
+    "xtopReady": true,
+    "identityQuery": true,
+    "mutation": true,
+    "save": true,
+    "sourceWriteDenied": true,
+    "execWriteDenied": true,
+    "normalExit": true
+  }
+}
