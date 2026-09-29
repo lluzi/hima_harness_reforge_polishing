@@ -78,6 +78,7 @@
     "test/contract/pack.test.ts",
     "test/contract/pipeline-checkpoint.test.ts",
     "test/contract/pipeline-finalize.test.ts",
+    "test/contract/report-only-seal.host.test.ts",
     "test/contract/pipeline-stages.host.test.ts",
     "test/contract/preparation.host.test.ts",
     "test/contract/product-context.host.test.ts",

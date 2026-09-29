@@ -12,7 +12,7 @@
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import { createHimaHome, type HimaHome } from './dsh-home.ts';
+import { createHimaHome, type HimaHome, type HomeShape } from './dsh-home.ts';
 import { bootInProcess, type InProcessHost } from './boot-inprocess.ts';
 import { himaCommand, siteCommandTimeoutMs, type CommandOutcome } from './command.ts';
 import { installPack } from './pack.ts';
@@ -100,7 +100,7 @@ export async function waitUntil(what: string, probe: () => boolean | Promise<boo
 
 /** What a fabric test's home is made with: the stand-in's own options, and the Site's declared job
  *  cap and licence seats for the tests whose subject is two Runs wanting the Site at once. */
-export interface StandinHomeOptions extends StandinOptions {
+export interface StandinHomeOptions extends StandinOptions, HomeShape {
   readonly parallelJobs?: number;
   readonly licences?: Readonly<Record<string, number>>;
 }
@@ -120,8 +120,8 @@ export interface LocalHome {
  * a skip; the home is disposed before answering, so a skipped test leaves nothing behind.
  */
 export async function localHome(t: TestContext, opts: StandinHomeOptions = {}): Promise<LocalHome | undefined> {
-  const { parallelJobs, licences, ...standin } = opts;
-  const h = await createHimaHome();
+  const { parallelJobs, licences, desktopShaped, ...standin } = opts;
+  const h = await createHimaHome({ desktopShaped });
   const flow = await writeStandinFlow(t, h, standin);
   if (!flow) { await h.dispose(); return undefined; }
   await installPack(h);
