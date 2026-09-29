@@ -48,6 +48,7 @@ import { analysisProblems } from './experience-report.js';
 import { runView as analysisRunView } from './remote.js';
 import { jobStatus, jobTail, reconcileLaunchIntent, type LaunchIntent } from './jobs.js';
 import { channelFor } from './channel.js';
+import { jobProcessGroupAlive } from './interactive-job.js';
 import { attestLibraryQualificationPrelaunch } from './adapters/library-qualification.js';
 import { humanEffortMeasurement } from './value-measurement.js';
 import { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop, captureWorkshopInputs, readBack } from './workshop.js';
@@ -2017,6 +2018,33 @@ function executionHolds(control: RunControl): NonNullable<ExecutionContext['hold
   });
 }
 
+/**
+ * An interactive Job whose close was recorded `process-survived` stays open in the Ledger after its
+ * surviving process group ends: the group was not stopped by the close, and nothing observed its end
+ * as a stop. A person continuing that node is told to establish the Job's actual exit first — and
+ * here it is established, by asking the recorded group itself through the Site channel. Every such
+ * Job whose group is observed gone is recorded stopped (`killed`, in its launch's branch), and the
+ * continue goes on; any other open Job, or a group still running or that cannot be asked, keeps the
+ * refusal (#64 attempt 3 dry path: a survivor whose container ended by itself left its node
+ * un-continuable for the rest of the Run).
+ */
+async function settleEndedSurvivors(deps: FabricDeps, run: RunRecord, open: readonly JobRecord[]): Promise<boolean> {
+  const interactive = deps.ledger.records({ runId: run.id, type: 'interactive' });
+  const survivors = open.map((job) => ({ job, pid: (interactive.findLast((record) => record.type === 'interactive'
+    && record.toolSessionId === job.job.session && record.event === 'process-survived')?.payload as { pid?: number } | undefined)?.pid }));
+  if (survivors.some((survivor) => survivor.pid === undefined)) return false;
+  const on = channelFor(loadSite(deps.sitesDir, run.siteId));
+  for (const survivor of survivors) {
+    try { if (await jobProcessGroupAlive(on, survivor.pid!)) return false; }
+    catch { return false; }
+  }
+  for (const { job } of survivors) {
+    await deps.ledger.appendJob(run.id, { event: 'killed', job: job.job, ...(job.nodeId === undefined ? {} : { nodeId: job.nodeId }),
+      ...(job.branchId === undefined ? {} : { branchId: job.branchId }) });
+  }
+  return true;
+}
+
 function unclearedFailure(run: RunRecord, scope: string): NodeExecution | undefined {
   return Object.values(run.control?.executions ?? {}).findLast((execution) =>
     execution.supersededBy === undefined && execution.phase === 'failed' && execution.humanClearance === undefined
@@ -2178,7 +2206,8 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
         const blocked = unclearedFailure(run, scope);
         if (blocked !== undefined) {
           if (req.origin !== 'human') return no('the failed node needs a human clearance of its blocker; an Agent continue cannot grant another retry allowance');
-          if (deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === run.id && job.nodeId === blocked.nodeId)) return no('the blocked node still has an in-flight or uncertain Job; establish its actual exit before retrying');
+          const open = deps.ledger.openJobsOn(run.siteId).filter((job) => job.runId === run.id && job.nodeId === blocked.nodeId);
+          if (open.length > 0 && !await settleEndedSurvivors(deps, run, open)) return no('the blocked node still has an in-flight or uncertain Job; establish its actual exit before retrying');
           receipt = { ...receipt, executionId: blocked.id, data: { scope, clearedScopes: [...new Set([scope, blocked.nodeId])] } };
           await clearExecutionBlocker(deps, run, req, digest, blocked, scope, receipt);
           return continued(`The user continued node ${blocked.nodeId}: its blocker is cleared and it may be begun again with a new retry allowance.${upstreamProducerNote(pack, blocked.nodeId)} Read current facts before choosing the next action.`);

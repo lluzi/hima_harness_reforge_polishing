@@ -26,6 +26,12 @@
 //   `/hima-release` replay a transcript this test writes from the ended Run. The home's model route
 //   is dsh's keyless replay adapter throughout.
 //
+// - Site faults of treatment attempt 2 (#64 D-T02-2/-4), in the first drive: the Site's `tmux
+//   run-shell` answers nothing (a stand-in `tmux` first on PATH, as tmux 3.4 did), and in generation
+//   2 one slot's session outlives the Harness close -- a member of its process group ignores hangup
+//   and TERM past the declared close grace and ends by itself a few seconds later, as a container
+//   still being stopped does. That slot's node is retried in a fresh session and the batch goes on.
+//
 // No timing, extraction, physical or QoR claim is made by any number below.
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
@@ -63,6 +69,11 @@ const XTOP_SEATS = 6;
 // The worker batches, one per generation after the baseline's: generation 2 runs all six slots
 // active, generation 3 parks two, and a fourth (only under a generation limit of 4) parks five.
 const PARKED_BY_BATCH: readonly (readonly Slot[])[] = [[], ['w05', 'w06'], ['w02', 'w03', 'w04', 'w05', 'w06']];
+// Generation 2's slot whose first session outlives the Harness close, the declared close grace it
+// outlives, and how long its lingering process-group member lives after the session starts.
+const SURVIVOR: Slot = 'w02';
+const SURVIVOR_GRACE_MS = 4_000;
+const SURVIVOR_LINGER_S = 12;
 // The reviewer's approved scope for every active slot: sizing and undo, three mutations.
 const SCOPE = { commands: ['atcs_size_cell', 'atcs_undo'], maxMutations: 3 };
 
@@ -78,7 +89,7 @@ interface Home {
 }
 
 /** The installed scratch copy of the Pack, the local Site, its synthetic inputs and the Team seam. */
-async function prepareHome(t: TestContext, teamExecutions: number): Promise<Home> {
+async function prepareHome(t: TestContext, teamExecutions: number, siteFaults = false): Promise<Home> {
   const prior = process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
   process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = 'atcs-dry';
   t.after(() => { if (prior === undefined) delete process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
@@ -100,6 +111,21 @@ async function prepareHome(t: TestContext, teamExecutions: number): Promise<Home
   }
   await fill(path.join(fixture, 'site/manifest.json'), path.join(site, 'manifest.json'));
   await fill(path.join(fixture, 'site/caps.json'), path.join(site, 'caps.json'));
+  if (siteFaults) {
+    // The Site's tmux 3.4 printed nothing for `run-shell` (#64 D-T02-4): so does this one, for the whole drive.
+    const { chmod } = await import('node:fs/promises');
+    const { spawnSync } = await import('node:child_process');
+    const realTmux = spawnSync('sh', ['-c', 'command -v tmux'], { encoding: 'utf8' }).stdout.trim();
+    assert.ok(realTmux, 'tmux is on PATH');
+    const standins = path.join(h.home, 'silent-run-shell'); await mkdir(standins, { recursive: true });
+    await writeFile(path.join(standins, 'tmux'), ['#!/bin/sh', 'for word in "$@"; do [ "$word" = run-shell ] && exit 0; done',
+      `exec '${realTmux.replaceAll("'", "'\\''")}' "$@"`, ''].join('\n'));
+    await chmod(path.join(standins, 'tmux'), 0o755);
+    const priorPath = process.env.PATH;
+    process.env.PATH = `${standins}${path.delimiter}${priorPath ?? ''}`;
+    t.after(() => { process.env.PATH = priorPath; });
+    assert.equal(spawnSync('tmux', ['start-server', ';', 'run-shell', 'echo alive'], { encoding: 'utf8' }).stdout, '', 'run-shell answers nothing');
+  }
   const standinLog = path.join(site, 'eda-standin.log');
   await writeFile(path.join(site, 'eda-standin.json'), JSON.stringify({
     fixturesDir: path.join(repoRoot, 'packs', packId, 'flow/tests'), log: standinLog }));
@@ -121,6 +147,8 @@ async function prepareHome(t: TestContext, teamExecutions: number): Promise<Home
   const tool = contract.tools.find((item: any) => item.id === 'xtop-operator');
   assert.deepEqual(tool.interactive.argv.slice(1), ['${WORKSPACE}', '${SLOT}'], 'the qualified wrapper is called <workspace> <slot>');
   tool.interactive.argv = [wrapper, '${WORKSPACE}/flow/atcs-dry-repl.tcl', '${WORKSPACE}', '${SLOT}'];
+  // A short declared close grace, so the lingering session below outlives it within seconds.
+  if (siteFaults) tool.interactive.closeGraceMs = SURVIVOR_GRACE_MS;
   assert.deepEqual(tool.interactive.licences, { xtop: 1 }, 'the xtop seat is the interactive session\'s');
   await writeFile(path.join(variant, 'contract.yml'), stringify(contract));
   const graph = parse(await readFile(path.join(variant, 'graph.yml'), 'utf8')) as any;
@@ -236,6 +264,8 @@ interface Drive {
   readonly batches: Batch[];
   readonly delegations: number;
   readonly pausedRefusal: string | undefined;
+  /** The generation-2 slot whose session outlived the Harness close, as recorded; absent without site faults. */
+  readonly survivor?: { readonly close: any; readonly retried: string; readonly retryOpen: any };
 }
 
 /**
@@ -244,7 +274,7 @@ interface Drive {
  * generation limit 3 the owner's revisit at the end of generation 3 is refused by the limit and the
  * Run ends; with limit 4 generation 4's batch stops at the refresh-budget gate, on `wait-for-person`.
  */
-async function drive(host: InProcessHost, home: Home, generationLimit: number, log: string[]): Promise<Drive> {
+async function drive(host: InProcessHost, home: Home, generationLimit: number, log: string[], siteFaults = false): Promise<Drive> {
   const owner = await createRootAgent(host.ctx, home.h.workspace); const actor = String(owner.id);
   const started = await host.ctx.hima.startRun({ pack: packId, site: 'local', test: true, goal: GOAL,
     strategy: { maxPaths: MAX_PATHS }, generationLimit, retryAllowance: 1, ownerSessionId: actor, timeBoxMs: 3_600_000 });
@@ -407,6 +437,7 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
   await revisit('revisit-observe');
 
   let pausedRefusal: string | undefined;
+  let survivor: Drive['survivor'];
   const batches: Batch[] = [];
   /** One worker batch: observe, plan, the six-branch fork and its join, compose, replay, the refresh gate. */
   const batch = async (parked: readonly Slot[]) => {
@@ -433,6 +464,8 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
       current.executions.set(slot, begun.receipt!.executionId!);
       sessions.push(await teamReady(slot, begun.receipt!.executionId!));
     }
+    const survivorSession = siteFaults && generation === 2 ? sessions.find(session => session.slot === SURVIVOR) : undefined;
+    if (survivorSession) await writeFile(path.join(workspace, 'workspaces', SURVIVOR, 'linger-once'), `${SURVIVOR_LINGER_S}\n`);
     // Each open is admitted against the control revision the previous one moved, so they are sent in
     // turn; none of the sessions has received a command, let alone closed, until all are open.
     for (const session of sessions) {
@@ -466,7 +499,39 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
     }, 30_000, 50);
     current.readySessions = sessions.length;
     log.push(`generation ${generation}: ${sessions.length} Operator sessions open at once (${active.join(', ')}); parked ${parked.join(', ') || 'none'}`);
-    for (const session of sessions) {
+    for (let session of sessions) {
+      if (session === survivorSession) {
+        // Attempt 2's w01/w02: the Operator dumps and then closes its session through the Harness. A
+        // member of the Job's process group outlives the close's hangup and TERM, so the close is
+        // recorded `process-survived` and the node holds its slot. The member ends by itself; the
+        // Job's end settles the attempt, and the node is retried in a fresh session through the
+        // retry guard, which asks the process group itself (never tmux run-shell, silent here).
+        const root = path.join(workspace, JSON.parse(await readFile(path.join(workspace, 'state/workers.json'), 'utf8')).workers[session.slot].root);
+        await send(session, 'atcs_dump_cells', { path: path.join(root, 'before-survivor.dump') }, `before-survivor-${session.slot}`);
+        const close = await interactive(session, { action: 'close', requestId: `close-survivor-${session.slot}`, toolSessionId: session.toolSessionId });
+        assert.equal(close.status, 'process-survived', `${session.slot}'s lingering session outlives the declared close grace: ${JSON.stringify(close)}`);
+        await waitUntil(`${session.slot}'s first attempt settles once its lingering process ends`,
+          () => ['failed', 'ready'].includes(control().executions[session.executionId]?.phase ?? ''), (SURVIVOR_LINGER_S + 30) * 1000, 100);
+        const first = control().executions[session.executionId]!;
+        assert.equal(first.phase, 'failed', JSON.stringify(first));
+        log.push(`operate-worker-${nn(session.slot)} attempt ${first.attempt}: close process-survived, then its process group ended; ${first.result?.kind}`);
+        if (first.result?.kind === 'hard-blocker') {
+          // With this drive's retry allowance of one, the failed attempt is a Hard blocker: a person
+          // continues the node once its process group is gone, as the tester did in attempt 2.
+          const continued = await act('continue', { nodeId: `operate-worker-${nn(session.slot)}`, origin: 'human' });
+          assert.equal(continued.kind, 'accepted', `a person continues the node once its survivor is gone: ${continued.reason}`);
+          log.push(`operate-worker-${nn(session.slot)}: continued by a person (${continued.reason ?? 'accepted'})`);
+        }
+        available(`operate-worker-${nn(session.slot)}`);
+        const again = await act('begin', { nodeId: `operate-worker-${nn(session.slot)}` }); assert.equal(again.kind, 'accepted', JSON.stringify(again));
+        current.executions.set(session.slot, again.receipt!.executionId!);
+        const retry = await teamReady(session.slot, again.receipt!.executionId!);
+        const retryOpen = await interactive(retry, { action: 'open', requestId: `open-${retry.executionId}` });
+        assert.equal(retryOpen.status, 'opened', `the retry opens once the survivor is gone: ${JSON.stringify(retryOpen)}`);
+        retry.toolSessionId = retryOpen.session.toolSessionId;
+        survivor = { close, retried: again.receipt!.executionId!, retryOpen };
+        session = retry;
+      }
       await expertLoop(session, generation);
       await resultAndAdopt({ effectiveContract: { delegationId: runDelegations((host.ctx.hima as any).deps(), runId)
         .find(row => row.childSessionId === session.operatorId)!.delegationId } }, {
@@ -511,7 +576,7 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
     await refresh();
     if (String(context().run.status).startsWith('ended-')) break;
   }
-  return { runId, workspace, owner: actor, ownerAgent: owner, stops: log, batches, delegations, pausedRefusal };
+  return { runId, workspace, owner: actor, ownerAgent: owner, stops: log, batches, delegations, pausedRefusal, ...(survivor === undefined ? {} : { survivor }) };
 }
 
 /** One transcript entry: a tool call, or the closing text. The replay adapter's own chunk grammar. */
@@ -547,15 +612,15 @@ const jsonLines = async (file: string): Promise<any[]> => (await readFile(file, 
   .split('\n').filter(line => line.trim()).map(line => JSON.parse(line));
 
 test('ATCS 0.2.0 dry path: six parallel worker branches, two refreshes, ended by the generation limit, sealed by /hima-test and /hima-release', async (t) => {
-  // Team executions: six active slots in generation 2 and four in generation 3.
-  const home = await prepareHome(t, 10);
+  // Team executions: six active slots in generation 2, the survivor slot's retry, and four in generation 3.
+  const home = await prepareHome(t, 11, true);
   const log: string[] = [];
   const started = Date.now();
   const host = await bootInProcess(home.h);
   let ended = false;
   let result: Drive | undefined;
   t.after(async () => { if (!ended && result) await host.ctx.hima.cancelRun(result.runId).catch(() => undefined); await host.dispose().catch(() => undefined); await home.h.dispose(); });
-  try { result = await drive(host, home, 3, log); }
+  try { result = await drive(host, home, 3, log, true); }
   finally { if (process.env.HIMA_ATCS_DRY_LOG) await writeFile(process.env.HIMA_ATCS_DRY_LOG, log.join('\n') + '\n'); }
   const { runId, workspace } = result;
   const ledger = host.ctx.hima.ledger;
@@ -587,7 +652,27 @@ test('ATCS 0.2.0 dry path: six parallel worker branches, two refreshes, ended by
   const operateJobs = records.filter(r => r.type === 'job' && (r as any).event === 'launched' && (r as any).nodeId?.startsWith('operate-worker-'));
   const secondJobs = operateJobs.filter(r => r.generation === 2) as any[];
   assert.deepEqual(secondJobs.map(r => [r.nodeId, r.branchId, r.licences ?? null]).sort(),
-    SLOTS.map(slot => [`operate-worker-${nn(slot)}`, `research-worker-${nn(slot)}`, { xtop: 1 }]), `${row}: each branch's session holds one xtop seat`);
+    [...SLOTS, SURVIVOR].sort().map(slot => [`operate-worker-${nn(slot)}`, `research-worker-${nn(slot)}`, { xtop: 1 }]),
+    `${row}: each branch's session holds one xtop seat, and the survivor slot's retry holds its own`);
+
+  // 2b. Site faults of attempt 2: the survivor slot's close was recorded process-survived with one
+  //     blocker naming its group, the group ended by itself, and the retry opened through the retry
+  //     guard with the Site's run-shell answering nothing; no liveness question went through run-shell.
+  assert.ok(result.survivor, `${row}: the survivor slot ran`);
+  const survived = records.filter(r => r.type === 'interactive' && r.event === 'process-survived') as any[];
+  assert.equal(survived.length, 1, `${row}: exactly one close was process-survived`);
+  assert.equal(survived[0].payload.pid, result.survivor.close.pid);
+  assert.equal(records.filter(r => r.type === 'blocker' && (r as any).nodeId === `operate-worker-${nn(SURVIVOR)}`
+    && (r as any).reason.includes(`process group ${result.survivor.close.pid}`)).length, 1, `${row}: the survivor is one visible blocker on its node, naming its process group`);
+  // Its Job is recorded stopped once, and only after the person's continue found its group gone.
+  const survivorEnds = records.filter(r => r.type === 'job' && (r as any).event !== 'launched' && (r as any).job.session === survived[0].toolSessionId) as any[];
+  assert.deepEqual(survivorEnds.map(r => r.event), ['killed'], `${row}: the survivor's Job is recorded stopped once`);
+  assert.ok(survivorEnds[0].seq > survived[0].seq, `${row}: recorded stopped only after its group was observed gone`);
+  assert.equal(result.survivor.retryOpen.status, 'opened');
+  const { remoteCommands } = await import('@hima/harness');
+  assert.deepEqual(remoteCommands().filter(command => /run-shell/.test(command.wire)), [], `${row}: no Site question went through tmux run-shell`);
+  assert.equal(records.filter(r => r.type === 'interactive' && /Host restarted/.test(JSON.stringify((r as any).payload))).length, 0,
+    `${row}: no record says the Host restarted: it never did`);
 
   // 3. Parked slots: generation 3's w05/w06 created no Team member, no interactive session and no licence claim.
   assert.equal(third.concurrentOpen, 4, `${row}: generation 3 opens the four active slots' sessions at once`);
@@ -602,8 +687,8 @@ test('ATCS 0.2.0 dry path: six parallel worker branches, two refreshes, ended by
     const receipt = JSON.parse(await readFile(path.join(workspace, workers.workers[slot].root, 'parked.json'), 'utf8'));
     assert.equal(receipt.taskId, slot, `${row}: parked ${slot}'s no-op left its receipt`);
   }
-  assert.equal(result.delegations, 30, `${row}: three Team members for each of ten active slot executions`);
-  assert.equal(delegationRows.length, 30, `${row}: the Run holds exactly those thirty Team children`);
+  assert.equal(result.delegations, 33, `${row}: three Team members for each of eleven active slot executions (the survivor slot's retry included)`);
+  assert.equal(delegationRows.length, 33, `${row}: the Run holds exactly those thirty-three Team children`);
 
   // 4. Refreshes: two implement/extract/sta chains, two ledger entries, the gate read 0 then 1 before them.
   for (const nodeId of ['implement', 'extract', 'sta']) assert.equal(jobsOf(nodeId).length, 2, `${row}: ${nodeId} ran twice`);
