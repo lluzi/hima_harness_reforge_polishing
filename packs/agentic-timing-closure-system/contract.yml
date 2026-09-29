@@ -1128,21 +1128,107 @@ workshops:
       target pins. Active slots also share no edit-domain net: a net in one active slot's
       editDomain.nets is in no other's. Read the prior batch's XTop fail reasons after auto-finish
       (state/residual-cases.json, batchFailReasons and each case's failReasons): the clusters plain
-      auto-fix could not fix, and why, are the expert slots' work. The first generation has no evaluated batch, so it carries no batchFailReasons: plan from the observation's blockers. An active slot's package holds problem, target check keys, edit domain
-      (instances, nets and regions [x1, y1, x2, y2] in microns for moves), protected objects, may-affect checks,
-      admissible actions (size_cell, insert_buffer, delete_buffer, and pg_local_adjust only when
-      siteCapabilities.pgVerification is true), budget, targetPins (the blockers' full hierarchical
-      pin paths), scope {commands: the atcs_* toolkit mutations the slot may need, always including
-      atcs_undo; maxMutations: 120, the worker Team's recipe cap} and optionally observe (fast or full).
-      A slot with no cluster worth an expert session is parked: its package is exactly {taskId,
-      baseStateId, parked: true, problem: <why it is parked>} and nothing else; its branch runs as a
-      no-op and seals a parked no-fix. Write one document, research/requests/campaign-plan.json:
-      {candidate: {workPackages: {w01, .., w06}, reason}, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>}. There is exactly one copy of workPackages, under
-      candidate; never repeat it at the top level. The Reader admits candidate.workPackages, and
-      prepare-workers prepares that same field. The Reader refuses a plan whose current observation is
-      not of the working state, so observe again after the working state moves. Do not repeat a failed
-      trial without new evidence.
+      auto-fix could not fix, and why, are the expert slots' work. The first generation has no
+      evaluated batch, so it carries no batchFailReasons: plan from the observation's blockers. A slot
+      with no cluster worth an expert session is parked: its branch runs as a no-op and seals a parked
+      no-fix. Write one document, research/requests/campaign-plan.json, in exactly the shape of the
+      example below. There is exactly one copy of workPackages, under candidate; never repeat it at the
+      top level. The Reader admits candidate.workPackages, and prepare-workers prepares that same field.
+      The Reader refuses a plan whose current observation is not of the working state, so observe again
+      after the working state moves. Do not repeat a failed trial without new evidence.
+
+      Checklist. The campaign-plan Reader counts one problem for every breach, and a single problem
+      refuses the plan:
+        1. candidate.workPackages has exactly the keys w01, w02, w03, w04, w05 and w06, and each
+           package's taskId is exactly its key: "w01", never a description such as "w01-setup+hold" or
+           "w04-parked". Describe the cluster in problem.
+        2. An active package has every one of taskId, baseStateId, problem, targets, editDomain
+           {instances, nets, regions}, protected {instances, nets}, mayAffect, actions, budget,
+           targetPins and scope; observe (fast or full) is optional. protected and actions are required
+           even when protected holds only empty lists. actions are drawn from size_cell, insert_buffer,
+           delete_buffer, and pg_local_adjust only when siteCapabilities.pgVerification is true.
+        3. scope is exactly {"commands": [...], "maxMutations": 120}. commands lists toolkit mutations
+           only, each at most once, from atcs_size_cell, atcs_exchange_cell, atcs_insert_buffer,
+           atcs_insert_dummy, atcs_split_load, atcs_split_net, atcs_move_cell, atcs_remove_buffer,
+           atcs_fix_hold_pins, atcs_fix_setup_pins and atcs_undo, and always includes atcs_undo. The
+           read procedures (atcs_ref, atcs_paths, atcs_gain, atcs_candidates, atcs_fail_reasons) and
+           atcs_dump_cells are always available to the Operator and are never listed in scope.
+           maxMutations is exactly 120, the Pack cap; the worker Team's Reviewer sizes the real budget.
+        4. targetPins are instance pins "<instance path>/<pin>" on leaf cells, full hierarchical paths
+           from the top with no wildcard, never a top-level port (name a port check by its check key in
+           targets). editDomain.instances are full hierarchical instance paths, never bare leaf names.
+           regions are [x1, y1, x2, y2] boxes in microns with x1 <= x2 and y1 <= y2.
+        5. No editDomain instance or net is also in protected.
+        6. Edit domains are disjoint: no instance (in editDomain.instances or owning a targetPin) and no
+           editDomain.nets entry belongs to two active slots.
+        7. The worst setup check and the worst hold check of each required scenario is covered by an
+           active slot, through its check key "<scenario>|<mode>|<endpoint>" in targets or its endpoint
+           pin in targetPins.
+        8. Every slot above workerSlots, and every slot without a cluster, uses the parked shape exactly:
+           {"taskId", "baseStateId", "parked": true, "problem": "<why it is parked>"} and no other key.
+        9. candidate.reason is a non-empty string.
+
+      Where the values come from:
+        - baseState is the whole JSON object in state/working-state.json, copied verbatim (schema and id
+          included), and every baseStateId is its id.
+        - siteCapabilities: this Workshop cannot read the Site profile, so write {"pgVerification": false}
+          and plan no pg_local_adjust; prepare-workers checks every package again against the Site's own
+          capabilities.
+        - The blockers are the checks of state/observation.json (keys "<scenario>|<mode>|<endpoint>",
+          each with slack and PT's raw endpoint) in the requiredScenarios of state/policy.json; the
+          clusters and their fail reasons come from state/residual-cases.json.
+
+      Build the envelope in entry.py from those files, not by typing JSON by hand, and check every
+      package before writing. The Pack's flow copy is importable from the workspace; entry.py can check
+      like this:
+          import json, os, sys
+          workspace = sys.argv[1]
+          sys.path.insert(0, os.path.join(workspace, "flow"))
+          from atcs import composition, workspaces
+          def load(*parts):
+              with open(os.path.join(workspace, *parts)) as handle:
+                  return json.load(handle)
+          working, policy = load("state", "working-state.json"), load("state", "policy.json")
+          blockers = {key: pin for key, pin in composition.worst_check_endpoints(load("state", "observation.json")).items()
+                      if key.split("|", 2)[0] in policy["requiredScenarios"]}
+          # build packages = {"w01": {...}, .., "w06": {...}} and site_capabilities here
+          for package in packages.values():
+              workspaces.validate_work_package(package, working, site_capabilities)  # raises, listing every problem
+          active = [p for p in packages.values() if not workspaces.is_parked(p)]
+          for key, pin in blockers.items():
+              assert any(composition.covers(key, pin, p["targets"], p["targetPins"]) for p in active), key
+      Fix or park a package the check refuses; never write a plan that fails it.
+
+      Example research/requests/campaign-plan.json with one active slot and five parked ones (replace
+      each "<...>" string; a real plan fills active slots w01 up to workerSlots, one cluster each):
+        {
+          "candidate": {
+            "workPackages": {
+              "w01": {
+                "taskId": "w01",
+                "baseStateId": "<id of state/working-state.json>",
+                "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
+                "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
+                "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
+                "protected": {"instances": [], "nets": []},
+                "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
+                "actions": ["size_cell", "insert_buffer"],
+                "budget": {"xtopMinutes": 60, "attempts": 3},
+                "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
+                "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
+                "observe": "fast"
+              },
+              "w02": {"taskId": "w02", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
+              "w03": {"taskId": "w03", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
+              "w04": {"taskId": "w04", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
+              "w05": {"taskId": "w05", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
+              "w06": {"taskId": "w06", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"}
+            },
+            "reason": "one blocker cluster: the worst setup and hold checks of the only required scenario sit in u_core/u_lsu"
+          },
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false}
+        }
     directory: research/plan
     entry: entry.py
     language: python
@@ -1159,17 +1245,74 @@ workshops:
       failReasons, and the batch's after auto-finish in state/residual-cases.json); choose the
       ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
       (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
-      candidate.scope; there is no pinned action list. Write the
-      slot's request to research/requests/worker-request-w01.json as {candidate: <the w01 work
-      package exactly as prepared in state/workers.json: the same editDomain, targetPins, observe and
-      scope; the Reader counts any difference>, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
-      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
-      dependencies}. A prediction is a hypothesis for the tool to test, never a result. When the slot's
-      prepared package is parked (parked: true), write {candidate: <that parked package exactly as
-      prepared>, baseState, siteCapabilities} and no sessionPlan: the slot's operate node is then the
-      parked no-op, no Team member is created for it, and its capture seals a parked no-fix.
+      candidate.scope; there is no pinned action list. Write the slot's request to
+      research/requests/worker-request-w01.json in exactly the shape of the examples below. The
+      Operator session must write before.dump and after.dump (atcs_dump_cells) in the slot's workspace
+      root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones, dependencies}. A
+      prediction is a hypothesis for the tool to test, never a result. When the slot's prepared package
+      is parked (parked: true), write the parked envelope and no sessionPlan: the slot's operate node is
+      then the parked no-op, no Team member is created for it, and its capture seals a parked no-fix.
+
+      Where the values come from. The worker-request Reader binds the request to the package
+      prepare-workers prepared, state/workers.json workers.w01.workPackage, and counts one problem for
+      each difference:
+        - candidate is that prepared package copied verbatim with only its schema and id keys removed:
+          taskId (exactly w01), baseStateId and problem as prepared, and editDomain, targetPins, observe
+          and scope copied verbatim, never edited, narrowed or widened. A parked package stays exactly
+          {taskId, baseStateId, parked, problem}.
+        - baseState is the whole JSON object in state/working-state.json, copied verbatim.
+        - siteCapabilities is copied from research/requests/campaign-plan.json (campaignPlan).
+        - sessionPlan (active slots only) is yours: the ordered typed atcs_* commands to try, each with
+          its hypothesis and its falsifier.
+
+      Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
+      writing. The Pack's flow copy is importable from the workspace; entry.py can build and check the
+      candidate like this:
+          import json, os, sys
+          workspace, slot = sys.argv[1], "w01"
+          sys.path.insert(0, os.path.join(workspace, "flow"))
+          from atcs import workspaces
+          def load(*parts):
+              with open(os.path.join(workspace, *parts)) as handle:
+                  return json.load(handle)
+          working = load("state", "working-state.json")
+          prepared = load("state", "workers.json")["workers"][slot]["workPackage"]
+          candidate = {key: value for key, value in prepared.items() if key not in ("schema", "id")}
+          site_capabilities = load("research", "requests", "campaign-plan.json")["siteCapabilities"]
+          workspaces.validate_work_package(candidate, working, site_capabilities)  # raises, listing every problem
+          assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
+      Never write a request that fails this check.
+
+      Example research/requests/worker-request-w01.json for an active slot (replace each "<...>"
+      string; the candidate is the prepared package):
+        {
+          "candidate": {
+            "taskId": "w01",
+            "baseStateId": "<id of state/working-state.json>",
+            "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
+            "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
+            "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
+            "protected": {"instances": [], "nets": []},
+            "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
+            "actions": ["size_cell", "insert_buffer"],
+            "budget": {"xtopMinutes": 60, "attempts": 3},
+            "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
+            "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
+            "observe": "fast"
+          },
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false},
+          "sessionPlan": [
+            {"command": "atcs_size_cell", "object": "u_core/u_lsu/U2231", "hypothesis": "the weak driver of the data_reg_3_/D path limits setup", "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"},
+            {"command": "atcs_insert_dummy", "object": "u_core/u_lsu/addr_reg_0_/D", "hypothesis": "a dummy load on the short hold path closes hold", "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"}
+          ]
+        }
+      Example for a parked slot (the prepared package has parked: true):
+        {
+          "candidate": {"taskId": "w01", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false}
+        }
     directory: research/worker-01
     entry: entry.py
     language: python
@@ -1186,17 +1329,74 @@ workshops:
       failReasons, and the batch's after auto-finish in state/residual-cases.json); choose the
       ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
       (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
-      candidate.scope; there is no pinned action list. Write the
-      slot's request to research/requests/worker-request-w02.json as {candidate: <the w02 work
-      package exactly as prepared in state/workers.json: the same editDomain, targetPins, observe and
-      scope; the Reader counts any difference>, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
-      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
-      dependencies}. A prediction is a hypothesis for the tool to test, never a result. When the slot's
-      prepared package is parked (parked: true), write {candidate: <that parked package exactly as
-      prepared>, baseState, siteCapabilities} and no sessionPlan: the slot's operate node is then the
-      parked no-op, no Team member is created for it, and its capture seals a parked no-fix.
+      candidate.scope; there is no pinned action list. Write the slot's request to
+      research/requests/worker-request-w02.json in exactly the shape of the examples below. The
+      Operator session must write before.dump and after.dump (atcs_dump_cells) in the slot's workspace
+      root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones, dependencies}. A
+      prediction is a hypothesis for the tool to test, never a result. When the slot's prepared package
+      is parked (parked: true), write the parked envelope and no sessionPlan: the slot's operate node is
+      then the parked no-op, no Team member is created for it, and its capture seals a parked no-fix.
+
+      Where the values come from. The worker-request Reader binds the request to the package
+      prepare-workers prepared, state/workers.json workers.w02.workPackage, and counts one problem for
+      each difference:
+        - candidate is that prepared package copied verbatim with only its schema and id keys removed:
+          taskId (exactly w02), baseStateId and problem as prepared, and editDomain, targetPins, observe
+          and scope copied verbatim, never edited, narrowed or widened. A parked package stays exactly
+          {taskId, baseStateId, parked, problem}.
+        - baseState is the whole JSON object in state/working-state.json, copied verbatim.
+        - siteCapabilities is copied from research/requests/campaign-plan.json (campaignPlan).
+        - sessionPlan (active slots only) is yours: the ordered typed atcs_* commands to try, each with
+          its hypothesis and its falsifier.
+
+      Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
+      writing. The Pack's flow copy is importable from the workspace; entry.py can build and check the
+      candidate like this:
+          import json, os, sys
+          workspace, slot = sys.argv[1], "w02"
+          sys.path.insert(0, os.path.join(workspace, "flow"))
+          from atcs import workspaces
+          def load(*parts):
+              with open(os.path.join(workspace, *parts)) as handle:
+                  return json.load(handle)
+          working = load("state", "working-state.json")
+          prepared = load("state", "workers.json")["workers"][slot]["workPackage"]
+          candidate = {key: value for key, value in prepared.items() if key not in ("schema", "id")}
+          site_capabilities = load("research", "requests", "campaign-plan.json")["siteCapabilities"]
+          workspaces.validate_work_package(candidate, working, site_capabilities)  # raises, listing every problem
+          assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
+      Never write a request that fails this check.
+
+      Example research/requests/worker-request-w02.json for an active slot (replace each "<...>"
+      string; the candidate is the prepared package):
+        {
+          "candidate": {
+            "taskId": "w02",
+            "baseStateId": "<id of state/working-state.json>",
+            "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
+            "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
+            "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
+            "protected": {"instances": [], "nets": []},
+            "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
+            "actions": ["size_cell", "insert_buffer"],
+            "budget": {"xtopMinutes": 60, "attempts": 3},
+            "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
+            "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
+            "observe": "fast"
+          },
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false},
+          "sessionPlan": [
+            {"command": "atcs_size_cell", "object": "u_core/u_lsu/U2231", "hypothesis": "the weak driver of the data_reg_3_/D path limits setup", "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"},
+            {"command": "atcs_insert_dummy", "object": "u_core/u_lsu/addr_reg_0_/D", "hypothesis": "a dummy load on the short hold path closes hold", "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"}
+          ]
+        }
+      Example for a parked slot (the prepared package has parked: true):
+        {
+          "candidate": {"taskId": "w02", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false}
+        }
     directory: research/worker-02
     entry: entry.py
     language: python
@@ -1213,17 +1413,74 @@ workshops:
       failReasons, and the batch's after auto-finish in state/residual-cases.json); choose the
       ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
       (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
-      candidate.scope; there is no pinned action list. Write the
-      slot's request to research/requests/worker-request-w03.json as {candidate: <the w03 work
-      package exactly as prepared in state/workers.json: the same editDomain, targetPins, observe and
-      scope; the Reader counts any difference>, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
-      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
-      dependencies}. A prediction is a hypothesis for the tool to test, never a result. When the slot's
-      prepared package is parked (parked: true), write {candidate: <that parked package exactly as
-      prepared>, baseState, siteCapabilities} and no sessionPlan: the slot's operate node is then the
-      parked no-op, no Team member is created for it, and its capture seals a parked no-fix.
+      candidate.scope; there is no pinned action list. Write the slot's request to
+      research/requests/worker-request-w03.json in exactly the shape of the examples below. The
+      Operator session must write before.dump and after.dump (atcs_dump_cells) in the slot's workspace
+      root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones, dependencies}. A
+      prediction is a hypothesis for the tool to test, never a result. When the slot's prepared package
+      is parked (parked: true), write the parked envelope and no sessionPlan: the slot's operate node is
+      then the parked no-op, no Team member is created for it, and its capture seals a parked no-fix.
+
+      Where the values come from. The worker-request Reader binds the request to the package
+      prepare-workers prepared, state/workers.json workers.w03.workPackage, and counts one problem for
+      each difference:
+        - candidate is that prepared package copied verbatim with only its schema and id keys removed:
+          taskId (exactly w03), baseStateId and problem as prepared, and editDomain, targetPins, observe
+          and scope copied verbatim, never edited, narrowed or widened. A parked package stays exactly
+          {taskId, baseStateId, parked, problem}.
+        - baseState is the whole JSON object in state/working-state.json, copied verbatim.
+        - siteCapabilities is copied from research/requests/campaign-plan.json (campaignPlan).
+        - sessionPlan (active slots only) is yours: the ordered typed atcs_* commands to try, each with
+          its hypothesis and its falsifier.
+
+      Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
+      writing. The Pack's flow copy is importable from the workspace; entry.py can build and check the
+      candidate like this:
+          import json, os, sys
+          workspace, slot = sys.argv[1], "w03"
+          sys.path.insert(0, os.path.join(workspace, "flow"))
+          from atcs import workspaces
+          def load(*parts):
+              with open(os.path.join(workspace, *parts)) as handle:
+                  return json.load(handle)
+          working = load("state", "working-state.json")
+          prepared = load("state", "workers.json")["workers"][slot]["workPackage"]
+          candidate = {key: value for key, value in prepared.items() if key not in ("schema", "id")}
+          site_capabilities = load("research", "requests", "campaign-plan.json")["siteCapabilities"]
+          workspaces.validate_work_package(candidate, working, site_capabilities)  # raises, listing every problem
+          assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
+      Never write a request that fails this check.
+
+      Example research/requests/worker-request-w03.json for an active slot (replace each "<...>"
+      string; the candidate is the prepared package):
+        {
+          "candidate": {
+            "taskId": "w03",
+            "baseStateId": "<id of state/working-state.json>",
+            "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
+            "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
+            "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
+            "protected": {"instances": [], "nets": []},
+            "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
+            "actions": ["size_cell", "insert_buffer"],
+            "budget": {"xtopMinutes": 60, "attempts": 3},
+            "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
+            "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
+            "observe": "fast"
+          },
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false},
+          "sessionPlan": [
+            {"command": "atcs_size_cell", "object": "u_core/u_lsu/U2231", "hypothesis": "the weak driver of the data_reg_3_/D path limits setup", "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"},
+            {"command": "atcs_insert_dummy", "object": "u_core/u_lsu/addr_reg_0_/D", "hypothesis": "a dummy load on the short hold path closes hold", "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"}
+          ]
+        }
+      Example for a parked slot (the prepared package has parked: true):
+        {
+          "candidate": {"taskId": "w03", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false}
+        }
     directory: research/worker-03
     entry: entry.py
     language: python
@@ -1240,17 +1497,74 @@ workshops:
       failReasons, and the batch's after auto-finish in state/residual-cases.json); choose the
       ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
       (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
-      candidate.scope; there is no pinned action list. Write the
-      slot's request to research/requests/worker-request-w04.json as {candidate: <the w04 work
-      package exactly as prepared in state/workers.json: the same editDomain, targetPins, observe and
-      scope; the Reader counts any difference>, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
-      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
-      dependencies}. A prediction is a hypothesis for the tool to test, never a result. When the slot's
-      prepared package is parked (parked: true), write {candidate: <that parked package exactly as
-      prepared>, baseState, siteCapabilities} and no sessionPlan: the slot's operate node is then the
-      parked no-op, no Team member is created for it, and its capture seals a parked no-fix.
+      candidate.scope; there is no pinned action list. Write the slot's request to
+      research/requests/worker-request-w04.json in exactly the shape of the examples below. The
+      Operator session must write before.dump and after.dump (atcs_dump_cells) in the slot's workspace
+      root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones, dependencies}. A
+      prediction is a hypothesis for the tool to test, never a result. When the slot's prepared package
+      is parked (parked: true), write the parked envelope and no sessionPlan: the slot's operate node is
+      then the parked no-op, no Team member is created for it, and its capture seals a parked no-fix.
+
+      Where the values come from. The worker-request Reader binds the request to the package
+      prepare-workers prepared, state/workers.json workers.w04.workPackage, and counts one problem for
+      each difference:
+        - candidate is that prepared package copied verbatim with only its schema and id keys removed:
+          taskId (exactly w04), baseStateId and problem as prepared, and editDomain, targetPins, observe
+          and scope copied verbatim, never edited, narrowed or widened. A parked package stays exactly
+          {taskId, baseStateId, parked, problem}.
+        - baseState is the whole JSON object in state/working-state.json, copied verbatim.
+        - siteCapabilities is copied from research/requests/campaign-plan.json (campaignPlan).
+        - sessionPlan (active slots only) is yours: the ordered typed atcs_* commands to try, each with
+          its hypothesis and its falsifier.
+
+      Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
+      writing. The Pack's flow copy is importable from the workspace; entry.py can build and check the
+      candidate like this:
+          import json, os, sys
+          workspace, slot = sys.argv[1], "w04"
+          sys.path.insert(0, os.path.join(workspace, "flow"))
+          from atcs import workspaces
+          def load(*parts):
+              with open(os.path.join(workspace, *parts)) as handle:
+                  return json.load(handle)
+          working = load("state", "working-state.json")
+          prepared = load("state", "workers.json")["workers"][slot]["workPackage"]
+          candidate = {key: value for key, value in prepared.items() if key not in ("schema", "id")}
+          site_capabilities = load("research", "requests", "campaign-plan.json")["siteCapabilities"]
+          workspaces.validate_work_package(candidate, working, site_capabilities)  # raises, listing every problem
+          assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
+      Never write a request that fails this check.
+
+      Example research/requests/worker-request-w04.json for an active slot (replace each "<...>"
+      string; the candidate is the prepared package):
+        {
+          "candidate": {
+            "taskId": "w04",
+            "baseStateId": "<id of state/working-state.json>",
+            "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
+            "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
+            "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
+            "protected": {"instances": [], "nets": []},
+            "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
+            "actions": ["size_cell", "insert_buffer"],
+            "budget": {"xtopMinutes": 60, "attempts": 3},
+            "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
+            "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
+            "observe": "fast"
+          },
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false},
+          "sessionPlan": [
+            {"command": "atcs_size_cell", "object": "u_core/u_lsu/U2231", "hypothesis": "the weak driver of the data_reg_3_/D path limits setup", "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"},
+            {"command": "atcs_insert_dummy", "object": "u_core/u_lsu/addr_reg_0_/D", "hypothesis": "a dummy load on the short hold path closes hold", "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"}
+          ]
+        }
+      Example for a parked slot (the prepared package has parked: true):
+        {
+          "candidate": {"taskId": "w04", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false}
+        }
     directory: research/worker-04
     entry: entry.py
     language: python
@@ -1267,17 +1581,74 @@ workshops:
       failReasons, and the batch's after auto-finish in state/residual-cases.json); choose the
       ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
       (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
-      candidate.scope; there is no pinned action list. Write the
-      slot's request to research/requests/worker-request-w05.json as {candidate: <the w05 work
-      package exactly as prepared in state/workers.json: the same editDomain, targetPins, observe and
-      scope; the Reader counts any difference>, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
-      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
-      dependencies}. A prediction is a hypothesis for the tool to test, never a result. When the slot's
-      prepared package is parked (parked: true), write {candidate: <that parked package exactly as
-      prepared>, baseState, siteCapabilities} and no sessionPlan: the slot's operate node is then the
-      parked no-op, no Team member is created for it, and its capture seals a parked no-fix.
+      candidate.scope; there is no pinned action list. Write the slot's request to
+      research/requests/worker-request-w05.json in exactly the shape of the examples below. The
+      Operator session must write before.dump and after.dump (atcs_dump_cells) in the slot's workspace
+      root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones, dependencies}. A
+      prediction is a hypothesis for the tool to test, never a result. When the slot's prepared package
+      is parked (parked: true), write the parked envelope and no sessionPlan: the slot's operate node is
+      then the parked no-op, no Team member is created for it, and its capture seals a parked no-fix.
+
+      Where the values come from. The worker-request Reader binds the request to the package
+      prepare-workers prepared, state/workers.json workers.w05.workPackage, and counts one problem for
+      each difference:
+        - candidate is that prepared package copied verbatim with only its schema and id keys removed:
+          taskId (exactly w05), baseStateId and problem as prepared, and editDomain, targetPins, observe
+          and scope copied verbatim, never edited, narrowed or widened. A parked package stays exactly
+          {taskId, baseStateId, parked, problem}.
+        - baseState is the whole JSON object in state/working-state.json, copied verbatim.
+        - siteCapabilities is copied from research/requests/campaign-plan.json (campaignPlan).
+        - sessionPlan (active slots only) is yours: the ordered typed atcs_* commands to try, each with
+          its hypothesis and its falsifier.
+
+      Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
+      writing. The Pack's flow copy is importable from the workspace; entry.py can build and check the
+      candidate like this:
+          import json, os, sys
+          workspace, slot = sys.argv[1], "w05"
+          sys.path.insert(0, os.path.join(workspace, "flow"))
+          from atcs import workspaces
+          def load(*parts):
+              with open(os.path.join(workspace, *parts)) as handle:
+                  return json.load(handle)
+          working = load("state", "working-state.json")
+          prepared = load("state", "workers.json")["workers"][slot]["workPackage"]
+          candidate = {key: value for key, value in prepared.items() if key not in ("schema", "id")}
+          site_capabilities = load("research", "requests", "campaign-plan.json")["siteCapabilities"]
+          workspaces.validate_work_package(candidate, working, site_capabilities)  # raises, listing every problem
+          assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
+      Never write a request that fails this check.
+
+      Example research/requests/worker-request-w05.json for an active slot (replace each "<...>"
+      string; the candidate is the prepared package):
+        {
+          "candidate": {
+            "taskId": "w05",
+            "baseStateId": "<id of state/working-state.json>",
+            "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
+            "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
+            "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
+            "protected": {"instances": [], "nets": []},
+            "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
+            "actions": ["size_cell", "insert_buffer"],
+            "budget": {"xtopMinutes": 60, "attempts": 3},
+            "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
+            "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
+            "observe": "fast"
+          },
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false},
+          "sessionPlan": [
+            {"command": "atcs_size_cell", "object": "u_core/u_lsu/U2231", "hypothesis": "the weak driver of the data_reg_3_/D path limits setup", "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"},
+            {"command": "atcs_insert_dummy", "object": "u_core/u_lsu/addr_reg_0_/D", "hypothesis": "a dummy load on the short hold path closes hold", "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"}
+          ]
+        }
+      Example for a parked slot (the prepared package has parked: true):
+        {
+          "candidate": {"taskId": "w05", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false}
+        }
     directory: research/worker-05
     entry: entry.py
     language: python
@@ -1294,17 +1665,74 @@ workshops:
       failReasons, and the batch's after auto-finish in state/residual-cases.json); choose the
       ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
       (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
-      candidate.scope; there is no pinned action list. Write the
-      slot's request to research/requests/worker-request-w06.json as {candidate: <the w06 work
-      package exactly as prepared in state/workers.json: the same editDomain, targetPins, observe and
-      scope; the Reader counts any difference>, baseState: <the stamped workingState>,
-      siteCapabilities: <the Site capabilities>, sessionPlan: <ordered typed commands and the falsifier
-      of each>}. The Operator session must write before.dump and after.dump (atcs_dump_cells) in the
-      slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
-      dependencies}. A prediction is a hypothesis for the tool to test, never a result. When the slot's
-      prepared package is parked (parked: true), write {candidate: <that parked package exactly as
-      prepared>, baseState, siteCapabilities} and no sessionPlan: the slot's operate node is then the
-      parked no-op, no Team member is created for it, and its capture seals a parked no-fix.
+      candidate.scope; there is no pinned action list. Write the slot's request to
+      research/requests/worker-request-w06.json in exactly the shape of the examples below. The
+      Operator session must write before.dump and after.dump (atcs_dump_cells) in the slot's workspace
+      root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones, dependencies}. A
+      prediction is a hypothesis for the tool to test, never a result. When the slot's prepared package
+      is parked (parked: true), write the parked envelope and no sessionPlan: the slot's operate node is
+      then the parked no-op, no Team member is created for it, and its capture seals a parked no-fix.
+
+      Where the values come from. The worker-request Reader binds the request to the package
+      prepare-workers prepared, state/workers.json workers.w06.workPackage, and counts one problem for
+      each difference:
+        - candidate is that prepared package copied verbatim with only its schema and id keys removed:
+          taskId (exactly w06), baseStateId and problem as prepared, and editDomain, targetPins, observe
+          and scope copied verbatim, never edited, narrowed or widened. A parked package stays exactly
+          {taskId, baseStateId, parked, problem}.
+        - baseState is the whole JSON object in state/working-state.json, copied verbatim.
+        - siteCapabilities is copied from research/requests/campaign-plan.json (campaignPlan).
+        - sessionPlan (active slots only) is yours: the ordered typed atcs_* commands to try, each with
+          its hypothesis and its falsifier.
+
+      Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
+      writing. The Pack's flow copy is importable from the workspace; entry.py can build and check the
+      candidate like this:
+          import json, os, sys
+          workspace, slot = sys.argv[1], "w06"
+          sys.path.insert(0, os.path.join(workspace, "flow"))
+          from atcs import workspaces
+          def load(*parts):
+              with open(os.path.join(workspace, *parts)) as handle:
+                  return json.load(handle)
+          working = load("state", "working-state.json")
+          prepared = load("state", "workers.json")["workers"][slot]["workPackage"]
+          candidate = {key: value for key, value in prepared.items() if key not in ("schema", "id")}
+          site_capabilities = load("research", "requests", "campaign-plan.json")["siteCapabilities"]
+          workspaces.validate_work_package(candidate, working, site_capabilities)  # raises, listing every problem
+          assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
+      Never write a request that fails this check.
+
+      Example research/requests/worker-request-w06.json for an active slot (replace each "<...>"
+      string; the candidate is the prepared package):
+        {
+          "candidate": {
+            "taskId": "w06",
+            "baseStateId": "<id of state/working-state.json>",
+            "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
+            "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
+            "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
+            "protected": {"instances": [], "nets": []},
+            "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
+            "actions": ["size_cell", "insert_buffer"],
+            "budget": {"xtopMinutes": 60, "attempts": 3},
+            "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
+            "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
+            "observe": "fast"
+          },
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false},
+          "sessionPlan": [
+            {"command": "atcs_size_cell", "object": "u_core/u_lsu/U2231", "hypothesis": "the weak driver of the data_reg_3_/D path limits setup", "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"},
+            {"command": "atcs_insert_dummy", "object": "u_core/u_lsu/addr_reg_0_/D", "hypothesis": "a dummy load on the short hold path closes hold", "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"}
+          ]
+        }
+      Example for a parked slot (the prepared package has parked: true):
+        {
+          "candidate": {"taskId": "w06", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
+          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
+          "siteCapabilities": {"pgVerification": false}
+        }
     directory: research/worker-06
     entry: entry.py
     language: python

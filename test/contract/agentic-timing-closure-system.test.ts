@@ -346,6 +346,37 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.match(planner.purpose, words, `plan-campaign purpose states ${words}`);
   }
   assert.doesNotMatch(planner.purpose, /may share edit-domain nets/, 'US8: active slots are disjoint in nets as well as instances');
+  // Issue #64 live retest: the plan and worker Workshops carry exact examples the model copies, and
+  // flow/tests/test_workshop_examples.py pins them against the validators. The loaded purpose (what
+  // the model reads, after YAML folding) holds the same parseable JSON.
+  const exampleAfter = (purpose: string, marker: string): any => {
+    const start = purpose.indexOf('{', purpose.indexOf(marker) + marker.length);
+    assert.ok(purpose.includes(marker) && start > 0, `the purpose holds an example after "${marker}"`);
+    let depth = 0; let quoted = false; let escaped = false;
+    for (let at = start; at < purpose.length; at += 1) {
+      const char = purpose[at];
+      if (quoted) { if (escaped) escaped = false; else if (char === '\\') escaped = true; else if (char === '"') quoted = false; continue; }
+      if (char === '"') quoted = true;
+      else if (char === '{') depth += 1;
+      else if (char === '}' && --depth === 0) return JSON.parse(purpose.slice(start, at + 1));
+    }
+    throw new Error(`unterminated example after "${marker}"`);
+  };
+  const planExample = exampleAfter(planner.purpose, 'Example research/requests/campaign-plan.json');
+  assert.deepEqual(Object.keys(planExample.candidate.workPackages), slots);
+  for (const slot of slots) assert.equal(planExample.candidate.workPackages[slot].taskId, slot, 'taskId is exactly the slot key');
+  const activeExample = planExample.candidate.workPackages.w01;
+  assert.ok(activeExample.protected && activeExample.actions, 'the active example carries protected and actions');
+  assert.ok(activeExample.scope.commands.includes('atcs_undo') && activeExample.scope.commands.every((c: string) => mutations.includes(c)));
+  assert.equal(activeExample.scope.maxMutations, recipeCap);
+  for (const slot of slots) {
+    const researcher = pack.contract.workshops.find(item => item.id === `research-worker-${slot.slice(1)}`)!;
+    const active = exampleAfter(researcher.purpose, 'for an active slot');
+    assert.deepEqual(active.candidate, { ...activeExample, taskId: slot }, `${researcher.id}'s example request is the prepared package`);
+    const parked = exampleAfter(researcher.purpose, 'Example for a parked slot');
+    assert.deepEqual(Object.keys(parked.candidate).sort(), ['baseStateId', 'parked', 'problem', 'taskId']);
+    assert.equal(parked.candidate.taskId, slot);
+  }
   // US10/US34: the prior batch's post-auto-finish fail reasons reach the next generation's research.
   for (const workshop of pack.contract.workshops.filter(item => item.id === 'plan-campaign' || /^research-worker-\d\d$/.test(item.id))) {
     assert.ok(workshop.reads.includes('residualCases'), `${workshop.id} reads the residual cases and their batch fail reasons`);
