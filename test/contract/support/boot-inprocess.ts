@@ -6,7 +6,7 @@
 // healProfilesModuleFallback, boot, assertEntriesActivated. Agent creation is the seam ADR-0001
 // keeps wrapped, so `createRootAgent` and `sayAsUser` below are the one place any test reaches it:
 // no test file calls `agents.create`, `agent.followup` or `createUserMessage` itself.
-import { writeFileSync, realpathSync } from 'node:fs';
+import { lstatSync, writeFileSync, realpathSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { boot, loadProfile, loadOptionalPatches, healProfilesModuleFallback, assertEntriesActivated } from '@deepseek-ai/dsh-app-boot';
@@ -217,13 +217,83 @@ export function toolResults(agent: Agent): { failed: boolean; text: string }[] {
   return results;
 }
 
-/** Hold the native resumed handle through a bounded continuation; the caller owns disposal. */
-export async function resumeTestAgent(ctx: Context, sessionId: string, model?: { provider: string; model: string }) {
+/**
+ * A resumed session's standing answer to its own sandbox-escalation asks: one folder it may write.
+ *
+ * A session the App made runs under the `workspace-write` preset, and a write outside its workspace
+ * is denied and may be retried once asking for a wider mode; dsh then asks a person through
+ * `ctx.approval`, and in the App a person answers. A host with no window has no answerer, and every
+ * such ask fails closed as `unavailable`. This is the answer a person gives for exactly one folder:
+ * `allowed-once` for a `write` or `edit` whose target resolves inside `writeFolder`, and for nothing
+ * else — every other ask goes on down the chain unanswered, so it still fails closed.
+ */
+export interface FolderGrant {
+  /** The one folder this session's escalated file writes may land in. */
+  readonly writeFolder: string;
+}
+
+/** Where a write would land, resolved through every existing link; undefined for a dangling link. */
+function landingOf(candidate: string): string | undefined {
+  const tail: string[] = [];
+  let at = candidate;
+  for (;;) {
+    const seen = lstatSync(at, { throwIfNoEntry: false });
+    if (seen) {
+      try { return path.join(realpathSync(at), ...tail); } catch { return undefined; }
+    }
+    const up = path.dirname(at);
+    if (up === at) return undefined;
+    tail.unshift(path.basename(at)); at = up;
+  }
+}
+
+/** Register a {@link FolderGrant} as `agent`'s own approval answerer, on its unpublished scope. */
+function answerFolderWrites(agentCtx: Context, agent: Agent, grant: FolderGrant): void {
+  const folder = realpathSync(grant.writeFolder);
+  const inside = (at: string): boolean => at === folder || at.startsWith(folder + path.sep);
+  type Ask = { agent: Agent; toolName: string; callId?: string };
+  type Outcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable';
+  // dsh's approval answerer waterfall (`@deepseek-ai/dsh-user-approval`, not a dependency of this
+  // checkout, so its event is named rather than imported); scope-filtered to this agent.
+  (agentCtx as unknown as { on(name: 'approval/request', listener: (ask: Ask, next: () => Promise<Outcome>) => Promise<Outcome>): void })
+    .on('approval/request', async (ask, next) => {
+      if (String(ask.agent.id) !== String(agent.id) || !['write', 'edit'].includes(ask.toolName) || ask.callId === undefined) return next();
+      const call = toolCallsById(agent).get(ask.callId);
+      const target = call?.args.file_path;
+      const cwd = agent.session.header.cwd;
+      if (call?.name !== ask.toolName || typeof target !== 'string' || !cwd) return next();
+      const landing = landingOf(path.resolve(cwd, target));
+      return landing !== undefined && inside(landing) ? 'allowed-once' : next();
+    });
+}
+
+/** Every tool call of this session by its call id. */
+function toolCallsById(agent: Agent): Map<string, { name: string; args: Record<string, unknown> }> {
+  const calls = new Map<string, { name: string; args: Record<string, unknown> }>();
+  for (const message of agent.session.deriveMessages()) {
+    for (const block of message.content) {
+      if (block.type !== 'tool-call') continue;
+      calls.set(String(block.id), { name: block.name, args: JSON.parse(block.arguments) as Record<string, unknown> });
+    }
+  }
+  return calls;
+}
+
+/**
+ * Hold the native resumed handle through a bounded continuation; the caller owns disposal.
+ *
+ * @param grant - a folder the resumed session's escalated file writes may land in ({@link FolderGrant}).
+ */
+export async function resumeTestAgent(ctx: Context, sessionId: string, model?: { provider: string; model: string }, grant?: FolderGrant) {
   const agents = ctx.get('agents');
   if (!agents) throw new Error('agents service missing');
   // Native resume reconstructs history but defaults live AgentOptions to {}. A caller that will
   // drive turns must supply its verified model selection; read-only consumers need no model.
-  return agents.resume({ resumeSessionId: sessionId as never, ...(model ? { agentOptions: model } : {}) });
+  return agents.resume({
+    resumeSessionId: sessionId as never,
+    ...(model ? { agentOptions: model } : {}),
+    ...(grant ? { setup: (agentCtx: Context, agent: Agent) => { answerFolderWrites(agentCtx, agent, grant); } } : {}),
+  });
 }
 
 /**
