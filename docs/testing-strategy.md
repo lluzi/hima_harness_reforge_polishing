@@ -48,6 +48,8 @@ L0 的静态检查与构建可以分别计费/运行；构建不应在同一轮�
 
 **模型侧：**先用 replay/受控输出验证记录、工具范围、失败和恢复机制；改变 prompt、知识注入或工具 schema 时，再用 DeepSeek-V4.1-Flash（wire id `deepseek-flash`）做小而真实的任务。检查可执行产物、行为边界与结果，不断言模型必须说某句固定话。手写 replay 只证明机制；真实录制也只证明该次协议路径，研究质量仍需真实任务。不能由 replay 通过推出“AI 已经会研究”。
 
+**模型文档探针（ATCS，#63 原则 10）：**`node scripts/probe-atcs-workshops.ts --out <新目录> --retained <保留 Run 的 dsh Home> --credential-home <持有产品凭据的 dsh Home> [--attempts 3] [--only plan-campaign,team,...]` 在 Live Campaign 之前，用产品同款默认模型对每个模型写入文档的生产者跑 N 次：五个 Workshop 由原生 owner 仅驱动该节点（工具守卫只放行该 Run 该节点的 hima_execute/hima_context），入口在本地 Job 中运行，再由 Pack 自己的 `tools/read-atcs.py` 判定是否接纳；Team researcher/reviewer 走真实 recipe 委派，经 Host 的结果检查与 Operator 创建时的 reviewed-action 检查，Operator 从不创建。输入取自保留 Run 的账本与 run-assets（按 sha256 复制，只读）。每个文档独立子进程、独立临时 Home，安装的 Pack 仅 `graph.yml` 的 `entry` 不同，报告同时给出源与安装摘要。Reader 有两处明示替身：设计文件重哈希跳过（数据库/网表/DEF/SPEF/SDC 只在 Site 上），w01 层次检查使用保留数据证实的实例路径。零 EDA、无 Electron、无服务器；凭据按 kit.mjs 方式原生复制，不打印，结束时扫描并清除。任何拒绝都是发现：按 schema/format/identity/hierarchy 分类并改进 knowledge/example/purpose，而不是让 Live Campaign 第一次遇到。
+
 **Site 侧：**先进行只读环境/真实报告检查，必要时运行一项最小真实工具作业，再运行完整探索。不为 UI 布局修改重新启动一整轮 DC/Innovus 研究。Site/工具变化造成的差异要反馈到本地样本和 stand-in 的适用边界。
 
 已有教训是 Step 3 的旧 stand-in 对满足约束的情况给出正 slack，掩盖了参考 chooser 在实测零 slack 下的行为。替身需要与真实数据校准，不能用一个理想化世界证明产品。不同设计和工具行为不由单个样本外推。
