@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { cp, mkdir, readFile, writeFile, appendFile, realpath } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
-import { loadPack, checkPack, loadSite, packStage, installPackMethod } from '@hima/harness';
+import { loadPack, checkPack, loadSite, packStage, installPackMethod, strategyFrom } from '@hima/harness';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { localHome, waitUntil } from './support/fabric.ts';
@@ -85,14 +85,25 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   const host = await bootInProcess(h); let cleanupRunId: string | undefined;
   t.after(async () => { if (cleanupRunId) await host.ctx.hima.cancelRun(cleanupRunId); await host.dispose(); await h.dispose(); });
   const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
-  // Issue 63 slice 2: the physical-refresh cap is a Run-level Strategy knob. 2, not the default 1,
-  // so the assertion below proves the Run-start override reached the run row.
+  // Issue 63: the physical-refresh cap is a Goal value fixed when the Run is created. 2, not the
+  // default 1, so the assertions below prove the creation value reached the Run's goal and is what
+  // both refresh-budget Judges bind.
   const started = await host.ctx.hima.startRun({ pack: packId, site: 'local',
-    goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0 }, strategy: { refreshLimit: 2 }, ownerSessionId: actor, timeBoxMs: 60000 });
+    goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0, max_physical_refreshes: 2 }, ownerSessionId: actor, timeBoxMs: 60000 });
   assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
   const runId = started.run.id; cleanupRunId = runId;
-  assert.equal(host.ctx.hima.ledger.run(runId)!.strategy?.refreshLimit, 2);
-  assert.equal(host.ctx.hima.ledger.run(runId)!.firstStrategy?.refreshLimit, 2);
+  const createdRun = host.ctx.hima.ledger.run(runId)!;
+  assert.equal(createdRun.goal?.max_physical_refreshes, 2);
+  assert.equal(createdRun.strategy?.max_physical_refreshes, undefined);
+  for (const judgeId of ['check-refresh-budget', 'check-refresh-budget-apr']) {
+    const reference = (pack.graph.nodes.find(node => node.id === judgeId) as any).parameters.bind.max_physical_refreshes;
+    assert.deepEqual(reference, { from: 'goal', name: 'max_physical_refreshes' });
+    assert.equal(createdRun.goal?.[reference.name], 2, `${judgeId} binds the Run's creation value`);
+  }
+  // An owner's next-strategy Explore decision (and a revision) is admitted through strategyFrom
+  // over the Run's Strategy (fabric.ts completeAdmittedNode, revisionAction); the cap is no knob there.
+  assert.ok('error' in strategyFrom(pack.contract.strategy, { ...createdRun.strategy, max_physical_refreshes: 4 }));
+  assert.ok('error' in strategyFrom(pack.contract.strategy, { refreshLimit: 4 }));
   const workspace = started.workspace;
   assert.ok(workspace);
   // Real Pack producers seed the base, private slot and worker manifest. All files are synthetic.
@@ -240,10 +251,13 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.equal(pack.graph.edges.length, 149);
 
   // Issue 63 slice 2: every Explore revisit consumes a Harness generation, so `generationLimit`
-  // bounds revisits, not Innovus/StarRC/PrimeTime refreshes. The Run's `refreshLimit` knob caps
-  // them: a fresh reading of the refresh ledger, then a Judge, right before each physical refresh.
-  assert.deepEqual(pack.contract.strategy.refreshLimit, { type: 'number', unit: 'refreshes', min: 1, max: 4, default: 1 });
-  assert.equal((pack.contract.words as any).refreshLimit.unit, 'refreshes');
+  // bounds revisits, not Innovus/StarRC/PrimeTime refreshes. The Run's Goal value
+  // `max_physical_refreshes`, fixed at Run creation, caps them: a fresh reading of the refresh
+  // ledger, then a Judge, right before each physical refresh.
+  assert.deepEqual((pack.contract.goal as any).max_physical_refreshes,
+    { type: 'number', unit: 'count', min: 1, max: 4, default: 1, precision: 0 });
+  assert.equal((pack.contract.words as any).max_physical_refreshes.unit, 'count');
+  assert.deepEqual(Object.keys(pack.contract.strategy), ['maxPaths']);
   const workingState = pack.contract.outputs.find(output => output.name === 'workingState')!;
   assert.equal(workingState.reader, 'atcs-refresh-budget');
   const nodeOf = (id: string) => (pack.graph.nodes as any[]).find(node => node.id === id);
@@ -257,13 +271,16 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.equal(nodeOf(read).parameters.observes, 'workingState');
     assert.equal(nodeOf(check).kind, 'judge');
     assert.deepEqual(nodeOf(check).parameters.rules, ['refresh-budget']);
-    assert.deepEqual(nodeOf(check).parameters.bind, { refresh_limit: { from: 'strategy', name: 'refreshLimit' } });
+    assert.deepEqual(nodeOf(check).parameters.bind, { max_physical_refreshes: { from: 'goal', name: 'max_physical_refreshes' } });
     assert.deepEqual(edgesFrom(read), [`->${check}`]);
     assert.deepEqual(edgesFrom(check), ['FAIL->wait-for-person', `PASS->${refresh}`]);
     assert.deepEqual(edgesTo(refresh), [`${check}->PASS`], `${refresh} is entered only through ${check}`);
   }
   assert.deepEqual(edgesTo('read-refresh-budget'), ['check-presta-model->PASS', 'revisit-implement->revisit']);
   assert.deepEqual(edgesTo('read-refresh-budget-apr'), ['revisit-earlier-apr->revisit']);
+  // Review C-5: the refreshing nodes behind the two gates are entered only from behind them.
+  assert.deepEqual(edgesTo('apr-run'), ['apr-prepare->']);
+  assert.deepEqual(edgesTo('extract'), ['apr-run->', 'implement->']);
   assert.deepEqual(edgesFrom('check-presta-model'), ['FAIL->decide-next', 'PASS->read-refresh-budget']);
   assert.ok(pack.contract.rules.includes('refresh-budget'));
 

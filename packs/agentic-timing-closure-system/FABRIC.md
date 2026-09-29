@@ -8,8 +8,10 @@ helper from `flow/atcs_cli.py`.
 
 - `contract.yml` — 4 inputs, 35 outputs (18 with a reader, every `readers/*.yml` bound), 25 tools
   (24 `python3` subcommand tools of `flow/atcs_cli.py`, 1 interactive-only XTop Operator tool),
-  7 Workshops (5 families, the worker family expanded to slots 01–03), 24 rules, 2 Goal parameters,
-  2 Strategy knobs (`maxPaths`, `refreshLimit`), 10 knowledge files.
+  7 Workshops (5 families, the worker family expanded to slots 01–03), 24 rules, 3 Goal parameters
+  (`target_setup_wns_ns`, `target_hold_wns_ns`, `max_physical_refreshes`), 1 Strategy knob
+  (`maxPaths`), 13 knowledge files (10 method files and 3 Reader-admitted Workshop examples,
+  `example-*.md`, Issue #63).
 - `graph.yml` — 110 nodes (62 act, 38 judge, 9 explore, 1 wait), 149 edges, 9 revisit edges.
   Issue #63 slice 2: `read-refresh-budget` → `check-refresh-budget` between `check-presta-model`
   PASS and `implement`, and `read-refresh-budget-apr` → `check-refresh-budget-apr` before
@@ -330,8 +332,8 @@ Known gaps carried from earlier tasks:
   parameters. The v2 wrapper additionally pins the complete flow and slot session Tcl. The current
   shared `contract.yml` still names v1 until ATCS-03 integrates the v2 path; no real XTop qualification
   has run, so worker research quality and the v2 binding remain unqualified.
-- G35 (Issue #63 slice 2) Physical refreshes are capped by the Run's `refreshLimit` Strategy knob
-  (1..4, default 1), not by `generationLimit`: every Explore revisit consumes a Harness generation
+- G35 (Issue #63 slice 2) Physical refreshes are capped by the Run's Goal value
+  `max_physical_refreshes` (count, 1..4, default 1), not by `generationLimit`: every Explore revisit consumes a Harness generation
   whether or not it refreshes. `read-refresh-budget(-apr)` observes `workingState` (always present
   after `baseline`; `refreshLedger` cannot be the report because it does not exist before the first
   refresh and the Harness blocks on a missing report) with the `atcs-refresh-budget` reader, which
@@ -340,11 +342,14 @@ Known gaps carried from earlier tasks:
   not `tc_refresh_count` because the acceptance reader never reports a missing ledger as 0. The
   reading sits immediately before each Judge because a Judge takes a type's latest reading
   Run-wide and `sta` records a refresh with no later reading on the coverage/identity FAIL paths.
-  Open: the rule parameter is in `count` (the rule schema ties it to the subject's unit) while the
-  knob is in `refreshes`; and the Harness lets the conversational owner choose a whole next
-  Strategy at any Explore completion, so an owner may raise `refreshLimit` up to its max of 4
-  without a person. SPEC.md's Semantics/Judge-rules tables do not yet name `tc_refreshes_completed`
-  or `refresh-budget`.
+  The cap is a Goal value, not a Strategy knob (review C-1): an owner's `next-strategy` merges a
+  whole Strategy at any Explore completion and a revision resets an omitted knob to its default,
+  but a Goal is admitted once when the Run is created and neither path can reach it. Both Judges
+  bind it `from: goal`. `wait-for-person` has no outgoing edge, so a refresh-budget FAIL or
+  UNDETERMINED ends the Run once a person clears it; more refreshes need a new Run created with a
+  higher value. A missing ledger beside `state/sta.json` or any `implementations/*/sta.json`
+  archive reads `unknown`, never 0 (review C-4). SPEC.md names `tc_refreshes_completed` and
+  `refresh-budget` (review C-2).
 
 ## Reviews
 

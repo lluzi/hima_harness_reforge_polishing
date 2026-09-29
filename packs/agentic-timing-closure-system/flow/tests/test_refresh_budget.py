@@ -1,5 +1,5 @@
-"""The physical-refresh budget: a reader-backed count a Judge caps by the Run's `refreshLimit`
-(Issue #63 slice 2).
+"""The physical-refresh budget: a reader-backed count a Judge caps by the Run's Goal value
+`max_physical_refreshes` (Issue #63 slice 2).
 
 Live Ledger (Pack 0.2.0, same Harness semantics as 0.1.10): two `revisit-research` Explore
 decisions each consumed one Harness generation although no Innovus/StarRC/PrimeTime refresh
@@ -11,9 +11,12 @@ This module pins the Pack side of the cap:
 - the `refresh-budget` Reader kind emits `tc_refreshes_completed`: `known(0)` for a prepared
   Campaign whose ledger does not exist yet (the first refresh must never be blocked by an
   `unknown`), `known(n)` for an identity-verified ledger of `n` entries, and `unknown` for
-  a corrupt/tampered ledger or a ledger missing while an STA receipt proves a refresh ran;
+  a corrupt/tampered ledger or a ledger missing while an STA receipt or its
+  `implementations/<mergeId>/sta.json` archive proves a refresh ran;
 - the Reader's fixed paths are the ones `atcs_cli.py` actually writes;
-- the declarations (reader file, semantics, rule, Strategy knob, graph gates) agree.
+- the declarations (reader file, semantics, rule, Goal value, graph gates) agree, and the cap
+  is a Goal value -- fixed when the Run is created -- never a Strategy knob an owner's
+  next-strategy decision or a revision could change.
 
 Runnable directly:
     python3 packs/agentic-timing-closure-system/flow/tests/test_refresh_budget.py -v
@@ -108,6 +111,19 @@ class RefreshBudgetReaderTest(unittest.TestCase):
         self.assertIsNone(value["value"])
         self.assertIn("sta.json", value["unknownReason"])
 
+    def test_missing_ledger_beside_an_archived_sta_receipt_is_unknown_not_zero(self):
+        # Review C-4: state/sta.json lost too, but the per-implementation archive of the same
+        # receipt survives -- still proof that a refresh completed.
+        _write(self.workspace / "implementations" / "mc-1" / "sta.json", "{}")
+        value = self._read()
+        self.assertIsNone(value["value"])
+        self.assertIn("implementations/mc-1/sta.json", value["unknownReason"])
+
+    def test_implementation_without_an_sta_archive_is_still_known_zero(self):
+        # `implement` writes under implementations/<mergeId>/ before any refresh completes.
+        _write(self.workspace / "implementations" / "mc-1" / "merge-commit.json", "{}")
+        self.assertEqual(self._read()["value"], 0)
+
     def test_symlinked_ledger_is_unknown(self):
         real = self.workspace / "elsewhere.json"
         refresh.record_refresh(real, "mc-1", "state-1", _sources("mc-1"), SCENARIOS)
@@ -163,14 +179,30 @@ class RefreshBudgetDeclarationTest(unittest.TestCase):
 
     def test_rule_caps_the_fact_below_the_bound_limit(self):
         text = (PACK_DIR / "rules" / "refresh-budget.yml").read_text(encoding="utf-8")
-        self.assertIn("parameter: { name: refresh_limit, unit: count }", text)
+        self.assertIn("parameter: { name: max_physical_refreshes, unit: count }", text)
         self.assertIn(f"subject: {{ type: {FACT} }}", text)
-        self.assertRegex(text, r"op: lt\n\s+threshold: \{ parameter: refresh_limit \}\n\s+unit: count")
+        self.assertRegex(text, r"op: lt\n\s+threshold: \{ parameter: max_physical_refreshes \}\n\s+unit: count")
 
-    def test_strategy_knob_is_declared_with_a_label(self):
+    def test_cap_is_a_goal_value_with_a_label_and_no_strategy_knob(self):
         text = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
-        self.assertIn("  refreshLimit: { type: number, unit: refreshes, min: 1, max: 4, default: 1 }", text)
-        self.assertRegex(text, r"\n  refreshLimit: \{ label: [^,]+, unit: refreshes \}")
+        goal = re.search(r"^goal:\n(.*?)(?=^\S)", text, re.S | re.M).group(1)
+        strategy = re.search(r"^strategy:\n(.*?)(?=^\S)", text, re.S | re.M).group(1)
+        words = re.search(r"^words:\n(.*?)(?=^\S)", text, re.S | re.M).group(1)
+        self.assertIn(
+            "  max_physical_refreshes: { type: number, unit: count, min: 1, max: 4, default: 1, precision: 0 }\n", goal)
+        self.assertRegex(words, r"\n  max_physical_refreshes: \{ label: [^,]+, unit: count \}")
+        self.assertNotIn("refresh", strategy.lower())
+        self.assertNotIn("refreshLimit", text)
+
+    def test_both_budget_judges_bind_the_cap_from_goal(self):
+        text = (PACK_DIR / "graph.yml").read_text(encoding="utf-8")
+        binds = re.findall(
+            r"^  - id: (check-refresh-budget\S*)\n    kind: judge\n    parameters:\n      rules: \[refresh-budget\]\n      bind: (.*)$",
+            text, re.M)
+        self.assertEqual(sorted(binds), [
+            ("check-refresh-budget", "{ max_physical_refreshes: { from: goal, name: max_physical_refreshes } }"),
+            ("check-refresh-budget-apr", "{ max_physical_refreshes: { from: goal, name: max_physical_refreshes } }"),
+        ])
 
 
 if __name__ == "__main__":

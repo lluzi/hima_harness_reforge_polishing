@@ -564,19 +564,21 @@ goal:
   # evidence can never satisfy. See FABRIC.md's Gaps for the SPEC-consistent framing.
   target_setup_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }
   target_hold_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }
+  # Issue #63: caps completed Innovus+StarRC+PrimeTime refreshes for the whole Run (Judges
+  # check-refresh-budget*, rule refresh-budget). Every Explore revisit consumes a Harness
+  # generation whether or not it refreshes anything, so generationLimit cannot stand in for it.
+  # A Goal value, not a Strategy knob: the person fixes it when the Run is created and nothing in
+  # the Run changes it (an owner's next-strategy or a revision cannot reach a Goal value).
+  max_physical_refreshes: { type: number, unit: count, min: 1, max: 4, default: 1, precision: 0 }
 
-# refreshLimit caps completed Innovus+StarRC+PrimeTime refreshes for the whole Run (Judge
-# check-refresh-budget*, rule refresh-budget). Every Explore revisit consumes a Harness generation
-# whether or not it refreshes anything, so generationLimit cannot stand in for it.
 strategy:
   maxPaths: { type: number, unit: paths, min: 100, max: 5000, default: 1000 }
-  refreshLimit: { type: number, unit: refreshes, min: 1, max: 4, default: 1 }
 
 words:
   target_setup_wns_ns: { label: target setup WNS, unit: ns }
   target_hold_wns_ns: { label: target hold WNS, unit: ns }
+  max_physical_refreshes: { label: max full physical refreshes per Run, unit: count }
   maxPaths: { label: max paths per scenario query, unit: paths }
-  refreshLimit: { label: max full physical refreshes per Run, unit: refreshes }
 
 knowledge:
   - file: method-and-benchmark.md

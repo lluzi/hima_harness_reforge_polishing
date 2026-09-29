@@ -974,6 +974,7 @@ def _read_acceptance_record(report, workspace, extra, mods):
 
 _REFRESH_LEDGER_REL = "state/refresh-ledger.json"
 _STA_RECEIPT_REL = "state/sta.json"
+_STA_ARCHIVE_GLOB = "implementations/*/sta.json"
 
 
 def _refresh_ledger_entry_count(ledger_path, core):
@@ -1004,7 +1005,7 @@ def _read_refresh_budget(report, workspace, extra, mods):
 
     Issue #63: every Explore revisit consumes a Harness generation whether or not it refreshes
     anything, so the Pack caps Innovus/StarRC/PrimeTime refreshes itself -- the `refresh-budget`
-    rule holds this count below the Run's `refreshLimit` Strategy knob at the Judges
+    rule holds this count below the Run's Goal value `max_physical_refreshes` at the Judges
     `check-refresh-budget` (before `implement`) and `check-refresh-budget-apr` (before
     `apr-prepare`). The graph reads this afresh right before each of them, because a Judge takes a
     type's latest reading Run-wide and `sta` can record a refresh with no later reading of it.
@@ -1016,11 +1017,13 @@ def _read_refresh_budget(report, workspace, extra, mods):
     path (`atcs_cli._paths`), through the same `_load_json`/`_verify_identity` checks the
     acceptance-record reader applies to it:
 
-    - ledger absent, no STA receipt (state/sta.json): `known(0)` -- `atcs.refresh.load_ledger`'s own
-      reading of a ledger never written. `sta` records the ledger entry before it writes its
-      receipt, so no receipt means no refresh completed. An `unknown` here would stop the Run
+    - ledger absent, no STA receipt (state/sta.json, nor its archive
+      implementations/<mergeId>/sta.json): `known(0)` -- `atcs.refresh.load_ledger`'s own reading
+      of a ledger never written. `sta` records the ledger entry before its receipt and archive are
+      written, so no receipt means no refresh completed. An `unknown` here would stop the Run
       before its first refresh.
-    - ledger absent beside an STA receipt: `unknown` (the ledger was lost, not never written).
+    - ledger absent beside an STA receipt or archive: `unknown` (the ledger was lost, not never
+      written).
     - ledger present: `known(n)` for an identity-verified ledger of `n` well-formed entries with
       distinct merge commits; `unknown` for a corrupt, tampered, malformed or symlinked one. Fail
       closed: the Judge is UNDETERMINED and the Run waits for a person, never a guessed count.
@@ -1040,9 +1043,11 @@ def _read_refresh_budget(report, workspace, extra, mods):
     if ledger_path.is_symlink():
         measure = core.unknown(f"refresh ledger {_REFRESH_LEDGER_REL} is a symlink")
     elif not ledger_path.exists():
-        if (root / _STA_RECEIPT_REL).exists():
+        receipts = [_STA_RECEIPT_REL] if (root / _STA_RECEIPT_REL).exists() else []
+        receipts += sorted(str(p.relative_to(root)) for p in root.glob(_STA_ARCHIVE_GLOB))
+        if receipts:
             measure = core.unknown(
-                f"refresh ledger {_REFRESH_LEDGER_REL} is missing although {_STA_RECEIPT_REL} records a completed STA"
+                f"refresh ledger {_REFRESH_LEDGER_REL} is missing although {receipts[0]} records a completed STA"
             )
         else:
             measure = core.known(len(refresh_mod.load_ledger(ledger_path)["entries"]))

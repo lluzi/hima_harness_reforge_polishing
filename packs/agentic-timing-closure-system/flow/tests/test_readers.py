@@ -1324,16 +1324,9 @@ class SemanticsCoverageTest(unittest.TestCase):
         "tc_final_setup_wns_ns", "tc_final_hold_wns_ns", "tc_missing_required_check_count",
         "tc_final_identity_error_count", "tc_applicable_constraint_failure_count",
         "tc_applicable_constraint_unknown_count", "tc_fixed_check_count", "tc_missing_prior_check_count",
-        "tc_refresh_count", "tc_accepted_artifact_ready", "tc_stop_required", "tc_next_action",
-        "tc_selected_contribution_count",
+        "tc_refresh_count", "tc_refreshes_completed", "tc_accepted_artifact_ready", "tc_stop_required",
+        "tc_next_action", "tc_selected_contribution_count",
     }
-
-    # Values a Pack gate reads that SPEC.md's table does not name as rows of their own, each with
-    # its reason. tc_refreshes_completed (Issue #63 slice 2): SPEC's tc_refresh_count, counted at
-    # the refresh-budget gate with a different absence rule (a ledger never written is known(0)
-    # there, unknown at the acceptance record), so it carries its own name; see
-    # tools/read-atcs.py `_read_refresh_budget`.
-    GATE_VALUE_TYPES = {"tc_refreshes_completed"}
 
     def _load_yaml_light(self, path):
         """Minimal `emits:`/top-level-key extraction, stdlib-only (no `yaml` dependency)."""
@@ -1369,11 +1362,8 @@ class SemanticsCoverageTest(unittest.TestCase):
             emitted.update(declared.get("emits", []))
         missing = self.SPEC_VALUE_TYPES - emitted
         self.assertEqual(missing, set(), f"tc_* values with no reader: {sorted(missing)}")
-        extra = emitted - self.SPEC_VALUE_TYPES - self.GATE_VALUE_TYPES
+        extra = emitted - self.SPEC_VALUE_TYPES
         self.assertEqual(extra, set(), f"readers emit undeclared tc_* values: {sorted(extra)}")
-        for value_type in self.GATE_VALUE_TYPES:
-            self.assertIn(value_type, emitted, value_type)
-            self.assertIn(f"\n  {value_type}:\n", "\n" + (PACK_DIR / "semantics.yml").read_text(encoding="utf-8"))
 
     def test_every_reader_yml_names_the_shared_script(self):
         readers_dir = PACK_DIR / "readers"
