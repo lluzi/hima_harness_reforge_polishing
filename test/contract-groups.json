@@ -67,6 +67,7 @@
     "test/contract/moment.host.test.ts",
     "test/contract/native-session.host.test.ts",
     "test/contract/node-jobs.host.test.ts",
+    "test/contract/run-budget.host.test.ts",
     "test/contract/notification-coalescing.host.test.ts",
     "test/contract/observe-ledger.test.ts",
     "test/contract/observe-readers.test.ts",

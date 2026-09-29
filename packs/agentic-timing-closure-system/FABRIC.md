@@ -209,6 +209,12 @@ Schema limits and how the graph expresses them:
   JSON object, every field named with its form, `evidenceRefs` as record-id strings, at most three
   limitations under 200 characters, no nested object except `scope`, and an example reply last
   (the #63 probe's admitted answer breaks the caps).
+- G40 (Issue #64 Track B, live class C28; Harness main 5604abb9 ported) `budget.minimumGenerations: 3`.
+  Live02 was created with a generation limit of 2 and ended at it with no refresh. Every Explore
+  revisit spends a generation, so the default two refreshes need at least three: generation 1 holds
+  the baseline and the first decision, and each refresh its own research batch generation. The
+  Harness refuses a Run created below the floor, naming both numbers; a kit or Guide that creates the
+  #64 Campaign with 2 generations must now ask for 3 or more.
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.

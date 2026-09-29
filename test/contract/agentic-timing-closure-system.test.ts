@@ -89,6 +89,10 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   const host = await bootInProcess(h); let cleanupRunId: string | undefined;
   t.after(async () => { if (cleanupRunId) await host.ctx.hima.cancelRun(cleanupRunId); await host.dispose(); await h.dispose(); });
   const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
+  // #64 Track B (C28): live02's generation limit of 2 cannot reach the default two refreshes; the Pack
+  // declares budget.minimumGenerations 3 and the Harness refuses such a Run at creation.
+  await assert.rejects(host.ctx.hima.startRun({ pack: packId, site: 'local', goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0, max_physical_refreshes: 2 },
+    ownerSessionId: actor, timeBoxMs: 300000, generationLimit: 2 }), /generation limit is 2, but Pack agentic-timing-closure-system declares it needs at least 3 generations/);
   // #64 Track B (from #63): the physical-refresh cap is a Goal value fixed when the Run is created.
   // 3, not the default 2, so the assertions below prove the creation value reached the Run's goal and
   // is what both refresh-budget Judges bind.
@@ -546,6 +550,10 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual(edgesTo('extract'), ['apr-run->', 'implement->']);
   assert.deepEqual(edgesFrom('check-presta-model'), ['FAIL->decide-next', 'PASS->read-refresh-budget']);
   assert.ok(pack.contract.rules.includes('refresh-budget'));
+  // #64 Track B (C28): the two refreshes of the default cap need three generations; a Run created
+  // with fewer is refused at creation (Harness budget.minimumGenerations).
+  assert.equal((pack.contract.budget as any).minimumGenerations, 3);
+  assert.equal((pack.contract.goal as any).max_physical_refreshes.default + 1, 3);
 
   // #64 Track B (from #63 slice 3 gap 1): every request output has an itemized `<output>Problems`
   // beside it (written by tools/read-atcs.py, no reader), read by the Workshop that produces it.

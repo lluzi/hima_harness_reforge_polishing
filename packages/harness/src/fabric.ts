@@ -514,6 +514,13 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   if (!allowsRunArgument('generations', budget.generationLimit)) {
     throw new RunStartError(`this run's generation limit is ${budget.generationLimit}; expected ${runArguments.generations.what}`);
   }
+  // A method may declare the fewest generations its graph needs to reach a first useful result
+  // (`budget.minimumGenerations`). A Run started under a smaller limit would end at the generation
+  // limit before it can produce anything, so it is refused at creation naming both numbers.
+  const minimumGenerations = pack.contract.budget.minimumGenerations;
+  if (minimumGenerations !== undefined && budget.generationLimit < minimumGenerations) {
+    throw new RunStartError(`this run's generation limit is ${budget.generationLimit}, but Pack ${pack.id} declares it needs at least ${minimumGenerations} generations (budget.minimumGenerations) to reach its first result; start it with a generation limit of at least ${minimumGenerations}`);
+  }
   // Generation one, from the moment HimaFabric opens the row: everything this Run writes from here
   // belongs to a generation, and the ledger stamps each record from this field. The Strategy this
   // Campaign starts with goes on the row in the same write and is never written again: `strategy`
