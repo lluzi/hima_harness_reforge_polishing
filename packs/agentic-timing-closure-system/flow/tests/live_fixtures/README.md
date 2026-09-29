@@ -14,3 +14,8 @@ regression:
 
 The design files the working state references (netlist, DEF, SPEF) stayed on the Site, so a test
 that reads these stubs `read-atcs.py`'s `_verify_design_state_refs` (the file re-hash) and nothing else.
+
+`probe-reviewer-answer.json` is copied unchanged from main's `flow/tests/probe_fixtures/reviewer-answer-attempt-1.json`
+(the #63 real-model probe, run `notes/model-probe-run1`, Pack 0.1.10): a Team reviewer's admitted answer
+with nested `evidenceRefs` and long `limitations`, the shape that broke inside arrays in 2 of 5 answers.
+Its `review/1` fields differ from this Pack's `review/2`, but the two format caps it breaks are the same.

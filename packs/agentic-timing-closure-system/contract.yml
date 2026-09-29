@@ -732,6 +732,18 @@ knowledge:
     purpose: The strict full-flow/post-route-only scopes, lifecycle completeness and when an earlier APR stage is justified.
   - file: experience-transfer.md
     purpose: Success and failure conditions, predicted versus measured, and version/region applicability of recorded experience.
+  # #64 Track B (from #63): one admitted example per model-written document, read by the Workshop
+  # that writes it; flow/tests/test_workshop_examples.py runs each through its Reader to 0 problems.
+  - file: example-observation-request.md
+    purpose: An admitted research/requests/observation-request.json, to copy in shape.
+  - file: example-campaign-plan.md
+    purpose: An admitted six-slot research/requests/campaign-plan.json (one active slot, five parked), to copy in shape.
+  - file: example-worker-request.md
+    purpose: Admitted worker requests for an active slot, an active slot with no safe move, and a parked slot, to copy in shape.
+  - file: example-integration-plan.md
+    purpose: An admitted research/requests/integration-plan.json with one conflict resolution, to copy in shape.
+  - file: example-next-decision.md
+    purpose: An admitted research/requests/next-decision.json, to copy in shape.
 
 agentTeams:
   # Issue #64 Task 4: one Team per worker slot, in Harness scope mode. The Reviewer approves a scope
@@ -751,7 +763,7 @@ agentTeams:
       - id: researcher
         role: researcher
         node: operate-worker-01
-        taskTemplate: 'Read the exact admitted workerRequest01 for slot w01. Its candidate names the blockers'' targetPins, the edit domain, the widest scope the Operator may be given (candidate.scope.commands) and the Workshop''s sessionPlan and evidence. Return hypotheses for the XTop expert Operator: for each blocker cluster, the mechanism the cited paths, analyze reports and XTop fail reason evidence point to; the first move from the hold ladder (size down, dummy, delay or buffer chain, loader clustering, timing window) or the setup ladder (remove buffer, size, buffer, split net, size down off-path) with its target and opposite margin; and its falsifier, the atcs_gain reading that would make the Operator undo it. Name only pins and instances in the request, and do not execute anything; request a Workshop revision when no move is justified. Return one compact schema-complete JSON object in this turn; at most one hypothesis per blocker cluster, shared evidenceRefs once, and concise limitations. Do not repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
+        taskTemplate: 'Read the exact admitted workerRequest01 for slot w01. Its candidate names the blockers'' targetPins, the edit domain, the widest scope the Operator may be given (candidate.scope.commands) and the Workshop''s sessionPlan and evidence. Return hypotheses for the XTop expert Operator: for each blocker cluster, the mechanism the cited paths, analyze reports and XTop fail reason evidence point to; the first move from the hold ladder (size down, dummy, delay or buffer chain, loader clustering, timing window) or the setup ladder (remove buffer, size, buffer, split net, size down off-path) with its target and opposite margin; and its falsifier, the atcs_gain reading that would make the Operator undo it. Name only pins and instances in the request, and do not execute anything; request a Workshop revision when no move is justified. When the request states noSafeAction, propose no move: return hypotheses [] and cite that reason in limitations. Return one compact schema-complete JSON object in this turn; at most one hypothesis per blocker cluster, shared evidenceRefs once, and concise limitations. Do not repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
         inputs: [workerRequest01]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -770,7 +782,7 @@ agentTeams:
       - id: reviewer
         role: reviewer
         node: operate-worker-01
-        taskTemplate: 'Read the adopted Researcher result and exact workerRequest01. Approve a scope for the Operator''s expert session, not one action. scope.commands lists the atcs_* mutations the adopted hypotheses need, chosen from candidate.scope.commands, and always includes atcs_undo so that every trial without gain can be undone. scope.maxMutations is a budget, from 1 to candidate.scope.maxMutations, that fits the expert loop: the planned trials, one undo for each, plus a margin for toolkit refusals, which also spend an approved mutation. A token budget of one or two cannot run the loop. Set planSha256 to the observation content SHA of workerRequest01, and return evidenceRefs and limitations. Refuse if no hypothesis is safe inside the edit domain. Return one compact schema-complete JSON object in this turn, with at most three short limitations. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
+        taskTemplate: 'Read the adopted Researcher result and exact workerRequest01. Approve a scope for the Operator''s expert session, not one action. scope.commands lists the atcs_* mutations the adopted hypotheses need, chosen from candidate.scope.commands, and always includes atcs_undo so that every trial without gain can be undone. scope.maxMutations is a budget, from 1 to candidate.scope.maxMutations, that fits the expert loop: the planned trials, one undo for each, plus a margin for toolkit refusals, which also spend an approved mutation. A token budget of one or two cannot run the loop. Refuse if no hypothesis is safe inside the edit domain, except when the request states noSafeAction: then approve only {"commands": ["atcs_undo"], "maxMutations": 1}, so the Operator reads, dumps and closes. Reply with exactly one JSON object and nothing else: no prose, no Markdown fence, no comments, no trailing commas. Its fields are exactly schema (atcs-worker-review/2), planSha256 (the observation content SHA of workerRequest01), scope ({commands, maxMutations} as above), evidenceRefs (a list of Runtime input record-id strings) and limitations (at most three strings, each under 200 characters); no nested object except scope. If the owner returns a refusal of your reply, answer with the corrected single JSON object only. Example reply (shape only): {"schema": "atcs-worker-review/2", "planSha256": "<the workerRequest01 observation content SHA-256>", "scope": {"commands": ["atcs_size_cell", "atcs_insert_dummy", "atcs_undo"], "maxMutations": 24}, "evidenceRefs": ["<a Runtime input record id>"], "limitations": ["two blocker clusters reviewed"]}'
         inputs: [workerRequest01]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -789,7 +801,7 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-01
-        taskTemplate: 'You are slot w01''s XTop expert Operator. Work only through hima_interactive in this execution''s xtop-operator session, inside the Host-injected immutable reviewed scope: only its commands mutate, every mutation carries its planSha256, and the Host admits at most its maxMutations mutations, undo included. Each trial is probabilistic: keep what XTop''s gain shows helps and undo what does not. The merge later ranks sessions by value, so a short, clean kept log beats many marginal edits. Run the expert loop on the request''s targetPins, the blockers; the bulk belongs to auto-finish. 1. atcs_dump_cells before.dump, then atcs_ref once. 2. Diagnose before any change: atcs_paths (setup or hold, topN, endPoints = the target pins), the fail reasons auto-fix reported in the request''s evidence (none in the first generation: only an evaluated batch carries them), and atcs_candidates for the path cells. XTop keeps no fail reasons in the session before its first fix, so read atcs_fail_reasons on the target pins after your own fix (setup reasons after a setup fix: the batch''s auto-finish ends with hold and leaves them unread). 3. Choose one move and change one variable per trial. Hold ladder: size down (atcs_size_cell, or atcs_fix_hold_pins with sizeCellOnly 1 and effort omit); dummy (atcs_insert_dummy, or useDummyCell 1); delay or buffer chain (atcs_insert_buffer with several masters, or maxDelayCellLength with delayCellList); loader clustering (maxClusterLoaderCount, try 4); timing window (fixTimingWindow 1 at effort low, never with sizeCellOnly). Setup ladder, at effort medium or high: remove buffer (atcs_remove_buffer, or removeBufferOnly 1); size (atcs_size_cell, atcs_exchange_cell, or methods size_cell); buffer (atcs_insert_buffer, atcs_split_load, or methods insert_buffer); split net (atcs_split_net, or methods split_net); size down off-path (sizeDownOnly 1). Pair every target with the opposite margin, holdTarget with setupMargin and setupTarget with holdMargin, starting at 0 and 0. Let the fail reasons steer: break_setup, a timing window or a smaller step; break_hold, holdMargin above 0 or size instead of buffer; too_large_slack, a chain or buffer rather than size; unable_fix_by_dummy_cell, a chain; sufficient_driving_strength, size or split rather than buffer; no_setup_gain or no_hold_gain, another method or pin set, never only more effort; legal_fail_no_space_on_row, smaller or fewer cells, else record it. 4. Trial a manual move once. XTop commits a targeted fix (atcs_fix_hold_pins, atcs_fix_setup_pins) and atcs_undo cannot revert it, so send one only as a move to keep, after the manual trials; a fix that may insert cells (hold unless sizeCellOnly without useDummyCell, setup insert_buffer or split_net) needs each pin''s net in the edit domain. 5. atcs_gain for the target check and the opposite check. 6. Keep it only if the target slack improved and the opposite check did not break; otherwise atcs_undo at once. 7. Stop when the budget is spent, when no ladder candidate gains, or when the blockers are clear. Then atcs_dump_cells after.dump, atcs_export_changes and atcs_close. A Host refusal (outside the scope, another plan hash, the budget spent) is free, but when the toolkit refuses an admitted mutation (a pin or instance outside the domain, a point outside every region, a master already in place) the toolkit refusal costs one approved mutation; so check the domain, pins, regions and candidates with the free read procedures before sending. Read every refusal and choose again, and never resend a mutation. If the session is tainted, dump, close and report it; preserve uncertain outcomes. Return one JSON object with schema, planSha256, mutationReceipts (the request ids of the mutations the Host admitted), stopReason (budget, no-candidate-gains, blockers-clear, tainted or refused) and limitations.'
+        taskTemplate: 'You are slot w01''s XTop expert Operator. Work only through hima_interactive in this execution''s xtop-operator session, inside the Host-injected immutable reviewed scope: only its commands mutate, every mutation carries its planSha256, and the Host admits at most its maxMutations mutations, undo included. Each trial is probabilistic: keep what XTop''s gain shows helps and undo what does not. The merge later ranks sessions by value, so a short, clean kept log beats many marginal edits. Run the expert loop on the request''s targetPins, the blockers; the bulk belongs to auto-finish. 1. atcs_dump_cells before.dump, then atcs_ref once. 2. Diagnose before any change: atcs_paths (setup or hold, topN, endPoints = the target pins), the fail reasons auto-fix reported in the request''s evidence (none in the first generation: only an evaluated batch carries them), and atcs_candidates for the path cells. XTop keeps no fail reasons in the session before its first fix, so read atcs_fail_reasons on the target pins after your own fix (setup reasons after a setup fix: the batch''s auto-finish ends with hold and leaves them unread). 3. Choose one move and change one variable per trial. Hold ladder: size down (atcs_size_cell, or atcs_fix_hold_pins with sizeCellOnly 1 and effort omit); dummy (atcs_insert_dummy, or useDummyCell 1); delay or buffer chain (atcs_insert_buffer with several masters, or maxDelayCellLength with delayCellList); loader clustering (maxClusterLoaderCount, try 4); timing window (fixTimingWindow 1 at effort low, never with sizeCellOnly). Setup ladder, at effort medium or high: remove buffer (atcs_remove_buffer, or removeBufferOnly 1); size (atcs_size_cell, atcs_exchange_cell, or methods size_cell); buffer (atcs_insert_buffer, atcs_split_load, or methods insert_buffer); split net (atcs_split_net, or methods split_net); size down off-path (sizeDownOnly 1). Pair every target with the opposite margin, holdTarget with setupMargin and setupTarget with holdMargin, starting at 0 and 0. Let the fail reasons steer: break_setup, a timing window or a smaller step; break_hold, holdMargin above 0 or size instead of buffer; too_large_slack, a chain or buffer rather than size; unable_fix_by_dummy_cell, a chain; sufficient_driving_strength, size or split rather than buffer; no_setup_gain or no_hold_gain, another method or pin set, never only more effort; legal_fail_no_space_on_row, smaller or fewer cells, else record it. 4. Trial a manual move once. XTop commits a targeted fix (atcs_fix_hold_pins, atcs_fix_setup_pins) and atcs_undo cannot revert it, so send one only as a move to keep, after the manual trials; a fix that may insert cells (hold unless sizeCellOnly without useDummyCell, setup insert_buffer or split_net) needs each pin''s net in the edit domain. 5. atcs_gain for the target check and the opposite check. 6. Keep it only if the target slack improved and the opposite check did not break; otherwise atcs_undo at once. 7. Stop when the budget is spent, when no ladder candidate gains, or when the blockers are clear. Then atcs_dump_cells after.dump, atcs_export_changes and atcs_close. A Host refusal (outside the scope, another plan hash, the budget spent) is free, but when the toolkit refuses an admitted mutation (a pin or instance outside the domain, a point outside every region, a master already in place) the toolkit refusal costs one approved mutation; so check the domain, pins, regions and candidates with the free read procedures before sending. Read every refusal and choose again, and never resend a mutation. If the session is tainted, dump, close and report it; preserve uncertain outcomes. When the request states noSafeAction, mutate nothing: atcs_dump_cells before.dump, atcs_ref, atcs_dump_cells after.dump, atcs_export_changes and atcs_close, with stopReason no-safe-action. Return one JSON object with schema, planSha256, mutationReceipts (the request ids of the mutations the Host admitted), stopReason (budget, no-candidate-gains, blockers-clear, no-safe-action, tainted or refused) and limitations.'
         inputs: [workerRequest01]
         allowedTools: [hima_interactive]
         scopePolicy: site-qualified-interactive-only
@@ -821,7 +833,7 @@ agentTeams:
       - id: researcher
         role: researcher
         node: operate-worker-02
-        taskTemplate: 'Read the exact admitted workerRequest02 for slot w02. Its candidate names the blockers'' targetPins, the edit domain, the widest scope the Operator may be given (candidate.scope.commands) and the Workshop''s sessionPlan and evidence. Return hypotheses for the XTop expert Operator: for each blocker cluster, the mechanism the cited paths, analyze reports and XTop fail reason evidence point to; the first move from the hold ladder (size down, dummy, delay or buffer chain, loader clustering, timing window) or the setup ladder (remove buffer, size, buffer, split net, size down off-path) with its target and opposite margin; and its falsifier, the atcs_gain reading that would make the Operator undo it. Name only pins and instances in the request, and do not execute anything; request a Workshop revision when no move is justified. Return one compact schema-complete JSON object in this turn; at most one hypothesis per blocker cluster, shared evidenceRefs once, and concise limitations. Do not repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
+        taskTemplate: 'Read the exact admitted workerRequest02 for slot w02. Its candidate names the blockers'' targetPins, the edit domain, the widest scope the Operator may be given (candidate.scope.commands) and the Workshop''s sessionPlan and evidence. Return hypotheses for the XTop expert Operator: for each blocker cluster, the mechanism the cited paths, analyze reports and XTop fail reason evidence point to; the first move from the hold ladder (size down, dummy, delay or buffer chain, loader clustering, timing window) or the setup ladder (remove buffer, size, buffer, split net, size down off-path) with its target and opposite margin; and its falsifier, the atcs_gain reading that would make the Operator undo it. Name only pins and instances in the request, and do not execute anything; request a Workshop revision when no move is justified. When the request states noSafeAction, propose no move: return hypotheses [] and cite that reason in limitations. Return one compact schema-complete JSON object in this turn; at most one hypothesis per blocker cluster, shared evidenceRefs once, and concise limitations. Do not repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
         inputs: [workerRequest02]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -840,7 +852,7 @@ agentTeams:
       - id: reviewer
         role: reviewer
         node: operate-worker-02
-        taskTemplate: 'Read the adopted Researcher result and exact workerRequest02. Approve a scope for the Operator''s expert session, not one action. scope.commands lists the atcs_* mutations the adopted hypotheses need, chosen from candidate.scope.commands, and always includes atcs_undo so that every trial without gain can be undone. scope.maxMutations is a budget, from 1 to candidate.scope.maxMutations, that fits the expert loop: the planned trials, one undo for each, plus a margin for toolkit refusals, which also spend an approved mutation. A token budget of one or two cannot run the loop. Set planSha256 to the observation content SHA of workerRequest02, and return evidenceRefs and limitations. Refuse if no hypothesis is safe inside the edit domain. Return one compact schema-complete JSON object in this turn, with at most three short limitations. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
+        taskTemplate: 'Read the adopted Researcher result and exact workerRequest02. Approve a scope for the Operator''s expert session, not one action. scope.commands lists the atcs_* mutations the adopted hypotheses need, chosen from candidate.scope.commands, and always includes atcs_undo so that every trial without gain can be undone. scope.maxMutations is a budget, from 1 to candidate.scope.maxMutations, that fits the expert loop: the planned trials, one undo for each, plus a margin for toolkit refusals, which also spend an approved mutation. A token budget of one or two cannot run the loop. Refuse if no hypothesis is safe inside the edit domain, except when the request states noSafeAction: then approve only {"commands": ["atcs_undo"], "maxMutations": 1}, so the Operator reads, dumps and closes. Reply with exactly one JSON object and nothing else: no prose, no Markdown fence, no comments, no trailing commas. Its fields are exactly schema (atcs-worker-review/2), planSha256 (the observation content SHA of workerRequest02), scope ({commands, maxMutations} as above), evidenceRefs (a list of Runtime input record-id strings) and limitations (at most three strings, each under 200 characters); no nested object except scope. If the owner returns a refusal of your reply, answer with the corrected single JSON object only. Example reply (shape only): {"schema": "atcs-worker-review/2", "planSha256": "<the workerRequest02 observation content SHA-256>", "scope": {"commands": ["atcs_size_cell", "atcs_insert_dummy", "atcs_undo"], "maxMutations": 24}, "evidenceRefs": ["<a Runtime input record id>"], "limitations": ["two blocker clusters reviewed"]}'
         inputs: [workerRequest02]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -859,7 +871,7 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-02
-        taskTemplate: 'You are slot w02''s XTop expert Operator. Work only through hima_interactive in this execution''s xtop-operator session, inside the Host-injected immutable reviewed scope: only its commands mutate, every mutation carries its planSha256, and the Host admits at most its maxMutations mutations, undo included. Each trial is probabilistic: keep what XTop''s gain shows helps and undo what does not. The merge later ranks sessions by value, so a short, clean kept log beats many marginal edits. Run the expert loop on the request''s targetPins, the blockers; the bulk belongs to auto-finish. 1. atcs_dump_cells before.dump, then atcs_ref once. 2. Diagnose before any change: atcs_paths (setup or hold, topN, endPoints = the target pins), the fail reasons auto-fix reported in the request''s evidence (none in the first generation: only an evaluated batch carries them), and atcs_candidates for the path cells. XTop keeps no fail reasons in the session before its first fix, so read atcs_fail_reasons on the target pins after your own fix (setup reasons after a setup fix: the batch''s auto-finish ends with hold and leaves them unread). 3. Choose one move and change one variable per trial. Hold ladder: size down (atcs_size_cell, or atcs_fix_hold_pins with sizeCellOnly 1 and effort omit); dummy (atcs_insert_dummy, or useDummyCell 1); delay or buffer chain (atcs_insert_buffer with several masters, or maxDelayCellLength with delayCellList); loader clustering (maxClusterLoaderCount, try 4); timing window (fixTimingWindow 1 at effort low, never with sizeCellOnly). Setup ladder, at effort medium or high: remove buffer (atcs_remove_buffer, or removeBufferOnly 1); size (atcs_size_cell, atcs_exchange_cell, or methods size_cell); buffer (atcs_insert_buffer, atcs_split_load, or methods insert_buffer); split net (atcs_split_net, or methods split_net); size down off-path (sizeDownOnly 1). Pair every target with the opposite margin, holdTarget with setupMargin and setupTarget with holdMargin, starting at 0 and 0. Let the fail reasons steer: break_setup, a timing window or a smaller step; break_hold, holdMargin above 0 or size instead of buffer; too_large_slack, a chain or buffer rather than size; unable_fix_by_dummy_cell, a chain; sufficient_driving_strength, size or split rather than buffer; no_setup_gain or no_hold_gain, another method or pin set, never only more effort; legal_fail_no_space_on_row, smaller or fewer cells, else record it. 4. Trial a manual move once. XTop commits a targeted fix (atcs_fix_hold_pins, atcs_fix_setup_pins) and atcs_undo cannot revert it, so send one only as a move to keep, after the manual trials; a fix that may insert cells (hold unless sizeCellOnly without useDummyCell, setup insert_buffer or split_net) needs each pin''s net in the edit domain. 5. atcs_gain for the target check and the opposite check. 6. Keep it only if the target slack improved and the opposite check did not break; otherwise atcs_undo at once. 7. Stop when the budget is spent, when no ladder candidate gains, or when the blockers are clear. Then atcs_dump_cells after.dump, atcs_export_changes and atcs_close. A Host refusal (outside the scope, another plan hash, the budget spent) is free, but when the toolkit refuses an admitted mutation (a pin or instance outside the domain, a point outside every region, a master already in place) the toolkit refusal costs one approved mutation; so check the domain, pins, regions and candidates with the free read procedures before sending. Read every refusal and choose again, and never resend a mutation. If the session is tainted, dump, close and report it; preserve uncertain outcomes. Return one JSON object with schema, planSha256, mutationReceipts (the request ids of the mutations the Host admitted), stopReason (budget, no-candidate-gains, blockers-clear, tainted or refused) and limitations.'
+        taskTemplate: 'You are slot w02''s XTop expert Operator. Work only through hima_interactive in this execution''s xtop-operator session, inside the Host-injected immutable reviewed scope: only its commands mutate, every mutation carries its planSha256, and the Host admits at most its maxMutations mutations, undo included. Each trial is probabilistic: keep what XTop''s gain shows helps and undo what does not. The merge later ranks sessions by value, so a short, clean kept log beats many marginal edits. Run the expert loop on the request''s targetPins, the blockers; the bulk belongs to auto-finish. 1. atcs_dump_cells before.dump, then atcs_ref once. 2. Diagnose before any change: atcs_paths (setup or hold, topN, endPoints = the target pins), the fail reasons auto-fix reported in the request''s evidence (none in the first generation: only an evaluated batch carries them), and atcs_candidates for the path cells. XTop keeps no fail reasons in the session before its first fix, so read atcs_fail_reasons on the target pins after your own fix (setup reasons after a setup fix: the batch''s auto-finish ends with hold and leaves them unread). 3. Choose one move and change one variable per trial. Hold ladder: size down (atcs_size_cell, or atcs_fix_hold_pins with sizeCellOnly 1 and effort omit); dummy (atcs_insert_dummy, or useDummyCell 1); delay or buffer chain (atcs_insert_buffer with several masters, or maxDelayCellLength with delayCellList); loader clustering (maxClusterLoaderCount, try 4); timing window (fixTimingWindow 1 at effort low, never with sizeCellOnly). Setup ladder, at effort medium or high: remove buffer (atcs_remove_buffer, or removeBufferOnly 1); size (atcs_size_cell, atcs_exchange_cell, or methods size_cell); buffer (atcs_insert_buffer, atcs_split_load, or methods insert_buffer); split net (atcs_split_net, or methods split_net); size down off-path (sizeDownOnly 1). Pair every target with the opposite margin, holdTarget with setupMargin and setupTarget with holdMargin, starting at 0 and 0. Let the fail reasons steer: break_setup, a timing window or a smaller step; break_hold, holdMargin above 0 or size instead of buffer; too_large_slack, a chain or buffer rather than size; unable_fix_by_dummy_cell, a chain; sufficient_driving_strength, size or split rather than buffer; no_setup_gain or no_hold_gain, another method or pin set, never only more effort; legal_fail_no_space_on_row, smaller or fewer cells, else record it. 4. Trial a manual move once. XTop commits a targeted fix (atcs_fix_hold_pins, atcs_fix_setup_pins) and atcs_undo cannot revert it, so send one only as a move to keep, after the manual trials; a fix that may insert cells (hold unless sizeCellOnly without useDummyCell, setup insert_buffer or split_net) needs each pin''s net in the edit domain. 5. atcs_gain for the target check and the opposite check. 6. Keep it only if the target slack improved and the opposite check did not break; otherwise atcs_undo at once. 7. Stop when the budget is spent, when no ladder candidate gains, or when the blockers are clear. Then atcs_dump_cells after.dump, atcs_export_changes and atcs_close. A Host refusal (outside the scope, another plan hash, the budget spent) is free, but when the toolkit refuses an admitted mutation (a pin or instance outside the domain, a point outside every region, a master already in place) the toolkit refusal costs one approved mutation; so check the domain, pins, regions and candidates with the free read procedures before sending. Read every refusal and choose again, and never resend a mutation. If the session is tainted, dump, close and report it; preserve uncertain outcomes. When the request states noSafeAction, mutate nothing: atcs_dump_cells before.dump, atcs_ref, atcs_dump_cells after.dump, atcs_export_changes and atcs_close, with stopReason no-safe-action. Return one JSON object with schema, planSha256, mutationReceipts (the request ids of the mutations the Host admitted), stopReason (budget, no-candidate-gains, blockers-clear, no-safe-action, tainted or refused) and limitations.'
         inputs: [workerRequest02]
         allowedTools: [hima_interactive]
         scopePolicy: site-qualified-interactive-only
@@ -891,7 +903,7 @@ agentTeams:
       - id: researcher
         role: researcher
         node: operate-worker-03
-        taskTemplate: 'Read the exact admitted workerRequest03 for slot w03. Its candidate names the blockers'' targetPins, the edit domain, the widest scope the Operator may be given (candidate.scope.commands) and the Workshop''s sessionPlan and evidence. Return hypotheses for the XTop expert Operator: for each blocker cluster, the mechanism the cited paths, analyze reports and XTop fail reason evidence point to; the first move from the hold ladder (size down, dummy, delay or buffer chain, loader clustering, timing window) or the setup ladder (remove buffer, size, buffer, split net, size down off-path) with its target and opposite margin; and its falsifier, the atcs_gain reading that would make the Operator undo it. Name only pins and instances in the request, and do not execute anything; request a Workshop revision when no move is justified. Return one compact schema-complete JSON object in this turn; at most one hypothesis per blocker cluster, shared evidenceRefs once, and concise limitations. Do not repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
+        taskTemplate: 'Read the exact admitted workerRequest03 for slot w03. Its candidate names the blockers'' targetPins, the edit domain, the widest scope the Operator may be given (candidate.scope.commands) and the Workshop''s sessionPlan and evidence. Return hypotheses for the XTop expert Operator: for each blocker cluster, the mechanism the cited paths, analyze reports and XTop fail reason evidence point to; the first move from the hold ladder (size down, dummy, delay or buffer chain, loader clustering, timing window) or the setup ladder (remove buffer, size, buffer, split net, size down off-path) with its target and opposite margin; and its falsifier, the atcs_gain reading that would make the Operator undo it. Name only pins and instances in the request, and do not execute anything; request a Workshop revision when no move is justified. When the request states noSafeAction, propose no move: return hypotheses [] and cite that reason in limitations. Return one compact schema-complete JSON object in this turn; at most one hypothesis per blocker cluster, shared evidenceRefs once, and concise limitations. Do not repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
         inputs: [workerRequest03]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -910,7 +922,7 @@ agentTeams:
       - id: reviewer
         role: reviewer
         node: operate-worker-03
-        taskTemplate: 'Read the adopted Researcher result and exact workerRequest03. Approve a scope for the Operator''s expert session, not one action. scope.commands lists the atcs_* mutations the adopted hypotheses need, chosen from candidate.scope.commands, and always includes atcs_undo so that every trial without gain can be undone. scope.maxMutations is a budget, from 1 to candidate.scope.maxMutations, that fits the expert loop: the planned trials, one undo for each, plus a margin for toolkit refusals, which also spend an approved mutation. A token budget of one or two cannot run the loop. Set planSha256 to the observation content SHA of workerRequest03, and return evidenceRefs and limitations. Refuse if no hypothesis is safe inside the edit domain. Return one compact schema-complete JSON object in this turn, with at most three short limitations. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
+        taskTemplate: 'Read the adopted Researcher result and exact workerRequest03. Approve a scope for the Operator''s expert session, not one action. scope.commands lists the atcs_* mutations the adopted hypotheses need, chosen from candidate.scope.commands, and always includes atcs_undo so that every trial without gain can be undone. scope.maxMutations is a budget, from 1 to candidate.scope.maxMutations, that fits the expert loop: the planned trials, one undo for each, plus a margin for toolkit refusals, which also spend an approved mutation. A token budget of one or two cannot run the loop. Refuse if no hypothesis is safe inside the edit domain, except when the request states noSafeAction: then approve only {"commands": ["atcs_undo"], "maxMutations": 1}, so the Operator reads, dumps and closes. Reply with exactly one JSON object and nothing else: no prose, no Markdown fence, no comments, no trailing commas. Its fields are exactly schema (atcs-worker-review/2), planSha256 (the observation content SHA of workerRequest03), scope ({commands, maxMutations} as above), evidenceRefs (a list of Runtime input record-id strings) and limitations (at most three strings, each under 200 characters); no nested object except scope. If the owner returns a refusal of your reply, answer with the corrected single JSON object only. Example reply (shape only): {"schema": "atcs-worker-review/2", "planSha256": "<the workerRequest03 observation content SHA-256>", "scope": {"commands": ["atcs_size_cell", "atcs_insert_dummy", "atcs_undo"], "maxMutations": 24}, "evidenceRefs": ["<a Runtime input record id>"], "limitations": ["two blocker clusters reviewed"]}'
         inputs: [workerRequest03]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -929,7 +941,7 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-03
-        taskTemplate: 'You are slot w03''s XTop expert Operator. Work only through hima_interactive in this execution''s xtop-operator session, inside the Host-injected immutable reviewed scope: only its commands mutate, every mutation carries its planSha256, and the Host admits at most its maxMutations mutations, undo included. Each trial is probabilistic: keep what XTop''s gain shows helps and undo what does not. The merge later ranks sessions by value, so a short, clean kept log beats many marginal edits. Run the expert loop on the request''s targetPins, the blockers; the bulk belongs to auto-finish. 1. atcs_dump_cells before.dump, then atcs_ref once. 2. Diagnose before any change: atcs_paths (setup or hold, topN, endPoints = the target pins), the fail reasons auto-fix reported in the request''s evidence (none in the first generation: only an evaluated batch carries them), and atcs_candidates for the path cells. XTop keeps no fail reasons in the session before its first fix, so read atcs_fail_reasons on the target pins after your own fix (setup reasons after a setup fix: the batch''s auto-finish ends with hold and leaves them unread). 3. Choose one move and change one variable per trial. Hold ladder: size down (atcs_size_cell, or atcs_fix_hold_pins with sizeCellOnly 1 and effort omit); dummy (atcs_insert_dummy, or useDummyCell 1); delay or buffer chain (atcs_insert_buffer with several masters, or maxDelayCellLength with delayCellList); loader clustering (maxClusterLoaderCount, try 4); timing window (fixTimingWindow 1 at effort low, never with sizeCellOnly). Setup ladder, at effort medium or high: remove buffer (atcs_remove_buffer, or removeBufferOnly 1); size (atcs_size_cell, atcs_exchange_cell, or methods size_cell); buffer (atcs_insert_buffer, atcs_split_load, or methods insert_buffer); split net (atcs_split_net, or methods split_net); size down off-path (sizeDownOnly 1). Pair every target with the opposite margin, holdTarget with setupMargin and setupTarget with holdMargin, starting at 0 and 0. Let the fail reasons steer: break_setup, a timing window or a smaller step; break_hold, holdMargin above 0 or size instead of buffer; too_large_slack, a chain or buffer rather than size; unable_fix_by_dummy_cell, a chain; sufficient_driving_strength, size or split rather than buffer; no_setup_gain or no_hold_gain, another method or pin set, never only more effort; legal_fail_no_space_on_row, smaller or fewer cells, else record it. 4. Trial a manual move once. XTop commits a targeted fix (atcs_fix_hold_pins, atcs_fix_setup_pins) and atcs_undo cannot revert it, so send one only as a move to keep, after the manual trials; a fix that may insert cells (hold unless sizeCellOnly without useDummyCell, setup insert_buffer or split_net) needs each pin''s net in the edit domain. 5. atcs_gain for the target check and the opposite check. 6. Keep it only if the target slack improved and the opposite check did not break; otherwise atcs_undo at once. 7. Stop when the budget is spent, when no ladder candidate gains, or when the blockers are clear. Then atcs_dump_cells after.dump, atcs_export_changes and atcs_close. A Host refusal (outside the scope, another plan hash, the budget spent) is free, but when the toolkit refuses an admitted mutation (a pin or instance outside the domain, a point outside every region, a master already in place) the toolkit refusal costs one approved mutation; so check the domain, pins, regions and candidates with the free read procedures before sending. Read every refusal and choose again, and never resend a mutation. If the session is tainted, dump, close and report it; preserve uncertain outcomes. Return one JSON object with schema, planSha256, mutationReceipts (the request ids of the mutations the Host admitted), stopReason (budget, no-candidate-gains, blockers-clear, tainted or refused) and limitations.'
+        taskTemplate: 'You are slot w03''s XTop expert Operator. Work only through hima_interactive in this execution''s xtop-operator session, inside the Host-injected immutable reviewed scope: only its commands mutate, every mutation carries its planSha256, and the Host admits at most its maxMutations mutations, undo included. Each trial is probabilistic: keep what XTop''s gain shows helps and undo what does not. The merge later ranks sessions by value, so a short, clean kept log beats many marginal edits. Run the expert loop on the request''s targetPins, the blockers; the bulk belongs to auto-finish. 1. atcs_dump_cells before.dump, then atcs_ref once. 2. Diagnose before any change: atcs_paths (setup or hold, topN, endPoints = the target pins), the fail reasons auto-fix reported in the request''s evidence (none in the first generation: only an evaluated batch carries them), and atcs_candidates for the path cells. XTop keeps no fail reasons in the session before its first fix, so read atcs_fail_reasons on the target pins after your own fix (setup reasons after a setup fix: the batch''s auto-finish ends with hold and leaves them unread). 3. Choose one move and change one variable per trial. Hold ladder: size down (atcs_size_cell, or atcs_fix_hold_pins with sizeCellOnly 1 and effort omit); dummy (atcs_insert_dummy, or useDummyCell 1); delay or buffer chain (atcs_insert_buffer with several masters, or maxDelayCellLength with delayCellList); loader clustering (maxClusterLoaderCount, try 4); timing window (fixTimingWindow 1 at effort low, never with sizeCellOnly). Setup ladder, at effort medium or high: remove buffer (atcs_remove_buffer, or removeBufferOnly 1); size (atcs_size_cell, atcs_exchange_cell, or methods size_cell); buffer (atcs_insert_buffer, atcs_split_load, or methods insert_buffer); split net (atcs_split_net, or methods split_net); size down off-path (sizeDownOnly 1). Pair every target with the opposite margin, holdTarget with setupMargin and setupTarget with holdMargin, starting at 0 and 0. Let the fail reasons steer: break_setup, a timing window or a smaller step; break_hold, holdMargin above 0 or size instead of buffer; too_large_slack, a chain or buffer rather than size; unable_fix_by_dummy_cell, a chain; sufficient_driving_strength, size or split rather than buffer; no_setup_gain or no_hold_gain, another method or pin set, never only more effort; legal_fail_no_space_on_row, smaller or fewer cells, else record it. 4. Trial a manual move once. XTop commits a targeted fix (atcs_fix_hold_pins, atcs_fix_setup_pins) and atcs_undo cannot revert it, so send one only as a move to keep, after the manual trials; a fix that may insert cells (hold unless sizeCellOnly without useDummyCell, setup insert_buffer or split_net) needs each pin''s net in the edit domain. 5. atcs_gain for the target check and the opposite check. 6. Keep it only if the target slack improved and the opposite check did not break; otherwise atcs_undo at once. 7. Stop when the budget is spent, when no ladder candidate gains, or when the blockers are clear. Then atcs_dump_cells after.dump, atcs_export_changes and atcs_close. A Host refusal (outside the scope, another plan hash, the budget spent) is free, but when the toolkit refuses an admitted mutation (a pin or instance outside the domain, a point outside every region, a master already in place) the toolkit refusal costs one approved mutation; so check the domain, pins, regions and candidates with the free read procedures before sending. Read every refusal and choose again, and never resend a mutation. If the session is tainted, dump, close and report it; preserve uncertain outcomes. When the request states noSafeAction, mutate nothing: atcs_dump_cells before.dump, atcs_ref, atcs_dump_cells after.dump, atcs_export_changes and atcs_close, with stopReason no-safe-action. Return one JSON object with schema, planSha256, mutationReceipts (the request ids of the mutations the Host admitted), stopReason (budget, no-candidate-gains, blockers-clear, no-safe-action, tainted or refused) and limitations.'
         inputs: [workerRequest03]
         allowedTools: [hima_interactive]
         scopePolicy: site-qualified-interactive-only
@@ -961,7 +973,7 @@ agentTeams:
       - id: researcher
         role: researcher
         node: operate-worker-04
-        taskTemplate: 'Read the exact admitted workerRequest04 for slot w04. Its candidate names the blockers'' targetPins, the edit domain, the widest scope the Operator may be given (candidate.scope.commands) and the Workshop''s sessionPlan and evidence. Return hypotheses for the XTop expert Operator: for each blocker cluster, the mechanism the cited paths, analyze reports and XTop fail reason evidence point to; the first move from the hold ladder (size down, dummy, delay or buffer chain, loader clustering, timing window) or the setup ladder (remove buffer, size, buffer, split net, size down off-path) with its target and opposite margin; and its falsifier, the atcs_gain reading that would make the Operator undo it. Name only pins and instances in the request, and do not execute anything; request a Workshop revision when no move is justified. Return one compact schema-complete JSON object in this turn; at most one hypothesis per blocker cluster, shared evidenceRefs once, and concise limitations. Do not repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
+        taskTemplate: 'Read the exact admitted workerRequest04 for slot w04. Its candidate names the blockers'' targetPins, the edit domain, the widest scope the Operator may be given (candidate.scope.commands) and the Workshop''s sessionPlan and evidence. Return hypotheses for the XTop expert Operator: for each blocker cluster, the mechanism the cited paths, analyze reports and XTop fail reason evidence point to; the first move from the hold ladder (size down, dummy, delay or buffer chain, loader clustering, timing window) or the setup ladder (remove buffer, size, buffer, split net, size down off-path) with its target and opposite margin; and its falsifier, the atcs_gain reading that would make the Operator undo it. Name only pins and instances in the request, and do not execute anything; request a Workshop revision when no move is justified. When the request states noSafeAction, propose no move: return hypotheses [] and cite that reason in limitations. Return one compact schema-complete JSON object in this turn; at most one hypothesis per blocker cluster, shared evidenceRefs once, and concise limitations. Do not repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
         inputs: [workerRequest04]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -980,7 +992,7 @@ agentTeams:
       - id: reviewer
         role: reviewer
         node: operate-worker-04
-        taskTemplate: 'Read the adopted Researcher result and exact workerRequest04. Approve a scope for the Operator''s expert session, not one action. scope.commands lists the atcs_* mutations the adopted hypotheses need, chosen from candidate.scope.commands, and always includes atcs_undo so that every trial without gain can be undone. scope.maxMutations is a budget, from 1 to candidate.scope.maxMutations, that fits the expert loop: the planned trials, one undo for each, plus a margin for toolkit refusals, which also spend an approved mutation. A token budget of one or two cannot run the loop. Set planSha256 to the observation content SHA of workerRequest04, and return evidenceRefs and limitations. Refuse if no hypothesis is safe inside the edit domain. Return one compact schema-complete JSON object in this turn, with at most three short limitations. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
+        taskTemplate: 'Read the adopted Researcher result and exact workerRequest04. Approve a scope for the Operator''s expert session, not one action. scope.commands lists the atcs_* mutations the adopted hypotheses need, chosen from candidate.scope.commands, and always includes atcs_undo so that every trial without gain can be undone. scope.maxMutations is a budget, from 1 to candidate.scope.maxMutations, that fits the expert loop: the planned trials, one undo for each, plus a margin for toolkit refusals, which also spend an approved mutation. A token budget of one or two cannot run the loop. Refuse if no hypothesis is safe inside the edit domain, except when the request states noSafeAction: then approve only {"commands": ["atcs_undo"], "maxMutations": 1}, so the Operator reads, dumps and closes. Reply with exactly one JSON object and nothing else: no prose, no Markdown fence, no comments, no trailing commas. Its fields are exactly schema (atcs-worker-review/2), planSha256 (the observation content SHA of workerRequest04), scope ({commands, maxMutations} as above), evidenceRefs (a list of Runtime input record-id strings) and limitations (at most three strings, each under 200 characters); no nested object except scope. If the owner returns a refusal of your reply, answer with the corrected single JSON object only. Example reply (shape only): {"schema": "atcs-worker-review/2", "planSha256": "<the workerRequest04 observation content SHA-256>", "scope": {"commands": ["atcs_size_cell", "atcs_insert_dummy", "atcs_undo"], "maxMutations": 24}, "evidenceRefs": ["<a Runtime input record id>"], "limitations": ["two blocker clusters reviewed"]}'
         inputs: [workerRequest04]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -999,7 +1011,7 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-04
-        taskTemplate: 'You are slot w04''s XTop expert Operator. Work only through hima_interactive in this execution''s xtop-operator session, inside the Host-injected immutable reviewed scope: only its commands mutate, every mutation carries its planSha256, and the Host admits at most its maxMutations mutations, undo included. Each trial is probabilistic: keep what XTop''s gain shows helps and undo what does not. The merge later ranks sessions by value, so a short, clean kept log beats many marginal edits. Run the expert loop on the request''s targetPins, the blockers; the bulk belongs to auto-finish. 1. atcs_dump_cells before.dump, then atcs_ref once. 2. Diagnose before any change: atcs_paths (setup or hold, topN, endPoints = the target pins), the fail reasons auto-fix reported in the request''s evidence (none in the first generation: only an evaluated batch carries them), and atcs_candidates for the path cells. XTop keeps no fail reasons in the session before its first fix, so read atcs_fail_reasons on the target pins after your own fix (setup reasons after a setup fix: the batch''s auto-finish ends with hold and leaves them unread). 3. Choose one move and change one variable per trial. Hold ladder: size down (atcs_size_cell, or atcs_fix_hold_pins with sizeCellOnly 1 and effort omit); dummy (atcs_insert_dummy, or useDummyCell 1); delay or buffer chain (atcs_insert_buffer with several masters, or maxDelayCellLength with delayCellList); loader clustering (maxClusterLoaderCount, try 4); timing window (fixTimingWindow 1 at effort low, never with sizeCellOnly). Setup ladder, at effort medium or high: remove buffer (atcs_remove_buffer, or removeBufferOnly 1); size (atcs_size_cell, atcs_exchange_cell, or methods size_cell); buffer (atcs_insert_buffer, atcs_split_load, or methods insert_buffer); split net (atcs_split_net, or methods split_net); size down off-path (sizeDownOnly 1). Pair every target with the opposite margin, holdTarget with setupMargin and setupTarget with holdMargin, starting at 0 and 0. Let the fail reasons steer: break_setup, a timing window or a smaller step; break_hold, holdMargin above 0 or size instead of buffer; too_large_slack, a chain or buffer rather than size; unable_fix_by_dummy_cell, a chain; sufficient_driving_strength, size or split rather than buffer; no_setup_gain or no_hold_gain, another method or pin set, never only more effort; legal_fail_no_space_on_row, smaller or fewer cells, else record it. 4. Trial a manual move once. XTop commits a targeted fix (atcs_fix_hold_pins, atcs_fix_setup_pins) and atcs_undo cannot revert it, so send one only as a move to keep, after the manual trials; a fix that may insert cells (hold unless sizeCellOnly without useDummyCell, setup insert_buffer or split_net) needs each pin''s net in the edit domain. 5. atcs_gain for the target check and the opposite check. 6. Keep it only if the target slack improved and the opposite check did not break; otherwise atcs_undo at once. 7. Stop when the budget is spent, when no ladder candidate gains, or when the blockers are clear. Then atcs_dump_cells after.dump, atcs_export_changes and atcs_close. A Host refusal (outside the scope, another plan hash, the budget spent) is free, but when the toolkit refuses an admitted mutation (a pin or instance outside the domain, a point outside every region, a master already in place) the toolkit refusal costs one approved mutation; so check the domain, pins, regions and candidates with the free read procedures before sending. Read every refusal and choose again, and never resend a mutation. If the session is tainted, dump, close and report it; preserve uncertain outcomes. Return one JSON object with schema, planSha256, mutationReceipts (the request ids of the mutations the Host admitted), stopReason (budget, no-candidate-gains, blockers-clear, tainted or refused) and limitations.'
+        taskTemplate: 'You are slot w04''s XTop expert Operator. Work only through hima_interactive in this execution''s xtop-operator session, inside the Host-injected immutable reviewed scope: only its commands mutate, every mutation carries its planSha256, and the Host admits at most its maxMutations mutations, undo included. Each trial is probabilistic: keep what XTop''s gain shows helps and undo what does not. The merge later ranks sessions by value, so a short, clean kept log beats many marginal edits. Run the expert loop on the request''s targetPins, the blockers; the bulk belongs to auto-finish. 1. atcs_dump_cells before.dump, then atcs_ref once. 2. Diagnose before any change: atcs_paths (setup or hold, topN, endPoints = the target pins), the fail reasons auto-fix reported in the request''s evidence (none in the first generation: only an evaluated batch carries them), and atcs_candidates for the path cells. XTop keeps no fail reasons in the session before its first fix, so read atcs_fail_reasons on the target pins after your own fix (setup reasons after a setup fix: the batch''s auto-finish ends with hold and leaves them unread). 3. Choose one move and change one variable per trial. Hold ladder: size down (atcs_size_cell, or atcs_fix_hold_pins with sizeCellOnly 1 and effort omit); dummy (atcs_insert_dummy, or useDummyCell 1); delay or buffer chain (atcs_insert_buffer with several masters, or maxDelayCellLength with delayCellList); loader clustering (maxClusterLoaderCount, try 4); timing window (fixTimingWindow 1 at effort low, never with sizeCellOnly). Setup ladder, at effort medium or high: remove buffer (atcs_remove_buffer, or removeBufferOnly 1); size (atcs_size_cell, atcs_exchange_cell, or methods size_cell); buffer (atcs_insert_buffer, atcs_split_load, or methods insert_buffer); split net (atcs_split_net, or methods split_net); size down off-path (sizeDownOnly 1). Pair every target with the opposite margin, holdTarget with setupMargin and setupTarget with holdMargin, starting at 0 and 0. Let the fail reasons steer: break_setup, a timing window or a smaller step; break_hold, holdMargin above 0 or size instead of buffer; too_large_slack, a chain or buffer rather than size; unable_fix_by_dummy_cell, a chain; sufficient_driving_strength, size or split rather than buffer; no_setup_gain or no_hold_gain, another method or pin set, never only more effort; legal_fail_no_space_on_row, smaller or fewer cells, else record it. 4. Trial a manual move once. XTop commits a targeted fix (atcs_fix_hold_pins, atcs_fix_setup_pins) and atcs_undo cannot revert it, so send one only as a move to keep, after the manual trials; a fix that may insert cells (hold unless sizeCellOnly without useDummyCell, setup insert_buffer or split_net) needs each pin''s net in the edit domain. 5. atcs_gain for the target check and the opposite check. 6. Keep it only if the target slack improved and the opposite check did not break; otherwise atcs_undo at once. 7. Stop when the budget is spent, when no ladder candidate gains, or when the blockers are clear. Then atcs_dump_cells after.dump, atcs_export_changes and atcs_close. A Host refusal (outside the scope, another plan hash, the budget spent) is free, but when the toolkit refuses an admitted mutation (a pin or instance outside the domain, a point outside every region, a master already in place) the toolkit refusal costs one approved mutation; so check the domain, pins, regions and candidates with the free read procedures before sending. Read every refusal and choose again, and never resend a mutation. If the session is tainted, dump, close and report it; preserve uncertain outcomes. When the request states noSafeAction, mutate nothing: atcs_dump_cells before.dump, atcs_ref, atcs_dump_cells after.dump, atcs_export_changes and atcs_close, with stopReason no-safe-action. Return one JSON object with schema, planSha256, mutationReceipts (the request ids of the mutations the Host admitted), stopReason (budget, no-candidate-gains, blockers-clear, no-safe-action, tainted or refused) and limitations.'
         inputs: [workerRequest04]
         allowedTools: [hima_interactive]
         scopePolicy: site-qualified-interactive-only
@@ -1031,7 +1043,7 @@ agentTeams:
       - id: researcher
         role: researcher
         node: operate-worker-05
-        taskTemplate: 'Read the exact admitted workerRequest05 for slot w05. Its candidate names the blockers'' targetPins, the edit domain, the widest scope the Operator may be given (candidate.scope.commands) and the Workshop''s sessionPlan and evidence. Return hypotheses for the XTop expert Operator: for each blocker cluster, the mechanism the cited paths, analyze reports and XTop fail reason evidence point to; the first move from the hold ladder (size down, dummy, delay or buffer chain, loader clustering, timing window) or the setup ladder (remove buffer, size, buffer, split net, size down off-path) with its target and opposite margin; and its falsifier, the atcs_gain reading that would make the Operator undo it. Name only pins and instances in the request, and do not execute anything; request a Workshop revision when no move is justified. Return one compact schema-complete JSON object in this turn; at most one hypothesis per blocker cluster, shared evidenceRefs once, and concise limitations. Do not repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
+        taskTemplate: 'Read the exact admitted workerRequest05 for slot w05. Its candidate names the blockers'' targetPins, the edit domain, the widest scope the Operator may be given (candidate.scope.commands) and the Workshop''s sessionPlan and evidence. Return hypotheses for the XTop expert Operator: for each blocker cluster, the mechanism the cited paths, analyze reports and XTop fail reason evidence point to; the first move from the hold ladder (size down, dummy, delay or buffer chain, loader clustering, timing window) or the setup ladder (remove buffer, size, buffer, split net, size down off-path) with its target and opposite margin; and its falsifier, the atcs_gain reading that would make the Operator undo it. Name only pins and instances in the request, and do not execute anything; request a Workshop revision when no move is justified. When the request states noSafeAction, propose no move: return hypotheses [] and cite that reason in limitations. Return one compact schema-complete JSON object in this turn; at most one hypothesis per blocker cluster, shared evidenceRefs once, and concise limitations. Do not repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
         inputs: [workerRequest05]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -1050,7 +1062,7 @@ agentTeams:
       - id: reviewer
         role: reviewer
         node: operate-worker-05
-        taskTemplate: 'Read the adopted Researcher result and exact workerRequest05. Approve a scope for the Operator''s expert session, not one action. scope.commands lists the atcs_* mutations the adopted hypotheses need, chosen from candidate.scope.commands, and always includes atcs_undo so that every trial without gain can be undone. scope.maxMutations is a budget, from 1 to candidate.scope.maxMutations, that fits the expert loop: the planned trials, one undo for each, plus a margin for toolkit refusals, which also spend an approved mutation. A token budget of one or two cannot run the loop. Set planSha256 to the observation content SHA of workerRequest05, and return evidenceRefs and limitations. Refuse if no hypothesis is safe inside the edit domain. Return one compact schema-complete JSON object in this turn, with at most three short limitations. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
+        taskTemplate: 'Read the adopted Researcher result and exact workerRequest05. Approve a scope for the Operator''s expert session, not one action. scope.commands lists the atcs_* mutations the adopted hypotheses need, chosen from candidate.scope.commands, and always includes atcs_undo so that every trial without gain can be undone. scope.maxMutations is a budget, from 1 to candidate.scope.maxMutations, that fits the expert loop: the planned trials, one undo for each, plus a margin for toolkit refusals, which also spend an approved mutation. A token budget of one or two cannot run the loop. Refuse if no hypothesis is safe inside the edit domain, except when the request states noSafeAction: then approve only {"commands": ["atcs_undo"], "maxMutations": 1}, so the Operator reads, dumps and closes. Reply with exactly one JSON object and nothing else: no prose, no Markdown fence, no comments, no trailing commas. Its fields are exactly schema (atcs-worker-review/2), planSha256 (the observation content SHA of workerRequest05), scope ({commands, maxMutations} as above), evidenceRefs (a list of Runtime input record-id strings) and limitations (at most three strings, each under 200 characters); no nested object except scope. If the owner returns a refusal of your reply, answer with the corrected single JSON object only. Example reply (shape only): {"schema": "atcs-worker-review/2", "planSha256": "<the workerRequest05 observation content SHA-256>", "scope": {"commands": ["atcs_size_cell", "atcs_insert_dummy", "atcs_undo"], "maxMutations": 24}, "evidenceRefs": ["<a Runtime input record id>"], "limitations": ["two blocker clusters reviewed"]}'
         inputs: [workerRequest05]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -1069,7 +1081,7 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-05
-        taskTemplate: 'You are slot w05''s XTop expert Operator. Work only through hima_interactive in this execution''s xtop-operator session, inside the Host-injected immutable reviewed scope: only its commands mutate, every mutation carries its planSha256, and the Host admits at most its maxMutations mutations, undo included. Each trial is probabilistic: keep what XTop''s gain shows helps and undo what does not. The merge later ranks sessions by value, so a short, clean kept log beats many marginal edits. Run the expert loop on the request''s targetPins, the blockers; the bulk belongs to auto-finish. 1. atcs_dump_cells before.dump, then atcs_ref once. 2. Diagnose before any change: atcs_paths (setup or hold, topN, endPoints = the target pins), the fail reasons auto-fix reported in the request''s evidence (none in the first generation: only an evaluated batch carries them), and atcs_candidates for the path cells. XTop keeps no fail reasons in the session before its first fix, so read atcs_fail_reasons on the target pins after your own fix (setup reasons after a setup fix: the batch''s auto-finish ends with hold and leaves them unread). 3. Choose one move and change one variable per trial. Hold ladder: size down (atcs_size_cell, or atcs_fix_hold_pins with sizeCellOnly 1 and effort omit); dummy (atcs_insert_dummy, or useDummyCell 1); delay or buffer chain (atcs_insert_buffer with several masters, or maxDelayCellLength with delayCellList); loader clustering (maxClusterLoaderCount, try 4); timing window (fixTimingWindow 1 at effort low, never with sizeCellOnly). Setup ladder, at effort medium or high: remove buffer (atcs_remove_buffer, or removeBufferOnly 1); size (atcs_size_cell, atcs_exchange_cell, or methods size_cell); buffer (atcs_insert_buffer, atcs_split_load, or methods insert_buffer); split net (atcs_split_net, or methods split_net); size down off-path (sizeDownOnly 1). Pair every target with the opposite margin, holdTarget with setupMargin and setupTarget with holdMargin, starting at 0 and 0. Let the fail reasons steer: break_setup, a timing window or a smaller step; break_hold, holdMargin above 0 or size instead of buffer; too_large_slack, a chain or buffer rather than size; unable_fix_by_dummy_cell, a chain; sufficient_driving_strength, size or split rather than buffer; no_setup_gain or no_hold_gain, another method or pin set, never only more effort; legal_fail_no_space_on_row, smaller or fewer cells, else record it. 4. Trial a manual move once. XTop commits a targeted fix (atcs_fix_hold_pins, atcs_fix_setup_pins) and atcs_undo cannot revert it, so send one only as a move to keep, after the manual trials; a fix that may insert cells (hold unless sizeCellOnly without useDummyCell, setup insert_buffer or split_net) needs each pin''s net in the edit domain. 5. atcs_gain for the target check and the opposite check. 6. Keep it only if the target slack improved and the opposite check did not break; otherwise atcs_undo at once. 7. Stop when the budget is spent, when no ladder candidate gains, or when the blockers are clear. Then atcs_dump_cells after.dump, atcs_export_changes and atcs_close. A Host refusal (outside the scope, another plan hash, the budget spent) is free, but when the toolkit refuses an admitted mutation (a pin or instance outside the domain, a point outside every region, a master already in place) the toolkit refusal costs one approved mutation; so check the domain, pins, regions and candidates with the free read procedures before sending. Read every refusal and choose again, and never resend a mutation. If the session is tainted, dump, close and report it; preserve uncertain outcomes. Return one JSON object with schema, planSha256, mutationReceipts (the request ids of the mutations the Host admitted), stopReason (budget, no-candidate-gains, blockers-clear, tainted or refused) and limitations.'
+        taskTemplate: 'You are slot w05''s XTop expert Operator. Work only through hima_interactive in this execution''s xtop-operator session, inside the Host-injected immutable reviewed scope: only its commands mutate, every mutation carries its planSha256, and the Host admits at most its maxMutations mutations, undo included. Each trial is probabilistic: keep what XTop''s gain shows helps and undo what does not. The merge later ranks sessions by value, so a short, clean kept log beats many marginal edits. Run the expert loop on the request''s targetPins, the blockers; the bulk belongs to auto-finish. 1. atcs_dump_cells before.dump, then atcs_ref once. 2. Diagnose before any change: atcs_paths (setup or hold, topN, endPoints = the target pins), the fail reasons auto-fix reported in the request''s evidence (none in the first generation: only an evaluated batch carries them), and atcs_candidates for the path cells. XTop keeps no fail reasons in the session before its first fix, so read atcs_fail_reasons on the target pins after your own fix (setup reasons after a setup fix: the batch''s auto-finish ends with hold and leaves them unread). 3. Choose one move and change one variable per trial. Hold ladder: size down (atcs_size_cell, or atcs_fix_hold_pins with sizeCellOnly 1 and effort omit); dummy (atcs_insert_dummy, or useDummyCell 1); delay or buffer chain (atcs_insert_buffer with several masters, or maxDelayCellLength with delayCellList); loader clustering (maxClusterLoaderCount, try 4); timing window (fixTimingWindow 1 at effort low, never with sizeCellOnly). Setup ladder, at effort medium or high: remove buffer (atcs_remove_buffer, or removeBufferOnly 1); size (atcs_size_cell, atcs_exchange_cell, or methods size_cell); buffer (atcs_insert_buffer, atcs_split_load, or methods insert_buffer); split net (atcs_split_net, or methods split_net); size down off-path (sizeDownOnly 1). Pair every target with the opposite margin, holdTarget with setupMargin and setupTarget with holdMargin, starting at 0 and 0. Let the fail reasons steer: break_setup, a timing window or a smaller step; break_hold, holdMargin above 0 or size instead of buffer; too_large_slack, a chain or buffer rather than size; unable_fix_by_dummy_cell, a chain; sufficient_driving_strength, size or split rather than buffer; no_setup_gain or no_hold_gain, another method or pin set, never only more effort; legal_fail_no_space_on_row, smaller or fewer cells, else record it. 4. Trial a manual move once. XTop commits a targeted fix (atcs_fix_hold_pins, atcs_fix_setup_pins) and atcs_undo cannot revert it, so send one only as a move to keep, after the manual trials; a fix that may insert cells (hold unless sizeCellOnly without useDummyCell, setup insert_buffer or split_net) needs each pin''s net in the edit domain. 5. atcs_gain for the target check and the opposite check. 6. Keep it only if the target slack improved and the opposite check did not break; otherwise atcs_undo at once. 7. Stop when the budget is spent, when no ladder candidate gains, or when the blockers are clear. Then atcs_dump_cells after.dump, atcs_export_changes and atcs_close. A Host refusal (outside the scope, another plan hash, the budget spent) is free, but when the toolkit refuses an admitted mutation (a pin or instance outside the domain, a point outside every region, a master already in place) the toolkit refusal costs one approved mutation; so check the domain, pins, regions and candidates with the free read procedures before sending. Read every refusal and choose again, and never resend a mutation. If the session is tainted, dump, close and report it; preserve uncertain outcomes. When the request states noSafeAction, mutate nothing: atcs_dump_cells before.dump, atcs_ref, atcs_dump_cells after.dump, atcs_export_changes and atcs_close, with stopReason no-safe-action. Return one JSON object with schema, planSha256, mutationReceipts (the request ids of the mutations the Host admitted), stopReason (budget, no-candidate-gains, blockers-clear, no-safe-action, tainted or refused) and limitations.'
         inputs: [workerRequest05]
         allowedTools: [hima_interactive]
         scopePolicy: site-qualified-interactive-only
@@ -1101,7 +1113,7 @@ agentTeams:
       - id: researcher
         role: researcher
         node: operate-worker-06
-        taskTemplate: 'Read the exact admitted workerRequest06 for slot w06. Its candidate names the blockers'' targetPins, the edit domain, the widest scope the Operator may be given (candidate.scope.commands) and the Workshop''s sessionPlan and evidence. Return hypotheses for the XTop expert Operator: for each blocker cluster, the mechanism the cited paths, analyze reports and XTop fail reason evidence point to; the first move from the hold ladder (size down, dummy, delay or buffer chain, loader clustering, timing window) or the setup ladder (remove buffer, size, buffer, split net, size down off-path) with its target and opposite margin; and its falsifier, the atcs_gain reading that would make the Operator undo it. Name only pins and instances in the request, and do not execute anything; request a Workshop revision when no move is justified. Return one compact schema-complete JSON object in this turn; at most one hypothesis per blocker cluster, shared evidenceRefs once, and concise limitations. Do not repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
+        taskTemplate: 'Read the exact admitted workerRequest06 for slot w06. Its candidate names the blockers'' targetPins, the edit domain, the widest scope the Operator may be given (candidate.scope.commands) and the Workshop''s sessionPlan and evidence. Return hypotheses for the XTop expert Operator: for each blocker cluster, the mechanism the cited paths, analyze reports and XTop fail reason evidence point to; the first move from the hold ladder (size down, dummy, delay or buffer chain, loader clustering, timing window) or the setup ladder (remove buffer, size, buffer, split net, size down off-path) with its target and opposite margin; and its falsifier, the atcs_gain reading that would make the Operator undo it. Name only pins and instances in the request, and do not execute anything; request a Workshop revision when no move is justified. When the request states noSafeAction, propose no move: return hypotheses [] and cite that reason in limitations. Return one compact schema-complete JSON object in this turn; at most one hypothesis per blocker cluster, shared evidenceRefs once, and concise limitations. Do not repeat the input document. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
         inputs: [workerRequest06]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -1120,7 +1132,7 @@ agentTeams:
       - id: reviewer
         role: reviewer
         node: operate-worker-06
-        taskTemplate: 'Read the adopted Researcher result and exact workerRequest06. Approve a scope for the Operator''s expert session, not one action. scope.commands lists the atcs_* mutations the adopted hypotheses need, chosen from candidate.scope.commands, and always includes atcs_undo so that every trial without gain can be undone. scope.maxMutations is a budget, from 1 to candidate.scope.maxMutations, that fits the expert loop: the planned trials, one undo for each, plus a margin for toolkit refusals, which also spend an approved mutation. A token budget of one or two cannot run the loop. Set planSha256 to the observation content SHA of workerRequest06, and return evidenceRefs and limitations. Refuse if no hypothesis is safe inside the edit domain. Return one compact schema-complete JSON object in this turn, with at most three short limitations. If the owner returns a refusal of your reply, answer with the corrected single JSON object only.'
+        taskTemplate: 'Read the adopted Researcher result and exact workerRequest06. Approve a scope for the Operator''s expert session, not one action. scope.commands lists the atcs_* mutations the adopted hypotheses need, chosen from candidate.scope.commands, and always includes atcs_undo so that every trial without gain can be undone. scope.maxMutations is a budget, from 1 to candidate.scope.maxMutations, that fits the expert loop: the planned trials, one undo for each, plus a margin for toolkit refusals, which also spend an approved mutation. A token budget of one or two cannot run the loop. Refuse if no hypothesis is safe inside the edit domain, except when the request states noSafeAction: then approve only {"commands": ["atcs_undo"], "maxMutations": 1}, so the Operator reads, dumps and closes. Reply with exactly one JSON object and nothing else: no prose, no Markdown fence, no comments, no trailing commas. Its fields are exactly schema (atcs-worker-review/2), planSha256 (the observation content SHA of workerRequest06), scope ({commands, maxMutations} as above), evidenceRefs (a list of Runtime input record-id strings) and limitations (at most three strings, each under 200 characters); no nested object except scope. If the owner returns a refusal of your reply, answer with the corrected single JSON object only. Example reply (shape only): {"schema": "atcs-worker-review/2", "planSha256": "<the workerRequest06 observation content SHA-256>", "scope": {"commands": ["atcs_size_cell", "atcs_insert_dummy", "atcs_undo"], "maxMutations": 24}, "evidenceRefs": ["<a Runtime input record id>"], "limitations": ["two blocker clusters reviewed"]}'
         inputs: [workerRequest06]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
@@ -1139,7 +1151,7 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-06
-        taskTemplate: 'You are slot w06''s XTop expert Operator. Work only through hima_interactive in this execution''s xtop-operator session, inside the Host-injected immutable reviewed scope: only its commands mutate, every mutation carries its planSha256, and the Host admits at most its maxMutations mutations, undo included. Each trial is probabilistic: keep what XTop''s gain shows helps and undo what does not. The merge later ranks sessions by value, so a short, clean kept log beats many marginal edits. Run the expert loop on the request''s targetPins, the blockers; the bulk belongs to auto-finish. 1. atcs_dump_cells before.dump, then atcs_ref once. 2. Diagnose before any change: atcs_paths (setup or hold, topN, endPoints = the target pins), the fail reasons auto-fix reported in the request''s evidence (none in the first generation: only an evaluated batch carries them), and atcs_candidates for the path cells. XTop keeps no fail reasons in the session before its first fix, so read atcs_fail_reasons on the target pins after your own fix (setup reasons after a setup fix: the batch''s auto-finish ends with hold and leaves them unread). 3. Choose one move and change one variable per trial. Hold ladder: size down (atcs_size_cell, or atcs_fix_hold_pins with sizeCellOnly 1 and effort omit); dummy (atcs_insert_dummy, or useDummyCell 1); delay or buffer chain (atcs_insert_buffer with several masters, or maxDelayCellLength with delayCellList); loader clustering (maxClusterLoaderCount, try 4); timing window (fixTimingWindow 1 at effort low, never with sizeCellOnly). Setup ladder, at effort medium or high: remove buffer (atcs_remove_buffer, or removeBufferOnly 1); size (atcs_size_cell, atcs_exchange_cell, or methods size_cell); buffer (atcs_insert_buffer, atcs_split_load, or methods insert_buffer); split net (atcs_split_net, or methods split_net); size down off-path (sizeDownOnly 1). Pair every target with the opposite margin, holdTarget with setupMargin and setupTarget with holdMargin, starting at 0 and 0. Let the fail reasons steer: break_setup, a timing window or a smaller step; break_hold, holdMargin above 0 or size instead of buffer; too_large_slack, a chain or buffer rather than size; unable_fix_by_dummy_cell, a chain; sufficient_driving_strength, size or split rather than buffer; no_setup_gain or no_hold_gain, another method or pin set, never only more effort; legal_fail_no_space_on_row, smaller or fewer cells, else record it. 4. Trial a manual move once. XTop commits a targeted fix (atcs_fix_hold_pins, atcs_fix_setup_pins) and atcs_undo cannot revert it, so send one only as a move to keep, after the manual trials; a fix that may insert cells (hold unless sizeCellOnly without useDummyCell, setup insert_buffer or split_net) needs each pin''s net in the edit domain. 5. atcs_gain for the target check and the opposite check. 6. Keep it only if the target slack improved and the opposite check did not break; otherwise atcs_undo at once. 7. Stop when the budget is spent, when no ladder candidate gains, or when the blockers are clear. Then atcs_dump_cells after.dump, atcs_export_changes and atcs_close. A Host refusal (outside the scope, another plan hash, the budget spent) is free, but when the toolkit refuses an admitted mutation (a pin or instance outside the domain, a point outside every region, a master already in place) the toolkit refusal costs one approved mutation; so check the domain, pins, regions and candidates with the free read procedures before sending. Read every refusal and choose again, and never resend a mutation. If the session is tainted, dump, close and report it; preserve uncertain outcomes. Return one JSON object with schema, planSha256, mutationReceipts (the request ids of the mutations the Host admitted), stopReason (budget, no-candidate-gains, blockers-clear, tainted or refused) and limitations.'
+        taskTemplate: 'You are slot w06''s XTop expert Operator. Work only through hima_interactive in this execution''s xtop-operator session, inside the Host-injected immutable reviewed scope: only its commands mutate, every mutation carries its planSha256, and the Host admits at most its maxMutations mutations, undo included. Each trial is probabilistic: keep what XTop''s gain shows helps and undo what does not. The merge later ranks sessions by value, so a short, clean kept log beats many marginal edits. Run the expert loop on the request''s targetPins, the blockers; the bulk belongs to auto-finish. 1. atcs_dump_cells before.dump, then atcs_ref once. 2. Diagnose before any change: atcs_paths (setup or hold, topN, endPoints = the target pins), the fail reasons auto-fix reported in the request''s evidence (none in the first generation: only an evaluated batch carries them), and atcs_candidates for the path cells. XTop keeps no fail reasons in the session before its first fix, so read atcs_fail_reasons on the target pins after your own fix (setup reasons after a setup fix: the batch''s auto-finish ends with hold and leaves them unread). 3. Choose one move and change one variable per trial. Hold ladder: size down (atcs_size_cell, or atcs_fix_hold_pins with sizeCellOnly 1 and effort omit); dummy (atcs_insert_dummy, or useDummyCell 1); delay or buffer chain (atcs_insert_buffer with several masters, or maxDelayCellLength with delayCellList); loader clustering (maxClusterLoaderCount, try 4); timing window (fixTimingWindow 1 at effort low, never with sizeCellOnly). Setup ladder, at effort medium or high: remove buffer (atcs_remove_buffer, or removeBufferOnly 1); size (atcs_size_cell, atcs_exchange_cell, or methods size_cell); buffer (atcs_insert_buffer, atcs_split_load, or methods insert_buffer); split net (atcs_split_net, or methods split_net); size down off-path (sizeDownOnly 1). Pair every target with the opposite margin, holdTarget with setupMargin and setupTarget with holdMargin, starting at 0 and 0. Let the fail reasons steer: break_setup, a timing window or a smaller step; break_hold, holdMargin above 0 or size instead of buffer; too_large_slack, a chain or buffer rather than size; unable_fix_by_dummy_cell, a chain; sufficient_driving_strength, size or split rather than buffer; no_setup_gain or no_hold_gain, another method or pin set, never only more effort; legal_fail_no_space_on_row, smaller or fewer cells, else record it. 4. Trial a manual move once. XTop commits a targeted fix (atcs_fix_hold_pins, atcs_fix_setup_pins) and atcs_undo cannot revert it, so send one only as a move to keep, after the manual trials; a fix that may insert cells (hold unless sizeCellOnly without useDummyCell, setup insert_buffer or split_net) needs each pin''s net in the edit domain. 5. atcs_gain for the target check and the opposite check. 6. Keep it only if the target slack improved and the opposite check did not break; otherwise atcs_undo at once. 7. Stop when the budget is spent, when no ladder candidate gains, or when the blockers are clear. Then atcs_dump_cells after.dump, atcs_export_changes and atcs_close. A Host refusal (outside the scope, another plan hash, the budget spent) is free, but when the toolkit refuses an admitted mutation (a pin or instance outside the domain, a point outside every region, a master already in place) the toolkit refusal costs one approved mutation; so check the domain, pins, regions and candidates with the free read procedures before sending. Read every refusal and choose again, and never resend a mutation. If the session is tainted, dump, close and report it; preserve uncertain outcomes. When the request states noSafeAction, mutate nothing: atcs_dump_cells before.dump, atcs_ref, atcs_dump_cells after.dump, atcs_export_changes and atcs_close, with stopReason no-safe-action. Return one JSON object with schema, planSha256, mutationReceipts (the request ids of the mutations the Host admitted), stopReason (budget, no-candidate-gains, blockers-clear, no-safe-action, tainted or refused) and limitations.'
         inputs: [workerRequest06]
         allowedTools: [hima_interactive]
         scopePolicy: site-qualified-interactive-only
@@ -1177,12 +1189,13 @@ workshops:
       {designStateId, precision (gba|pba), requiredScenarios, maxPaths, nworst} naming the working
       design-state it observes; the Run's maxPaths Strategy knob caps the value the observe tool
       uses; the tool builds every scenario's PT inputs from the working state itself. Every required scenario stays in the request; the request never
-      changes frequency, exceptions or required checks. It is a plan, not a measurement.
+      changes frequency, exceptions or required checks. It is a plan, not a measurement. Copy the shape
+      of knowledge example-observation-request.md and change only the values.
     directory: research/diagnose
     entry: entry.py
     language: python
     reads: [workingState, inputReadiness, currentObservations, riskAtlas, campaignExperience, statePointers, observationRequestProblems]
-    knowledge: [observation-strategy.md, mechanisms-and-falsifiers.md, state-and-evidence.md, experience-transfer.md]
+    knowledge: [observation-strategy.md, mechanisms-and-falsifiers.md, state-and-evidence.md, experience-transfer.md, example-observation-request.md]
     produces: observationRequest
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1208,8 +1221,8 @@ workshops:
       auto-fix could not fix, and why, are the expert slots' work. The first generation has no
       evaluated batch, so it carries no batchFailReasons: plan from the observation's blockers. A slot
       with no cluster worth an expert session is parked: its branch runs as a no-op and seals a parked
-      no-fix. Write one document, research/requests/campaign-plan.json, in exactly the shape of the
-      example below. There is exactly one copy of workPackages, under candidate; never repeat it at the
+      no-fix. Write one document, research/requests/campaign-plan.json, in exactly the shape of knowledge
+      example-campaign-plan.md. There is exactly one copy of workPackages, under candidate; never repeat it at the
       top level. The Reader admits candidate.workPackages, and prepare-workers prepares that same field.
       The Reader refuses a plan whose current observation is not of the working state, so observe again
       after the working state moves. Do not repeat a failed trial without new evidence.
@@ -1276,41 +1289,14 @@ workshops:
               assert any(composition.covers(key, pin, p["targets"], p["targetPins"]) for p in active), key
       Fix or park a package the check refuses; never write a plan that fails it.
 
-      Example research/requests/campaign-plan.json with one active slot and five parked ones (replace
-      each "<...>" string; a real plan fills active slots w01 up to workerSlots, one cluster each):
-        {
-          "candidate": {
-            "workPackages": {
-              "w01": {
-                "taskId": "w01",
-                "baseStateId": "<id of state/working-state.json>",
-                "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
-                "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
-                "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
-                "protected": {"instances": [], "nets": []},
-                "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
-                "actions": ["size_cell", "insert_buffer"],
-                "budget": {"xtopMinutes": 60, "attempts": 3},
-                "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
-                "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
-                "observe": "fast"
-              },
-              "w02": {"taskId": "w02", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
-              "w03": {"taskId": "w03", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
-              "w04": {"taskId": "w04", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
-              "w05": {"taskId": "w05", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
-              "w06": {"taskId": "w06", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"}
-            },
-            "reason": "one blocker cluster: the worst setup and hold checks of the only required scenario sit in u_core/u_lsu"
-          },
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false}
-        }
+      Read knowledge example-campaign-plan.md: it holds an admitted campaign-plan.json with one active
+      slot and five parked ones. Copy its shape and change only the values; a real plan fills active
+      slots from w01 up to workerSlots, one cluster each.
     directory: research/plan
     entry: entry.py
     language: python
     reads: [workingState, workerSlotPolicy, inputReadiness, currentObservations, acceptancePolicy, riskAtlas, contributionIndex, campaignExperience, statePointers, residualCases, campaignPlanProblems]
-    knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md, xtop-expert-operator.md]
+    knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md, xtop-expert-operator.md, example-campaign-plan.md]
     produces: campaignPlan
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1328,7 +1314,7 @@ workshops:
       ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
       (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
       candidate.scope; there is no pinned action list. Write the slot's request to
-      research/requests/worker-request-w01.json in exactly the shape of the examples below. The
+      research/requests/worker-request-w01.json in exactly the shape of knowledge example-worker-request.md. The
       Operator session must write before.dump and after.dump (atcs_dump_cells) in the slot's workspace
       root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones, dependencies}. A
       prediction is a hypothesis for the tool to test, never a result. When the slot's prepared package
@@ -1365,41 +1351,15 @@ workshops:
           assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
       Never write a request that fails this check.
 
-      Example research/requests/worker-request-w01.json for an active slot (replace each "<...>"
-      string; the candidate is the prepared package):
-        {
-          "candidate": {
-            "taskId": "w01",
-            "baseStateId": "<id of state/working-state.json>",
-            "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
-            "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
-            "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
-            "protected": {"instances": [], "nets": []},
-            "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
-            "actions": ["size_cell", "insert_buffer"],
-            "budget": {"xtopMinutes": 60, "attempts": 3},
-            "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
-            "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
-            "observe": "fast"
-          },
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false},
-          "sessionPlan": [
-            {"command": "atcs_size_cell", "object": "u_core/u_lsu/U2231", "hypothesis": "the weak driver of the data_reg_3_/D path limits setup", "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"},
-            {"command": "atcs_insert_dummy", "object": "u_core/u_lsu/addr_reg_0_/D", "hypothesis": "a dummy load on the short hold path closes hold", "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"}
-          ]
-        }
-      Example for a parked slot (the prepared package has parked: true):
-        {
-          "candidate": {"taskId": "w01", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false}
-        }
+      Read knowledge example-worker-request.md: it holds admitted requests for an active slot, for an
+      active slot with no safe move and for a parked slot; for this slot change their taskId to w01
+      and only the values. When research finds no safe move for an active slot, never invent one
+      and never write a placeholder command: state why in noSafeAction and leave sessionPlan empty.
     directory: research/worker-01
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult01, residualCases, workerRequest01Problems]
-    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
+    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
     produces: workerRequest01
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1417,7 +1377,7 @@ workshops:
       ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
       (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
       candidate.scope; there is no pinned action list. Write the slot's request to
-      research/requests/worker-request-w02.json in exactly the shape of the examples below. The
+      research/requests/worker-request-w02.json in exactly the shape of knowledge example-worker-request.md. The
       Operator session must write before.dump and after.dump (atcs_dump_cells) in the slot's workspace
       root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones, dependencies}. A
       prediction is a hypothesis for the tool to test, never a result. When the slot's prepared package
@@ -1454,41 +1414,15 @@ workshops:
           assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
       Never write a request that fails this check.
 
-      Example research/requests/worker-request-w02.json for an active slot (replace each "<...>"
-      string; the candidate is the prepared package):
-        {
-          "candidate": {
-            "taskId": "w02",
-            "baseStateId": "<id of state/working-state.json>",
-            "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
-            "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
-            "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
-            "protected": {"instances": [], "nets": []},
-            "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
-            "actions": ["size_cell", "insert_buffer"],
-            "budget": {"xtopMinutes": 60, "attempts": 3},
-            "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
-            "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
-            "observe": "fast"
-          },
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false},
-          "sessionPlan": [
-            {"command": "atcs_size_cell", "object": "u_core/u_lsu/U2231", "hypothesis": "the weak driver of the data_reg_3_/D path limits setup", "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"},
-            {"command": "atcs_insert_dummy", "object": "u_core/u_lsu/addr_reg_0_/D", "hypothesis": "a dummy load on the short hold path closes hold", "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"}
-          ]
-        }
-      Example for a parked slot (the prepared package has parked: true):
-        {
-          "candidate": {"taskId": "w02", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false}
-        }
+      Read knowledge example-worker-request.md: it holds admitted requests for an active slot, for an
+      active slot with no safe move and for a parked slot; for this slot change their taskId to w02
+      and only the values. When research finds no safe move for an active slot, never invent one
+      and never write a placeholder command: state why in noSafeAction and leave sessionPlan empty.
     directory: research/worker-02
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult02, residualCases, workerRequest02Problems]
-    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
+    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
     produces: workerRequest02
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1506,7 +1440,7 @@ workshops:
       ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
       (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
       candidate.scope; there is no pinned action list. Write the slot's request to
-      research/requests/worker-request-w03.json in exactly the shape of the examples below. The
+      research/requests/worker-request-w03.json in exactly the shape of knowledge example-worker-request.md. The
       Operator session must write before.dump and after.dump (atcs_dump_cells) in the slot's workspace
       root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones, dependencies}. A
       prediction is a hypothesis for the tool to test, never a result. When the slot's prepared package
@@ -1543,41 +1477,15 @@ workshops:
           assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
       Never write a request that fails this check.
 
-      Example research/requests/worker-request-w03.json for an active slot (replace each "<...>"
-      string; the candidate is the prepared package):
-        {
-          "candidate": {
-            "taskId": "w03",
-            "baseStateId": "<id of state/working-state.json>",
-            "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
-            "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
-            "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
-            "protected": {"instances": [], "nets": []},
-            "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
-            "actions": ["size_cell", "insert_buffer"],
-            "budget": {"xtopMinutes": 60, "attempts": 3},
-            "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
-            "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
-            "observe": "fast"
-          },
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false},
-          "sessionPlan": [
-            {"command": "atcs_size_cell", "object": "u_core/u_lsu/U2231", "hypothesis": "the weak driver of the data_reg_3_/D path limits setup", "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"},
-            {"command": "atcs_insert_dummy", "object": "u_core/u_lsu/addr_reg_0_/D", "hypothesis": "a dummy load on the short hold path closes hold", "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"}
-          ]
-        }
-      Example for a parked slot (the prepared package has parked: true):
-        {
-          "candidate": {"taskId": "w03", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false}
-        }
+      Read knowledge example-worker-request.md: it holds admitted requests for an active slot, for an
+      active slot with no safe move and for a parked slot; for this slot change their taskId to w03
+      and only the values. When research finds no safe move for an active slot, never invent one
+      and never write a placeholder command: state why in noSafeAction and leave sessionPlan empty.
     directory: research/worker-03
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult03, residualCases, workerRequest03Problems]
-    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
+    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
     produces: workerRequest03
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1595,7 +1503,7 @@ workshops:
       ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
       (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
       candidate.scope; there is no pinned action list. Write the slot's request to
-      research/requests/worker-request-w04.json in exactly the shape of the examples below. The
+      research/requests/worker-request-w04.json in exactly the shape of knowledge example-worker-request.md. The
       Operator session must write before.dump and after.dump (atcs_dump_cells) in the slot's workspace
       root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones, dependencies}. A
       prediction is a hypothesis for the tool to test, never a result. When the slot's prepared package
@@ -1632,41 +1540,15 @@ workshops:
           assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
       Never write a request that fails this check.
 
-      Example research/requests/worker-request-w04.json for an active slot (replace each "<...>"
-      string; the candidate is the prepared package):
-        {
-          "candidate": {
-            "taskId": "w04",
-            "baseStateId": "<id of state/working-state.json>",
-            "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
-            "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
-            "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
-            "protected": {"instances": [], "nets": []},
-            "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
-            "actions": ["size_cell", "insert_buffer"],
-            "budget": {"xtopMinutes": 60, "attempts": 3},
-            "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
-            "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
-            "observe": "fast"
-          },
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false},
-          "sessionPlan": [
-            {"command": "atcs_size_cell", "object": "u_core/u_lsu/U2231", "hypothesis": "the weak driver of the data_reg_3_/D path limits setup", "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"},
-            {"command": "atcs_insert_dummy", "object": "u_core/u_lsu/addr_reg_0_/D", "hypothesis": "a dummy load on the short hold path closes hold", "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"}
-          ]
-        }
-      Example for a parked slot (the prepared package has parked: true):
-        {
-          "candidate": {"taskId": "w04", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false}
-        }
+      Read knowledge example-worker-request.md: it holds admitted requests for an active slot, for an
+      active slot with no safe move and for a parked slot; for this slot change their taskId to w04
+      and only the values. When research finds no safe move for an active slot, never invent one
+      and never write a placeholder command: state why in noSafeAction and leave sessionPlan empty.
     directory: research/worker-04
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult04, residualCases, workerRequest04Problems]
-    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
+    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
     produces: workerRequest04
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1684,7 +1566,7 @@ workshops:
       ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
       (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
       candidate.scope; there is no pinned action list. Write the slot's request to
-      research/requests/worker-request-w05.json in exactly the shape of the examples below. The
+      research/requests/worker-request-w05.json in exactly the shape of knowledge example-worker-request.md. The
       Operator session must write before.dump and after.dump (atcs_dump_cells) in the slot's workspace
       root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones, dependencies}. A
       prediction is a hypothesis for the tool to test, never a result. When the slot's prepared package
@@ -1721,41 +1603,15 @@ workshops:
           assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
       Never write a request that fails this check.
 
-      Example research/requests/worker-request-w05.json for an active slot (replace each "<...>"
-      string; the candidate is the prepared package):
-        {
-          "candidate": {
-            "taskId": "w05",
-            "baseStateId": "<id of state/working-state.json>",
-            "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
-            "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
-            "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
-            "protected": {"instances": [], "nets": []},
-            "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
-            "actions": ["size_cell", "insert_buffer"],
-            "budget": {"xtopMinutes": 60, "attempts": 3},
-            "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
-            "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
-            "observe": "fast"
-          },
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false},
-          "sessionPlan": [
-            {"command": "atcs_size_cell", "object": "u_core/u_lsu/U2231", "hypothesis": "the weak driver of the data_reg_3_/D path limits setup", "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"},
-            {"command": "atcs_insert_dummy", "object": "u_core/u_lsu/addr_reg_0_/D", "hypothesis": "a dummy load on the short hold path closes hold", "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"}
-          ]
-        }
-      Example for a parked slot (the prepared package has parked: true):
-        {
-          "candidate": {"taskId": "w05", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false}
-        }
+      Read knowledge example-worker-request.md: it holds admitted requests for an active slot, for an
+      active slot with no safe move and for a parked slot; for this slot change their taskId to w05
+      and only the values. When research finds no safe move for an active slot, never invent one
+      and never write a placeholder command: state why in noSafeAction and leave sessionPlan empty.
     directory: research/worker-05
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult05, residualCases, workerRequest05Problems]
-    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
+    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
     produces: workerRequest05
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1773,7 +1629,7 @@ workshops:
       ladder moves, falsifiers and typed atcs_* procedures the expert Operator session will try
       (knowledge xtop-expert-operator.md). The worker Team's Reviewer approves the Operator's scope from
       candidate.scope; there is no pinned action list. Write the slot's request to
-      research/requests/worker-request-w06.json in exactly the shape of the examples below. The
+      research/requests/worker-request-w06.json in exactly the shape of knowledge example-worker-request.md. The
       Operator session must write before.dump and after.dump (atcs_dump_cells) in the slot's workspace
       root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones, dependencies}. A
       prediction is a hypothesis for the tool to test, never a result. When the slot's prepared package
@@ -1810,41 +1666,15 @@ workshops:
           assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
       Never write a request that fails this check.
 
-      Example research/requests/worker-request-w06.json for an active slot (replace each "<...>"
-      string; the candidate is the prepared package):
-        {
-          "candidate": {
-            "taskId": "w06",
-            "baseStateId": "<id of state/working-state.json>",
-            "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
-            "targets": ["func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D", "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"],
-            "editDomain": {"instances": ["u_core/u_lsu/data_reg_3_", "u_core/u_lsu/addr_reg_0_", "u_core/u_lsu/U2231"], "nets": ["u_core/u_lsu/n4410"], "regions": [[120.0, 340.0, 180.0, 400.0]]},
-            "protected": {"instances": [], "nets": []},
-            "mayAffect": ["func_ssg_rcworst_m40|hold|u_core/u_lsu/data_reg_3_/D"],
-            "actions": ["size_cell", "insert_buffer"],
-            "budget": {"xtopMinutes": 60, "attempts": 3},
-            "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
-            "scope": {"commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_fix_setup_pins", "atcs_fix_hold_pins", "atcs_undo"], "maxMutations": 120},
-            "observe": "fast"
-          },
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false},
-          "sessionPlan": [
-            {"command": "atcs_size_cell", "object": "u_core/u_lsu/U2231", "hypothesis": "the weak driver of the data_reg_3_/D path limits setup", "falsifier": "atcs_gain shows no setup gain on the target, or the hold check breaks; then atcs_undo"},
-            {"command": "atcs_insert_dummy", "object": "u_core/u_lsu/addr_reg_0_/D", "hypothesis": "a dummy load on the short hold path closes hold", "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"}
-          ]
-        }
-      Example for a parked slot (the prepared package has parked: true):
-        {
-          "candidate": {"taskId": "w06", "baseStateId": "<id of state/working-state.json>", "parked": true, "problem": "no blocker cluster left for this slot"},
-          "baseState": "<the whole JSON object in state/working-state.json, verbatim>",
-          "siteCapabilities": {"pgVerification": false}
-        }
+      Read knowledge example-worker-request.md: it holds admitted requests for an active slot, for an
+      active slot with no safe move and for a parked slot; for this slot change their taskId to w06
+      and only the values. When research finds no safe move for an active slot, never invent one
+      and never write a placeholder command: state why in noSafeAction and leave sessionPlan empty.
     directory: research/worker-06
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult06, residualCases, workerRequest06Problems]
-    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md]
+    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
     produces: workerRequest06
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1858,12 +1688,14 @@ workshops:
       re-sealed revisedContribution); defer what is not worth waiting for. Write one file,
       research/requests/integration-plan.json, as {plan: {batchId, baseStateId, select, resolutions,
       deferred, reason}, facts: <the stamped compositionFacts>}. Never split an atomic group without a record;
-      an empty select needs a stated waiting-value reason.
+      an empty select needs a stated waiting-value reason. Copy the shape of knowledge
+      example-integration-plan.md and change only the values: a resolution only for a facts.conflicts
+      key, exactly {conflictKey, decision}.
     directory: research/compose
     entry: entry.py
     language: python
     reads: [contributionIndex, compositionFacts, integrationState, campaignPlan, campaignExperience, integrationPlanProblems]
-    knowledge: [contribution-and-merge.md, cheap-verification.md, method-and-benchmark.md]
+    knowledge: [contribution-and-merge.md, cheap-verification.md, method-and-benchmark.md, example-integration-plan.md]
     produces: integrationPlan
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1890,11 +1722,12 @@ workshops:
       observation of the working state (the campaign-plan Reader ranks blockers from it), and research,
       compose and revise need state/xtop-context.json bound to the working state; after an adopted
       refresh both still name the older state until observe runs, so after the working state moves
-      choose observe first. Cite new information; never retry by revision alone.
+      choose observe first. Cite new information; never retry by revision alone. Copy the shape of
+      knowledge example-next-decision.md and change only the values.
     directory: research/next
     entry: entry.py
     language: python
     reads: [inputReadiness, workingState, acceptancePolicy, currentObservations, riskAtlas, contributionIndex, integrationState, precheckEvidence, physicalDelta, finalEvaluation, statePointers, residualCases, campaignExperience, nextDecisionProblems, campaignPlanProblems, integrationPlanProblems]
-    knowledge: [method-and-benchmark.md, state-and-evidence.md, cheap-verification.md, lifecycle-and-input-modes.md, innovus-stage-interventions.md, experience-transfer.md]
+    knowledge: [method-and-benchmark.md, state-and-evidence.md, cheap-verification.md, lifecycle-and-input-modes.md, innovus-stage-interventions.md, experience-transfer.md, example-next-decision.md]
     produces: nextDecision
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']

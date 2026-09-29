@@ -189,6 +189,26 @@ Schema limits and how the graph expresses them:
   growth. No context at all is left to those tools (a Site without `xtopContext`). Proving tests:
   `test_cli_state.StaleXtopContextAfterAdoptTest` (the real stages through adopt, prepare-workers
   exit 3, then the Reader's refusal) and three `NextDecisionReaderTest` cases.
+- G39 (Issue #64 Track B, ported from #63 slice 1 fix, gap 3, probe items 1-2 and review 2 I2)
+  Examples as declared knowledge. Every model-written document has one admitted example in
+  `knowledge/example-*.md` (observation request, the six-slot campaign plan with its parked shape,
+  worker requests for an active slot, an active slot with no safe move and a parked slot, the
+  integration plan with one conflict resolution, the next decision), declared in `contract.yml`
+  (16 knowledge files) and in the knowledge list of the Workshop that writes it; the purposes name
+  it and keep their checklists and self-check snippets, and no longer inline the JSON.
+  `flow/tests/test_workshop_examples.py` fills each from a fixture workspace and reads it through
+  its Reader at 0 problems; the live02 plan reads 41 and, corrected along its 41 lines into the
+  example's shape, 0 (`Live02ToExampleShapeTest`). No safe move: an active slot's request may state
+  `noSafeAction` with an empty `sessionPlan` (the worker-request Reader counts a blank reason, a
+  non-empty plan, or `noSafeAction` on a parked slot); the Team then reviews no move -- the
+  Researcher proposes none, the Reviewer approves only `atcs_undo` with a budget of 1, and the
+  Operator reads, dumps and closes with `stopReason` `no-safe-action`, so the capture seals an
+  honest no-fix. Unlike #63, the slot still opens one short XTop session: routing past the Team
+  needs a Judge inside the branch (refused by `loadPack`) or a change to `operate-parked` (flow,
+  pinned by the wrapper's flow digest). Every Team's reviewer template caps its reply: exactly one
+  JSON object, every field named with its form, `evidenceRefs` as record-id strings, at most three
+  limitations under 200 characters, no nested object except `scope`, and an example reply last
+  (the #63 probe's admitted answer breaks the caps).
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.

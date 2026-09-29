@@ -1,11 +1,13 @@
-"""The copyable examples in the `plan-campaign` and `research-worker-NN` Workshop purposes.
+"""The admitted examples every request-writing Workshop reads as declared knowledge.
 
 Issue #64 live retest: the plan Workshop's model wrote a campaign plan with 41 schema
 problems (descriptive `taskId`s, missing `protected` and `actions`, read procedures in
-`scope.commands`), because the purpose described the fields only in prose. The purposes
-now carry an exact example envelope and a self-check snippet. This test extracts both
-from `contract.yml`, fills the placeholders from a fixture Campaign workspace, and runs
-them through the real validators and Reader handlers, so an example that drifts from
+`scope.commands`), because the purpose described the fields only in prose. Track B (from
+#63): each model-written document has one admitted example in `knowledge/example-*.md`,
+declared in `contract.yml` and in the knowledge list of the Workshop that writes it; the
+plan and worker purposes keep their checklist and self-check snippet. This test reads each
+example, fills the placeholders from a fixture Campaign workspace, and runs it through the
+real validators and Reader handlers, so an example that drifts from
 `workspaces.validate_work_package` or `tools/read-atcs.py` fails here first.
 
 Runnable directly:
@@ -63,18 +65,25 @@ def _workshop_block(workshop_id):
     return CONTRACT.split(f"  - id: {workshop_id}\n", 1)[1].split("\n  - id: ", 1)[0]
 
 
-def _example(workshop_id, marker):
-    """The JSON example that follows `marker` in the Workshop's purpose.
+KNOWLEDGE = PACK_DIR / "knowledge"
+# Each request-writing Workshop, its example and the Reader kind that admits it.
+EXAMPLES = {
+    "diagnose-and-observe": "example-observation-request.md",
+    "plan-campaign": "example-campaign-plan.md",
+    **{f"research-worker-{slot}": "example-worker-request.md" for slot in ("01", "02", "03", "04", "05", "06")},
+    "compose-contributions": "example-integration-plan.md",
+    "evaluate-next-investment": "example-next-decision.md",
+}
 
-    Read from the raw YAML: every example line is more indented than the purpose's
-    prose, so the folded scalar keeps it verbatim (the contract test checks the same
-    examples in the loaded Pack).
-    """
-    block = _workshop_block(workshop_id)
-    at = block.index(marker)
-    start = block.index("{", at + len(marker))
-    value, _end = json.JSONDecoder().raw_decode(block[start:])
-    return value
+
+def _example(file, section=None):
+    """The fenced json block of knowledge `file` (under the `## section` heading, when given)."""
+    text = (KNOWLEDGE / file).read_text(encoding="utf-8")
+    if section is not None:
+        text = text.split(f"\n## {section}\n", 1)[1].split("\n## ", 1)[0]
+    blocks = re.findall(r"```json\n(.*?)\n```", text, re.S)
+    assert len(blocks) == 1, f"{file} {section!r} holds one json block, got {len(blocks)}"
+    return json.loads(blocks[0])
 
 
 def _snippet(workshop_id, marker):
@@ -90,20 +99,28 @@ def _snippet(workshop_id, marker):
     return textwrap.dedent("\n".join(code))
 
 
-def _fill(value, design):
-    """Replace the example's placeholders with the fixture's working state; refuse any other `<...>`."""
+def _fill(value, design, known=None):
+    """Replace the example's placeholders with the fixture's values; refuse any other `<...>`.
+
+    `known` maps further placeholders (or a `keep:<...>` decision's placeholder) to values."""
+    known = known or {}
     if value == STATE_ID:
         return design["id"]
     if value == STATE_OBJECT:
         return copy.deepcopy(design)
     if isinstance(value, str):
-        if value.startswith("<") and value.endswith(">"):
+        if value in known:
+            return copy.deepcopy(known[value])
+        prefix, _, rest = value.partition(":")
+        if rest in known and prefix in ("keep", "drop", "revise"):
+            return f"{prefix}:{known[rest]}"
+        if "<" in value and ">" in value:
             raise AssertionError(f"the example holds a placeholder this test does not know: {value!r}")
         return value
     if isinstance(value, list):
-        return [_fill(item, design) for item in value]
+        return [_fill(item, design, known) for item in value]
     if isinstance(value, dict):
-        return {key: _fill(item, design) for key, item in value.items()}
+        return {key: _fill(item, design, known) for key, item in value.items()}
     return value
 
 
@@ -144,7 +161,7 @@ class ExampleWorkspace(unittest.TestCase):
         self.assertEqual(atcs_cli.main(["worker-slots", str(self.workspace), "6"]), 0)
 
     def plan(self):
-        return _fill(_example("plan-campaign", "Example research/requests/campaign-plan.json"), self.design)
+        return _fill(_example("example-campaign-plan.md"), self.design)
 
     def read_plan(self, envelope):
         report = _write(self.workspace / "research" / "requests" / "campaign-plan.json", json.dumps(envelope))
@@ -254,11 +271,16 @@ class RetainedBadPlanTest(ExampleWorkspace):
 
 
 class WorkerRequestExampleTest(ExampleWorkspace):
-    ACTIVE = "for an active slot"
-    PARKED = "Example for a parked slot"
+    ACTIVE = "Active slot"
+    NO_SAFE_MOVE = "Active slot with no safe move"
+    PARKED = "Parked slot"
 
-    def worker_example(self, slot, marker):
-        return _fill(_example(f"research-worker-{slot}", marker), self.design)
+    def worker_example(self, slot, section):
+        """The example for `section`, with the taskId of slot `slot` (the example is written for w01)."""
+        example = _fill(_example("example-worker-request.md", section), self.design)
+        self.assertEqual(example["candidate"]["taskId"], "w01")
+        example["candidate"]["taskId"] = f"w{slot}"
+        return example
 
     def read_request(self, slot, envelope):
         report = _write(self.workspace / "research" / "requests" / f"worker-request-w{slot}.json", json.dumps(envelope))
@@ -332,6 +354,234 @@ class WorkerRequestExampleTest(ExampleWorkspace):
         example = self.worker_example("03", self.ACTIVE)
         example["candidate"]["scope"]["commands"] = ["atcs_size_cell", "atcs_undo"]
         self.assertEqual(self.read_request("03", example), 1, "a narrowed scope differs from the prepared package")
+
+
+class KnowledgeDeliveryTest(unittest.TestCase):
+    """Each request-writing Workshop reads its example as declared knowledge, and only those ship."""
+
+    def test_each_example_is_declared_listed_and_named_by_its_workshop(self):
+        declared = re.findall(r"^  - file: (\S+)$", CONTRACT.split("\nknowledge:\n", 1)[1].split("\nagentTeams:\n", 1)[0], re.M)
+        for workshop_id, file in EXAMPLES.items():
+            with self.subTest(workshop_id):
+                self.assertIn(file, declared)
+                block = _workshop_block(workshop_id)
+                listed = re.search(r"^    knowledge: \[(.*)\]$", block, re.M).group(1).split(", ")
+                self.assertIn(file, listed)
+                self.assertIn(f"knowledge {file[:-3]}", " ".join(block.split("    directory:")[0].split()))
+                self.assertTrue((KNOWLEDGE / file).is_file())
+
+    def test_exactly_the_five_examples_ship_and_no_purpose_inlines_one(self):
+        self.assertEqual(sorted(path.name for path in KNOWLEDGE.glob("example-*.md")), sorted(set(EXAMPLES.values())))
+        for workshop_id in EXAMPLES:
+            self.assertNotIn("Example research/requests", _workshop_block(workshop_id), workshop_id)
+
+
+class NoSafeMoveExampleTest(WorkerRequestExampleTest):
+    """#64 Track B (from #63 review 2, I2): research that finds no safe move says so; it never
+    invents one. The request is admitted, and its Team reviews no move."""
+
+    def test_each_no_safe_move_example_reads_with_zero_problems(self):
+        for slot in SLOTS:
+            with self.subTest(slot=f"w{slot}"):
+                self.prepare(self.plan_with_active_slot(slot))
+                example = self.worker_example(slot, self.NO_SAFE_MOVE)
+                self.assertEqual(example["sessionPlan"], [])
+                self.assertTrue(example["noSafeAction"].strip())
+                self.assertEqual(self.read_request(slot, example), 0)
+
+    def test_a_no_safe_move_request_that_still_plans_or_states_no_reason_is_counted(self):
+        self.prepare(self.plan_with_active_slot("02"))
+        planned = self.worker_example("02", self.NO_SAFE_MOVE)
+        planned["sessionPlan"] = self.worker_example("02", self.ACTIVE)["sessionPlan"]
+        self.assertEqual(self.read_request("02", planned), 1)
+        blank = self.worker_example("02", self.NO_SAFE_MOVE)
+        blank["noSafeAction"] = " "
+        self.assertEqual(self.read_request("02", blank), 1)
+        report = self.workspace / "research" / "requests" / "worker-request-w02.json"
+        self.assertTrue(read_atcs.problems("worker-request", report, self.workspace, "w02")[0]
+                        .startswith("noSafeAction (slot w02): must be a non-empty string"))
+
+    def test_a_parked_slot_carries_no_no_safe_action(self):
+        self.prepare(self.plan_with_active_slot("01"))
+        parked = dict(self.worker_example("02", self.PARKED), noSafeAction="nothing to do")
+        self.assertEqual(self.read_request("02", parked), 1)
+
+    def test_the_team_reviews_no_move_for_a_no_safe_move_request(self):
+        team = CONTRACT.split("\nagentTeams:\n", 1)[1].split("\nworkshops:\n", 1)[0]
+        self.assertEqual(team.count("When the request states noSafeAction, propose no move"), 6)
+        self.assertEqual(team.count('then approve only {"commands": ["atcs_undo"], "maxMutations": 1}'), 6)
+        self.assertEqual(team.count("with stopReason no-safe-action"), 6)
+        self.assertEqual(team.count("stopReason (budget, no-candidate-gains, blockers-clear, no-safe-action, tainted or refused)"), 6)
+
+
+def _reviewer_template(slot="01"):
+    team = CONTRACT.split("\nagentTeams:\n", 1)[1].split("\nworkshops:\n", 1)[0]
+    body = team.split(f"  - id: atcs-worker-{slot}\n", 1)[1].split("      - id: reviewer\n", 1)[1].split("\n      - id: ", 1)[0]
+    template = re.search(r"^        taskTemplate: '(.*)'$", body, re.M).group(1).replace("''", "'")
+    required = [f.strip() for f in re.search(r"^          required: \[(.*)\]$", body, re.M).group(1).split(",")]
+    return template, required
+
+
+def _reviewer_format_problems(reply):
+    """The reviewer taskTemplate's format caps, as checks (#63 probe refusal 2)."""
+    found = []
+    for field, value in reply.items():
+        if isinstance(value, dict) and field != "scope":
+            found.append(f"{field} is a nested object")
+    refs = reply.get("evidenceRefs")
+    if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
+        found.append("evidenceRefs is not a list of record-id strings")
+    limitations = reply.get("limitations")
+    if not isinstance(limitations, list) or len(limitations) > 3 \
+            or not all(isinstance(item, str) and len(item) < 200 for item in limitations):
+        found.append("limitations is not at most three strings under 200 characters")
+    return found
+
+
+class ReviewerReplyFormatTest(unittest.TestCase):
+    """#64 Track B (from #63 probe item 2): in 2 of 5 first answers the reviewer's reply broke
+    inside an array; the admitted answer shows the shape that grows that long (nested
+    evidenceRefs, long limitations). Every Team's reviewer template now caps the reply and names
+    every field, and ends with an example reply that keeps the caps."""
+
+    def test_every_reviewer_names_each_required_field_and_the_rules(self):
+        for slot in ("01", "02", "03", "04", "05", "06"):
+            template, required = _reviewer_template(slot)
+            instructions = template.split("Example reply (shape only):", 1)[0]
+            for field in required:
+                self.assertRegex(instructions, rf"\b{field}\b", f"slot {slot}")
+            for rule in ("exactly one JSON object and nothing else", "no prose", "no Markdown fence",
+                         "no trailing commas", "a list of Runtime input record-id strings",
+                         "at most three strings, each under 200 characters", "no nested object except scope"):
+                self.assertIn(rule, template, f"slot {slot}")
+
+    def test_the_example_reply_keeps_the_caps_and_the_probe_answer_breaks_them(self):
+        template, required = _reviewer_template()
+        example = json.loads(template.split("Example reply (shape only):", 1)[1])
+        self.assertEqual(sorted(example), sorted(required))
+        self.assertEqual(example["schema"], "atcs-worker-review/2")
+        self.assertIn("atcs_undo", example["scope"]["commands"])
+        self.assertEqual(_reviewer_format_problems(example), [])
+        probe = json.loads((TESTS_DIR / "live_fixtures" / "probe-reviewer-answer.json").read_text(encoding="utf-8"))
+        self.assertEqual(_reviewer_format_problems(probe), [
+            "arguments is a nested object",  # review/1's action; review/2 nests only scope
+            "evidenceRefs is not a list of record-id strings",
+            "limitations is not at most three strings under 200 characters",
+        ])
+
+
+class ObservationRequestExampleTest(ExampleWorkspace):
+    def test_the_example_reads_with_zero_problems(self):
+        example = _fill(_example("example-observation-request.md"), self.design)
+        report = _write(self.workspace / "research" / "requests" / "observation-request.json", json.dumps(example))
+        self.assertEqual(read_atcs.problems("observation-request", report, self.workspace), [])
+        del example["maxPaths"]
+        _write(report, json.dumps(example))
+        self.assertEqual(read_atcs.problems("observation-request", report, self.workspace),
+                         ["maxPaths: missing field; required format: a positive integer"])
+
+
+class IntegrationPlanExampleTest(ExampleWorkspace):
+    """w01 and w02 edit the same instance; the example keeps w01 and replays it with w03."""
+
+    def facts(self):
+        ids = {slot: core.digest({"contribution": slot}) for slot in ("w01", "w02", "w03")}
+        key = f"same-instance-different-master|{ids['w01']},{ids['w02']}|u_core/u_lsu/U2231"
+        facts = core.stamp("composition-facts", {
+            "baseStateId": self.design["id"], "considered": [ids["w01"], ids["w02"], ids["w03"]], "duplicates": [],
+            "conflicts": [{"key": key, "kind": "same-instance-different-master",
+                           "contributions": [ids["w01"], ids["w02"]], "objects": ["u_core/u_lsu/U2231"]}],
+            "interactions": [], "staleBase": [], "order": [ids["w01"], ids["w02"], ids["w03"]], "unresolvedCount": 1,
+        })
+        known = {"<facts.baseStateId>": self.design["id"], "<id of w01's Contribution>": ids["w01"],
+                 "<id of w03's Contribution>": ids["w03"], "<the facts.conflicts key naming w01 and w02>": key,
+                 "<the whole JSON object in state/composition-facts.json, verbatim>": facts}
+        return facts, known
+
+    def test_the_example_reads_with_zero_problems_and_selects_two(self):
+        _facts, known = self.facts()
+        example = _fill(_example("example-integration-plan.md"), self.design, known)
+        report = _write(self.workspace / "research" / "requests" / "integration-plan.json", json.dumps(example))
+        self.assertEqual(read_atcs.problems("integration-plan", report, self.workspace), [])
+        values = {value["type"]: value["value"] for value in read_atcs.read("integration-plan", report, self.workspace)}
+        self.assertEqual(values, {"tc_request_invalid_count": 0, "tc_selected_contribution_count": 2})
+
+    def test_selecting_both_sides_of_the_conflict_without_its_resolution_is_counted(self):
+        facts, known = self.facts()
+        example = _fill(_example("example-integration-plan.md"), self.design, known)
+        example["plan"]["resolutions"] = []
+        example["plan"]["select"] = list(facts["considered"])
+        report = _write(self.workspace / "research" / "requests" / "integration-plan.json", json.dumps(example))
+        found = read_atcs.problems("integration-plan", report, self.workspace)
+        self.assertTrue(found and all(line.startswith("plan.") for line in found), found)
+
+
+class NextDecisionExampleTest(ExampleWorkspace):
+    def test_the_example_reads_with_zero_problems_and_observes(self):
+        observation_id = json.loads((self.workspace / "state" / "observation.json").read_text())["id"]
+        example = _fill(_example("example-next-decision.md"), self.design, {"<id of state/observation.json>": observation_id})
+        report = _write(self.workspace / "research" / "requests" / "next-decision.json", json.dumps(example))
+        self.assertEqual(read_atcs.problems("next-decision", report, self.workspace), [])
+        values = {value["type"]: value["value"] for value in read_atcs.read("next-decision", report, self.workspace)}
+        self.assertEqual(values["tc_next_action"], 1)
+
+
+class Live02ToExampleShapeTest(unittest.TestCase):
+    """The live02 plan reads 41; corrected along its 41 lines into the example's shape, it reads 0.
+
+    The success path of the refusal, on the retained bytes and state: every line of
+    campaign-plan.problems.txt says what to change, and changing exactly that is admitted."""
+
+    def setUp(self):
+        from unittest import mock
+        from test_request_problems import live02_workspace
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.workspace = live02_workspace(self.tmp.name)
+        self.report = self.workspace / "research" / "requests" / "campaign-plan.json"
+        patcher = mock.patch.object(read_atcs, "_verify_design_state_refs", lambda *args, **kwargs: None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def read(self, plan):
+        self.report.write_text(json.dumps(plan), encoding="utf-8")
+        return read_atcs.problems("campaign-plan", self.report, self.workspace)
+
+    def test_the_live_plan_reads_41_and_its_corrected_shape_reads_0(self):
+        self.assertEqual(len(read_atcs.problems("campaign-plan", self.report, self.workspace)), 41)
+        plan = json.loads(self.report.read_text())
+        packages = plan["candidate"]["workPackages"]
+        example = _example("example-campaign-plan.md")["candidate"]["workPackages"]
+        w01 = packages["w01"]
+        # taskId is the slot key; protected and actions present (the example's shapes).
+        w01.update(taskId="w01", protected=example["w01"]["protected"], actions=example["w01"]["actions"])
+        # scope lists toolkit mutations only, with atcs_undo; ports are named by check key, never in targetPins.
+        w01["scope"]["commands"] = [c for c in w01["scope"]["commands"] if c in workspaces.MUTATE_COMMANDS]
+        w01["targetPins"] = [pin for pin in w01["targetPins"] if "/" in pin]
+        # w02 and w03 worked w01's hold endpoint at other corners, so their instance was shared:
+        # w01 takes their checks and they are parked in the exact parked shape.
+        for slot in ("w02", "w03"):
+            w01["targets"] += packages[slot]["targets"]
+        # The four uncovered blockers (the async_default hold group) become w04's cluster.
+        blockers = [key for key in _live02_blockers(self.workspace) if "@**async_default**" in key]
+        self.assertEqual(len(blockers), 4)
+        w04 = copy.deepcopy(example["w01"])
+        w04.update(taskId="w04", baseStateId=w01["baseStateId"], targets=blockers, targetPins=[],
+                   problem="the four required scenarios' worst hold check, in the async_default group",
+                   editDomain={"instances": ["swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_"], "nets": [], "regions": []},
+                   mayAffect=[])
+        parked = {slot: {"taskId": slot, "baseStateId": w01["baseStateId"], "parked": True,
+                         "problem": "no separate blocker cluster for this slot"} for slot in ("w02", "w03", "w05", "w06")}
+        plan["candidate"]["workPackages"] = {"w01": w01, "w02": parked["w02"], "w03": parked["w03"], "w04": w04,
+                                             "w05": parked["w05"], "w06": parked["w06"]}
+        self.assertEqual(self.read(plan), [])
+
+
+def _live02_blockers(workspace):
+    from atcs import composition
+    observation = json.loads((workspace / "state" / "observation.json").read_text())
+    return list(composition.worst_check_endpoints(observation))
 
 
 if __name__ == "__main__":

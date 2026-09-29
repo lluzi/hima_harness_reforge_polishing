@@ -749,6 +749,7 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
     found += _work_package_problems(candidate, base_state, site_capabilities, workspaces_mod, ("candidate", slot))
     if expected_task_id is not None:
         found += _prepared_package_problems(workspace, expected_task_id, candidate, core, workspaces_mod)
+    found += _no_safe_action_problems(envelope, candidate, workspaces_mod, slot)
     # T63 real-run failure: a bare LEAF instance name (no hierarchy) is not
     # resolvable against the actual post-route netlist, whose leaf cells live
     # inside deeply nested modules (the real `g96219` example). The expert
@@ -779,6 +780,25 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
                     "in the base netlist; required format: <full leaf-cell path>/<pin>, never a top-level port"
                 )
     return [_emit_count("tc_request_invalid_count", len(found))], found
+
+
+def _no_safe_action_problems(envelope, candidate, workspaces_mod, slot):
+    """#64 Track B (from #63 review 2, I2): an active slot whose research finds no safe move says so in
+    `noSafeAction` instead of inventing one; its Team then reviews no move (the Reviewer approves only
+    `atcs_undo`, the Operator reads, dumps and closes). Such a request has an empty `sessionPlan`, and a
+    parked slot has no `noSafeAction`. Absent, nothing is checked."""
+    if "noSafeAction" not in envelope:
+        return []
+    found = []
+    reason = envelope.get("noSafeAction")
+    if not isinstance(reason, str) or not reason.strip():
+        found.append(f"noSafeAction{slot}: must be a non-empty string naming the evidence that rules each move out, "
+                     f"got {reason!r}")
+    if envelope.get("sessionPlan") not in (None, []):
+        found.append(f"sessionPlan{slot}: must be empty when noSafeAction states there is no safe move")
+    if workspaces_mod.is_parked(candidate):
+        found.append(f"noSafeAction{slot}: is for an active slot; a parked slot's request carries only the parked candidate")
+    return found
 
 
 def _prepared_package_problems(workspace, slot, candidate, core, workspaces_mod):
