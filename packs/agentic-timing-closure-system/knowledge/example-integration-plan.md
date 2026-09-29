@@ -1,6 +1,6 @@
 # Example: integration plan
 
-The `integration-plan` Reader (`tools/read-atcs.py`) admits this exact document with zero problems and reads `tc_selected_contribution_count` 2. `facts` is `state/composition-facts.json` copied unchanged; `plan.baseStateId` is `facts.baseStateId`; every id in `select`, `deferred` and a resolution's `decision` is one of `facts.considered`; each resolution names one `facts.conflicts[].key` as `conflictKey` and decides `keep:<id>`, `drop:<id>` or `revise:<id>` (with `revisedContribution`) for a member of that conflict. Here w01 and w02 size the same instance to different masters, so keeping w01 excludes w02 from the batch.
+The `integration-plan` Reader (`tools/read-atcs.py`) admits this exact document with zero problems and reads `tc_selected_contribution_count` 2. `facts` is `state/composition-facts.json` copied unchanged; `plan.baseStateId` is `facts.baseStateId`; every id in `select`, `deferred` and a resolution's `decision` is one of `facts.considered`; each resolution names one `facts.conflicts[].key` as `conflictKey` and decides `keep:<id>`, `drop:<id>` or `revise:<id>` (with `revisedContribution`) for a member of that conflict. Here w01 and w02 size the same instance to different masters, so keeping w01 excludes w02 from the batch. A resolution exists only for a `facts.conflicts` key and has exactly `{conflictKey, decision}`: a no-fix Contribution is in no conflict, so it gets no resolution (leave it out of `select`, or list it in `deferred`), never `{"decision": "drop"}` or a `contributionId` entry.
 
 ```json
 {

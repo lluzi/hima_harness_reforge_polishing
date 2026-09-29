@@ -562,6 +562,39 @@ class IntegrationPlanExampleTest(_HierarchicalFixture):
                                   "tc_selected_contribution_count": len(example["plan"]["select"])})
         self.assertEqual(example["plan"]["resolutions"][0]["conflictKey"], facts["conflicts"][0]["key"])
 
+    def test_a_resolution_for_a_no_fix_contribution_is_counted(self):
+        """C05 (failure catalogue): PR03 lost a generation on a plan that wrote a resolution
+        for a no-fix Contribution, which is considered but in no conflict. A resolution exists
+        only for a facts.conflicts key and has exactly {conflictKey, decision}; the example
+        with the no-fix id added to `deferred` is admitted, and each live shape is counted."""
+        example = _load_example("example-integration-plan.md")
+        facts = copy.deepcopy(example["facts"])
+        no_fix = core.digest({"example-contribution": "w02-no-fix"})
+        body = {k: v for k, v in facts.items() if k not in ("schema", "id")}
+        body["considered"] = sorted(body["considered"] + [no_fix])
+        body["order"] = body["order"] + [no_fix]
+        facts = core.stamp("composition-facts", body)
+        admitted = copy.deepcopy(example)
+        admitted["facts"] = facts
+        admitted["plan"]["deferred"] = [no_fix]
+        self.assertEqual(self._read("integration-plan", "integration-plan.json", admitted)["tc_request_invalid_count"], 0)
+        for label, resolution in (
+            ("decision only", {"decision": "drop"}),
+            ("live PR03 shape", {"contributionId": no_fix, "decision": "drop", "reason": "no-fix", "taskId": "w02"}),
+            ("drop by id, no conflict", {"conflictKey": "no-fix", "decision": "drop:" + no_fix}),
+        ):
+            with self.subTest(label=label):
+                document = copy.deepcopy(admitted)
+                document["plan"]["resolutions"].append(resolution)
+                report = self.workspace / "research" / "requests" / "integration-plan.json"
+                _write(report, json.dumps(document))
+                found = read_atcs.problems("integration-plan", report, self.workspace)
+                values = self._read("integration-plan", "integration-plan.json", document)
+                self.assertEqual(values["tc_request_invalid_count"], len(found))
+                self.assertGreaterEqual(len(found), 1, found)
+                self.assertTrue(all(text.startswith("plan.") for text in found), found)
+                self.assertTrue(any(text.startswith("plan.resolutions") for text in found), found)
+
     def test_dropping_the_resolution_leaves_the_conflict_counted(self):
         example = _load_example("example-integration-plan.md")
         example["plan"]["select"] = list(example["facts"]["considered"])
