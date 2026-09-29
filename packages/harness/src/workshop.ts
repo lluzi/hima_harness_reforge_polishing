@@ -17,6 +17,7 @@
 // What is *not* here: anything about what gets written. The harness names no language, no wrapper, no
 // design and no route — every one of those words comes out of the pack's own declaration, and the
 // purpose the model is given is the pack author's sentence carried through verbatim.
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
@@ -416,6 +417,25 @@ export function workshopTools(scope: WorkshopScope): ToolDefinition[] {
  * line, exactly as a reader's script and a workspace's `workspace.json` do: the wire carries the
  * command, not its payload, so no content a model wrote is ever a word of a shell line.
  */
+/**
+ * Why a Python Workshop entry does not compile, or undefined when it does or cannot be checked
+ * (#C21). The model-authored bytes are compiled with the host's own python3 `compile(...)` — the
+ * syntax half of `py_compile` — over stdin, before anything is sent to a Site, so a SyntaxError is
+ * caught at write time rather than as a Job that launches, exits 1 and spends a Retry attempt. A
+ * missing python3, or a failure whose message is not a source syntax fault, is treated as "cannot
+ * check" and lets the write proceed, so an environment gap is never turned into a false refusal.
+ */
+function pythonSyntaxProblem(asked: string, source: Uint8Array): string | undefined {
+  const program = 'import sys\ncompile(sys.stdin.buffer.read().decode("utf-8", "replace"), sys.argv[1], "exec")\n';
+  const result = spawnSync('python3', ['-c', program, asked], { input: Buffer.from(source), encoding: 'utf8', timeout: 10_000 });
+  if (result.error !== undefined || result.signal !== null) return undefined; // No python3, or it did not finish.
+  if (result.status === 0) return undefined;
+  const stderr = (result.stderr ?? '').trim();
+  if (!/(SyntaxError|IndentationError|TabError)/.test(stderr)) return undefined; // Not a source syntax fault.
+  const line = stderr.split('\n').map((item) => item.trimEnd()).filter((item) => item !== '').at(-1) ?? stderr;
+  return `Python entry ${asked} does not compile and was not written; revise it and write again: ${line}`;
+}
+
 export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, content: string): Promise<WriteAnswer> {
   const channel = channelFor(scope.site);
   const p = pathsOf(scope.site);
@@ -447,6 +467,17 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
   if (!decided.ok) return refused(decided.reason);
   if (!within(decided.absPath, scope.workshopAbs, scope.site)) {
     return refused(`${decided.absPath} is outside the workshop directory ${scope.workshopAbs}: a path that resolves out of it is not a path this workshop may write, however it was spelled`);
+  }
+
+  // A Python entry that does not compile is refused at write time (#C21). A SyntaxError would
+  // otherwise only surface as a Job that launches, exits 1, and spends a Retry attempt; catching it
+  // here means the owner revises the code without a launch or an attempt. Only the declared entry is
+  // checked, and only when the Site has a python3 to check it with — a Site that cannot be asked, or
+  // a compile that fails for anything but the source itself, does not block the write (fail open),
+  // so this never turns an environment gap into a false refusal.
+  if (asked === scope.declaration.entry && /\.py$/.test(asked)) {
+    const problem = pythonSyntaxProblem(asked, bytes);
+    if (problem !== undefined) return refused(problem);
   }
 
   // The parent, where the model asked for a file inside a subdirectory of its own. Its own write

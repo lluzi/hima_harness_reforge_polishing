@@ -339,3 +339,44 @@ test('C33: a failed tool Job with retries left records its log tail on the retry
     assert.ok(record.logTail!.length <= 16 * 1024);
   } finally { await home.dispose(); }
 });
+
+test('C21: a Python Workshop entry that does not compile is refused at write time and spends no attempt', async () => {
+  const h = await createHimaHome();
+  const installed = await installPack(h);
+  // A Workshop whose declared entry is a Python file, so its write is syntax-checked before it lands.
+  const id = await installWorkshopPack(installed.packsDir, 'workshop-python', { entry: 'entry.py' });
+  const siteFiles = await writeLocalSite(h);
+  const host = await bootInProcess(h);
+  try {
+    const run = await host.ctx.hima.ledger.createRun({ campaignId: 'python-workshop', siteId: 'local', status: 'running', strategy: { periodNs: 2 } });
+    const ctx: Driving = {
+      deps: { ledger: host.ctx.hima.ledger, judge: host.ctx.hima.judge, sitesDir: siteFiles.sitesDir, packsDir: installed.packsDir },
+      runId: run.id, site: loadSite(siteFiles.sitesDir, 'local'), pack: loadPack(installed.packsDir, id),
+      bindings: { flowRoot: h.workspace, design: 'test', MINED_ROUTE: 'one' }, workspace: h.workspace,
+      campaignId: run.campaignId, waitedMs: 0, nonblocking: true,
+    };
+    const node = ctx.pack.graph.nodes.find((n) => n.id === 'mine');
+    assert.ok(node?.kind === 'act');
+    const scope = await buildWorkshopScope({ ...ctx, executionId: 'execution-py' }, node, 1, 'conversation-owner');
+    assert.equal(scope.ok, true); if (!scope.ok) return;
+
+    const attemptsBefore = host.ctx.hima.ledger.run(run.id)?.meters?.attempts ?? 0;
+    const wrote = await writeIntoWorkshop(scope.scope, 'entry.py', 'def f(:\n');
+    assert.equal(wrote.wrote, false, 'a non-compiling Python entry is not written');
+    assert.match(wrote.reason ?? '', /SyntaxError/, `the refusal carries the compile error: ${wrote.reason}`);
+    assert.match(wrote.reason ?? '', /entry\.py/);
+    assert.equal(host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).length, 0, 'no Job was launched for the bad entry');
+    assert.equal(host.ctx.hima.ledger.records({ runId: run.id, type: 'code' })
+      .some((r) => r.type === 'code' && r.path === 'entry.py'), false, 'no code record stands for the rejected entry');
+    assert.equal(host.ctx.hima.ledger.run(run.id)?.meters?.attempts ?? 0, attemptsBefore, 'the rejected write spends no attempt');
+
+    // A subsequent compiling entry is accepted, so the check refuses only what does not compile.
+    const good = await writeIntoWorkshop(scope.scope, 'entry.py', 'import sys\nprint("ok")\n');
+    assert.equal(good.wrote, true, `a compiling Python entry is written: ${good.reason ?? ''}`);
+  } finally {
+    for (const r of host.ctx.hima.ledger.runs().flatMap((r) => host.ctx.hima.ledger.records({ runId: r.id, type: 'job' }))) {
+      if (r.type === 'job' && r.event === 'launched') spawnSync('tmux', ['kill-session', '-t', `=${r.job.session}`]);
+    }
+    await host.dispose(); await h.dispose();
+  }
+});
