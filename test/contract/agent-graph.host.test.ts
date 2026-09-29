@@ -474,6 +474,13 @@ test('the owner reads the exact evidence ids an Explore must cite, and a wrong c
     const wrong = await execute('cite-wrong', { cites: [...expected.slice(1), `${runId}#999999`] });
     assert.equal(wrong.kind, 'refused');
     for (const id of expected) assert.ok(wrong.reason?.includes(id), `the refusal names expected id ${id}: ${wrong.reason}`);
+    // Gap 8: the refusal itemises the required ids that are missing and the cited ids that are not
+    // current evidence, so the owner sees exactly what to add and what to drop, not just "stale or
+    // invented evidence is refused". Here one required observation was dropped and one invented id cited.
+    assert.ok(wrong.reason?.includes('missing:') && wrong.reason.slice(wrong.reason.indexOf('missing:')).includes(expected[0]!),
+      `the refusal lists the dropped required id under "missing:": ${wrong.reason}`);
+    assert.ok(wrong.reason?.includes('not current evidence:') && wrong.reason.slice(wrong.reason.indexOf('not current evidence:')).includes(`${runId}#999999`),
+      `the refusal lists the invented/stale cited id under "not current evidence:": ${wrong.reason}`);
     assert.deepEqual([...wrong.context.cite!.find((item) => item.nodeId === 'next-period')!.cites!].sort(), expected,
       'hima_execute context repeats the same citable ids');
     assert.equal(owner.execution(explore).phase, 'ready');
