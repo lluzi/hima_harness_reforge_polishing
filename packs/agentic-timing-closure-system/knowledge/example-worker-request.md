@@ -15,7 +15,8 @@ object's cell function, the name up to the drive digits of `ecoParameters.cellNo
 `state/xtop-context.json` (`BUFFD2BWP35P140` is function `BUFFD`, drive 2, so `BUFFD4BWP35P140` sizes it
 up); the drive or the VT may change, the function may not. The cells are the `cell (NAME)` groups of the
 Liberty files that file lists in `libraryFiles` (it holds no cell table itself);
-`hima-readers/atcs-readiness/read-atcs.py masters` lists the ones the Reader admits for each instance.
+`hima-readers/atcs-readiness/read-atcs.py masters` lists them for each instance; the Reader writes any other
+`toMaster` as advice, never as a refusal.
 
 ```json
 {

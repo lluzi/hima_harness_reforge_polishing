@@ -239,19 +239,20 @@ Schema limits and how the graph expresses them:
   `SDGCNQOPTMC D12BWP30P140` (two `atcs_candidates` columns joined) and XTop refused it twice as an
   invalid library cell, two approved mutations spent; w03 sized `SDFCNQARD1BWP35P140` to
   `SDFCNQD2BWP35P140`, a flop without the asynchronous reset, and undid it. Both requests' size entries
-  named no master and read 0 (Ledger #144, #254). The worker-request Reader now counts, for each
-  `atcs_size_cell` entry of an active slot's `sessionPlan`: an object outside `editDomain.instances`;
-  a missing `toMaster`; a name that is not one plain token; the current master; a name that is no
+  named no master and read 0 (Ledger #144, #254). For each `atcs_size_cell` entry of an active slot's
+  `sessionPlan` the worker-request Reader counts an object outside `editDomain.instances` (merge
+  integrity) and, since the worker/aggregation principle (G45; first committed as counts in 3b851486,
+  turned to advice in the next commit), writes as `Advice`, never counted: a missing `toMaster`; a name that is not one plain token; the current master; a name that is no
   `cell (NAME)` of the Liberty files the sealed `state/xtop-context.json` lists (re-hashed as read;
   the first scenario's); a function change under the Site's `cellNominalSizingPattern` (the name up
   to the drive digits); and an unreadable or other-state context. The drive and the VT may change
   (both ladders size or VT-swap with `atcs_size_cell`), which is wider than #63's same-VT rule.
-  `read-atcs.py masters WORKSPACE INSTANCES OUT` lists each leaf cell's master and admitted
-  `toMaster`s; the six research purposes, the worker-request example and the expert knowledge say
+  `read-atcs.py masters WORKSPACE INSTANCES OUT` lists each leaf cell's master and its function's
+  library cells; the six research purposes, the worker-request example and the expert knowledge say
   the cells are the Liberty files' `cell (NAME)` groups, not a table in `xtop-context.json`, and the
   six Operator templates say a master is one token and "invalid library cell" means read
   `atcs_candidates` again. Proving tests: `flow/tests/test_t01_regressions.py` `SizeMoveMasterTest`
-  on the retained w01 and w03 requests (RED on 12950dac: 9 of 10 read 0 or had no command) and
+  on the retained w01 and w03 requests (RED on 12950dac: no advice, no command) and
   `SizeMoveGuidanceTest`; the dry path sizes to a named master.
 - G44 (Issue #64, #63 C23 45257f24/5e95d542 and C22 e00d06cb ported, as advice) Leaf-cell edit
   domains and the Pack's endpoint resolver. The six-slot plan Reader never read the netlist, so a plan

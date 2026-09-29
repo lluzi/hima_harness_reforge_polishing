@@ -1058,8 +1058,8 @@ def _edit_domain_problems(package, base_state, workspace, where):
     return found
 
 
-# C13 (Issue #63 failure catalogue, ported to the six-slot 0.2.0 request; #64 treatment attempt 1):
-# a size move names a master of this design's libraries with the cell's own function. Attempt 1's
+# C13 (Issue #63 failure catalogue, ported to the six-slot 0.2.0 request as advice; #64 treatment
+# attempt 1): a size move should name a master of this design's libraries with the cell's own function. Attempt 1's
 # w01 Operator sized to 'SDGCNQOPTMC D12BWP30P140' (two columns of atcs_candidates joined), which
 # XTop refused twice as an invalid library cell; w03 sized SDFCNQARD1BWP35P140 to SDFCNQD2BWP35P140,
 # a flop without the asynchronous reset, and undid it. The library is the Pack-sealed
@@ -1160,15 +1160,16 @@ def _plain_master(master, core):
 
 
 def _session_plan_master_problems(envelope, candidate, base_state, workspace, core, slot):
-    """C13 for an active slot's `sessionPlan`: each `atcs_size_cell` entry names its `toMaster`.
+    """C13 for an active slot's `sessionPlan`, as advice: each `atcs_size_cell` entry's `toMaster`.
 
     The Operator's `atcs_size_cell` takes the master to size to, and a toolkit refusal of an
-    admitted mutation spends one approved mutation. So each size entry carries `toMaster`: one
+    admitted mutation spends one approved mutation. So a size entry should carry `toMaster`: one
     plain cell name of this design's libraries (`_library_context`), not the object's current
-    master, with the object's cell function under the Site's sizing rule. The drive and the VT may
-    change (the hold ladder's size-down or VT swap, the setup ladder's size-up or VT swap); the
-    function may not. The object is a leaf cell of `candidate.editDomain.instances`, since the
-    toolkit sizes only a domain instance. Other entries are not read here.
+    master, with the object's cell function under the Site's sizing rule (drive and VT may change).
+    Under the #64 worker/aggregation principle (FABRIC.md) every master finding is `Advice`: the
+    Operator and XTop find a wrong master out, and the aggregation and refreshed PrimeTime judge
+    the result. Only an object outside `candidate.editDomain.instances` is counted: an action
+    outside the slot's edit domain breaks merge integrity. Other entries are not read here.
     """
     plan = envelope.get("sessionPlan")
     if not isinstance(plan, list):
@@ -1197,34 +1198,34 @@ def _session_plan_master_problems(envelope, candidate, base_state, workspace, co
         if current is None or current in hierarchy:
             continue  # the edit-domain check above already names this instance
         if "toMaster" not in entry:
-            found.append(f"{where}.toMaster{slot}: missing; an atcs_size_cell entry names the master it sizes "
-                         f"{target!r} ({current}) to; {source}")
+            found.append(Advice(f"{where}.toMaster{slot}: missing; an atcs_size_cell entry names the master it sizes "
+                         f"{target!r} ({current}) to; {source}"))
         elif not _plain_master(master, core):
-            found.append(f"{where}.toMaster{slot}: {master!r} is not one plain cell name (no space, Tcl "
-                         f"metacharacter, * or ?); {source}")
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} is not one plain cell name (no space, Tcl "
+                                f"metacharacter, * or ?); {source}"))
         elif master == current:
-            found.append(f"{where}.toMaster{slot}: {master!r} is already the master of {target!r}; a size move "
-                         "changes the drive strength or the VT")
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} is already the master of {target!r}; a size "
+                                "move changes the drive strength or the VT"))
         else:
             checkable.append((where, target, current, master))
     if not checkable:
         return found
     cells, eco, why = _library_context(workspace, base_state, core)
     if why is not None:
-        return found + [f"sessionPlan{slot}: no toMaster can be checked against this design's libraries: {why}"]
+        return found + [Advice(f"sessionPlan{slot}: no toMaster can be checked against this design's libraries: {why}")]
     for where, target, current, master in checkable:
         if master not in cells:
-            found.append(f"{where}.toMaster{slot}: {master!r} is not a cell of this design's libraries; {source}")
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} is not a cell of this design's libraries; {source}"))
             continue
         want, got = _sizing_family(current, eco), _sizing_family(master, eco)
         if want is None or got is None:
-            found.append(f"{where}.toMaster{slot}: {master!r} or the current master {current!r} of {target!r} does "
-                         f"not follow the Site's sizing pattern {eco.get('cellNominalSizingPattern')!r}, so the move "
-                         "cannot be shown to keep the cell function; size another cell of the path")
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} or the current master {current!r} of {target!r} "
+                                f"does not follow the Site's sizing pattern {eco.get('cellNominalSizingPattern')!r}, so "
+                                "the move cannot be shown to keep the cell function"))
         elif got[0] != want[0]:
-            found.append(f"{where}.toMaster{slot}: {master!r} changes the cell function {want[0]!r} of {target!r} "
-                         f"({current}) to {got[0]!r}; a size move keeps the function and changes only the drive "
-                         "strength or the VT")
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} changes the cell function {want[0]!r} of "
+                                f"{target!r} ({current}) to {got[0]!r}; a size move keeps the function and changes "
+                                "only the drive strength or the VT"))
     return found
 
 
@@ -1232,7 +1233,7 @@ def library_masters(workspace, instances):
     """For each leaf-cell path, its current master and the library cells of the same function.
 
     `read-atcs.py masters WORKSPACE INSTANCES_JSON OUT`: the source a research Workshop picks a
-    size move's `toMaster` from, the same cells and rule `_session_plan_master_problems` admits.
+    size move's `toMaster` from, the same cells and rule `_session_plan_master_problems` advises by.
     Read against the working state's sha-verified netlist and the sealed XTop context; writes
     nothing but OUT.
     """

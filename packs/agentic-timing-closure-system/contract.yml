@@ -1358,8 +1358,8 @@ workshops:
           cells are the cell (NAME) groups of the Liberty files state/xtop-context.json lists in
           libraryFiles; that file holds no cell table itself. python3
           <workspace>/hima-readers/atcs-readiness/read-atcs.py masters <workspace> <instances.json>
-          <out.json> writes, for each leaf-cell path, its current master and every toMaster the Reader
-          admits for it. Any other instance or pin you name comes from the Pack's endpoint resolver
+          <out.json> writes, for each leaf-cell path, its current master and every library cell of its
+          function; the Reader writes any other toMaster as advice, never as a refusal. Any other instance or pin you name comes from the Pack's endpoint resolver
           (knowledge endpoint-resolution.md), never from your own netlist parsing.
 
       Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
@@ -1433,8 +1433,8 @@ workshops:
           cells are the cell (NAME) groups of the Liberty files state/xtop-context.json lists in
           libraryFiles; that file holds no cell table itself. python3
           <workspace>/hima-readers/atcs-readiness/read-atcs.py masters <workspace> <instances.json>
-          <out.json> writes, for each leaf-cell path, its current master and every toMaster the Reader
-          admits for it. Any other instance or pin you name comes from the Pack's endpoint resolver
+          <out.json> writes, for each leaf-cell path, its current master and every library cell of its
+          function; the Reader writes any other toMaster as advice, never as a refusal. Any other instance or pin you name comes from the Pack's endpoint resolver
           (knowledge endpoint-resolution.md), never from your own netlist parsing.
 
       Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
@@ -1508,8 +1508,8 @@ workshops:
           cells are the cell (NAME) groups of the Liberty files state/xtop-context.json lists in
           libraryFiles; that file holds no cell table itself. python3
           <workspace>/hima-readers/atcs-readiness/read-atcs.py masters <workspace> <instances.json>
-          <out.json> writes, for each leaf-cell path, its current master and every toMaster the Reader
-          admits for it. Any other instance or pin you name comes from the Pack's endpoint resolver
+          <out.json> writes, for each leaf-cell path, its current master and every library cell of its
+          function; the Reader writes any other toMaster as advice, never as a refusal. Any other instance or pin you name comes from the Pack's endpoint resolver
           (knowledge endpoint-resolution.md), never from your own netlist parsing.
 
       Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
@@ -1583,8 +1583,8 @@ workshops:
           cells are the cell (NAME) groups of the Liberty files state/xtop-context.json lists in
           libraryFiles; that file holds no cell table itself. python3
           <workspace>/hima-readers/atcs-readiness/read-atcs.py masters <workspace> <instances.json>
-          <out.json> writes, for each leaf-cell path, its current master and every toMaster the Reader
-          admits for it. Any other instance or pin you name comes from the Pack's endpoint resolver
+          <out.json> writes, for each leaf-cell path, its current master and every library cell of its
+          function; the Reader writes any other toMaster as advice, never as a refusal. Any other instance or pin you name comes from the Pack's endpoint resolver
           (knowledge endpoint-resolution.md), never from your own netlist parsing.
 
       Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
@@ -1658,8 +1658,8 @@ workshops:
           cells are the cell (NAME) groups of the Liberty files state/xtop-context.json lists in
           libraryFiles; that file holds no cell table itself. python3
           <workspace>/hima-readers/atcs-readiness/read-atcs.py masters <workspace> <instances.json>
-          <out.json> writes, for each leaf-cell path, its current master and every toMaster the Reader
-          admits for it. Any other instance or pin you name comes from the Pack's endpoint resolver
+          <out.json> writes, for each leaf-cell path, its current master and every library cell of its
+          function; the Reader writes any other toMaster as advice, never as a refusal. Any other instance or pin you name comes from the Pack's endpoint resolver
           (knowledge endpoint-resolution.md), never from your own netlist parsing.
 
       Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
@@ -1733,8 +1733,8 @@ workshops:
           cells are the cell (NAME) groups of the Liberty files state/xtop-context.json lists in
           libraryFiles; that file holds no cell table itself. python3
           <workspace>/hima-readers/atcs-readiness/read-atcs.py masters <workspace> <instances.json>
-          <out.json> writes, for each leaf-cell path, its current master and every toMaster the Reader
-          admits for it. Any other instance or pin you name comes from the Pack's endpoint resolver
+          <out.json> writes, for each leaf-cell path, its current master and every library cell of its
+          function; the Reader writes any other toMaster as advice, never as a refusal. Any other instance or pin you name comes from the Pack's endpoint resolver
           (knowledge endpoint-resolution.md), never from your own netlist parsing.
 
       Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before

@@ -119,6 +119,12 @@ class T01Workspace(unittest.TestCase):
         self.assertEqual(value["value"], len(found), found)
         return found
 
+    def advised(self, slot, document):
+        """The #64 worker/aggregation principle: the request is admitted; the findings are advice."""
+        self.assertEqual(self.problems(slot, document), [])
+        report = self.workspace / "research" / "requests" / f"worker-request-w{slot}.json"
+        return read_atcs.advice("worker-request", report, self.workspace, f"w{slot}")
+
 
 def size_entry(document):
     (index,) = [i for i, entry in enumerate(document["sessionPlan"]) if entry["command"] == "atcs_size_cell"]
@@ -131,37 +137,39 @@ class SizeMoveMasterTest(T01Workspace):
     w01's Operator sized its register to 'SDGCNQOPTMC D12BWP30P140', two columns of atcs_candidates
     joined, and XTop refused it twice as an invalid library cell (two approved mutations spent). w03
     sized SDFCNQARD1BWP35P140 to SDFCNQD2BWP35P140, which drops the asynchronous reset, and undid it.
-    Both requests' size entries named no master: the Reader admitted them at 0 (Ledger #144, #254).
-    RED on 12950dac: every counted case below read 0.
+    Both requests' size entries named no master: the Reader admitted them at 0 (Ledger #144, #254) and
+    said nothing. Under the #64 worker/aggregation principle (FABRIC.md, 2026-09-29) each master finding
+    is advice in the sidecar, never a refusal; only a size move outside the slot's edit domain is counted
+    (merge integrity). RED on 12950dac: no advice existed; the out-of-domain object read 0.
     """
 
     def test_the_fixtures_are_the_retained_requests(self):
         for slot, digest in (("01", T01_W01_SHA256), ("03", T01_W03_SHA256)):
             self.assertEqual(hashlib.sha256((LIVE / f"t01-worker-request-w{slot}.json").read_bytes()).hexdigest(), digest)
 
-    def test_a_size_entry_without_its_master_is_counted_and_told_where_masters_come_from(self):
+    def test_a_size_entry_without_its_master_is_advised_where_masters_come_from(self):
         for slot, reg in (("01", W01_REG), ("03", W03_REG)):
             with self.subTest(slot=slot):
                 index, _entry = size_entry(self.request(slot))
-                (line,) = self.problems(slot, self.request(slot))
+                (line,) = self.advised(slot, self.request(slot))
                 self.assertTrue(line.startswith(f"sessionPlan[{index}].toMaster (slot w{slot}): missing"), line)
                 self.assertIn(reg, line)
                 for source in ("libraryFiles", "cellNominalSizingPattern", "no cell table", "read-atcs.py masters"):
                     self.assertIn(source, line)
 
-    def test_the_joined_columns_w01_sent_are_counted(self):
+    def test_the_joined_columns_w01_sent_are_advised(self):
         document = self.request("01")
         index, entry = size_entry(document)
         entry["toMaster"] = "SDGCNQOPTMC D12BWP30P140"
-        (line,) = self.problems("01", document)
+        (line,) = self.advised("01", document)
         self.assertRegex(line, rf"^sessionPlan\[{index}\]\.toMaster \(slot w01\): 'SDGCNQOPTMC D12BWP30P140' is not one "
                                "plain cell name")
 
-    def test_a_master_outside_the_libraries_is_counted(self):
+    def test_a_master_outside_the_libraries_is_advised(self):
         document = self.request("01")
         index, entry = size_entry(document)
         entry["toMaster"] = "SDGCNQOPTMCD12BWP30P140"
-        (line,) = self.problems("01", document)
+        (line,) = self.advised("01", document)
         self.assertIn(f"sessionPlan[{index}].toMaster (slot w01): 'SDGCNQOPTMCD12BWP30P140' is not a cell of this "
                       "design's libraries", line)
 
@@ -169,7 +177,7 @@ class SizeMoveMasterTest(T01Workspace):
         document = self.request("03")
         index, entry = size_entry(document)
         entry["toMaster"] = "SDFCNQD2BWP35P140"
-        (line,) = self.problems("03", document)
+        (line,) = self.advised("03", document)
         self.assertIn(f"sessionPlan[{index}].toMaster (slot w03): 'SDFCNQD2BWP35P140' changes the cell function "
                       "'SDFCNQARD'", line)
 
@@ -178,13 +186,13 @@ class SizeMoveMasterTest(T01Workspace):
             with self.subTest(master=master):
                 document = self.request("03")
                 size_entry(document)[1]["toMaster"] = master
-                self.assertEqual(self.problems("03", document), [])
+                self.assertEqual(self.advised("03", document), [])
 
-    def test_the_current_master_is_counted(self):
+    def test_the_current_master_is_advised(self):
         document = self.request("03")
         index, entry = size_entry(document)
         entry["toMaster"] = "SDFCNQARD1BWP35P140"
-        (line,) = self.problems("03", document)
+        (line,) = self.advised("03", document)
         self.assertIn("is already the master of", line)
 
     def test_a_size_entry_outside_the_edit_domain_is_counted(self):
@@ -194,14 +202,14 @@ class SizeMoveMasterTest(T01Workspace):
         (line,) = self.problems("03", document)
         self.assertTrue(line.startswith(f"sessionPlan[{index}].object (slot w03): "), line)
 
-    def test_a_context_for_another_state_is_one_problem(self):
+    def test_a_context_for_another_state_is_one_advice(self):
         path = self.workspace / "state" / "xtop-context.json"
         body = {k: v for k, v in json.loads(path.read_text()).items() if k not in ("schema", "id")}
         body["designStateId"] = "0" * 20
         core.write_artifact(path, core.stamp("xtop-context", body))
         document = self.request("03")
         size_entry(document)[1]["toMaster"] = "SDFCNQARD2BWP35P140"
-        (line,) = self.problems("03", document)
+        (line,) = self.advised("03", document)
         self.assertIn("no toMaster can be checked", line)
         self.assertIn("observe first", line)
 
