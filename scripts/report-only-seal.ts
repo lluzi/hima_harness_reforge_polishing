@@ -3,11 +3,13 @@
 // Report-only native TEST/seal of an already ended Pack test Run (Issue #63), for any Pack. It never
 // resumes, executes or creates a Run, Job, child or interactive operation: the Run's own owner is
 // resumed and writes TEST.md through /hima-test and seals through /hima-release, and the Run and its
-// records are asserted byte-unchanged. The CLI twins (finalize-atcs-native-test.ts) add the live
+// records are asserted byte-unchanged. The three facts the harness holds TEST.md against (the ending,
+// every code sha256, every refusal id) are read from the Ledger into a line-based file in the owner's
+// workspace, because a large Run's hima_status answer is one line longer than any `read` shows. The CLI twins (finalize-atcs-native-test.ts) add the live
 // check's bounds around this; the L2 Host test drives it on the replay stand-in.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { copyFileSync, readFileSync, realpathSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { checkTestRecord, loadPack, packDigestExcludes, packStage, type RunRecord } from '@hima/harness';
@@ -29,6 +31,8 @@ export interface ReportOnlySeal {
   readonly workspace?: string;
   /** Say one person's message to the resumed owner and wait for the turn. */
   readonly say: (agent: Agent, text: string) => Promise<void>;
+  /** Called with the facts file once it is written, before any turn is said. */
+  readonly factsWritten?: (at: string, facts: TestRecordFacts) => void;
   /** Called once with the resumed owner and its workspace before any turn is said. */
   readonly ready?: (owner: Agent, workspace: string) => void;
 }
@@ -40,6 +44,7 @@ export interface ReportOnlySealed {
   readonly recordCount: number;
   readonly workspace: string;
   readonly owner: Agent;
+  readonly facts: { path: string; lines: number; code: number; refusals: number };
   readonly test: { path: string; sha256: string };
   readonly version: { path: string; sha256: string };
 }
@@ -57,6 +62,59 @@ const GRANT_SAID = (folder: string): string =>
 
 /** Tools a report-only seal may never reach: nothing that executes, resumes or creates work. */
 export const REPORT_ONLY_REFUSED = ['hima_execute', 'hima_interactive', 'hima_delegate', 'hima_run', 'hima_prepare'];
+
+/** What checkTestRecord holds a test record's three bound sections against, read from the Run's records. */
+export interface TestRecordFacts {
+  readonly status: string;
+  readonly code: readonly { id: string; needle: string; path?: string; nodeId?: string; attempt?: number }[];
+  readonly refusals: readonly { id: string; reason: string }[];
+  /** The facts file's text: line-based, one id per line, so the owner's `read` reads all of it. */
+  readonly text: string;
+}
+
+/** One line of a reason, bounded well under `read`'s line cap. */
+const oneLine = (text: string, max = 400): string => {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+};
+
+/**
+ * The facts `checkTestRecord` will demand of this Run's TEST.md, taken from the Ledger exactly as it
+ * takes them: the `status:` line, every `code` record's sha256 (its id when it has none), and every
+ * `refusal` record's id. A Run of hundreds of records answers `hima_status` in one line longer than
+ * any `read` shows, so these are handed to the owner as a file it can read, never written for it.
+ */
+export function testRecordFacts(ledger: InProcessHost['ctx']['hima']['ledger'], runId: string): TestRecordFacts {
+  const run = ledger.run(runId);
+  assert.ok(run?.status, `unknown Run ${runId}`);
+  const records = ledger.records({ runId });
+  const code = records.filter((r) => r.type === 'code').map((r) => {
+    const c = r as { id: string; sha256?: string; path?: string; nodeId?: string; attempt?: number };
+    return { id: c.id, needle: c.sha256 ?? c.id, path: c.path, nodeId: c.nodeId, attempt: c.attempt };
+  });
+  const refusals = records.filter((r) => r.type === 'refusal').map((r) => ({ id: r.id, reason: String((r as { reason?: unknown }).reason ?? '') }));
+  const text = [
+    `# Test record facts for run ${runId}`,
+    '',
+    'These facts come from this Run\'s own HimaLedger records, read by the report-only seal. They are the',
+    'three things the harness holds TEST.md against. Copy each line below verbatim into its section of',
+    'TEST.md; never invent, drop or reword an id, a hash or the status line.',
+    '',
+    '## Ending',
+    '',
+    `status: ${run.status}`,
+    '',
+    `## Code (${code.length} records)`,
+    '',
+    ...(code.length ? code.map((c) => `- ${c.needle} ${c.path ?? ''} (record ${c.id}${c.nodeId ? `, node ${c.nodeId}` : ''}${c.attempt ? `, attempt ${c.attempt}` : ''})`) : ['none']),
+    '',
+    `## Refusals (${refusals.length} records)`,
+    '',
+    ...(refusals.length ? refusals.map((r) => `- ${r.id}: ${oneLine(r.reason)}`) : ['none']),
+    '',
+  ].join('\n');
+  return { status: run.status, code, refusals, text };
+}
 
 /** The owner's workspace, resolved: given, else its session's own, else `<home>/workspace`. */
 function workspaceOf(o: ReportOnlySeal, owner: Agent): string {
@@ -94,20 +152,30 @@ export async function sealEndedTestRun(host: InProcessHost, o: ReportOnlySeal): 
   const workspace = workspaceOf(o, owner);
   o.ready?.(owner, workspace);
   const beforeRun = JSON.stringify(initial);
+  const beforeRecords = JSON.stringify(host.ctx.hima.ledger.records({ runId: o.runId }));
   const before = host.ctx.hima.ledger.records({ runId: o.runId }).map((record) => record.id);
+  // The facts the record is held against, as a line-based file in the owner's own workspace.
+  const facts = testRecordFacts(host.ctx.hima.ledger, o.runId);
+  const factsPath = path.join(workspace, 'seal', 'test-record-facts.md');
+  mkdirSync(path.dirname(factsPath), { recursive: true });
+  writeFileSync(factsPath, facts.text);
+  o.factsWritten?.(factsPath, facts);
   for (const stage of ['tested', 'released'] as const) {
     const reached = () => {
       const checked = checkTestRecord(loadPack(path.join(o.homeRoot, 'hima/packs'), o.packId), host.ctx.hima.ledger);
       return packStage(installedPackDirectory).stage === stage && checked?.run === o.runId && checked.error === undefined;
     };
     const instruction = stage === 'tested'
-      ? `/hima-test Reporting only for the already ended native test Run ${o.runId}. Do not resume the Run or create anything. Read its retained records through hima_status ${o.runId} — every fact about the Run, including each refusal record's id and reason and each code record's sha256, comes from that answer, even when it is long — and write TEST.md through the native test path. Preserve method bytes and report the exact ${initial.status} ending. ${GRANT_SAID(installedPackDirectory)}`
+      ? `/hima-test Reporting only for the already ended native test Run ${o.runId}. Do not resume the Run or create anything. Read the file ${factsPath} with read (it is line-based): it lists, from this Run's own Ledger records, the exact status line, every code record's sha256 and every refusal record's id with its reason (${facts.code.length} code, ${facts.refusals.length} refusals). Copy those lines verbatim into the Ending, Code and Refusals sections; take the other sections from hima_status ${o.runId} and the Pack's INTENT.md and SPEC.md as /hima-test says, and never invent an id. Write TEST.md through the native test path, replacing any TEST.md already in the installed Pack folder entirely (read that TEST.md first: a file is overwritten only after it has been read). Preserve method bytes and report the exact ${initial.status} ending. ${GRANT_SAID(installedPackDirectory)}`
       : `/hima-release ${o.packId}. Seal only the tested method using hima_pack_release; never handwrite VERSION.yml.`;
     for (let attempt = 0; attempt < 3 && !reached(); attempt++) await o.say(owner, instruction);
     if (!reached()) throw new Error(`report-only native pipeline did not reach ${stage} for this exact Run: ${JSON.stringify(packStage(installedPackDirectory))}`);
   }
   assert.equal(JSON.stringify(host.ctx.hima.ledger.run(o.runId)), beforeRun, 'report-only changed the ended Run');
   assert.deepEqual(host.ctx.hima.ledger.records({ runId: o.runId }).map((record) => record.id), before, 'report-only changed Run evidence');
+  assert.equal(JSON.stringify(host.ctx.hima.ledger.records({ runId: o.runId })), beforeRecords, 'report-only changed a Run record');
+  const finalCheck = checkTestRecord(loadPack(path.join(o.homeRoot, 'hima/packs'), o.packId), host.ctx.hima.ledger);
+  assert.ok(finalCheck?.run === o.runId && finalCheck.error === undefined, `the sealed test record does not hold: ${finalCheck?.error}`);
   copyFileSync(path.join(installedPackDirectory, 'TEST.md'), path.join(sourcePackDirectory, 'TEST.md'));
   copyFileSync(path.join(installedPackDirectory, 'VERSION.yml'), path.join(sourcePackDirectory, 'VERSION.yml'));
   const landed = (file: string) => {
@@ -115,5 +183,6 @@ export async function sealEndedTestRun(host: InProcessHost, o: ReportOnlySeal): 
     return { path: at, sha256: sha256(readFileSync(at)) };
   };
   return { runId: o.runId, status: String(initial.status), packDigest: String(initial.packDigest), recordCount: before.length,
-    workspace, owner, test: landed('TEST.md'), version: landed('VERSION.yml') };
+    workspace, owner, facts: { path: factsPath, lines: facts.text.split('\n').length - 1, code: facts.code.length, refusals: facts.refusals.length },
+    test: landed('TEST.md'), version: landed('VERSION.yml') };
 }
