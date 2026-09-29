@@ -532,3 +532,59 @@ test('two parallel Teams whose shares together exceed the time box are admitted 
     assert.match(tooLong.reason, /Child shares exceed/);
   }, shares);
 });
+
+test('the owner advancing one branch leaves the other branch\'s Operator session authority valid (#64 D-T01-2)', async (t) => {
+  // Live Record #243: while the owner advanced other branches, worker 02's Operator input was
+  // refused before dispatch with "owner, delegated authority, epoch or control revision is stale".
+  // An Operator's authority belongs to its own execution; progress in another branch bumps only the
+  // Run-wide control revision and must not revoke it.
+  await forkedCampaign(t, 2, async (driven) => {
+    const owner = ownerCalls(driven);
+    const { control, records, act, phase } = owner;
+    const { operate, operatorOf, send, operateOnce, planHashOf, interactive } = await teamsReady(driven, owner);
+    const [a, b] = branches;
+    const opened = await Promise.all(branches.map((branch) => interactive(branch, { action: 'open', requestId: `open-${branch.id}` })));
+    for (const [index, result] of opened.entries()) assert.equal(result.status, 'opened', `branch ${branches[index]!.id}: ${JSON.stringify(result)}`);
+    const sessionOf = new Map(branches.map((branch, index) => [branch.id, opened[index]!.session.toolSessionId as string]));
+
+    // Branch a runs its whole reviewed session and its Operator result is adopted; branch b's session stays open.
+    await operateOnce(a, sessionOf.get(a.id)!);
+    await waitUntil('branch a interactive execution is ready', () => phase(operate.get(a.id)!) === 'ready', 10_000, 25);
+    const row = runDelegations((driven.host.ctx.hima as any).deps(), driven.runId).find((item) => item.childSessionId === operatorOf.get(a.id))!;
+    await owner.resultAndAdopt(row.delegationId, { schema: 'fixture-operator/1', planSha256: planHashOf.get(a.id), mutationReceipt: `step-1-${a.id}` });
+
+    // The owner completes branch a exactly between branch b's admitted input intent and its dispatch.
+    const ledger = driven.host.ctx.hima.ledger;
+    const original = ledger.appendInteractive.bind(ledger);
+    let advance: Promise<ExecutionActionResult> | undefined;
+    let revisionAtIntent: number | undefined;
+    ledger.appendInteractive = (async (runId: string, data: Parameters<typeof original>[1]) => {
+      const appended = await original(runId, data);
+      if (advance === undefined && data.event === 'input-intent' && data.executionId === operate.get(b.id)) {
+        revisionAtIntent = control().revision;
+        advance = act('complete', { executionId: operate.get(a.id)! });
+      }
+      return appended;
+    }) as typeof ledger.appendInteractive;
+    t.after(() => { ledger.appendInteractive = original; });
+
+    const first = await send(b, sessionOf.get(b.id)!, 'atcs_dump_cells', { path: path.join(owner.slot(b), 'before.dump') }, 'race');
+    ledger.appendInteractive = original;
+    assert.ok(advance, 'branch b admitted an input intent while the owner advanced branch a');
+    const advanced = await advance;
+    assert.equal(advanced.kind, 'accepted', `the owner completes branch a: ${JSON.stringify(advanced.reason ?? advanced)}`);
+    assert.ok(control().revision > revisionAtIntent!, 'branch a\'s completion moved the Run-wide control revision');
+    assert.equal(phase(operate.get(a.id)!), 'completed');
+    assert.equal(first.status, 'completed', `branch b's in-flight input keeps its own execution's authority: ${JSON.stringify(first)}`);
+    const lost = records().filter((record) => record.type === 'interactive' && /lost authority|control revision is stale/.test(JSON.stringify(record.payload)));
+    assert.deepEqual(lost, [], 'no interactive record carries the stale-authority rejection');
+
+    // Branch b goes on with its reviewed session under the later revision and ends normally.
+    for (const [step, [name, args]] of reviewedSteps(owner, planHashOf).entries()) {
+      if (step === 0) continue;
+      const sent = await send(b, sessionOf.get(b.id)!, name, args(b), `after-${step}`);
+      assert.equal(sent.status, 'completed', `${name} in branch b after branch a advanced: ${JSON.stringify(sent)}`);
+    }
+    await waitUntil('branch b interactive execution is ready', () => phase(operate.get(b.id)!) === 'ready', 10_000, 25);
+  });
+});

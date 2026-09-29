@@ -176,6 +176,19 @@ test('interactive runtime derives authority from Run/Ledger, preserves single-wr
       toolSessionId, commandId: 'held-get', command: { name: 'get', args: { key: 'answer' } }, waitMs: 1_000 });
     assert.equal(heldTypedRead.status, 'completed', 'trusted adapter read commands remain available while mutation is held');
     await host.ctx.hima.ledger.advanceRun(run.id, { control: { ...host.ctx.hima.ledger.run(run.id)!.control!, paused: [] } });
+    // Authority is the execution's: a later Run-wide revision keeps it (#64 D-T01-2); a revision
+    // from the future or another owner epoch never does.
+    const bumped = host.ctx.hima.ledger.run(run.id)!.control!;
+    await host.ctx.hima.ledger.advanceRun(run.id, { control: { ...bumped, revision: bumped.revision + 3 } });
+    const laterRevision = await operateInteractive(deps, { ...base, action: 'input', requestId: 'later-revision-get', toolSessionId,
+      commandId: 'later-revision-get', command: { name: 'get', args: { key: 'answer' } }, waitMs: 1_000 });
+    assert.equal(laterRevision.status, 'completed', `an unrelated control revision keeps this execution's authority: ${JSON.stringify(laterRevision)}`);
+    const future = await operateInteractive(deps, { ...base, action: 'input', requestId: 'future-revision-set', toolSessionId,
+      commandId: 'future-revision-set', command: { name: 'set', args: { key: 'x', value: 3 } }, controlRevision: bumped.revision + 4 });
+    assert.equal(future.status, 'refused'); assert.match(future.reason!, /control revision is stale/);
+    const otherEpoch = await operateInteractive(deps, { ...base, action: 'input', requestId: 'other-epoch-set', toolSessionId,
+      commandId: 'other-epoch-set', command: { name: 'set', args: { key: 'x', value: 4 } }, ownerEpoch: 2 });
+    assert.equal(otherEpoch.status, 'refused'); assert.match(otherEpoch.reason!, /epoch/);
 
     const second = await makeRun('interactive-cap', 'execution-2');
     const atCap = await operateInteractive(deps, { runId: second.id, executionId: 'execution-2', nodeId: 'manual',

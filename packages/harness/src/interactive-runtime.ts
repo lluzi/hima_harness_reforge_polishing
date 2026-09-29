@@ -196,8 +196,13 @@ function validateControl(run: RunRecord, request: InteractiveAddress, operation:
   if (runExitFence(run) && (operation === 'open' || operation === 'input' && effect !== 'read')) return 'the App is closing; no new interactive mutation may start before recovery';
   if (run.status !== 'running' && !['signal', 'close'].includes(operation) && !(operation === 'input' && effect === 'read')) return `run ${run.id} is ${run.status ?? 'not running'}`;
   if (control.stop !== undefined && operation !== 'close' && operation !== 'signal') return 'the Run has a stop request; no new interactive command may start';
+  // Interactive authority is keyed by the execution, not by the Run-wide control cursor: every owner
+  // action in any fork branch bumps `revision`, so exact equality would let progress in one branch
+  // revoke another branch's in-flight session (#64 D-T01-2). What this execution depends on is read
+  // below as current facts (owner, epoch, hold, stop, budget, the execution itself); the caller's
+  // revision need only not come from the future.
   if ((control.owner !== request.actor && control.owner !== request.authorityOwner)
-      || control.epoch !== request.ownerEpoch || control.revision !== request.controlRevision) return 'owner, delegated authority, epoch or control revision is stale';
+      || control.epoch !== request.ownerEpoch || request.controlRevision > control.revision) return 'owner, delegated authority, epoch or control revision is stale';
   if (!currentExecution(run, request.executionId, request.nodeId, ['signal', 'close'].includes(operation) || operation === 'input' && effect === 'read')) return 'the interactive execution is absent, settled, failed or superseded';
   const execution = run.control?.executions[request.executionId];
   if (operation === 'open' && (execution?.phase !== 'begun' || execution.intent !== undefined
