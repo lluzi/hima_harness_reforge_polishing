@@ -393,12 +393,34 @@ class RunInteractiveAuthority implements InteractiveAuthority {
   private readonly derived: DerivedInteractiveOperation;
   private readonly qualification: InteractiveQualification;
   private readonly callerDigest: string;
+  /** True while this operation itself holds the Run's admission queue (`underRunQueue`). */
+  private holdsRunQueue = false;
   constructor(deps: InteractiveRuntimeDeps, request: InteractiveOperateRequest, derived: DerivedInteractiveOperation, qualification: InteractiveQualification, callerDigest: string) {
     this.deps = deps; this.request = request; this.derived = derived; this.qualification = qualification; this.callerDigest = callerDigest;
   }
 
-  async admit(intent: Parameters<InteractiveAuthority['admit']>[0]): ReturnType<InteractiveAuthority['admit']> {
+  /** The Run's admission queue, entered once: inside `underRunQueue` this operation already holds it. */
+  private locked<T>(act: () => Promise<T>): Promise<T> {
+    return this.holdsRunQueue ? act() : controlling(this.deps.fabric, this.request.runId, act);
+  }
+
+  /**
+   * Run `act` holding the Run's admission queue, with this authority's own steps inside it taking
+   * the queue as already held. An interactive open enters the queue *before* the Site's slot claim,
+   * the order every batch launch already takes them in (the owner's `work` holds the queue and then
+   * claims the Site): taken the other way round, an open holding the claim while it waited for the
+   * queue and a `work` holding the queue while it waited for the claim stopped the whole Host
+   * (#64 D-T02-3).
+   */
+  underRunQueue<T>(act: () => Promise<T>): Promise<T> {
     return controlling(this.deps.fabric, this.request.runId, async () => {
+      this.holdsRunQueue = true;
+      try { return await act(); } finally { this.holdsRunQueue = false; }
+    });
+  }
+
+  async admit(intent: Parameters<InteractiveAuthority['admit']>[0]): ReturnType<InteractiveAuthority['admit']> {
+    return this.locked(async () => {
       const run = this.deps.fabric.ledger.run(this.request.runId);
       if (!run) return { kind: 'refused', reason: `unknown Run ${this.request.runId}` };
       if (intent.record.callerDigest !== this.callerDigest) return { kind: 'refused', reason: 'interactive helper intent does not match the retained caller digest' };
@@ -464,7 +486,7 @@ class RunInteractiveAuthority implements InteractiveAuthority {
   }
 
   async authorizeBeforeDispatch(input: Parameters<InteractiveAuthority['authorizeBeforeDispatch']>[0]): ReturnType<InteractiveAuthority['authorizeBeforeDispatch']> {
-    return controlling(this.deps.fabric, this.request.runId, async () => {
+    return this.locked(async () => {
       const run = this.deps.fabric.ledger.run(this.request.runId);
       if (!run) return { kind: 'refused', reason: `unknown Run ${this.request.runId}` };
       const reservation = this.deps.fabric.ledger.records({ runId: run.id, type: 'interactive' })
@@ -492,7 +514,7 @@ class RunInteractiveAuthority implements InteractiveAuthority {
 
   async record(record: ProtocolRecord): Promise<void> {
     const parsed = parseInteractiveRecord(record);
-    await controlling(this.deps.fabric, this.request.runId, async () => {
+    await this.locked(async () => {
       if (parsed.runId !== this.request.runId || parsed.executionId !== this.request.executionId
           || parsed.nodeId !== this.request.nodeId || parsed.actor !== this.request.actor
           || parsed.ownerEpoch !== this.request.ownerEpoch) throw new Error('interactive outcome identity does not match its runtime authority');
@@ -527,7 +549,7 @@ class RunInteractiveAuthority implements InteractiveAuthority {
   }
 
   async recordJobLaunch(job: InteractiveJobIdentity): Promise<void> {
-    await controlling(this.deps.fabric, this.request.runId, async () => {
+    await this.locked(async () => {
       const run = this.deps.fabric.ledger.run(this.request.runId);
       if (!run) throw new Error(`unknown Run ${this.request.runId}`);
       const refused = validateControl(run, this.request, 'open');
@@ -544,7 +566,7 @@ class RunInteractiveAuthority implements InteractiveAuthority {
 
   async recordJobStop(job: InteractiveJobIdentity, outcome: { readonly wasRunning: boolean; readonly observedGone: boolean }): Promise<void> {
     if (!outcome.wasRunning || !outcome.observedGone) return;
-    await controlling(this.deps.fabric, this.request.runId, async () => {
+    await this.locked(async () => {
       // A Job belongs where it was launched: the branch is read back off the launch, as `jobs.ts`
       // `belongsTo` does for the `finished`/`killed` records of a batch Job.
       const records = this.deps.fabric.ledger.records({ runId: this.request.runId, type: 'job' })
@@ -646,15 +668,19 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
     if (survivor) return { status: 'refused', reason: survivor };
     const at = nowOf(deps); const runDeadline = hardDeadline(facts.run, at);
     const sessionDeadline = Math.min(at + facts.derived.binding.limits.sessionMaxMs, runDeadline ?? Number.MAX_SAFE_INTEGER);
-    const claimed = await deps.claimJobSlot({ run: facts.run, site: facts.derived.site, licences: facts.derived.licences,
+    // Run queue first, then the Site claim, as every batch launch takes them; the wait for the tool's
+    // ready line happens after both are released (#64 D-T02-3).
+    const claimJobSlot = deps.claimJobSlot;
+    const claimed = await authority.underRunQueue(() => claimJobSlot({ run: facts.run, site: facts.derived.site, licences: facts.derived.licences,
       launch: () => launchInteractiveJob({ ledger: deps.fabric.ledger, sitesDir: deps.fabric.sitesDir }, {
         site: facts.derived.site, run: request.runId, executionId: request.executionId, nodeId: request.nodeId,
         requestId: request.requestId, callerDigest, actor: request.actor, ownerEpoch: request.ownerEpoch,
         controlRevision: request.controlRevision, workspace: facts.derived.workspace, argv: facts.derived.argv,
         name: facts.derived.name, sessionDeadlineAt: new Date(sessionDeadline).toISOString(),
         startupWaitMs: facts.derived.binding.limits.startupWaitMs,
-      }, authority) });
-    return claimed.kind === 'claimed' ? claimed.launched.result : { status: 'refused', reason: claimed.reason };
+      }, authority, { readiness: 'after-claim' }) }));
+    if (claimed.kind !== 'claimed') return { status: 'refused', reason: claimed.reason };
+    return claimed.launched.ready ? claimed.launched.ready() : claimed.launched.result;
   }
   const view = sessionFor(deps.fabric.ledger, request);
   const session = view && nativeSession(view);

@@ -289,40 +289,47 @@ function ownerCalls({ host, runId, actor, workspace }: Driven) {
   return { control, context, records, jobs, interactiveJobs, act, phase, begin, workAndComplete, node, create, resultAndAdopt, slot };
 }
 
+/** Begin a branch's Workshop and write its one-action plan script; the owner then works it. */
+async function writePlan(owner: ReturnType<typeof ownerCalls>, branch: Branch): Promise<string> {
+  const executionId = await owner.begin(branch.workshop);
+  assert.equal((await owner.act('recommend', { executionId })).kind, 'accepted');
+  const plan = JSON.stringify({ actions: [{ instance: 'U1', toMaster: branch.toMaster }] });
+  const script = `mkdir -p "$2/research/branch-${branch.id}"\nprintf '%s\\n' '${plan}' > "$2/research/branch-${branch.id}/plan.json"\n`;
+  const written = await owner.act('write', { executionId, path: 'entry.sh', content: script });
+  assert.equal(written.kind, 'accepted', JSON.stringify(written.reason ?? written));
+  return executionId;
+}
+
 /**
  * Drive the fork to the moment both Operators are created: `start` opens the fork, each branch's
  * Workshop writes its own plan and its Reader reads it, both interactive executions are begun, and
  * each branch's Team (Researcher -> Reviewer -> Operator) is materialized for its own execution.
  * Everything a branch holds is asserted to be that branch's own on the way.
  */
-async function teamsReady(driven: Driven, owner: ReturnType<typeof ownerCalls>) {
+async function teamsReady(driven: Driven, owner: ReturnType<typeof ownerCalls>, ready: readonly Branch[] = branches) {
   const { control, context, records, act, begin, workAndComplete, node, create, resultAndAdopt } = owner;
   await node('start');
   assert.deepEqual([...context().available].sort(), ['plan-a', 'plan-b'], 'the fork opens at start and launches nothing');
   assert.ok(context().run.fork, 'the Run stands inside the fork');
-  for (const branch of branches) {
-    const executionId = await begin(branch.workshop);
-    assert.equal((await act('recommend', { executionId })).kind, 'accepted');
-    const plan = JSON.stringify({ actions: [{ instance: 'U1', toMaster: branch.toMaster }] });
-    const script = `mkdir -p "$2/research/branch-${branch.id}"\nprintf '%s\\n' '${plan}' > "$2/research/branch-${branch.id}/plan.json"\n`;
-    const written = await act('write', { executionId, path: 'entry.sh', content: script });
-    assert.equal(written.kind, 'accepted', JSON.stringify(written.reason ?? written));
-    await workAndComplete(branch.workshop, executionId);
+  for (const branch of ready) {
+    await workAndComplete(branch.workshop, await writePlan(owner, branch));
     await node(branch.read);
   }
-  assert.deepEqual([...context().available].sort(), ['operate-a', 'operate-b']);
+  assert.deepEqual([...context().available].filter((id) => id.startsWith('operate-')).sort(), ready.map((branch) => branch.operate));
 
   const operate = new Map<string, string>();
-  for (const branch of branches) operate.set(branch.id, await begin(branch.operate));
-  for (const branch of branches) {
+  for (const branch of ready) operate.set(branch.id, await begin(branch.operate));
+  for (const branch of ready) {
     assert.equal(control().executions[operate.get(branch.id)!]!.branchId, branch.workshop, `${branch.operate} is admitted in its own branch`);
   }
-  const crossed = await create(branches[0], 'researcher', operate.get('b')!);
-  assert.equal(crossed.status, 'refused', 'team-a materialized on operate-b\'s execution is refused');
-  assert.match(crossed.reason, /exact freshly begun target execution/, 'a Team member binds only to its own node\'s execution');
+  if (operate.has('b')) {
+    const crossed = await create(branches[0], 'researcher', operate.get('b')!);
+    assert.equal(crossed.status, 'refused', 'team-a materialized on operate-b\'s execution is refused');
+    assert.match(crossed.reason, /exact freshly begun target execution/, 'a Team member binds only to its own node\'s execution');
+  }
 
   const operatorOf = new Map<string, string>(); const planHashOf = new Map<string, string>();
-  for (const branch of branches) {
+  for (const branch of ready) {
     const executionId = operate.get(branch.id)!;
     const plan = records().findLast((record) => record.type === 'observation' && record.branchId === branch.workshop && record.reader.id === 'plan-file');
     assert.ok(plan?.type === 'observation', `branch ${branch.id} holds its own plan reading`);
@@ -339,7 +346,7 @@ async function teamsReady(driven: Driven, owner: ReturnType<typeof ownerCalls>) 
     assert.equal(operator.status, 'created', JSON.stringify(operator));
     operatorOf.set(branch.id, operator.receipt.childSessionId as string);
   }
-  for (const branch of branches) {
+  for (const branch of ready) {
     const own = runDelegations((driven.host.ctx.hima as any).deps(), driven.runId).filter((row) => row.effective.recipe?.teamId === branch.team);
     assert.deepEqual(own.map((row) => row.effective.recipe?.memberId).sort(), ['operator', 'researcher', 'reviewer']);
     for (const row of own) {
@@ -639,5 +646,38 @@ test('a pause on one branch\'s node holds only that branch: the other branch\'s 
     await node('judge');
     assert.equal(context().run.fork, undefined, 'the join closed the fork');
     void operate;
+  });
+});
+
+/** Settle `work` or fail after `ms`: a Host that stopped answering is a failure here, never a hang. */
+const within = <T>(ms: number, what: string, work: Promise<T>): Promise<T> => Promise.race([work,
+  new Promise<never>((_resolve, reject) => { const timer = setTimeout(() => reject(new Error(`${what} did not answer within ${ms} ms`)), ms); timer.unref(); })]);
+
+// #64 D-T02-3: at 19:20:57Z the Host stopped writing the Ledger and every later call hung until the
+// App was killed. What was in flight: an Operator's interactive open waiting for its tool's ready
+// line inside the Site's slot claim, and the owner's batch `work` on another node of the same Run.
+// The batch path holds the Run's admission queue and then waits for the Site claim; the open held
+// the Site claim and then waited for the Run's queue to record `opened`. Both waited on each other.
+test('an Operator open waiting for its tool\'s ready line and the owner\'s batch work on the same Run and Site both answer (#64 D-T02-3)', { timeout: 180_000 }, async (t) => {
+  await forkedCampaign(t, 2, async (driven) => {
+    const owner = ownerCalls(driven);
+    const [a, b] = branches;
+    const { interactive } = await teamsReady(driven, owner, [a]);
+    // Branch b's Workshop is written but not worked: its `work` claims a Site slot for a batch Job.
+    const planB = await writePlan(owner, b);
+    // Operator a's tool takes three seconds to print its ready line, as a real session's startup does.
+    await writeFile(path.join(owner.slot(a), 'startup-delay-ms'), '3000\n');
+    const opening = interactive(a, { action: 'open', requestId: 'open-slow-a' });
+    await waitUntil('operator a\'s Job is launched and waiting for its ready line', () => owner.interactiveJobs('launched').length === 1, 10_000, 10);
+    const working = owner.act('work', { executionId: planB });
+    const [opened, worked] = await within(30_000, 'the open and the batch work', Promise.all([opening, working]));
+    assert.equal(opened.status, 'opened', JSON.stringify(opened));
+    assert.equal(opened.readiness, 'ready', JSON.stringify(opened));
+    assert.equal(worked.kind, 'accepted', JSON.stringify(worked.reason ?? worked));
+    // And the Host still answers afterwards: the Run's queue and the Site's claim were both released.
+    await within(10_000, 'a read of the Run after both', Promise.resolve(owner.context()));
+    await waitUntil('plan-b settles its own work', () => owner.phase(planB) === 'ready', 30_000, 25);
+    const closed = await within(30_000, 'the Operator close', interactive(a, { action: 'close', requestId: 'close-slow-a', toolSessionId: opened.session.toolSessionId }));
+    assert.equal(closed.status, 'closed', JSON.stringify(closed));
   });
 });

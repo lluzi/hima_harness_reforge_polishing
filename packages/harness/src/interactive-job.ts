@@ -190,9 +190,26 @@ async function paste(on: InteractiveChannel, session: string, commandId: string,
   if (submit) { await authorize(); await mustRun(on, ['tmux', 'send-keys', '-t', jobPane(session), 'Enter'], `submit input to interactive session ${session}`); }
 }
 
+/**
+ * An open whose tool has been started: the transport is attached and the startup line pasted, and
+ * what is left is waiting for the tool's ready line and recording `opened`. That wait can take as
+ * long as a real tool's startup (tens of seconds for XTop), so a caller holding a Site's slot claim
+ * or a Run's admission queue releases them first and then calls `finish` (#64 D-T02-3).
+ */
+export type InteractiveOpenStart =
+  | { readonly kind: 'answered'; readonly result: InteractiveOpenResult }
+  | { readonly kind: 'started'; readonly finish: () => Promise<InteractiveOpenResult> };
+
 export async function openInteractiveJob(on: InteractiveChannel, request: OpenInteractiveRequest, authority: InteractiveAuthority): Promise<InteractiveOpenResult> {
-  if (request.argv.length === 0 || request.argv.some((word) => word.includes('\0'))) return { status: 'refused', reason: 'interactive Job argv must contain non-NUL words' };
-  if (!Number.isSafeInteger(request.startupWaitMs) || request.startupWaitMs < 0 || request.startupWaitMs > 60_000) return { status: 'refused', reason: 'startupWaitMs must be 0..60000' };
+  const started = await startInteractiveJob(on, request, authority);
+  return started.kind === 'answered' ? started.result : started.finish();
+}
+
+/** The open up to its tool's startup line; see `InteractiveOpenStart` for the rest. */
+export async function startInteractiveJob(on: InteractiveChannel, request: OpenInteractiveRequest, authority: InteractiveAuthority): Promise<InteractiveOpenStart> {
+  const answered = (result: InteractiveOpenResult): InteractiveOpenStart => ({ kind: 'answered', result });
+  if (request.argv.length === 0 || request.argv.some((word) => word.includes('\0'))) return answered({ status: 'refused', reason: 'interactive Job argv must contain non-NUL words' });
+  if (!Number.isSafeInteger(request.startupWaitMs) || request.startupWaitMs < 0 || request.startupWaitMs > 60_000) return answered({ status: 'refused', reason: 'startupWaitMs must be 0..60000' });
   const allocated = await allocateInteractiveJobSession(on, request.runId, request.name);
   const transcriptPath = jobLogPath({ workspace: request.workspace, session: allocated.session });
   const exitPath = jobExitPath({ workspace: request.workspace, session: allocated.session });
@@ -205,47 +222,15 @@ export async function openInteractiveJob(on: InteractiveChannel, request: OpenIn
   const openIntent = parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest), event: 'open-intent',
     jobSession: allocated.session, transcriptPath, exitPath, sessionDeadlineAt: request.sessionDeadlineAt }) as OpenIntentRecord;
   const admitted = await authority.admit({ action: 'open', record: openIntent });
-  if (admitted.kind === 'refused') return { status: 'refused', reason: admitted.reason };
-  if (admitted.kind === 'duplicate') return admitted.receipt as InteractiveOpenResult;
+  if (admitted.kind === 'refused') return answered({ status: 'refused', reason: admitted.reason });
+  if (admitted.kind === 'duplicate') return answered(admitted.receipt as InteractiveOpenResult);
   const authorized = await authority.authorizeBeforeDispatch({ reservationId: admitted.reservationId, operationDigest });
-  if (authorized.kind === 'refused') return { status: 'refused', reason: authorized.reason };
+  if (authorized.kind === 'refused') return answered({ status: 'refused', reason: authorized.reason });
   try { assertQualificationStable(admitted.qualification, authorized.qualification); }
-  catch (error) { return { status: 'refused', reason: (error as Error).message }; }
+  catch (error) { return answered({ status: 'refused', reason: (error as Error).message }); }
   let job: InteractiveJobIdentity | undefined;
-  try {
-    const printed = await mustRun(on, ['tmux', 'new-session', '-d', '-P', '-F', '#{pane_pid}', '-s', allocated.session,
-      '-c', request.workspace, '/bin/sh'], `open interactive job ${allocated.name} in ${request.workspace}`);
-    const pid = Number(printed.trim());
-    if (!Number.isInteger(pid) || pid <= 0) throw new Error(`tmux reported ${JSON.stringify(printed.trim())} instead of a pane pid`);
-    job = { session: allocated.session, pid, workspace: request.workspace, name: allocated.name, startedAt: now(), wire: startup };
-    await authority.recordJobLaunch(job);
-    await mustRun(on, ['tmux', 'pipe-pane', '-o', '-t', jobPane(allocated.session), `cat >> ${quote(transcriptPath)}`],
-      `attach the durable transcript for interactive session ${allocated.session}`);
-    // Recheck after creating the inert shell and transcript but immediately before starting the tool.
-    const startAuthorized = await authority.authorizeBeforeDispatch({ reservationId: admitted.reservationId, operationDigest });
-    if (startAuthorized.kind === 'refused') throw new Error(`interactive tool start lost authority: ${startAuthorized.reason}`);
-    assertQualificationStable(admitted.qualification, startAuthorized.qualification);
-    const authorizeStart = async (): Promise<void> => {
-      const latest = await authority.authorizeBeforeDispatch({ reservationId: admitted.reservationId, operationDigest });
-      if (latest.kind === 'refused') throw new Error(`interactive tool start lost authority: ${latest.reason}`);
-      assertQualificationStable(admitted.qualification, latest.qualification);
-    };
-    await paste(on, allocated.session, `open-${request.requestId}`, Buffer.from(startup, 'utf8'), true, authorizeStart);
-    const session: InteractiveSession = { job, toolSessionId: allocated.session, transcriptPath, exitPath,
-      qualification: admitted.qualification, sessionDeadlineAt: request.sessionDeadlineAt };
-    const readyMarker = `HIMA:${admitted.qualification.adapter.id}:${admitted.qualification.adapter.version}:READY`;
-    const readyDeadline = Date.now() + request.startupWaitMs;
-    let readiness: 'starting' | 'ready' = 'starting';
-    do {
-      const transcript = await readInteractiveTranscript(on, session);
-      if (hasMarker(transcript.text, readyMarker)) { readiness = 'ready'; break; }
-      if (Date.now() >= readyDeadline) break;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(1, readyDeadline - Date.now()))));
-    } while (readiness === 'starting');
-    await authority.record(parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest),
-      event: 'opened', jobSession: allocated.session, qualification: admitted.qualification, readiness }));
-    return { status: 'opened', session, readiness };
-  } catch (error) {
+  /** Any fault after the launch: stop what was started through the process-group stop and record the open uncertain. */
+  const uncertain = async (error: unknown): Promise<InteractiveOpenResult> => {
     let reason = error instanceof Error ? error.message : String(error);
     let sessionStillAlive = false;
     if (job !== undefined) {
@@ -271,7 +256,51 @@ export async function openInteractiveJob(on: InteractiveChannel, request: OpenIn
       event: 'open-uncertain', jobSession: allocated.session, qualification: admitted.qualification, reason }));
     return { status: 'uncertain', ...(job === undefined || !sessionStillAlive ? {} : { session: { job, toolSessionId: allocated.session,
       transcriptPath, exitPath, qualification: admitted.qualification, sessionDeadlineAt: request.sessionDeadlineAt } }), reason };
+  };
+  let session: InteractiveSession;
+  try {
+    const printed = await mustRun(on, ['tmux', 'new-session', '-d', '-P', '-F', '#{pane_pid}', '-s', allocated.session,
+      '-c', request.workspace, '/bin/sh'], `open interactive job ${allocated.name} in ${request.workspace}`);
+    const pid = Number(printed.trim());
+    if (!Number.isInteger(pid) || pid <= 0) throw new Error(`tmux reported ${JSON.stringify(printed.trim())} instead of a pane pid`);
+    job = { session: allocated.session, pid, workspace: request.workspace, name: allocated.name, startedAt: now(), wire: startup };
+    await authority.recordJobLaunch(job);
+    await mustRun(on, ['tmux', 'pipe-pane', '-o', '-t', jobPane(allocated.session), `cat >> ${quote(transcriptPath)}`],
+      `attach the durable transcript for interactive session ${allocated.session}`);
+    // Recheck after creating the inert shell and transcript but immediately before starting the tool.
+    const startAuthorized = await authority.authorizeBeforeDispatch({ reservationId: admitted.reservationId, operationDigest });
+    if (startAuthorized.kind === 'refused') throw new Error(`interactive tool start lost authority: ${startAuthorized.reason}`);
+    assertQualificationStable(admitted.qualification, startAuthorized.qualification);
+    const authorizeStart = async (): Promise<void> => {
+      const latest = await authority.authorizeBeforeDispatch({ reservationId: admitted.reservationId, operationDigest });
+      if (latest.kind === 'refused') throw new Error(`interactive tool start lost authority: ${latest.reason}`);
+      assertQualificationStable(admitted.qualification, latest.qualification);
+    };
+    await paste(on, allocated.session, `open-${request.requestId}`, Buffer.from(startup, 'utf8'), true, authorizeStart);
+    session = { job, toolSessionId: allocated.session, transcriptPath, exitPath,
+      qualification: admitted.qualification, sessionDeadlineAt: request.sessionDeadlineAt };
+  } catch (error) {
+    return answered(await uncertain(error));
   }
+  const finish = async (): Promise<InteractiveOpenResult> => {
+    try {
+      const readyMarker = `HIMA:${admitted.qualification.adapter.id}:${admitted.qualification.adapter.version}:READY`;
+      const readyDeadline = Date.now() + request.startupWaitMs;
+      let readiness: 'starting' | 'ready' = 'starting';
+      do {
+        const transcript = await readInteractiveTranscript(on, session);
+        if (hasMarker(transcript.text, readyMarker)) { readiness = 'ready'; break; }
+        if (Date.now() >= readyDeadline) break;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(1, readyDeadline - Date.now()))));
+      } while (readiness === 'starting');
+      await authority.record(parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest),
+        event: 'opened', jobSession: allocated.session, qualification: admitted.qualification, readiness }));
+      return { status: 'opened', session, readiness };
+    } catch (error) {
+      return uncertain(error);
+    }
+  };
+  return { kind: 'started', finish };
 }
 
 export interface TranscriptRead {
