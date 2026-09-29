@@ -477,5 +477,13 @@ Known gaps carried from earlier tasks:
     now also caught; `main()` resolves `workspace` to an absolute path; the Site's own missing
     `query-spec.json` template (bound by `contract.yml` but never actually present) is added with
     `precision: gba`, documented why.
+  - Real-model probe follow-ups (Issue #63, `notes/model-probe-report.md`, runs
+    `notes/model-probe-run1` and `notes/model-probe-run1-team`; probe outputs copied into
+    `flow/tests/probe_fixtures/`):
+    - Item 1, empty w01 actions (`research-worker-01/attempt-2`, `ValueError: worker actions must
+      contain one to three sizing candidates`). This was already counted by slice 3 (2d3678a1), and
+      `EmptyWorkerActionsTest` now reads the probe's own document. The purpose and the example now
+      say to exit non-zero with the reason rather than write an empty list. That is the honest
+      equivalent of a no-fix request: operate-worker-01's Team needs one action to review.
   - **Pending re-review**: this FABRIC.md's own G27-G33 and the four batches' combined diff have not
     yet had a second reviewer pass since batch C landed.

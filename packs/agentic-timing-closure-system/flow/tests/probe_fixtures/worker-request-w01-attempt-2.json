@@ -1,0 +1,172 @@
+{
+  "actions": [],
+  "baseState": {
+    "database": {
+      "datDigest": "e86ef476761e162d2601c39ed4effc82331d2ea0feb4fd82ae662a4b0b78cfbe",
+      "path": "baseline/database/postroute_final.enc",
+      "sha256": "79d098156f87a6ecdfc6a3591ac20b9e9533091409b9dbf8cd09fcaa1f70bc9d"
+    },
+    "def": {
+      "path": "baseline/def/swerv_wrapper.postroute.def",
+      "sha256": "73e25dc78bb761de2ab2636ed25dead880f4e6761b41f41cc54d4941ebd6192b"
+    },
+    "id": "089c9d07c3338b120fa7",
+    "netlist": {
+      "path": "baseline/netlist/swerv_wrapper.postroute.v",
+      "sha256": "6c9ed3189d9012a29229af594c22f230818e40b52bb3f307cb66ae07dc812e86"
+    },
+    "parentId": null,
+    "scenarios": [
+      "func_ssg_rcworst_m40",
+      "func_ssg_rcworst_125",
+      "func_ffg_cbest_m40",
+      "func_ffg_cbest_125"
+    ],
+    "schema": "atcs.design-state/1",
+    "sdc": [
+      {
+        "path": "baseline/sdc/0/swerv_wrapper.input.sdc",
+        "sha256": "47b51fc7a7f2ea572c78cbd48645ded06c8b21f016ae8ea6e4ca541232f9b565"
+      }
+    ],
+    "spef": {
+      "cbest": {
+        "path": "baseline/spef/cbest/swerv_wrapper.cbest.spef",
+        "sha256": "3fc820b3a7c8e15413cc225cf1498fa80cabd214995dfd5a35f7cb9760845d7b"
+      },
+      "cworst_T": {
+        "path": "baseline/spef/cworst_T/swerv_wrapper.cworst_T.spef",
+        "sha256": "c4f610b1354c91c7c60290926efbc2be485f6fcdb089cc7a640521542c5c3cd6"
+      }
+    },
+    "stage": "postroute",
+    "tools": {
+      "innovus": "23.14",
+      "primetime": "PrimeTime X-2025.06",
+      "starrc": "StarRC X-2025.06-SP1",
+      "xtop": "XTop 2025.09.tmp15"
+    },
+    "top": "swerv_wrapper"
+  },
+  "candidate": {
+    "actions": [
+      "size_cell"
+    ],
+    "baseStateId": "089c9d07c3338b120fa7",
+    "budget": {
+      "basis": "one bounded research slot under the active Run budget (timeBoxMs=21600000, closingReserveMs=1800000, attemptLimit=1000, jobCap=1, licences innovus/primetime/starrc/xtop = 1); precision of the source observation: pba; scope: post-route-only",
+      "maxAttempts": 2,
+      "maxEditInstances": 6
+    },
+    "editDomain": {
+      "instances": [
+        "swerv_dec_tlu/g96219",
+        "swerv_dec_tlu/g96216",
+        "swerv_dec_tlu/g96221",
+        "swerv_dec_tlu/g96214",
+        "swerv_dec_tlu/g96218",
+        "swerv_dec_tlu/g96211"
+      ],
+      "nets": []
+    },
+    "mayAffect": [
+      "func_ssg_rcworst_125"
+    ],
+    "problem": "Setup violations whose observed path detail is gate/cell-delay dominated under precision=pba; every edit-domain instance was resolved from the design database's own view (DEF NETS connections resolved to a DEF COMPONENT name), so each name provably exists in the loaded design -- generation 1 failed because its names came from the post-route netlist text and XTop answered \"Cell 'g96219' not found in design\".",
+    "protected": {
+      "instances": [],
+      "nets": []
+    },
+    "schema": "atcs.work-package/1",
+    "targets": [
+      "func_ssg_rcworst_125|setup|dec_tlu_perfcnt0[0]",
+      "func_ssg_rcworst_125|setup|dec_tlu_perfcnt0[1]",
+      "func_ssg_rcworst_125|setup|dec_tlu_perfcnt1[0]",
+      "func_ssg_rcworst_125|setup|dec_tlu_perfcnt1[1]",
+      "func_ssg_rcworst_125|setup|dec_tlu_perfcnt2[0]",
+      "func_ssg_rcworst_125|setup|dec_tlu_perfcnt2[1]",
+      "func_ssg_rcworst_125|setup|dec_tlu_perfcnt3[0]",
+      "func_ssg_rcworst_125|setup|dec_tlu_perfcnt3[1]"
+    ],
+    "taskId": "w01"
+  },
+  "siteCapabilities": {
+    "cellLefGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lef/*.lef",
+    "design": "swerv_wrapper",
+    "edaShell": [
+      "/usr/local/bin/edarun",
+      "bash",
+      "-lc"
+    ],
+    "pgVerification": false,
+    "qualifiedReadRoots": [
+      "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input",
+      "/data/eda/project/techlib/tsmc28"
+    ],
+    "techLef": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lef/tsmcn28_10lm5X2Y2ZUTRDL.tlef",
+    "xtopContext": {
+      "ecoParameters": {
+        "bufferListForHold": [
+          "DEL025D1BWP30P140",
+          "DEL050MD1BWP30P140",
+          "DEL075MD1BWP30P140",
+          "DEL100MD1BWP30P140",
+          "DEL150MD1BWP30P140",
+          "DEL200MD1BWP30P140",
+          "DEL250MD1BWP30P140",
+          "BUFFD2BWP30P140",
+          "BUFFD4BWP30P140"
+        ],
+        "bufferListForSetup": [
+          "BUFFD2BWP30P140",
+          "BUFFD3BWP30P140",
+          "BUFFD4BWP30P140",
+          "BUFFD6BWP30P140",
+          "BUFFD8BWP30P140",
+          "BUFFD12BWP30P140",
+          "BUFFD16BWP30P140"
+        ],
+        "cellClassifyRule": "cell_attribute",
+        "cellMatchAttribute": "footprint",
+        "cellNominalSizingPattern": "D([0-9]+)BWP",
+        "cellNominalSwapKeywords": [
+          "ULVT",
+          "LVT",
+          "",
+          "HVT"
+        ],
+        "gainThreshold": 0.001
+      },
+      "removableFillers": [
+        "FILL*",
+        "DCAP*"
+      ],
+      "scenarios": [
+        {
+          "corner": "ssg_m40c",
+          "libertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ssg_m40c/*.lib",
+          "name": "func_ssg_rcworst_m40"
+        },
+        {
+          "corner": "ssg_125c",
+          "libertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ssg_125c/*.lib",
+          "name": "func_ssg_rcworst_125"
+        },
+        {
+          "corner": "ffg_m40c",
+          "libertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ffg_m40c/*.lib",
+          "name": "func_ffg_cbest_m40"
+        },
+        {
+          "corner": "ffg_125c",
+          "libertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ffg_125c/*.lib",
+          "name": "func_ffg_cbest_125"
+        }
+      ],
+      "siteMap": [
+        "unit",
+        "core"
+      ]
+    }
+  }
+}

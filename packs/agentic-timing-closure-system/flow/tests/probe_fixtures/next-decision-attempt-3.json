@@ -1,0 +1,26 @@
+{
+  "action": "research",
+  "budgetRef": "atcs-run-budget:attemptLimit=1000,timeBoxMs=14400000,generationLimit=6,maxPhysicalRefreshes=1",
+  "costBasis": {
+    "generations": 1,
+    "physicalRefreshes": 0,
+    "workers": 3
+  },
+  "falsifier": "if the planned batch, once replayed and pre-checked, removes no violated check in any of the four required scenarios, abandon this ECO family and either re-diagnose with a fresh observation or stop for a person instead of re-planning the same objects.",
+  "observationRef": "a688e95e6e7a9905d10d",
+  "question": "which ECO research packages, grounded in the current observation and the residual set, should be planned and run against working state 089c9d07c3338b120fa7 to close setup to 0.0 ns and hold to 0.0 ns in the required scenarios?",
+  "reason": "scope=post-route-only, lifecycleAvailable=0, generation 1. Observation: 1988 checks, 1988 violated; worst setup -0.1544 ns, worst hold -0.1960 ns against Goal setup 0.0 ns / hold 0.0 ns (baseline minimum WNS -0.2016 ns). 2016 residual-case records. Contributions collected: 0 usable, 1 no-fix. Physical refreshes completed: 0 of 1. Absent: final evaluation, state pointers, pre-check evidence, integration state. The only collected Contribution is a no-fix: Operator session produced no design change: before/after dumps identical (sha256 20d80ffe2ec7bb3c3720b1c76efd7b260ffd1925ae0046e00218bdfc3763aefe); ops trace empty; XTop transcript errors: Error: Cell 'g96219' not found in design 'swerv_wra No candidate has been implemented, so the next investment is the research batch that can produce one; re-planning must use the real object names in the current observation rather than the unresolved reference that produced the no-fix.",
+  "requiredArtifacts": [
+    "campaignPlan",
+    "workerManifests"
+  ],
+  "stateRef": "089c9d07c3338b120fa7",
+  "targets": [
+    "func_ssg_rcworst_125|hold (477 violated, worst -0.1759 ns)",
+    "func_ssg_rcworst_m40|hold (468 violated, worst -0.1960 ns)",
+    "func_ffg_cbest_125|hold (453 violated, worst -0.0857 ns)",
+    "func_ffg_cbest_m40|hold (451 violated, worst -0.0790 ns)",
+    "func_ssg_rcworst_125|setup (84 violated, worst -0.0827 ns)",
+    "func_ssg_rcworst_m40|setup (55 violated, worst -0.1544 ns)"
+  ]
+}

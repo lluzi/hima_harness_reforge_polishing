@@ -1,0 +1,43 @@
+{
+  "action": "research",
+  "baselineStateId": "089c9d07c3338b120fa7",
+  "budgetRef": "campaign-run-21dc2343/experiment-window",
+  "costBasis": {
+    "attemptLimitRemaining": 1000,
+    "budgetRef": "campaign-run-21dc2343/experiment-window",
+    "experimentRemainingMs": 12598401,
+    "licences": {
+      "innovus": 1,
+      "primetime": 1,
+      "starrc": 1,
+      "xtop": 1
+    },
+    "maxPhysicalRefreshes": 1,
+    "note": "no full physical refresh is spent by this decision; one refresh remains and is reserved for the joint candidate",
+    "physicalRefreshesRemaining": 1,
+    "queries": 0,
+    "workerSlots": 3
+  },
+  "falsifier": "if the research package produces no admissible contribution that moves any required-scenario setup/hold slack, or reproduces the w01 no-fix pattern (empty ops trace / identical before-after dumps), then stop re-planning research and escalate the decision to observe with a new targeted query or to wait-for-person naming the missing input/scope or capability.",
+  "goal": {
+    "hold": 0.0,
+    "setup": 0.0
+  },
+  "observationRef": "a688e95e6e7a9905d10d",
+  "question": "the only observation is the M1 baseline PT observation: hold is violated in func_ffg_cbest_125/func_ssg_rcworst_m40 and setup is still violated in func_ssg_rcworst_m40, while the one collected contribution (w01) is a no-fix with no design delta. Which bounded contributions are worth producing first, and can they be integrated before spending the single remaining full physical refresh?",
+  "reason": "New information at this checkpoint: no final evaluation, no pointers and no accepted artifact exist yet; contributions-collected.json holds only the w01 no-fix (before/after dumps identical, empty ops trace, XTop cell-not-found error), so no candidate change has ever been measured. Both required goals (setup 0.0 ns, hold 0.0 ns) are still violated in the baseline observation, and the violations split into at least two independent root-cause families (multi-clock hold near memory/bus interfaces including **async_default** groups, and setup on control/wdata paths), so one more identical PT query would return the same static picture. The cheapest step that can still change the next action is a bounded research package over these families; earlier-apr is not legal because the input scope is post-route-only (lifecycleAvailable=0), and implement is premature because no admissible design change exists yet and the refresh budget is 1/1.",
+  "requiredArtifacts": [
+    "research/requests/campaign-plan.json",
+    "state/contributions-collected.json"
+  ],
+  "scope": "post-route-only",
+  "stateRef": "089c9d07c3338b120fa7",
+  "targets": [
+    "func_ffg_cbest_125|hold|swerv_dbg/axi_rdata_ff/dout_reg_*",
+    "func_ffg_cbest_125|hold|swerv_dma_ctrl/wrbuf_dataff_genblock_dff/dout_reg_*",
+    "func_ssg_rcworst_m40|hold|swerv_ifu/mem_ctl/axi_data_ff/dout_reg_*",
+    "func_ssg_rcworst_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_*",
+    "func_ssg_rcworst_m40|setup|dec_tlu_perfcnt*",
+    "func_ssg_rcworst_m40|setup|sb_axi_wdata[*]"
+  ]
+}

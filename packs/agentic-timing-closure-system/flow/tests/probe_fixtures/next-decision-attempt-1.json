@@ -1,0 +1,27 @@
+{
+  "action": "research",
+  "budgetRef": "run budget basis: attempts 0/1000, jobs 0/1 concurrent, physical refreshes 0/1, generation 1/6, closingReserveMs 1800000",
+  "costBasis": {
+    "jobs": 3,
+    "physicalRefreshes": 0,
+    "queries": 0
+  },
+  "falsifier": "If the rebuilt work packages again name design objects absent from the baseline database (a 'Cell ... not found' refusal as in w01) or return no admissible delta above validationLevel none, the research route is exhausted for this scope: the next decision must switch to observe (a path-detail PT query on the current observation identity) or report the concrete input gap, and must not re-plan research again.",
+  "observationRef": "a688e95e6e7a9905d10d",
+  "question": "The baseline residual set is fully enumerated but no admissible contribution exists: is the next investment another PT observation for path detail, or rebuilding the research work packages that produce mergeable ECO contributions?",
+  "reason": "risk.json compares the current post-route observation with its prior: fixed=0, entrant=0, regressed=0, the remaining list is the whole violated set and 27 endpoints are missingPrior, i.e. identity lost, not fixed. contributions-collected.json holds exactly one contribution, w01, kind no-fix: empty delta, validationLevel none, XTop error \"Cell 'g96219' not found in design 'swerv_wrapper'\". No integrationState, presta, physical delta, final evaluation or state pointers exist, so nothing can be composed, revised, implemented or declared goal-met, and scope post-route-only with lifecycleAvailable=0 makes earlier-apr illegal. The residual set is enumerated but every case reports all five delay attributes unknown (\"no path detail observed\"), so what the campaign lacks is mergeable ECO contributions, not one more report: research must rebuild the three slot work packages against the current observation identity, because the previous request named a design object that does not exist, and hand admissible deltas to the cheap integration layer while the single physical refresh stays reserved for the joint plan.",
+  "requiredArtifacts": [
+    "campaignPlan",
+    "workerResult01",
+    "workerResult02",
+    "workerResult03"
+  ],
+  "stateRef": "089c9d07c3338b120fa7",
+  "targets": [
+    "func_ssg_rcworst_m40|setup|dec_tlu_perfcnt0[0]",
+    "func_ffg_cbest_125|hold|swerv_dbg/axi_rdata_ff/dout_reg_0_",
+    "func_ssg_rcworst_m40|hold|swerv_ifu/mem_ctl/axi_data_ff/dout_reg_0_",
+    "func_ffg_cbest_m40|hold|swerv_ifu/mem_ctl/axi_data_ff/dout_reg_50_",
+    "func_ssg_rcworst_125"
+  ]
+}

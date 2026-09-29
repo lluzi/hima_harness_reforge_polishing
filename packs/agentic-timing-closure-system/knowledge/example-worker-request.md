@@ -1,6 +1,6 @@
 # Example: worker request
 
-The `worker-request` Reader (`tools/read-atcs.py`) admits this exact document for slot w01 (and, with only `taskId` changed, for w02 and w03): its `candidate` is the w01 package of `example-campaign-plan.md` unchanged, and every action `instance` is a full hierarchical path from `top` (`u_a/reg0`, never the bare leaf `reg0`) listed in `candidate.editDomain.instances`. Each `toMaster` is a library cell with the same function and VT as the instance's current cell, differing only in drive strength (`DFQD1BWP35P140` to `DFQD2BWP35P140`, never a buffer, another VT or a cell outside the Liberty files `state/xtop-context.json` seals).
+The `worker-request` Reader (`tools/read-atcs.py`) admits this exact document for slot w01 (and, with only `taskId` changed, for w02 and w03): its `candidate` is the w01 package of `example-campaign-plan.md` unchanged, and every action `instance` is a full hierarchical path from `top` (`u_a/reg0`, never the bare leaf `reg0`) listed in `candidate.editDomain.instances`. Each `toMaster` is a library cell with the same function and VT as the instance's current cell, differing only in drive strength (`DFQD1BWP35P140` to `DFQD2BWP35P140`, never a buffer, another VT or a cell outside the Liberty files `state/xtop-context.json` seals). If no safe size_cell action can be resolved, exit non-zero printing the reason; never write an empty or placeholder actions list. A non-zero exit is a coding diagnostic you revise in the same Workshop; an empty list is a refused request.
 
 ```json
 {

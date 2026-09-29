@@ -800,6 +800,7 @@ workshops:
       Each toMaster is a cell of this design's libraries (state/xtop-context.json) with the same
       function and VT as the instance's current cell; only the drive strength changes.
       The Agent Team reviews and selects one exact action from this admitted list.
+      If no safe size_cell action can be resolved, exit non-zero printing the reason; never write an empty or placeholder actions list.
       Read knowledge example-worker-request.md; copy its shape and change only the values (and taskId to w01); every instance is a full hierarchical path such as u_a/reg0, never a bare leaf name.
       Turn endpoints into instances only with the Pack resolver in knowledge endpoint-resolution.md.
       Before writing, read output workerRequest01Problems: after the Reader has read an earlier document it lists every problem it found, one line each naming the field, the slot and the required format; fix every line and write the whole document again (the file is absent before the first reading).
