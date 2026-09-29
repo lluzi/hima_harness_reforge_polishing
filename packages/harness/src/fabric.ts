@@ -117,7 +117,9 @@ import {
   launchWrittenWorkshop,
   exploreRecommendation,
   exploreEvidence,
+  exploreCitation,
   settleFailedAttempt,
+  type ExploreCitation,
   type Driving,
   type FabricDeps,
   type Step,
@@ -1340,6 +1342,8 @@ export interface ExecutionContext {
   readonly method?: { readonly id: string; readonly version: string; readonly digest: string; readonly dir: string; readonly contract: Pack['contract']; readonly reference: Pack['graph'] };
   readonly available: readonly string[]; readonly executions: readonly NodeExecution[]; readonly growths: readonly GrowthView[];
   readonly revisions: readonly RevisionRecord[]; readonly reason?: string;
+  /** For each current Explore decision point: exactly the evidence ids its completion requires. */
+  readonly cite?: readonly ExploreCitation[];
 }
 export interface ExecutionActionResult {
   readonly kind: 'accepted' | 'duplicate' | 'refused' | 'unsupported'; readonly context: ExecutionContext;
@@ -2039,7 +2043,11 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
         execution.nodeId === nodeId && execution.generation === (run.generation ?? 1)
         && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation
         && execution.supersededBy === undefined && execution.phase !== 'failed'));
-    return { run, budget: standing, nodes, available, executions, evidence, holds: executionHolds(run.control), growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion, revision or human clearance has not finished recording its effect; inspect its receipt before new business work' } : standing.phase === 'closing' ? { reason: 'the Campaign is in its closing reserve; analysis, fact reading and deterministic settlement remain, but no new experiment, revision, growth or Workshop write may start' } : standing.phase === 'exhausted' ? { reason: 'the Campaign hard time box is exhausted; only deterministic facts and missing-delivery reporting remain' } : standing.attemptLimitSpent && candidates.some((nodeId) => nodes.find((node) => node.id === nodeId)?.kind === 'act') ? { reason: 'the Campaign attempt limit is exhausted; the current act node cannot be admitted, while analysis and deterministic closing remain available' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
+    const cite = candidates.flatMap((nodeId) => {
+      const node = positionOf(pack, nodeId)?.node;
+      return node?.kind === 'explore' && !opensALoop(node) ? [exploreCitation({ deps, runId, pack }, node)] : [];
+    });
+    return { run, budget: standing, nodes, available, executions, evidence, ...(cite.length === 0 ? {} : { cite }), holds: executionHolds(run.control), growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion, revision or human clearance has not finished recording its effect; inspect its receipt before new business work' } : standing.phase === 'closing' ? { reason: 'the Campaign is in its closing reserve; analysis, fact reading and deterministic settlement remain, but no new experiment, revision, growth or Workshop write may start' } : standing.phase === 'exhausted' ? { reason: 'the Campaign hard time box is exhausted; only deterministic facts and missing-delivery reporting remain' } : standing.attemptLimitSpent && candidates.some((nodeId) => nodes.find((node) => node.id === nodeId)?.kind === 'act') ? { reason: 'the Campaign attempt limit is exhausted; the current act node cannot be admitted, while analysis and deterministic closing remain available' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
   } catch (error) {
     return { run, budget: standing, nodes: [], available: [], executions, growths: [], revisions, reason: (error as Error).message };
   }
@@ -2808,7 +2816,13 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
       (record.type === 'observation' || record.type === 'verdict')
       && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id);
     const cites = req.cites ?? [];
-    if (cites.length === 0 || new Set(cites).size !== cites.length || cites.some((id) => !current.some((record) => record.id === id)) || evidence.cites.some((id) => !cites.includes(id))) return no('the decision must cite its actual current-generation observations and required Judge verdicts; stale or invented evidence is refused');
+    if (cites.length === 0 || new Set(cites).size !== cites.length || cites.some((id) => !current.some((record) => record.id === id)) || evidence.cites.some((id) => !cites.includes(id))) {
+      const missing = evidence.cites.filter((id) => !cites.includes(id));
+      const unknown = cites.filter((id) => !current.some((record) => record.id === id));
+      return no(`the decision must cite its actual current-generation observations and required Judge verdicts; stale or invented evidence is refused. Required cites: ${evidence.cites.join(', ')}`
+        + (missing.length === 0 ? '' : `; missing: ${missing.join(', ')}`) + (unknown.length === 0 ? '' : `; not current evidence: ${unknown.join(', ')}`)
+        + (new Set(cites).size === cites.length ? '' : '; each id may be cited once') + '. Other current-generation observation or verdict ids may be added.');
+    }
     let chosen: DecisionRecord['chosen'];
     let rationale: DecisionRecord['rationale'] = {};
     if (req.decision === 'next-strategy') {
