@@ -717,12 +717,13 @@ test('an Operator\'s open still in flight is not marked cut off by a Host restar
 });
 
 // #64 D-T02-5: after the App was relaunched, w04–w06's XTop sessions stayed open for an hour with
-// their Operator children gone — the Host recovers a Run's owner, never its children — holding three
-// XTop seats, while the owner got an "interactive deadline was reached" notice again and again and no
-// close was ever recorded. A restarted Host closes each such session once through the process-group
-// close, its execution settles from the Job's own records, the owner is told once, and a second
-// restart finds the first close's receipt and does nothing again.
-test('after a Host restart, each Operator session whose Operator did not survive is closed once, its execution settles, and the owner is told once (#64 D-T02-5)', { timeout: 300_000 }, async (t) => {
+// their Operator children gone, holding three XTop seats, while the owner got an "interactive
+// deadline was reached" notice again and again and no close was ever recorded. A restarted Host
+// re-attaches each session as it stands; once nobody may drive a session any more — here its
+// Operator's delegation reaches its recorded deadline — the Host closes it once through the
+// process-group close, its execution settles from the Job's own records, the owner is told once,
+// and a second restart finds the first close's receipt and does nothing again.
+test('after a Host restart, Operator sessions are re-attached and each is closed once when nobody may drive it, its execution settles, and the owner is told once (#64 D-T02-5)', { timeout: 300_000 }, async (t) => {
   // Every owner notice any Host of this test sends, at the Host's own notify seam.
   const notices: string[] = [];
   const prototype = (Hima as unknown as { prototype: Record<string, any> }).prototype;
@@ -747,10 +748,17 @@ test('after a Host restart, each Operator session whose Operator did not survive
     const records = () => host.ctx.hima.ledger.records({ runId: driven.runId });
     const closesOf = (session: string) => records().filter((record) => record.type === 'interactive' && record.toolSessionId === session && record.event === 'closed');
     const killsOf = (session: string) => records().filter((record) => record.type === 'job' && record.job.session === session && record.event === 'killed');
+    // Re-attached: nothing stopped a session its Operator may still drive.
     for (const session of sessions) {
-      assert.equal(closesOf(session).length, 1, `${session} is closed once: ${JSON.stringify(records().filter((record) => record.type === 'interactive' && record.toolSessionId === session).map((record) => record.type === 'interactive' ? record.event : ''))}`);
+      assert.equal(closesOf(session).length, 0, `${session} is re-attached, not closed, while its Operator holds its authority`);
+      assert.ok(tmuxThere(session), `${session} is still on the Site after the restart`);
+    }
+    // Each Operator's share (30 s) ends; nobody may drive its session any more, and the Host closes it once.
+    await waitUntil('both sessions are closed by the Host', () => sessions.every((session) => closesOf(session).length > 0), 90_000, 100);
+    for (const session of sessions) {
+      assert.equal(closesOf(session).length, 1, `${session} is closed once`);
       assert.equal(killsOf(session).length, 1, `${session}'s Job is recorded stopped once`);
-      assert.equal(tmuxThere(session), false, `${session} is gone from the Site`);
+      await waitUntil(`${session} is gone from the Site`, () => !tmuxThere(session), 10_000, 50);
     }
     const control = () => host.ctx.hima.ledger.run(driven.runId)!.control!;
     for (const branch of branches) {
@@ -762,12 +770,13 @@ test('after a Host restart, each Operator session whose Operator did not survive
     for (const session of sessions) {
       assert.equal(told.filter((notice) => notice.includes(session)).length, 1, `the owner is told once about ${session}: ${JSON.stringify(told)}`);
     }
-    assert.equal(told.filter((notice) => /deadline/.test(notice)).length, 0, `no deadline notice: ${JSON.stringify(told)}`);
+    assert.equal(told.filter((notice) => /deadline of session/.test(notice)).length, 0, `no interactive deadline notice: ${JSON.stringify(told)}`);
 
     // A second restart finds the closes recorded: nothing is closed or announced again.
     const afterFirst = notices.length;
     const again = await driven.restart();
     await within(120_000, 'the second restart\'s reconciliation', again.ctx.hima.reconciled);
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
     for (const session of sessions) {
       assert.equal(again.ctx.hima.ledger.records({ runId: driven.runId }).filter((record) => record.type === 'interactive'
         && record.toolSessionId === session && record.event === 'closed').length, 1, `${session} is not closed again`);

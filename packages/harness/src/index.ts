@@ -712,7 +712,7 @@ export default class Hima extends Service {
     try {
       const sessions=await reconcileInteractiveState(this.interactiveDeps());
       for(const session of sessions)await reconcileInteractiveExecution(this.deps(),session.runId,session.executionId);
-      await this.closeOrphanedInteractiveSessions();
+      await this.closeUndrivableInteractiveSessions();
       await this.interactiveTimers!.reconcile();
       for(const run of this.ledger.runs())if(run.control&&run.status==='running')await this.settleStrandedTeams(run.id);
       found = await reconcileRuns(this.deps());
@@ -727,33 +727,39 @@ export default class Hima extends Service {
   }
 
   /**
-   * After a restart, an interactive session whose Operator was a child conversation has nobody left
-   * to type into it: the Host recovers a Run's owner, never its children. Such a session is closed
-   * once, through the same process-group close any close takes, under a request id derived from the
-   * session so a second restart finds the first close's receipt instead of closing again; the Job's
-   * own records then settle its execution, and the owner is told once (#64 D-T02-5: w04–w06 of
-   * attempt 2 stayed open for an hour after the restart, holding three XTop seats). A session the
-   * owner itself opened is left as it is: the owner is recovered and may carry on with it. A session
-   * already recorded `process-survived` is a person's blocker and is not touched again.
+   * An interactive session whose Operator no longer holds its authority — its delegation expired,
+   * was cancelled, completed or never became live — has nobody left who may type into it, and holds
+   * its Site slot and licence seats until something stops it (#64 D-T02-5: w04–w06 of attempt 2 stayed
+   * open for an hour after the App relaunch). Such a session is closed once, through the same
+   * process-group close any close takes, under a request id derived from the session, so a later
+   * pass or a later restart finds that close's receipt and does nothing again; the Job's own records
+   * settle its execution and the owner is told once. A session whose Operator still holds its
+   * authority is re-attached as it stands: its deadlines are projected again and the Host's own
+   * deadline stop ends it if nobody drives it. A session the owner opened itself belongs to the
+   * recovered owner. A `process-survived` session is a person's blocker and is not touched again.
+   * Asked when a Host starts and each time an Operator's delegation deadline is recorded.
    */
-  private async closeOrphanedInteractiveSessions():Promise<void> {
+  private async closeUndrivableInteractiveSessions(runId?:string):Promise<void> {
     const runtime=this.interactiveDeps();
     const closes:Promise<void>[]=[];
     for(const run of this.ledger.runs()) {
+      if(runId!==undefined&&run.id!==runId)continue;
       const control=run.control;if(!control||(run.status!=='running'&&run.status!=='waiting'))continue;
       for(const session of listInteractiveSessions(this.ledger,run.id)) {
         if(session.status==='closed'||session.status==='intent'||session.job===undefined||session.survivedPid!==undefined)continue;
         if(session.operatorSessionId===control.owner)continue;
-        const requestId=`recovery-close-${session.toolSessionId}`.slice(0,160);
+        if(operatorInteractiveAuthority(this.deps(),session.operatorSessionId,{runId:run.id,nodeId:session.nodeId,executionId:session.executionId})!==undefined)continue;
+        const requestId=`operator-ended-close-${session.toolSessionId}`.slice(0,160);
+        if(this.ledger.records({runId:run.id,type:'interactive'}).some(record=>record.type==='interactive'&&record.requestId===requestId))continue;
         closes.push((async()=>{
           const result=await operateInteractive(runtime,{runId:run.id,executionId:session.executionId,nodeId:session.nodeId,toolSessionId:session.toolSessionId,
             actor:control.owner,ownerEpoch:control.epoch,controlRevision:control.revision,requestId,hostStop:'recovery',action:'close'});
-          this.ctx.logger.info(`hima: interactive session ${session.toolSessionId} of ${run.id} at recovery: ${JSON.stringify(result)}`);
+          this.ctx.logger.info(`hima: interactive session ${session.toolSessionId} of ${run.id} without a live Operator: ${JSON.stringify(result)}`);
           if(result.status==='duplicate')return;
           this.deps().notify?.(control.owner,run.id,session.executionId,result.status==='refused'
-            ?`Interactive session ${session.toolSessionId} of node ${session.nodeId} lost its Operator in the Host restart, and the Host could not close it: ${result.reason}`
-            :`Interactive session ${session.toolSessionId} of node ${session.nodeId} lost its Operator in the Host restart; the Host closed it (${result.status}). Its execution settles from the Job's own records; inspect them before a retry.`);
-        })().catch(error=>this.ctx.logger.warn(`hima: closing orphaned interactive session ${session.toolSessionId} of ${run.id} failed: ${String(error)}`)));
+            ?`Interactive session ${session.toolSessionId} of node ${session.nodeId} has no Operator that may still drive it, and the Host could not close it: ${result.reason}`
+            :`Interactive session ${session.toolSessionId} of node ${session.nodeId} has no Operator that may still drive it; the Host closed it (${result.status}). Its execution settles from the Job's own records; inspect them before a retry.`);
+        })().catch(error=>this.ctx.logger.warn(`hima: closing interactive session ${session.toolSessionId} of ${run.id} failed: ${String(error)}`)));
       }
     }
     await Promise.all(closes);
@@ -1243,7 +1249,7 @@ export default class Hima extends Service {
       const timer=setTimeout(()=>{
         this.delegationTimers.delete(key);
         this.ctx.get('agents')?.get(key as never)?.cancel({kind:'hook',reason:'The recorded delegation deadline expired.'});
-        void controlling(this.deps(),run.id,async()=>{const latest=runDelegations(this.deps(),run.id).find(d=>d.childSessionId===key);if(!latest||!['intent','accepted'].includes(latest.state))return;await this.ledger.appendDelegation(run.id,{delegationId:row.delegationId,parentSessionId:row.parentSessionId,childSessionId:key,requestId:`deadline:${row.delegationId}`,requestDigest:identityOf({deadlineAt:row.reservation.deadlineAt}),event:'deadline',payload:{reason:'Original child time allocation expired; new work is fenced.',stopObserved:this.ctx.get('agents')?.get(key as never)?.status==='idle'}});}).then(()=>this.settleStrandedTeams(run.id)).catch(error=>this.ctx.logger.warn(String(error)));
+        void controlling(this.deps(),run.id,async()=>{const latest=runDelegations(this.deps(),run.id).find(d=>d.childSessionId===key);if(!latest||!['intent','accepted'].includes(latest.state))return;await this.ledger.appendDelegation(run.id,{delegationId:row.delegationId,parentSessionId:row.parentSessionId,childSessionId:key,requestId:`deadline:${row.delegationId}`,requestDigest:identityOf({deadlineAt:row.reservation.deadlineAt}),event:'deadline',payload:{reason:'Original child time allocation expired; new work is fenced.',stopObserved:this.ctx.get('agents')?.get(key as never)?.status==='idle'}});}).then(()=>this.settleStrandedTeams(run.id)).then(()=>this.closeUndrivableInteractiveSessions(run.id)).catch(error=>this.ctx.logger.warn(String(error)));
       },Math.max(1,Date.parse(row.reservation.deadlineAt)-Date.now()));timer.unref();this.delegationTimers.set(key,timer);
     }
   }
