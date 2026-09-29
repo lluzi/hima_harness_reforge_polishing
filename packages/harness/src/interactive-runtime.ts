@@ -685,7 +685,10 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
   const view = sessionFor(deps.fabric.ledger, request);
   const session = view && nativeSession(view);
   if (!view || !session) return { status: 'refused', reason: 'interactive session is absent, incomplete or not owned by this execution' };
-  if (!facts.qualification.testOnly && view.operatorSessionId !== request.actor) {
+  // The Host's own stop of a session (a deadline, or an Operator lost to a restart) acts on the Job
+  // itself; it is not the owner typing into the Operator's session (#64 D-T02-5).
+  const hostStop = request.hostStop !== undefined && (request.action === 'close' || request.action === 'signal');
+  if (!facts.qualification.testOnly && view.operatorSessionId !== request.actor && !hostStop) {
     return { status: 'refused', reason: 'This production interactive session belongs to its recorded Operator child; the Run owner may inspect and adopt the child result but cannot take over typed operations.' };
   }
   const on: InteractiveChannel = channelFor(loadSite(deps.fabric.sitesDir, facts.run.siteId));
@@ -785,14 +788,19 @@ export async function reconcileInteractiveState(deps: InteractiveRuntimeDeps): P
 /** Process-local timers project durable absolute deadlines; disposal never stops a Job by itself. */
 export function createInteractiveTimerController(deps: InteractiveRuntimeDeps): InteractiveTimerController {
   const timers = new Map<string, ReturnType<typeof setTimeout>>(); let disposed = false;
+  // A deadline fires once per Host (#64 D-T02-5): every interactive call re-projects the deadlines,
+  // and one that had already fired, for a session its stop did not close, used to be scheduled and
+  // fired again each time — 42 notices to the owner in 17 minutes of attempt 2.
+  const fired = new Set<string>();
   const schedule = (deadline: InteractiveDeadline): void => {
     const key = `${deadline.kind}:${deadline.runId}:${deadline.toolSessionId}:${deadline.commandId ?? ''}`;
-    if (timers.has(key) || disposed) return;
+    if (timers.has(key) || disposed || fired.has(`${key}@${deadline.at}`)) return;
     const fire = (): void => {
       if (disposed) return;
       const remaining = Date.parse(deadline.at) - nowOf(deps);
       if (remaining > 0) { timers.set(key, setTimeout(fire, Math.min(remaining, 2_147_000_000))); return; }
       timers.delete(key);
+      fired.add(`${key}@${deadline.at}`);
       void deps.onDeadline(deadline).catch((error) => deps.fabric.log?.(`interactive deadline callback failed for ${deadline.toolSessionId}: ${String(error)}`));
     };
     fire();

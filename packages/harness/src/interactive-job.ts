@@ -105,6 +105,12 @@ export interface InteractiveAddress {
   /** Host-only pin from the Operator delegation receipt. */
   readonly expectedBindingDigest?: string;
   /**
+   * Host-only: this close or interrupt is the Host's own stop — a deadline it reached, or a session
+   * whose Operator did not survive a Host restart — not a typed takeover by the Run owner. It is
+   * never accepted from model or HTTP input (the request schema is strict and does not name it).
+   */
+  readonly hostStop?: 'deadline' | 'recovery';
+  /**
    * Host-only: the Operator's owner-adopted reviewed scope. Admission holds every mutation the
    * retained Pack classifies as `mutate` to these commands and plan hash, and counts the scope
    * mutations already recorded for this execution and actor, across tool sessions, against `maxMutations`.

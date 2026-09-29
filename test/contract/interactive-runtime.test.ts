@@ -401,6 +401,36 @@ test('interactive runtime derives authority from Run/Ledger, preserves single-wr
   }
 });
 
+// #64 D-T02-5: every interactive call re-projects the deadlines, and a deadline that had already
+// fired, for a session its stop did not close, was scheduled and fired again each time — 42 notices
+// to the owner in 17 minutes. A deadline fires once per Host however often it is re-projected.
+test('a deadline that has fired is not fired again when the deadlines are re-projected (#64 D-T02-5)', async () => {
+  const runId = 'deadline-once', toolSessionId = 'deadline-once-session';
+  const address = { runId, toolSessionId, executionId: execution.id, nodeId: 'manual', actor: 'operator',
+    ownerEpoch: 1, controlRevision: 0, requestId: 'open-request', operationDigest: digest('a'),
+    callerDigest: digest('b'), at: '2026-09-29T19:20:32.000Z' };
+  const protocol = (data: object) => ({ type: 'interactive', runId, toolSessionId, payload: parseInteractiveRecord({ ...address, ...data }) });
+  const records = [
+    protocol({ event: 'open-intent', jobSession: toolSessionId, transcriptPath: '/fixture/transcript.log',
+      exitPath: '/fixture/session.exit', sessionDeadlineAt: '2026-09-29T19:30:32.000Z' }),
+    protocol({ event: 'opened', jobSession: toolSessionId, readiness: 'ready', qualification: {
+      bindingDigest: digest('c'), adapter: binding.adapter, environment: binding.environment, mutation: 'qualified', testOnly: true } }),
+  ];
+  const ledger = { runs: () => [{ id: runId, siteId: 'local', control: { executions: {} } }],
+    records: (query: { type?: string }) => records.filter((record) => query.type === undefined || record.type === query.type) };
+  const fired: string[] = [];
+  const timer = createInteractiveTimerController({ fabric: { ledger } as never, resolveOperation: async () => undefined,
+    verifyAdminBinding: async () => { throw new Error('unused'); }, encodeCommand: async () => { throw new Error('unused'); },
+    onDeadline: async (deadline) => { fired.push(`${deadline.kind}:${deadline.toolSessionId}`); } });
+  try {
+    for (let call = 0; call < 3; call += 1) {
+      await timer.reconcile();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.deepEqual(fired, [`session:${toolSessionId}`], 'the past session deadline fired once, not once per re-projection');
+  } finally { timer.dispose(); }
+});
+
 // #64 D-T01-3: the Harness "closed" worker 02's interactive session, but the tool it had launched
 // kept running and kept its locks in the slot, so every retry in that slot was refused by the
 // wrapper's startup lock check. A close must end with the Job's process group observed gone, or

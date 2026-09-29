@@ -712,6 +712,7 @@ export default class Hima extends Service {
     try {
       const sessions=await reconcileInteractiveState(this.interactiveDeps());
       for(const session of sessions)await reconcileInteractiveExecution(this.deps(),session.runId,session.executionId);
+      await this.closeOrphanedInteractiveSessions();
       await this.interactiveTimers!.reconcile();
       for(const run of this.ledger.runs())if(run.control&&run.status==='running')await this.settleStrandedTeams(run.id);
       found = await reconcileRuns(this.deps());
@@ -723,6 +724,39 @@ export default class Hima extends Service {
     }
     for (const outcome of found) this.ctx.logger.info(`hima: reconciled ${outcome.runId}: ${outcome.detail}`);
     return found;
+  }
+
+  /**
+   * After a restart, an interactive session whose Operator was a child conversation has nobody left
+   * to type into it: the Host recovers a Run's owner, never its children. Such a session is closed
+   * once, through the same process-group close any close takes, under a request id derived from the
+   * session so a second restart finds the first close's receipt instead of closing again; the Job's
+   * own records then settle its execution, and the owner is told once (#64 D-T02-5: w04–w06 of
+   * attempt 2 stayed open for an hour after the restart, holding three XTop seats). A session the
+   * owner itself opened is left as it is: the owner is recovered and may carry on with it. A session
+   * already recorded `process-survived` is a person's blocker and is not touched again.
+   */
+  private async closeOrphanedInteractiveSessions():Promise<void> {
+    const runtime=this.interactiveDeps();
+    const closes:Promise<void>[]=[];
+    for(const run of this.ledger.runs()) {
+      const control=run.control;if(!control||(run.status!=='running'&&run.status!=='waiting'))continue;
+      for(const session of listInteractiveSessions(this.ledger,run.id)) {
+        if(session.status==='closed'||session.status==='intent'||session.job===undefined||session.survivedPid!==undefined)continue;
+        if(session.operatorSessionId===control.owner)continue;
+        const requestId=`recovery-close-${session.toolSessionId}`.slice(0,160);
+        closes.push((async()=>{
+          const result=await operateInteractive(runtime,{runId:run.id,executionId:session.executionId,nodeId:session.nodeId,toolSessionId:session.toolSessionId,
+            actor:control.owner,ownerEpoch:control.epoch,controlRevision:control.revision,requestId,hostStop:'recovery',action:'close'});
+          this.ctx.logger.info(`hima: interactive session ${session.toolSessionId} of ${run.id} at recovery: ${JSON.stringify(result)}`);
+          if(result.status==='duplicate')return;
+          this.deps().notify?.(control.owner,run.id,session.executionId,result.status==='refused'
+            ?`Interactive session ${session.toolSessionId} of node ${session.nodeId} lost its Operator in the Host restart, and the Host could not close it: ${result.reason}`
+            :`Interactive session ${session.toolSessionId} of node ${session.nodeId} lost its Operator in the Host restart; the Host closed it (${result.status}). Its execution settles from the Job's own records; inspect them before a retry.`);
+        })().catch(error=>this.ctx.logger.warn(`hima: closing orphaned interactive session ${session.toolSessionId} of ${run.id} failed: ${String(error)}`)));
+      }
+    }
+    await Promise.all(closes);
   }
 
   /** Re-open the recorded native owner only after factual reconciliation; never replay a node. */
@@ -864,10 +898,16 @@ export default class Hima extends Service {
       },
       onDeadline:async deadline=>{
         const run=this.ledger.run(deadline.runId);if(!run?.control)return;
-        const common={runId:run.id,executionId:deadline.executionId,nodeId:deadline.nodeId,toolSessionId:deadline.toolSessionId,actor:run.control.owner,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,requestId:`deadline-${identityOf(deadline).slice(0,40)}`};
+        const requestId=`deadline-${identityOf(deadline).slice(0,40)}`;
+        // One stop and one notice per deadline (#64 D-T02-5): a deadline whose stop is already in the
+        // Ledger — this Host's, or one before a restart — is not stopped or announced again.
+        if(this.ledger.records({runId:run.id,type:'interactive'}).some(record=>record.type==='interactive'&&record.requestId===requestId))return;
+        const common={runId:run.id,executionId:deadline.executionId,nodeId:deadline.nodeId,toolSessionId:deadline.toolSessionId,actor:run.control.owner,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,requestId,hostStop:'deadline' as const};
         const result=await operateInteractive(runtime,deadline.kind==='command'?{...common,action:'signal',signal:'interrupt'}:{...common,action:'close'});
         this.ctx.logger.info(`Interactive ${deadline.kind} deadline: ${JSON.stringify(result)}`);
-        this.deps().notify?.(run.control.owner,run.id,deadline.executionId,'An interactive deadline was reached. Inspect the exact stop receipt and original Job; no checkpoint or successful design result is implied.');
+        this.deps().notify?.(run.control.owner,run.id,deadline.executionId,result.status==='refused'
+          ?`An interactive ${deadline.kind} deadline of session ${deadline.toolSessionId} was reached, and the Host could not stop it: ${result.reason}`
+          :`An interactive ${deadline.kind} deadline of session ${deadline.toolSessionId} was reached and the Host ${deadline.kind==='command'?'interrupted the command':'closed the session'} (${result.status}). Inspect the exact stop receipt and original Job; no checkpoint or successful design result is implied.`);
       },
     };
     this.interactiveRuntime=runtime;this.interactiveTimers=createInteractiveTimerController(runtime);return runtime;

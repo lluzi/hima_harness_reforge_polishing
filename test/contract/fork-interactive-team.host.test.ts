@@ -9,12 +9,13 @@
 // Replayed children stand in for models and the synthetic Tcl REPL stands in for XTop: this proves
 // admission, identity, concurrency and join mechanics, never model quality or EDA results.
 import { test, type TestContext } from 'node:test';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { appendFile, cp, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
-import {
+import Hima, {
   BUILTIN_TCL_ADAPTER_DIGEST, delegationRuntimePolicy, interactiveCommandsDigest, loadPack, packDigestExcludes, runDelegations,
   type ExecutionActionRequest, type ExecutionActionResult, type JobRecord, type LedgerRecord, type RunView,
 } from '@hima/harness';
@@ -197,6 +198,8 @@ interface Driven {
   readonly host: InProcessHost; readonly runId: string; readonly actor: string; readonly workspace: string;
   /** A second Run of the same Pack on the same Site, owned by a second conversation. */
   readonly another: () => Promise<Driven>;
+  /** Stop this Host and boot a fresh one on the same home, as an App relaunch does; answers the new Host. */
+  readonly restart: () => Promise<InProcessHost>;
 }
 
 /** A booted Host with one Run of the fixture Pack started on a local Site declaring `parallelJobs` slots. */
@@ -219,15 +222,16 @@ async function forkedCampaign(t: TestContext, parallelJobs: number, check: (driv
   const scenario = await writeMomentScenario(h, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
   await writeReplayOverlay(h.home, { file: scenario.file, overrideFile: scenario.override, childFiles: scenario.children });
   await appendFile(homePatchFile(h.home), `\n- id: hima\n  config:\n    sitesDir: ${JSON.stringify(site.sitesDir)}\n    packsDir: ${JSON.stringify(packsDir)}\n    knowledgeDir: ${JSON.stringify(path.join(h.home, 'hima/knowledge/current'))}\n    interactiveBindingsFile: ${JSON.stringify(bindingsFile)}\n`);
-  const host = await bootInProcess(h);
+  let host = await bootInProcess(h);
   const runIds: string[] = [];
+  const restart = async (): Promise<InProcessHost> => { await host.dispose(); host = await bootInProcess(h); return host; };
   const start = async (): Promise<Driven> => {
     const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
     const started = await host.ctx.hima.startRun({ pack: packId, site: site.name, goal: { target_period_ns: 2 }, ownerSessionId: actor, timeBoxMs: 180_000 });
     assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') throw new Error('unreachable');
     runIds.push(started.run.id);
     assert.ok(started.workspace);
-    return { host, runId: started.run.id, actor, workspace: started.workspace, another: start };
+    return { host, runId: started.run.id, actor, workspace: started.workspace, another: start, restart };
   };
   try {
     await check(await start());
@@ -709,5 +713,66 @@ test('an Operator\'s open still in flight is not marked cut off by a Host restar
       const closed = await within(30_000, `close ${branch.id}`, interactive(branch, { action: 'close', requestId: `close-${branch.id}`, toolSessionId: opened.session.toolSessionId }));
       assert.equal(closed.status, 'closed', JSON.stringify(closed));
     }
+  });
+});
+
+// #64 D-T02-5: after the App was relaunched, w04–w06's XTop sessions stayed open for an hour with
+// their Operator children gone — the Host recovers a Run's owner, never its children — holding three
+// XTop seats, while the owner got an "interactive deadline was reached" notice again and again and no
+// close was ever recorded. A restarted Host closes each such session once through the process-group
+// close, its execution settles from the Job's own records, the owner is told once, and a second
+// restart finds the first close's receipt and does nothing again.
+test('after a Host restart, each Operator session whose Operator did not survive is closed once, its execution settles, and the owner is told once (#64 D-T02-5)', { timeout: 300_000 }, async (t) => {
+  // Every owner notice any Host of this test sends, at the Host's own notify seam.
+  const notices: string[] = [];
+  const prototype = (Hima as unknown as { prototype: Record<string, any> }).prototype;
+  const plainDeps = prototype.deps as () => Record<string, any>;
+  prototype.deps = function (this: unknown) {
+    const deps = plainDeps.call(this);
+    return { ...deps, notify: (...args: unknown[]) => { notices.push(args.map(String).join(' | ')); return deps.notify?.(...args); } };
+  };
+  t.after(() => { prototype.deps = plainDeps; });
+  await forkedCampaign(t, 2, async (driven) => {
+    const owner = ownerCalls(driven);
+    const { interactive, operate } = await teamsReady(driven, owner);
+    const opened = await Promise.all(branches.map((branch) => interactive(branch, { action: 'open', requestId: `open-${branch.id}` })));
+    for (const result of opened) assert.equal(result.status, 'opened', JSON.stringify(result));
+    const sessions = opened.map((result) => result.session.toolSessionId as string);
+    const tmuxThere = (session: string) => spawnSync('tmux', ['has-session', '-t', `=${session}`]).status === 0;
+    for (const session of sessions) assert.ok(tmuxThere(session), `${session} is open before the restart`);
+    const before = notices.length;
+
+    const host = await driven.restart();
+    await within(120_000, 'the restarted Host\'s reconciliation', host.ctx.hima.reconciled);
+    const records = () => host.ctx.hima.ledger.records({ runId: driven.runId });
+    const closesOf = (session: string) => records().filter((record) => record.type === 'interactive' && record.toolSessionId === session && record.event === 'closed');
+    const killsOf = (session: string) => records().filter((record) => record.type === 'job' && record.job.session === session && record.event === 'killed');
+    for (const session of sessions) {
+      assert.equal(closesOf(session).length, 1, `${session} is closed once: ${JSON.stringify(records().filter((record) => record.type === 'interactive' && record.toolSessionId === session).map((record) => record.type === 'interactive' ? record.event : ''))}`);
+      assert.equal(killsOf(session).length, 1, `${session}'s Job is recorded stopped once`);
+      assert.equal(tmuxThere(session), false, `${session} is gone from the Site`);
+    }
+    const control = () => host.ctx.hima.ledger.run(driven.runId)!.control!;
+    for (const branch of branches) {
+      const executionId = operate.get(branch.id)!;
+      await waitUntil(`${branch.operate}'s execution settles`, () => control().executions[executionId]?.phase !== 'working'
+        && control().executions[executionId]?.phase !== 'begun', 30_000, 50);
+    }
+    const told = notices.slice(before);
+    for (const session of sessions) {
+      assert.equal(told.filter((notice) => notice.includes(session)).length, 1, `the owner is told once about ${session}: ${JSON.stringify(told)}`);
+    }
+    assert.equal(told.filter((notice) => /deadline/.test(notice)).length, 0, `no deadline notice: ${JSON.stringify(told)}`);
+
+    // A second restart finds the closes recorded: nothing is closed or announced again.
+    const afterFirst = notices.length;
+    const again = await driven.restart();
+    await within(120_000, 'the second restart\'s reconciliation', again.ctx.hima.reconciled);
+    for (const session of sessions) {
+      assert.equal(again.ctx.hima.ledger.records({ runId: driven.runId }).filter((record) => record.type === 'interactive'
+        && record.toolSessionId === session && record.event === 'closed').length, 1, `${session} is not closed again`);
+    }
+    assert.deepEqual(notices.slice(afterFirst).filter((notice) => sessions.some((session) => notice.includes(session))), [],
+      'nothing is announced again');
   });
 });
