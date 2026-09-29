@@ -329,3 +329,27 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   });
   assert.equal(tests.status, 0, `${tests.stdout}\n${tests.stderr}`);
 });
+
+// Issue 63: nothing in the repo fails when flow/ drifts away from the installed v9 wrapper's
+// pinned adapter/flow identities -- linglong-atcs28/wrapper-pins.json records what that Site
+// administrator's installed wrapper actually pins, and this test is the gate: a flow/ change
+// without a matching wrapper update (a new sha256, a new flowDigest) fails here first.
+test('linglong-atcs28 wrapper-pins.json matches the Pack flow/ this repo ships', async () => {
+  const pinsPath = path.join(repoRoot, 'sites/linglong-atcs28/wrapper-pins.json');
+  const pins = JSON.parse(await readFile(pinsPath, 'utf8'));
+
+  const packDir = path.join(repoRoot, 'packs', packId);
+  const adapterSha256 = createHash('sha256')
+    .update(await readFile(path.join(packDir, 'flow/atcs_cli.py')))
+    .digest('hex');
+  assert.equal(pins.adapterSha256, adapterSha256,
+    'wrapper-pins.json adapterSha256 must equal sha256(flow/atcs_cli.py); update the pinned wrapper before this file');
+
+  const digest = spawnSync('python3', ['flow/atcs_cli.py', 'flow-digest', 'flow'], {
+    cwd: packDir,
+    encoding: 'utf8',
+  });
+  assert.equal(digest.status, 0, `${digest.stdout}\n${digest.stderr}`);
+  assert.equal(pins.flowDigest, digest.stdout.trim(),
+    'wrapper-pins.json flowDigest must equal `python3 flow/atcs_cli.py flow-digest flow`\'s current output');
+});

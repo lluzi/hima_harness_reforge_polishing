@@ -202,3 +202,13 @@ safety property the frozen wrapper has:
 
 There is no batch path for this tool (`contract.yml`'s `xtop-operator` tool is `interactive-only`); the
 wrapper always launches one interactive XTop session per call and exits when that session closes.
+
+## wrapper-pins.json
+
+`wrapper-pins.json` records what the installed `atcs-v9` wrapper (above) actually pins:
+`adapterSha256` (`sha256(flow/atcs_cli.py)`) and `flowDigest` (`python3 flow/atcs_cli.py
+flow-digest flow`). `test/contract/agentic-timing-closure-system.test.ts` recomputes both
+from this repo's own `flow/` and asserts they still equal this file's values -- a `flow/`
+change without a new installed wrapper fails that contract test; a new wrapper version
+updates this file only after its own server qualification, the same way `atcs-v9` itself
+was qualified.
