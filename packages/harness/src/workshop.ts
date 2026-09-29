@@ -17,6 +17,7 @@
 // What is *not* here: anything about what gets written. The harness names no language, no wrapper, no
 // design and no route — every one of those words comes out of the pack's own declaration, and the
 // purpose the model is given is the pack author's sentence carried through verbatim.
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
@@ -247,6 +248,10 @@ export async function readBack(site: Site, channel: Channel, at: string, expecte
  */
 export interface WriteAnswer {
   wrote: boolean; path?: string; sha256?: string; bytes?: number; refused?: string; reason?: string;
+  /** A non-blocking advisory surfaced to the owner alongside a successful write — e.g. a Python entry
+   *  the Host's own interpreter could not compile, where the Host version differs from the Site's, so
+   *  the check cannot refuse it but the likely error is still worth seeing before `work` (#C21). */
+  warning?: string;
   /** Durable pre-effect call identity and its cumulative charged standing. */
   writeReceipt?: string; usedWriteAttempts?: number; usedBytes?: number;
 }
@@ -416,6 +421,58 @@ export function workshopTools(scope: WorkshopScope): ToolDefinition[] {
  * line, exactly as a reader's script and a workspace's `workspace.json` do: the wire carries the
  * command, not its payload, so no content a model wrote is ever a word of a shell line.
  */
+/**
+ * Why a Python Workshop entry does not compile, or undefined when it does or cannot be checked
+ * (#C21). The model-authored bytes are compiled with the host's own python3 `compile(...)` — the
+ * syntax half of `py_compile` — over stdin, before anything is sent to a Site, so a SyntaxError is
+ * caught at write time rather than as a Job that launches, exits 1 and spends a Retry attempt. A
+ * missing python3, or a failure whose message is not a source syntax fault, is treated as "cannot
+ * check" and lets the write proceed, so an environment gap is never turned into a false refusal.
+ */
+/** The `major.minor` a Site's discovery facts recorded for its Python interpreter, or undefined when
+ *  the Site declares none. Discovery facts are the Site's own descriptive record of what it ran; a
+ *  `python* --version` probe writes `Python X.Y.Z` to stdout (some builds to stderr). */
+function siteDeclaredPythonVersion(site: Site): string | undefined {
+  for (const fact of site.discovery?.facts ?? []) {
+    if (fact.code !== 0 || !/python/i.test(fact.probe.join(' '))) continue;
+    const found = /Python\s+(\d+)\.(\d+)/.exec(fact.stdout) ?? /Python\s+(\d+)\.(\d+)/.exec(fact.stderr ?? '');
+    if (found !== null) return `${found[1]}.${found[2]}`;
+  }
+  return undefined;
+}
+
+type PythonCompileProblem = { readonly refuse: string } | { readonly warn: string };
+
+/**
+ * How a Python Workshop entry fares against a syntax check, or undefined when it compiles or cannot
+ * be checked (#C21). The model-authored bytes are compiled with the **Host's** python3 `compile(...)`
+ * — the syntax half of `py_compile` — over stdin, before anything is sent to a Site, and the check
+ * reports the Host interpreter's own `major.minor`.
+ *
+ * The entry runs on the **Site**, whose interpreter may be a different version, so a Host failure is
+ * only a *refusal* when the Host's version equals the Site's declared Python version (from discovery
+ * facts): there the two interpreters agree and a SyntaxError here is a SyntaxError there, caught
+ * without launching a Job or spending a Retry attempt. When the versions differ, or the Site declares
+ * none, a construct valid on the Site's Python (`match`, PEP 701 f-strings) could still fail on the
+ * Host, so the failure is only a *warning* surfaced beside the successful write — never a false
+ * refusal. A missing python3, or a failure that is not a source syntax fault, is "cannot check".
+ */
+function pythonSyntaxProblem(asked: string, source: Uint8Array, site: Site): PythonCompileProblem | undefined {
+  const program = 'import sys\nsys.stdout.write("%d.%d\\n" % (sys.version_info[0], sys.version_info[1]))\ncompile(sys.stdin.buffer.read().decode("utf-8", "replace"), sys.argv[1], "exec")\n';
+  const result = spawnSync('python3', ['-c', program, asked], { input: Buffer.from(source), encoding: 'utf8', timeout: 10_000 });
+  if (result.error !== undefined || result.signal !== null) return undefined; // No python3, or it did not finish.
+  if (result.status === 0) return undefined;
+  const stderr = (result.stderr ?? '').trim();
+  if (!/(SyntaxError|IndentationError|TabError)/.test(stderr)) return undefined; // Not a source syntax fault.
+  const hostVersion = ((result.stdout ?? '').trim().split('\n')[0] ?? '').trim();
+  const line = stderr.split('\n').map((item) => item.trimEnd()).filter((item) => item !== '').at(-1) ?? stderr;
+  const siteVersion = siteDeclaredPythonVersion(site);
+  if (siteVersion !== undefined && hostVersion !== '' && hostVersion === siteVersion) {
+    return { refuse: `Python entry ${asked} does not compile and was not written; revise it and write again: ${line}` };
+  }
+  return { warn: `Python entry ${asked} did not compile under the Host's python3 ${hostVersion || '(unknown version)'}${siteVersion === undefined ? ` (site ${site.name} declares no Python version, so this is not checked against the interpreter that will run it)` : `, while site ${site.name} runs Python ${siteVersion}`}; it was written — check it before you run it: ${line}` };
+}
+
 export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, content: string): Promise<WriteAnswer> {
   const channel = channelFor(scope.site);
   const p = pathsOf(scope.site);
@@ -447,6 +504,20 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
   if (!decided.ok) return refused(decided.reason);
   if (!within(decided.absPath, scope.workshopAbs, scope.site)) {
     return refused(`${decided.absPath} is outside the workshop directory ${scope.workshopAbs}: a path that resolves out of it is not a path this workshop may write, however it was spelled`);
+  }
+
+  // A Python entry is syntax-checked at write time (#C21), on the Host's own python3, before a Job
+  // ever launches. It is refused only when the Host's Python version matches the Site's declared one,
+  // where a SyntaxError here is a SyntaxError where the entry will run, so the owner revises without a
+  // launch or a Retry attempt. When the versions differ, or the Site declares none, the same failure
+  // is only a warning carried beside the successful write — a construct valid on the Site's Python
+  // must never be refused by the Host's. A missing python3, or a non-syntax failure, is a fail-open
+  // pass. Only the declared entry is checked; later owner revisions are not (write-time scope).
+  let syntaxWarning: string | undefined;
+  if (asked === scope.declaration.entry && /\.py$/.test(asked)) {
+    const problem = pythonSyntaxProblem(asked, bytes, scope.site);
+    if (problem !== undefined && 'refuse' in problem) return refused(problem.refuse);
+    if (problem !== undefined && 'warn' in problem) syntaxWarning = problem.warn;
   }
 
   // The parent, where the model asked for a file inside a subdirectory of its own. Its own write
@@ -555,7 +626,7 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
     }
     return withReceipt({ wrote: false, reason });
   }
-  return withReceipt({ wrote: true, path: decided.absPath, sha256, bytes: bytes.byteLength });
+  return withReceipt({ wrote: true, path: decided.absPath, sha256, bytes: bytes.byteLength, ...(syntaxWarning === undefined ? {} : { warning: syntaxWarning }) });
 }
 
 /** Read one of the declared outputs, under the Permit, capped. */

@@ -313,3 +313,118 @@ test('an unresolved launch intent vetoes another Run inside the Site capacity cl
     assert.equal(host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).length, 0);
   } finally { await home.dispose(); }
 });
+
+test('C33: a failed tool Job with retries left records its log tail on the retrying node record', async () => {
+  const home = await nodeHome();
+  const { h, host, run, ctx } = home;
+  try {
+    const script = path.join(h.workspace, 'fail.sh');
+    // The Job prints a diagnostic line and exits non-zero, with Retry allowance still left.
+    await writeFile(script, `echo "Error: synthesis failed at cell BUF_X4"\necho "see dc_shell.log for detail"\nexit 1\n`);
+    const pack = { ...ctx.pack, contract: { ...ctx.pack.contract, tools: ctx.pack.contract.tools.map((t) => t.id === 'synth' ? { ...t, argv: ['sh', script], licences: {} } : t) } };
+    const tool = pack.graph.nodes.find((n) => n.id === 'synthesize');
+    assert.ok(tool?.kind === 'act');
+    const launched = await toolNode({ ...ctx, pack }, run, tool, 1);
+    assert.equal(launched.kind, 'pending');
+    if (launched.kind !== 'pending') return;
+    const settled = await resumeNode({ ...ctx, pack }, tool, 1, launched.session);
+    assert.equal(settled.kind, 'retrying', 'exit 1 with allowance left retries rather than blocking');
+    const record = host.ctx.hima.ledger.records({ runId: run.id, type: 'node' })
+      .findLast((r) => r.type === 'node' && r.nodeId === 'synthesize' && r.state === 'retrying');
+    assert.ok(record?.type === 'node', 'a retrying node record was written');
+    assert.ok(record.logTail, `the retrying record carries the Job's log tail: ${JSON.stringify(record)}`);
+    assert.match(record.logTail!, /Error: synthesis failed at cell BUF_X4/,
+      'the log tail carries the failed Job diagnostic so the failure is reproducible from the Ledger alone');
+    // Bounded like a blocker's tail: no unbounded growth.
+    assert.ok(record.logTail!.length <= 16 * 1024);
+  } finally { await home.dispose(); }
+});
+
+test('C21: a Python Workshop entry that does not compile is refused only when the Host and Site interpreters match, and warned otherwise', async () => {
+  const hostVersion = (() => {
+    const r = spawnSync('python3', ['-c', 'import sys;print("%d.%d" % (sys.version_info[0], sys.version_info[1]))'], { encoding: 'utf8' });
+    return r.status === 0 ? (r.stdout ?? '').trim() : undefined;
+  })();
+  if (hostVersion === undefined) { return; } // No host python3 to check with; the check fails open and this test cannot exercise it.
+  const otherVersion = `${Number(hostVersion.split('.')[0]) + 1}.0`; // A version that cannot equal the Host's.
+
+  const h = await createHimaHome();
+  const installed = await installPack(h);
+  // A Workshop whose declared entry is a Python file, so its write is syntax-checked before it lands.
+  const id = await installWorkshopPack(installed.packsDir, 'workshop-python', { entry: 'entry.py' });
+  const siteFiles = await writeLocalSite(h);
+  const host = await bootInProcess(h);
+  try {
+    const run = await host.ctx.hima.ledger.createRun({ campaignId: 'python-workshop', siteId: 'local', status: 'running', strategy: { periodNs: 2 } });
+    const base = loadSite(siteFiles.sitesDir, 'local');
+    const ctx: Driving = {
+      deps: { ledger: host.ctx.hima.ledger, judge: host.ctx.hima.judge, sitesDir: siteFiles.sitesDir, packsDir: installed.packsDir },
+      runId: run.id, site: base, pack: loadPack(installed.packsDir, id),
+      bindings: { flowRoot: h.workspace, design: 'test', MINED_ROUTE: 'one' }, workspace: h.workspace,
+      campaignId: run.campaignId, waitedMs: 0, nonblocking: true,
+    };
+    const node = ctx.pack.graph.nodes.find((n) => n.id === 'mine');
+    assert.ok(node?.kind === 'act');
+    const built = await buildWorkshopScope({ ...ctx, executionId: 'execution-py' }, node, 1, 'conversation-owner');
+    assert.equal(built.ok, true); if (!built.ok) return;
+    // A Site whose discovery declares a Python interpreter version, so the check knows whether the
+    // Host interpreter it ran is the one the entry will actually run under.
+    const withPython = (version: string | undefined) => ({ ...built.scope, site: { ...built.scope.site,
+      discovery: version === undefined ? undefined : { observedAt: new Date().toISOString(), inputFingerprint: 'a'.repeat(64),
+        facts: [{ probe: ['python3', '--version'], code: 0, stdout: `Python ${version}.0\n` }], unknowns: [], stale: false } } });
+
+    // Host == Site: a SyntaxError here is a SyntaxError where the entry runs, so it is refused.
+    const attemptsBefore = host.ctx.hima.ledger.run(run.id)?.meters?.attempts ?? 0;
+    const refused = await writeIntoWorkshop(withPython(hostVersion), 'entry.py', 'def f(:\n');
+    assert.equal(refused.wrote, false, 'a non-compiling entry is refused when Host and Site Python versions match');
+    assert.match(refused.reason ?? '', /SyntaxError/); assert.match(refused.reason ?? '', /entry\.py/);
+    assert.equal(host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).length, 0, 'no Job launched for the bad entry');
+    assert.equal(host.ctx.hima.ledger.records({ runId: run.id, type: 'code' }).some((r) => r.type === 'code' && r.path === 'entry.py'), false, 'no code record for the refused entry');
+    assert.equal(host.ctx.hima.ledger.run(run.id)?.meters?.attempts ?? 0, attemptsBefore, 'the refused write spends no attempt');
+
+    // Host != Site: a 3.10-only construct (this Host is older) fails on the Host but is valid where it
+    // runs, so it is written with a warning naming the Host version, never a false refusal.
+    const mismatch = await writeIntoWorkshop(withPython(otherVersion), 'entry.py', 'match value:\n    case _:\n        pass\n');
+    assert.equal(mismatch.wrote, true, `a Host-only compile failure is not a refusal when the Site runs a different Python: ${mismatch.reason ?? ''}`);
+    assert.ok(mismatch.warning, 'the write carries a warning'); assert.match(mismatch.warning!, new RegExp(hostVersion.replace('.', '\\.')));
+
+    // A Site that declares no Python version: the check cannot judge the interpreter, so still a warning.
+    const undeclared = await writeIntoWorkshop(withPython(undefined), 'entry.py', 'def f(:\n');
+    assert.equal(undeclared.wrote, true, 'with no declared Site Python version, a compile failure is a warning, not a refusal');
+    assert.ok(undeclared.warning, 'the write carries a warning');
+
+    // A compiling entry is written cleanly with no warning, whatever the Site version.
+    const good = await writeIntoWorkshop(withPython(hostVersion), 'entry.py', 'import sys\nprint("ok")\n');
+    assert.equal(good.wrote, true, `a compiling entry is written: ${good.reason ?? ''}`);
+    assert.equal(good.warning, undefined, 'a compiling entry carries no warning');
+  } finally {
+    for (const r of host.ctx.hima.ledger.runs().flatMap((r) => host.ctx.hima.ledger.records({ runId: r.id, type: 'job' }))) {
+      if (r.type === 'job' && r.event === 'launched') spawnSync('tmux', ['kill-session', '-t', `=${r.job.session}`]);
+    }
+    await host.dispose(); await h.dispose();
+  }
+});
+
+test('C33: an Agent-owned Workshop Job that fails records its log tail on the retrying node record', async () => {
+  const home = await nodeHome();
+  const { host, ctx } = home; // nodeHome builds ctx with nonblocking: true — the live owner-driven path.
+  try {
+    const node = ctx.pack.graph.nodes.find((n) => n.id === 'mine');
+    assert.ok(node?.kind === 'act' && node.parameters.workshop !== undefined);
+    const built = await buildWorkshopScope({ ...ctx, executionId: 'execution-i3' }, node, 1, 'conversation-owner');
+    assert.equal(built.ok, true); if (!built.ok) return;
+    // A Workshop entry whose Job prints a diagnostic and exits non-zero: an Agent-owned coding-loop
+    // failure, which retries without human clearance and must still leave its log tail in the Ledger.
+    assert.equal((await writeIntoWorkshop(built.scope, 'miner.sh', 'echo "workshop failure detail line"\nexit 1\n')).wrote, true);
+    const launched = await launchWrittenWorkshop({ ...ctx, executionId: 'execution-i3' }, node, 1, 'conversation-owner');
+    assert.equal(launched.kind, 'pending'); if (launched.kind !== 'pending') return;
+    const settled = await resumeNode(ctx, node, 1, launched.session);
+    assert.equal(settled.kind, 'retrying', 'an Agent-owned Workshop failure retries in its coding loop');
+    const record = host.ctx.hima.ledger.records({ runId: ctx.runId, type: 'node' })
+      .findLast((r) => r.type === 'node' && r.nodeId === 'mine' && r.state === 'retrying');
+    assert.ok(record?.type === 'node', 'a retrying node record was written for the Workshop node');
+    assert.ok(record.logTail, `the owner-driven Workshop retry carries the Job log tail: ${JSON.stringify(record)}`);
+    assert.match(record.logTail!, /workshop failure detail line/, 'the log tail carries the failed Workshop Job diagnostic');
+    assert.ok(record.logTail!.length <= 16 * 1024);
+  } finally { await home.dispose(); }
+});

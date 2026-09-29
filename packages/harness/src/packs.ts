@@ -546,6 +546,11 @@ export const defaultPackBudget = {
 export const packBudget = z.strictObject({
   /** Optional method-owned wall box. Omitted Packs retain the Harness 60-minute default. */
   timeBoxMs: z.number().int().positive().max(24 * 60 * 60_000).optional(),
+  /** Optional method-owned floor on the generation limit: the fewest generations the graph needs to
+   *  reach its first useful result (e.g. its first refresh). A Run started with a smaller
+   *  generationLimit is refused at creation naming both numbers, so a Campaign cannot end at the
+   *  generation limit before it can produce anything. Omitted Packs impose no floor. */
+  minimumGenerations: z.number().int().positive().max(1_000_000).optional(),
   closingReserveMs: z.number().int().nonnegative().default(defaultPackBudget.closingReserveMs),
   attemptLimit: z.number().int().positive().max(1_000_000).default(defaultPackBudget.attemptLimit),
   researchWrites: z.strictObject({

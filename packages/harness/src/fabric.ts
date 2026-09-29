@@ -33,7 +33,7 @@ import { runExitFence } from './host-exit.js';
 // an outcome's edge leads to, and where a Run stops. What a turn itself does is `node-turns.ts`, what
 // a Run may spend `budget.ts`, what a Site will hold `job-cap.ts`, and picking a Run up again or
 // stopping one `recovery.ts`.
-import { goalDeclarationOf, boundInputs, checkPack, forkFrom, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, workshopProducersOf, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
+import { goalDeclarationOf, batchToolRefusal, boundInputs, checkPack, forkFrom, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, workshopProducersOf, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
 import { packDigestExcludes, snapshotPackFolder, type PackFolderSnapshot } from './pack-folder.js';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
@@ -513,6 +513,13 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   // fail on the next open of the ledger, taking every Run in it down.
   if (!allowsRunArgument('generations', budget.generationLimit)) {
     throw new RunStartError(`this run's generation limit is ${budget.generationLimit}; expected ${runArguments.generations.what}`);
+  }
+  // A method may declare the fewest generations its graph needs to reach a first useful result
+  // (`budget.minimumGenerations`). A Run started under a smaller limit would end at the generation
+  // limit before it can produce anything, so it is refused at creation naming both numbers.
+  const minimumGenerations = pack.contract.budget.minimumGenerations;
+  if (minimumGenerations !== undefined && budget.generationLimit < minimumGenerations) {
+    throw new RunStartError(`this run's generation limit is ${budget.generationLimit}, but Pack ${pack.id} declares it needs at least ${minimumGenerations} generations (budget.minimumGenerations) to reach its first result; start it with a generation limit of at least ${minimumGenerations}`);
   }
   // Generation one, from the moment HimaFabric opens the row: everything this Run writes from here
   // belongs to a generation, and the ledger stamps each record from this field. The Strategy this
@@ -2719,6 +2726,14 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   if (req.action === 'work') {
     if(unreleasedInteractiveIntents(deps,run.id,execution.id).length>0)return no('This execution owns an interactive admission; batch work cannot launch beside or replay it.');
     if (execution.phase !== 'begun') return no('this execution is already working or has a result; no second Job was admitted');
+    // An interactive-only tool has no batch path (#C10). Refuse the batch `work` here — before the
+    // node is admitted — so it neither blocks the node nor spends an attempt: the node stays begun and
+    // the owner opens its qualified interactive Job instead, with no human clearance in between.
+    if (node.kind === 'act' && node.parameters.tool !== undefined) {
+      const tool = ctx.pack.contract.tools.find((candidate) => candidate.id === node.parameters.tool);
+      const interactiveOnly = tool === undefined ? undefined : batchToolRefusal(tool);
+      if (interactiveOnly !== undefined) return no(interactiveOnly);
+    }
     if (node.kind === 'act' && node.parameters.workshop !== undefined) {
       const entry = freshWorkshopEntry(deps, run, execution);
       if (!entry.ok) return no(entry.reason);

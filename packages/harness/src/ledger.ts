@@ -503,6 +503,10 @@ export const nodeRecord = z.object({
   outcome: verdictOutcome.optional(),
   jobSession: z.string().optional(),
   reason: z.string().optional(),
+  /** For a `retrying` attempt of a failed Job, the last lines of that Job's own log, copied into the
+   *  ledger at the moment of failure exactly as a `blocker` record carries them, so a live failure is
+   *  reproducible from the ledger alone before the workspace or Site is gone. Diagnostic only. */
+  logTail: z.string().optional(),
 });
 
 /**
@@ -2309,7 +2313,7 @@ export async function recordNode(
   node: { readonly id: string; readonly kind: NodeKind },
   state: NodeState,
   attempt: number,
-  extra: { outcome?: VerdictOutcome; jobSession?: string; reason?: string; branchId?: string } = {},
+  extra: { outcome?: VerdictOutcome; jobSession?: string; reason?: string; branchId?: string; logTail?: string } = {},
 ): Promise<NodeRecord> {
   const head = { nodeId: node.id, kind: node.kind, state, attempt };
   const withOutcome = extra.outcome === undefined ? head : { ...head, outcome: extra.outcome };
@@ -2317,7 +2321,8 @@ export async function recordNode(
   // The branch a fork's drive is writing this transition for (#29), stated by that drive and by
   // nothing else: a node outside every fork carries no key at all.
   const withBranchId = extra.branchId === undefined ? withSession : { ...withSession, branchId: extra.branchId };
-  return ledger.appendNode(runId, extra.reason === undefined ? withBranchId : { ...withBranchId, reason: extra.reason });
+  const withReason = extra.reason === undefined ? withBranchId : { ...withBranchId, reason: extra.reason };
+  return ledger.appendNode(runId, extra.logTail === undefined ? withReason : { ...withReason, logTail: extra.logTail });
 }
 
 // Offline import is deliberately outside Ledger's live write path. A version gate is still a

@@ -50,7 +50,11 @@ const inputIntentRecord = z.strictObject({ ...common, event: z.literal('input-in
   inputBytes: z.number().int().nonnegative(), submit: z.boolean(), effect: z.enum(['read', 'mutation', 'reply', 'close']),
   replyToCommandId: plainId.optional(), cursorBefore: z.number().int().nonnegative(), commandDeadlineAt: z.string() });
 const inputOutcomeRecord = z.strictObject({ ...common, event: z.enum(['input-sent', 'input-uncertain', 'command-completed', 'command-failed']), commandId: plainId,
-  inputDigest: sha256, cursorAfter: z.number().int().nonnegative().optional(), reason: z.string().optional() });
+  inputDigest: sha256, cursorAfter: z.number().int().nonnegative().optional(), reason: z.string().optional(),
+  /** For a command-failed outcome, the last lines the adapter printed before its FAIL marker (bounded),
+   *  so the failure's cause is in the Ledger rather than only in a transcript that a closed session
+   *  takes away (#C33). Diagnostic only. */
+  errorTail: z.string().optional() });
 const signalRecord = z.strictObject({ ...common, event: z.enum(['signal-intent', 'signal-delivered', 'signal-uncertain']),
   signal: z.literal('interrupt'), reason: z.string().optional() });
 const closeRecord = z.strictObject({ ...common, event: z.enum(['close-intent', 'closed', 'close-uncertain']), reason: z.string().optional() });
@@ -323,6 +327,24 @@ function inputBytes(request: SendInteractiveRequest): Uint8Array {
 
 export const interactiveCommandMarker = (token: string, kind: 'ACK' | 'DONE' | 'FAIL'): string => `HIMA:${token}:${kind}`;
 
+/** The last lines the adapter printed for a failed command, for the Ledger to carry (#C33): the
+ *  transcript this command produced with its own HIMA protocol markers removed, bounded to the last
+ *  40 lines and 16 KiB so one runaway line cannot bloat the record. Undefined when nothing remains. */
+const interactiveErrorTailLines = 40;
+const interactiveErrorTailChars = 16 * 1024;
+export function interactiveErrorTail(text: string, _token: string): string | undefined {
+  // Any line carrying a HIMA protocol marker — a standalone marker, or the pane-echoed input command
+  // that contains the `puts "HIMA:<token>:ACK"`/`FAIL` the adapter prints — is transport, not the
+  // adapter's own diagnostic output, so it is dropped. A line like `HIMA-ADAPTER-ERROR:...` is the
+  // adapter's real error and is kept.
+  const carriesMarker = (line: string): boolean => /HIMA:[^\s:]+:(ACK|DONE|FAIL|READY)/.test(line);
+  const lines = text.split(/\r?\n/).map((line) => line.trimEnd())
+    .filter((line) => line !== '' && !carriesMarker(line));
+  if (lines.length === 0) return undefined;
+  const tail = lines.slice(-interactiveErrorTailLines).join('\n');
+  return tail.length <= interactiveErrorTailChars ? tail : tail.slice(tail.length - interactiveErrorTailChars);
+}
+
 const hasMarker = (text: string, marker: string): boolean =>
   text.split(/\r?\n/).some((line) => line.trimEnd() === marker);
 
@@ -388,8 +410,10 @@ export async function sendInteractiveInput(on: InteractiveChannel, request: Send
   await authority.record(parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, operationDigest),
     event: 'input-sent', commandId: request.commandId, inputDigest }));
   const observed = await waitForInteractiveCommand(on, { ...request, cursorBefore: dispatchCursor });
+  const errorTail = observed.failed ? interactiveErrorTail(observed.transcript.text, request.protocolToken) : undefined;
   if (observed.completed || observed.failed) await authority.record(parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, operationDigest),
-    event: observed.failed ? 'command-failed' : 'command-completed', commandId: request.commandId, inputDigest, cursorAfter: observed.transcript.cursor.end }));
+    event: observed.failed ? 'command-failed' : 'command-completed', commandId: request.commandId, inputDigest, cursorAfter: observed.transcript.cursor.end,
+    ...(errorTail === undefined ? {} : { errorTail }) }));
   return { status: observed.failed ? 'failed' : observed.completed ? 'completed' : 'sent', commandId: request.commandId, inputDigest,
     transcript: observed.transcript, acknowledged: observed.acknowledged };
 }
@@ -402,8 +426,10 @@ export async function observeInteractiveCommand(on: InteractiveChannel, request:
     effect: request.effect, replyToCommandId: request.replyToCommandId, protocolToken: request.protocolToken });
   const operationDigest = digest({ session: request.session.toolSessionId, commandId: request.commandId, inputDigest });
   const observed = await waitForInteractiveCommand(on, request);
+  const errorTail = observed.failed ? interactiveErrorTail(observed.transcript.text, request.protocolToken) : undefined;
   if (observed.completed || observed.failed) await authority.record(parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, operationDigest),
-    event: observed.failed ? 'command-failed' : 'command-completed', commandId: request.commandId, inputDigest, cursorAfter: observed.transcript.cursor.end }));
+    event: observed.failed ? 'command-failed' : 'command-completed', commandId: request.commandId, inputDigest, cursorAfter: observed.transcript.cursor.end,
+    ...(errorTail === undefined ? {} : { errorTail }) }));
   return { status: observed.failed ? 'failed' : observed.completed ? 'completed' : 'sent', commandId: request.commandId, inputDigest,
     transcript: observed.transcript, acknowledged: observed.acknowledged };
 }
@@ -417,8 +443,10 @@ export interface ObserveInteractiveRequest extends InteractiveAddress {
 /** Restart-safe observation from the durable intent; it has no input bytes and therefore cannot resend. */
 export async function observeInteractiveToken(on: InteractiveChannel, request: ObserveInteractiveRequest, authority: InteractiveAuthority): Promise<InteractiveInputResult> {
   const observed = await waitForInteractiveCommand(on, request);
+  const errorTail = observed.failed ? interactiveErrorTail(observed.transcript.text, request.protocolToken) : undefined;
   if (observed.completed || observed.failed) await authority.record(parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, request.operationDigest),
-    event: observed.failed ? 'command-failed' : 'command-completed', commandId: request.commandId, inputDigest: request.inputDigest, cursorAfter: observed.transcript.cursor.end }));
+    event: observed.failed ? 'command-failed' : 'command-completed', commandId: request.commandId, inputDigest: request.inputDigest, cursorAfter: observed.transcript.cursor.end,
+    ...(errorTail === undefined ? {} : { errorTail }) }));
   return { status: observed.failed ? 'failed' : observed.completed ? 'completed' : 'sent', commandId: request.commandId, inputDigest: request.inputDigest,
     transcript: observed.transcript, acknowledged: observed.acknowledged };
 }
