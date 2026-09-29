@@ -277,6 +277,7 @@ class VerifierTest(_VerifierFixture):
 
 FRESH = Path(__file__).with_name("fresh-worker-slot.py")
 WRAPPER_V13 = Path(__file__).with_name("atcs-xtop-operator-v13.sh")
+WRAPPER_V14 = Path(__file__).with_name("atcs-xtop-operator-v14.sh")
 # #64 treatment attempt 1, slot w02: the 44 multiply linked files attempt 1's orphaned XTop left in
 # workspaces/w02/r1 (the retained `find -links +1` listing, one "<links> <inode> <path>" row each).
 STALE_LOCKS = REPO / "packs/agentic-timing-closure-system/flow/tests/live_fixtures/t01-w02-stale-locks-list.txt"
@@ -366,6 +367,52 @@ class RetrySlotTest(_VerifierFixture):
         self.assertIn("fresh_slot_sha256=", text)
         self.assertLess(text.index('python3 -I "$fresh_slot"'), text.index('python3 -I "$verifier"'))
         self.assertIn("operator-admin/atcs-v13/verify-worker-startup.py", text)
+
+
+
+class WrapperCloseV14Test(unittest.TestCase):
+    """#64 treatment attempt 2 (D-T02-2): v13 ran podman in the foreground, so its HUP/TERM trap fired only after
+    podman returned, and every Harness close left the container and its XTop running. v14 is v13 with the
+    container in the background and one close path for HUP, TERM, INT and EOF on stdin. The behaviour is
+    qualified on the Site (README); these pin the shape of the template that was installed."""
+
+    def setUp(self):
+        self.v13 = WRAPPER_V13.read_text()
+        self.v14 = WRAPPER_V14.read_text()
+
+    def test_every_close_is_trapped_before_the_container_starts_and_the_wrapper_waits_on_it(self):
+        launch = self.v14.index("podman run --rm -it")
+        for trap in ("trap leave EXIT", "trap 'close_session hangup' HUP", "trap 'close_session terminate' TERM",
+                     "trap 'close_session interrupt' INT"):
+            self.assertLess(self.v14.index(trap), launch, trap)
+        self.assertIn("""' -- "$session_tcl" 0<&0 &\npodman_pid=$!\n""", self.v14)
+        self.assertIn('wait -n -p ended "$podman_pid" "$stdin_pid"', self.v14)
+        self.assertIn("close_session stdin-eof", self.v14)
+        self.assertIn("poller.register(0, 0)", self.v14, "stdin is watched for hang-up without being read")
+
+    def test_a_close_stops_the_container_in_its_own_session_and_checks_nothing_remains(self):
+        self.assertIn('setsid --wait podman stop -t 20 -- "$container_name"', self.v14)
+        close = self.v14[self.v14.index("close_session() {"):self.v14.index("leave() {")]
+        self.assertLess(close.index("trap '' HUP INT TERM"), close.index("stop_container"))
+        self.assertLess(close.index("stop_container"), close.index("container_processes"))
+        self.assertLess(close.index("exit 5"), close.index("exit 0"))
+
+    def test_the_container_name_and_xtop_pid_are_written_to_the_slot(self):
+        self.assertIn('session_record="$slot_root/session.json"', self.v14)
+        self.assertIn('"container": name, "xtopPid"', self.v14)
+
+    def test_the_launch_and_every_pin_are_v13_s(self):
+        def launch(text):
+            return text[text.index("podman run --rm -it"):text.index("' -- \"$session_tcl\"")]
+        self.assertEqual(launch(self.v14), launch(self.v13))
+        pins = [line for line in self.v13.splitlines() if line.startswith(("image=", "adapter_sha256=", "flow_digest=",
+                "verifier_sha256=", "fresh_slot_sha256=", "site_profile=", "site_profile_sha256="))]
+        self.assertEqual(len(pins), 7)
+        for line in pins:
+            self.assertIn(line + "\n", self.v14)
+        self.assertLess(self.v14.index('python3 -I "$fresh_slot"'), self.v14.index('python3 -I "$verifier"'))
+        self.assertNotIn("atcs-v13", self.v14)
+        self.assertEqual(self.v14.count("operator-admin/atcs-v14/"), 4)
 
 
 if __name__ == "__main__":

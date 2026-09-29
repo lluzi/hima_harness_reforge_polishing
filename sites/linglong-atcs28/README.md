@@ -1,11 +1,80 @@
 # linglong-atcs28 Site administration
 
-Current candidate (Issue 64, before treatment attempt 2, Pack 0.2.0): `atcs-xtop-operator-v13.sh` under
+Current candidate (Issue 64, before treatment attempt 3, Pack 0.2.0): `atcs-xtop-operator-v14.sh` under
+`operator-admin/atcs-v14/` (wrapper sha `2f4ced1aa18d76d3...`, installed 2026-09-29, mode 0555). Beside it are the same
+verifier (`014fcfa5...`) and slot step (`293b2a3f...`) bytes as v13's, and bootstrap root
+`operator-admin/atcs-v14/bootstraps/`. The Pack's `xtop-operator` binding names v14 and the Permit reads
+`atcs-v14`.
+
+Why: in treatment attempt 2 every Harness close left the podman container and its XTop running (FABRIC G51).
+The Harness closes a Job by hanging it up, then sends TERM to its process group after 15 s. v13 ran
+`podman run` in the foreground, so its HUP/TERM trap could fire only after podman returned. XTop is the
+container's PID 1 and ignores TERM, so podman never returned. w01 and w02 became `process-survived` blockers,
+and a person had to `podman stop` them; SIGKILL came after the 20 s grace.
+
+v14 runs the container in the background (`0<&0 &`) and waits on it (`wait -n`), so a close reaches the wrapper
+at once. HUP, TERM, INT and EOF on stdin all run one close:
+- `podman stop -t 20`, which escalates to SIGKILL itself. It runs under `setsid`, so the Harness's group TERM
+  cannot cut it short.
+- `podman rm` if the container is still there.
+- A check that no process of the container's pid namespace and not the recorded XTop pid remains.
+- Only then exit 0, or exit 5 with the names if something remains.
+
+A stdin watcher polls fd 0 for hang-up without reading it. The container name and XTop pid go to
+`<slot>/session.json`. The next attempt's slot step retires that file with the rest of the slot. A session XTop
+ends itself (`exit`) returns XTop's status, as before.
+
+Derivation (`qual-tools/derive-v14.sh` and `derive-v14.py`): v14 was derived on the server from the
+*installed* v13 bytes (sha `9f54c9cd...`, checked first). The transform makes these changes, each with a
+count assertion:
+- the header comment;
+- the `atcs-v14` paths (4) and the wrapper name (2);
+- v13's `cleanup_container` trap replaced by the close functions and traps, placed before the launch;
+- the foreground launch replaced by the background launch, session record, stdin watcher and wait.
+
+The image, adapter (`2b001eda...`), flow (`a4736851...`), verifier, slot-step and Site-profile pins, and every
+`podman run` option, are v13's byte for byte. `diff` against installed v13 shows exactly those hunks. The same
+transform applied to v13's template here gives `atcs-xtop-operator-v14.sh`. With its six placeholders filled
+from the pins, that template is byte-identical to the installed file. `grep REPLACE` hits one comment line.
+
+Qualification (2026-09-29, on `atcs-runs/qual-atcs13-20260929`, the v13 qualification's workspace on this
+branch's flow; slots w02 and w03, so v13's w01 evidence stays in place):
+- **Own preflight** (`qual-tools/v14-preflight.sh`, the installed wrapper's lines up to the licence check):
+  - OK for w02 and w03.
+  - Refused for parked w04 (exit 3) and for w07 (exit 2).
+  - Refused for the older `e6ccfabc...` flow at the adapter check (exit 3, `qual-atcs13neg-20260929`).
+- **Close by stdin EOF, w02** (`qual-tools/v14-drive.py`: the wrapper leads a fresh pty with SIGHUP ignored,
+  so only its stdin path can act). READY, then `QUAL:identity:INVD12BWP30P140ULVT`. The driver then closed the
+  pty master. The wrapper logged `close (stdin-eof)` and exited 0 20.8 s later. Afterwards there was no XTop
+  process (`ps`, `icexplorer-xtop` included), no `hima-atcs-xtop-operator` container, and the recorded XTop
+  pid was gone.
+- **Close by SIGTERM, w03** (TERM to the wrapper's process group, stdin still open). READY, then the identity
+  query. The wrapper logged `close (terminate)` and exited 0 20.6 s later, again with no process and no
+  container left.
+- **Normal exit, w02** (v13's session command list through v14, under `script`):
+  - READY; one kept `atcs_size_cell` (BUFFD1 to BUFFD2), and the identity query answered BUFFD2.
+  - Source and exec writes were denied.
+  - Export succeeded, with `save_workspace` and no "Directory exists".
+  - `ATCS:taint:clean`, then `exit`: exit 0 in 40 s, with no SyntaxWarning, no process and no container left.
+  - The transcript sha is `5139eaae...`.
+- **Slot hygiene:** each killed XTop left the attempt-1 shape (44 hard-linked `.exclusive.cdslck*` files).
+  The v14 preflight moved each session's leftovers, `session.json` included, to `r1.attempt-<k>/` by rename:
+  the inode/path listings match, and nothing was deleted.
+- **The Harness's own close, zero EDA:** `qual-tools/v14-tmux-close.sh` starts a stand-in the way
+  `interactive-job.ts` starts a Job. The stand-in is v14's own launch-and-close block with `exec xtop` replaced
+  by `exec cat`, which is also PID 1 and also ignores TERM. The script then respawns the pane with the Harness's
+  close watcher, byte for byte (hangup 15 s, TERM 10 s). The receipt read `gone terminate` at 20.6 s, inside the
+  25 s window. The same replay on a stand-in built from v13's bytes read `survived`, which reproduces D-T02-2.
+
+The licence status stayed `selected=old` throughout. v13 is retired for new kits. It stays installed as
+evidence, and the Permit keeps it in `allowedWrappers` for retained Runs.
+
+Previous candidate (Issue 64, before treatment attempt 2, Pack 0.2.0): `atcs-xtop-operator-v13.sh` under
 `operator-admin/atcs-v13/` (wrapper sha `9f54c9cd...`, installed 2026-09-29, mode 0555), with the six-slot
 verifier copied beside it (`verify-worker-startup.py`, sha `014fcfa5...`, the same bytes as v10-v12's), the
 slot step `fresh-worker-slot.py` (sha `293b2a3f...`, the bytes in this directory) and bootstrap root
 `operator-admin/atcs-v13/bootstraps/`. The Pack's `xtop-operator` binding names v13 and the Permit reads
-`atcs-v13`.
+`atcs-v13` until v14.
 
 Why: `prepare-workers` picks a slot's round directory `workspaces/<slot>/r<N>` once per plan, and the Harness
 retries the operate node with the same argv. So every attempt of one plan lands in the same `r<N>`. In

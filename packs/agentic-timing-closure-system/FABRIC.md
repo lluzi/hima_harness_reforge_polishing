@@ -346,9 +346,9 @@ Schema limits and how the graph expresses them:
   wrapper template runs `sites/linglong-atcs28/fresh-worker-slot.py` (pinned) before the verifier, moving
   every entry of `r<N>` except the three prepared files into `r<N>.attempt-<k>/` (nothing deleted). Installed
   and qualified on 2026-09-29 (`operator-admin/atcs-v13/`, wrapper sha `9f54c9cd...`): the Pack's
-  `xtop-operator` binding and the Permit name v13 (`sites/linglong-atcs28/README.md`). A close the Harness records as `process-survived` still needs a
-  person to end the wrapper's process and container (a v12 limitation that v13 keeps; see G43's and
-  attempt 1's D-T01-3). Proving tests: `sites/linglong-atcs28/test_verify_worker_startup.py`
+  `xtop-operator` binding and the Permit name v13 (`sites/linglong-atcs28/README.md`). Under v13 a close the Harness
+  records as `process-survived` still needed a person to end the wrapper's process and container (a v12
+  limitation that v13 kept; see G43's and attempt 1's D-T01-3); v14 ends it (G51). Proving tests: `sites/linglong-atcs28/test_verify_worker_startup.py`
   `RetrySlotTest` on the retained listing (RED: 5 of 6; the sixth characterizes the reuse and the refusal).
 - G50 (Issue #64 treatment Run run-9a5f197a, D-T01-1; **known limitation, not fixed in 0.2.0**)
   `atcs_paths <check> <N> <end points>` fails in the Operator's PBA session: it hands XTop
@@ -361,6 +361,22 @@ Schema limits and how the graph expresses them:
   it needs a new wrapper release and its requalification, not a byte change under v12.
   `flow/tests/test_xtop_toolkit.py` `PbaEndPointPathsKnownLimitationTest` pins the exact message, and
   its `expectedFailure` test turns into an unexpected success once the fix lands.
+- G51 (Issue #64 treatment attempt 2, D-T02-2; Site side, no flow change) Every close ends the container.
+  v13 ran `podman run` in the foreground, so its HUP/TERM trap could fire only after podman returned. XTop
+  is the container's PID 1 and ignores TERM, so every Harness close (hangup, then TERM to the Job's process
+  group) left the container and its XTop running: w01 and w02 became `process-survived` blockers, and a person
+  ran `podman stop` (SIGKILL after 20 s). The `atcs-v14` wrapper (`sites/linglong-atcs28/atcs-xtop-operator-v14.sh`)
+  runs the container in the background and waits on it. HUP, TERM, INT and EOF on stdin all run one close:
+  `podman stop -t 20` in its own session (so the Harness's group TERM cannot cut it short), then `podman rm`
+  if needed, then a check that no process of the container's pid namespace and not the recorded XTop pid
+  remains, and only then exit 0 (exit 5 if something remains). The container name and XTop pid are written
+  to `<slot>/session.json`, which the next attempt's slot step retires with the rest. Installed and
+  qualified on 2026-09-29 (`operator-admin/atcs-v14/`, wrapper sha `2f4ced1a...`): the stdin-EOF close and
+  the SIGTERM close each end a real XTop session in about 21 s with exit 0 and no container or XTop process
+  left. The Harness's own close watcher, replayed under tmux on a zero-EDA stand-in, reads `gone terminate`
+  at 20.6 s, inside its 25 s window; the same replay on v13's bytes reads `survived`. Proving tests:
+  `sites/linglong-atcs28/test_verify_worker_startup.py` `WrapperCloseV14Test`, and the Site qualification
+  (`sites/linglong-atcs28/README.md`).
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.
