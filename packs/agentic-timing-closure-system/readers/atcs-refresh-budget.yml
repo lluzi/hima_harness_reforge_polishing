@@ -1,0 +1,7 @@
+id: atcs-refresh-budget
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'refresh-budget', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-refresh-budget/1
+emits:
+  - tc_refreshes_completed

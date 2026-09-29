@@ -1,0 +1,14 @@
+id: refresh-budget
+version: "1"
+title: Completed full physical refreshes stay below the Run's refresh limit
+# Every Explore revisit consumes a Harness generation, so generationLimit bounds revisits, not
+# Innovus/StarRC/PrimeTime refreshes; this rule caps the refreshes themselves. The parameter is
+# bound from the Run's Strategy knob refreshLimit (graph.yml check-refresh-budget*); its unit is the
+# subject's (count), which the rule schema requires to equal predicate.unit.
+parameter: { name: refresh_limit, unit: count }
+requires: [{ type: tc_refreshes_completed }]
+subject: { type: tc_refreshes_completed }
+predicate:
+  op: lt
+  threshold: { parameter: refresh_limit }
+  unit: count

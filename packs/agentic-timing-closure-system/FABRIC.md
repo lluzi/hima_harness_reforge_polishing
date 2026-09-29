@@ -6,11 +6,15 @@ Task 14 compiled the executable method from `SPEC.md` and the reviewed Pack code
 next-decision `stage` check in `tools/read-atcs.py`, and the removal of the unused `_apr_task_path`
 helper from `flow/atcs_cli.py`.
 
-- `contract.yml` — 4 inputs, 35 outputs (17 with a reader, every `readers/*.yml` bound), 25 tools
+- `contract.yml` — 4 inputs, 35 outputs (18 with a reader, every `readers/*.yml` bound), 25 tools
   (24 `python3` subcommand tools of `flow/atcs_cli.py`, 1 interactive-only XTop Operator tool),
-  7 Workshops (5 families, the worker family expanded to slots 01–03), 23 rules, 2 Goal parameters,
-  1 Strategy knob (`maxPaths`), 10 knowledge files.
-- `graph.yml` — 106 nodes (60 act, 36 judge, 9 explore, 1 wait), 143 edges, 9 revisit edges.
+  7 Workshops (5 families, the worker family expanded to slots 01–03), 24 rules, 2 Goal parameters,
+  2 Strategy knobs (`maxPaths`, `refreshLimit`), 10 knowledge files.
+- `graph.yml` — 110 nodes (62 act, 38 judge, 9 explore, 1 wait), 149 edges, 9 revisit edges.
+  Issue #63 slice 2: `read-refresh-budget` → `check-refresh-budget` between `check-presta-model`
+  PASS and `implement`, and `read-refresh-budget-apr` → `check-refresh-budget-apr` before
+  `apr-prepare` (+4 nodes, +6 edges); `revisit-implement` and `revisit-earlier-apr` now enter at
+  the reading, so every physical refresh passes one fresh budget check (G35).
   Final review (Minor): `check-setup-goal`/`check-hold-goal` each gained an explicit
   `UNDETERMINED` edge to `residual` (+2 edges) -- an unknown final setup/hold WNS is an
   evidence gap the residual/next-decision loop can investigate, the same as a coverage,
@@ -71,13 +75,15 @@ How the reference graph expresses SPEC behaviour 1–9:
   the one integration-plan document → `compose-facts` again with the admitted plan's resolutions →
   `composition-ready` → `replay-prepare` → `reconcile` → `replay-consistent-mismatch` →
   `replay-consistent-scope` → `presta` → `presta-model-qualified` (FAIL → next decision).
-- Implementation: `implement` → `extract` → `sta` → `physical` → `evaluate` → coverage → identity →
+- Implementation: fresh `workingState` reading → `refresh-budget` (FAIL/UNDETERMINED → wait) →
+  `implement` → `extract` → `sta` → `physical` → `evaluate` → coverage → identity →
   constraint failures (FAIL → `adopt`, where M7 bars best/delivery) → constraint unknowns → setup
   Goal → hold Goal → `adopt` → `artifact-ready` → `residual` → `record-experience` → next decision.
 - Decision: `request-admissible` → `continue-or-wait` (FAIL → wait) → routing Judges on
   `tc_next_action` (observe, research, compose, revise, implement, earlier-apr, goal-met), each
   ending in its own Explore node's single revisit edge.
-- Earlier APR (executable): fresh readiness reading → `check-apr-scope` → `apr-prepare` (stage from
+- Earlier APR (executable): fresh readiness reading → `check-apr-scope` → fresh `workingState`
+  reading → `refresh-budget` (FAIL/UNDETERMINED → wait) → `apr-prepare` (stage from
   the admitted next-decision) → `apr-run` (Innovus) → the implementation chain from `extract`.
 - Goal met: fresh readings of the acceptance record and the final evaluation → every final rule
   again → `atcs-goal-met`, which the Harness refuses unless every gate verdict passed.
@@ -117,8 +123,8 @@ Schema limits and how the graph expresses them:
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.
 - G4 A Judge routes on its first rule only and an Explore with a chooser has one outgoing edge, so
   `tc_next_action` routing is a chain of two-rule Judges (`next-action-<x>`, `continue-or-wait`) with
-  one Explore node per revisit target (diagnose, plan, collect, compose-facts, implement,
-  apr-prepare, the next-investment Workshop). The chooser `atcs-revisit` makes no domain choice.
+  one Explore node per revisit target (diagnose, plan, collect, compose-facts, read-refresh-budget
+  before implement, read-refresh-budget-apr before apr-prepare, the next-investment Workshop). The chooser `atcs-revisit` makes no domain choice.
 - G5 `maxPaths` (100..5000 paths, default 1000) caps the paths per scenario both observe tools use.
   A chooser clause must set a knob and cannot read the Strategy it is on, so every revisit sets
   `maxPaths` to the bound 1000: a Run-start override holds for the first Generation only.
@@ -324,6 +330,21 @@ Known gaps carried from earlier tasks:
   parameters. The v2 wrapper additionally pins the complete flow and slot session Tcl. The current
   shared `contract.yml` still names v1 until ATCS-03 integrates the v2 path; no real XTop qualification
   has run, so worker research quality and the v2 binding remain unqualified.
+- G35 (Issue #63 slice 2) Physical refreshes are capped by the Run's `refreshLimit` Strategy knob
+  (1..4, default 1), not by `generationLimit`: every Explore revisit consumes a Harness generation
+  whether or not it refreshes. `read-refresh-budget(-apr)` observes `workingState` (always present
+  after `baseline`; `refreshLedger` cannot be the report because it does not exist before the first
+  refresh and the Harness blocks on a missing report) with the `atcs-refresh-budget` reader, which
+  emits `tc_refreshes_completed` from `state/refresh-ledger.json`: `known(0)` with no ledger and no
+  `state/sta.json`, the verified entry count otherwise, `unknown` for an unverifiable ledger. It is
+  not `tc_refresh_count` because the acceptance reader never reports a missing ledger as 0. The
+  reading sits immediately before each Judge because a Judge takes a type's latest reading
+  Run-wide and `sta` records a refresh with no later reading on the coverage/identity FAIL paths.
+  Open: the rule parameter is in `count` (the rule schema ties it to the subject's unit) while the
+  knob is in `refreshes`; and the Harness lets the conversational owner choose a whole next
+  Strategy at any Explore completion, so an owner may raise `refreshLimit` up to its max of 4
+  without a person. SPEC.md's Semantics/Judge-rules tables do not yet name `tc_refreshes_completed`
+  or `refresh-budget`.
 
 ## Reviews
 

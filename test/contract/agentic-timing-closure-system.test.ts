@@ -85,10 +85,14 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   const host = await bootInProcess(h); let cleanupRunId: string | undefined;
   t.after(async () => { if (cleanupRunId) await host.ctx.hima.cancelRun(cleanupRunId); await host.dispose(); await h.dispose(); });
   const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
+  // Issue 63 slice 2: the physical-refresh cap is a Run-level Strategy knob. 2, not the default 1,
+  // so the assertion below proves the Run-start override reached the run row.
   const started = await host.ctx.hima.startRun({ pack: packId, site: 'local',
-    goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0 }, ownerSessionId: actor, timeBoxMs: 60000 });
+    goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0 }, strategy: { refreshLimit: 2 }, ownerSessionId: actor, timeBoxMs: 60000 });
   assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
   const runId = started.run.id; cleanupRunId = runId;
+  assert.equal(host.ctx.hima.ledger.run(runId)!.strategy?.refreshLimit, 2);
+  assert.equal(host.ctx.hima.ledger.run(runId)!.firstStrategy?.refreshLimit, 2);
   const workspace = started.workspace;
   assert.ok(workspace);
   // Real Pack producers seed the base, private slot and worker manifest. All files are synthetic.
@@ -226,12 +230,42 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.equal(member.budgetShare.maxFollowups, followups);
   }
   assert.equal(packStage(packDir).stage, 'compiled');
-  assert.equal(pack.graph.nodes.length, 106);
+  // Issue 63 slice 2: +4 nodes (a fresh refresh-budget reading and its Judge before `implement`
+  // and before `apr-prepare`), +6 edges.
+  assert.equal(pack.graph.nodes.length, 110);
   // Final review (Minor): +2 edges -- check-setup-goal/check-hold-goal each gain
   // an explicit UNDETERMINED edge to `residual` (an unknown final WNS is an
   // evidence gap, not a person-facing wait) instead of falling through to the
   // engine's own unlabelled-UNDETERMINED default (wait-for-person).
-  assert.equal(pack.graph.edges.length, 143);
+  assert.equal(pack.graph.edges.length, 149);
+
+  // Issue 63 slice 2: every Explore revisit consumes a Harness generation, so `generationLimit`
+  // bounds revisits, not Innovus/StarRC/PrimeTime refreshes. The Run's `refreshLimit` knob caps
+  // them: a fresh reading of the refresh ledger, then a Judge, right before each physical refresh.
+  assert.deepEqual(pack.contract.strategy.refreshLimit, { type: 'number', unit: 'refreshes', min: 1, max: 4, default: 1 });
+  assert.equal((pack.contract.words as any).refreshLimit.unit, 'refreshes');
+  const workingState = pack.contract.outputs.find(output => output.name === 'workingState')!;
+  assert.equal(workingState.reader, 'atcs-refresh-budget');
+  const nodeOf = (id: string) => (pack.graph.nodes as any[]).find(node => node.id === id);
+  const edgesFrom = (id: string) => (pack.graph.edges as any[]).filter(edge => edge.from === id)
+    .map(edge => `${edge.outcome ?? ''}${edge.revisit ? 'revisit' : ''}->${edge.to}`).sort();
+  const edgesTo = (id: string) => (pack.graph.edges as any[]).filter(edge => edge.to === id)
+    .map(edge => `${edge.from}->${edge.outcome ?? ''}${edge.revisit ? 'revisit' : ''}`).sort();
+  for (const [read, check, refresh] of [['read-refresh-budget', 'check-refresh-budget', 'implement'],
+    ['read-refresh-budget-apr', 'check-refresh-budget-apr', 'apr-prepare']] as const) {
+    assert.equal(nodeOf(read).kind, 'act');
+    assert.equal(nodeOf(read).parameters.observes, 'workingState');
+    assert.equal(nodeOf(check).kind, 'judge');
+    assert.deepEqual(nodeOf(check).parameters.rules, ['refresh-budget']);
+    assert.deepEqual(nodeOf(check).parameters.bind, { refresh_limit: { from: 'strategy', name: 'refreshLimit' } });
+    assert.deepEqual(edgesFrom(read), [`->${check}`]);
+    assert.deepEqual(edgesFrom(check), ['FAIL->wait-for-person', `PASS->${refresh}`]);
+    assert.deepEqual(edgesTo(refresh), [`${check}->PASS`], `${refresh} is entered only through ${check}`);
+  }
+  assert.deepEqual(edgesTo('read-refresh-budget'), ['check-presta-model->PASS', 'revisit-implement->revisit']);
+  assert.deepEqual(edgesTo('read-refresh-budget-apr'), ['revisit-earlier-apr->revisit']);
+  assert.deepEqual(edgesFrom('check-presta-model'), ['FAIL->decide-next', 'PASS->read-refresh-budget']);
+  assert.ok(pack.contract.rules.includes('refresh-budget'));
 
   // Issue 63 (fresh03 `sta` blocked: "references ${MAX_PATHS}, which nothing bound"): every
   // `${NAME}` a node's tool command line uses is bound by that node or is a Harness-reserved value.

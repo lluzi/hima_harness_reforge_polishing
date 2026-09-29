@@ -58,9 +58,12 @@ outputs:
     description: M1 design-state of the starting database, fixed for the whole Campaign (policy anchor).
   - name: workingState
     path: state/working-state.json
+    reader: atcs-refresh-budget
     description: >-
       The design-state every batch is based on: seeded from the baseline by baseline, rewritten by
-      adopt whenever the working pointer moves to an adopted candidate.
+      adopt whenever the working pointer moves to an adopted candidate. Observed right before every
+      physical refresh: its reader counts the completed refreshes in the refresh ledger beside it
+      (refreshLedger itself does not exist before the first refresh, and a missing report blocks).
   - name: acceptancePolicy
     path: state/policy.json
     description: >-
@@ -535,6 +538,7 @@ rules:
   - setup-goal
   - hold-goal
   - artifact-ready
+  - refresh-budget
   - continue-or-wait
   - next-action-observe
   - next-action-research
@@ -561,13 +565,18 @@ goal:
   target_setup_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }
   target_hold_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }
 
+# refreshLimit caps completed Innovus+StarRC+PrimeTime refreshes for the whole Run (Judge
+# check-refresh-budget*, rule refresh-budget). Every Explore revisit consumes a Harness generation
+# whether or not it refreshes anything, so generationLimit cannot stand in for it.
 strategy:
   maxPaths: { type: number, unit: paths, min: 100, max: 5000, default: 1000 }
+  refreshLimit: { type: number, unit: refreshes, min: 1, max: 4, default: 1 }
 
 words:
   target_setup_wns_ns: { label: target setup WNS, unit: ns }
   target_hold_wns_ns: { label: target hold WNS, unit: ns }
   maxPaths: { label: max paths per scenario query, unit: paths }
+  refreshLimit: { label: max full physical refreshes per Run, unit: refreshes }
 
 knowledge:
   - file: method-and-benchmark.md
