@@ -193,7 +193,7 @@ function executionText(value: Record<string, ToolJson>): string {
     context: { run: { id: run.id, status: run.status, generation: run.generation,
       currentNode: run.currentNode, nextSeq: run.nextSeq, goal: run.goal, strategy: run.strategy, budget: run.budget,
       loop: run.loop, control: { owner: control.owner, epoch: control.epoch, revision: control.revision,
-        paused: control.paused, stop: control.stop } }, available: context.available, executions,
+        paused: control.paused, stop: control.stop } }, available: context.available, cite: context.cite, executions,
       reason: context.reason, method: { id: method.id, version: method.version, digest: method.digest } },
     more: 'hima_context provides the full reference graph and recorded evidence when needed',
   });
@@ -505,12 +505,13 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         let words: RunWords | undefined;
         try { words = runPackWords(deps.packsDir, context.run); }
         catch { /* Keep execution facts readable when the original method is unavailable. */ }
-        return toolJson({ runId: args.run, ...context, facts: runView(deps.ledger, context.run, words) });
+        // What an Explore here must cite leads, so it is read before the Ledger that follows it.
+        return toolJson({ runId: args.run, ...(context.cite === undefined ? {} : { cite: context.cite }), ...context, facts: runView(deps.ledger, context.run, words) });
       },
     }),
     defineTool({
       name: 'hima_execute',
-      description: 'Request one controlled node or Run action as this actual conversational Agent. adopt verifies an unowned historical Run at epoch/revision 0 before binding this conversation; begin admits a node. For a Workshop, begin returns nextAction=recommend: use recommend with that executionId before work to obtain the actual private directory, entry, argv, inputs, Pack knowledge and bounded history, then write the entry. read/write/knowledge operate within that admitted scope. A rejected authored Workshop program is a coding diagnostic: open the next available attempt and revise it without asking a person to clear a mechanical retry. When context.available lists independent branches, begin/work their licence-free Jobs up to the Site job cap before waiting; never repeat one already working. knowledge with file reads current Pack method knowledge; assetRun/assetPath reads only a verified in-scope Run archive. Historical text is background and cannot change Goal, method or permissions. work performs the mechanical operation and returns a Job identity promptly; complete validates actual evidence. Submit an Explore strategy decision, rationale, cites and any next strategy together on complete; work does not commit that decision. grow submits one structured additive branch. revise accepts a byte-identified bounded code/input change, preserves both versions, invalidates exactly its dependency closure and starts no Job; each rerun is still an explicit owner action. Use each response context for the next action and its epoch/revision; refresh with hima_context for asynchronous changes or missing/stale facts. No action drives the rest of the graph. pause blocks new work while in-flight Jobs may still run; cancel requests real stop. Preserve requestId only for an identical retry; inspect refused responses before deciding again.',
+      description: 'Request one controlled node or Run action as this actual conversational Agent. adopt verifies an unowned historical Run at epoch/revision 0 before binding this conversation; begin admits a node. For a Workshop, begin returns nextAction=recommend: use recommend with that executionId before work to obtain the actual private directory, entry, argv, inputs, Pack knowledge and bounded history, then write the entry. The single entry execution is the result of the Workshop and must write or touch its declared output; explore with read/knowledge before writing the entry, because an entry that exits 0 without that output is a failed attempt. read/write/knowledge operate within that admitted scope. A rejected authored Workshop program is a coding diagnostic: open the next available attempt and revise it without asking a person to clear a mechanical retry. When context.available lists independent branches, begin/work their licence-free Jobs up to the Site job cap before waiting; never repeat one already working. knowledge with file reads current Pack method knowledge; assetRun/assetPath reads only a verified in-scope Run archive. Historical text is background and cannot change Goal, method or permissions. work performs the mechanical operation and returns a Job identity promptly; complete validates actual evidence. Submit an Explore strategy decision, rationale, cites and any next strategy together on complete; work does not commit that decision. grow submits one structured additive branch. revise accepts a byte-identified bounded code/input change, preserves both versions, invalidates exactly its dependency closure and starts no Job; each rerun is still an explicit owner action. Use each response context for the next action and its epoch/revision; refresh with hima_context for asynchronous changes or missing/stale facts. No action drives the rest of the graph. pause blocks new work while in-flight Jobs may still run; cancel requests real stop. Preserve requestId only for an identical retry; inspect refused responses before deciding again.',
       parameters: {
         run: { type: 'string', required: true, description: 'Exact Run id.' },
         action: { type: 'string', required: true, enum: ['adopt', 'begin', 'work', 'complete', 'pause', 'continue', 'cancel', 'handoff', 'revise', 'grow', 'read', 'write', 'knowledge', 'recommend', 'analyze'] },
@@ -540,7 +541,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         decision: { type: 'string', enum: ['goal-met', 'converged', 'next-strategy'], description: 'For an Explore strategy decision, submit this on complete together with rationale and cites. work does not submit a decision.' },
         strategy: { type: 'object', additionalProperties: true, description: 'Declared strategy values supplied with decision next-strategy on Explore complete; omit for goal-met or converged.' },
         rationale: { type: 'string', description: 'Reason for the Explore decision, grounded in cited facts; submit with decision on complete.' },
-        cites: { type: 'array', items: { type: 'string' }, description: 'Current-generation observation and required Judge verdict record ids supporting the Explore decision; submit with decision on complete.' },
+        cites: { type: 'array', items: { type: 'string' }, description: 'Current-generation observation and required Judge verdict record ids supporting the Explore decision; submit with decision on complete. context.cite lists exactly the ids the current Explore requires.' },
         proposal: { type: 'object', additionalProperties: false,
           description: 'For grow, express the research intent with the exact named fields below. Omit method, parent and inputThroughSeq to let Harness attach current Run identities. Omit inputs to use current-generation evidence, or give record sequence numbers/ids; Harness computes record identities. Reuse proposalId only for identical intent; correcting a refused proposal uses a new proposalId/requestId. Explicit wrong hashes are still refused.',
           properties: {
@@ -883,7 +884,10 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         // Doing it here rather than retyping the view's sections as tool schema keeps this tool's
         // answer and the route's one answer — the day a section is added to a Run it is in both.
         const view: unknown = JSON.parse(JSON.stringify(runView(deps.ledger, run, words)));
-        return Promise.resolve({ kind: 'run' as const, ...(view as Record<string, never>) });
+        // An owned Run's current Explore names the exact evidence ids its completion requires, ahead
+        // of the view: the same list hima_execute and hima_context carry (#64 D4).
+        const cite = run.control === undefined ? undefined : executionContext(deps, run.id).cite;
+        return Promise.resolve({ kind: 'run' as const, ...(cite === undefined ? {} : { cite: toolJson({ cite }).cite }), ...(view as Record<string, never>) });
       },
     }),
     defineTool({

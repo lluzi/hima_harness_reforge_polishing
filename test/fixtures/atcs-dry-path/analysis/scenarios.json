@@ -1,0 +1,4 @@
+[
+  {"name": "func_ssg_rcworst", "corner": "c1", "libGlob": "${SITE}/design/libs/*.db", "driverLibrary": "synthetic_c1", "originalDriverLibrary": "synthetic_c1"},
+  {"name": "func_ffg_cbest", "corner": "c1", "libGlob": "${SITE}/design/libs/*.db", "driverLibrary": "synthetic_c1", "originalDriverLibrary": "synthetic_c1"}
+]

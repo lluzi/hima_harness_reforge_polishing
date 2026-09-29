@@ -23,7 +23,7 @@
 // of the ledger's own module here would pull `node:crypto` and `node:fs` into the client build. The
 // ledger's *types* are imported, and types are erased.
 import { chosenSaid } from './card-labels.js';
-import type { DecisionRecord, GrowthRecord, JobRecord, LedgerRecord, LoopOutcome, LoopRecord, NodeRecord, ObservationRecord, RevisionRecord, RunBranch, RunRecord, RunStrategy, VerdictOutcome, VerdictRecord } from './ledger.js';
+import { currentRecordsIn, type DecisionRecord, type GrowthRecord, type JobRecord, type LedgerRecord, type LoopOutcome, type LoopRecord, type NodeRecord, type ObservationRecord, type RevisionRecord, type RunBranch, type RunRecord, type RunStrategy, type VerdictOutcome, type VerdictRecord } from './ledger.js';
 import { jobView, nodeView, observationView, type JobView, type NodeView, type ObservationView } from './record-views.js';
 // Type-only, and erased: the pack's words for its own knobs, which the decision each row carries is
 // said in (#42, #58). Declared in `remote.ts` beside the rest of the run view, which this module is
@@ -247,8 +247,9 @@ export function generationsOf(run: RunRecord, all: readonly LedgerRecord[], word
   // these records directly rather than through a generation row.
   // Delivery and later provenance reads cannot extend an already completed experiment's duration.
   const applied = all.filter((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied');
-  const invalid = new Set(applied.flatMap((record) => record.invalidates ?? []));
-  const records = all.filter((r) => !invalid.has(r.id) && r.type !== 'experience' && r.type !== 'archive' && r.type !== 'analysis' && r.type !== 'revision'
+  // Invalidated by an applied revision or a person's restart (#64 D2): the one current view.
+  const current = new Set(currentRecordsIn(all).map((record) => record.id));
+  const records = all.filter((r) => current.has(r.id) && r.type !== 'experience' && r.type !== 'archive' && r.type !== 'analysis' && r.type !== 'revision'
     && r.type !== 'session' && r.type !== 'code' && r.type !== 'knowledge');
   const opened = run.generation;
   const first = run.firstStrategy;

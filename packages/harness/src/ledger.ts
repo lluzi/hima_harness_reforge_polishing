@@ -540,12 +540,24 @@ export const blockerRecord = z.object({
  * `nodeId` is the node the Run re-enters, which is the blocked node itself and not the Wait node the
  * Run was routed to: re-entering the Wait node would only wait again.
  */
-export const resumedRecord = z.object({
+/** The `resumed` record as v29 and every earlier version wrote it; the offline importer holds a
+ *  source ledger to this shape so a later field is refused rather than silently kept. */
+const v29ResumedRecord = z.object({
   ...base,
   type: z.literal('resumed'),
   nodeId: z.string(),
   who: z.string().min(1),
   clears: z.string().optional(),
+});
+export const resumedRecord = v29ResumedRecord.extend({
+  /** The person's control request whose effect this is, when one wrote it (#64 D2). */
+  requestId: z.string().optional(),
+  /** `restart`: a person's "new work starts again at nodeId" over stuck downstream work (#64 D2).
+   *  Not a blocker resume: it closes no wait and grants no retry allowance of its own. */
+  kind: z.literal('restart').optional(),
+  /** Records that restart supersedes: no longer current evidence, exactly as a revision's
+   *  `invalidates`. */
+  invalidates: z.array(z.string()).optional(),
 });
 
 /**
@@ -1064,7 +1076,7 @@ const v27LedgerRecord = z.discriminatedUnion('type', [
   workspaceRecord,
   nodeRecord,
   blockerRecord,
-  resumedRecord,
+  v29ResumedRecord,
   decisionRecord,
   cancelRecord,
   loopRecord,
@@ -1100,7 +1112,15 @@ export const delegationRecord = z.strictObject({...base,type:z.literal('delegati
 export const interactiveRecord = z.strictObject({...base,type:z.literal('interactive'),executionId:z.string().min(1),toolSessionId:z.string().min(1),requestId:z.string().min(1),event:z.string().min(1),payload:z.json()});
 export type DelegationRecord=z.infer<typeof delegationRecord>;
 export type InteractiveRecord=z.infer<typeof interactiveRecord>;
-export const ledgerRecord = z.discriminatedUnion('type', [...v28LedgerRecord.options, delegationRecord, interactiveRecord]);
+const v29LedgerRecord = z.discriminatedUnion('type', [...v28LedgerRecord.options, delegationRecord, interactiveRecord]);
+/** v30: every v29 arm, with `resumed` grown by the restart fields (#64 D2). */
+export const ledgerRecord = z.discriminatedUnion('type', [
+  observationRecord, refusalRecord, verdictRecord, jobRecord, workspaceRecord, nodeRecord, blockerRecord,
+  resumedRecord,
+  decisionRecord, cancelRecord, loopRecord, experienceRecord, archiveRecord, analysisRecord, sessionRecord,
+  codeRecord, researchWriteRecord, knowledgeRecord, growthRecord, revisionRecord,
+  experienceAdoptionRecord, delegationRecord, interactiveRecord,
+]);
 export type ExperienceAdoptionRecord = z.infer<typeof experienceAdoptionRecord>;
 export type ObservationRecord = z.infer<typeof observationRecord>;
 export type RefusalRecord = z.infer<typeof refusalRecord>;
@@ -1850,7 +1870,13 @@ export const ledgerSpec = defineDomain({
   // 28: append-only, source-bound user experience corrections. Older Apps must not silently
   // ignore a disabled experience. Offline import preserves v19-v27 bytes in a separate home.
   // 29: native delegation admissions, interactive receipts and durable App-exit fences.
-  version: 29,
+  // 30: a `resumed` record may be a person's restart of a passed node (#64 D2): `kind: 'restart'`,
+  // the control `requestId`, and the `invalidates` set that takes the superseded records out of the
+  // current evidence view exactly as a revision's does. All three are optional on a plain object —
+  // the silent-loss direction `group` was under 7: a v29 reader would strip `invalidates` and hand
+  // superseded observations and code back as current evidence. So v29 refuses this domain at open,
+  // and the offline importer copies a v29 store unchanged into an empty v30 home.
+  version: 30,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -2237,14 +2263,15 @@ export interface RecordValidity { readonly valid: boolean; readonly invalidatedB
 export function recordValidityOf(records: readonly LedgerRecord[], recordId: string): RecordValidity {
   const revision = records.findLast((record): record is RevisionRecord =>
     record.type === 'revision' && record.event === 'applied' && (record.invalidates ?? []).includes(recordId));
-  return revision === undefined ? { valid: true } : { valid: false, invalidatedBy: revision.revisionId };
+  if (revision !== undefined) return { valid: false, invalidatedBy: revision.revisionId };
+  const restart = records.findLast((record): record is ResumedRecord => record.type === 'resumed' && (record.invalidates ?? []).includes(recordId));
+  return restart === undefined ? { valid: true } : { valid: false, invalidatedBy: `continue:${restart.requestId ?? restart.id}` };
 }
 
 /** The current evidence view. History remains in the input and can be paired with recordValidityOf. */
 export function currentRecordsIn(records: readonly LedgerRecord[]): LedgerRecord[] {
   const invalid = new Set(records
-    .filter((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied')
-    .flatMap((record) => record.invalidates ?? []));
+    .flatMap((record) => record.type === 'revision' && record.event === 'applied' || record.type === 'resumed' ? record.invalidates ?? [] : []));
   return records.filter((record) => !invalid.has(record.id));
 }
 
@@ -2361,6 +2388,8 @@ const v26v27LedgerDocument = z.strictObject({
 });
 
 const v28LedgerDocument=z.strictObject({unit:z.strictObject({name:z.literal('hima_ledger'),version:z.literal(28)}),global:z.null(),tables:z.strictObject({runs:z.record(z.string(),runRecord),records:z.record(z.string(),v28LedgerRecord)})});
+/** v29 is the v30 vocabulary without the restart fields on `resumed`: a pure pass-through import. */
+const v29LedgerDocument=z.strictObject({unit:z.strictObject({name:z.literal('hima_ledger'),version:z.literal(29)}),global:z.null(),tables:z.strictObject({runs:z.record(z.string(),runRecord),records:z.record(z.string(),v29LedgerRecord)})});
 
 type ImportDocument = { readonly tables: { readonly runs: Record<string, RunRecord>; readonly records: Record<string, LedgerRecord> } };
 
@@ -2406,10 +2435,10 @@ function readLegacyLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> {
 }
 
 /** Validate a v19 or v20 offline snapshot without changing fields or pretending it is live. */
-function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> | z.infer<typeof priorPolishingDocument> | z.infer<typeof v25LedgerDocument> | z.infer<typeof v26v27LedgerDocument> | z.infer<typeof v28LedgerDocument> {
+function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> | z.infer<typeof priorPolishingDocument> | z.infer<typeof v25LedgerDocument> | z.infer<typeof v26v27LedgerDocument> | z.infer<typeof v28LedgerDocument> | z.infer<typeof v29LedgerDocument> {
   const input: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   const version = (input as { unit?: { version?: unknown } } | null)?.unit?.version;
-  const document = version === 28 ? v28LedgerDocument.parse(input) : version === 26 || version === 27 ? v26v27LedgerDocument.parse(input) : version === 25 ? v25LedgerDocument.parse(input) : version === 21 || version === 22 || version === 23 || version === 24 ? priorPolishingDocument.parse(input)
+  const document = version === 29 ? v29LedgerDocument.parse(input) : version === 28 ? v28LedgerDocument.parse(input) : version === 26 || version === 27 ? v26v27LedgerDocument.parse(input) : version === 25 ? v25LedgerDocument.parse(input) : version === 21 || version === 22 || version === 23 || version === 24 ? priorPolishingDocument.parse(input)
     : version === 20 ? v20LedgerDocument.parse(input) : readLegacyLedger(bytes);
   if (!isDeepStrictEqual(input, document)) throw new Error('ledger import contains unsupported fields or values; import would change stored facts');
   validateImportDocument(document as unknown as ImportDocument, Number(version));
@@ -2443,7 +2472,7 @@ function sameImportSnapshot(a: BigIntStats, b: BigIntStats): boolean {
 
 export interface LegacyLedgerImportReceipt {
   readonly format: 'hima-ledger-import-v1';
-  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28; readonly sha256: string; readonly bytes: number; readonly backup: string };
+  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29; readonly sha256: string; readonly bytes: number; readonly backup: string };
   readonly target: { readonly version: number; readonly sha256: string; readonly file: string };
   readonly importedAt: string;
   readonly runs: number;
@@ -2465,7 +2494,7 @@ export interface LegacyLedgerImportReceipt {
  */
 export async function importLegacyLedger(request: { readonly sourceFile: string; readonly home: string }): Promise<LegacyLedgerImportReceipt> {
   // Import copies existing facts, without inventing adoption events or mutating the original home.
-  if (ledgerSpec.version !== 29) throw new Error('legacy import supports only the reviewed v19-v28-to-v29 transition');
+  if (ledgerSpec.version !== 30) throw new Error('legacy import supports only the reviewed v19-v29-to-v30 transition');
   const source = path.resolve(request.sourceFile);
   const home = path.resolve(request.home);
   const parent = path.dirname(home);

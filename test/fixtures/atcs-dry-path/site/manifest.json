@@ -1,0 +1,8 @@
+{
+  "top": "top", "stage": "postroute", "root": "${SITE}/design",
+  "database": {"enc": "db/top.enc", "encDat": "db/top.enc.dat"},
+  "netlist": "top.v", "def": "top.def", "spef": {"c1": "c1.spef"}, "sdc": ["top.sdc"],
+  "libraries": ["libs/c1.db"],
+  "scenarios": [{"name": "func_ssg_rcworst", "corner": "c1"}, {"name": "func_ffg_cbest", "corner": "c1"}],
+  "tools": {"innovus": "stand-in", "starrc": "stand-in", "primetime": "stand-in", "xtop": "stand-in"}
+}

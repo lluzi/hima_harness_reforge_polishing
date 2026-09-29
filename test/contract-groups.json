@@ -102,6 +102,7 @@
     "test/contract/view.test.ts",
     "test/contract/workbench-address.test.ts",
     "test/contract/workshop.host.test.ts",
+    "test/contract/workshop-recovery.host.test.ts",
     "test/contract/xtop-timing-closure.test.ts"
   ],
   "desktop": [
@@ -138,5 +139,8 @@
     "test/contract/jobs.live.test.ts",
     "test/contract/pack.live.test.ts",
     "test/contract/ssh.live.test.ts"
+  ],
+  "atcs-dry": [
+    "test/contract/atcs-dry-path.host.test.ts"
   ]
 }

@@ -381,7 +381,7 @@ function describeRun(deps: FabricDeps, run: RunRecord): string {
     const tail = blocker.logTail === undefined ? '' : `, ${counted(blocker.logTail.split('\n').filter((l) => l !== '').length, 'line')} of log on record ${blocker.id}`;
     lines.push(`  blocker: ${blocker.nodeId} after ${counted(blocker.attempts, 'attempt')}${exit}${tail}: ${blocker.reason}`);
   }
-  const resumed = records.findLast((r): r is ResumedRecord => r.type === 'resumed');
+  const resumed = records.findLast((r): r is ResumedRecord => r.type === 'resumed' && r.kind !== 'restart');
   if (resumed) lines.push(`  resumed: ${resumed.nodeId} by ${resumed.who} at ${resumed.at}`);
   // Every request to stop this Run, beside the stop each one was answered with. The two are separate
   // records on purpose — a cancel is a fact and not a wish — and a face that showed only the ending
