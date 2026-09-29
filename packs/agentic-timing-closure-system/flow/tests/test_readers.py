@@ -107,6 +107,38 @@ def _build_design_state(workspace, name="baseline", netlist_text=None):
     return core.stamp("design-state", {k: v for k, v in design_state.items() if k not in ("schema", "id")})
 
 
+# The Site's XTop sizing rule, as `xtopContext.ecoParameters` declares it on linglong-atcs28
+# (retained PR03 worker requests): drive strength is `D<n>BWP`, VT is a name suffix.
+XTOP_ECO_PARAMETERS = {
+    "bufferListForHold": ["BUFFD2BWP35P140"], "bufferListForSetup": ["BUFFD4BWP35P140"],
+    "cellClassifyRule": "cell_attribute", "cellMatchAttribute": "footprint",
+    "cellNominalSizingPattern": "D([0-9]+)BWP", "cellNominalSwapKeywords": ["ULVT", "LVT", "", "HVT"],
+    "gainThreshold": 0.001,
+}
+
+LIBRARY_CELLS = (
+    "DFQD1BWP35P140", "DFQD2BWP35P140", "DFQD4BWP35P140", "DFQD2BWP35P140LVT",
+    "BUFFD1BWP35P140", "BUFFD2BWP35P140", "BUFFD4BWP35P140",
+    "CKAN2D2BWP35P140HVT", "CKAN2D4BWP35P140HVT",
+)
+
+
+def _write_xtop_context(workspace, design, cells=LIBRARY_CELLS):
+    """`state/xtop-context.json` as `observe` stamps it: the Site's Liberty files for each
+    required scenario, hashed, bound to the design state it was observed on (C13)."""
+    library = _write(Path(workspace) / "libs" / "ssg_m40c" / "cells.lib", "library (fixture) {\n" + "".join(
+        f'  cell ("{name}") {{\n    area : 1.0;\n  }}\n' for name in cells) + "}\n")
+    context = core.stamp("xtop-context", {
+        "designStateId": design["id"], "requiredScenarios": ["func_ssg_rcworst_m40"],
+        "libraryTcl": {"path": "state/xtop-library.tcl", "sha256": "0" * 64},
+        "staData": {"path": "state/xtop-sta", "digest": "0" * 64},
+        "libraryFiles": {"func_ssg_rcworst_m40": [{"path": str(library), "sha256": core.file_sha256(library)}]},
+        "siteMap": ["unit", "core"], "removableFillers": ["FILL*"], "ecoParameters": dict(XTOP_ECO_PARAMETERS),
+    })
+    _write(Path(workspace) / "state" / "xtop-context.json", json.dumps(context))
+    return context
+
+
 class ReadinessReaderTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -274,7 +306,9 @@ class WorkPackageReaderTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.workspace = _make_workspace(self.tmp.name)
-        self.design = _build_design_state(self.workspace)
+        # U1 is a real library buffer so a w01 sizing action can be checked (C13).
+        self.design = _build_design_state(self.workspace, netlist_text="module top;\n  BUFFD1BWP35P140 U1 (.A(a));\nendmodule\n")
+        _write_xtop_context(self.workspace, self.design)
 
     def _write_envelope(self, candidate, site_capabilities=None):
         envelope = {"candidate": candidate, "baseState": self.design, "siteCapabilities": site_capabilities or {}}
@@ -365,7 +399,7 @@ class WorkPackageReaderTest(unittest.TestCase):
     def test_bounded_worker_admits_only_declared_sizing_candidates(self):
         report = self._write_envelope(self._valid_candidate())
         envelope = json.loads(report.read_text())
-        envelope["actions"] = [{"instance": "U1", "toMaster": "BUF2"}]
+        envelope["actions"] = [{"instance": "U1", "toMaster": "BUFFD2BWP35P140"}]
         report.write_text(json.dumps(envelope))
         values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
         self.assertEqual(values[0]["value"], 0)
@@ -387,7 +421,8 @@ class WorkPackageReaderTest(unittest.TestCase):
         report.write_text(json.dumps(envelope))
         found = self._counted(report, "w01")
         self.assertEqual([t.split(":")[0] for t in found],
-                         ["actions[0] (slot w01)", "actions[1].toMaster (slot w01)", "actions[2].instance (slot w01)"])
+                         ["actions[0] (slot w01)", "actions[1].toMaster (slot w01)", "actions[2].instance (slot w01)",
+                          "actions[2].toMaster (slot w01)"])  # 'B' is no library cell (C13)
 
     def test_tampered_base_state_is_refused(self):
         tampered_design = dict(self.design)
@@ -421,6 +456,7 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.workspace = _make_workspace(self.tmp.name)
         self.design = _build_design_state(self.workspace, netlist_text=self.HIER_NETLIST)
+        _write_xtop_context(self.workspace, self.design)
 
     def _write_envelope(self, instance, domain):
         candidate = {
@@ -481,6 +517,7 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
             "endmodule\n"
         )
         design = _build_design_state(self.workspace, name="escaped", netlist_text=netlist)
+        _write_xtop_context(self.workspace, design)
         candidate = {
             "taskId": "w01",
             "baseStateId": design["id"],

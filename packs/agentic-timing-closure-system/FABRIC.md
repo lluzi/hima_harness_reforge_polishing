@@ -384,6 +384,18 @@ Known gaps carried from earlier tasks:
   written as its full path from `top` (a port or net name, a bare leaf, an absent path, or a module
   instance). Before, all five shapes read 0 and cost PR02, PR03 and Fresh03 2-4 Workshop attempts
   each before any XTop.
+- G39 (Issue #63, failure catalogue C13) A w01 action's `toMaster` must resize its cell within this
+  design's libraries. The source is `state/xtop-context.json`, which the Pack's own `observe`
+  stamps from the Site's `xtopContext` (each scenario's Liberty files, hashed). `prepare-workers`
+  re-verifies the same file before XTop, so it existed on every Campaign that reached a worker:
+  PR03's three `prepare-workers` Jobs exited 0, and its retained worker requests carry the Site
+  `xtopContext` with `libertyGlob` and `ecoParameters`. The model-written `siteCapabilities` in the
+  request is never read for this. The Reader re-hashes one scenario's Liberty files while it
+  collects their `cell (...)` names. Using the Site's `cellNominalSizingPattern` and
+  `cellNominalSwapKeywords`, it counts each of these as a problem: a master that is not a library
+  cell, one that changes the cell function or the VT, one equal to the current master, and a
+  missing, unreadable or other-design-state context. Channel length is not constrained: XTop's
+  footprint match decides that. Cost: one pass over one corner's Liberty files for each w01 read.
 
 ## Reviews
 

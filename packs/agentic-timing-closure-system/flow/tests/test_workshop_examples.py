@@ -59,7 +59,7 @@ CONTRACT_PATH = PACK_DIR / "contract.yml"
 sys.path.insert(0, str(TESTS_DIR))
 
 # Reuse the repo's own fixture builders rather than a second copy of them.
-from test_readers import READ_ATCS_PATH, _make_workspace, _build_design_state, _write, read_atcs  # noqa: E402
+from test_readers import READ_ATCS_PATH, _make_workspace, _build_design_state, _write, _write_xtop_context, read_atcs  # noqa: E402
 
 from atcs import core  # noqa: E402
 
@@ -211,6 +211,7 @@ class _HierarchicalFixture(unittest.TestCase):
         self.workspace = _make_workspace(self.tmp.name)
         self.design = _build_design_state(self.workspace, netlist_text=EXAMPLE_NETLIST)
         _write(self.workspace / "state" / "working-state.json", json.dumps(self.design))
+        _write_xtop_context(self.workspace, self.design)
 
     def _read(self, kind, name, document, extra=None):
         report = self.workspace / "research" / "requests" / name
@@ -615,6 +616,64 @@ class TeamRepairGuidanceTest(unittest.TestCase):
 
     def test_agent_team_guidance_is_declared_knowledge(self):
         self.assertIn("agent-team.md", _declared_knowledge(_contract_text()))
+
+
+class WorkerActionMasterReaderTest(_HierarchicalFixture):
+    """C13 (failure catalogue): a worker action's toMaster must be a cell of this design's
+    libraries with the same function and VT as the cell it resizes. Before, NO_SUCH_CELL,
+    DFQD2BWP12T (a live "Library cell not found") and a buffer for a flop were all admitted
+    and XTop was spent for no effect. The library is the Site's, as the Pack's own `observe`
+    sealed it in state/xtop-context.json (the file prepare-workers re-verifies before XTop)."""
+
+    def _master(self, to_master):
+        document = _load_example("example-worker-request.md")
+        document["actions"][0]["toMaster"] = to_master
+        report = self.workspace / "research" / "requests" / "worker-request-w01.json"
+        _write(report, json.dumps(document))
+        values = self._read("worker-request", "worker-request-w01.json", document, extra=["w01"])
+        found = read_atcs.problems("worker-request", report, self.workspace, "w01")
+        self.assertEqual(values["tc_request_invalid_count"], len(found))
+        return found
+
+    def test_a_same_function_same_vt_size_is_admitted(self):
+        self.assertEqual(self._master("DFQD2BWP35P140"), [])
+
+    def test_a_master_outside_the_libraries_is_refused(self):
+        for master in ("NO_SUCH_CELL", "DFQD2BWP12T"):
+            with self.subTest(master=master):
+                found = self._master(master)
+                self.assertEqual(len(found), 1, found)
+                self.assertTrue(found[0].startswith("actions[0].toMaster (slot w01)"), found)
+                self.assertIn("is not a cell of this design's libraries", found[0])
+
+    def test_a_master_of_another_function_is_refused(self):
+        found = self._master("BUFFD4BWP35P140")
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("changes cell function", found[0])
+        self.assertIn("'DFQ'", found[0])
+
+    def test_a_master_of_another_vt_is_refused(self):
+        found = self._master("DFQD2BWP35P140LVT")
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("changes VT", found[0])
+
+    def test_the_current_master_is_refused_as_no_change(self):
+        found = self._master("DFQD1BWP35P140")
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("already", found[0])
+
+    def test_without_a_sealed_library_context_the_master_is_not_admitted(self):
+        (self.workspace / "state" / "xtop-context.json").unlink()
+        found = self._master("DFQD2BWP35P140")
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("state/xtop-context.json", found[0])
+
+    def test_a_context_for_another_design_state_is_not_used(self):
+        other = _build_design_state(self.workspace, name="other", netlist_text=EXAMPLE_NETLIST)
+        _write_xtop_context(self.workspace, other)
+        found = self._master("DFQD2BWP35P140")
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("another design state", found[0])
 
 
 class NextDecisionExampleTest(unittest.TestCase):

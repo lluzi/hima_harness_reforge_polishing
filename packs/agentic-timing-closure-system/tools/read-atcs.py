@@ -766,6 +766,127 @@ def _request_envelope(report, workspace, expected_task_id, mods):
     return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
+_LIBERTY_CELL_RE = re.compile(rb'^\s*cell\s*\(\s*"?([^"\s)]+)"?\s*\)')
+_library_cache = {}
+
+
+def _library_cells(files, core):
+    """Every `cell (NAME)` of the Liberty `files` ([{path, sha256}]), each re-hashed as read.
+
+    One streaming pass per file both hashes it and collects its cell names, so a file that
+    changed since `observe` sealed it is refused, not trusted. Memoized per file list.
+    """
+    key = tuple((ref.get("path"), ref.get("sha256")) for ref in files)
+    if key in _library_cache:
+        return _library_cache[key]
+    import hashlib
+    cells = set()
+    for path, expected in key:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for line in handle:
+                digest.update(line)
+                match = _LIBERTY_CELL_RE.match(line)
+                if match:
+                    cells.add(match.group(1).decode("latin-1"))
+        if digest.hexdigest() != expected:
+            raise ValueError(f"Liberty file {path} changed since state/xtop-context.json sealed it")
+    _library_cache[key] = cells
+    return cells
+
+
+def _library_context(workspace, base_state, core):
+    """`(cells, ecoParameters, None)` from the sealed `state/xtop-context.json`, or `(None, None, why)`.
+
+    C13 (failure catalogue): the Site's XTop library context is the one declared, Pack-sealed
+    source of this design's cells. `observe` stamps it from the Site's `xtopContext` (each
+    scenario's Liberty files, hashed) and `prepare-workers`/`replay-prepare` re-verify it before
+    XTop starts (`atcs_cli._verified_xtop_context`). The worker request's own `siteCapabilities`
+    is model-written and is never read for this.
+    """
+    try:
+        context = _load_json(Path(workspace) / "state" / "xtop-context.json")
+        _verify_identity(context, "xtop-context", core)
+    except (ValueError, OSError) as error:
+        return None, None, f"state/xtop-context.json (the Site's sealed XTop library context) cannot be read: {error}"
+    if context.get("designStateId") != base_state.get("id"):
+        return None, None, ("state/xtop-context.json was sealed for another design state "
+                            f"{context.get('designStateId')!r}, not baseState {base_state.get('id')!r}")
+    library_files = context.get("libraryFiles")
+    eco = context.get("ecoParameters")
+    if not isinstance(library_files, dict) or not library_files or not isinstance(eco, dict):
+        return None, None, "state/xtop-context.json declares no libraryFiles or ecoParameters"
+    scenario = sorted(library_files)[0]
+    try:
+        cells = _library_cells(library_files[scenario], core)
+    except (ValueError, OSError, TypeError, AttributeError) as error:
+        return None, None, f"the Liberty files of scenario {scenario!r} in state/xtop-context.json cannot be read: {error}"
+    if not cells:
+        return None, None, f"the Liberty files of scenario {scenario!r} declare no cell"
+    return cells, eco, None
+
+
+def _sizing_family(master, eco):
+    """`(function, VT)` of `master` under the Site's sizing rule, or None when it does not apply.
+
+    `cellNominalSizingPattern` (for example `D([0-9]+)BWP`) marks the drive strength: the text
+    before it is the cell function. `cellNominalSwapKeywords` lists the VT suffixes (the empty
+    keyword is the standard VT); the longest one the name ends with is its VT.
+    """
+    try:
+        match = re.search(eco.get("cellNominalSizingPattern") or "", master)
+    except re.error:
+        return None
+    if match is None or match.start() == 0 or not eco.get("cellNominalSizingPattern"):
+        return None
+    tail = master[match.end():]
+    keywords = sorted((k for k in eco.get("cellNominalSwapKeywords") or [] if isinstance(k, str) and k),
+                      key=len, reverse=True)
+    vt = next((k for k in keywords if tail.endswith(k)), "")
+    return master[:match.start()], vt
+
+
+def _master_problems(actions, hierarchy, top, base_state, workspace, core, slot):
+    """C13: each well-formed action's toMaster resizes its cell within the design's libraries."""
+    checkable = [(i, a) for i, a in enumerate(actions)
+                 if isinstance(a, dict) and set(a) == {"instance", "toMaster"}
+                 and isinstance(a["toMaster"], str) and a["toMaster"]
+                 and not core.is_tcl_unsafe(a["toMaster"]) and "*" not in a["toMaster"] and "?" not in a["toMaster"]]
+    if not checkable:
+        return []
+    cells, eco, why = _library_context(workspace, base_state, core)
+    if why is not None:
+        return [f"actions{slot}: no toMaster can be checked against this design's libraries: {why}"]
+    found = []
+    for index, action in checkable:
+        where = f"actions[{index}].toMaster{slot}"
+        master = action["toMaster"]
+        if master not in cells:
+            found.append(f"{where}: {master!r} is not a cell of this design's libraries "
+                         "(the Liberty files sealed in state/xtop-context.json)")
+            continue
+        current = _instance_type(hierarchy, top, action["instance"]) if isinstance(action["instance"], str) else None
+        if current is None or current in hierarchy:
+            continue  # the instance itself is already named as a problem
+        if master == current:
+            found.append(f"{where}: {master!r} is already the master of {action['instance']!r}; a size_cell "
+                         "action must change the drive strength")
+            continue
+        want, got = _sizing_family(current, eco), _sizing_family(master, eco)
+        if want is None or got is None:
+            found.append(f"{where}: {master!r} or the current master {current!r} does not follow the Site's sizing "
+                         f"pattern {eco.get('cellNominalSizingPattern')!r}, so the resize cannot be shown to keep "
+                         "the cell function")
+        elif got[0] != want[0]:
+            found.append(f"{where}: {master!r} changes cell function {want[0]!r} of {action['instance']!r} "
+                         f"({current}) to {got[0]!r}; size_cell keeps the function and changes only the drive "
+                         "strength")
+        elif got[1] != want[1]:
+            found.append(f"{where}: {master!r} changes VT {want[1] or 'standard'!r} of {action['instance']!r} "
+                         f"({current}) to {got[1] or 'standard'!r}; size_cell keeps the VT")
+    return found
+
+
 def _worker_action_problems(actions, candidate, base_state, workspace, core, slot):
     """Slot w01's `actions`: one to three `{instance, toMaster}` size_cell candidates.
 
@@ -809,7 +930,10 @@ def _worker_action_problems(actions, candidate, base_state, workspace, core, slo
                 or "*" in master or "?" in master):
             found.append(f"{where}.toMaster{slot}: {master!r} is not a plain cell name "
                          "(no Tcl metacharacters, * or ?)")
-    return found
+    if hierarchy is None:
+        netlist_path = _safe_join(workspace, base_state["netlist"]["path"], "worker-request.netlist")
+        hierarchy = _netlist_hierarchy(netlist_path)
+    return found + _master_problems(actions, hierarchy, top, base_state, workspace, core, slot)
 
 
 def _campaign_plan(report, workspace, extra, mods):
