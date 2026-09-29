@@ -52,6 +52,9 @@ await runLive(NAME, 8, async (check: LiveCheck) => {
     homeRoot, runId, packId: PACK_ID, sourcePacksDir, ...(workspace ? { workspace: realpathSync(workspace) } : {}),
     model: { provider: 'deepseek-official', model: 'deepseek-flash' },
     say: (agent, text) => check.say(agent, text),
+    factsWritten: (at, facts) => {
+      check.observed.facts = { path: at, lines: facts.text.split('\n').length - 1, status: facts.status, code: facts.code.length, refusals: facts.refusals.length };
+    },
     ready: (owner, ownerWorkspace) => {
       check.trackResumed(owner);
       check.observed.workspace = ownerWorkspace;
@@ -60,5 +63,5 @@ await runLive(NAME, 8, async (check: LiveCheck) => {
   });
   check.require('report-only native pipeline reaches released for this exact Run', true, sealed.version);
   check.observed.release = { runId, packDigest: sealed.packDigest, recordCount: sealed.recordCount,
-    test: sealed.test, version: sealed.version };
+    facts: sealed.facts, test: sealed.test, version: sealed.version };
 });

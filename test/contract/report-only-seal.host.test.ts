@@ -16,6 +16,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { appendFile, cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { parse } from 'yaml';
 import { HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS, checkTestRecord, loadPack, packStage } from '@hima/harness';
@@ -69,29 +70,41 @@ test('report-only seal in a desktop-shaped home: the App-made workspace-write ow
     presets.set(owner.session, 'workspace-write');
     assert.equal(presets.current(owner.session), 'workspace-write', 'the owner runs under the App\'s workspace-write preset');
     ownerId = String(owner.id);
-    // A one-second time box ends the owned test Run by its budget without a node run: the cheapest
+    // A three-second time box ends the owned test Run by its budget without a node run: the cheapest
     // honest ending, and one the report-only seal must record exactly as it is.
     const started = await opening.ctx.hima.startRun({ pack: packId, site: 'local', goal: { target_period_ns: 2 },
-      ownerSessionId: ownerId, test: true, timeBoxMs: 1000 });
+      ownerSessionId: ownerId, test: true, timeBoxMs: 3000 });
     assert.equal(started.kind, 'ran', JSON.stringify(started));
     if (started.kind !== 'ran') return;
     assert.equal(started.run.purpose, 'test');
     runId = started.run.id;
+    // What a real Campaign leaves behind and the record must name: refusals and generated code,
+    // appended through the Ledger's own typed appenders while the Run is still open.
+    const ledger = opening.ctx.hima.ledger;
+    await ledger.appendRefusal(runId, { path: path.join(h.workspace, 'outside/one.json'), reason: 'cannot resolve outside/one.json: outside the Permit' });
+    await ledger.appendRefusal(runId, { path: path.join(h.workspace, 'outside/two.json'), reason: 'cannot resolve outside/two.json:\nnot bound' });
+    const codeAt = path.join(h.workspace, 'workshops/probe.py'); const codeBytes = 'print(1)\n';
+    await mkdir(path.dirname(codeAt), { recursive: true }); await writeFile(codeAt, codeBytes);
+    await ledger.appendCode(runId, { nodeId: 'synthesize', attempt: 1, sessionId: ownerId, workshop: 'probe-workshop',
+      path: codeAt, sha256: createHash('sha256').update(codeBytes).digest('hex'), bytes: codeBytes.length, language: 'python' });
     await waitUntil('the test Run ends', () => opening.ctx.hima.ledger.run(runId)?.status?.startsWith('ended-') === true, 30_000);
     // An ended Run is closed by its archive; the live Run the seal is for had delivered its archive.
     await waitUntil('the ended Run\'s archive is delivered', () => opening.ctx.hima.ledger.records({ runId })
-      .some((r) => r.type === 'archive' && (r as { delivery?: string }).delivery === 'complete'), 30_000);
+      .some((r) => r.type === 'archive' && (r as { delivery?: string }).delivery === 'complete'), 30_000)
+      .catch((error: unknown) => { throw new Error(`${String(error)}: ${JSON.stringify(opening.ctx.hima.ledger.records({ runId }).filter((r) => r.type === 'archive'))}`); });
     assert.equal(opening.ctx.hima.ledger.run(runId)?.control?.owner, ownerId, 'the Run is the owner\'s');
   } finally { await opening.dispose(); }
 
   // 2. What the resumed owner does, as a model under the sandbox does it: the plain write, then the
   //    same write asking for the wider mode with a reason; then the release through the Hima tool.
   const inspect = await bootInProcess(h);
-  let status = ''; let runBefore = ''; let recordsBefore = '';
+  let status = ''; let runBefore = ''; let recordsBefore = ''; let refusalIds: string[] = []; let codeShas: string[] = [];
   try {
     const run = inspect.ctx.hima.ledger.run(runId)!;
     status = String(run.status);
     runBefore = JSON.stringify(run); recordsBefore = JSON.stringify(inspect.ctx.hima.ledger.records({ runId }));
+    refusalIds = inspect.ctx.hima.ledger.records({ runId }).filter((r) => r.type === 'refusal').map((r) => r.id);
+    codeShas = inspect.ctx.hima.ledger.records({ runId }).filter((r) => r.type === 'code').map((r) => (r as { sha256: string }).sha256);
   } finally { await inspect.dispose(); }
   const testAt = path.join(packDir, 'TEST.md');
   const testRecord = [
@@ -99,14 +112,21 @@ test('report-only seal in a desktop-shaped home: the App-made workspace-write ow
     '## Run', '', `run: ${runId}`, '',
     '## Ending', '', `status: ${status}`, '',
     '## Generations', '', 'As the Run recorded them.', '',
-    '## Code', '', 'none', '',
-    '## Refusals', '', 'none', '',
+    '## Code', '', ...codeShas.map((sha) => `- ${sha} workshops/probe.py`), '',
+    '## Refusals', '', ...refusalIds.map((id) => `- ${id}`), '',
     '## Disagreements', '', 'none', '',
   ].join('\n');
   const override = path.join(h.home, 'report-only-seal.override.json');
   // The grant is one folder: the same wider ask for a file outside it is still refused.
   const outsideAt = path.join(h.home, 'outside-the-pack.md');
+  const factsAt = path.join(h.workspace, 'seal', 'test-record-facts.md');
+  // A stale record from an earlier attempt: structurally tested, but its Refusals do not hold.
+  await writeFile(testAt, testRecord.replace(refusalIds.map((id) => `- ${id}`).join('\n'), 'UNFILLED'));
+  assert.equal(packStage(packDir).stage, 'tested', 'the stale record stands structurally');
   await writeFile(override, JSON.stringify([
+    toolCall('call-read-facts', 'read', { file_path: factsAt }),
+    // dsh overwrites only a file the session has read; the stale record is read, then replaced whole.
+    toolCall('call-read-stale', 'read', { file_path: testAt }),
     toolCall('call-write-outside', 'write', { file_path: outsideAt, content: 'not the Pack', sandbox_permissions: 'danger-full-access',
       justification: 'A file outside the installed Pack folder.' }),
     toolCall('call-write', 'write', { file_path: testAt, content: testRecord }),
@@ -141,7 +161,18 @@ test('report-only seal in a desktop-shaped home: the App-made workspace-write ow
     failures = toolResults(sealed.owner).filter((r) => r.failed).map((r) => r.text);
     assert.equal(String(sealed.owner.id), ownerId, 'the seal resumed the Run\'s own owner');
     assert.equal(sealed.workspace, h.workspace, 'the owner\'s workspace is the desktop workspace, not <home>/workspace');
-    assert.deepEqual(calls, ['write', 'write', 'write', 'hima_pack_check', 'hima_pack_release'], JSON.stringify(calls));
+    assert.deepEqual(calls, ['read', 'read', 'write', 'write', 'write', 'hima_pack_check', 'hima_pack_release'], JSON.stringify(calls));
+    // The facts file: line-based, from the Ledger, naming exactly what the check demands.
+    assert.equal(sealed.facts.path, factsAt);
+    const facts = await readFile(factsAt, 'utf8');
+    assert.equal(sealed.facts.lines, facts.split('\n').length - 1);
+    assert.deepEqual([sealed.facts.refusals, sealed.facts.code], [2, 1]);
+    assert.match(facts, new RegExp(`^status: ${status}$`, 'm'));
+    for (const id of refusalIds) assert.match(facts, new RegExp(`^- ${id.replace(/[#]/g, '\\$&')}: `, 'm'), `the facts name refusal ${id}`);
+    for (const sha of codeShas) assert.ok(facts.includes(`- ${sha} `), `the facts name code ${sha}`);
+    assert.ok(facts.split('\n').every((line) => line.length < 2000), 'every line fits one read');
+    assert.ok(facts.includes('cannot resolve outside/two.json: not bound'), 'a multi-line reason is one line');
+    assert.match(toolResults(sealed.owner)[0]!.text, /Test record facts for run/, 'the owner read the facts');
     assert.equal(failures.length, 2, `the outside write and the plain write were refused, and nothing else: ${JSON.stringify(failures)}`);
     assert.match(failures[0]!, /sandbox escalation to "danger-full-access" requires approval, but no approval channel is available/);
     assert.equal(existsSync(outsideAt), false, 'nothing was written outside the granted folder');
