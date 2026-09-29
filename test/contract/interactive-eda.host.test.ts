@@ -39,11 +39,11 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
   tool.licences = {};
   tool.argv = [wrapper, '${WORKSPACE}/flow/interactive-repl.tcl'];
   tool.interactive = { mode: 'interactive-only', adapter: 'hima-tcl-line-v1', argv: [wrapper, '${WORKSPACE}/flow/interactive-repl.tcl'], commands: {
-    read: ['get_value'], mutate: ['set_value', 'fail_command'], save: ['save_state', 'close_session'],
+    read: ['get_value'], mutate: ['set_value', 'fail_command', 'slow_fail'], save: ['save_state', 'close_session'],
   }, arguments: {
     get_value: [{ name: 'key', type: 'string' }],
     set_value: [{ name: 'key', type: 'string' }, { name: 'value', type: 'number' }],
-    fail_command: [], save_state: [{ name: 'file', type: 'string' }], close_session: [],
+    fail_command: [], slow_fail: [], save_state: [{ name: 'file', type: 'string' }], close_session: [],
   } };
   contract.agentTeams = [{ id: 'fixture-team', version: '1', triggerNode: 'synthesize', members: [{
     id: 'researcher', role: 'researcher', node: 'synthesize',
@@ -470,6 +470,22 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     assert.ok(errorTail, `the command-failed record carries an errorTail: ${JSON.stringify(failedRecord.payload)}`);
     assert.match(errorTail!, /intentional fixture failure/, 'the errorTail carries the adapter error line');
     assert.equal(/HIMA:[^:]+:(ACK|DONE|FAIL)/.test(errorTail!), false, 'the errorTail strips the HIMA protocol markers');
+
+    // C33 (observe path): a command that has not finished when its send returns is settled later
+    // through `observe`, and that writer must record the same errorTail. slow_fail returns `sent` at
+    // waitMs:0, then FAILs; the observe step catches the FAIL and records it with its error line.
+    const sent = await request({ action: 'input', requestId: 'interactive-slowfail', toolSessionId, commandId: 'slow-1',
+      command: { name: 'slow_fail', args: {} }, waitMs: 0 });
+    assert.equal(sent.status, 'sent', `the slow command has not settled at its send: ${JSON.stringify(sent)}`);
+    const observed = await request({ action: 'observe', requestId: 'interactive-slowfail-observe', toolSessionId, commandId: 'slow-1', waitMs: 2_000 });
+    assert.equal(observed.status, 'failed', `the observe path settles the failed command: ${JSON.stringify(observed)}`);
+    const observedRecord = host.ctx.hima.ledger.records({ runId, type: 'interactive' })
+      .findLast((record) => record.type === 'interactive' && (record.payload as { event?: string }).event === 'command-failed'
+        && (record.payload as { commandId?: string }).commandId === 'slow-1');
+    assert.ok(observedRecord?.type === 'interactive', 'the observe path wrote a command-failed record');
+    const observedTail = (observedRecord.payload as { errorTail?: string }).errorTail;
+    assert.ok(observedTail, `the observe-path command-failed record carries an errorTail: ${JSON.stringify(observedRecord.payload)}`);
+    assert.match(observedTail!, /intentional fixture failure/, 'the observe-path errorTail carries the adapter error line');
 
     assert.equal((await action('pause', 'interactive-pause', { nodeId })).kind, 'accepted');
     const heldMutation = await request({ action: 'input', requestId: 'interactive-held-set', toolSessionId, commandId: 'held-set',

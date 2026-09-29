@@ -13,6 +13,10 @@ proc get_value {key} {
 
 proc fail_command {} { error "intentional fixture failure" }
 
+# A command that fails only after a synchronous delay, so a waitMs:0 send returns `sent` and the FAIL
+# is recorded through the observe path — the case #C33's observe-path errorTail is checked against.
+proc slow_fail {} { after 500; error "intentional fixture failure" }
+
 proc save_state {file} {
   set channel [open $file w]
   puts $channel $::state

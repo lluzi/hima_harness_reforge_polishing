@@ -426,8 +426,10 @@ export async function observeInteractiveCommand(on: InteractiveChannel, request:
     effect: request.effect, replyToCommandId: request.replyToCommandId, protocolToken: request.protocolToken });
   const operationDigest = digest({ session: request.session.toolSessionId, commandId: request.commandId, inputDigest });
   const observed = await waitForInteractiveCommand(on, request);
+  const errorTail = observed.failed ? interactiveErrorTail(observed.transcript.text, request.protocolToken) : undefined;
   if (observed.completed || observed.failed) await authority.record(parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, operationDigest),
-    event: observed.failed ? 'command-failed' : 'command-completed', commandId: request.commandId, inputDigest, cursorAfter: observed.transcript.cursor.end }));
+    event: observed.failed ? 'command-failed' : 'command-completed', commandId: request.commandId, inputDigest, cursorAfter: observed.transcript.cursor.end,
+    ...(errorTail === undefined ? {} : { errorTail }) }));
   return { status: observed.failed ? 'failed' : observed.completed ? 'completed' : 'sent', commandId: request.commandId, inputDigest,
     transcript: observed.transcript, acknowledged: observed.acknowledged };
 }
@@ -441,8 +443,10 @@ export interface ObserveInteractiveRequest extends InteractiveAddress {
 /** Restart-safe observation from the durable intent; it has no input bytes and therefore cannot resend. */
 export async function observeInteractiveToken(on: InteractiveChannel, request: ObserveInteractiveRequest, authority: InteractiveAuthority): Promise<InteractiveInputResult> {
   const observed = await waitForInteractiveCommand(on, request);
+  const errorTail = observed.failed ? interactiveErrorTail(observed.transcript.text, request.protocolToken) : undefined;
   if (observed.completed || observed.failed) await authority.record(parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, request.operationDigest),
-    event: observed.failed ? 'command-failed' : 'command-completed', commandId: request.commandId, inputDigest: request.inputDigest, cursorAfter: observed.transcript.cursor.end }));
+    event: observed.failed ? 'command-failed' : 'command-completed', commandId: request.commandId, inputDigest: request.inputDigest, cursorAfter: observed.transcript.cursor.end,
+    ...(errorTail === undefined ? {} : { errorTail }) }));
   return { status: observed.failed ? 'failed' : observed.completed ? 'completed' : 'sent', commandId: request.commandId, inputDigest: request.inputDigest,
     transcript: observed.transcript, acknowledged: observed.acknowledged };
 }
