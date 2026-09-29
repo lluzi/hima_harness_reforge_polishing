@@ -302,7 +302,14 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
         }
         if (!payload || Array.isArray(payload) || payload.schema !== found.effective.recipe.resultSchema.id
             || found.effective.recipe.resultSchema.required.some(field => !(field in payload))) {
-            return { status: 'refused', artifacts: [], unknowns: [], reason: `Agent Team result does not satisfy ${found.effective.recipe.resultSchema.id}.` };
+            const schema = found.effective.recipe.resultSchema;
+            const problems = !payload || Array.isArray(payload)
+                ? ['the result is not a JSON object']
+                : [
+                    ...(payload.schema === schema.id ? [] : [`its schema field is ${payload.schema === undefined ? 'absent' : JSON.stringify(payload.schema)}, not ${JSON.stringify(schema.id)}`]),
+                    ...(() => { const missing = schema.required.filter(field => !(field in (payload as Record<string, unknown>))); return missing.length === 0 ? [] : [`missing required field(s): ${missing.join(', ')}`]; })(),
+                  ];
+            return { status: 'refused', artifacts: [], unknowns: [], reason: `Agent Team member ${found.effective.recipe.memberId} result does not satisfy schema ${JSON.stringify(schema.id)}: ${problems.join('; ')}. Return one JSON object with schema set to ${JSON.stringify(schema.id)} and every required field: ${schema.required.join(', ')}.` };
         }
     }
     let candidateHandoff: ReturnType<typeof durableDelegationHandoff> | undefined;

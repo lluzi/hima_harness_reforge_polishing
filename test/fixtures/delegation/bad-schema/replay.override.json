@@ -1,0 +1,10 @@
+[
+  {
+    "kind": "chunks",
+    "chunks": [
+      { "type": "block-start", "index": 0, "blockType": "text" },
+      { "type": "block-end", "index": 0, "block": { "type": "text", "text": "{\"schema\":\"fixture-review/1\",\"command\":\"set_value\"}" } },
+      { "type": "finish", "reason": { "kind": "stop" } }
+    ]
+  }
+]

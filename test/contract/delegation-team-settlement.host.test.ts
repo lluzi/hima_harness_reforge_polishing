@@ -199,3 +199,65 @@ test('a Team execution whose required member ended without a result settles fail
   assert.equal(hybridCancel.status, 'accepted', JSON.stringify(hybridCancel));
   assert.equal(hybridControl().executions[hybridExecutionId]!.phase, 'begun');
 });
+
+// Gap 4 (Harness): a Team member result refused for its schema names the schema and the exact
+// missing required fields, so the owner can relay what must change instead of guessing. The child
+// replays one JSON object that carries `schema` but omits `planSha256` and `arguments`.
+test('an Agent Team result missing required fields is refused naming the schema and the missing fields', async (t) => {
+  const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local);
+  const { h, flow } = local;
+  let host: Awaited<ReturnType<typeof bootInProcess>> | undefined; let cleanupRunId: string | undefined;
+  t.after(async () => { if (host && cleanupRunId) await host.ctx.hima.cancelRun(cleanupRunId); await host?.dispose(); await h.dispose(); });
+  const packsDir = path.join(h.home, 'hima/packs');
+  const packId = 'team-schema-refusal';
+  await writePackVariant(packsDir, packId, [], [], timingProbePackId);
+  const contractFile = path.join(packsDir, packId, 'contract.yml');
+  const contract = parse(await readFile(contractFile, 'utf8')) as Record<string, any>;
+  // No licence declaration is needed for this team-schema check; the site declares none.
+  const synth = contract.tools.find((candidate: { id: string }) => candidate.id === 'synth');
+  if (synth) synth.licences = {};
+  contract.agentTeams = [
+    { id: 'schema-team', version: '1', triggerNode: 'synthesize', members: [
+      member('reviewer', 'reviewer', { ownerAdoption: 'candidate-only',
+        resultSchema: { id: 'fixture-review/1', required: ['schema', 'planSha256', 'command', 'arguments'] } }),
+    ] },
+  ];
+  await writeFile(contractFile, stringify(contract));
+  const site = await writeLocalSite(h, { allowedReadRoots: [h.workspace, flow.root], allowedWriteRoots: [h.workspace],
+    bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot: h.workspace }, licences: {}, parallelJobs: 1 });
+  // The one replayed child returns a JSON object that omits two required fields.
+  const scenario = await writeMomentScenario(h, 'bad-schema', path.join(repoRoot, 'test/fixtures/delegation'));
+  await writeReplayOverlay(h.home, { file: scenario.file, overrideFile: scenario.override, childFiles: scenario.children });
+  await appendFile(homePatchFile(h.home), `\n- id: hima\n  config:\n    sitesDir: ${JSON.stringify(site.sitesDir)}\n    packsDir: ${JSON.stringify(packsDir)}\n    knowledgeDir: ${JSON.stringify(path.join(h.home, 'hima/knowledge/current'))}\n`);
+
+  host = await bootInProcess(h);
+  const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
+  const started = await host.ctx.hima.startRun({ pack: packId, site: site.name, goal: { target_period_ns: 2 }, ownerSessionId: actor, timeBoxMs: 120_000 });
+  assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
+  const runId = started.run.id; cleanupRunId = runId;
+  const control = () => host.ctx.hima.ledger.run(runId)!.control!;
+  const report = Buffer.from('synthetic qor\n'); const reportSha256 = createHash('sha256').update(report).digest('hex');
+  const retained = await retainRunMaterial({ ledger: host.ctx.hima.ledger, packsDir }, runId, report, reportSha256); assert.ok(retained);
+  await host.ctx.hima.ledger.appendObservation(runId, { path: `flow/results/${flow.design}/syn/report/qor.rpt`,
+    contentSha256: reportSha256, retainedPath: retained, bytes: report.byteLength,
+    reader: { id: 'dc-qor-report', version: '1', reportKind: 'dc-qor', emits: ['clock_period'] }, values: [] });
+  const delegate = (body: Record<string, unknown>) => host.ctx.hima.delegate({ runId, actor,
+    expectedEpoch: control().epoch, expectedRevision: control().revision, ...body } as never) as Promise<Record<string, any>>;
+  const begun = await host.ctx.hima.executionAction({ runId, actor, action: 'begin', nodeId: 'synthesize',
+    requestId: 'begin-schema', expectedEpoch: control().epoch, expectedRevision: control().revision });
+  assert.equal(begun.kind, 'accepted', JSON.stringify(begun));
+  const executionId = begun.receipt!.executionId!;
+  const reviewer = await delegate({ action: 'create', requestId: 'reviewer-schema',
+    recipe: { teamId: 'schema-team', version: '1', memberId: 'reviewer', executionId } });
+  assert.equal(reviewer.status, 'created', JSON.stringify(reviewer));
+  const reviewerId = reviewer.effectiveContract.delegationId as string;
+  let refused: Record<string, any> = {}; let reads = 0;
+  await waitUntil('the reviewer child returned a completed turn', async () => {
+    refused = await delegate({ action: 'result', delegationId: reviewerId, requestId: `reviewer-schema-result-${reads++}` });
+    return refused.status !== 'unavailable';
+  }, 20_000, 100);
+  assert.equal(refused.status, 'refused', JSON.stringify(refused));
+  assert.ok(refused.reason.includes('fixture-review/1'), `the refusal names the schema: ${refused.reason}`);
+  assert.ok(refused.reason.includes('planSha256'), `the refusal names the missing field planSha256: ${refused.reason}`);
+  assert.ok(refused.reason.includes('arguments'), `the refusal names the missing field arguments: ${refused.reason}`);
+});
