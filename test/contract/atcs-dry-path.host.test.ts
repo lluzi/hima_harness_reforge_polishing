@@ -362,7 +362,7 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
     await step('plan', code.plan);
     for (const nodeId of ['read-campaign-plan', 'check-campaign-plan', 'prepare-workers']) await step(nodeId);
     await step('research-worker-01', code.research);
-    for (const nodeId of ['read-worker-request-01', 'check-worker-request-01']) await step(nodeId);
+    for (const nodeId of ['read-worker-request-01', 'check-worker-request-01', 'route-worker-action-01']) await step(nodeId);
     await operate();
     await step('capture-worker-01');
     if (pausedRefusal === undefined) {
