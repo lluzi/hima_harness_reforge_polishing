@@ -29,6 +29,10 @@ the plan's w01 into a worker request was rejected as not a hierarchical instance
 Recorded RED (slice 3 gap 1, on 18829968): RefusalTextTest and ProblemsDeliveryTest -- 14
 errors (`read_atcs` had no `problems`, the Reader wrote no `.problems.txt`) and 7 failures
 (no `<output>Problems` output, read or purpose for any of the seven request outputs).
+Recorded RED (slice 3 gap 2, on 4b3af279): 19 errors and 1 failure across test_readers and this
+module -- every malformed-shape, slot-taskId and w01-action case raised ValueError instead of
+counting, and the Reader process exited 1 on a w01 request without `actions`; the ATCS contract
+test failed on 110 !== 111 nodes (no retry-worker-01).
 """
 from __future__ import annotations
 
@@ -252,8 +256,8 @@ class WorkerRequestExampleTest(_HierarchicalFixture):
         document["candidate"]["editDomain"]["instances"] = leaves
         for action, leaf in zip(document["actions"], leaves):
             action["instance"] = leaf
-        with self.assertRaisesRegex(ValueError, "not a hierarchical instance"):
-            self._read("worker-request", "worker-request-w01.json", document, extra=["w01"])
+        values = self._read("worker-request", "worker-request-w01.json", document, extra=["w01"])
+        self.assertEqual(values["tc_request_invalid_count"], len(leaves))
 
 
 # Every Reader-owned request kind, its contract output, and the output its itemized
@@ -381,6 +385,24 @@ class RefusalTextTest(_HierarchicalFixture):
                     self.assertIn(f"slot {slot}", text)
                 self.assertTrue(any("budget" in t and "xtopMinutes" in t for t in found), found)
                 self.assertTrue(any("'resize_cell'" in t for t in found), found)
+
+    def test_bare_leaf_names_the_action_slot_and_the_full_path_form(self):
+        document = self._worker("w01")
+        leaves = [a["instance"].rsplit("/", 1)[-1] for a in document["actions"]]
+        document["candidate"]["editDomain"]["instances"] = leaves
+        for action, leaf in zip(document["actions"], leaves):
+            action["instance"] = leaf
+        found = self._problems("worker-request", "worker-request-w01.json", document, "w01")
+        self.assertEqual(len(found), len(leaves), found)
+        for index, (text, leaf) in enumerate(zip(found, leaves)):
+            self.assertTrue(text.startswith(f"actions[{index}].instance (slot w01): {leaf!r} is not a hierarchical"), text)
+            self.assertIn("u_a/reg0", text)
+
+    def test_worker_actions_missing_is_named_not_raised(self):
+        document = self._worker("w01")
+        del document["actions"]
+        self._one(self._problems("worker-request", "worker-request-w01.json", document, "w01"),
+                  "actions (slot w01)", "{instance, toMaster}")
 
     # --- observation request and integration plan ----------------------------------
     def test_observation_request_names_each_field(self):

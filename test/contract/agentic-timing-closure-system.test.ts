@@ -243,12 +243,15 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.equal(packStage(packDir).stage, 'compiled');
   // Issue 63 slice 2: +4 nodes (a fresh refresh-budget reading and its Judge before `implement`
   // and before `apr-prepare`), +6 edges.
-  assert.equal(pack.graph.nodes.length, 110);
+  // Issue 63 slice 3 (gap 2): +1 node, the `retry-worker-01` Explore.
+  assert.equal(pack.graph.nodes.length, 111);
   // Final review (Minor): +2 edges -- check-setup-goal/check-hold-goal each gain
   // an explicit UNDETERMINED edge to `residual` (an unknown final WNS is an
   // evidence gap, not a person-facing wait) instead of falling through to the
   // engine's own unlabelled-UNDETERMINED default (wait-for-person).
-  assert.equal(pack.graph.edges.length, 149);
+  // Issue 63 slice 3 (gap 2): +1 edge -- check-worker-request-01 FAIL now goes to retry-worker-01
+  // (replacing FAIL->wait-for-person), which revisits research-worker-01.
+  assert.equal(pack.graph.edges.length, 150);
 
   // Issue 63 slice 2: every Explore revisit consumes a Harness generation, so `generationLimit`
   // bounds revisits, not Innovus/StarRC/PrimeTime refreshes. The Run's Goal value
@@ -282,6 +285,20 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual(edgesTo('apr-run'), ['apr-prepare->']);
   assert.deepEqual(edgesTo('extract'), ['apr-run->', 'implement->']);
   assert.deepEqual(edgesFrom('check-presta-model'), ['FAIL->decide-next', 'PASS->read-refresh-budget']);
+
+  // Issue 63 slice 3 (gap 2): a refused request is revised, never a Run-ending wait. Before, a
+  // check-worker-request-01 FAIL parked the Run at wait-for-person, which has no outgoing edge.
+  const requestJudges = (pack.graph.nodes as any[]).filter(node => node.kind === 'judge'
+    && node.parameters.rules[0] === 'request-admissible').map(node => node.id);
+  assert.ok(requestJudges.length >= 6, requestJudges.join(','));
+  for (const judge of requestJudges) {
+    assert.ok(!edgesFrom(judge).includes('FAIL->wait-for-person'), `${judge} FAIL ends the Run at wait-for-person`);
+  }
+  assert.deepEqual(nodeOf('check-worker-request-01').parameters.rules, ['request-admissible', 'request-checked']);
+  assert.deepEqual(edgesFrom('check-worker-request-01'), ['FAIL->retry-worker-01', 'PASS->operate-worker-01']);
+  assert.equal(nodeOf('retry-worker-01').kind, 'explore');
+  assert.equal(nodeOf('retry-worker-01').parameters.chooser, 'atcs-revisit');
+  assert.deepEqual(edgesFrom('retry-worker-01'), ['revisit->research-worker-01']);
   assert.ok(pack.contract.rules.includes('refresh-budget'));
 
   // Issue 63 (fresh03 `sta` blocked: "references ${MAX_PATHS}, which nothing bound"): every

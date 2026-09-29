@@ -226,6 +226,28 @@ class SubprocessIdentityTest(unittest.TestCase):
         self.assertEqual({v["type"] for v in document["values"]},
                           {"tc_required_input_missing_count", "tc_lifecycle_available"})
 
+    def test_malformed_worker_request_exits_zero_with_a_count_and_its_problems(self):
+        """Issue #63 gap 2: before, a w01 request without `actions` made the Reader exit 1,
+        the Retry allowance re-read the same bytes and a Hard blocker parked the Run."""
+        design = _build_design_state(self.workspace)
+        candidate = {
+            "taskId": "w1", "baseStateId": design["id"], "problem": "x",
+            "targets": [], "editDomain": {"instances": ["U1"], "nets": [], "regions": []},
+            "protected": {"instances": [], "nets": []}, "mayAffect": [],
+            "actions": ["size_cell"], "budget": {"xtopMinutes": 5, "queries": 1, "attempts": 1},
+        }
+        report = self.workspace / "research" / "requests" / "worker-request-w01.json"
+        _write(report, json.dumps({"candidate": candidate, "baseState": design, "siteCapabilities": {}}))
+        out = self.workspace / "out.json"
+        result = self._run("worker-request", report, out, extra=("w01",))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        values = json.loads(out.read_text())["values"]
+        self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 3}])
+        sidecar = (self.workspace / "research" / "requests" / "worker-request-w01.problems.txt").read_text()
+        self.assertTrue(sidecar.startswith("3 problems in worker-request-w01.json"), sidecar)
+        for field in ("candidate.taskId (slot w01)", "actions (slot w01)"):
+            self.assertIn(f"- {field}: ", sidecar)
+
     def test_source_file_sha256_changed_exits_nonzero(self):
         design = _build_design_state(self.workspace)
         candidate = {
@@ -297,10 +319,35 @@ class WorkPackageReaderTest(unittest.TestCase):
         values = read_atcs.read("work-package", report, self.workspace)
         self.assertEqual(values[0]["value"], 0)
 
-    def test_wrong_task_id_for_slot_is_refused(self):
+    def _counted(self, report, slot):
+        """Issue #63 gap 2: a malformed worker request is a counted problem the owner can
+        revise, never a Reader crash that parks the Run; the count is len(problems)."""
+        found = read_atcs.problems("worker-request", report, self.workspace, slot)
+        values = read_atcs.read("worker-request", report, self.workspace, extra=[slot])
+        self.assertEqual(values[0]["value"], len(found), found)
+        self.assertGreaterEqual(len(found), 1)
+        return found
+
+    def test_wrong_task_id_for_slot_is_counted(self):
         report = self._write_envelope(self._valid_candidate(taskId="w01"))
-        with self.assertRaises(ValueError):
-            read_atcs.read("worker-request", report, self.workspace, extra=["w02"])
+        found = self._counted(report, "w02")
+        self.assertEqual(found, ["candidate.taskId (slot w02): must be 'w02' for this slot, got 'w01'"])
+
+    def test_envelope_shape_problems_are_counted(self):
+        for mutate, field in ((lambda e: e.update(candidate=[]), "candidate"),
+                              (lambda e: e.update(baseState="state/working-state.json"), "baseState"),
+                              (lambda e: e.pop("siteCapabilities"), "siteCapabilities")):
+            with self.subTest(field=field):
+                report = self._write_envelope(self._valid_candidate())
+                envelope = json.loads(report.read_text())
+                mutate(envelope)
+                report.write_text(json.dumps(envelope))
+                found = self._counted(report, "w01")
+                self.assertTrue(any(t.startswith(f"{field} (slot w01): must be") for t in found), found)
+        report = self._write_envelope(self._valid_candidate())
+        report.write_text(json.dumps([json.loads(report.read_text())]))
+        self.assertEqual(self._counted(report, "w01"), [
+            "document (slot w01): must be one JSON object {candidate, baseState, siteCapabilities, actions}"])
 
     def test_bounded_worker_admits_only_declared_sizing_candidates(self):
         report = self._write_envelope(self._valid_candidate())
@@ -311,13 +358,23 @@ class WorkPackageReaderTest(unittest.TestCase):
         self.assertEqual(values[0]["value"], 0)
         envelope["actions"][0]["instance"] = "OUTSIDE"
         report.write_text(json.dumps(envelope))
-        with self.assertRaisesRegex(ValueError, "outside"):
-            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        found = self._counted(report, "w01")
+        self.assertIn("actions[0].instance (slot w01): 'OUTSIDE' is not in candidate.editDomain.instances", found)
 
-    def test_bounded_worker_without_action_authority_is_refused(self):
+    def test_bounded_worker_without_action_authority_is_counted(self):
         report = self._write_envelope(self._valid_candidate())
-        with self.assertRaisesRegex(ValueError, "sizing candidates"):
-            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        found = self._counted(report, "w01")
+        self.assertEqual(len(found), 1, found)
+        self.assertRegex(found[0], r"^actions \(slot w01\): must be a list of one to three \{instance, toMaster\}")
+
+    def test_each_bad_action_is_its_own_counted_problem(self):
+        report = self._write_envelope(self._valid_candidate())
+        envelope = json.loads(report.read_text())
+        envelope["actions"] = [{"instance": "U1"}, {"instance": "U1", "toMaster": "BUF*"}, {"instance": 7, "toMaster": "B"}]
+        report.write_text(json.dumps(envelope))
+        found = self._counted(report, "w01")
+        self.assertEqual([t.split(":")[0] for t in found],
+                         ["actions[0] (slot w01)", "actions[1].toMaster (slot w01)", "actions[2].instance (slot w01)"])
 
     def test_tampered_base_state_is_refused(self):
         tampered_design = dict(self.design)
@@ -378,8 +435,11 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
         """The real Issue #63 failure: `g96219` alone, admitted by the Reader
         before this fix, is not resolvable against a hierarchical netlist."""
         report = self._write_envelope("g96219", domain=["g96219"])
-        with self.assertRaisesRegex(ValueError, "not a hierarchical instance"):
-            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        found = read_atcs.problems("worker-request", report, self.workspace, "w01")
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertEqual(values[0]["value"], len(found))
+        self.assertEqual(len(found), 1, found)
+        self.assertRegex(found[0], r"^actions\[0\]\.instance \(slot w01\): 'g96219' is not a hierarchical instance")
 
     def test_full_hierarchical_path_is_admitted(self):
         report = self._write_envelope("u_sub/g96219", domain=["u_sub/g96219"])
@@ -388,8 +448,9 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
 
     def test_wrong_middle_segment_is_refused(self):
         report = self._write_envelope("wrong_sub/g96219", domain=["wrong_sub/g96219"])
-        with self.assertRaisesRegex(ValueError, "not a hierarchical instance"):
-            read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertEqual(values[0]["value"], 1)
+        self.assertIn("not a hierarchical instance", read_atcs.problems("worker-request", report, self.workspace, "w01")[0])
 
     def test_escaped_identifier_instance_works(self):
         """`g96219` is declared in the netlist as the Verilog escaped
@@ -510,6 +571,21 @@ class CampaignPlanReaderTest(unittest.TestCase):
         report = self._write_envelope(packages, reason="   ")
         values = read_atcs.read("campaign-plan", report, self.workspace)
         self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_envelope_shape_problems_are_counted(self):
+        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
+        for mutate, field in ((lambda e: e.update(candidate=None), "candidate"),
+                              (lambda e: e.update(baseState=[]), "baseState"),
+                              (lambda e: e.update(siteCapabilities="none"), "siteCapabilities")):
+            with self.subTest(field=field):
+                report = self._write_envelope(packages)
+                envelope = json.loads(report.read_text())
+                mutate(envelope)
+                report.write_text(json.dumps(envelope))
+                found = read_atcs.problems("campaign-plan", report, self.workspace)
+                values = read_atcs.read("campaign-plan", report, self.workspace)
+                self.assertEqual(values[0]["value"], len(found))
+                self.assertTrue(any(t.startswith(f"{field}: must be") for t in found), found)
 
     def test_tampered_base_state_is_refused(self):
         packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
@@ -698,6 +774,24 @@ class IntegrationPlanReaderTest(unittest.TestCase):
         by_type = {v["type"]: v for v in values}
         self.assertGreaterEqual(by_type["tc_request_invalid_count"]["value"], 1)
         self.assertEqual(by_type["tc_selected_contribution_count"]["value"], 1)
+
+    def test_envelope_shape_and_select_problems_are_counted(self):
+        facts = core.stamp("composition-facts", {
+            "baseStateId": "a" * 20, "considered": ["c1"], "duplicates": [],
+            "conflicts": [], "interactions": [], "staleBase": [], "order": ["c1"], "unresolvedCount": 0,
+        })
+        plan = {"batchId": "b1", "baseStateId": "a" * 20, "select": "c1", "resolutions": [], "deferred": [], "reason": "x"}
+        report = self.workspace / "flow" / "records" / "plan-review.json"
+        for envelope, field in (({"plan": plan, "facts": facts}, "plan.select"), ({"plan": [], "facts": facts}, "plan"),
+                                ({"plan": dict(plan, select=["c1"]), "facts": "facts"}, "facts")):
+            with self.subTest(field=field):
+                _write(report, json.dumps(envelope))
+                found = read_atcs.problems("integration-plan", report, self.workspace)
+                by_type = {v["type"]: v for v in read_atcs.read("integration-plan", report, self.workspace)}
+                self.assertEqual(by_type["tc_request_invalid_count"]["value"], len(found))
+                self.assertTrue(any(t.startswith(f"{field}: ") for t in found), found)
+                self.assertIsNone(by_type["tc_selected_contribution_count"]["value"])
+                self.assertIn("unknownReason", by_type["tc_selected_contribution_count"])
 
 
 class IntegrationStateReaderTest(unittest.TestCase):

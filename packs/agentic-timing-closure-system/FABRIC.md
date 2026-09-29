@@ -13,7 +13,10 @@ helper from `flow/atcs_cli.py`.
   (`target_setup_wns_ns`, `target_hold_wns_ns`, `max_physical_refreshes`), 1 Strategy knob
   (`maxPaths`), 13 knowledge files (10 method files and 3 Reader-admitted Workshop examples,
   `example-*.md`, Issue #63).
-- `graph.yml` — 110 nodes (62 act, 38 judge, 9 explore, 1 wait), 149 edges, 9 revisit edges.
+- `graph.yml` — 111 nodes (62 act, 38 judge, 10 explore, 1 wait), 150 edges, 10 revisit edges.
+  Issue #63 slice 3 (G37): `check-worker-request-01` FAIL goes to `retry-worker-01` (Explore,
+  `atcs-revisit`), which revisits `research-worker-01` (+1 node, +1 edge), replacing its FAIL edge
+  to `wait-for-person`.
   Issue #63 slice 2: `read-refresh-budget` → `check-refresh-budget` between `check-presta-model`
   PASS and `implement`, and `read-refresh-budget-apr` → `check-refresh-budget-apr` before
   `apr-prepare` (+4 nodes, +6 edges); `revisit-implement` and `revisit-earlier-apr` now enter at
@@ -361,6 +364,17 @@ Known gaps carried from earlier tasks:
   alone into `hima-readers/<id>/` (`node-turns.ts` `runPackReader`), a Workshop sees only the
   `flow/` copy, and moving the checks into `flow/atcs` would change the flow digest the installed
   wrapper pins.
+- G37 (Issue #63 slice 3, gap 2) No refused request ends the Run. A request document of the wrong
+  shape (not an object, a missing or non-object `candidate`/`baseState`/`siteCapabilities`/`plan`/
+  `facts`, a non-list `select`), a slot `taskId` that is not the slot's, and every w01 `actions`
+  defect (count, keys, instance outside `editDomain.instances`, bare leaf, unsafe master) are
+  counted problems, not Reader exceptions -- an exception re-read the same bytes until the Retry
+  allowance was spent and a Hard blocker parked the Run at `wait-for-person`. Unreadable JSON and a
+  `baseState`/`facts` whose id or source files do not verify still refuse (fail-closed identity).
+  `check-worker-request-01` is `[request-admissible, request-checked]` and FAILs to
+  `retry-worker-01`, like `check-observation-request`. w02/w03 FAILs still move on to the next
+  slot: an Explore with the one-edge `atcs-revisit` chooser always revisits, so a retry there would
+  let one hopeless slot spend the Run's generations instead of dropping it.
 
 ## Reviews
 

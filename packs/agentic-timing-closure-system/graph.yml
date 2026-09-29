@@ -126,7 +126,15 @@ nodes:
     parameters: { observes: workerRequest01 }
   - id: check-worker-request-01
     kind: judge
-    parameters: { rules: [request-admissible] }
+    parameters: { rules: [request-admissible, request-checked] }
+  # Issue #63 slice 3 (gap 2): a refused w01 request is revised, as a refused observation request
+  # is -- the owner reads its itemized problems (workerRequest01Problems) in research-worker-01.
+  # Before, the FAIL went to wait-for-person, whose clearing ends the Run. w02/w03 keep their FAIL
+  # edges to the next slot (a refused slot is dropped, not retried, so one hopeless slot cannot
+  # spend the Run's generations); a later plan round may re-issue it, its itemized problems readable.
+  - id: retry-worker-01
+    kind: explore
+    parameters: { chooser: atcs-revisit, bind: { paths: 1000 } }
   - id: operate-worker-01
     kind: act
     parameters: { tool: xtop-operator, arguments: { SLOT: w01 } }
@@ -512,7 +520,8 @@ edges:
   - { from: research-worker-01, to: read-worker-request-01 }
   - { from: read-worker-request-01, to: check-worker-request-01 }
   - { from: check-worker-request-01, to: operate-worker-01, outcome: PASS }
-  - { from: check-worker-request-01, to: wait-for-person, outcome: FAIL }
+  - { from: check-worker-request-01, to: retry-worker-01, outcome: FAIL }
+  - { from: retry-worker-01, to: research-worker-01, revisit: true }
   - { from: operate-worker-01, to: capture-worker-01 }
   - { from: capture-worker-01, to: read-worker-result-01 }
   - { from: read-worker-result-01, to: collect }

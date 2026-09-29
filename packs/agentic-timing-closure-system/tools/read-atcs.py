@@ -597,6 +597,30 @@ def _write_problems_file(report, found, refused=None):
         pass
 
 
+_SHAPE_FORMATS = {
+    "candidate": "an object holding the unstamped fields, as in the knowledge example",
+    "baseState": "the stamped design-state object, state/working-state.json copied unchanged",
+    "siteCapabilities": 'an object such as {"pgVerification": false}',
+    "plan": "an object {batchId, baseStateId, select, resolutions, deferred, reason}",
+    "facts": "the stamped composition-facts object, state/composition-facts.json copied unchanged",
+}
+
+
+def _shape_problems(envelope, keys, slot=""):
+    """Issue #63 gap 2: a document of the wrong shape is a counted problem the owner can
+    revise -- never a Reader exception that re-reads the same bytes until a Hard blocker
+    parks the Run. Empty when every key of `keys` holds an object."""
+    if not isinstance(envelope, dict):
+        return [f"document{slot}: must be one JSON object {{{', '.join(keys)}}}"]
+    found = []
+    for key in keys:
+        value = envelope.get(key)
+        if key != "actions" and not isinstance(value, dict):
+            state = "missing" if key not in envelope else f"a {type(value).__name__}"
+            found.append(f"{key}{slot}: must be {_SHAPE_FORMATS[key]}; it is {state}")
+    return found
+
+
 def _observation_request(report, workspace, slot, mods):
     """A raw `observationRequest` candidate (diagnose-and-observe Workshop output), self-contained.
 
@@ -656,58 +680,73 @@ def _request_envelope(report, workspace, expected_task_id, mods):
     """
     core = mods["core"]
     workspaces_mod = mods["workspaces"]
+    slot = f" (slot {expected_task_id})" if expected_task_id else ""
     envelope = _load_json(report)
-    if not isinstance(envelope, dict):
-        raise ValueError("request envelope must be a JSON object")
-    candidate = envelope.get("candidate")
-    base_state = envelope.get("baseState")
-    site_capabilities = envelope.get("siteCapabilities")
-    if not isinstance(candidate, dict):
-        raise ValueError("envelope.candidate must be a JSON object")
-    if not isinstance(base_state, dict):
-        raise ValueError("envelope.baseState must be a JSON object")
-    if not isinstance(site_capabilities, dict):
-        raise ValueError("envelope.siteCapabilities must be a JSON object")
+    keys = ("candidate", "baseState", "siteCapabilities") + (("actions",) if expected_task_id == "w01" else ())
+    found = _shape_problems(envelope, keys, slot)
+    if found:
+        return [_emit_count("tc_request_invalid_count", len(found))], found
+    candidate = envelope["candidate"]
+    base_state = envelope["baseState"]
+    site_capabilities = envelope["siteCapabilities"]
 
+    # Fail-closed identity stays an exception: a baseState whose id or source files do not
+    # verify is not a request problem to count but a companion that cannot be trusted.
     _verify_identity(base_state, "design-state", core)
     _verify_design_state_refs(base_state, workspace, core)
 
     if expected_task_id is not None and candidate.get("taskId") != expected_task_id:
-        raise ValueError(f"candidate.taskId must be {expected_task_id!r}, got {candidate.get('taskId')!r}")
-
-    slot = f" (slot {expected_task_id})" if expected_task_id else ""
-    found = _work_package_problems(candidate, base_state, site_capabilities, workspaces_mod, ("candidate", slot))
+        found.append(f"candidate.taskId{slot}: must be {expected_task_id!r} for this slot, got {candidate.get('taskId')!r}")
+    found += _work_package_problems(candidate, base_state, site_capabilities, workspaces_mod, ("candidate", slot))
     if expected_task_id == "w01":
-        actions = envelope.get("actions")
-        domain = (candidate.get("editDomain") or {}).get("instances") or []
-        if not isinstance(actions, list) or not 1 <= len(actions) <= 3:
-            raise ValueError("worker actions must contain one to three sizing candidates")
-        for action in actions:
-            if not isinstance(action, dict) or set(action) != {"instance", "toMaster"}:
-                raise ValueError("worker action must have exactly instance and toMaster")
-            if action["instance"] not in domain:
-                raise ValueError("worker action instance is outside the admitted edit domain")
-            if (not isinstance(action["toMaster"], str) or not action["toMaster"]
-                    or core.is_tcl_unsafe(action["toMaster"]) or "*" in action["toMaster"] or "?" in action["toMaster"]):
-                raise ValueError("worker action master is not a safe cell name")
-        # T63 real-run failure: a worker action naming a bare LEAF instance
-        # name (no hierarchy) is not resolvable against the actual post-route
-        # netlist, whose leaf cells live inside deeply nested modules — see
-        # `read-atcs.py`'s module docstring / this task's brief for the real
-        # `g96219` example. Every action instance must be a full `/`-separated
-        # hierarchical path from `base_state["top"]`, walked directly against
-        # the sha-verified base netlist (never trusted from the candidate).
-        netlist_path = _safe_join(workspace, base_state["netlist"]["path"], "worker-request.netlist")
-        hierarchy = _netlist_hierarchy(netlist_path)
-        top = base_state.get("top")
-        for action in actions:
-            name = action["instance"]
-            if not _is_hierarchical_instance(hierarchy, top, name):
-                raise ValueError(
-                    f"worker action instance {name!r} is not a hierarchical instance under top {top!r} "
-                    "in the base netlist"
-                )
+        found += _worker_action_problems(envelope.get("actions"), candidate, base_state, workspace, core, slot)
     return [_emit_count("tc_request_invalid_count", len(found))], found
+
+
+def _worker_action_problems(actions, candidate, base_state, workspace, core, slot):
+    """Slot w01's `actions`: one to three `{instance, toMaster}` size_cell candidates.
+
+    T63 real-run failure: a worker action naming a bare LEAF instance name (no
+    hierarchy) is not resolvable against the actual post-route netlist, whose leaf
+    cells live inside deeply nested modules (the real `g96219` example). Every
+    action instance must be a full `/`-separated hierarchical path from
+    `base_state["top"]`, walked directly against the sha-verified base netlist
+    (never trusted from the candidate).
+    """
+    if not isinstance(actions, list) or not 1 <= len(actions) <= 3:
+        got = f"{len(actions)} entries" if isinstance(actions, list) else ("missing" if actions is None else type(actions).__name__)
+        return [f"actions{slot}: must be a list of one to three {{instance, toMaster}} size_cell candidates, "
+                f"each instance in candidate.editDomain.instances; got {got}"]
+    editable = candidate.get("editDomain")
+    domain = (editable.get("instances") if isinstance(editable, dict) else None) or []
+    top = base_state.get("top")
+    hierarchy = None
+    found = []
+    for index, action in enumerate(actions):
+        where = f"actions[{index}]"
+        if not isinstance(action, dict) or set(action) != {"instance", "toMaster"}:
+            keys = sorted(action) if isinstance(action, dict) else type(action).__name__
+            found.append(f"{where}{slot}: must be exactly {{instance, toMaster}}, got {keys}")
+            continue
+        instance, master = action["instance"], action["toMaster"]
+        if not isinstance(instance, str) or not instance:
+            found.append(f"{where}.instance{slot}: must be a full hierarchical instance path string "
+                         f"such as u_a/reg0, got {instance!r}")
+        else:
+            if instance not in domain:
+                found.append(f"{where}.instance{slot}: {instance!r} is not in candidate.editDomain.instances")
+            if hierarchy is None:
+                netlist_path = _safe_join(workspace, base_state["netlist"]["path"], "worker-request.netlist")
+                hierarchy = _netlist_hierarchy(netlist_path)
+            if not _is_hierarchical_instance(hierarchy, top, instance):
+                found.append(f"{where}.instance{slot}: {instance!r} is not a hierarchical instance under top "
+                             f"{top!r} in the base netlist; write the full path from top such as u_a/reg0, "
+                             "never a bare leaf name")
+        if (not isinstance(master, str) or not master or core.is_tcl_unsafe(master)
+                or "*" in master or "?" in master):
+            found.append(f"{where}.toMaster{slot}: {master!r} is not a plain cell name "
+                         "(no Tcl metacharacters, * or ?)")
+    return found
 
 
 def _campaign_plan(report, workspace, extra, mods):
@@ -752,22 +791,15 @@ def _campaign_plan(report, workspace, extra, mods):
     core = mods["core"]
     workspaces_mod = mods["workspaces"]
     envelope = _load_json(report)
-    if not isinstance(envelope, dict):
-        raise ValueError("campaign-plan envelope must be a JSON object")
-    candidate = envelope.get("candidate")
-    base_state = envelope.get("baseState")
-    site_capabilities = envelope.get("siteCapabilities")
-    if not isinstance(candidate, dict):
-        raise ValueError("envelope.candidate must be a JSON object")
-    if not isinstance(base_state, dict):
-        raise ValueError("envelope.baseState must be a JSON object")
-    if not isinstance(site_capabilities, dict):
-        raise ValueError("envelope.siteCapabilities must be a JSON object")
+    found = _shape_problems(envelope, ("candidate", "baseState", "siteCapabilities"))
+    if found:
+        return [_emit_count("tc_request_invalid_count", len(found))], found
+    candidate = envelope["candidate"]
+    base_state = envelope["baseState"]
+    site_capabilities = envelope["siteCapabilities"]
 
     _verify_identity(base_state, "design-state", core)
     _verify_design_state_refs(base_state, workspace, core)
-
-    found = []
 
     if "workPackages" in envelope:
         # A second, top-level copy -- `prepare-workers` refuses this outright
@@ -833,22 +865,18 @@ def _integration_plan(report, workspace, extra, mods):
     core = mods["core"]
     integration_mod = mods["integration"]
     envelope = _load_json(report)
-    if not isinstance(envelope, dict):
-        raise ValueError("integration-plan review envelope must be a JSON object")
-    plan = envelope.get("plan")
-    facts = envelope.get("facts")
-    if not isinstance(plan, dict):
-        raise ValueError("envelope.plan must be a JSON object")
-    if not isinstance(facts, dict):
-        raise ValueError("envelope.facts must be a JSON object")
+    found = _shape_problems(envelope, ("plan", "facts"))
+    if found:
+        return [
+            _emit_count("tc_request_invalid_count", len(found)),
+            _emit("tc_selected_contribution_count", "count", core.unknown("the integration-plan document has no plan object")),
+        ], found
+    plan = envelope["plan"]
+    facts = envelope["facts"]
 
     _verify_identity(facts, "composition-facts", core)
 
     select = plan.get("select")
-    if not isinstance(select, list):
-        raise ValueError("integration-plan.select must be a list")
-
-    found = []
     for message in integration_mod._collect_plan_problems(plan, facts):
         field = "plan"
         for pattern, name in _PLAN_FIELD_OF:
@@ -857,10 +885,9 @@ def _integration_plan(report, workspace, extra, mods):
                 break
         hint = "; copy facts.baseStateId" if field == "plan.baseStateId" else ""
         found.append(f"{field}: {message}{hint}")
-    return [
-        _emit_count("tc_request_invalid_count", len(found)),
-        _emit_count("tc_selected_contribution_count", len(select)),
-    ], found
+    selected = (_emit_count("tc_selected_contribution_count", len(select)) if isinstance(select, list)
+                else _emit("tc_selected_contribution_count", "count", core.unknown("plan.select is not a list")))
+    return [_emit_count("tc_request_invalid_count", len(found)), selected], found
 
 
 def _read_worker_result(report, workspace, expected_task_id, mods):
