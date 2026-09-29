@@ -772,7 +772,7 @@ agentTeams:
         inputs: [workerRequest01]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
-        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 8000 }
+        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 16000 }
         dependencyRoles: []
         resultSchema:
           id: atcs-worker-research/1
@@ -842,7 +842,7 @@ agentTeams:
         inputs: [workerRequest02]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
-        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 8000 }
+        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 16000 }
         dependencyRoles: []
         resultSchema:
           id: atcs-worker-research/1
@@ -912,7 +912,7 @@ agentTeams:
         inputs: [workerRequest03]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
-        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 8000 }
+        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 16000 }
         dependencyRoles: []
         resultSchema:
           id: atcs-worker-research/1
@@ -982,7 +982,7 @@ agentTeams:
         inputs: [workerRequest04]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
-        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 8000 }
+        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 16000 }
         dependencyRoles: []
         resultSchema:
           id: atcs-worker-research/1
@@ -1052,7 +1052,7 @@ agentTeams:
         inputs: [workerRequest05]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
-        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 8000 }
+        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 16000 }
         dependencyRoles: []
         resultSchema:
           id: atcs-worker-research/1
@@ -1122,7 +1122,7 @@ agentTeams:
         inputs: [workerRequest06]
         allowedTools: [hima_delegation_input]
         scopePolicy: declared-inputs-only
-        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 8000 }
+        budgetShare: { maxElapsedMs: 600000, maxFollowups: 1, maxTokensPerTurn: 16000 }
         dependencyRoles: []
         resultSchema:
           id: atcs-worker-research/1

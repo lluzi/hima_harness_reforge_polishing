@@ -474,7 +474,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   const researcher = team.members.find(item => item.id === 'researcher')!;
   const reviewer = team.members.find(item => item.id === 'reviewer')!;
   const operatorMember = team.members.find(item => item.id === 'operator')!;
-  assert.equal(researcher.budgetShare.maxTokensPerTurn, 8000);
+  assert.equal(researcher.budgetShare.maxTokensPerTurn, 16000); // #64 Track B probe: 8000 truncated 2 of 3 replies
   assert.equal(researcher.budgetShare.maxFollowups, 1);
   assert.match(researcher.taskTemplate, /targetPins/);
   assert.match(researcher.taskTemplate, /fail reason/);

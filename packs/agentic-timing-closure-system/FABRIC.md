@@ -215,6 +215,12 @@ Schema limits and how the graph expresses them:
   the baseline and the first decision, and each refresh its own research batch generation. The
   Harness refuses a Run created below the floor, naming both numbers; a kit or Guide that creates the
   #64 Campaign with 2 generations must now ask for 3 or more.
+- G42 (Issue #64 Track B, real-model probe) Researcher turn budget. The ported
+  `scripts/probe-atcs-workshops.ts` (0.2.0 inputs derived from the retained PR03 Run by the Pack's own
+  code) admitted every Workshop document 3/3, but two of three Researcher turns ended `max-tokens` at
+  `maxTokensPerTurn` 8000 (8598 output tokens, 7190 reasoning): the Host read no completed reply and the
+  Reviewer never ran. Every worker Team's Researcher now has 16000 (`flow/tests/test_team_turn_budget.py`);
+  the rerun admitted Researcher and Reviewer 3/3, each Reviewer scope passing the Host's creation checks.
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.

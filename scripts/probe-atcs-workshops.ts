@@ -5,6 +5,15 @@
 // model-written document's producer with the real product model on retained deterministic inputs,
 // then ask the Pack's own Reader whether it admits the output. Zero EDA, no Electron, no server.
 //
+// Issue #64 Track B port to Pack 0.2.0: the retained PR03 Run is a 0.1.9 Run, so the inputs 0.2.0 reads
+// and 0.1.9 never wrote are derived from it by the Pack's own code (seed020, below) and reported per
+// attempt: state/worker-slots.json (workerSlots 6), and for research-worker-01 and the Team a six-slot
+// campaign plan whose w01 is the retained w01 package in the 0.2.0 shape (targetPins from its pin
+// targets, the recipe scope, observe fast; w02..w06 parked) with the state/workers.json packages
+// prepare-workers would stamp for it. The Team runs in scope mode (atcs-worker-01 version 4): the
+// Reviewer's reply is checked as the Host checks it at Operator creation (plan hash, the recipe scope,
+// hash-bearing mutations of the Operator tool).
+//
 // Producers probed, one fresh Run per attempt, N attempts each:
 //   Workshops  diagnose-and-observe, plan-campaign, research-worker-01, compose-contributions,
 //              evaluate-next-investment — a native owner Agent (the Home's default model, as in
@@ -44,7 +53,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse, stringify } from 'yaml';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import { loadPack, packDigestExcludes, retainRunMaterial, runDelegations } from '@hima/harness';
+import { loadPack, packDigestExcludes, retainRunMaterial, reviewedScopeProblem, runDelegations } from '@hima/harness';
 import { bootInProcess, cancelTestAgent, createRootAgent, saidByModel, sayAsUser, toolCalls, toolResults, type InProcessHost } from '../test/contract/support/boot-inprocess.ts';
 import { createHimaHome, repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { scanForSecret } from '../test/contract/support/moments.ts';
@@ -129,9 +138,13 @@ function workshopSnapshot(retained: Retained, workshopId: string, reads: readonl
     const rel = outputPath(name);
     const inGroup = group.filter((item) => item.name === name).at(-1);
     const earlier = retained.items.filter((item) => item.seq < start && item.path.endsWith(`/${rel}`)).at(-1);
-    const chosen = inGroup ?? earlier;
+    // 0.2.0 reads a few files the 0.1.9 Workshop never did (plan-campaign: acceptancePolicy); the Run wrote
+    // each once, so a later retained copy of the same Run is the same input (reported as such).
+    const later = inGroup ?? earlier ? undefined : retained.items.filter((item) => item.path.endsWith(`/${rel}`)).at(-1);
+    const chosen = inGroup ?? earlier ?? later;
     if (!chosen) { unavailable.push(name); continue; }
-    files.push({ name, rel, sha: chosen.sha, bytes: chosen.bytes, seq: chosen.seq, source: inGroup ? 'captured by this Workshop execution' : `latest ${chosen.kind} before seq ${start}` });
+    files.push({ name, rel, sha: chosen.sha, bytes: chosen.bytes, seq: chosen.seq, source: inGroup ? 'captured by this Workshop execution'
+      : earlier ? `latest ${chosen.kind} before seq ${start}` : `retained ${chosen.kind} at seq ${chosen.seq}, after this Workshop's last execution (written once by the Run)` });
   }
   return { files, unavailable, basis: `Workshop ${workshopId} execution ${last.nodeId} generation ${last.generation} attempt ${last.attempt} (captures seq ${start}..${Math.max(...group.map((item) => item.seq))})` };
 }
@@ -152,7 +165,9 @@ function knownInstances(retained: Retained): { instances: string[]; masters: Rec
       return;
     }
     if (typeof value !== 'string' || !value.includes('/')) return;
-    if (key === 'instances' || key === 'instance' || key === 'endpoint' || key === 'startpoint') names.add(value);
+    if (key === 'instances' || key === 'instance') names.add(value);
+    // An endpoint/startpoint is a pin: its owner (everything before the last segment) is the instance.
+    else if (key === 'endpoint' || key === 'startpoint') names.add(value.slice(0, value.lastIndexOf('/')));
   };
   for (const sha of new Set(retained.items.map((item) => item.sha))) {
     try { walk(JSON.parse(retainedBytes(retained, sha).toString('utf8'))); } catch { /* not JSON */ }
@@ -292,6 +307,54 @@ Path(out).write_text(json.dumps({"designStateId": working.get("id"), "top": work
     "resolved": resolved, "unresolved": unresolved, "standIn": "probe resolver over retained instance paths, not the netlist"}, indent=1, sort_keys=True) + "\n")
 `;
 
+// The 0.2.0 inputs a retained 0.1.9 Run never wrote, derived by the Pack's own code (reported per attempt).
+const SEED_PY = String.raw`
+import json, sys
+from pathlib import Path
+flow, workspace, retained_plan, mode = sys.argv[1:5]
+sys.path.insert(0, flow)
+from atcs import core, workspaces
+ws = Path(workspace)
+derived = []
+def write(rel, obj):
+    at = ws / rel
+    at.parent.mkdir(parents=True, exist_ok=True)
+    at.write_text(json.dumps(obj, indent=2) + "\n")
+    derived.append(rel)
+if not (ws / "state/worker-slots.json").exists():
+    write("state/worker-slots.json", core.stamp("worker-slots", {"workerSlots": len(workspaces.TASK_IDS),
+          "activeSlots": list(workspaces.TASK_IDS), "parkedSlots": []}))
+out = {"derived": derived}
+if mode in ("worker", "team"):
+    base = json.loads((ws / "state/working-state.json").read_text())
+    old = json.loads(Path(retained_plan).read_text())
+    caps = old["siteCapabilities"]
+    w01 = {k: v for k, v in old["candidate"]["workPackages"]["w01"].items() if k not in ("schema", "id")}
+    w01["baseStateId"] = base["id"]
+    w01["editDomain"] = dict(w01["editDomain"], regions=w01["editDomain"].get("regions", []))
+    w01["targetPins"] = [t.split("|", 2)[2] for t in w01["targets"] if "/" in t.split("|", 2)[2]]
+    w01["scope"] = {"commands": list(workspaces.MUTATE_COMMANDS), "maxMutations": workspaces.SCOPE_MAX_MUTATIONS}
+    w01["observe"] = "fast"
+    packages = {"w01": w01}
+    for slot in workspaces.TASK_IDS[1:]:
+        packages[slot] = {"taskId": slot, "baseStateId": base["id"], "parked": True, "problem": "no blocker cluster left for this slot"}
+    validated = {slot: workspaces.validate_work_package(package, base, caps) for slot, package in packages.items()}
+    write("research/requests/campaign-plan.json", {"candidate": {"workPackages": packages,
+          "reason": "the retained w01 blocker cluster; every other slot parked"}, "baseState": base, "siteCapabilities": caps})
+    write("state/workers.json", {"workers": {slot: dict({"workPackageId": package["id"], "workPackage": package},
+          **({"parked": True} if workspaces.is_parked(package) else {})) for slot, package in validated.items()},
+          "requiredSlots": list(workspaces.TASK_IDS)})
+    out["w01"] = {k: v for k, v in validated["w01"].items() if k not in ("schema", "id")}
+    out["siteCapabilities"] = caps
+print(json.dumps(out))
+`;
+function seed020(dir: string, workspace: string, retainedPlan: string, mode: 'workshop' | 'worker' | 'team'): { derived: string[]; w01?: Record<string, any>; siteCapabilities?: unknown } {
+  const script = path.join(dir, 'probe-seed020.py'); if (!existsSync(script)) writeFileSync(script, SEED_PY);
+  const ran = spawnSync('/usr/bin/python3', [script, path.join(repoRoot, 'packs', PACK_ID, 'flow'), workspace, retainedPlan, mode], { encoding: 'utf8', timeout: 60_000 });
+  if (ran.status !== 0) throw new Error(`seed020 failed (${ran.status}): ${ran.stderr.slice(-2000)}`);
+  return JSON.parse(ran.stdout);
+}
+
 interface ReaderResult { kind: string; exit: 'ok' | 'refused'; exception?: string; values?: { type: string; value: number | null; unknownReason?: string }[]; problems: string[]; standIns: string[]; admitted: boolean;
   sidecar?: { path: string; text: string }; assumedLibraryCells?: string[]; noSafeAction?: unknown }
 function runReader(dir: string, readerFile: string, kind: string, report: string, workspace: string, known: string, extra: readonly string[], label: string): ReaderResult {
@@ -339,10 +402,10 @@ async function scratchHome(entry: string, credentialHome: string, siteCapabiliti
   const siteInputs = path.join(h.workspace, 'site-inputs'); mkdirSync(siteInputs, { recursive: true });
   writeFileSync(path.join(siteInputs, 'siteCapabilities.json'), `${JSON.stringify(siteCapabilities, null, 2)}\n`);
   const site = await writeLocalSite(h, {
-    allowedWrappers: ['python3', '/usr/bin/python3', '/data/eda/project/hima_harness/operator-admin/atcs-v9/atcs-xtop-operator-v9.sh'],
+    allowedWrappers: ['python3', '/usr/bin/python3', ...(loadPack(path.join(repoRoot, 'packs'), PACK_ID).contract.environment?.wrappers ?? [])],
     bindings: { designStateManifest: path.join(siteInputs, 'designStateManifest.json'), analysisContract: path.join(siteInputs, 'analysisContract'),
       siteCapabilities: path.join(siteInputs, 'siteCapabilities.json'), workspaceRoot: h.workspace },
-    licences: { innovus: 1, primetime: 1, starrc: 1, xtop: 1 },
+    licences: { innovus: 1, primetime: 1, starrc: 1, xtop: 2 },
   });
   appendFileSync(path.join(h.profileDir, 'cordis.patch.yml'), '\n- id: hima\n  config:\n    sitesDir: ' + JSON.stringify(site.sitesDir)
     + '\n    packsDir: ' + JSON.stringify(packsDir) + '\n    knowledgeDir: ' + JSON.stringify(path.join(h.home, 'hima/knowledge/current')) + '\n');
@@ -402,6 +465,9 @@ async function child(opts: Options): Promise<void> {
   for (const list of ['bufferListForSetup', 'bufferListForHold']) for (const cell of eco[list] ?? []) (known.cells as string[]).push(cell);
   known.cells = [...new Set(known.cells as string[])].sort();
   const knownFile = path.join(dir, 'known-instances.json'); writeFileSync(knownFile, `${JSON.stringify(known, null, 1)}\n`);
+  const latestPlan = retained.items.filter((item) => item.kind === 'observation' && item.path.endsWith(`/${outputPath('campaignPlan')}`)).at(-1);
+  assert.ok(latestPlan, 'the retained Run holds no campaign plan observation');
+  const retainedPlanFile = path.join(dir, 'retained-campaign-plan.json'); writeFileSync(retainedPlanFile, retainedBytes(retained, latestPlan.sha));
   const entry = doc === 'team' ? 'operate-worker-01' : WORKSHOPS[doc as WorkshopDoc].node;
   const { scratch, key: copied } = await scratchHome(entry, opts.credentialHome, requestDoc.siteCapabilities); key = copied;
   const summary: Record<string, unknown> = { document: doc, startedAt: now(), sourceSha: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim(),
@@ -488,9 +554,10 @@ async function child(opts: Options): Promise<void> {
     writeFileSync(path.join(readers, 'read-atcs.py'), RESOLVER_PY);
     cpSync(scratch.readerFile, path.join(readers, 'read-atcs.real.py'));
     cpSync(knownFile, path.join(readers, 'probe-known-instances.json'));
+    const seeded = seed020(dir, workspace, retainedPlanFile, docId === 'research-worker-01' ? 'worker' : 'workshop');
     const produced = path.join(workspace, outputPath(declaration.produces));
     assert.equal(existsSync(produced), false, 'the output must not be seeded');
-    record.details.snapshot = { basis: snapshot.basis, files: snapshot.files, unavailable: snapshot.unavailable, workspace };
+    record.details.snapshot = { basis: snapshot.basis, files: snapshot.files, unavailable: snapshot.unavailable, derived020: seeded.derived, workspace };
     policy.set(actor, { kind: 'workshop', runId, node: spec.node });
     const prompt = `You own Campaign Run ${runId} (Pack ${PACK_ID}, Site local). Its current node is ${spec.node}, the Workshop ${docId}. `
       + `Carry out exactly this one node now, as you would inside the Campaign: read hima_context for the epoch and revision, begin ${spec.node}, `
@@ -555,18 +622,9 @@ async function child(opts: Options): Promise<void> {
   async function teamAttempt(record: AttemptRecord): Promise<void> {
     const team = pack.contract.agentTeams.find((item) => item.id === 'atcs-worker-01'); assert.ok(team);
     const researcherSpec = team.members.find((item) => item.id === 'researcher')!; const reviewerSpec = team.members.find((item) => item.id === 'reviewer')!;
-    // Input: the retained worker request; its top-level actions (absent before Pack 0.1.10) come from the
-    // retained sealed Contribution's own size_cell operations, i.e. the ECO that really ran.
-    const contributionItem = retained.items.filter((item) => item.kind === 'observation' && item.path.endsWith(`/${outputPath('workerResult01')}`)).at(-1);
-    const request = structuredClone(requestDoc);
-    let derivedActions = false;
-    if (!Array.isArray(request.actions)) {
-      assert.ok(contributionItem, 'no retained Contribution to derive worker actions from');
-      const contribution = JSON.parse(retainedBytes(retained, contributionItem.sha).toString('utf8'));
-      request.actions = contribution.operations.filter((op: any) => op.op === 'size_cell').map((op: any) => ({ instance: op.instance, toMaster: op.toMaster }));
-      derivedActions = true;
-    }
-    const requestBytes = Buffer.from(`${JSON.stringify(request, null, 2)}\n`); const requestSha = sha256(requestBytes);
+    // Input (0.2.0): slot w01's request for the package seed020 derives from the retained w01 package, with
+    // the retained request's evidence and prediction and one sessionPlan move per retained action (the
+    // ECO that really ran, from the sealed Contribution when the request names none).
     const owner = await createRootAgent(host.ctx, scratch.h.workspace); const actor = String(owner.id);
     policy.set(actor, { kind: 'silent' });
     const run = await host.ctx.hima.startRun({ pack: PACK_ID, site: 'local', goal, ownerSessionId: actor, timeBoxMs: 4 * 3_600_000 } as any);
@@ -574,10 +632,27 @@ async function child(opts: Options): Promise<void> {
     const runId = run.run.id; record.runId = runId; const workspace = run.workspace!;
     const seedAt = (rel: string, bytes: Buffer) => { const at = path.join(workspace, rel); mkdirSync(path.dirname(at), { recursive: true }); writeFileSync(at, bytes); return at; };
     const before = (name: string) => retained.items.filter((item) => item.seq < latestRequest!.seq && item.path.endsWith(`/${outputPath(name)}`)).at(-1);
-    for (const name of ['workingState', 'workerManifests']) { const item = before(name); assert.ok(item, `no retained ${name}`); seedAt(outputPath(name), retainedBytes(retained, item.sha)); }
+    for (const name of ['workingState']) { const item = before(name); assert.ok(item, `no retained ${name}`); seedAt(outputPath(name), retainedBytes(retained, item.sha)); }
+    const seeded = seed020(dir, workspace, retainedPlanFile, 'team');
+    let actions: { instance: string; toMaster: string }[] = Array.isArray(requestDoc.actions) ? requestDoc.actions : [];
+    let derivedActions = false;
+    if (actions.length === 0) {
+      const contributionItem = retained.items.filter((item) => item.kind === 'observation' && item.path.endsWith(`/${outputPath('workerResult01')}`)).at(-1);
+      assert.ok(contributionItem, 'no retained Contribution to derive worker actions from');
+      const contribution = JSON.parse(retainedBytes(retained, contributionItem.sha).toString('utf8'));
+      actions = contribution.operations.filter((op: any) => op.op === 'size_cell').map((op: any) => ({ instance: op.instance, toMaster: op.toMaster }));
+      derivedActions = true;
+    }
+    const request: Record<string, any> = { candidate: seeded.w01, baseState: JSON.parse(readFileSync(path.join(workspace, outputPath('workingState')), 'utf8')),
+      siteCapabilities: seeded.siteCapabilities,
+      sessionPlan: actions.map((action) => ({ command: 'atcs_size_cell', object: action.instance,
+        hypothesis: `size ${action.instance} to ${action.toMaster}: the retained evidence says its cell delay dominates the target paths`,
+        falsifier: 'atcs_gain shows no setup gain at the targets, or hold breaks; then atcs_undo' })),
+      ...(requestDoc.evidence === undefined ? {} : { evidence: requestDoc.evidence }), ...(requestDoc.prediction === undefined ? {} : { prediction: requestDoc.prediction }) };
+    const requestBytes = Buffer.from(`${JSON.stringify(request, null, 2)}\n`); const requestSha = sha256(requestBytes);
     const planPath = seedAt(outputPath('workerRequest01'), requestBytes);
     const inputRead = runReader(dir, scratch.readerFile, 'worker-request', planPath, workspace, knownFile, ['w01'], `attempt-${record.attempt}-team-input`);
-    record.details.input = { retainedRequestSha256: latestRequest!.sha, derivedActions, actions: request.actions, requestSha256: requestSha, readerAdmitsInput: inputRead.admitted, inputReader: inputRead };
+    record.details.input = { retainedRequestSha256: latestRequest!.sha, derived020: seeded.derived, derivedActions, actions, requestSha256: requestSha, readerAdmitsInput: inputRead.admitted, inputReader: inputRead };
     const retainedPath = await retainRunMaterial({ ledger, packsDir: scratch.packsDir }, runId, requestBytes, requestSha); assert.ok(retainedPath);
     const reader = pack.contract.outputs.find((item) => item.name === 'workerRequest01')!.reader!;
     await ledger.appendObservation(runId, { path: planPath, contentSha256: requestSha, retainedPath, bytes: requestBytes.length,
@@ -651,22 +726,26 @@ async function child(opts: Options): Promise<void> {
       }
     }
     const reviewer = await member('reviewer', reviewerSpec.budgetShare.maxFollowups);
-    // The Host's reviewed-action checks at Operator creation (index.ts), applied to the reviewer's answer.
+    // The Host's reviewed-scope checks at Operator creation (index.ts), applied to the reviewer's answer.
     if (reviewer.admitted) {
       const failures: string[] = [];
       let payload: Record<string, any> = {};
       try { payload = JSON.parse(String(reviewer.text)); } catch { failures.push('The reviewed action must be one JSON object.'); }
-      const operator = team.members.find((item) => item.id === 'operator')!; const reviewed = operator.reviewedAction!;
+      const operator = team.members.find((item) => item.id === 'operator')!; const reviewed = operator.reviewedAction! as any;
+      assert.equal(reviewed.mode, 'scope', 'the 0.2.0 worker Team reviews a scope');
       const tool = pack.contract.tools.find((item) => item.id === 'xtop-operator')!;
-      const declaration = tool.interactive!.arguments[reviewed.command]!.filter((item) => item.name !== reviewed.hostPlanHashArgument);
-      const args = payload[reviewed.argumentsField];
-      if (payload[reviewed.planHashField] !== requestSha) failures.push('The reviewed action plan SHA-256 differs from the current reader-backed fix plan.');
-      if (typeof payload[reviewed.commandField] !== 'string' || !args || typeof args !== 'object' || Array.isArray(args)) failures.push('The reviewed action command or arguments are malformed.');
+      if (payload.schema !== reviewerSpec.resultSchema.id || reviewerSpec.resultSchema.required.some((field) => !(field in payload))) failures.push('The reviewed action does not satisfy its Pack result schema.');
+      if (payload[reviewed.planHashField] !== requestSha) failures.push('The reviewed scope plan SHA-256 differs from the current reader-backed plan.');
+      const problem = reviewedScopeProblem(payload[reviewed.scopeField], reviewed);
+      if (problem !== undefined) failures.push(`${problem[0]!.toUpperCase()}${problem.slice(1)}.`);
       else {
-        if (payload[reviewed.commandField] !== reviewed.command) failures.push('The reviewed action command is not the Pack recipe mutation.');
-        if (new Set([...Object.keys(args), ...declaration.map((item) => item.name)]).size !== declaration.length) failures.push('The reviewed action arguments differ from the typed Pack command.');
-        for (const item of declaration) if (typeof args[item.name] !== item.type) failures.push(`Reviewed argument ${item.name} violates the typed Pack command.`);
-        if (!request.actions.some((candidate: any) => declaration.every((item) => candidate[item.name] === args[item.name]))) failures.push('The owner-adopted reviewed action is not one action in the exact reader-backed fix plan.');
+        const commands = payload[reviewed.scopeField].commands as string[];
+        const untyped = commands.filter((command) => !tool.interactive!.commands.mutate.includes(command)
+          || !tool.interactive!.arguments[command]?.some((item) => item.name === reviewed.hostPlanHashArgument && item.type === 'string'));
+        if (untyped.length > 0) failures.push(`The reviewed scope names commands that are not hash-bearing mutations of the Operator tool: ${untyped.join(', ')}.`);
+        reviewer.scope = payload[reviewed.scopeField];
+        // The Pack's own rule (reviewer taskTemplate), reported but not a Host refusal: atcs_undo is always approved.
+        reviewer.scopeKeepsUndo = commands.includes('atcs_undo');
       }
       reviewer.operatorCreationChecks = failures.length === 0 ? 'pass' : failures;
       if (failures.length) { reviewer.admitted = false; reviewer.refusal = failures.join(' '); }
@@ -724,6 +803,18 @@ async function parent(opts: Options): Promise<void> {
       wallMs: attempts.reduce((sum, item) => sum + (item.wallMs ?? 0), 0), modelRequests: attempts.reduce((sum, item) => sum + (item.modelRequests ?? 0), 0),
       refusals: attempts.flatMap((item) => item.refusals.map((text) => ({ attempt: item.attempt, class: classify(text), text }))) };
   });
+  // The Team document admits only when both members do; each member's own rate is its own row.
+  for (const result of results as any[]) {
+    if (result.document !== 'team') continue;
+    for (const role of ['researcher', 'reviewer']) {
+      const attempts = result.attempts as AttemptRecord[];
+      const member = (item: AttemptRecord) => (item.details as any)?.[role];
+      const admitted = attempts.filter((item) => member(item)?.admitted === true).length;
+      rows.push({ document: `team ${role}`, attempts: attempts.length, admitted, rate: attempts.length ? admitted / attempts.length : 0, tokens: {}, wallMs: 0,
+        modelRequests: 0, refusals: attempts.filter((item) => member(item)?.admitted !== true).map((item) => {
+          const text = String(member(item)?.refusal ?? 'not run'); return { attempt: item.attempt, class: classify(text), text }; }) });
+    }
+  }
   const report = { check: 'probe-atcs-workshops', startedAt, finishedAt: now(), options: { attempts: opts.attempts, only: opts.only, concurrency: opts.concurrency, attemptMinutes: opts.attemptMs / 60_000 },
     pack: (results.find((item: any) => item.pack) as any)?.pack, sourceSha: (results.find((item: any) => item.sourceSha) as any)?.sourceSha, rows, results };
   writeFileSync(path.join(opts.out, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
