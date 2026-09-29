@@ -240,6 +240,22 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
   const begun = await action('begin', 'interactive-begin', { nodeId });
   assert.equal(begun.kind, 'accepted'); const executionId = begun.receipt?.executionId; assert.ok(executionId);
   if (!executionId) return;
+  // C10: a batch `work` request on this interactive-only node is refused to the owner naming the
+  // interactive-only contract, and it neither blocks the node nor spends an attempt — the node stays
+  // begun and the owner opens the interactive Job next, with no person's clearance in between.
+  const attemptsBeforeBatch = host.ctx.hima.ledger.run(runId)!.meters?.attempts ?? 0;
+  const batchWork = await action('work', 'c10-batch-work', { executionId, nodeId });
+  assert.equal(batchWork.kind, 'refused', JSON.stringify(batchWork));
+  assert.match(batchWork.reason ?? '', /interactive-only/);
+  assert.equal(host.ctx.hima.ledger.records({ runId, type: 'node' })
+    .some((record) => record.type === 'node' && record.nodeId === nodeId && record.state === 'blocked'), false,
+    'the refused batch work does not block the interactive-only node');
+  assert.deepEqual(host.ctx.hima.ledger.run(runId)!.control?.paused, [], 'the node is not paused for human clearance');
+  assert.equal(host.ctx.hima.executionContext(runId).executions.find((item) => item.id === executionId)?.phase, 'begun',
+    'the node stays runnable after the refused batch work');
+  assert.equal(host.ctx.hima.ledger.run(runId)!.meters?.attempts ?? 0, attemptsBeforeBatch, 'the refused batch work spends no attempt');
+  assert.equal(host.ctx.hima.ledger.records({ runId, type: 'resumed' }).length, 0, 'no person clearance was needed');
+  assert.equal(host.ctx.hima.ledger.records({ runId, type: 'job' }).length, 0, 'the refused batch work launched no Job');
   const requestAs = async (sessionId: string, body: Record<string, unknown>) => host.ctx.hima.interactive(sessionId, {
     runId, executionId, nodeId, requestId: body.requestId,
     ownerEpoch: host.ctx.hima.ledger.run(runId)!.control!.epoch,
