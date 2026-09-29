@@ -12,7 +12,7 @@ helper from `flow/atcs_cli.py`.
   both run its `compose-facts`, G40 -- and 1 interactive-only XTop Operator tool),
   7 Workshops (5 families, the worker family expanded to slots 01–03), 24 rules, 3 Goal parameters
   (`target_setup_wns_ns`, `target_hold_wns_ns`, `max_physical_refreshes`), 1 Strategy knob
-  (`maxPaths`), 16 knowledge files (10 method files, 5 Reader-admitted Workshop examples,
+  (`maxPaths`), 17 knowledge files (10 method files, `endpoint-resolution.md` (G41), 5 Reader-admitted Workshop examples,
   `example-*.md`, Issue #63 -- slice 3 added the observation-request and integration-plan examples, so
   every request-producing Workshop has one -- and `agent-team.md`, the owner's Team guidance, declared
   in slice 3 so the owner's Pack knowledge search reaches it). Each worker Team member's
@@ -406,6 +406,23 @@ Known gaps carried from earlier tasks:
   admitted plan's resolutions are applied, and its `conflictKey`/`decision` shape has already
   been checked. `flow/atcs_cli.py` is unchanged; its own stale-plan rules still apply to the
   second pass.
+- G41 (Issue #63, failure catalogue C22) PT endpoints resolve to instances deterministically.
+  `tools/read-atcs.py` now reads the netlist statement by statement, so an instantiation may span
+  lines. A one-line instantiation is still read on a fast path, and hierarchy-only reads are
+  unchanged: 650k lines in about 1.4 s. Comments are skipped and there is no line cap. The same
+  file carries `resolve_endpoints` and the command `read-atcs.py resolve-instances WORKSPACE
+  ENDPOINTS OUT`:
+  - bus spellings `x[0]`, `x_0_` and `x_0` all match;
+  - a flattened escaped name matches as one segment;
+  - a net resolves to its one output-named driving pin through port connections;
+  - ports and module instances are reported unresolved, with a reason.
+
+  The brief asked for `tools/atcs_resolve.py`. It is not a separate file because a reader's script
+  is the only Pack file the Harness ships to the Site (`node-turns.ts` `runPackReader`, `shipTo` =
+  `hima-readers/<reader-id>/<basename of file>`), so neither the Readers nor a Workshop could reach
+  a sibling module. A Workshop runs the copy shipped for the Run's first reader,
+  `hima-readers/atcs-readiness/read-atcs.py`. `knowledge/endpoint-resolution.md` gives it that
+  path, and the plan and worker purposes point at it.
 
 ## Reviews
 

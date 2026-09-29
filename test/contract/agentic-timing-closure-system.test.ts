@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { cp, mkdir, readFile, writeFile, appendFile, realpath } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
-import { loadPack, checkPack, loadSite, packStage, installPackMethod, strategyFrom } from '@hima/harness';
+import { loadPack, checkPack, loadSite, packStage, installPackMethod, strategyFrom, readersDirName } from '@hima/harness';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { localHome, waitUntil } from './support/fabric.ts';
@@ -300,6 +300,20 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.equal(nodeOf('retry-worker-01').parameters.chooser, 'atcs-revisit');
   assert.deepEqual(edgesFrom('retry-worker-01'), ['revisit->research-worker-01']);
   assert.ok(pack.contract.rules.includes('refresh-budget'));
+
+  // Failure catalogue C22: knowledge/endpoint-resolution.md tells a Workshop to run the Pack's
+  // resolver at <workspace>/hima-readers/atcs-readiness/read-atcs.py. That is where the Harness
+  // ships a reader's script (runPackReader: <workspace>/<readersDirName>/<reader id>/<basename>), and
+  // atcs-readiness is the reader of the Run's second node, so the copy exists before any Workshop.
+  assert.equal(readersDirName, 'hima-readers');
+  assert.equal(pack.graph.entry, 'bind-inputs');
+  assert.deepEqual(edgesFrom('bind-inputs'), ['->read-readiness']);
+  assert.equal(nodeOf('read-readiness').parameters.observes, 'inputReadiness');
+  assert.equal(pack.contract.outputs.find(output => output.name === 'inputReadiness')!.reader, 'atcs-readiness');
+  const readinessReader = parse(await readFile(path.join(packDir, 'readers/atcs-readiness.yml'), 'utf8')) as any;
+  assert.equal(readinessReader.file, 'tools/read-atcs.py');
+  assert.match(await readFile(path.join(packDir, 'knowledge/endpoint-resolution.md'), 'utf8'),
+    /workspace \/ "hima-readers" \/ "atcs-readiness" \/ "read-atcs\.py"/);
 
   // Issue 63 (fresh03 `sta` blocked: "references ${MAX_PATHS}, which nothing bound"): every
   // `${NAME}` a node's tool command line uses is bound by that node or is a Harness-reserved value.

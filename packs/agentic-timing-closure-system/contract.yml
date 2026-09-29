@@ -646,6 +646,8 @@ knowledge:
     purpose: One observation request the observation-request Reader admits for the examples' working state, for diagnose-and-observe to copy the shape of.
   - file: agent-team.md
     purpose: For the Run owner operating the atcs-worker-01 Team at operate-worker-01, the adoption order and the one same-child follow-up to spend on a formatting refusal before escalating.
+  - file: endpoint-resolution.md
+    purpose: How a plan or worker Workshop turns PrimeTime endpoints into leaf-cell instance paths with the Pack's own resolver (read-atcs.py resolve-instances), never a netlist parser of its own.
   - file: example-integration-plan.md
     purpose: One integration plan the integration-plan Reader admits against its embedded composition facts, including a conflict resolution, for compose-contributions to copy the shape of.
 
@@ -772,12 +774,13 @@ workshops:
       prepare-workers prepares that same field. Do not repeat a failed trial without new evidence; a slot with nothing
       worth researching still gets a bounded package whose diagnosis-only outcome is a valid no-fix.
       Read knowledge example-campaign-plan.md; copy its shape and change only the values.
+      Turn endpoints into instances only with the Pack resolver in knowledge endpoint-resolution.md.
       Before writing, read output campaignPlanProblems: after the Reader has read an earlier document it lists every problem it found, one line each naming the field, the slot and the required format; fix every line and write the whole document again (the file is absent before the first reading).
     directory: research/plan
     entry: entry.py
     language: python
     reads: [workingState, inputReadiness, currentObservations, riskAtlas, contributionIndex, campaignExperience, statePointers, campaignPlanProblems]
-    knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md, example-campaign-plan.md]
+    knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md, example-campaign-plan.md, endpoint-resolution.md]
     produces: campaignPlan
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -798,12 +801,13 @@ workshops:
       function and VT as the instance's current cell; only the drive strength changes.
       The Agent Team reviews and selects one exact action from this admitted list.
       Read knowledge example-worker-request.md; copy its shape and change only the values (and taskId to w01); every instance is a full hierarchical path such as u_a/reg0, never a bare leaf name.
+      Turn endpoints into instances only with the Pack resolver in knowledge endpoint-resolution.md.
       Before writing, read output workerRequest01Problems: after the Reader has read an earlier document it lists every problem it found, one line each naming the field, the slot and the required format; fix every line and write the whole document again (the file is absent before the first reading).
     directory: research/worker-01
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult01, workerRequest01Problems]
-    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
+    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest01
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -819,12 +823,13 @@ workshops:
       after.dump (atcs_dump_cells) in the slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
       dependencies}. A prediction is a hypothesis for the tool to test, never a result.
       Read knowledge example-worker-request.md; copy its shape and change only the values (and taskId to w02); every instance is a full hierarchical path such as u_a/reg0, never a bare leaf name.
+      Turn endpoints into instances only with the Pack resolver in knowledge endpoint-resolution.md.
       Before writing, read output workerRequest02Problems: after the Reader has read an earlier document it lists every problem it found, one line each naming the field, the slot and the required format; fix every line and write the whole document again (the file is absent before the first reading).
     directory: research/worker-02
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult02, workerRequest02Problems]
-    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
+    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest02
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -840,12 +845,13 @@ workshops:
       after.dump (atcs_dump_cells) in the slot's workspace root and may write summary.json {xtopSetupWns, xtopHoldWns, diagnosis, cones,
       dependencies}. A prediction is a hypothesis for the tool to test, never a result.
       Read knowledge example-worker-request.md; copy its shape and change only the values (and taskId to w03); every instance is a full hierarchical path such as u_a/reg0, never a bare leaf name.
+      Turn endpoints into instances only with the Pack resolver in knowledge endpoint-resolution.md.
       Before writing, read output workerRequest03Problems: after the Reader has read an earlier document it lists every problem it found, one line each naming the field, the slot and the required format; fix every line and write the whole document again (the file is absent before the first reading).
     directory: research/worker-03
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult03, workerRequest03Problems]
-    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
+    knowledge: [xtop-capabilities.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest03
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 

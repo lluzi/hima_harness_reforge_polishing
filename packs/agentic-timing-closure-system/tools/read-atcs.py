@@ -293,10 +293,6 @@ def _verify_design_state_refs(design_state, workspace, core):
         _require_file(workspace, entry["path"], entry["sha256"], core, "design-state.sdc")
 
 
-_NETLIST_MODULE_RE = re.compile(r'^\s*module\s+(\\[^\s]+|[A-Za-z_$][A-Za-z0-9_$]*)')
-_NETLIST_ENDMODULE_RE = re.compile(r'^\s*endmodule\b')
-_NETLIST_IDENT = r'(?:\\[^\s]+|[A-Za-z_$][A-Za-z0-9_$]*)'
-_NETLIST_INSTANCE_RE = re.compile(rf'^\s*({_NETLIST_IDENT})\s+({_NETLIST_IDENT})\s*\(')
 _NETLIST_KEYWORDS = {
     "input", "output", "inout", "wire", "reg", "assign", "supply0", "supply1",
     "tri", "tri0", "tri1", "triand", "trior", "trireg", "wand", "wor",
@@ -305,52 +301,224 @@ _NETLIST_KEYWORDS = {
     "initial", "always", "always_comb", "always_ff", "always_latch",
     "generate", "endgenerate", "module", "endmodule", "typedef", "logic",
     "integer", "real", "time", "event", "package", "endpackage",
-    "interface", "endinterface", "class", "endclass",
+    "interface", "endinterface", "class", "endclass", "macromodule",
 }
+# One Verilog token: an escaped identifier (to the next whitespace), a plain identifier, a
+# sized or plain number, a string, or one punctuation character.
+_NETLIST_TOKEN_RE = re.compile(
+    r"\\\S+|[A-Za-z_$][A-Za-z0-9_$]*|\d+\s*'[sS]?[bBoOdDhH]\s*[0-9a-fA-FxXzZ_?]+|\d+|\"[^\"]*\"|\S"
+)
+# The common one-line instantiation `TYPE NAME ( ... );`, taken without tokenizing when only the
+# hierarchy is wanted (a 650k-line netlist is read on every plan and worker-request reading).
+_ONE_LINE_INSTANCE_RE = re.compile(
+    r"^\s*(\\\S+|[A-Za-z_$][A-Za-z0-9_$]*)\s+(\\\S+|[A-Za-z_$][A-Za-z0-9_$]*)\s*\([^;]*\)\s*;\s*$"
+)
 _netlist_hierarchy_cache = {}
+_netlist_index_cache = {}
 
 
 def _strip_verilog_escape(name):
     return name[1:] if name.startswith("\\") else name
 
 
-def _parse_netlist_hierarchy(netlist_path):
-    """One pass over a (possibly ~650k line) structural Verilog netlist.
+def _netlist_statements(netlist_path, one_line_instances=False):
+    """Yield each statement of a structural Verilog netlist as its token list.
 
-    Returns ``{module_name: {instance_name: instance_type}}`` for every
-    ``module ... endmodule`` block: `instance_type` is the declared cell/
-    module type, with a leading Verilog escaped-identifier backslash
-    stripped from both the type and the instance name. Only used to answer
-    "is this a real hierarchical instance path", never to interpret the
-    design otherwise.
+    A statement ends at `;`, and `endmodule` is a statement of its own, so an instantiation
+    or a declaration may span any number of lines (C22). `//` and `/* ... */` comments and
+    compiler directives are dropped. Every line is read: there is no line cap. With
+    `one_line_instances`, a complete one-line instantiation outside any pending statement is
+    yielded as `["#instance", TYPE, NAME]` without tokenizing its connections.
+    """
+    tokens = []
+    in_block_comment = False
+    with open(netlist_path, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if in_block_comment:
+                end = line.find("*/")
+                if end < 0:
+                    continue
+                line = line[end + 2:]
+                in_block_comment = False
+            if "/*" in line or "//" in line:
+                kept = []
+                index = 0
+                while index < len(line):
+                    if line.startswith("//", index):
+                        break
+                    if line.startswith("/*", index):
+                        end = line.find("*/", index + 2)
+                        if end < 0:
+                            in_block_comment = True
+                            break
+                        index = end + 2
+                        kept.append(" ")
+                        continue
+                    if line[index] == "\\":  # an escaped identifier may hold `/`
+                        end = index
+                        while end < len(line) and not line[end].isspace():
+                            end += 1
+                        kept.append(line[index:end])
+                        index = end
+                        continue
+                    kept.append(line[index])
+                    index += 1
+                line = "".join(kept)
+            stripped = line.lstrip()
+            if not stripped or stripped.startswith("`"):
+                continue
+            if one_line_instances and not tokens and not in_block_comment:
+                match = _ONE_LINE_INSTANCE_RE.match(line)
+                if match and _strip_verilog_escape(match.group(1)) not in _NETLIST_KEYWORDS \
+                        and match.group(2) not in _NETLIST_KEYWORDS:
+                    yield ["#instance", match.group(1), match.group(2)]
+                    continue
+            for token in _NETLIST_TOKEN_RE.findall(line):
+                if token == ";":
+                    if tokens:
+                        yield tokens
+                    tokens = []
+                elif token == "endmodule":
+                    if tokens:
+                        yield tokens
+                    yield ["endmodule"]
+                    tokens = []
+                else:
+                    tokens.append(token)
+    if tokens:
+        yield tokens
+
+
+def _net_expression(tokens):
+    """A connection's net as one normalized name (`n1`, `bus[3]`, `bus`), or None when it
+    is a concatenation, a constant, a part-select or empty."""
+    if not tokens or tokens[0] in ("{", "'") or tokens[0][0].isdigit():
+        return None
+    name = _strip_verilog_escape(tokens[0])
+    if len(tokens) == 1:
+        return name
+    if len(tokens) == 4 and tokens[1] == "[" and tokens[2].isdigit() and tokens[3] == "]":
+        return f"{name}[{tokens[2]}]"
+    return None
+
+
+def _group(tokens, start):
+    """The tokens inside the parenthesized group opening at `tokens[start]`, and the index after it."""
+    depth = 0
+    for index in range(start, len(tokens)):
+        if tokens[index] == "(":
+            depth += 1
+        elif tokens[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return tokens[start + 1:index], index + 1
+    return tokens[start + 1:], len(tokens)
+
+
+def _parse_netlist(netlist_path, connections=False):
+    """One pass over a structural Verilog netlist (possibly ~650k lines, never capped).
+
+    Returns ``{module: {"instances": {name: type}, "ports": {name: direction}, "conns":
+    {instance: {pin: net}}, "assigns": {lhs: rhs}}}``; `conns` and `assigns` are filled
+    only when `connections` is true (the endpoint resolver; the Readers need only the
+    hierarchy). Instance and type names have their Verilog escape stripped.
     """
     modules = {}
     current = None
-    current_instances = None
-    with open(netlist_path, "r", encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            stripped = line.strip()
-            if not stripped or stripped.startswith("//") or stripped.startswith("`"):
+    for statement in _netlist_statements(netlist_path, one_line_instances=not connections):
+        head = statement[0]
+        if head == "#instance":
+            if current is not None:
+                current["instances"][_strip_verilog_escape(statement[2])] = _strip_verilog_escape(statement[1])
+            continue
+        if head in ("module", "macromodule"):
+            name = _strip_verilog_escape(statement[1]) if len(statement) > 1 else ""
+            current = modules.setdefault(name, {"instances": {}, "ports": {}, "conns": {}, "assigns": {}})
+            direction = None
+            if len(statement) > 2 and "(" in statement[2:]:
+                inside, _ = _group(statement, statement.index("(", 2))
+                depth = 0
+                for token in inside:
+                    if token == "[":
+                        depth += 1
+                    elif token == "]":
+                        depth -= 1
+                    elif depth == 0 and token in ("input", "output", "inout"):
+                        direction = token
+                    elif depth == 0 and token not in _NETLIST_KEYWORDS and token not in (",", "(", ")") \
+                            and (token[0].isalpha() or token[0] in "_\\$"):
+                        current["ports"][_strip_verilog_escape(token)] = direction
+            continue
+        if head == "endmodule":
+            current = None
+            continue
+        if current is None:
+            continue
+        if head in ("input", "output", "inout"):
+            depth = 0
+            for token in statement[1:]:
+                if token == "[":
+                    depth += 1
+                elif token == "]":
+                    depth -= 1
+                elif depth == 0 and token not in _NETLIST_KEYWORDS and token != "," \
+                        and (token[0].isalpha() or token[0] in "_\\$"):
+                    current["ports"][_strip_verilog_escape(token)] = head
+            continue
+        if head == "assign":
+            if connections and "=" in statement:
+                split = statement.index("=")
+                lhs, rhs = _net_expression(statement[1:split]), _net_expression(statement[split + 1:])
+                if lhs is not None and rhs is not None:
+                    current["assigns"][lhs] = rhs
+            continue
+        if _strip_verilog_escape(head) in _NETLIST_KEYWORDS or not (head[0].isalpha() or head[0] in "_\\$"):
+            continue
+        # An instantiation: TYPE [#( params )] NAME [ [range] ] ( connections ) [, NAME (...)]...
+        index = 1
+        if index < len(statement) and statement[index] == "#":
+            _, index = _group(statement, index + 1) if index + 1 < len(statement) and statement[index + 1] == "(" \
+                else (None, index + 1)
+        cell = _strip_verilog_escape(head)
+        while index < len(statement):
+            instance = statement[index]
+            if instance == ",":
+                index += 1
                 continue
-            match = _NETLIST_MODULE_RE.match(line)
-            if match:
-                current = _strip_verilog_escape(match.group(1))
-                current_instances = modules.setdefault(current, {})
-                continue
-            if _NETLIST_ENDMODULE_RE.match(line):
-                current = None
-                current_instances = None
-                continue
-            if current is None:
-                continue
-            match = _NETLIST_INSTANCE_RE.match(line)
-            if not match:
-                continue
-            type_token, inst_token = match.group(1), match.group(2)
-            if _strip_verilog_escape(type_token) in _NETLIST_KEYWORDS:
-                continue
-            current_instances[_strip_verilog_escape(inst_token)] = _strip_verilog_escape(type_token)
+            if not (instance[0].isalpha() or instance[0] in "_\\$"):
+                break
+            index += 1
+            if index < len(statement) and statement[index] == "[":
+                while index < len(statement) and statement[index] != "]":
+                    index += 1
+                index += 1
+            if index >= len(statement) or statement[index] != "(":
+                break
+            inside, index = _group(statement, index)
+            name = _strip_verilog_escape(instance)
+            current["instances"][name] = cell
+            if connections:
+                pins = {}
+                position = 0
+                while position < len(inside):
+                    if inside[position] == "." and position + 1 < len(inside):
+                        pin = _strip_verilog_escape(inside[position + 1])
+                        if position + 2 < len(inside) and inside[position + 2] == "(":
+                            net_tokens, position = _group(inside, position + 2)
+                            pins[pin] = _net_expression(net_tokens)
+                            continue
+                    position += 1
+                current["conns"][name] = pins
     return modules
+
+
+def _parse_netlist_hierarchy(netlist_path):
+    """``{module_name: {instance_name: instance_type}}`` of every module of the netlist.
+
+    Only used to answer "is this a real hierarchical instance path" and "is it a leaf cell",
+    never to interpret the design otherwise.
+    """
+    return {name: module["instances"] for name, module in _parse_netlist(netlist_path).items()}
 
 
 def _netlist_hierarchy(netlist_path):
@@ -1624,7 +1792,179 @@ def problems(kind, report, workspace, slot=None):
     return _read(kind, report, workspace, [slot] if slot else [])[1]
 
 
+# ---------------------------------------------------------------------------
+# Endpoint resolution (C22): `read-atcs.py resolve-instances WORKSPACE ENDPOINTS OUT`
+# ---------------------------------------------------------------------------
+#
+# Every post-route Campaign rewrote this in model-authored Workshop code and got the same shapes
+# wrong (failure catalogue C22). It lives here, beside the parser the Readers admit instances with,
+# because this is the one Pack file the Harness ships to the Site (`hima-readers/<id>/`); a
+# Workshop runs it from the copy shipped for the Run's first reader,
+# `<workspace>/hima-readers/atcs-readiness/read-atcs.py` (knowledge endpoint-resolution.md).
+
+# Leaf-cell output pins by name. A Liberty file would say it exactly; the resolver reads only the
+# netlist, so a net whose driver pin is not named like this is reported unresolved, never guessed.
+_OUTPUT_PIN_RE = re.compile(r"^(Z|ZN|Q|QN|Y|YN|CO|CON|S|SN|SO|O|OUT)\d*$")
+_BIT_RE = re.compile(r"^(.*)\[(\d+)\]$")
+
+
+def _spellings(name):
+    """`name` first, then its other bus-bit spellings: `x[0]`, `x_0_` and `x_0` name one bit."""
+    found = []
+    for candidate in (
+        name,
+        re.sub(r"\[(\d+)\]", r"_\1_", name),
+        re.sub(r"\[(\d+)\]$", r"_\1", re.sub(r"\[(\d+)\](?!$)", r"_\1_", name)),
+        re.sub(r"_(\d+)_", r"[\1]", name),
+        re.sub(r"_(\d+)$", r"[\1]", name),
+    ):
+        if candidate not in found:
+            found.append(candidate)
+    return found
+
+
+def _path_segment(name):
+    """One instance name as a path segment the Readers admit: escaped when it holds `/`."""
+    return f"\\{name} " if "/" in name else name
+
+
+def _net_driver(modules, module_name, net, prefix, depth=0):
+    """The leaf cell pin driving `net` inside `module_name`, followed through output ports."""
+    module = modules[module_name]
+    where = "/".join(prefix) or module_name
+    if depth > 64:
+        return None, f"net {net!r} is driven through more than 64 module levels"
+    if net in module["assigns"]:
+        return _net_driver(modules, module_name, module["assigns"][net], prefix, depth + 1)
+    bit = _BIT_RE.match(net)
+    base, index = (bit.group(1), bit.group(2)) if bit else (net, None)
+    drivers = []
+    for instance, pins in module["conns"].items():
+        kind = module["instances"].get(instance)
+        for pin, expression in pins.items():
+            if expression is None:
+                continue
+            if expression == net:
+                inner = pin
+            elif index is not None and expression == base:
+                inner = f"{pin}[{index}]"  # a whole bus connected to a bus port
+            else:
+                continue
+            if kind in modules:
+                if modules[kind]["ports"].get(pin) == "output":
+                    drivers.append((instance, kind, inner, True))
+            elif _OUTPUT_PIN_RE.match(pin):
+                drivers.append((instance, kind, pin, False))
+    if not drivers:
+        if module["ports"].get(base) == "input":
+            if not prefix:
+                return None, f"{net!r} is a primary port of top {module_name!r}; a port is not a cell to edit"
+            return None, f"net {net!r} of {where} enters through an input port; it is driven outside {where}"
+        return None, (f"net {net!r} of {where} has no driving cell pin named like an output "
+                      f"({_OUTPUT_PIN_RE.pattern}); resolve it from the timing report's driver instead")
+    if len(drivers) > 1:
+        named = ", ".join(sorted(f"{instance}/{pin}" for instance, _, pin, _ in drivers))
+        return None, f"net {net!r} of {where} has {len(drivers)} drivers ({named})"
+    instance, kind, pin, through = drivers[0]
+    path = prefix + [_path_segment(instance)]
+    if through:
+        return _net_driver(modules, kind, pin, path, depth + 1)
+    return {"instance": "/".join(path), "cell": kind, "pin": pin, "via": "net-driver"}, None
+
+
+def _walk_endpoint(modules, module_name, segments, prefix):
+    module = modules.get(module_name)
+    if module is None:
+        return None, f"module {module_name!r} is not defined in the netlist"
+    instances = module["instances"]
+    for count in range(len(segments), 0, -1):  # longest first: a flattened `\u_a/u_b/reg_0_ ` is one name
+        joined = "/".join(segments[:count])
+        for spelling in _spellings(joined):
+            if spelling not in instances:
+                continue
+            kind = instances[spelling]
+            path = prefix + [_path_segment(spelling)]
+            rest = segments[count:]
+            if kind in modules:
+                if not rest:
+                    return None, f"{'/'.join(path)} is a module instance, not a leaf cell (module {kind!r})"
+                if len(rest) == 1 and rest[0] not in modules[kind]["instances"]:
+                    return _net_driver(modules, kind, rest[0], path)  # a hierarchical pin or a net
+                return _walk_endpoint(modules, kind, rest, path)
+            if not rest:
+                return {"instance": "/".join(path), "cell": kind, "pin": None, "via": "instance"}, None
+            if len(rest) == 1:
+                return {"instance": "/".join(path), "cell": kind, "pin": rest[0], "via": "pin"}, None
+            return None, f"{'/'.join(path)} is a leaf cell ({kind}); {'/'.join(rest)!r} below it is not one pin"
+    name = segments[0]
+    if len(segments) == 1:
+        bit = _BIT_RE.match(name)
+        base = bit.group(1) if bit else name
+        if not prefix and base in module["ports"]:
+            return None, f"{name!r} is a primary port of top {module_name!r}; a port is not a cell to edit"
+        return _net_driver(modules, module_name, name, prefix)
+    where = "/".join(prefix) or "top"
+    return None, (f"{name!r} is not an instance of module {module_name!r} ({where}) under any spelling "
+                  f"{_spellings(name)}")
+
+
+def resolve_endpoints(workspace, endpoints):
+    """Resolve PT endpoint names against the working design state's sha-verified netlist.
+
+    Each endpoint (an instance, `instance/pin`, a net, or a port, hierarchical from top) becomes
+    a leaf cell by full path -- the form the plan and worker-request Readers admit -- or is
+    reported unresolved with its reason. Bus bits match under the `x[0]`, `x_0_` and `x_0`
+    spellings; a flattened escaped name matches as one segment; a net resolves to its one
+    driving cell pin through port connections. Never writes anything.
+    """
+    core = _atcs_modules(workspace)["core"]
+    working_state = _load_json(Path(workspace) / "state" / "working-state.json")
+    _verify_identity(working_state, "design-state", core)
+    netlist = working_state.get("netlist")
+    if not _has_keys(netlist, ("path", "sha256")):
+        raise ValueError("design-state.netlist must be {path, sha256}")
+    _require_file(workspace, netlist["path"], netlist["sha256"], core, "design-state.netlist")
+    netlist_path = str(_safe_join(workspace, netlist["path"], "design-state.netlist"))
+    if netlist_path not in _netlist_index_cache:
+        _netlist_index_cache[netlist_path] = _parse_netlist(netlist_path, connections=True)
+    modules = _netlist_index_cache[netlist_path]
+    top = working_state.get("top")
+    resolved, unresolved = [], []
+    for endpoint in endpoints:
+        if not isinstance(endpoint, str) or not endpoint.strip():
+            unresolved.append({"endpoint": endpoint, "unresolved": "an endpoint must be a non-empty string"})
+            continue
+        name = endpoint.strip()
+        segments = _split_instance_path(name)
+        if segments is None or any(segment == "" for segment in segments):
+            segments = [segment for segment in name.split("/") if segment]
+        row, why = _walk_endpoint(modules, top, segments, [])
+        if row is None:
+            unresolved.append({"endpoint": endpoint, "unresolved": why})
+        else:
+            resolved.append(dict(row, endpoint=endpoint))
+    return {"designStateId": working_state.get("id"), "top": top,
+            "netlist": {"path": netlist["path"], "sha256": netlist["sha256"]},
+            "resolved": resolved, "unresolved": unresolved}
+
+
+def _resolve_instances_main(argv):
+    if len(argv) != 3:
+        raise SystemExit("usage: read-atcs.py resolve-instances WORKSPACE ENDPOINTS_JSON OUT_JSON")
+    workspace, endpoints_path, out = argv
+    endpoints = _load_json(endpoints_path)
+    if isinstance(endpoints, dict):
+        endpoints = endpoints.get("endpoints")
+    if not isinstance(endpoints, list):
+        raise ValueError("ENDPOINTS_JSON must be a list of endpoint names or {\"endpoints\": [...]}")
+    answer = resolve_endpoints(workspace, endpoints)
+    Path(out).write_text(json.dumps(answer, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == "resolve-instances":
+        _resolve_instances_main(sys.argv[2:])
+        return
     if len(sys.argv) < 5:
         raise SystemExit("usage: read-atcs.py <kind> REPORT OUT WORKSPACE [extra...]")
     kind, report, out, workspace = sys.argv[1:5]
