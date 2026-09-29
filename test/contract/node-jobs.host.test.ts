@@ -146,7 +146,9 @@ test('the conversational Agent writes isolated Workshop versions, and launch ver
     const knowledge = await knowledgeForWorkshop(second.scope, second.resolved.knowledge[0]!.file);
     assert.ok(knowledge.text?.includes('candidate'));
     const release = path.join(home.h.workspace, 'workshop-release');
-    assert.equal((await writeIntoWorkshop(second.scope, 'miner.sh', `while [ ! -f '${release}' ]; do sleep 0.05; done\necho second\n`)).wrote, true);
+    // The entry's one execution is the Workshop's result, so it writes the declared output (#64 D1).
+    const produced = second.resolved.produces.path;
+    assert.equal((await writeIntoWorkshop(second.scope, 'miner.sh', `while [ ! -f '${release}' ]; do sleep 0.05; done\nmkdir -p '${path.dirname(produced)}'\necho second > '${produced}'\n`)).wrote, true);
     const launched = await launchWrittenWorkshop({ ...ctx, executionId: 'execution-b' }, node, 2, 'conversation-owner');
     assert.equal(launched.kind, 'pending');
     if (launched.kind !== 'pending') return;

@@ -1393,6 +1393,19 @@ export function positionOf(pack: Pack, nodeId: string | undefined): { node: Pack
   return undefined;
 }
 
+/**
+ * The Workshop act nodes whose Workshop declares that it produces the named contract output, in
+ * every graph a Run can stand in (#64 D2). What a Reader of that output is waiting on when the file
+ * is not there: new work at one of these nodes, and never a second read of the same missing path.
+ */
+export function workshopProducersOf(pack: Pack, output: string): readonly { readonly nodeId: string; readonly workshop: string }[] {
+  const producing = new Set(pack.contract.workshops.filter((workshop) => workshop.produces === output).map((workshop) => workshop.id));
+  if (producing.size === 0) return [];
+  return runGraphsOf(pack).flatMap(({ graph }) => graph.nodes.flatMap((node) =>
+    node.kind === 'act' && node.parameters.workshop !== undefined && producing.has(node.parameters.workshop)
+      ? [{ nodeId: node.id, workshop: node.parameters.workshop }] : []));
+}
+
 export type GrowthGraphValidation =
   | { readonly ok: true; readonly proposal: GrowthProposal; readonly graph: GrowthGraph }
   | { readonly ok: false; readonly reason: string };

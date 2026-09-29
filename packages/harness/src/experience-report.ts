@@ -249,12 +249,12 @@ export function analysisProblems(view: RunView, analysis: import('./ledger.js').
   for (const claim of analysis.claims) {
     for (const id of claim.cites) {
       if (!records.has(id)) problems.push(`Citation ${id} is not an available observation, verdict, code or knowledge record of this Run.`);
-      else if (invalidated.has(id)) problems.push(`Citation ${id} was invalidated by an applied revision and is historical, not current evidence.`);
+      else if (invalidated.has(id)) problems.push(`Citation ${id} was invalidated by an applied revision or a restart and is historical, not current evidence.`);
     }
     for (const measurement of claim.measurements) {
       const observation = view.observations.find(record => record.recordId === measurement.recordId);
       if (invalidated.has(measurement.recordId)) {
-        problems.push(`Claimed ${measurement.field}=${measurement.value} ${measurement.unit ?? ''} cites historical observation ${measurement.recordId}, which an applied revision invalidated.`);
+        problems.push(`Claimed ${measurement.field}=${measurement.value} ${measurement.unit ?? ''} cites historical observation ${measurement.recordId}, which an applied revision or a restart invalidated.`);
       } else if (!claim.cites.includes(measurement.recordId) || !observation?.values.some(value => value.type === measurement.field
           && value.value === measurement.value && value.unit === measurement.unit)) {
         problems.push(`Claimed ${measurement.field}=${measurement.value} ${measurement.unit ?? ''} does not match cited observation ${measurement.recordId}.`);
