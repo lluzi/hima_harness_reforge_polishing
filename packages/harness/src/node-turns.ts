@@ -761,8 +761,13 @@ export async function settleFailedAttempt(ctx: Driving, node: PackNode, attempt:
   const { spent, allowance, exhausted } = retryStanding(ctx.deps.ledger, ctx.runId, node.id);
   const session = failure.jobSession === undefined ? {} : { jobSession: failure.jobSession };
   if (!exhausted) {
+    // The failed Job's own log tail, copied into the retrying record the way a blocker carries it
+    // (#C33), so a live failure with retries left is reproducible from the ledger alone rather than
+    // only from a workspace that the next attempt or a cleanup may already have taken away.
+    const retryTailed = failure.jobSession === undefined ? undefined : await tailOfJob(ctx, failure.jobSession);
+    const retryTail = retryTailed?.ok === true && retryTailed.text !== '' ? { logTail: retryTailed.text } : {};
     await appendNode(ctx, node, 'retrying', attempt, {
-      ...session,
+      ...session, ...retryTail,
       reason: `${failure.reason}; that is ${counted(spent, 'failed attempt')} of an allowance of ${allowance}, so the node tries again`,
     });
     return { kind: 'retrying' };
@@ -2179,7 +2184,7 @@ export async function appendNode(
   node: PackNode,
   state: NodeState,
   attempt: number,
-  extra: { outcome?: VerdictOutcome; jobSession?: string; reason?: string; branchId?: string } = {},
+  extra: { outcome?: VerdictOutcome; jobSession?: string; reason?: string; branchId?: string; logTail?: string } = {},
 ): Promise<NodeRecord> {
   // The branch this drive is inside, on every transition it writes, without a caller passing one:
   // a turn does not know it is in a fork, and a fork's drive should not have to say so at each turn.

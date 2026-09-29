@@ -460,6 +460,16 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     const failed = await request({ action: 'input', requestId: 'interactive-fail', toolSessionId, commandId: 'fail-1',
       command: { name: 'fail_command', args: {} }, waitMs: 1_000 });
     assert.equal(failed.status, 'failed'); assert.match(failed.transcript.text, /intentional fixture failure/);
+    // C33: the command-failed Ledger record carries a bounded errorTail with the adapter's error line,
+    // so the failure's cause is reproducible from the Ledger alone, not only from a live transcript.
+    const failedRecord = host.ctx.hima.ledger.records({ runId, type: 'interactive' })
+      .findLast((record) => record.type === 'interactive' && (record.payload as { event?: string }).event === 'command-failed'
+        && (record.payload as { commandId?: string }).commandId === 'fail-1');
+    assert.ok(failedRecord?.type === 'interactive', 'a command-failed record was written');
+    const errorTail = (failedRecord.payload as { errorTail?: string }).errorTail;
+    assert.ok(errorTail, `the command-failed record carries an errorTail: ${JSON.stringify(failedRecord.payload)}`);
+    assert.match(errorTail!, /intentional fixture failure/, 'the errorTail carries the adapter error line');
+    assert.equal(/HIMA:[^:]+:(ACK|DONE|FAIL)/.test(errorTail!), false, 'the errorTail strips the HIMA protocol markers');
 
     assert.equal((await action('pause', 'interactive-pause', { nodeId })).kind, 'accepted');
     const heldMutation = await request({ action: 'input', requestId: 'interactive-held-set', toolSessionId, commandId: 'held-set',

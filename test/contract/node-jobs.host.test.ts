@@ -313,3 +313,29 @@ test('an unresolved launch intent vetoes another Run inside the Site capacity cl
     assert.equal(host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).length, 0);
   } finally { await home.dispose(); }
 });
+
+test('C33: a failed tool Job with retries left records its log tail on the retrying node record', async () => {
+  const home = await nodeHome();
+  const { h, host, run, ctx } = home;
+  try {
+    const script = path.join(h.workspace, 'fail.sh');
+    // The Job prints a diagnostic line and exits non-zero, with Retry allowance still left.
+    await writeFile(script, `echo "Error: synthesis failed at cell BUF_X4"\necho "see dc_shell.log for detail"\nexit 1\n`);
+    const pack = { ...ctx.pack, contract: { ...ctx.pack.contract, tools: ctx.pack.contract.tools.map((t) => t.id === 'synth' ? { ...t, argv: ['sh', script], licences: {} } : t) } };
+    const tool = pack.graph.nodes.find((n) => n.id === 'synthesize');
+    assert.ok(tool?.kind === 'act');
+    const launched = await toolNode({ ...ctx, pack }, run, tool, 1);
+    assert.equal(launched.kind, 'pending');
+    if (launched.kind !== 'pending') return;
+    const settled = await resumeNode({ ...ctx, pack }, tool, 1, launched.session);
+    assert.equal(settled.kind, 'retrying', 'exit 1 with allowance left retries rather than blocking');
+    const record = host.ctx.hima.ledger.records({ runId: run.id, type: 'node' })
+      .findLast((r) => r.type === 'node' && r.nodeId === 'synthesize' && r.state === 'retrying');
+    assert.ok(record?.type === 'node', 'a retrying node record was written');
+    assert.ok(record.logTail, `the retrying record carries the Job's log tail: ${JSON.stringify(record)}`);
+    assert.match(record.logTail!, /Error: synthesis failed at cell BUF_X4/,
+      'the log tail carries the failed Job diagnostic so the failure is reproducible from the Ledger alone');
+    // Bounded like a blocker's tail: no unbounded growth.
+    assert.ok(record.logTail!.length <= 16 * 1024);
+  } finally { await home.dispose(); }
+});
