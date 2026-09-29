@@ -687,10 +687,14 @@ agentTeams:
         node: operate-worker-01
         taskTemplate: >-
           Read the adopted Researcher result and exact workerRequest01. Select one atcs_size_cell action
-          from actions; return its exact instance and toMaster, the observation content SHA as planSha256,
-          and limitations. Refuse if no safe action exists. Return one compact schema-complete JSON object
-          in this turn, with at most three short limitations. If the owner returns a refusal of your
-          reply, answer with the corrected single JSON object only. Example reply (shape only):
+          from actions, or refuse if no safe action exists. Reply with exactly one JSON object and nothing
+          else: no prose, no Markdown fence, no comments, no trailing commas. Its fields are exactly
+          schema (atcs-worker-review/1), planSha256 (the observation content SHA of workerRequest01),
+          command (atcs_size_cell), arguments ({instance, toMaster} copied unchanged from one entry of
+          actions), evidenceRefs (a list of Runtime input record-id strings) and limitations (at most
+          three strings, each under 200 characters); no nested object except arguments. If the owner
+          returns a refusal of your reply, answer with the corrected single JSON object only. Example
+          reply (shape only):
           {"schema": "atcs-worker-review/1", "planSha256": "<the workerRequest01 observation content SHA-256>", "command": "atcs_size_cell", "arguments": {"instance": "u_a/reg0", "toMaster": "DFQD2BWP35P140"}, "evidenceRefs": ["<a Runtime input record id>"], "limitations": ["one candidate reviewed"]}
         inputs: [workerRequest01]
         allowedTools: [hima_delegation_input]

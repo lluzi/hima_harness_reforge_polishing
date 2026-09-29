@@ -485,5 +485,11 @@ Known gaps carried from earlier tasks:
       `EmptyWorkerActionsTest` now reads the probe's own document. The purpose and the example now
       say to exit non-zero with the reason rather than write an empty list. That is the honest
       equivalent of a no-fix request: operate-worker-01's Team needs one action to review.
+    - Item 2, reviewer JSON format (`model-probe-run1` team attempts 2 and 3, first answer "Expected
+      ',' or ']' after array element"). The reviewer taskTemplate now names every field with its form
+      and caps the free text: exactly one JSON object, no prose, no fence, no trailing commas,
+      evidenceRefs as record-id strings, at most three limitations under 200 characters. It keeps its
+      example reply. `ReviewerReplyFormatTest` shows the retained admitted answer breaks the caps and
+      the example keeps them.
   - **Pending re-review**: this FABRIC.md's own G27-G33 and the four batches' combined diff have not
     yet had a second reviewer pass since batch C landed.

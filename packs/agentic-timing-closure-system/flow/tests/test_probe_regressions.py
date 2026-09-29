@@ -105,5 +105,63 @@ class EmptyWorkerActionsTest(_ProbeFixture):
         self.assertIn(rule, " ".join(example.split()))
 
 
+def _reviewer_template():
+    contract = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+    team = contract[contract.index("\nagentTeams:\n"):contract.index("\nworkshops:\n")]
+    body = team.split("      - id: reviewer\n", 1)[1].split("\n      - id: ", 1)[0]
+    folded = re.search(r"^        taskTemplate: >-\n((?:^          .*\n)+)", body, re.M)
+    required = [f.strip() for f in re.search(r"^          required: \[(.*)\]$", body, re.M).group(1).split(",")]
+    return " ".join(folded.group(1).split()), required
+
+
+def _reviewer_format_problems(reply):
+    """The reviewer taskTemplate's format rules, as checks (probe refusal 2)."""
+    found = []
+    for field, value in reply.items():
+        if isinstance(value, dict) and field != "arguments":
+            found.append(f"{field} is a nested object")
+    refs = reply.get("evidenceRefs")
+    if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
+        found.append("evidenceRefs is not a list of record-id strings")
+    limitations = reply.get("limitations")
+    if not isinstance(limitations, list) or len(limitations) > 3 \
+            or not all(isinstance(item, str) and len(item) < 200 for item in limitations):
+        found.append("limitations is not at most three strings under 200 characters")
+    return found
+
+
+class ReviewerReplyFormatTest(unittest.TestCase):
+    """Probe refusal 2: in 2 of 5 first answers the reviewer's reply broke inside an array
+    ("Expected ',' or ']' after array element in JSON at position 1393"). The retained admitted
+    answer shows the shape that grows that long: evidenceRefs as nested objects and three
+    limitations of 150-250 characters. The template now caps it and names every field."""
+
+    def test_the_template_names_every_required_field_in_its_instructions(self):
+        template, required = _reviewer_template()
+        instructions = template.split("Example reply (shape only):", 1)[0]
+        for field in required:
+            with self.subTest(field=field):
+                self.assertRegex(instructions, rf"\b{field}\b")
+
+    def test_the_template_states_the_json_format_rules(self):
+        template, _ = _reviewer_template()
+        for rule in ("exactly one JSON object and nothing else", "no prose", "no Markdown fence",
+                     "no trailing commas", "a list of Runtime input record-id strings",
+                     "at most three strings, each under 200 characters", "no nested object except arguments"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, template)
+
+    def test_the_templates_example_keeps_the_rules_and_the_probes_answer_breaks_them(self):
+        template, required = _reviewer_template()
+        example = json.loads(template.split("Example reply (shape only):", 1)[1])
+        self.assertEqual(sorted(example), sorted(required))
+        self.assertEqual(_reviewer_format_problems(example), [])
+        probe = json.loads((FIXTURES / "reviewer-answer-attempt-1.json").read_text(encoding="utf-8"))
+        self.assertEqual(_reviewer_format_problems(probe), [
+            "evidenceRefs is not a list of record-id strings",
+            "limitations is not at most three strings under 200 characters",
+        ])
+
+
 if __name__ == "__main__":
     unittest.main()
