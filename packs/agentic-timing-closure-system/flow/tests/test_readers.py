@@ -429,11 +429,14 @@ class WorkPackageReaderTest(unittest.TestCase):
                 values = read_atcs.read("worker-request", report, self.workspace, extra=["w05"])
                 self.assertGreaterEqual(values[0]["value"], 1, label)
 
-    def test_a_target_pin_whose_owner_is_not_in_the_netlist_is_counted(self):
+    def test_a_target_pin_whose_owner_is_not_in_the_netlist_is_advised(self):
+        """#64 worker/aggregation principle: a name XTop will not find is advice, never counted."""
         report = self._write_envelope(self._valid_candidate(targetPins=["OUTSIDE/A"]))
         found = read_atcs.problems("worker-request", report, self.workspace, "w01")
+        self.assertFalse(any("OUTSIDE/A" in line for line in found), found)
+        advice = read_atcs.advice("worker-request", report, self.workspace, "w01")
         self.assertTrue(any(line.startswith("candidate.targetPins (slot w01): 'OUTSIDE/A' is not a hierarchical pin")
-                            for line in found), found)
+                            for line in advice), advice)
 
     def test_tampered_base_state_is_refused(self):
         tampered_design = dict(self.design)
@@ -494,11 +497,13 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
         return report
 
     def _counted(self, report, pattern, count):
-        """#64 Track B: each name the base netlist does not hold is a counted, named problem."""
-        found = read_atcs.problems("worker-request", report, self.workspace, "w01")
-        self.assertEqual(len(found), count, found)
-        self.assertTrue(any(re.search(pattern, line) for line in found), found)
-        self.assertEqual(read_atcs.read("worker-request", report, self.workspace, extra=["w01"])[0]["value"], count)
+        """#64 Track B named each name the base netlist does not hold; the #64 worker/aggregation
+        principle (FABRIC.md, 2026-09-29) makes each one advice: named in the sidecar, never counted."""
+        self.assertEqual(read_atcs.problems("worker-request", report, self.workspace, "w01"), [])
+        advice = read_atcs.advice("worker-request", report, self.workspace, "w01")
+        self.assertEqual(len(advice), count, advice)
+        self.assertTrue(any(re.search(pattern, line) for line in advice), advice)
+        self.assertEqual(read_atcs.read("worker-request", report, self.workspace, extra=["w01"])[0]["value"], 0)
 
     def test_bare_leaf_name_is_refused(self):
         """The real Issue #63 failure: `g96219` alone, admitted by the Reader
@@ -608,12 +613,15 @@ class CampaignPlanReaderTest(unittest.TestCase):
     `workerSlots` knob is active. Parked slots are admitted."""
 
     SCENARIO = "func_ssg_rcworst_m40"
+    NETLIST = ("module top;\n" + "".join(f"  SOME_CELL U{n} (.A(a));\n" for n in range(1, 8))
+               + "  SOME_CELL \\u_a/u_b  (.D(d));\nendmodule\n")
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.workspace = _make_workspace(self.tmp.name)
-        self.design = _build_design_state(self.workspace)
+        # C23 (#64 port): the plan Reader admits only leaf cells of the base netlist.
+        self.design = _build_design_state(self.workspace, netlist_text=self.NETLIST)
         # Fix round 2 item 3's own check needs a real, current state/working-state.json
         # to compare envelope.baseState against; every "zero problems" case in this class
         # keeps it matching self.design, and the dedicated mismatch tests below diverge it.

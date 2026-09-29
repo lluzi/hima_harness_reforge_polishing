@@ -1,0 +1,238 @@
+{
+  "baseState": {
+    "database": {
+      "datDigest": "e86ef476761e162d2601c39ed4effc82331d2ea0feb4fd82ae662a4b0b78cfbe",
+      "path": "baseline/database/postroute_final.enc",
+      "sha256": "79d098156f87a6ecdfc6a3591ac20b9e9533091409b9dbf8cd09fcaa1f70bc9d"
+    },
+    "def": {
+      "path": "baseline/def/swerv_wrapper.postroute.def",
+      "sha256": "73e25dc78bb761de2ab2636ed25dead880f4e6761b41f41cc54d4941ebd6192b"
+    },
+    "id": "089c9d07c3338b120fa7",
+    "netlist": {
+      "path": "baseline/netlist/swerv_wrapper.postroute.v",
+      "sha256": "6c9ed3189d9012a29229af594c22f230818e40b52bb3f307cb66ae07dc812e86"
+    },
+    "parentId": null,
+    "scenarios": [
+      "func_ssg_rcworst_m40",
+      "func_ssg_rcworst_125",
+      "func_ffg_cbest_m40",
+      "func_ffg_cbest_125"
+    ],
+    "schema": "atcs.design-state/1",
+    "sdc": [
+      {
+        "path": "baseline/sdc/0/swerv_wrapper.input.sdc",
+        "sha256": "47b51fc7a7f2ea572c78cbd48645ded06c8b21f016ae8ea6e4ca541232f9b565"
+      }
+    ],
+    "spef": {
+      "cbest": {
+        "path": "baseline/spef/cbest/swerv_wrapper.cbest.spef",
+        "sha256": "3fc820b3a7c8e15413cc225cf1498fa80cabd214995dfd5a35f7cb9760845d7b"
+      },
+      "cworst_T": {
+        "path": "baseline/spef/cworst_T/swerv_wrapper.cworst_T.spef",
+        "sha256": "c4f610b1354c91c7c60290926efbc2be485f6fcdb089cc7a640521542c5c3cd6"
+      }
+    },
+    "stage": "postroute",
+    "tools": {
+      "innovus": "23.14",
+      "primetime": "PrimeTime X-2025.06",
+      "starrc": "StarRC X-2025.06-SP1",
+      "xtop": "XTop 2025.09.tmp15"
+    },
+    "top": "swerv_wrapper"
+  },
+  "candidate": {
+    "reason": "3 blocker cluster(s) from the baseline observation of state 089c9d07c3338b120fa7: 3 active slot(s) (the worst cluster takes the lowest slot) and 3 parked. Clusters are the leaf instances the worst checks of each required scenario pass through, so active edit domains share no instance; every blocker is named by its own check key in `targets`.",
+    "workPackages": {
+      "w01": {
+        "actions": [
+          "size_cell",
+          "insert_buffer"
+        ],
+        "baseStateId": "089c9d07c3338b120fa7",
+        "budget": {
+          "attempts": 3,
+          "xtopMinutes": 60
+        },
+        "editDomain": {
+          "instances": [
+            "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_"
+          ],
+          "nets": [],
+          "regions": [
+            [
+              44.86,
+              370.4,
+              54.86,
+              380.4
+            ]
+          ]
+        },
+        "mayAffect": [
+          "func_ffg_cbest_125|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+          "func_ffg_cbest_m40|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+          "func_ssg_rcworst_125|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+          "func_ssg_rcworst_m40|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**"
+        ],
+        "observe": "fast",
+        "problem": "func_ffg_cbest_125 worst hold check at swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**; func_ffg_cbest_m40 worst hold check at swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**; func_ssg_rcworst_125 worst hold check at swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**; func_ssg_rcworst_m40 worst hold check at swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+        "protected": {
+          "instances": [],
+          "nets": []
+        },
+        "scope": {
+          "commands": [
+            "atcs_size_cell",
+            "atcs_exchange_cell",
+            "atcs_insert_buffer",
+            "atcs_remove_buffer",
+            "atcs_fix_hold_pins",
+            "atcs_undo"
+          ],
+          "maxMutations": 120
+        },
+        "targetPins": [
+          "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_/D"
+        ],
+        "targets": [
+          "func_ffg_cbest_125|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+          "func_ffg_cbest_m40|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+          "func_ssg_rcworst_125|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+          "func_ssg_rcworst_m40|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**"
+        ],
+        "taskId": "w01"
+      },
+      "w02": {
+        "actions": [
+          "size_cell",
+          "insert_buffer"
+        ],
+        "baseStateId": "089c9d07c3338b120fa7",
+        "budget": {
+          "attempts": 3,
+          "xtopMinutes": 60
+        },
+        "editDomain": {
+          "instances": [
+            "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_0_"
+          ],
+          "nets": [],
+          "regions": [
+            [
+              462.48,
+              312.8,
+              472.48,
+              322.8
+            ]
+          ]
+        },
+        "mayAffect": [
+          "func_ssg_rcworst_m40|setup|ifu_axi_araddr[5]"
+        ],
+        "observe": "fast",
+        "problem": "func_ssg_rcworst_m40 worst setup check at ifu_axi_araddr[5]",
+        "protected": {
+          "instances": [],
+          "nets": []
+        },
+        "scope": {
+          "commands": [
+            "atcs_size_cell",
+            "atcs_exchange_cell",
+            "atcs_insert_buffer",
+            "atcs_split_load",
+            "atcs_fix_setup_pins",
+            "atcs_undo"
+          ],
+          "maxMutations": 120
+        },
+        "targetPins": [
+          "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_0_/D"
+        ],
+        "targets": [
+          "func_ssg_rcworst_m40|setup|ifu_axi_araddr[5]"
+        ],
+        "taskId": "w02"
+      },
+      "w03": {
+        "actions": [
+          "size_cell",
+          "insert_buffer"
+        ],
+        "baseStateId": "089c9d07c3338b120fa7",
+        "budget": {
+          "attempts": 3,
+          "xtopMinutes": 60
+        },
+        "editDomain": {
+          "instances": [
+            "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_"
+          ],
+          "nets": [],
+          "regions": [
+            [
+              462.2,
+              315.5,
+              472.2,
+              325.5
+            ]
+          ]
+        },
+        "mayAffect": [
+          "func_ssg_rcworst_125|setup|ifu_axi_araddr[4]"
+        ],
+        "observe": "fast",
+        "problem": "func_ssg_rcworst_125 worst setup check at ifu_axi_araddr[4]",
+        "protected": {
+          "instances": [],
+          "nets": []
+        },
+        "scope": {
+          "commands": [
+            "atcs_size_cell",
+            "atcs_exchange_cell",
+            "atcs_insert_buffer",
+            "atcs_split_load",
+            "atcs_fix_setup_pins",
+            "atcs_undo"
+          ],
+          "maxMutations": 120
+        },
+        "targetPins": [
+          "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_/D"
+        ],
+        "targets": [
+          "func_ssg_rcworst_125|setup|ifu_axi_araddr[4]"
+        ],
+        "taskId": "w03"
+      },
+      "w04": {
+        "baseStateId": "089c9d07c3338b120fa7",
+        "parked": true,
+        "problem": "no disjoint blocker cluster left: this first research generation has no evaluated batch, so there are no batchFailReasons to seed an expert cluster beyond the 3 cluster(s) the baseline observation's worst checks define",
+        "taskId": "w04"
+      },
+      "w05": {
+        "baseStateId": "089c9d07c3338b120fa7",
+        "parked": true,
+        "problem": "no disjoint blocker cluster left: this first research generation has no evaluated batch, so there are no batchFailReasons to seed an expert cluster beyond the 3 cluster(s) the baseline observation's worst checks define",
+        "taskId": "w05"
+      },
+      "w06": {
+        "baseStateId": "089c9d07c3338b120fa7",
+        "parked": true,
+        "problem": "no disjoint blocker cluster left: this first research generation has no evaluated batch, so there are no batchFailReasons to seed an expert cluster beyond the 3 cluster(s) the baseline observation's worst checks define",
+        "taskId": "w06"
+      }
+    }
+  },
+  "siteCapabilities": {
+    "pgVerification": false
+  }
+}

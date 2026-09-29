@@ -30,6 +30,10 @@ Its working state and worker-slots record are byte-identical to `live02-working-
 |------|----------------------|-------|
 | `t01-worker-request-w01.json` | `649ca0d5a31842d3953ee61375bbe4ba8f2822147afa212ece61cfad83c2a0e8` | verbatim: w01's admitted request (Ledger `#000144`) |
 | `t01-worker-request-w03.json` | `0a434f5f1950e19d40f3e24a288cc512bfbdb48e9d9a96c7866cfe1f23ed2eb0` | verbatim: w03's admitted request (Ledger `#000254`) |
+| `t01-campaign-plan.json` | `b09ca014cdd5327a99806d62216106c44f62986922a0efeb7dfa2cc3759a513b` | verbatim: the plan admitted at 0 (Ledger `#000117`, PASS `#000119`): 3 active slots, 3 parked |
+| `t01-policy.json` | `213425acb8b8ca9ddada5482595a09ba7d1597fe70b4ac4652c15df0132253e4` | verbatim |
+| `t01-observation-top.json` | from `b56d01a2933fedabd43008a12688ae56dd1d2de031db082e2f35f30d581607f0` | reduced: the eight worst violating checks of each scenario and mode (48 of the 2016), re-stamped; `composition.worst_checks` are unchanged |
 
-`flow/tests/test_t01_regressions.py` writes a stand-in netlist and Liberty file for them and lists
+`flow/tests/test_t01_regressions.py` writes a stand-in netlist and Liberty file for them;
+`test_request_problems.live02_workspace` writes a stand-in netlist for the live02 plan and lists
 which masters are proven by the Run and which are assumed.

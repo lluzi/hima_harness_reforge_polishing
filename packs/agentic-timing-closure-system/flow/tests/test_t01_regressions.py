@@ -14,6 +14,7 @@ Runnable directly:
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import sys
@@ -38,6 +39,8 @@ SLOTS = ("01", "02", "03", "04", "05", "06")
 # The retained bytes (Ledger observation records #144 and #254).
 T01_W01_SHA256 = "649ca0d5a31842d3953ee61375bbe4ba8f2822147afa212ece61cfad83c2a0e8"
 T01_W03_SHA256 = "0a434f5f1950e19d40f3e24a288cc512bfbdb48e9d9a96c7866cfe1f23ed2eb0"
+# Ledger #117, admitted at 0 (#119).
+T01_PLAN_SHA256 = "b09ca014cdd5327a99806d62216106c44f62986922a0efeb7dfa2cc3759a513b"
 
 W01_REG = "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_"
 W02_REG = "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_0_"
@@ -241,6 +244,83 @@ class SizeMoveGuidanceTest(unittest.TestCase):
                 self.assertIn("toMaster", operator)
                 self.assertIn("never join two columns", operator)
                 self.assertIn("invalid library cell", operator)
+
+
+def plan_workspace(test):
+    """`t01_workspace` plus the plan's companions: attempt 1's policy, its worker-slots record, the
+    reduced observation and the retained plan."""
+    for name, target in (("t01-policy.json", "state/policy.json"), ("live02-worker-slots.json", "state/worker-slots.json"),
+                         ("t01-observation-top.json", "state/observation.json")):
+        _write(test.workspace / target, (LIVE / name).read_text())
+    return json.loads((LIVE / "t01-campaign-plan.json").read_text())
+
+
+class T01PlanWorkspace(T01Workspace):
+    def setUp(self):
+        super().setUp()
+        self.plan = plan_workspace(self)
+
+    def plan_problems(self, plan):
+        report = _write(self.workspace / "research" / "requests" / "campaign-plan.json", json.dumps(plan))
+        found = read_atcs.problems("campaign-plan", report, self.workspace)
+        (value,) = read_atcs.read("campaign-plan", report, self.workspace)
+        self.assertEqual(value["value"], len(found), found)
+        return found
+
+    def plan_advice(self, plan):
+        report = _write(self.workspace / "research" / "requests" / "campaign-plan.json", json.dumps(plan))
+        return read_atcs.advice("campaign-plan", report, self.workspace)
+
+
+class LeafCellEditDomainTest(T01PlanWorkspace):
+    """C23 (#63) on the six-slot 0.2.0 plan, as advice (the #64 worker/aggregation principle, FABRIC.md):
+    the plan Reader never read the netlist, so a plan naming a module instance, a port, a bare leaf or
+    an absent path as an edit-domain cell reached the Operator with no word to the Workshop. Now each is
+    one advice line in the sidecar, naming the resolver, and the plan is not refused for it. RED on
+    12950dac: no Reader advice existed."""
+
+    def test_the_fixture_is_the_retained_plan_and_its_domains_are_leaf_cells(self):
+        self.assertEqual(hashlib.sha256((LIVE / "t01-campaign-plan.json").read_bytes()).hexdigest(), T01_PLAN_SHA256)
+        self.assertEqual(self.plan_advice(self.plan), [])
+
+    def test_an_unusable_edit_domain_instance_is_advised(self):
+        for label, name, needle in (
+            ("module instance", "swerv_ifu/mem_ctl", "is a module instance"),
+            ("top port", "ifu_axi_araddr[5]", "is not a hierarchical instance"),
+            ("bare leaf", "miss_state_ff_dffs_dout_reg_0_", "is not a hierarchical instance"),
+            ("absent", "swerv_ifu/mem_ctl/no_such_reg", "is not a hierarchical instance"),
+        ):
+            with self.subTest(label=label):
+                plan = copy.deepcopy(self.plan)
+                plan["candidate"]["workPackages"]["w02"]["editDomain"]["instances"] = [name]
+                self.assertEqual([line for line in self.plan_problems(plan) if ".editDomain" in line], [])
+                lines = self.plan_advice(plan)
+                self.assertEqual(len(lines), 1, lines)
+                self.assertTrue(lines[0].startswith(f"candidate.workPackages.w02.editDomain: instance {name!r} "), lines)
+                self.assertIn(needle, lines[0])
+                if needle != "is a module instance":
+                    self.assertIn("resolve-instances", lines[0])
+                    self.assertIn("pass the endpoint, not the check key", lines[0])
+
+    def test_a_module_pin_as_target_pin_is_advised(self):
+        plan = copy.deepcopy(self.plan)
+        plan["candidate"]["workPackages"]["w03"]["targetPins"] = ["swerv_ifu/mem_ctl/D"]
+        self.assertEqual([line for line in self.plan_problems(plan) if ".targetPins" in line], [])
+        lines = self.plan_advice(plan)
+        self.assertEqual(len(lines), 1, lines)
+        self.assertTrue(lines[0].startswith("candidate.workPackages.w03.targetPins: 'swerv_ifu/mem_ctl/D' is not a "
+                                            "hierarchical pin of a leaf cell"), lines)
+
+    def test_a_worker_request_naming_a_module_instance_is_advised(self):
+        document = self.request("03")
+        document["candidate"]["editDomain"]["instances"] = ["swerv_ifu/mem_ctl"]
+        document["sessionPlan"] = []
+        _prepare_slot(self.workspace, document["candidate"])
+        self.assertEqual(self.problems("03", document), [])
+        report = self.workspace / "research" / "requests" / "worker-request-w03.json"
+        (line,) = read_atcs.advice("worker-request", report, self.workspace, "w03")
+        self.assertTrue(line.startswith("candidate.editDomain (slot w03): instance 'swerv_ifu/mem_ctl' is a module "
+                                        "instance"), line)
 
 
 if __name__ == "__main__":

@@ -253,6 +253,36 @@ Schema limits and how the graph expresses them:
   `atcs_candidates` again. Proving tests: `flow/tests/test_t01_regressions.py` `SizeMoveMasterTest`
   on the retained w01 and w03 requests (RED on 12950dac: 9 of 10 read 0 or had no command) and
   `SizeMoveGuidanceTest`; the dry path sizes to a named master.
+- G44 (Issue #64, #63 C23 45257f24/5e95d542 and C22 e00d06cb ported, as advice) Leaf-cell edit
+  domains and the Pack's endpoint resolver. The six-slot plan Reader never read the netlist, so a plan
+  naming a module instance (live02's `swerv_dma_ctrl`), a port, a bare leaf or an absent path as an
+  edit-domain cell reached the Operator with no word to the Workshop. Under the worker/aggregation
+  principle below, the plan Reader (each active slot) and the worker-request Reader share
+  `_edit_domain_problems`, whose findings are `Advice`: written to the sidecar after the counted
+  problems ("Advice (N, not counted ...)"), never counted, never failing `request-admissible`. The
+  worker-request Reader's earlier hierarchical-name count (T63) is advice now too. An empty domain gets
+  no advice: target pins are toolkit domain pins. The netlist parser is #63's statement parser (multi-line instantiations,
+  comments, no line cap), and `read-atcs.py resolve-instances WORKSPACE ENDPOINTS OUT` resolves PT
+  endpoints (bus spellings, flattened escaped names, a net to its driver, a whole check key by its
+  endpoint part). `knowledge/endpoint-resolution.md` (17 knowledge files) gives the shipped copy
+  `hima-readers/atcs-readiness/read-atcs.py` and says to pass the endpoint, not the check key; the
+  plan checklist and the six worker purposes point at it, and each advice line names it. The live02
+  plan still reads 41, with 10 advice lines (stand-in netlist). Proving tests:
+  `flow/tests/test_endpoint_resolution.py` (RED: 11 errors, 3 failures) and
+  `test_t01_regressions.LeafCellEditDomainTest` on the retained attempt-1 plan (RED: no advice
+  existed).
+- G45 The worker/aggregation principle (user design decision, 2026-09-29, Issue #64 before treatment
+  attempt 2). The parallel worker stage is exploratory and divergent; over-restricting it cramps the
+  design space. Quality is guaranteed downstream, by the aggregation (composition facts, the ranked
+  recipe replayed from the common base, reconcile, the plain auto-fix control arm, pre-STA) and by
+  refreshed PrimeTime, the sole arbiter of convergence, not by upstream refusals. A worker request or a
+  plan is refused only for what breaks identity or merge integrity: an unparseable document, a
+  `baseState`/`planSha256`/prepared-package mismatch, an action outside the slot's edit domain or two
+  active slots claiming one instance or net, and whatever the Site Permit or the wrapper forbids.
+  Everything the Operator and XTop find out for themselves (a master outside the library, a function
+  change, a name XTop has no cell for, a parked seat while checks are uncovered) is `Advice` in the
+  sidecar. The Reviewer sharpens the plan and records concerns; its scope is no bottleneck.
+
 - G3 One wait node per graph: the SPEC's `missing-inputs` (inputs-ready FAIL) and
   `scope-or-input-required` (continue-or-wait FAIL) waits, the impossible routing fall-through and
   every unlabelled UNDETERMINED all stop at `wait-for-person`; the failing verdict names which.

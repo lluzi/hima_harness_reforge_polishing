@@ -549,7 +549,8 @@ class NextDecisionExampleTest(ExampleWorkspace):
 
 
 class Live02ToExampleShapeTest(unittest.TestCase):
-    """The live02 plan reads 41; corrected along its 41 lines into the example's shape, it reads 0.
+    """The live02 plan reads 41; corrected along its 41 lines (and its netlist advice) into the example's shape,
+    it reads 0 with no advice.
 
     The success path of the refusal, on the retained bytes and state: every line of
     campaign-plan.problems.txt says what to change, and changing exactly that is admitted."""
@@ -581,6 +582,10 @@ class Live02ToExampleShapeTest(unittest.TestCase):
         # scope lists toolkit mutations only, with atcs_undo; ports are named by check key, never in targetPins.
         w01["scope"]["commands"] = [c for c in w01["scope"]["commands"] if c in workspaces.MUTATE_COMMANDS]
         w01["targetPins"] = [pin for pin in w01["targetPins"] if "/" in pin]
+        # C23: the edit domain names the leaf cells the endpoints end at, never a port or a module
+        # instance, and each target pin is a pin of one of them.
+        w01["editDomain"]["instances"] = list(w01["targetPins"])
+        w01["targetPins"] = [f"{cell}/D" for cell in w01["editDomain"]["instances"]]
         # w02 and w03 worked w01's hold endpoint at other corners, so their instance was shared:
         # w01 takes their checks and they are parked in the exact parked shape.
         for slot in ("w02", "w03"):
@@ -598,6 +603,7 @@ class Live02ToExampleShapeTest(unittest.TestCase):
         plan["candidate"]["workPackages"] = {"w01": w01, "w02": parked["w02"], "w03": parked["w03"], "w04": w04,
                                              "w05": parked["w05"], "w06": parked["w06"]}
         self.assertEqual(self.read(plan), [])
+        self.assertEqual(read_atcs.advice("campaign-plan", self.report, self.workspace), [])
 
 
 def _live02_blockers(workspace):

@@ -749,6 +749,12 @@ knowledge:
     purpose: An admitted research/requests/integration-plan.json with one conflict resolution, to copy in shape.
   - file: example-next-decision.md
     purpose: An admitted research/requests/next-decision.json, to copy in shape.
+  # #64 (from #63 C22, 45257f24 and e00d06cb): the Pack's endpoint resolver, shipped with its Reader.
+  - file: endpoint-resolution.md
+    purpose: >-
+      How a plan or worker Workshop turns PrimeTime endpoints into the leaf-cell editDomain.instances
+      and targetPins the Readers admit, with read-atcs.py resolve-instances; pass the endpoint, not the
+      check key.
 
 agentTeams:
   # Issue #64 Task 4: one Team per worker slot, in Harness scope mode. The Reviewer approves a scope
@@ -1208,7 +1214,7 @@ workshops:
     purpose: >-
       After a refusal, read output campaignPlanProblems first: the Reader wrote there, one line per problem,
       what it refused in your last campaign-plan.json and the format each field needs; fix every line and write
-      the whole document again.
+      the whole document again. Its Advice lines, after the counted ones, never refuse the plan: weigh them.
       Decompose the current problem into blocker clusters for the six worker slots w01..w06, blockers
       first, all against the working design-state (workingState). The slots run at once as parallel
       fork branches from the same base, each an XTop expert Team working one cluster. Read
@@ -1252,7 +1258,13 @@ workshops:
         4. targetPins are instance pins "<instance path>/<pin>" on leaf cells, full hierarchical paths
            from the top with no wildcard, never a top-level port (name a port check by its check key in
            targets). editDomain.instances are full hierarchical instance paths, never bare leaf names.
-           regions are [x1, y1, x2, y2] boxes in microns with x1 <= x2 and y1 <= y2.
+           regions are [x1, y1, x2, y2] boxes in microns with x1 <= x2 and y1 <= y2. Every
+           editDomain instance is a leaf cell of the working netlist, never a module instance, a port
+           or a net: resolve each PT endpoint with the Pack's resolver (knowledge
+           endpoint-resolution.md) and pass the endpoint, not the check key (the part after the last |,
+           without an @** path group suffix); copy the instances and pins it returns unchanged. The
+           Reader writes a name that is not a leaf cell as advice, not as a counted problem: the
+           Operator's XTop would find no such cell.
         5. No editDomain instance or net is also in protected.
         6. Edit domains are disjoint: no instance (in editDomain.instances or owning a targetPin) and no
            editDomain.nets entry belongs to two active slots.
@@ -1301,7 +1313,7 @@ workshops:
     entry: entry.py
     language: python
     reads: [workingState, workerSlotPolicy, inputReadiness, currentObservations, acceptancePolicy, riskAtlas, contributionIndex, campaignExperience, statePointers, residualCases, campaignPlanProblems]
-    knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md, xtop-expert-operator.md, example-campaign-plan.md]
+    knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md, xtop-expert-operator.md, example-campaign-plan.md, endpoint-resolution.md]
     produces: campaignPlan
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1309,7 +1321,8 @@ workshops:
     purpose: >-
       After a refusal (read-worker-request-01 counts a problem), read output workerRequest01Problems first: the
       Reader wrote there, one line per problem, what it refused in your last worker-request-w01.json and the
-      format each field needs. Fix every line by revising this Workshop's code: the revision reruns this
+      format each field needs (its Advice lines, after the counted ones, never refuse the request: weigh
+      them). Fix every counted line by revising this Workshop's code: the revision reruns this
       branch from here, in the same generation, while the other branches keep their results. Never park an
       active slot because its request was refused; the parked no-op is for a parked package.
       Research worker slot w01 inside its prepared private workspace. Read the slot's prepared
@@ -1346,7 +1359,8 @@ workshops:
           libraryFiles; that file holds no cell table itself. python3
           <workspace>/hima-readers/atcs-readiness/read-atcs.py masters <workspace> <instances.json>
           <out.json> writes, for each leaf-cell path, its current master and every toMaster the Reader
-          admits for it.
+          admits for it. Any other instance or pin you name comes from the Pack's endpoint resolver
+          (knowledge endpoint-resolution.md), never from your own netlist parsing.
 
       Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
       writing. The Pack's flow copy is importable from the workspace; entry.py can build and check the
@@ -1374,7 +1388,7 @@ workshops:
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult01, residualCases, workerRequest01Problems]
-    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
+    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest01
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1382,7 +1396,8 @@ workshops:
     purpose: >-
       After a refusal (read-worker-request-02 counts a problem), read output workerRequest02Problems first: the
       Reader wrote there, one line per problem, what it refused in your last worker-request-w02.json and the
-      format each field needs. Fix every line by revising this Workshop's code: the revision reruns this
+      format each field needs (its Advice lines, after the counted ones, never refuse the request: weigh
+      them). Fix every counted line by revising this Workshop's code: the revision reruns this
       branch from here, in the same generation, while the other branches keep their results. Never park an
       active slot because its request was refused; the parked no-op is for a parked package.
       Research worker slot w02 inside its prepared private workspace. Read the slot's prepared
@@ -1419,7 +1434,8 @@ workshops:
           libraryFiles; that file holds no cell table itself. python3
           <workspace>/hima-readers/atcs-readiness/read-atcs.py masters <workspace> <instances.json>
           <out.json> writes, for each leaf-cell path, its current master and every toMaster the Reader
-          admits for it.
+          admits for it. Any other instance or pin you name comes from the Pack's endpoint resolver
+          (knowledge endpoint-resolution.md), never from your own netlist parsing.
 
       Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
       writing. The Pack's flow copy is importable from the workspace; entry.py can build and check the
@@ -1447,7 +1463,7 @@ workshops:
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult02, residualCases, workerRequest02Problems]
-    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
+    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest02
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1455,7 +1471,8 @@ workshops:
     purpose: >-
       After a refusal (read-worker-request-03 counts a problem), read output workerRequest03Problems first: the
       Reader wrote there, one line per problem, what it refused in your last worker-request-w03.json and the
-      format each field needs. Fix every line by revising this Workshop's code: the revision reruns this
+      format each field needs (its Advice lines, after the counted ones, never refuse the request: weigh
+      them). Fix every counted line by revising this Workshop's code: the revision reruns this
       branch from here, in the same generation, while the other branches keep their results. Never park an
       active slot because its request was refused; the parked no-op is for a parked package.
       Research worker slot w03 inside its prepared private workspace. Read the slot's prepared
@@ -1492,7 +1509,8 @@ workshops:
           libraryFiles; that file holds no cell table itself. python3
           <workspace>/hima-readers/atcs-readiness/read-atcs.py masters <workspace> <instances.json>
           <out.json> writes, for each leaf-cell path, its current master and every toMaster the Reader
-          admits for it.
+          admits for it. Any other instance or pin you name comes from the Pack's endpoint resolver
+          (knowledge endpoint-resolution.md), never from your own netlist parsing.
 
       Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
       writing. The Pack's flow copy is importable from the workspace; entry.py can build and check the
@@ -1520,7 +1538,7 @@ workshops:
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult03, residualCases, workerRequest03Problems]
-    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
+    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest03
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1528,7 +1546,8 @@ workshops:
     purpose: >-
       After a refusal (read-worker-request-04 counts a problem), read output workerRequest04Problems first: the
       Reader wrote there, one line per problem, what it refused in your last worker-request-w04.json and the
-      format each field needs. Fix every line by revising this Workshop's code: the revision reruns this
+      format each field needs (its Advice lines, after the counted ones, never refuse the request: weigh
+      them). Fix every counted line by revising this Workshop's code: the revision reruns this
       branch from here, in the same generation, while the other branches keep their results. Never park an
       active slot because its request was refused; the parked no-op is for a parked package.
       Research worker slot w04 inside its prepared private workspace. Read the slot's prepared
@@ -1565,7 +1584,8 @@ workshops:
           libraryFiles; that file holds no cell table itself. python3
           <workspace>/hima-readers/atcs-readiness/read-atcs.py masters <workspace> <instances.json>
           <out.json> writes, for each leaf-cell path, its current master and every toMaster the Reader
-          admits for it.
+          admits for it. Any other instance or pin you name comes from the Pack's endpoint resolver
+          (knowledge endpoint-resolution.md), never from your own netlist parsing.
 
       Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
       writing. The Pack's flow copy is importable from the workspace; entry.py can build and check the
@@ -1593,7 +1613,7 @@ workshops:
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult04, residualCases, workerRequest04Problems]
-    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
+    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest04
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1601,7 +1621,8 @@ workshops:
     purpose: >-
       After a refusal (read-worker-request-05 counts a problem), read output workerRequest05Problems first: the
       Reader wrote there, one line per problem, what it refused in your last worker-request-w05.json and the
-      format each field needs. Fix every line by revising this Workshop's code: the revision reruns this
+      format each field needs (its Advice lines, after the counted ones, never refuse the request: weigh
+      them). Fix every counted line by revising this Workshop's code: the revision reruns this
       branch from here, in the same generation, while the other branches keep their results. Never park an
       active slot because its request was refused; the parked no-op is for a parked package.
       Research worker slot w05 inside its prepared private workspace. Read the slot's prepared
@@ -1638,7 +1659,8 @@ workshops:
           libraryFiles; that file holds no cell table itself. python3
           <workspace>/hima-readers/atcs-readiness/read-atcs.py masters <workspace> <instances.json>
           <out.json> writes, for each leaf-cell path, its current master and every toMaster the Reader
-          admits for it.
+          admits for it. Any other instance or pin you name comes from the Pack's endpoint resolver
+          (knowledge endpoint-resolution.md), never from your own netlist parsing.
 
       Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
       writing. The Pack's flow copy is importable from the workspace; entry.py can build and check the
@@ -1666,7 +1688,7 @@ workshops:
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult05, residualCases, workerRequest05Problems]
-    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
+    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest05
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
@@ -1674,7 +1696,8 @@ workshops:
     purpose: >-
       After a refusal (read-worker-request-06 counts a problem), read output workerRequest06Problems first: the
       Reader wrote there, one line per problem, what it refused in your last worker-request-w06.json and the
-      format each field needs. Fix every line by revising this Workshop's code: the revision reruns this
+      format each field needs (its Advice lines, after the counted ones, never refuse the request: weigh
+      them). Fix every counted line by revising this Workshop's code: the revision reruns this
       branch from here, in the same generation, while the other branches keep their results. Never park an
       active slot because its request was refused; the parked no-op is for a parked package.
       Research worker slot w06 inside its prepared private workspace. Read the slot's prepared
@@ -1711,7 +1734,8 @@ workshops:
           libraryFiles; that file holds no cell table itself. python3
           <workspace>/hima-readers/atcs-readiness/read-atcs.py masters <workspace> <instances.json>
           <out.json> writes, for each leaf-cell path, its current master and every toMaster the Reader
-          admits for it.
+          admits for it. Any other instance or pin you name comes from the Pack's endpoint resolver
+          (knowledge endpoint-resolution.md), never from your own netlist parsing.
 
       Build the envelope in entry.py from those files, not by typing JSON by hand, and check it before
       writing. The Pack's flow copy is importable from the workspace; entry.py can build and check the
@@ -1739,7 +1763,7 @@ workshops:
     entry: entry.py
     language: python
     reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult06, residualCases, workerRequest06Problems]
-    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md]
+    knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest06
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
