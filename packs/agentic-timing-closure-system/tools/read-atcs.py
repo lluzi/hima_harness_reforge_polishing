@@ -1654,6 +1654,38 @@ def _implement_batch_ready(workspace, mods):
     return True
 
 
+# Actions whose route reaches prepare-workers (research) or replay-prepare (compose, revise), both
+# of which refuse an XTop context not bound to the current working state (stale-base).
+_BATCH_ACTIONS = ("research", "compose", "revise")
+
+
+def _stale_xtop_context_problems(workspace, action):
+    """Dry path (slice 4): after a physical refresh is adopted, `state/xtop-context.json` still
+    names the state `observe` last bound it to, and only `observe` rebinds it. A batch action
+    on that context ends in prepare-workers or replay-prepare exiting 3 stale-base, so it is
+    counted here with the way out. No context at all is left to those tools: a Site that
+    declares no `xtopContext` cannot run a worker whatever is decided."""
+    path = Path(workspace) / "state" / "xtop-context.json"
+    if not path.exists():
+        return []
+    core = _atcs_modules(workspace)["core"]
+    try:
+        context = _load_json(path)
+        _verify_identity(context, "xtop-context", core)
+    except (ValueError, OSError) as error:
+        return [f"action: {action} needs state/xtop-context.json bound to the working state, and it does "
+                f"not verify ({error}); observe first"]
+    try:
+        working = _load_json(Path(workspace) / "state" / "working-state.json")
+    except (ValueError, OSError):
+        return []  # the stateRef check names an unreadable working state
+    bound, current = context.get("designStateId"), working.get("id") if isinstance(working, dict) else None
+    if current is None or bound == current:
+        return []
+    return [f"action: observe first: the XTop context is bound to {bound!r}, the working state is {current!r}; "
+            f"{action} needs a context bound to the working state, which only observe writes"]
+
+
 def _collect_next_decision_problems(obj, workspace):
     workspace = Path(workspace)
     problems = []
@@ -1706,6 +1738,9 @@ def _collect_next_decision_problems(obj, workspace):
                     f"stateRef {ref!r} does not match state/working-state.json's own current id "
                     f"{working_state_id!r}"
                 )
+
+    if action in _BATCH_ACTIONS:
+        problems += _stale_xtop_context_problems(workspace, action)
 
     if "budgetRef" in obj and (not isinstance(obj.get("budgetRef"), str) or not obj.get("budgetRef")):
         problems.append("budgetRef must be a non-empty string")

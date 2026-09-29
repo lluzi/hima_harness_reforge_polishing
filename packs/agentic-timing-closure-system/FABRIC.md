@@ -423,6 +423,16 @@ Known gaps carried from earlier tasks:
   a sibling module. A Workshop runs the copy shipped for the Run's first reader,
   `hima-readers/atcs-readiness/read-atcs.py`. `knowledge/endpoint-resolution.md` gives it that
   path, and the plan and worker purposes point at it.
+- G42 (Issue #63, dry path slice 4, BLOCKED 1) A batch decision on a stale XTop context is
+  refused with "observe first". After a physical refresh is adopted, `state/xtop-context.json`
+  still names the pre-refresh state, and only `observe` rebinds it. So `prepare-workers` (reached
+  by `research`) and `replay-prepare` (reached by `compose` and `revise`) exit 3 `stale-base`.
+  Option A (routing) was chosen. The next-decision Reader already reads the workspace host-side,
+  so it sees both ids. It counts `research`/`compose`/`revise` with the text "observe first: the
+  XTop context is bound to <old>, the working state is <new>", and a context that does not verify
+  is counted too. The owner's retry (`revisit-next-decision`) then chooses `observe`, which
+  rebinds the context. There is no graph growth. With no context at all, the Reader counts nothing
+  and leaves it to those tools: that is a Site that declares no `xtopContext`.
 
 ## Reviews
 

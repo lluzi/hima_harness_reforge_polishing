@@ -887,7 +887,9 @@ workshops:
       runs; wait names the concrete external input, scope or capability required;
       goal-met is
       legal only when the current final evaluation and accepted artifact support it. A temporarily
-      degraded working state must name its follow-up and falsifier. Cite new information; never retry
+      degraded working state must name its follow-up and falsifier. research, compose and revise need
+      state/xtop-context.json bound to the working state; after an adopted refresh it still names the
+      older state until observe runs, so choose observe first. Cite new information; never retry
       by revision alone.
       Read knowledge example-next-decision.md; copy its shape and change only the values.
       Before writing, read output nextDecisionProblems: after the Reader has read an earlier document it lists every problem it found, one line each naming the field, the slot and the required format; fix every line and write the whole document again (the file is absent before the first reading). A refused campaign plan or integration plan also routes here; outputs campaignPlanProblems and integrationPlanProblems name what was wrong with it.
