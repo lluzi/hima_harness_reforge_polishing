@@ -105,6 +105,12 @@ export interface InteractiveAddress {
   /** Host-only pin from the Operator delegation receipt. */
   readonly expectedBindingDigest?: string;
   /**
+   * Host-only: this close or interrupt is the Host's own stop — a deadline it reached, or a session
+   * whose Operator did not survive a Host restart — not a typed takeover by the Run owner. It is
+   * never accepted from model or HTTP input (the request schema is strict and does not name it).
+   */
+  readonly hostStop?: 'deadline' | 'recovery';
+  /**
    * Host-only: the Operator's owner-adopted reviewed scope. Admission holds every mutation the
    * retained Pack classifies as `mutate` to these commands and plan hash, and counts the scope
    * mutations already recorded for this execution and actor, across tool sessions, against `maxMutations`.
@@ -131,6 +137,8 @@ export interface OpenInteractiveRequest extends InteractiveAddress {
   readonly callerDigest: string;
   readonly siteName: string; readonly workspace: string; readonly argv: readonly string[];
   readonly name: string; readonly sessionDeadlineAt: string; readonly startupWaitMs: number;
+  /** How long a failed open's cleanup waits for the Job's process group; the default when absent. */
+  readonly closeGrace?: InteractiveCloseGrace;
 }
 
 const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -190,9 +198,26 @@ async function paste(on: InteractiveChannel, session: string, commandId: string,
   if (submit) { await authorize(); await mustRun(on, ['tmux', 'send-keys', '-t', jobPane(session), 'Enter'], `submit input to interactive session ${session}`); }
 }
 
+/**
+ * An open whose tool has been started: the transport is attached and the startup line pasted, and
+ * what is left is waiting for the tool's ready line and recording `opened`. That wait can take as
+ * long as a real tool's startup (tens of seconds for XTop), so a caller holding a Site's slot claim
+ * or a Run's admission queue releases them first and then calls `finish` (#64 D-T02-3).
+ */
+export type InteractiveOpenStart =
+  | { readonly kind: 'answered'; readonly result: InteractiveOpenResult }
+  | { readonly kind: 'started'; readonly finish: () => Promise<InteractiveOpenResult> };
+
 export async function openInteractiveJob(on: InteractiveChannel, request: OpenInteractiveRequest, authority: InteractiveAuthority): Promise<InteractiveOpenResult> {
-  if (request.argv.length === 0 || request.argv.some((word) => word.includes('\0'))) return { status: 'refused', reason: 'interactive Job argv must contain non-NUL words' };
-  if (!Number.isSafeInteger(request.startupWaitMs) || request.startupWaitMs < 0 || request.startupWaitMs > 60_000) return { status: 'refused', reason: 'startupWaitMs must be 0..60000' };
+  const started = await startInteractiveJob(on, request, authority);
+  return started.kind === 'answered' ? started.result : started.finish();
+}
+
+/** The open up to its tool's startup line; see `InteractiveOpenStart` for the rest. */
+export async function startInteractiveJob(on: InteractiveChannel, request: OpenInteractiveRequest, authority: InteractiveAuthority): Promise<InteractiveOpenStart> {
+  const answered = (result: InteractiveOpenResult): InteractiveOpenStart => ({ kind: 'answered', result });
+  if (request.argv.length === 0 || request.argv.some((word) => word.includes('\0'))) return answered({ status: 'refused', reason: 'interactive Job argv must contain non-NUL words' });
+  if (!Number.isSafeInteger(request.startupWaitMs) || request.startupWaitMs < 0 || request.startupWaitMs > 60_000) return answered({ status: 'refused', reason: 'startupWaitMs must be 0..60000' });
   const allocated = await allocateInteractiveJobSession(on, request.runId, request.name);
   const transcriptPath = jobLogPath({ workspace: request.workspace, session: allocated.session });
   const exitPath = jobExitPath({ workspace: request.workspace, session: allocated.session });
@@ -205,13 +230,43 @@ export async function openInteractiveJob(on: InteractiveChannel, request: OpenIn
   const openIntent = parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest), event: 'open-intent',
     jobSession: allocated.session, transcriptPath, exitPath, sessionDeadlineAt: request.sessionDeadlineAt }) as OpenIntentRecord;
   const admitted = await authority.admit({ action: 'open', record: openIntent });
-  if (admitted.kind === 'refused') return { status: 'refused', reason: admitted.reason };
-  if (admitted.kind === 'duplicate') return admitted.receipt as InteractiveOpenResult;
+  if (admitted.kind === 'refused') return answered({ status: 'refused', reason: admitted.reason });
+  if (admitted.kind === 'duplicate') return answered(admitted.receipt as InteractiveOpenResult);
   const authorized = await authority.authorizeBeforeDispatch({ reservationId: admitted.reservationId, operationDigest });
-  if (authorized.kind === 'refused') return { status: 'refused', reason: authorized.reason };
+  if (authorized.kind === 'refused') return answered({ status: 'refused', reason: authorized.reason });
   try { assertQualificationStable(admitted.qualification, authorized.qualification); }
-  catch (error) { return { status: 'refused', reason: (error as Error).message }; }
+  catch (error) { return answered({ status: 'refused', reason: (error as Error).message }); }
   let job: InteractiveJobIdentity | undefined;
+  /** Any fault after the launch: stop what was started through the process-group stop and record the open uncertain. */
+  const uncertain = async (error: unknown): Promise<InteractiveOpenResult> => {
+    let reason = error instanceof Error ? error.message : String(error);
+    let sessionStillAlive = false;
+    if (job !== undefined) {
+      try {
+        const wasRunning = await interactiveSessionThere(on, job.session, true);
+        if (wasRunning) {
+          // The same process-group stop as a close (#64 review I2): never a bare kill-session.
+          const stopped = await endJobProcessGroup(on, { session: job.session, pid: job.pid, dir: path.posix.dirname(exitPath) }, `open-cleanup-${request.requestId}`,
+            request.closeGrace ?? defaultInteractiveCloseGrace);
+          if (stopped.kind === 'survived') reason += `; cleanup: process-survived: process group ${String(stopped.pid)} outlived hangup and TERM and still holds this slot`;
+          else if (await interactiveSessionThere(on, job.session, true)) {
+            const leftover = await on.exec(['tmux', 'kill-session', '-t', exactJobSession(job.session)]);
+            if (leftover.code !== 0 && leftover.code !== 1) reason += `; cleanup kill exited ${String(leftover.code)}${leftover.stderr.trim() ? `: ${leftover.stderr.trim()}` : ''}`;
+          }
+        }
+        sessionStillAlive = await interactiveSessionThere(on, job.session, true);
+        await authority.recordJobStop(job, { wasRunning, observedGone: !sessionStillAlive });
+      } catch (cleanupError) {
+        sessionStillAlive = true;
+        reason += `; cleanup outcome is uncertain: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
+      }
+    }
+    await authority.record(parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest),
+      event: 'open-uncertain', jobSession: allocated.session, qualification: admitted.qualification, reason }));
+    return { status: 'uncertain', ...(job === undefined || !sessionStillAlive ? {} : { session: { job, toolSessionId: allocated.session,
+      transcriptPath, exitPath, qualification: admitted.qualification, sessionDeadlineAt: request.sessionDeadlineAt } }), reason };
+  };
+  let session: InteractiveSession;
   try {
     const printed = await mustRun(on, ['tmux', 'new-session', '-d', '-P', '-F', '#{pane_pid}', '-s', allocated.session,
       '-c', request.workspace, '/bin/sh'], `open interactive job ${allocated.name} in ${request.workspace}`);
@@ -231,47 +286,30 @@ export async function openInteractiveJob(on: InteractiveChannel, request: OpenIn
       assertQualificationStable(admitted.qualification, latest.qualification);
     };
     await paste(on, allocated.session, `open-${request.requestId}`, Buffer.from(startup, 'utf8'), true, authorizeStart);
-    const session: InteractiveSession = { job, toolSessionId: allocated.session, transcriptPath, exitPath,
+    session = { job, toolSessionId: allocated.session, transcriptPath, exitPath,
       qualification: admitted.qualification, sessionDeadlineAt: request.sessionDeadlineAt };
-    const readyMarker = `HIMA:${admitted.qualification.adapter.id}:${admitted.qualification.adapter.version}:READY`;
-    const readyDeadline = Date.now() + request.startupWaitMs;
-    let readiness: 'starting' | 'ready' = 'starting';
-    do {
-      const transcript = await readInteractiveTranscript(on, session);
-      if (hasMarker(transcript.text, readyMarker)) { readiness = 'ready'; break; }
-      if (Date.now() >= readyDeadline) break;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(1, readyDeadline - Date.now()))));
-    } while (readiness === 'starting');
-    await authority.record(parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest),
-      event: 'opened', jobSession: allocated.session, qualification: admitted.qualification, readiness }));
-    return { status: 'opened', session, readiness };
   } catch (error) {
-    let reason = error instanceof Error ? error.message : String(error);
-    let sessionStillAlive = false;
-    if (job !== undefined) {
-      try {
-        const wasRunning = await interactiveSessionThere(on, job.session, true);
-        if (wasRunning) {
-          // The same process-group stop as a close (#64 review I2): never a bare kill-session.
-          const stopped = await endJobProcessGroup(on, { session: job.session, pid: job.pid, dir: path.posix.dirname(exitPath) }, `open-cleanup-${request.requestId}`);
-          if (stopped.kind === 'survived') reason += `; cleanup: process-survived: process group ${String(stopped.pid)} outlived hangup and TERM and still holds this slot`;
-          else if (await interactiveSessionThere(on, job.session, true)) {
-            const leftover = await on.exec(['tmux', 'kill-session', '-t', exactJobSession(job.session)]);
-            if (leftover.code !== 0 && leftover.code !== 1) reason += `; cleanup kill exited ${String(leftover.code)}${leftover.stderr.trim() ? `: ${leftover.stderr.trim()}` : ''}`;
-          }
-        }
-        sessionStillAlive = await interactiveSessionThere(on, job.session, true);
-        await authority.recordJobStop(job, { wasRunning, observedGone: !sessionStillAlive });
-      } catch (cleanupError) {
-        sessionStillAlive = true;
-        reason += `; cleanup outcome is uncertain: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
-      }
-    }
-    await authority.record(parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest),
-      event: 'open-uncertain', jobSession: allocated.session, qualification: admitted.qualification, reason }));
-    return { status: 'uncertain', ...(job === undefined || !sessionStillAlive ? {} : { session: { job, toolSessionId: allocated.session,
-      transcriptPath, exitPath, qualification: admitted.qualification, sessionDeadlineAt: request.sessionDeadlineAt } }), reason };
+    return answered(await uncertain(error));
   }
+  const finish = async (): Promise<InteractiveOpenResult> => {
+    try {
+      const readyMarker = `HIMA:${admitted.qualification.adapter.id}:${admitted.qualification.adapter.version}:READY`;
+      const readyDeadline = Date.now() + request.startupWaitMs;
+      let readiness: 'starting' | 'ready' = 'starting';
+      do {
+        const transcript = await readInteractiveTranscript(on, session);
+        if (hasMarker(transcript.text, readyMarker)) { readiness = 'ready'; break; }
+        if (Date.now() >= readyDeadline) break;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(1, readyDeadline - Date.now()))));
+      } while (readiness === 'starting');
+      await authority.record(parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest),
+        event: 'opened', jobSession: allocated.session, qualification: admitted.qualification, readiness }));
+      return { status: 'opened', session, readiness };
+    } catch (error) {
+      return uncertain(error);
+    }
+  };
+  return { kind: 'started', finish };
 }
 
 export interface TranscriptRead {
@@ -475,7 +513,21 @@ export type InteractiveCloseResult =
 
 /** How long a close waits for the Job's process group after the hangup, and again after TERM. */
 export interface InteractiveCloseGrace { readonly hangupMs: number; readonly terminateMs: number }
-export const defaultInteractiveCloseGrace: InteractiveCloseGrace = { hangupMs: 15_000, terminateMs: 10_000 };
+
+/**
+ * The whole time a close gives a Job's process group to be gone, split into the hangup part and the
+ * TERM part: up to 15 s for the tool's own hangup path, the rest after TERM. A declared value
+ * (`tools[].interactive.closeGraceMs`) replaces the default; 60 s by default because a qualified
+ * wrapper that stops its container on hangup or TERM (`podman stop -t 20`, XTop ignoring TERM)
+ * takes about 21 s every time, and a 25 s grace turned ordinary closes into `process-survived`.
+ */
+export const defaultInteractiveCloseGraceMs = 60_000;
+export function interactiveCloseGrace(totalMs: number = defaultInteractiveCloseGraceMs): InteractiveCloseGrace {
+  const total = Number.isSafeInteger(totalMs) && totalMs >= 2_000 ? totalMs : defaultInteractiveCloseGraceMs;
+  const hangupMs = Math.min(15_000, Math.floor(total / 2));
+  return { hangupMs, terminateMs: total - hangupMs };
+}
+export const defaultInteractiveCloseGrace: InteractiveCloseGrace = interactiveCloseGrace();
 
 /**
  * The close watcher, run by tmux in the Job's own pane in place of the tool (`respawn-pane -k`).
@@ -554,16 +606,24 @@ export async function endJobProcessGroup(on: InteractiveChannel, target: JobProc
 
 /**
  * Whether a Job's recorded process group still has a live process, asked of the process group
- * itself rather than of its tmux session (#64 review I2). `tmux run-shell` runs the one-line probe
- * on the Site through the job plumbing's own verb; `start-server` lets it ask with no session left.
+ * itself rather than of its tmux session (#64 review I2), and asked through the Site channel as the
+ * one plain command `kill -s 0 -- -<pgid>` (#64 D-T02-4). It no longer goes through `tmux
+ * run-shell`: on the Site's tmux 3.4 run-shell prints nothing, so every answer read through it was
+ * "" and a slot whose survivor had long ended stayed refused for the rest of the Run.
+ *
+ * Exit 0 is a group with a live process. A refusal to signal it ("not permitted") is a live process
+ * too, one this login may not signal. Any other exit 1 — "no such process", or no text at all — is
+ * the group gone. Every other exit (a missing `kill`, an ssh that could not connect) is a question
+ * that was not answered, and throws: nothing is concluded from it.
  */
 export async function jobProcessGroupAlive(on: InteractiveChannel, pid: number): Promise<boolean> {
   if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error(`invalid process group ${String(pid)}`);
-  const said = await mustRun(on, ['tmux', 'start-server', ';', 'run-shell', `kill -s 0 -- -${String(pid)} 2>/dev/null && echo alive || echo gone`],
-    `ask whether process group ${String(pid)} still runs`);
-  const answer = said.trim();
-  if (answer !== 'alive' && answer !== 'gone') throw new Error(`process group probe for ${String(pid)} answered ${JSON.stringify(answer)}`);
-  return answer === 'alive';
+  const asked = await on.exec(['kill', '-s', '0', '--', `-${String(pid)}`]);
+  if (asked.code === 0) return true;
+  const said = asked.stderr.trim();
+  if (asked.code === 1 && /not permitted|permission denied/i.test(said)) return true;
+  if (asked.code === 1) return false;
+  throw new Error(`cannot tell whether process group ${String(pid)} still runs: kill exited ${String(asked.code)}${said ? `: ${said}` : ''}`);
 }
 
 /**

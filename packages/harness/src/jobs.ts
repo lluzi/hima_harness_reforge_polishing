@@ -15,7 +15,7 @@ import { existingRun, runFor } from './runs.js';
 import { currentRecordsIn } from './ledger.js';
 import type { InteractiveRecord as LedgerInteractiveRecord, JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, NodeRecord, RefusalRecord, RunRecord } from './ledger.js';
 import { RunReferenceError, SiteUnreadableError, LaunchNotDispatchedError } from './errors.js';
-import { endJobProcessGroup, openInteractiveJob, parseInteractiveRecord, type InteractiveCloseGrace, type InteractiveAuthority, type InteractiveOpenResult, type InteractiveRecord as ProtocolRecord } from './interactive-job.js';
+import { endJobProcessGroup, openInteractiveJob, parseInteractiveRecord, startInteractiveJob, type InteractiveCloseGrace, type InteractiveAuthority, type InteractiveOpenResult, type InteractiveRecord as ProtocolRecord } from './interactive-job.js';
 
 /** What a Job's name defaults to when the caller does not give one. */
 const defaultJobName = 'job';
@@ -545,11 +545,19 @@ export interface InteractiveLaunchRequest {
   readonly name?: string;
   readonly sessionDeadlineAt: string;
   readonly startupWaitMs: number;
+  readonly closeGrace?: InteractiveCloseGrace;
 }
 
 export interface InteractiveJobLaunchResult {
   readonly run: RunRecord;
   readonly result: InteractiveOpenResult;
+  /**
+   * Present when the launch was asked to stop at the tool's startup (`readiness: 'after-claim'`) and
+   * the tool was started: `result` is then only provisional, and this waits for the ready line and
+   * records `opened`. The caller calls it after releasing the Site claim and the Run's admission
+   * queue, never inside them (#64 D-T02-3).
+   */
+  readonly ready?: () => Promise<InteractiveOpenResult>;
 }
 
 /**
@@ -557,7 +565,8 @@ export interface InteractiveJobLaunchResult {
  * The authority callback appends the ordinary Job launch record returned by the lower layer;
  * this function neither invents a second process identity nor bypasses Fabric ownership.
  */
-export async function launchInteractiveJob(deps: JobDeps, req: InteractiveLaunchRequest, authority: InteractiveAuthority): Promise<InteractiveJobLaunchResult> {
+export async function launchInteractiveJob(deps: JobDeps, req: InteractiveLaunchRequest, authority: InteractiveAuthority,
+  options: { readonly readiness?: 'inline' | 'after-claim' } = {}): Promise<InteractiveJobLaunchResult> {
   const run = existingRun(deps.ledger, req.run);
   const site = loadSite(deps.sitesDir, req.site);
   if (site.name !== run.siteId) return { run, result: { status: 'refused', reason: `run ${run.id} belongs to site ${run.siteId}, not ${site.name}` } };
@@ -567,12 +576,17 @@ export async function launchInteractiveJob(deps: JobDeps, req: InteractiveLaunch
     await deps.ledger.appendRefusal(run.id, { path: decision.refused, reason: decision.reason });
     return { run, result: { status: 'refused', reason: decision.reason } };
   }
-  return { run, result: await openInteractiveJob(channel, {
+  const request = {
     siteName: site.name, runId: run.id, executionId: req.executionId, nodeId: req.nodeId,
     requestId: req.requestId, callerDigest: req.callerDigest, actor: req.actor, ownerEpoch: req.ownerEpoch, controlRevision: req.controlRevision,
     workspace: decision.workspace, argv: req.argv,
     name: req.name ?? defaultJobName, sessionDeadlineAt: req.sessionDeadlineAt, startupWaitMs: req.startupWaitMs,
-  }, authority) };
+    ...(req.closeGrace === undefined ? {} : { closeGrace: req.closeGrace }),
+  };
+  if (options.readiness !== 'after-claim') return { run, result: await openInteractiveJob(channel, request, authority) };
+  const started = await startInteractiveJob(channel, request, authority);
+  return started.kind === 'answered' ? { run, result: started.result }
+    : { run, result: { status: 'uncertain', reason: 'the interactive Job is started and its ready line is still awaited' }, ready: started.finish };
 }
 
 export type ReconciledLaunch =

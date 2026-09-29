@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { createHimaHome } from './support/dsh-home.ts';
 import { installReferenceSite, writeReferenceSiteVariant } from './support/site.ts';
-import { controlPathFor, jobPlumbing, loadSite, readOnlyProbes, workspacePlumbing } from '@hima/harness';
+import { controlPathFor, jobPlumbing, loadSite, processProbes, readOnlyProbes, workspacePlumbing } from '@hima/harness';
 
 const destination = 'luzi@192.168.50.41';
 /** The test's own judgement of what a read-only probe is, kept apart from the channel's list on
@@ -52,7 +52,7 @@ test('the committed reference site and permit record what the site owner agreed 
     // launched with the arguments of its choosing under a verb the harness admits for its own writes.
     for (const wrapper of site.permitRules.allowedWrappers) {
       assert.ok(
-        !readOnlyProbes.has(wrapper) && !jobPlumbing.has(wrapper) && !workspacePlumbing.has(wrapper),
+        !readOnlyProbes.has(wrapper) && !jobPlumbing.has(wrapper) && !workspacePlumbing.has(wrapper) && !processProbes.has(wrapper),
         `the permit's wrapper "${wrapper}" is also one of the channel's own verbs: the permit's list and the channel's must stay distinct`,
       );
     }

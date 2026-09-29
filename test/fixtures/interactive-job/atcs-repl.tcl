@@ -59,6 +59,12 @@ proc atcs_close {} {
     set ::done 1
     return CLOSED
 }
+# A test may slow this session's startup, as a real XTop's is: `startup-delay-ms` in the slot holds
+# how long to wait before the ready line.
+if {[file exists startup-delay-ms]} {
+    set fh [open startup-delay-ms]; set delay [string trim [read $fh]]; close $fh
+    after $delay
+}
 puts "HIMA:hima-tcl-line-v1:1:READY"
 flush stdout
 set script ""

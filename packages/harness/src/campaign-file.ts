@@ -159,6 +159,10 @@ export interface PreparationOverrides {
   readonly strategy?: Readonly<Record<string, number | string>>;
   readonly inputs?: Readonly<Record<string, string>>;
   readonly budget?: CampaignFile['budget'];
+  /** Which `budget` keys the person asked for in the conversation rather than wrote in the file
+   *  (#64 D-T02-1). Presentation only: the proposal says where each value came from; the facts
+   *  identity reads `budget` alone, whichever face put a value there. */
+  readonly requestedBudget?: readonly (keyof CampaignFile['budget'])[];
 }
 
 /**

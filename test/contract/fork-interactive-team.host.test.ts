@@ -9,12 +9,13 @@
 // Replayed children stand in for models and the synthetic Tcl REPL stands in for XTop: this proves
 // admission, identity, concurrency and join mechanics, never model quality or EDA results.
 import { test, type TestContext } from 'node:test';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { appendFile, cp, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
-import {
+import Hima, {
   BUILTIN_TCL_ADAPTER_DIGEST, delegationRuntimePolicy, interactiveCommandsDigest, loadPack, packDigestExcludes, runDelegations,
   type ExecutionActionRequest, type ExecutionActionResult, type JobRecord, type LedgerRecord, type RunView,
 } from '@hima/harness';
@@ -197,6 +198,8 @@ interface Driven {
   readonly host: InProcessHost; readonly runId: string; readonly actor: string; readonly workspace: string;
   /** A second Run of the same Pack on the same Site, owned by a second conversation. */
   readonly another: () => Promise<Driven>;
+  /** Stop this Host and boot a fresh one on the same home, as an App relaunch does; answers the new Host. */
+  readonly restart: () => Promise<InProcessHost>;
 }
 
 /** A booted Host with one Run of the fixture Pack started on a local Site declaring `parallelJobs` slots. */
@@ -219,15 +222,16 @@ async function forkedCampaign(t: TestContext, parallelJobs: number, check: (driv
   const scenario = await writeMomentScenario(h, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
   await writeReplayOverlay(h.home, { file: scenario.file, overrideFile: scenario.override, childFiles: scenario.children });
   await appendFile(homePatchFile(h.home), `\n- id: hima\n  config:\n    sitesDir: ${JSON.stringify(site.sitesDir)}\n    packsDir: ${JSON.stringify(packsDir)}\n    knowledgeDir: ${JSON.stringify(path.join(h.home, 'hima/knowledge/current'))}\n    interactiveBindingsFile: ${JSON.stringify(bindingsFile)}\n`);
-  const host = await bootInProcess(h);
+  let host = await bootInProcess(h);
   const runIds: string[] = [];
+  const restart = async (): Promise<InProcessHost> => { await host.dispose(); host = await bootInProcess(h); return host; };
   const start = async (): Promise<Driven> => {
     const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
     const started = await host.ctx.hima.startRun({ pack: packId, site: site.name, goal: { target_period_ns: 2 }, ownerSessionId: actor, timeBoxMs: 180_000 });
     assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') throw new Error('unreachable');
     runIds.push(started.run.id);
     assert.ok(started.workspace);
-    return { host, runId: started.run.id, actor, workspace: started.workspace, another: start };
+    return { host, runId: started.run.id, actor, workspace: started.workspace, another: start, restart };
   };
   try {
     await check(await start());
@@ -289,40 +293,47 @@ function ownerCalls({ host, runId, actor, workspace }: Driven) {
   return { control, context, records, jobs, interactiveJobs, act, phase, begin, workAndComplete, node, create, resultAndAdopt, slot };
 }
 
+/** Begin a branch's Workshop and write its one-action plan script; the owner then works it. */
+async function writePlan(owner: ReturnType<typeof ownerCalls>, branch: Branch): Promise<string> {
+  const executionId = await owner.begin(branch.workshop);
+  assert.equal((await owner.act('recommend', { executionId })).kind, 'accepted');
+  const plan = JSON.stringify({ actions: [{ instance: 'U1', toMaster: branch.toMaster }] });
+  const script = `mkdir -p "$2/research/branch-${branch.id}"\nprintf '%s\\n' '${plan}' > "$2/research/branch-${branch.id}/plan.json"\n`;
+  const written = await owner.act('write', { executionId, path: 'entry.sh', content: script });
+  assert.equal(written.kind, 'accepted', JSON.stringify(written.reason ?? written));
+  return executionId;
+}
+
 /**
  * Drive the fork to the moment both Operators are created: `start` opens the fork, each branch's
  * Workshop writes its own plan and its Reader reads it, both interactive executions are begun, and
  * each branch's Team (Researcher -> Reviewer -> Operator) is materialized for its own execution.
  * Everything a branch holds is asserted to be that branch's own on the way.
  */
-async function teamsReady(driven: Driven, owner: ReturnType<typeof ownerCalls>) {
+async function teamsReady(driven: Driven, owner: ReturnType<typeof ownerCalls>, ready: readonly Branch[] = branches) {
   const { control, context, records, act, begin, workAndComplete, node, create, resultAndAdopt } = owner;
   await node('start');
   assert.deepEqual([...context().available].sort(), ['plan-a', 'plan-b'], 'the fork opens at start and launches nothing');
   assert.ok(context().run.fork, 'the Run stands inside the fork');
-  for (const branch of branches) {
-    const executionId = await begin(branch.workshop);
-    assert.equal((await act('recommend', { executionId })).kind, 'accepted');
-    const plan = JSON.stringify({ actions: [{ instance: 'U1', toMaster: branch.toMaster }] });
-    const script = `mkdir -p "$2/research/branch-${branch.id}"\nprintf '%s\\n' '${plan}' > "$2/research/branch-${branch.id}/plan.json"\n`;
-    const written = await act('write', { executionId, path: 'entry.sh', content: script });
-    assert.equal(written.kind, 'accepted', JSON.stringify(written.reason ?? written));
-    await workAndComplete(branch.workshop, executionId);
+  for (const branch of ready) {
+    await workAndComplete(branch.workshop, await writePlan(owner, branch));
     await node(branch.read);
   }
-  assert.deepEqual([...context().available].sort(), ['operate-a', 'operate-b']);
+  assert.deepEqual([...context().available].filter((id) => id.startsWith('operate-')).sort(), ready.map((branch) => branch.operate));
 
   const operate = new Map<string, string>();
-  for (const branch of branches) operate.set(branch.id, await begin(branch.operate));
-  for (const branch of branches) {
+  for (const branch of ready) operate.set(branch.id, await begin(branch.operate));
+  for (const branch of ready) {
     assert.equal(control().executions[operate.get(branch.id)!]!.branchId, branch.workshop, `${branch.operate} is admitted in its own branch`);
   }
-  const crossed = await create(branches[0], 'researcher', operate.get('b')!);
-  assert.equal(crossed.status, 'refused', 'team-a materialized on operate-b\'s execution is refused');
-  assert.match(crossed.reason, /exact freshly begun target execution/, 'a Team member binds only to its own node\'s execution');
+  if (operate.has('b')) {
+    const crossed = await create(branches[0], 'researcher', operate.get('b')!);
+    assert.equal(crossed.status, 'refused', 'team-a materialized on operate-b\'s execution is refused');
+    assert.match(crossed.reason, /exact freshly begun target execution/, 'a Team member binds only to its own node\'s execution');
+  }
 
   const operatorOf = new Map<string, string>(); const planHashOf = new Map<string, string>();
-  for (const branch of branches) {
+  for (const branch of ready) {
     const executionId = operate.get(branch.id)!;
     const plan = records().findLast((record) => record.type === 'observation' && record.branchId === branch.workshop && record.reader.id === 'plan-file');
     assert.ok(plan?.type === 'observation', `branch ${branch.id} holds its own plan reading`);
@@ -339,7 +350,7 @@ async function teamsReady(driven: Driven, owner: ReturnType<typeof ownerCalls>) 
     assert.equal(operator.status, 'created', JSON.stringify(operator));
     operatorOf.set(branch.id, operator.receipt.childSessionId as string);
   }
-  for (const branch of branches) {
+  for (const branch of ready) {
     const own = runDelegations((driven.host.ctx.hima as any).deps(), driven.runId).filter((row) => row.effective.recipe?.teamId === branch.team);
     assert.deepEqual(own.map((row) => row.effective.recipe?.memberId).sort(), ['operator', 'researcher', 'reviewer']);
     for (const row of own) {
@@ -639,5 +650,138 @@ test('a pause on one branch\'s node holds only that branch: the other branch\'s 
     await node('judge');
     assert.equal(context().run.fork, undefined, 'the join closed the fork');
     void operate;
+  });
+});
+
+/** Settle `work` or fail after `ms`: a Host that stopped answering is a failure here, never a hang. */
+const within = <T>(ms: number, what: string, work: Promise<T>): Promise<T> => Promise.race([work,
+  new Promise<never>((_resolve, reject) => { const timer = setTimeout(() => reject(new Error(`${what} did not answer within ${ms} ms`)), ms); timer.unref(); })]);
+
+// #64 D-T02-3: at 19:20:57Z the Host stopped writing the Ledger and every later call hung until the
+// App was killed. What was in flight: an Operator's interactive open waiting for its tool's ready
+// line inside the Site's slot claim, and the owner's batch `work` on another node of the same Run.
+// The batch path holds the Run's admission queue and then waits for the Site claim; the open held
+// the Site claim and then waited for the Run's queue to record `opened`. Both waited on each other.
+test('an Operator open waiting for its tool\'s ready line and the owner\'s batch work on the same Run and Site both answer (#64 D-T02-3)', { timeout: 180_000 }, async (t) => {
+  await forkedCampaign(t, 2, async (driven) => {
+    const owner = ownerCalls(driven);
+    const [a, b] = branches;
+    const { interactive } = await teamsReady(driven, owner, [a]);
+    // Branch b's Workshop is written but not worked: its `work` claims a Site slot for a batch Job.
+    const planB = await writePlan(owner, b);
+    // Operator a's tool takes three seconds to print its ready line, as a real session's startup does.
+    await writeFile(path.join(owner.slot(a), 'startup-delay-ms'), '3000\n');
+    const opening = interactive(a, { action: 'open', requestId: 'open-slow-a' });
+    await waitUntil('operator a\'s Job is launched and waiting for its ready line', () => owner.interactiveJobs('launched').length === 1, 10_000, 10);
+    const working = owner.act('work', { executionId: planB });
+    const [opened, worked] = await within(30_000, 'the open and the batch work', Promise.all([opening, working]));
+    assert.equal(opened.status, 'opened', JSON.stringify(opened));
+    assert.equal(opened.readiness, 'ready', JSON.stringify(opened));
+    assert.equal(worked.kind, 'accepted', JSON.stringify(worked.reason ?? worked));
+    // And the Host still answers afterwards: the Run's queue and the Site's claim were both released.
+    await within(10_000, 'a read of the Run after both', Promise.resolve(owner.context()));
+    await waitUntil('plan-b settles its own work', () => owner.phase(planB) === 'ready', 30_000, 25);
+    const closed = await within(30_000, 'the Operator close', interactive(a, { action: 'close', requestId: 'close-slow-a', toolSessionId: opened.session.toolSessionId }));
+    assert.equal(closed.status, 'closed', JSON.stringify(closed));
+  });
+});
+
+// #64 D-T02-3, the signs before the stall: while the App never restarted, records saying "Host
+// restarted with an open intent lacking a confirmed native receipt" landed on w05's and w06's opens
+// seconds after their intents, and "... close intent ..." on w01's and w02's closes. The restart
+// reconciliation ran again after every interactive call, and it read another Operator's operation
+// that was simply still in flight as one a crash had cut off.
+test('an Operator\'s open still in flight is not marked cut off by a Host restart when another Operator\'s input completes (#64 D-T02-3)', { timeout: 180_000 }, async (t) => {
+  await forkedCampaign(t, 2, async (driven) => {
+    const owner = ownerCalls(driven);
+    const [a, b] = branches;
+    const { interactive, send } = await teamsReady(driven, owner);
+    const openedB = await interactive(b, { action: 'open', requestId: 'open-b' });
+    assert.equal(openedB.status, 'opened', JSON.stringify(openedB));
+    await writeFile(path.join(owner.slot(a), 'startup-delay-ms'), '3000\n');
+    const opening = interactive(a, { action: 'open', requestId: 'open-slow-a' });
+    await waitUntil('operator a\'s Job is launched and waiting for its ready line', () => owner.interactiveJobs('launched').length === 2, 10_000, 10);
+    // Operator b works while a's open is in flight; each of its calls ends with the Host's interactive bookkeeping.
+    const read = await within(30_000, 'operator b\'s read', send(b, openedB.session.toolSessionId, 'atcs_query_paths', {}, 'query'));
+    assert.equal(read.status, 'completed', JSON.stringify(read));
+    const openedA = await within(30_000, 'operator a\'s open', opening);
+    assert.equal(openedA.status, 'opened', JSON.stringify(openedA));
+    const restarted = owner.records().filter((record) => record.type === 'interactive' && /Host restarted/.test(JSON.stringify(record.payload)));
+    assert.deepEqual(restarted.map((record) => record.type === 'interactive' ? `${record.event} ${record.toolSessionId}` : ''), [],
+      'no record says the Host restarted: it never did');
+    for (const [branch, opened] of [[a, openedA], [b, openedB]] as const) {
+      const closed = await within(30_000, `close ${branch.id}`, interactive(branch, { action: 'close', requestId: `close-${branch.id}`, toolSessionId: opened.session.toolSessionId }));
+      assert.equal(closed.status, 'closed', JSON.stringify(closed));
+    }
+  });
+});
+
+// #64 D-T02-5: after the App was relaunched, w04–w06's XTop sessions stayed open for an hour with
+// their Operator children gone, holding three XTop seats, while the owner got an "interactive
+// deadline was reached" notice again and again and no close was ever recorded. A restarted Host
+// re-attaches each session as it stands; once nobody may drive a session any more — here its
+// Operator's delegation reaches its recorded deadline — the Host closes it once through the
+// process-group close, its execution settles from the Job's own records, the owner is told once,
+// and a second restart finds the first close's receipt and does nothing again.
+test('after a Host restart, Operator sessions are re-attached and each is closed once when nobody may drive it, its execution settles, and the owner is told once (#64 D-T02-5)', { timeout: 300_000 }, async (t) => {
+  // Every owner notice any Host of this test sends, at the Host's own notify seam.
+  const notices: string[] = [];
+  const prototype = (Hima as unknown as { prototype: Record<string, any> }).prototype;
+  const plainDeps = prototype.deps as () => Record<string, any>;
+  prototype.deps = function (this: unknown) {
+    const deps = plainDeps.call(this);
+    return { ...deps, notify: (...args: unknown[]) => { notices.push(args.map(String).join(' | ')); return deps.notify?.(...args); } };
+  };
+  t.after(() => { prototype.deps = plainDeps; });
+  await forkedCampaign(t, 2, async (driven) => {
+    const owner = ownerCalls(driven);
+    const { interactive, operate } = await teamsReady(driven, owner);
+    const opened = await Promise.all(branches.map((branch) => interactive(branch, { action: 'open', requestId: `open-${branch.id}` })));
+    for (const result of opened) assert.equal(result.status, 'opened', JSON.stringify(result));
+    const sessions = opened.map((result) => result.session.toolSessionId as string);
+    const tmuxThere = (session: string) => spawnSync('tmux', ['has-session', '-t', `=${session}`]).status === 0;
+    for (const session of sessions) assert.ok(tmuxThere(session), `${session} is open before the restart`);
+    const before = notices.length;
+
+    const host = await driven.restart();
+    await within(120_000, 'the restarted Host\'s reconciliation', host.ctx.hima.reconciled);
+    const records = () => host.ctx.hima.ledger.records({ runId: driven.runId });
+    const closesOf = (session: string) => records().filter((record) => record.type === 'interactive' && record.toolSessionId === session && record.event === 'closed');
+    const killsOf = (session: string) => records().filter((record) => record.type === 'job' && record.job.session === session && record.event === 'killed');
+    // Re-attached: nothing stopped a session its Operator may still drive.
+    for (const session of sessions) {
+      assert.equal(closesOf(session).length, 0, `${session} is re-attached, not closed, while its Operator holds its authority`);
+      assert.ok(tmuxThere(session), `${session} is still on the Site after the restart`);
+    }
+    // Each Operator's share (30 s) ends; nobody may drive its session any more, and the Host closes it once.
+    await waitUntil('both sessions are closed by the Host', () => sessions.every((session) => closesOf(session).length > 0), 90_000, 100);
+    for (const session of sessions) {
+      assert.equal(closesOf(session).length, 1, `${session} is closed once`);
+      assert.equal(killsOf(session).length, 1, `${session}'s Job is recorded stopped once`);
+      await waitUntil(`${session} is gone from the Site`, () => !tmuxThere(session), 10_000, 50);
+    }
+    const control = () => host.ctx.hima.ledger.run(driven.runId)!.control!;
+    for (const branch of branches) {
+      const executionId = operate.get(branch.id)!;
+      await waitUntil(`${branch.operate}'s execution settles`, () => control().executions[executionId]?.phase !== 'working'
+        && control().executions[executionId]?.phase !== 'begun', 30_000, 50);
+    }
+    const told = notices.slice(before);
+    for (const session of sessions) {
+      assert.equal(told.filter((notice) => notice.includes(session)).length, 1, `the owner is told once about ${session}: ${JSON.stringify(told)}`);
+    }
+    assert.equal(told.filter((notice) => /deadline of session/.test(notice)).length, 0, `no interactive deadline notice: ${JSON.stringify(told)}`);
+
+    // A second restart finds the closes recorded: nothing is closed or announced again.
+    const afterFirst = notices.length;
+    const again = await driven.restart();
+    await within(120_000, 'the second restart\'s reconciliation', again.ctx.hima.reconciled);
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    for (const session of sessions) {
+      assert.equal(again.ctx.hima.ledger.records({ runId: driven.runId }).filter((record) => record.type === 'interactive'
+        && record.toolSessionId === session && record.event === 'closed').length, 1, `${session} is not closed again`);
+    }
+    assert.deepEqual(notices.slice(afterFirst).filter((notice) => sessions.some((session) => notice.includes(session))), [],
+      'nothing is announced again');
   });
 });

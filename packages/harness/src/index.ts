@@ -78,7 +78,7 @@ import {
 
 // The Site-facing pieces are part of the bundle's surface: an operator inspects a Site's warm channel
 // and the commands it has run, and the contract suite reads both.
-export { channelFor, controlPathFor, remoteCommands, clearRemoteCommands, remoteCommandWindow, remoteCommandWindowFilled, readOnlyProbes, siteDiscoveryProbes, discoverSiteFacts, jobPlumbing, workspacePlumbing, quote, LocalChannel, SshChannel } from './channel.js';
+export { channelFor, controlPathFor, remoteCommands, clearRemoteCommands, remoteCommandWindow, remoteCommandWindowFilled, readOnlyProbes, siteDiscoveryProbes, discoverSiteFacts, jobPlumbing, workspacePlumbing, processProbes, quote, LocalChannel, SshChannel } from './channel.js';
 export type { Channel, ExecResult, ExecOptions, RemoteCommand, SiteDiscoveryFact } from './channel.js';
 export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discoveryIsStale, siteSaveIdentity, SiteDiscoveryConflictError } from './sites.js';
 export { WORK_MEMORY_SCHEMA, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, recordExperienceAdoption } from './experience.js';
@@ -712,6 +712,7 @@ export default class Hima extends Service {
     try {
       const sessions=await reconcileInteractiveState(this.interactiveDeps());
       for(const session of sessions)await reconcileInteractiveExecution(this.deps(),session.runId,session.executionId);
+      await this.closeUndrivableInteractiveSessions();
       await this.interactiveTimers!.reconcile();
       for(const run of this.ledger.runs())if(run.control&&run.status==='running')await this.settleStrandedTeams(run.id);
       found = await reconcileRuns(this.deps());
@@ -723,6 +724,45 @@ export default class Hima extends Service {
     }
     for (const outcome of found) this.ctx.logger.info(`hima: reconciled ${outcome.runId}: ${outcome.detail}`);
     return found;
+  }
+
+  /**
+   * An interactive session whose Operator no longer holds its authority — its delegation expired,
+   * was cancelled, completed or never became live — has nobody left who may type into it, and holds
+   * its Site slot and licence seats until something stops it (#64 D-T02-5: w04–w06 of attempt 2 stayed
+   * open for an hour after the App relaunch). Such a session is closed once, through the same
+   * process-group close any close takes, under a request id derived from the session, so a later
+   * pass or a later restart finds that close's receipt and does nothing again; the Job's own records
+   * settle its execution and the owner is told once. A session whose Operator still holds its
+   * authority is re-attached as it stands: its deadlines are projected again and the Host's own
+   * deadline stop ends it if nobody drives it. A session the owner opened itself belongs to the
+   * recovered owner. A `process-survived` session is a person's blocker and is not touched again.
+   * Asked when a Host starts and each time an Operator's delegation deadline is recorded.
+   */
+  private async closeUndrivableInteractiveSessions(runId?:string):Promise<void> {
+    const runtime=this.interactiveDeps();
+    const closes:Promise<void>[]=[];
+    for(const run of this.ledger.runs()) {
+      if(runId!==undefined&&run.id!==runId)continue;
+      const control=run.control;if(!control||(run.status!=='running'&&run.status!=='waiting'))continue;
+      for(const session of listInteractiveSessions(this.ledger,run.id)) {
+        if(session.status==='closed'||session.status==='intent'||session.job===undefined||session.survivedPid!==undefined)continue;
+        if(session.operatorSessionId===control.owner)continue;
+        if(operatorInteractiveAuthority(this.deps(),session.operatorSessionId,{runId:run.id,nodeId:session.nodeId,executionId:session.executionId})!==undefined)continue;
+        const requestId=`operator-ended-close-${session.toolSessionId}`.slice(0,160);
+        if(this.ledger.records({runId:run.id,type:'interactive'}).some(record=>record.type==='interactive'&&record.requestId===requestId))continue;
+        closes.push((async()=>{
+          const result=await operateInteractive(runtime,{runId:run.id,executionId:session.executionId,nodeId:session.nodeId,toolSessionId:session.toolSessionId,
+            actor:control.owner,ownerEpoch:control.epoch,controlRevision:control.revision,requestId,hostStop:'recovery',action:'close'});
+          this.ctx.logger.info(`hima: interactive session ${session.toolSessionId} of ${run.id} without a live Operator: ${JSON.stringify(result)}`);
+          if(result.status==='duplicate')return;
+          this.deps().notify?.(control.owner,run.id,session.executionId,result.status==='refused'
+            ?`Interactive session ${session.toolSessionId} of node ${session.nodeId} has no Operator that may still drive it, and the Host could not close it: ${result.reason}`
+            :`Interactive session ${session.toolSessionId} of node ${session.nodeId} has no Operator that may still drive it; the Host closed it (${result.status}). Its execution settles from the Job's own records; inspect them before a retry.`);
+        })().catch(error=>this.ctx.logger.warn(`hima: closing interactive session ${session.toolSessionId} of ${run.id} failed: ${String(error)}`)));
+      }
+    }
+    await Promise.all(closes);
   }
 
   /** Re-open the recorded native owner only after factual reconciliation; never replay a node. */
@@ -864,10 +904,16 @@ export default class Hima extends Service {
       },
       onDeadline:async deadline=>{
         const run=this.ledger.run(deadline.runId);if(!run?.control)return;
-        const common={runId:run.id,executionId:deadline.executionId,nodeId:deadline.nodeId,toolSessionId:deadline.toolSessionId,actor:run.control.owner,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,requestId:`deadline-${identityOf(deadline).slice(0,40)}`};
+        const requestId=`deadline-${identityOf(deadline).slice(0,40)}`;
+        // One stop and one notice per deadline (#64 D-T02-5): a deadline whose stop is already in the
+        // Ledger — this Host's, or one before a restart — is not stopped or announced again.
+        if(this.ledger.records({runId:run.id,type:'interactive'}).some(record=>record.type==='interactive'&&record.requestId===requestId))return;
+        const common={runId:run.id,executionId:deadline.executionId,nodeId:deadline.nodeId,toolSessionId:deadline.toolSessionId,actor:run.control.owner,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,requestId,hostStop:'deadline' as const};
         const result=await operateInteractive(runtime,deadline.kind==='command'?{...common,action:'signal',signal:'interrupt'}:{...common,action:'close'});
         this.ctx.logger.info(`Interactive ${deadline.kind} deadline: ${JSON.stringify(result)}`);
-        this.deps().notify?.(run.control.owner,run.id,deadline.executionId,'An interactive deadline was reached. Inspect the exact stop receipt and original Job; no checkpoint or successful design result is implied.');
+        this.deps().notify?.(run.control.owner,run.id,deadline.executionId,result.status==='refused'
+          ?`An interactive ${deadline.kind} deadline of session ${deadline.toolSessionId} was reached, and the Host could not stop it: ${result.reason}`
+          :`An interactive ${deadline.kind} deadline of session ${deadline.toolSessionId} was reached and the Host ${deadline.kind==='command'?'interrupted the command':'closed the session'} (${result.status}). Inspect the exact stop receipt and original Job; no checkpoint or successful design result is implied.`);
       },
     };
     this.interactiveRuntime=runtime;this.interactiveTimers=createInteractiveTimerController(runtime);return runtime;
@@ -1203,7 +1249,7 @@ export default class Hima extends Service {
       const timer=setTimeout(()=>{
         this.delegationTimers.delete(key);
         this.ctx.get('agents')?.get(key as never)?.cancel({kind:'hook',reason:'The recorded delegation deadline expired.'});
-        void controlling(this.deps(),run.id,async()=>{const latest=runDelegations(this.deps(),run.id).find(d=>d.childSessionId===key);if(!latest||!['intent','accepted'].includes(latest.state))return;await this.ledger.appendDelegation(run.id,{delegationId:row.delegationId,parentSessionId:row.parentSessionId,childSessionId:key,requestId:`deadline:${row.delegationId}`,requestDigest:identityOf({deadlineAt:row.reservation.deadlineAt}),event:'deadline',payload:{reason:'Original child time allocation expired; new work is fenced.',stopObserved:this.ctx.get('agents')?.get(key as never)?.status==='idle'}});}).then(()=>this.settleStrandedTeams(run.id)).catch(error=>this.ctx.logger.warn(String(error)));
+        void controlling(this.deps(),run.id,async()=>{const latest=runDelegations(this.deps(),run.id).find(d=>d.childSessionId===key);if(!latest||!['intent','accepted'].includes(latest.state))return;await this.ledger.appendDelegation(run.id,{delegationId:row.delegationId,parentSessionId:row.parentSessionId,childSessionId:key,requestId:`deadline:${row.delegationId}`,requestDigest:identityOf({deadlineAt:row.reservation.deadlineAt}),event:'deadline',payload:{reason:'Original child time allocation expired; new work is fenced.',stopObserved:this.ctx.get('agents')?.get(key as never)?.status==='idle'}});}).then(()=>this.settleStrandedTeams(run.id)).then(()=>this.closeUndrivableInteractiveSessions(run.id)).catch(error=>this.ctx.logger.warn(String(error)));
       },Math.max(1,Date.parse(row.reservation.deadlineAt)-Date.now()));timer.unref();this.delegationTimers.set(key,timer);
     }
   }
@@ -1634,13 +1680,17 @@ export default class Hima extends Service {
       ...(declaration.precision === undefined ? {} : { precision: declaration.precision }),
     }]));
     const generationLimit = convergeOf(pack)?.generationLimit;
+    // A Budget value the person asked for in the conversation (#64 D-T02-1) says so; one the Campaign
+    // file wrote says 'file'. Both are the same override and join the proposal's facts the same way.
+    const overridden = (key: 'timeBoxMinutes' | 'retries' | 'generations'): 'request' | 'file' =>
+      overrides?.requestedBudget?.includes(key) ? 'request' : 'file';
     const budget: PreparationView['budget'] = {
-      timeBoxMinutes: overrides?.budget?.timeBoxMinutes !== undefined ? { value: overrides.budget.timeBoxMinutes, source: 'file' }
+      timeBoxMinutes: overrides?.budget?.timeBoxMinutes !== undefined ? { value: overrides.budget.timeBoxMinutes, source: overridden('timeBoxMinutes') }
         : pack.contract.budget.timeBoxMs !== undefined ? { value: pack.contract.budget.timeBoxMs / 60_000, source: 'pack' }
         : { value: defaultTimeBoxMs / 60_000, source: 'harness' },
-      retries: overrides?.budget?.retries !== undefined ? { value: overrides.budget.retries, source: 'file' }
+      retries: overrides?.budget?.retries !== undefined ? { value: overrides.budget.retries, source: overridden('retries') }
         : { value: defaultRetryAllowance, source: 'harness' },
-      generations: overrides?.budget?.generations !== undefined ? { value: overrides.budget.generations, source: 'file' }
+      generations: overrides?.budget?.generations !== undefined ? { value: overrides.budget.generations, source: overridden('generations') }
         : generationLimit !== undefined ? { value: generationLimit, source: 'pack' }
         : { value: defaultGenerationLimit, source: 'harness' },
       ...(site === undefined ? {} : { jobCap: site.capacity.parallelJobs }),

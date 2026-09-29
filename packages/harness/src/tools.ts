@@ -20,7 +20,7 @@ import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { authenticCampaignProposalId, identityOf, revisionImpactForRun, executionAction, executionContext, sameCampaignProposalFacts, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult, type StartRunRequest } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
-import { checkInstalledPack, loadPack, runPackWords } from './packs.js';
+import { checkInstalledPack, goalDeclarationOf, loadPack, runPackWords } from './packs.js';
 import { campaignKnowledgeScope, clearCurrentKnowledge, importCurrentKnowledge, listCurrentKnowledge, readCurrentKnowledge, readPackKnowledge, recordDocumentKnowledgeRead, searchCurrentKnowledge, searchPackKnowledge } from './workshop.js';
 import { releasePack } from './release.js';
 import { runView, type RunWords, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
@@ -289,6 +289,40 @@ function strategyArgument(raw: unknown, what = 'strategy'): Record<string, Strat
     strategy[name] = value as StrategyValue;
   }
   return strategy;
+}
+
+/** The Budget a person may ask for in the conversation: the same three keys a Campaign file may set. */
+type RequestedBudget = { timeBoxMinutes?: number; retries?: number; generations?: number };
+const requestedBudgetKeys = ['timeBoxMinutes', 'retries', 'generations'] as const;
+
+function requestedBudget(raw: unknown): RequestedBudget | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error(`budget must be an object of timeBoxMinutes, retries and generations; got ${JSON.stringify(raw)}`);
+  const budget: RequestedBudget = {};
+  for (const [name, value] of Object.entries(raw)) {
+    if (!(requestedBudgetKeys as readonly string[]).includes(name)) throw new Error(`budget.${name} is not a Budget value a Campaign may be prepared with; use ${requestedBudgetKeys.join(', ')}`);
+    if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`budget.${name} must be a finite number; got ${JSON.stringify(value)}`);
+    budget[name as keyof RequestedBudget] = value;
+  }
+  return Object.keys(budget).length === 0 ? undefined : budget;
+}
+
+/**
+ * A Budget the person asked for in this conversation (#64 D-T02-1) joins the proposal exactly as a
+ * Campaign file's Budget override does: the proposal shows it, its facts identity includes it, the
+ * confirmation must name the same one, and the Run is created with it. Before this, the Guide could
+ * only show such a time box in prose while the confirmed Run took the Pack's own.
+ *
+ * With no Campaign file the Goal stays the Pack's declared defaults, exactly the Goal a plain
+ * preparation proposes, so asking for a Budget changes nothing else about the proposal.
+ */
+function withRequestedBudget(deps: FabricDeps, packId: string, overrides: PreparationOverrides | undefined, budget: RequestedBudget | undefined): PreparationOverrides | undefined {
+  if (budget === undefined) return overrides;
+  const goal = overrides !== undefined ? overrides.goal
+    : Object.fromEntries(Object.entries(goalDeclarationOf(loadPack(deps.packsDir, packId))).map(([name, declaration]) => [name, declaration.default]));
+  const asked = Object.keys(budget) as (keyof RequestedBudget)[];
+  return { ...(overrides ?? {}), ...(goal === undefined ? {} : { goal }), budget: { ...(overrides?.budget ?? {}), ...budget },
+    requestedBudget: [...new Set([...(overrides?.requestedBudget ?? []), ...asked])] };
 }
 
 /** Preparation values are shallow contract scalars; canonicalise numeric strings and key order. */
@@ -659,11 +693,14 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         pack: { type: 'string', required: true, description: 'Installed HimaPack id.' },
         site: { type: 'string', description: 'Saved Site name. Omit while helping the user connect one.' },
         file: { type: 'boolean', description: 'Apply this workspace\'s own hima/campaign.yml when it names this same Pack. Default true; false prepares the Pack plainly, ignoring any Campaign file present.' },
+        budget: { type: 'object', additionalProperties: false, description: 'The Budget the user asked for in this conversation, when it differs from what the proposal would otherwise use: timeBoxMinutes (the whole time box, closing reserve inside it), generations (generation limit) and retries (retry allowance). It becomes part of the proposal (budget.*.source "request"); confirm with hima_run passing the same budget.',
+          properties: { timeBoxMinutes: { type: 'number' }, generations: { type: 'integer' }, retries: { type: 'integer' } } },
       },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: (args, execution) => {
         if (!prepare) throw new Error('Campaign preparation is unavailable on this Host');
-        const { campaignFile, overrides } = campaignFileApplication(execution.agent, args.pack, args.file !== false);
+        const { campaignFile, overrides: fromFile } = campaignFileApplication(execution.agent, args.pack, args.file !== false);
+        const overrides = withRequestedBudget(deps, args.pack, fromFile, requestedBudget(args.budget));
         return Promise.resolve(toolJson({ ...prepare(args.pack, args.site, overrides), campaignFile }));
       },
     }),
@@ -686,6 +723,8 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
           description: 'What to set the pack\'s own strategy knobs to for the first generation, by the names its contract declares, e.g. { "<knob>": <value> }. A knob left out takes the default that pack declares; a knob it does not declare, or a value outside the bounds or the list it declares, is refused and no run is started.',
         },
         file: { type: 'boolean', description: 'Apply this workspace\'s own hima/campaign.yml when it names this same Pack. Default true; false confirms plainly, ignoring any Campaign file present.' },
+        budget: { type: 'object', additionalProperties: false, description: 'The same budget object passed to the hima_prepare call that returned this proposalId, when one was passed. The Run is created with exactly that Budget; a different or missing budget is a different proposal and is refused.',
+          properties: { timeBoxMinutes: { type: 'number' }, generations: { type: 'integer' }, retries: { type: 'integer' } } },
         ...(legacyAutomaticAllowed() ? {
           test: { type: 'boolean', description: 'Contract-test purpose only.' },
           timeBox: { type: 'number', description: 'Contract-test budget only.' },
@@ -724,11 +763,13 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         // so a confirmation compares like with like: the freshness check below and the actual start
         // both see the workspace's own input overrides, whether or not this Agent's workspace holds
         // one naming this Pack.
-        const { campaignFile, overrides } = campaignFileApplication(execution.agent, args.pack, args.file !== false);
+        const { campaignFile, overrides: fromFile } = campaignFileApplication(execution.agent, args.pack, args.file !== false);
+        const asked = requestedBudget(args.budget);
+        const overrides = withRequestedBudget(deps, args.pack, fromFile, asked);
         if (args.proposalId !== undefined) {
           const current = prepare?.(args.pack, args.site, overrides);
           if (current === undefined || !current.ready || !sameCampaignProposalFacts(current.id, args.proposalId)) {
-            throw new Error('Campaign preparation changed or is no longer ready; call hima_prepare again before confirming');
+            throw new Error('Campaign preparation changed or is no longer ready, or this confirmation names a different budget than the proposal was prepared with; pass the same budget object given to hima_prepare, or call hima_prepare again before confirming');
           }
           if (!samePreparedFacts(current.goal, goal) || !samePreparedFacts(current.strategy, strategy ?? current.strategy)) {
             throw new Error('the submitted Goal or Strategy differs from the reviewed Campaign proposal; prepare the edited Campaign again before confirming');

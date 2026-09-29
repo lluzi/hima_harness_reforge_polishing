@@ -12,6 +12,17 @@ set workspace [lindex $argv 0]
 set slot [lindex $argv 1]
 set root [lindex [lsort -dictionary [glob -directory [file join $workspace workspaces $slot] -type d r*]] end]
 set ::dry_transcript [file join $root xtop_log_1.txt]
+# A test marks one session of a slot with `linger-once`: that session's wrapper keeps a member of the
+# Job's process group through a hangup and TERM, as a container still being stopped does, and that
+# member ends by itself a little after the session's REPL has gone -- the wrapper's own close
+# finishing after the Harness's has given up waiting. The mark is spent here, so the slot's next
+# session is an ordinary one.
+set linger [file join $workspace workspaces $slot linger-once]
+if {[file exists $linger]} {
+    set fh [open $linger]; set lingerSeconds [string trim [read $fh]]; close $fh
+    file delete $linger
+    exec sh -c "trap '' HUP TERM INT; while kill -0 [pid] 2>/dev/null; do sleep 0.2; done; sleep $lingerSeconds" &
+}
 rename puts ::dry_puts
 proc puts {args} {
     set words $args

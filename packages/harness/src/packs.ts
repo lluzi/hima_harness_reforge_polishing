@@ -280,6 +280,12 @@ export const packTool = z.strictObject({
      * holds its own. Omission keeps the tool's `licences` for both paths, as before.
      */
     licences: z.record(licenceName, z.number().int().positive()).optional(),
+    /**
+     * How long a close gives the session's whole process group to be gone after its hangup, TERM
+     * included, before it is recorded `process-survived`. Declared here because it is a fact about
+     * the tool and its wrapper (a container stop takes its own time); 60 s when omitted.
+     */
+    closeGraceMs: z.number().int().min(2_000).max(30 * 60_000).optional(),
     commands: interactiveCommandClasses,
     /** Optional named argument contract in Tcl positional order. Older Packs retain positional arrays. */
     arguments: z.record(interactiveCommandName, z.array(interactiveArgumentDeclaration).max(32)

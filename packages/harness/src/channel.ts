@@ -144,8 +144,20 @@ export async function discoverSiteFacts(on: Channel, toolCommands: readonly stri
   return facts;
 }
 
+/**
+ * The process probe: whether a Job's recorded process group still has a live process, asked of the
+ * group itself (#64 D-T02-4). It is `kill -s 0 -- -<pgid>` and nothing else — signal 0 delivers no
+ * signal, it only asks — and `admit` refuses every other shape of `kill`, so this verb can never
+ * send a signal to anything. It exists because the answer must not depend on a tmux feature: on the
+ * Site's tmux 3.4 `run-shell` printed nothing, and a liveness question read through it answered ""
+ * for the rest of the Run.
+ */
+export const processProbes: ReadonlySet<string> = new Set(['kill']);
+const processProbeShape = (argv: readonly string[]): boolean =>
+  argv.length === 5 && argv[1] === '-s' && argv[2] === '0' && argv[3] === '--' && /^-[1-9][0-9]{0,9}$/.test(argv[4] ?? '');
+
 /** Everything a HimaChannel may run on a Site, and the whole of it. */
-const channelVerbs: ReadonlySet<string> = new Set([...readOnlyProbes, ...jobPlumbing, ...workspacePlumbing]);
+const channelVerbs: ReadonlySet<string> = new Set([...readOnlyProbes, ...jobPlumbing, ...workspacePlumbing, ...processProbes]);
 
 const listed = (verbs: ReadonlySet<string>): string => [...verbs].sort().join(', ');
 
@@ -153,10 +165,15 @@ const listed = (verbs: ReadonlySet<string>): string => [...verbs].sort().join(',
 const said = (how: string, stderr: string): string => (stderr.trim() ? `${how}: ${stderr.trim()}` : how);
 
 /** Refuse anything that is not the channel's own verb, before it is sent or spawned. */
-function admit(verb: string, siteName: string): void {
+function admit(argv: readonly string[], siteName: string): void {
+  const verb = argv[0] ?? '';
+  if (processProbes.has(verb)) {
+    if (processProbeShape(argv)) return;
+    throw new Error(`refusing to run "${argv.join(' ')}" on site ${siteName}: the process probe is only "kill -s 0 -- -<process group>", which sends no signal`);
+  }
   if (channelVerbs.has(verb)) return;
   throw new Error(
-    `refusing to run "${verb}" on site ${siteName}: HimaChannel runs only its own verbs — the read-only probes (${listed(readOnlyProbes)}), the job plumbing (${listed(jobPlumbing)}), and the workspace plumbing (${listed(workspacePlumbing)})`,
+    `refusing to run "${verb}" on site ${siteName}: HimaChannel runs only its own verbs — the read-only probes (${listed(readOnlyProbes)}), the job plumbing (${listed(jobPlumbing)}), the workspace plumbing (${listed(workspacePlumbing)}), and the process probe (kill -s 0)`,
   );
 }
 
@@ -256,7 +273,7 @@ export class LocalChannel implements Channel {
    *  way `quote` renders an ssh wire, so one assertion reads both channels. */
   async exec(argv: readonly string[], options: ExecOptions = {}): Promise<ExecResult> {
     const [verb, ...args] = argv;
-    admit(verb ?? '', this.siteName);
+    admit(argv, this.siteName);
     recordRemoteCommand(argv, argv.map(quote).join(' '));
     // Ticket #18: a command that could not be run, and one that never came back with a status, are
     // both a Site that did not answer — not a fault in what was asked. Read as anything else they
@@ -404,7 +421,7 @@ export class SshChannel implements Channel {
   /** Run one of the channel's own commands on the Site and report what it answered. */
   async exec(argv: readonly string[], options: ExecOptions = {}): Promise<ExecResult> {
     const verb = argv[0] ?? '';
-    admit(verb, this.siteName);
+    admit(argv, this.siteName);
     const what = `run ${verb}`;
     const wire = argv.map(quote).join(' ');
     let exit = await this.send(argv, wire, what, options.stdin);

@@ -8,7 +8,7 @@ import { writeLocalSite } from './support/site.ts';
 import {
   claimSlot, createInteractiveTimerController, listInteractiveSessions, operateInteractive, parseInteractiveRecord,
   parseInteractiveRequest, reconcileInteractiveLaunchReservations, reconcileInteractiveState, interactiveCallerDigest, interactiveDelegationGrant,
-  type DerivedInteractiveOperation, type InteractiveBinding, type InteractiveRuntimeDeps,
+  remoteCommands, type DerivedInteractiveOperation, type InteractiveBinding, type InteractiveRuntimeDeps,
 } from '@hima/harness';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
@@ -401,6 +401,36 @@ test('interactive runtime derives authority from Run/Ledger, preserves single-wr
   }
 });
 
+// #64 D-T02-5: every interactive call re-projects the deadlines, and a deadline that had already
+// fired, for a session its stop did not close, was scheduled and fired again each time — 42 notices
+// to the owner in 17 minutes. A deadline fires once per Host however often it is re-projected.
+test('a deadline that has fired is not fired again when the deadlines are re-projected (#64 D-T02-5)', async () => {
+  const runId = 'deadline-once', toolSessionId = 'deadline-once-session';
+  const address = { runId, toolSessionId, executionId: execution.id, nodeId: 'manual', actor: 'operator',
+    ownerEpoch: 1, controlRevision: 0, requestId: 'open-request', operationDigest: digest('a'),
+    callerDigest: digest('b'), at: '2026-09-29T19:20:32.000Z' };
+  const protocol = (data: object) => ({ type: 'interactive', runId, toolSessionId, payload: parseInteractiveRecord({ ...address, ...data }) });
+  const records = [
+    protocol({ event: 'open-intent', jobSession: toolSessionId, transcriptPath: '/fixture/transcript.log',
+      exitPath: '/fixture/session.exit', sessionDeadlineAt: '2026-09-29T19:30:32.000Z' }),
+    protocol({ event: 'opened', jobSession: toolSessionId, readiness: 'ready', qualification: {
+      bindingDigest: digest('c'), adapter: binding.adapter, environment: binding.environment, mutation: 'qualified', testOnly: true } }),
+  ];
+  const ledger = { runs: () => [{ id: runId, siteId: 'local', control: { executions: {} } }],
+    records: (query: { type?: string }) => records.filter((record) => query.type === undefined || record.type === query.type) };
+  const fired: string[] = [];
+  const timer = createInteractiveTimerController({ fabric: { ledger } as never, resolveOperation: async () => undefined,
+    verifyAdminBinding: async () => { throw new Error('unused'); }, encodeCommand: async () => { throw new Error('unused'); },
+    onDeadline: async (deadline) => { fired.push(`${deadline.kind}:${deadline.toolSessionId}`); } });
+  try {
+    for (let call = 0; call < 3; call += 1) {
+      await timer.reconcile();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.deepEqual(fired, [`session:${toolSessionId}`], 'the past session deadline fired once, not once per re-projection');
+  } finally { timer.dispose(); }
+});
+
 // #64 D-T01-3: the Harness "closed" worker 02's interactive session, but the tool it had launched
 // kept running and kept its locks in the slot, so every retry in that slot was refused by the
 // wrapper's startup lock check. A close must end with the Job's process group observed gone, or
@@ -555,6 +585,170 @@ test('interactive close waits for the wrapper\'s own shutdown, and a surviving t
     for (const group of groups) { try { process.kill(-group, 'SIGKILL'); } catch { /* already gone */ } }
   }
 });
+
+// #64 D-T02-4: on the Site's tmux 3.4, `tmux run-shell` prints nothing, so a liveness probe read
+// through it answered "" and every later open in a slot whose survivor had already ended was
+// refused for the rest of the Run. The probe asks the process group itself through the Site
+// channel; tmux's own output plays no part in the answer. The stand-in `tmux` below behaves as the
+// Site's did: every `run-shell` succeeds and prints nothing, every other tmux verb is the real one.
+test('a survivor\'s process group is asked through the Site channel, so a silent tmux run-shell neither refuses a freed slot nor admits a live one', async (t) => {
+  const { chmod, mkdir, writeFile } = await import('node:fs/promises');
+  const { existsSync } = await import('node:fs');
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const site = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
+    allowedWrappers: ['sh'], parallelJobs: 2, licences: { fixture: 2 } });
+  const realTmux = spawnSync('sh', ['-c', 'command -v tmux'], { encoding: 'utf8' }).stdout.trim();
+  assert.ok(realTmux, 'tmux is on PATH');
+  const standins = path.join(home.workspace, 'silent-run-shell'); await mkdir(standins, { recursive: true });
+  await writeFile(path.join(standins, 'tmux'), ['#!/bin/sh', 'for word in "$@"; do [ "$word" = run-shell ] && exit 0; done',
+    `exec ${shellQuote(realTmux)} "$@"`, ''].join('\n'));
+  await chmod(path.join(standins, 'tmux'), 0o755);
+  const priorPath = process.env.PATH;
+  process.env.PATH = `${standins}${path.delimiter}${priorPath ?? ''}`;
+  t.after(() => { process.env.PATH = priorPath; });
+  assert.equal(spawnSync('tmux', ['start-server', ';', 'run-shell', 'echo alive'], { encoding: 'utf8' }).stdout, '',
+    'the stand-in tmux answers run-shell with nothing, as tmux 3.4 did on the Site');
+  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const parent = await createRootAgent(host.ctx, home.workspace);
+  const slot = path.join(home.workspace, 'slot'); await mkdir(slot, { recursive: true });
+  const wrapper = path.join(home.workspace, 'stubborn-wrapper.sh');
+  await writeFile(wrapper, [
+    'slot=$1; node=$2; repl=$3',
+    'if [ -e "$slot/tool.lock" ]; then echo "writable slot holds a live tool lock" >&2; exit 3; fi',
+    'echo $$ > "$slot/tool.lock"',
+    'trap \'\' HUP TERM; trap \'rm -f "$slot/tool.lock"; exit 0\' INT',
+    '"$node" "$repl" fixture-repl 1',
+    'while :; do sleep 1; done', '',
+  ].join('\n'));
+  const run = await host.ctx.hima.ledger.createRun({
+    campaignId: 'silent-run-shell', siteId: 'local', packId: 'fixture-pack', packDigest: digest('a'), status: 'running', currentNode: 'manual', generation: 1,
+    budget: { timeBoxMs: 120_000, closingReserveMs: 1_000, retryAllowance: 3, jobCap: 2, licences: { fixture: 2 }, generationLimit: 1 },
+    control: { mode: 'agent', owner: String(parent.id), epoch: 1, revision: 0, paused: [], requests: {},
+      executions: Object.fromEntries(['first', 'retry'].map((id, index) => [id, { ...execution, id, attempt: index + 1 }])) },
+  });
+  const deps = {
+    fabric: { ledger: host.ctx.hima.ledger, sitesDir: site.sitesDir, notify: () => ({ status: 'queued' }) } as never,
+    resolveOperation: async () => ({ binding, site: 'local', workspace: home.workspace,
+      argv: ['sh', wrapper, slot, process.execPath, fixture], name: 'silent-probe', licences: { fixture: 1 },
+      commands: [{ name: 'get', effect: 'read' as const }, { name: 'exit', effect: 'close' as const }] }),
+    verifyAdminBinding: async (effective: InteractiveBinding) => ({ bindingFileRealpath: '/trusted/test/binding',
+      bindingFileSha256: digest('0'), environmentDigest: effective.environment.digest, confinement: 'unqualified' as const }),
+    encodeCommand: async (_binding: InteractiveBinding, request: { commandId: string; protocolToken: string; name: string; args: unknown }) => ({
+      text: JSON.stringify({ id: request.commandId, _himaToken: request.protocolToken, op: request.name, ...(request.args as object) }),
+      submit: true, effect: request.name === 'get' ? 'read' as const : 'close' as const }),
+    claimJobSlot: async (request: Parameters<NonNullable<InteractiveRuntimeDeps['claimJobSlot']>>[0]) => {
+      const claimed = await claimSlot({ ledger: host.ctx.hima.ledger as never, sitesDir: site.sitesDir }, {
+        site: { name: request.site, jobs: request.run.budget!.jobCap, licences: request.run.budget!.licences },
+        holds: request.licences, launch: request.launch });
+      return claimed.kind === 'claimed' ? { kind: 'claimed' as const, launched: claimed.launched }
+        : { kind: 'at-cap' as const, reason: claimed.kind === 'at-cap' ? 'site Job/licence cap is full' : String((claimed as { error?: Error }).error?.message ?? claimed.kind) };
+    },
+    trustedTestQualification: { bindingId: 'fixture-binding' },
+    closeGrace: { hangupMs: 1_000, terminateMs: 1_000 },
+    onDeadline: async () => {},
+  } as InteractiveRuntimeDeps;
+  const owner = { runId: run.id, nodeId: 'manual', actor: String(parent.id), ownerEpoch: 1, controlRevision: 0 };
+  const sessions: string[] = []; const groups: number[] = [];
+  const open = async (executionId: string, requestId: string) => {
+    const opened = await operateInteractive(deps, { ...owner, executionId, action: 'open', requestId });
+    if (opened.status === 'opened') { sessions.push(opened.session.toolSessionId); groups.push(opened.session.job.pid!); }
+    return opened;
+  };
+  try {
+    const first = await open('first', 'open-first');
+    assert.equal(first.status, 'opened', JSON.stringify(first)); if (first.status !== 'opened') return;
+    const pid = first.session.job.pid!;
+    const survived = await operateInteractive(deps, { ...owner, executionId: 'first', action: 'close', requestId: 'close-first',
+      toolSessionId: first.session.toolSessionId });
+    assert.equal(survived.status, 'process-survived', JSON.stringify(survived));
+    // While the survivor runs, the retry is refused naming its group: the silent run-shell did not decide it.
+    const whileAlive = await open('retry', 'open-retry-alive').catch((error: Error) => ({ status: 'threw', reason: error.message }));
+    assert.equal(whileAlive.status, 'refused', JSON.stringify(whileAlive));
+    assert.match((whileAlive as { reason: string }).reason, new RegExp(`process group ${pid} still runs`), JSON.stringify(whileAlive));
+    // A person ends the survivor; the probe reads the group gone and the same slot opens again.
+    process.kill(-pid, 'SIGINT');
+    await waitFor(() => !existsSync(path.join(slot, 'tool.lock')), 'the survivor releases its slot lock once a person ends it');
+    await waitFor(() => { try { process.kill(-pid, 0); return false; } catch { return true; } }, 'the survivor\'s process group is gone');
+    const reopened = await open('retry', 'open-retry-after').catch((error: Error) => ({ status: 'threw', reason: error.message }));
+    assert.equal(reopened.status, 'opened', JSON.stringify(reopened));
+    assert.ok(!remoteCommandsOf(/run-shell/).length, 'no liveness question went through tmux run-shell');
+  } finally {
+    for (const session of sessions) spawnSync('tmux', ['kill-session', '-t', `=${session}`], { timeout: 15_000 });
+    for (const group of groups) { try { process.kill(-group, 'SIGKILL'); } catch { /* already gone */ } }
+  }
+});
+
+// Coordinator addition to #64 attempt 3: the qualified wrapper v14 stops its container on hangup or
+// TERM (`podman stop -t 20`, XTop ignoring TERM), so every signalled close takes about 21 s before
+// the process group is gone; the Harness's 15 s + 10 s turned ordinary closes into
+// `process-survived`. The close grace is declared by the tool (`interactive.closeGraceMs`), 60 s
+// when it is not, and the whole of it is waited through before a group is called a survivor.
+test('a close waits through the declared close grace: a tool that ends 30 s after TERM is closed under the default and survives a declared 10 s', { timeout: 240_000 }, async (t) => {
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const site = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
+    allowedWrappers: ['sh'], parallelJobs: 2, licences: { fixture: 2 } });
+  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const parent = await createRootAgent(host.ctx, home.workspace);
+  // Hangup is ignored; TERM starts a shutdown that takes 30 s, as a container stop of a tool that ignores TERM does.
+  const wrapper = path.join(home.workspace, 'slow-stop-wrapper.sh');
+  await writeFile(wrapper, ['node=$1; repl=$2', 'trap \'\' HUP', 'trap \'sleep 30; exit 0\' TERM',
+    '"$node" "$repl" fixture-repl 1', 'while :; do sleep 1; done', ''].join('\n'));
+  await mkdir(path.join(home.workspace, 'slow-stop'), { recursive: true });
+  const run = await host.ctx.hima.ledger.createRun({
+    campaignId: 'declared-close-grace', siteId: 'local', packId: 'fixture-pack', packDigest: digest('a'), status: 'running', currentNode: 'manual', generation: 1,
+    budget: { timeBoxMs: 600_000, closingReserveMs: 1_000, retryAllowance: 3, jobCap: 2, licences: { fixture: 2 }, generationLimit: 1 },
+    control: { mode: 'agent', owner: String(parent.id), epoch: 1, revision: 0, paused: [], requests: {},
+      executions: Object.fromEntries(['patient', 'short'].map((id, index) => [id, { ...execution, id, attempt: index + 1 }])) },
+  });
+  let declared: number | undefined;
+  const deps = {
+    fabric: { ledger: host.ctx.hima.ledger, sitesDir: site.sitesDir, notify: () => ({ status: 'queued' }) } as never,
+    resolveOperation: async () => ({ binding: { ...binding, limits: { ...binding.limits, ...(declared === undefined ? {} : { closeGraceMs: declared }) } },
+      site: 'local', workspace: home.workspace, argv: ['sh', wrapper, process.execPath, fixture], name: 'slow-stop', licences: { fixture: 1 },
+      commands: [{ name: 'get', effect: 'read' as const }, { name: 'exit', effect: 'close' as const }] }),
+    verifyAdminBinding: async (effective: InteractiveBinding) => ({ bindingFileRealpath: '/trusted/test/binding',
+      bindingFileSha256: digest('0'), environmentDigest: effective.environment.digest, confinement: 'unqualified' as const }),
+    encodeCommand: async (_binding: InteractiveBinding, request: { commandId: string; protocolToken: string; name: string; args: unknown }) => ({
+      text: JSON.stringify({ id: request.commandId, _himaToken: request.protocolToken, op: request.name, ...(request.args as object) }),
+      submit: true, effect: request.name === 'get' ? 'read' as const : 'close' as const }),
+    claimJobSlot: async (request: Parameters<NonNullable<InteractiveRuntimeDeps['claimJobSlot']>>[0]) => {
+      const claimed = await claimSlot({ ledger: host.ctx.hima.ledger as never, sitesDir: site.sitesDir }, {
+        site: { name: request.site, jobs: request.run.budget!.jobCap, licences: request.run.budget!.licences },
+        holds: request.licences, launch: request.launch });
+      return claimed.kind === 'claimed' ? { kind: 'claimed' as const, launched: claimed.launched }
+        : { kind: 'at-cap' as const, reason: claimed.kind === 'at-cap' ? 'site Job/licence cap is full' : String((claimed as { error?: Error }).error?.message ?? claimed.kind) };
+    },
+    trustedTestQualification: { bindingId: 'fixture-binding' },
+    onDeadline: async () => {},
+  } as InteractiveRuntimeDeps;
+  const owner = { runId: run.id, nodeId: 'manual', actor: String(parent.id), ownerEpoch: 1, controlRevision: 0 };
+  const groups: number[] = []; const sessions: string[] = [];
+  const openAndClose = async (executionId: string) => {
+    const opened = await operateInteractive(deps, { ...owner, executionId, action: 'open', requestId: `open-${executionId}` });
+    assert.equal(opened.status, 'opened', JSON.stringify(opened)); if (opened.status !== 'opened') throw new Error('unreachable');
+    groups.push(opened.session.job.pid!); sessions.push(opened.session.toolSessionId);
+    const started = Date.now();
+    const closed = await operateInteractive(deps, { ...owner, executionId, action: 'close', requestId: `close-${executionId}`,
+      toolSessionId: opened.session.toolSessionId });
+    return { closed, seconds: (Date.now() - started) / 1000 };
+  };
+  try {
+    const patient = await openAndClose('patient');
+    assert.equal(patient.closed.status, 'closed', `the default 60 s grace outlasts a 30 s shutdown after TERM: ${JSON.stringify(patient)}`);
+    assert.ok(patient.seconds >= 30, `the close waited for the shutdown to finish (${patient.seconds} s)`);
+    declared = 10_000;
+    const short = await openAndClose('short');
+    assert.equal(short.closed.status, 'process-survived', `a declared 10 s grace is what the close waits: ${JSON.stringify(short)}`);
+    assert.ok(short.seconds < 25, `the declared grace, not the default, bounded the wait (${short.seconds} s)`);
+  } finally {
+    for (const session of sessions) spawnSync('tmux', ['kill-session', '-t', `=${session}`], { timeout: 15_000 });
+    for (const group of groups) { try { process.kill(-group, 'SIGKILL'); } catch { /* already gone */ } }
+  }
+});
+
+/** Every command the channel audit holds whose wire matches `pattern`. */
+const remoteCommandsOf = (pattern: RegExp) => remoteCommands().filter((command) => pattern.test(command.wire));
 
 async function waitFor(check: () => boolean, what: string, timeoutMs = 15_000): Promise<void> {
   const until = Date.now() + timeoutMs;

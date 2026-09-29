@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { advance, budgetStanding, ownedWaitedMs } from './budget.js';
 import { controlling, identityOf, updateExecution, type FabricDeps } from './fabric.js';
 import {
-  closeInteractiveJob, jobProcessGroupAlive, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
+  closeInteractiveJob, interactiveCloseGrace, jobProcessGroupAlive, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
   sendInteractiveInput, signalInteractiveJob,
   type InteractiveAddress, type InteractiveAuthority, type InteractiveChannel, type InteractiveCloseGrace, type InteractiveCloseResult,
   type InteractiveInputResult, type InteractiveJobIdentity, type InteractiveOpenResult, type InteractiveQualification,
@@ -40,7 +40,9 @@ export interface InteractiveBinding {
   readonly environment: { readonly id: string; readonly digest: string };
   readonly mutation: 'qualified' | 'unavailable';
   readonly limits: { readonly startupWaitMs: number; readonly callWaitMaxMs: number;
-    readonly commandMaxMs: number; readonly sessionMaxMs: number; readonly idleMaxMs: number };
+    readonly commandMaxMs: number; readonly sessionMaxMs: number; readonly idleMaxMs: number;
+    /** The retained tool's declared close grace (`interactive.closeGraceMs`); the default when absent. */
+    readonly closeGraceMs?: number };
 }
 
 export interface DerivedInteractiveOperation {
@@ -92,7 +94,8 @@ export interface InteractiveRuntimeDeps {
   readonly mintProtocolToken?: () => string;
   /** Required Host callback: issue the qualified interrupt/close path and record its actual outcome. */
   readonly onDeadline: (deadline: InteractiveDeadline) => Promise<void>;
-  /** How long a close waits for the Job's process group after hangup and after TERM; defaults apply when absent. */
+  /** How long a close waits for the Job's process group after hangup and after TERM, for every
+   *  binding; absent, each binding's declared `closeGraceMs` (or the default) applies. */
   readonly closeGrace?: InteractiveCloseGrace;
 }
 
@@ -230,7 +233,7 @@ function validateBindingShape(run: RunRecord, execution: NodeExecution, derived:
   if (binding.packId !== run.packId || binding.packDigest !== run.packDigest || binding.nodeId !== execution.nodeId) return 'interactive binding does not match the retained Run method and execution';
   if (!path.posix.isAbsolute(derived.workspace) || derived.argv.length === 0 || derived.argv.some((word) => word.includes('\0'))) return 'retained interactive workspace/argv is invalid';
   const limits = binding.limits;
-  if (![limits.startupWaitMs, limits.callWaitMaxMs, limits.commandMaxMs, limits.sessionMaxMs, limits.idleMaxMs]
+  if (![limits.startupWaitMs, limits.callWaitMaxMs, limits.commandMaxMs, limits.sessionMaxMs, limits.idleMaxMs, limits.closeGraceMs ?? 1]
       .every((value) => Number.isSafeInteger(value) && value > 0)) return 'interactive binding limits must be positive safe integers';
   return undefined;
 }
@@ -393,12 +396,34 @@ class RunInteractiveAuthority implements InteractiveAuthority {
   private readonly derived: DerivedInteractiveOperation;
   private readonly qualification: InteractiveQualification;
   private readonly callerDigest: string;
+  /** True while this operation itself holds the Run's admission queue (`underRunQueue`). */
+  private holdsRunQueue = false;
   constructor(deps: InteractiveRuntimeDeps, request: InteractiveOperateRequest, derived: DerivedInteractiveOperation, qualification: InteractiveQualification, callerDigest: string) {
     this.deps = deps; this.request = request; this.derived = derived; this.qualification = qualification; this.callerDigest = callerDigest;
   }
 
-  async admit(intent: Parameters<InteractiveAuthority['admit']>[0]): ReturnType<InteractiveAuthority['admit']> {
+  /** The Run's admission queue, entered once: inside `underRunQueue` this operation already holds it. */
+  private locked<T>(act: () => Promise<T>): Promise<T> {
+    return this.holdsRunQueue ? act() : controlling(this.deps.fabric, this.request.runId, act);
+  }
+
+  /**
+   * Run `act` holding the Run's admission queue, with this authority's own steps inside it taking
+   * the queue as already held. An interactive open enters the queue *before* the Site's slot claim,
+   * the order every batch launch already takes them in (the owner's `work` holds the queue and then
+   * claims the Site): taken the other way round, an open holding the claim while it waited for the
+   * queue and a `work` holding the queue while it waited for the claim stopped the whole Host
+   * (#64 D-T02-3).
+   */
+  underRunQueue<T>(act: () => Promise<T>): Promise<T> {
     return controlling(this.deps.fabric, this.request.runId, async () => {
+      this.holdsRunQueue = true;
+      try { return await act(); } finally { this.holdsRunQueue = false; }
+    });
+  }
+
+  async admit(intent: Parameters<InteractiveAuthority['admit']>[0]): ReturnType<InteractiveAuthority['admit']> {
+    return this.locked(async () => {
       const run = this.deps.fabric.ledger.run(this.request.runId);
       if (!run) return { kind: 'refused', reason: `unknown Run ${this.request.runId}` };
       if (intent.record.callerDigest !== this.callerDigest) return { kind: 'refused', reason: 'interactive helper intent does not match the retained caller digest' };
@@ -464,7 +489,7 @@ class RunInteractiveAuthority implements InteractiveAuthority {
   }
 
   async authorizeBeforeDispatch(input: Parameters<InteractiveAuthority['authorizeBeforeDispatch']>[0]): ReturnType<InteractiveAuthority['authorizeBeforeDispatch']> {
-    return controlling(this.deps.fabric, this.request.runId, async () => {
+    return this.locked(async () => {
       const run = this.deps.fabric.ledger.run(this.request.runId);
       if (!run) return { kind: 'refused', reason: `unknown Run ${this.request.runId}` };
       const reservation = this.deps.fabric.ledger.records({ runId: run.id, type: 'interactive' })
@@ -492,7 +517,7 @@ class RunInteractiveAuthority implements InteractiveAuthority {
 
   async record(record: ProtocolRecord): Promise<void> {
     const parsed = parseInteractiveRecord(record);
-    await controlling(this.deps.fabric, this.request.runId, async () => {
+    await this.locked(async () => {
       if (parsed.runId !== this.request.runId || parsed.executionId !== this.request.executionId
           || parsed.nodeId !== this.request.nodeId || parsed.actor !== this.request.actor
           || parsed.ownerEpoch !== this.request.ownerEpoch) throw new Error('interactive outcome identity does not match its runtime authority');
@@ -527,7 +552,7 @@ class RunInteractiveAuthority implements InteractiveAuthority {
   }
 
   async recordJobLaunch(job: InteractiveJobIdentity): Promise<void> {
-    await controlling(this.deps.fabric, this.request.runId, async () => {
+    await this.locked(async () => {
       const run = this.deps.fabric.ledger.run(this.request.runId);
       if (!run) throw new Error(`unknown Run ${this.request.runId}`);
       const refused = validateControl(run, this.request, 'open');
@@ -544,7 +569,7 @@ class RunInteractiveAuthority implements InteractiveAuthority {
 
   async recordJobStop(job: InteractiveJobIdentity, outcome: { readonly wasRunning: boolean; readonly observedGone: boolean }): Promise<void> {
     if (!outcome.wasRunning || !outcome.observedGone) return;
-    await controlling(this.deps.fabric, this.request.runId, async () => {
+    await this.locked(async () => {
       // A Job belongs where it was launched: the branch is read back off the launch, as `jobs.ts`
       // `belongsTo` does for the `finished`/`killed` records of a batch Job.
       const records = this.deps.fabric.ledger.records({ runId: this.request.runId, type: 'job' })
@@ -577,21 +602,40 @@ async function resolved(deps: InteractiveRuntimeDeps, request: InteractiveAddres
   catch (error) { return { reason: error instanceof Error ? error.message : String(error) }; }
 }
 
+/** The close grace for one binding: the Host's override when it has one, else the declared one. */
+const closeGraceFor = (deps: InteractiveRuntimeDeps, binding: InteractiveBinding): InteractiveCloseGrace =>
+  deps.closeGrace ?? interactiveCloseGrace(binding.limits.closeGraceMs);
+
 /**
  * A retry of a node opens the same tool slot. While an earlier Job of that node has a recorded
- * `process-survived` close and its tmux session (kept by the close watcher) is still there, the
- * surviving tool still owns the slot and its locks: refuse naming the group rather than launch a
- * wrapper into those locks.
+ * `process-survived` close and its process group still runs, the surviving tool still owns the slot
+ * and its locks: refuse naming the group rather than launch a wrapper into those locks. A group that
+ * is still finishing its own shutdown (a container stop can take longer than the close waited) is
+ * asked again through the Site channel until the close grace has passed, and only a group still
+ * running after that refuses the slot.
  */
-async function survivingSlotJob(deps: InteractiveRuntimeDeps, run: RunRecord, nodeId: string): Promise<string | undefined> {
+async function survivingSlotJob(deps: InteractiveRuntimeDeps, run: RunRecord, nodeId: string, grace: InteractiveCloseGrace): Promise<string | undefined> {
   // Asked of each recorded survivor's process group itself (#64 review I2): its tmux session may be
   // gone (a bare kill by an older Host or a person) while the tool still holds the slot's locks.
   const survivors = listInteractiveSessions(deps.fabric.ledger, run.id)
     .filter((session) => session.nodeId === nodeId && session.survivedPid !== undefined);
   if (survivors.length === 0) return undefined;
   const on: InteractiveChannel = channelFor(loadSite(deps.fabric.sitesDir, run.siteId));
+  const until = nowOf(deps) + grace.hangupMs + grace.terminateMs;
   for (const session of survivors) {
-    if (await jobProcessGroupAlive(on, session.survivedPid!)) {
+    let alive: boolean;
+    try {
+      alive = await jobProcessGroupAlive(on, session.survivedPid!);
+      while (alive && nowOf(deps) < until) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(1_000, Math.max(1, until - nowOf(deps)))));
+        alive = await jobProcessGroupAlive(on, session.survivedPid!);
+      }
+    } catch (error) {
+      // Unknown is its own answer: the slot is neither admitted nor declared held by a live group.
+      return `whether process group ${String(session.survivedPid)} of the previous interactive Job ${session.toolSessionId} of node ${nodeId}`
+        + ` still runs could not be asked: ${error instanceof Error ? error.message : String(error)}; open again once Site ${run.siteId} answers`;
+    }
+    if (alive) {
       return `the previous interactive Job ${session.toolSessionId} of node ${nodeId} survived its close: process group ${String(session.survivedPid)}`
         + ' still runs and holds this tool slot; end that process group on the Site, then open again';
     }
@@ -635,24 +679,31 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
     if (!deps.claimJobSlot) return { status: 'refused', reason: 'interactive Job/licence slot authority is unavailable' };
     const refused = validateControl(facts.run, request, 'open');
     if (refused) return { status: 'refused', reason: refused };
-    const survivor = await survivingSlotJob(deps, facts.run, request.nodeId);
+    const survivor = await survivingSlotJob(deps, facts.run, request.nodeId, closeGraceFor(deps, facts.derived.binding));
     if (survivor) return { status: 'refused', reason: survivor };
     const at = nowOf(deps); const runDeadline = hardDeadline(facts.run, at);
     const sessionDeadline = Math.min(at + facts.derived.binding.limits.sessionMaxMs, runDeadline ?? Number.MAX_SAFE_INTEGER);
-    const claimed = await deps.claimJobSlot({ run: facts.run, site: facts.derived.site, licences: facts.derived.licences,
+    // Run queue first, then the Site claim, as every batch launch takes them; the wait for the tool's
+    // ready line happens after both are released (#64 D-T02-3).
+    const claimJobSlot = deps.claimJobSlot;
+    const claimed = await authority.underRunQueue(() => claimJobSlot({ run: facts.run, site: facts.derived.site, licences: facts.derived.licences,
       launch: () => launchInteractiveJob({ ledger: deps.fabric.ledger, sitesDir: deps.fabric.sitesDir }, {
         site: facts.derived.site, run: request.runId, executionId: request.executionId, nodeId: request.nodeId,
         requestId: request.requestId, callerDigest, actor: request.actor, ownerEpoch: request.ownerEpoch,
         controlRevision: request.controlRevision, workspace: facts.derived.workspace, argv: facts.derived.argv,
         name: facts.derived.name, sessionDeadlineAt: new Date(sessionDeadline).toISOString(),
-        startupWaitMs: facts.derived.binding.limits.startupWaitMs,
-      }, authority) });
-    return claimed.kind === 'claimed' ? claimed.launched.result : { status: 'refused', reason: claimed.reason };
+        startupWaitMs: facts.derived.binding.limits.startupWaitMs, closeGrace: closeGraceFor(deps, facts.derived.binding),
+      }, authority, { readiness: 'after-claim' }) }));
+    if (claimed.kind !== 'claimed') return { status: 'refused', reason: claimed.reason };
+    return claimed.launched.ready ? claimed.launched.ready() : claimed.launched.result;
   }
   const view = sessionFor(deps.fabric.ledger, request);
   const session = view && nativeSession(view);
   if (!view || !session) return { status: 'refused', reason: 'interactive session is absent, incomplete or not owned by this execution' };
-  if (!facts.qualification.testOnly && view.operatorSessionId !== request.actor) {
+  // The Host's own stop of a session (a deadline, or an Operator lost to a restart) acts on the Job
+  // itself; it is not the owner typing into the Operator's session (#64 D-T02-5).
+  const hostStop = request.hostStop !== undefined && (request.action === 'close' || request.action === 'signal');
+  if (!facts.qualification.testOnly && view.operatorSessionId !== request.actor && !hostStop) {
     return { status: 'refused', reason: 'This production interactive session belongs to its recorded Operator child; the Run owner may inspect and adopt the child result but cannot take over typed operations.' };
   }
   const on: InteractiveChannel = channelFor(loadSite(deps.fabric.sitesDir, facts.run.siteId));
@@ -691,17 +742,19 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
       commandDeadlineAt: new Date(commandDeadline).toISOString() }, authority);
   }
   if (request.action === 'signal') return signalInteractiveJob(on, { ...request, callerDigest, session }, authority);
-  return closeInteractiveJob(on, { ...request, callerDigest, session, ...(deps.closeGrace === undefined ? {} : { grace: deps.closeGrace }) }, authority);
+  return closeInteractiveJob(on, { ...request, callerDigest, session, grace: closeGraceFor(deps, facts.derived.binding) }, authority);
 }
 
 export interface InteractiveTimerController {
+  /** Project the durable deadlines onto this process's timers; it records nothing. */
   reconcile(): Promise<readonly InteractiveDeadline[]>;
   dispose(): void;
 }
 
 /**
  * Turn pre-crash intents into durable uncertainty before any route can consider retrying them.
- * It never sends transport input and never manufactures a Job outcome.
+ * It never sends transport input and never manufactures a Job outcome. Only for a Host that has just
+ * started: while a Host runs, an intent without its outcome is an operation still in flight.
  */
 export async function reconcileInteractiveState(deps: InteractiveRuntimeDeps): Promise<InteractiveSessionView[]> {
   for (const siteName of new Set(deps.fabric.ledger.runs().map((run) => run.siteId))) {
@@ -750,21 +803,29 @@ export async function reconcileInteractiveState(deps: InteractiveRuntimeDeps): P
 /** Process-local timers project durable absolute deadlines; disposal never stops a Job by itself. */
 export function createInteractiveTimerController(deps: InteractiveRuntimeDeps): InteractiveTimerController {
   const timers = new Map<string, ReturnType<typeof setTimeout>>(); let disposed = false;
+  // A deadline fires once per Host (#64 D-T02-5): every interactive call re-projects the deadlines,
+  // and one that had already fired, for a session its stop did not close, used to be scheduled and
+  // fired again each time — 42 notices to the owner in 17 minutes of attempt 2.
+  const fired = new Set<string>();
   const schedule = (deadline: InteractiveDeadline): void => {
     const key = `${deadline.kind}:${deadline.runId}:${deadline.toolSessionId}:${deadline.commandId ?? ''}`;
-    if (timers.has(key) || disposed) return;
+    if (timers.has(key) || disposed || fired.has(`${key}@${deadline.at}`)) return;
     const fire = (): void => {
       if (disposed) return;
       const remaining = Date.parse(deadline.at) - nowOf(deps);
       if (remaining > 0) { timers.set(key, setTimeout(fire, Math.min(remaining, 2_147_000_000))); return; }
       timers.delete(key);
+      fired.add(`${key}@${deadline.at}`);
       void deps.onDeadline(deadline).catch((error) => deps.fabric.log?.(`interactive deadline callback failed for ${deadline.toolSessionId}: ${String(error)}`));
     };
     fire();
   };
   return {
+    // Deadlines only. Turning cut-off intents into uncertainty is a restart's work
+    // (`reconcileInteractiveState`, run once when a Host starts): run after every interactive call, it
+    // read another Operator's open or close that was simply still in flight as one a crash had cut
+    // off, and wrote "Host restarted" over it while the Host never restarted (#64 D-T02-3).
     async reconcile() {
-      await reconcileInteractiveState(deps);
       const deadlines: InteractiveDeadline[] = [];
       for (const run of deps.fabric.ledger.runs()) for (const session of listInteractiveSessions(deps.fabric.ledger, run.id)) {
         if (session.status === 'closed') continue;

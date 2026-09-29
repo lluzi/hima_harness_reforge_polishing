@@ -1289,9 +1289,9 @@ export interface PreparationView {
    *  applied in that order (#41 task 3). `jobCap`/`licences` are the Site's own declared scarcity,
    *  carried here rather than computed twice, and absent with no Site selected. */
   readonly budget: {
-    readonly timeBoxMinutes: { readonly value: number; readonly source: 'file' | 'pack' | 'harness' };
-    readonly retries: { readonly value: number; readonly source: 'file' | 'pack' | 'harness' };
-    readonly generations: { readonly value: number; readonly source: 'file' | 'pack' | 'harness' };
+    readonly timeBoxMinutes: { readonly value: number; readonly source: 'request' | 'file' | 'pack' | 'harness' };
+    readonly retries: { readonly value: number; readonly source: 'request' | 'file' | 'pack' | 'harness' };
+    readonly generations: { readonly value: number; readonly source: 'request' | 'file' | 'pack' | 'harness' };
     readonly jobCap?: number;
     readonly licences?: Readonly<Record<string, number>>;
   };

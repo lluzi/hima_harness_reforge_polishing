@@ -329,7 +329,14 @@ test('the channel runs its own verbs and refuses everything else, on a local sit
     // being dangerous. The permit governs the user's command; this governs the channel itself.
     await assert.rejects(() => channel.exec(['echo', 'hima']), /refusing to run "echo"/);
     await assert.rejects(() => channel.exec(['curl', 'https://example.com']), /refusing to run "curl"/);
+    // The process probe (#64 D-T02-4) is `kill -s 0 -- -<group>` and only that: no shape of it can signal.
+    for (const argv of [['kill', '-s', 'TERM', '--', '-4242'], ['kill', '-9', '-4242'], ['kill', '-s', '0', '--', '4242'],
+      ['kill', '-s', '0', '--', '-1', '-4242'], ['kill', '-s', '0', '--', '-0']]) {
+      await assert.rejects(() => channel.exec(argv), /the process probe is only "kill -s 0 -- -<process group>"/, JSON.stringify(argv));
+    }
     assert.deepEqual(remoteCommands(), [], 'a refused command is never run');
+    const gone = await channel.exec(['kill', '-s', '0', '--', '-2147483000']);
+    assert.equal(gone.code, 1, 'a group with no process answers no, and nothing was signalled');
   } finally {
     await h.dispose();
   }
