@@ -493,3 +493,43 @@ test('the owner reads the exact evidence ids an Explore must cite, and a wrong c
     assert.equal(accepted.context.cite?.some((item) => item.nodeId === 'next-period') ?? false, false, 'a completed Explore is no longer listed');
   });
 });
+
+// C27 (Host contract regression): the ids an Explore completion must cite are named in the Explore
+// node's execution context (the D4 surface) and, unlike the bounded `.slice(-128)` evidence view, do
+// not fall out of that list when later knowledge records — Workshop input captures — pile up. In a
+// live Campaign the observation and verdicts were pushed out of the only visible list and the Run
+// died at revisit; this pins that the cite ids are computed independently of that window.
+test("an Explore node's context names the exact cite ids, and they survive 130 later knowledge records", async (t) => {
+  await campaign(t, { goal: 2.3, period: 2.4 }, async (owner, host, runId) => {
+    await owner.node('synthesize');
+    await owner.node('read-qor');
+    await owner.node('judge');
+    const citeOf = () => host.ctx.hima.executionContext(runId).cite?.find((item) => item.nodeId === 'next-period');
+    const before = citeOf();
+    assert.ok(before?.cites?.length, `the Explore context lists the ids its completion must cite: ${JSON.stringify(host.ctx.hima.executionContext(runId).cite)}`);
+    const expected = [...before!.cites!].sort();
+    assert.deepEqual(expected, [...owner.cites()].sort(), 'the listed ids are exactly this generation observation and required verdicts');
+
+    // 130 knowledge records — more than the .slice(-128) evidence window — as a Workshop's input
+    // captures would add. The generic evidence list would lose the observation; the cite list must not.
+    for (let i = 0; i < 130; i += 1) {
+      await host.ctx.hima.ledger.appendKnowledge(runId, { nodeId: 'read-qor', attempt: 1, sessionId: 'c27-test',
+        workshop: 'probe', file: `capture-${i}.md`, purpose: 'input-capture', path: `flow/knowledge/capture-${i}.md`,
+        sha256: 'a'.repeat(64), bytes: 8, exposedBytes: 0, origin: 'input' });
+    }
+    const evidence = host.ctx.hima.executionContext(runId).evidence ?? [];
+    assert.equal(evidence.some((item) => item.recordId === expected[0]), false,
+      'the bounded evidence window no longer shows the required observation after 130 knowledge records');
+    const after = citeOf();
+    assert.deepEqual([...after!.cites!].sort(), expected, 'the cite ids are independent of the bounded evidence window');
+
+    // Completing with exactly the listed ids still succeeds after the knowledge flood.
+    const explore = await owner.ready('next-period');
+    const completed = await owner.complete('next-period', explore, { decision: 'next-strategy', strategy: { periodNs: 2.35 },
+      rationale: 'Tighten by the declared step after the 2.40 ns trial.', cites: after!.cites });
+    const decision = recordsOf(host, runId).findLast((record) => record.type === 'decision');
+    assert.ok(decision?.type === 'decision');
+    assert.deepEqual([...decision.cites].sort(), expected);
+    assert.ok(completed !== undefined);
+  });
+});
