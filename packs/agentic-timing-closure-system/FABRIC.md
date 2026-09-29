@@ -6,7 +6,8 @@ Task 14 compiled the executable method from `SPEC.md` and the reviewed Pack code
 next-decision `stage` check in `tools/read-atcs.py`, and the removal of the unused `_apr_task_path`
 helper from `flow/atcs_cli.py`.
 
-- `contract.yml` — 4 inputs, 35 outputs (18 with a reader, every `readers/*.yml` bound), 25 tools
+- `contract.yml` — 4 inputs, 42 outputs (18 with a reader, every `readers/*.yml` bound; 7
+  `<output>Problems` sidecars, G36), 25 tools
   (24 `python3` subcommand tools of `flow/atcs_cli.py`, 1 interactive-only XTop Operator tool),
   7 Workshops (5 families, the worker family expanded to slots 01–03), 24 rules, 3 Goal parameters
   (`target_setup_wns_ns`, `target_hold_wns_ns`, `max_physical_refreshes`), 1 Strategy knob
@@ -350,6 +351,16 @@ Known gaps carried from earlier tasks:
   higher value. A missing ledger beside `state/sta.json` or any `implementations/*/sta.json`
   archive reads `unknown`, never 0 (review C-4). SPEC.md names `tc_refreshes_completed` and
   `refresh-budget` (review C-2).
+- G36 (Issue #63 slice 3, gap 1) A refused request reaches its owner itemized. Every request kind
+  in `tools/read-atcs.py` returns `(values, problems)` and counts `len(problems)`, so the text and
+  `tc_request_invalid_count` share one source; each problem starts with its field's JSON path (and
+  `(slot w0N)`) and, for a work-package field, its required format. The Reader writes the list
+  beside the document as `<document>.problems.txt`, and each producing Workshop reads it as the
+  output `<output>Problems` its purpose names (`evaluate-next-investment` also reads the plan's and
+  integration plan's, whose FAILs route to it). This is host-side on purpose: the Reader is shipped
+  alone into `hima-readers/<id>/` (`node-turns.ts` `runPackReader`), a Workshop sees only the
+  `flow/` copy, and moving the checks into `flow/atcs` would change the flow digest the installed
+  wrapper pins.
 
 ## Reviews
 

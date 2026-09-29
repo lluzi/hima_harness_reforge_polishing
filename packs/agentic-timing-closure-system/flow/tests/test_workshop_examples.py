@@ -25,12 +25,17 @@ all nine tests failed or errored because no `knowledge/example-*.md` existed and
 purpose named a knowledge file; a probe of the old `examples/*.json` showed the worker
 candidate (bare leaf `U1`) differed from the plan's w01 (`u_a/reg0`), and that carrying
 the plan's w01 into a worker request was rejected as not a hierarchical instance.
+
+Recorded RED (slice 3 gap 1, on 18829968): RefusalTextTest and ProblemsDeliveryTest -- 14
+errors (`read_atcs` had no `problems`, the Reader wrote no `.problems.txt`) and 7 failures
+(no `<output>Problems` output, read or purpose for any of the seven request outputs).
 """
 from __future__ import annotations
 
 import copy
 import json
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -45,7 +50,7 @@ CONTRACT_PATH = PACK_DIR / "contract.yml"
 sys.path.insert(0, str(TESTS_DIR))
 
 # Reuse the repo's own fixture builders rather than a second copy of them.
-from test_readers import _make_workspace, _build_design_state, _write, read_atcs  # noqa: E402
+from test_readers import READ_ATCS_PATH, _make_workspace, _build_design_state, _write, read_atcs  # noqa: E402
 
 from atcs import core  # noqa: E402
 
@@ -249,6 +254,213 @@ class WorkerRequestExampleTest(_HierarchicalFixture):
             action["instance"] = leaf
         with self.assertRaisesRegex(ValueError, "not a hierarchical instance"):
             self._read("worker-request", "worker-request-w01.json", document, extra=["w01"])
+
+
+# Every Reader-owned request kind, its contract output, and the output its itemized
+# problems are delivered through (Issue #63 gap 1: the owner saw only "41").
+REQUEST_OUTPUTS = {
+    "observationRequest": ("diagnose-and-observe", "research/requests/observation-request.json"),
+    "campaignPlan": ("plan-campaign", "research/requests/campaign-plan.json"),
+    "workerRequest01": ("research-worker-01", "research/requests/worker-request-w01.json"),
+    "workerRequest02": ("research-worker-02", "research/requests/worker-request-w02.json"),
+    "workerRequest03": ("research-worker-03", "research/requests/worker-request-w03.json"),
+    "integrationPlan": ("compose-contributions", "research/requests/integration-plan.json"),
+    "nextDecision": ("evaluate-next-investment", "research/requests/next-decision.json"),
+}
+
+
+def _output_block(contract_text, name):
+    match = re.search(rf"^  - name: {re.escape(name)}\n(.*?)(?=^  - name: |^\S)", contract_text, re.S | re.M)
+    return None if match is None else match.group(1)
+
+
+def _workshop_reads(contract_text, workshop_id):
+    match = re.search(rf"^  - id: {re.escape(workshop_id)}\n(.*?)(?=^  - id: |\Z)", contract_text, re.S | re.M)
+    reads = re.search(r"^    reads: \[(.*?)\]$", match.group(1), re.M)
+    return {r.strip() for r in reads.group(1).split(",")} if reads else set()
+
+
+class RefusalTextTest(_HierarchicalFixture):
+    """Issue #63 gap 1: a refused request reaches its owner as one line per problem, each
+    naming the field (and the slot, for a slot-scoped document) and what it must be, and
+    the Reader's tc_request_invalid_count is exactly the number of those lines -- one
+    source, `read_atcs.problems`, for both. Each case mutates a shipped example into a
+    live error class (the 41-error plan of run-6de8b715, T63's bare leaf)."""
+
+    FIELD_FIRST = re.compile(r"^[A-Za-z][\w.\[\]-]*(?: \(slot w0[123]\))?: \S")
+
+    def _problems(self, kind, name, document, slot=None):
+        report = self.workspace / "research" / "requests" / name
+        _write(report, json.dumps(document))
+        found = read_atcs.problems(kind, report, self.workspace, slot)
+        extra = [slot] if slot else None
+        values = {v["type"]: v["value"] for v in read_atcs.read(kind, report, self.workspace, extra)}
+        self.assertEqual(values["tc_request_invalid_count"], len(found), found)
+        for text in found:
+            self.assertRegex(text, self.FIELD_FIRST, "a problem starts with the field it is about")
+        return found
+
+    def _one(self, found, *needles):
+        self.assertEqual(len(found), 1, found)
+        for needle in needles:
+            self.assertIn(needle, found[0])
+        return found[0]
+
+    # --- campaign plan -------------------------------------------------------------
+    def _plan(self):
+        return _load_example("example-campaign-plan.md")
+
+    def test_example_plan_has_no_problems(self):
+        self.assertEqual(self._problems("campaign-plan", "campaign-plan.json", self._plan()), [])
+
+    def test_top_level_work_packages_names_the_one_allowed_copy(self):
+        plan = self._plan()
+        plan["workPackages"] = copy.deepcopy(plan["candidate"]["workPackages"])
+        self._one(self._problems("campaign-plan", "campaign-plan.json", plan),
+                  "workPackages", "candidate.workPackages")
+
+    def test_stale_base_state_names_the_working_state(self):
+        other = _build_design_state(self.workspace, name="other", netlist_text=EXAMPLE_NETLIST)
+        _write(self.workspace / "state" / "working-state.json", json.dumps(other))
+        found = self._problems("campaign-plan", "campaign-plan.json", self._plan())
+        self._one(found, "baseState", "state/working-state.json", other["id"])
+
+    def test_missing_budget_names_slot_field_and_format(self):
+        plan = self._plan()
+        del plan["candidate"]["workPackages"]["w03"]["budget"]
+        text = self._one(self._problems("campaign-plan", "campaign-plan.json", plan),
+                         "candidate.workPackages.w03", "budget", "xtopMinutes")
+        self.assertNotIn("w01", text)
+
+    def test_wrong_action_kind_names_slot_and_the_allowed_kinds(self):
+        plan = self._plan()
+        plan["candidate"]["workPackages"]["w02"]["actions"] = ["resize_cell"]
+        self._one(self._problems("campaign-plan", "campaign-plan.json", plan),
+                  "candidate.workPackages.w02", "actions", "'resize_cell'", "size_cell")
+
+    def test_missing_slot_and_blank_reason_are_named(self):
+        plan = self._plan()
+        del plan["candidate"]["workPackages"]["w03"]
+        plan["candidate"]["reason"] = " "
+        found = self._problems("campaign-plan", "campaign-plan.json", plan)
+        self.assertEqual(len(found), 2, found)
+        self.assertTrue(any(t.startswith("candidate.workPackages.w03") for t in found), found)
+        self.assertTrue(any(t.startswith("candidate.reason") for t in found), found)
+
+    def test_the_five_error_plan_lists_five_lines(self):
+        """The audit's probe: wrong w01 baseStateId, w02 resize_cell, w03 missing problem
+        and budget, and a top-level workPackages -- five problems, five lines."""
+        plan = self._plan()
+        packages = plan["candidate"]["workPackages"]
+        packages["w01"]["baseStateId"] = "0" * 20
+        packages["w02"]["actions"] = ["resize_cell"]
+        del packages["w03"]["problem"]
+        del packages["w03"]["budget"]
+        plan["workPackages"] = copy.deepcopy(packages)
+        found = self._problems("campaign-plan", "campaign-plan.json", plan)
+        self.assertEqual(len(found), 5, found)
+        for slot, needle in (("w01", "baseStateId"), ("w02", "actions"), ("w03", "problem"), ("w03", "budget")):
+            self.assertTrue(any(t.startswith(f"candidate.workPackages.{slot}") and needle in t for t in found),
+                            f"{slot}/{needle} not named: {found}")
+
+    # --- worker requests -----------------------------------------------------------
+    def _worker(self, slot):
+        document = _load_example("example-worker-request.md")
+        document["candidate"]["taskId"] = slot
+        return document
+
+    def test_worker_missing_budget_and_wrong_kind_name_their_slot(self):
+        for slot in ("w01", "w02", "w03"):
+            with self.subTest(slot=slot):
+                document = self._worker(slot)
+                del document["candidate"]["budget"]
+                document["candidate"]["actions"] = ["resize_cell"]
+                found = self._problems("worker-request", f"worker-request-{slot}.json", document, slot)
+                self.assertEqual(len(found), 2, found)
+                for text in found:
+                    self.assertIn(f"slot {slot}", text)
+                self.assertTrue(any("budget" in t and "xtopMinutes" in t for t in found), found)
+                self.assertTrue(any("'resize_cell'" in t for t in found), found)
+
+    # --- observation request and integration plan ----------------------------------
+    def test_observation_request_names_each_field(self):
+        document = {"designStateId": self.design["id"], "precision": "fast", "maxPaths": "1000", "nworst": 1}
+        found = self._problems("observation-request", "observation-request.json", document)
+        self.assertEqual(len(found), 3, found)
+        for field, needle in (("precision", "'gba' or 'pba'"), ("maxPaths", "positive integer"),
+                              ("requiredScenarios", "non-empty list")):
+            self.assertTrue(any(t.startswith(field) and needle in t for t in found), f"{field}: {found}")
+
+    def test_integration_plan_names_each_field(self):
+        facts = core.stamp("composition-facts", {
+            "baseStateId": "a" * 20, "considered": ["c1"], "duplicates": [], "conflicts": [],
+            "interactions": [], "staleBase": [], "order": ["c1"], "unresolvedCount": 0,
+        })
+        plan = {"batchId": "b1", "baseStateId": "b" * 20, "select": ["c9"], "resolutions": [],
+                "deferred": [], "reason": "x"}
+        found = self._problems("integration-plan", "integration-plan.json", {"plan": plan, "facts": facts})
+        self.assertEqual(len(found), 2, found)
+        self.assertTrue(any(t.startswith("plan.baseStateId") for t in found), found)
+        self.assertTrue(any(t.startswith("plan.select") and "'c9'" in t for t in found), found)
+
+
+class ProblemsDeliveryTest(_HierarchicalFixture):
+    """The itemized list reaches the owner: the Reader process writes it beside the
+    document it read, as `<document>.problems.txt`, and the producing Workshop declares
+    that file as a readable output its purpose points at."""
+
+    def _run(self, kind, name, document, extra=()):
+        report = self.workspace / "research" / "requests" / name
+        _write(report, json.dumps(document))
+        out = self.workspace / "out.json"
+        if out.exists():
+            out.unlink()
+        result = subprocess.run(
+            [sys.executable, str(READ_ATCS_PATH), kind, str(report), str(out), str(self.workspace), *extra],
+            capture_output=True, text=True,
+        )
+        sidecar = report.with_name(report.name[: -len(".json")] + ".problems.txt")
+        return result, out, sidecar
+
+    def test_a_refused_plan_leaves_one_line_per_problem_and_a_fixed_plan_clears_it(self):
+        plan = _load_example("example-campaign-plan.md")
+        plan["candidate"]["workPackages"]["w02"]["actions"] = ["resize_cell"]
+        del plan["candidate"]["workPackages"]["w03"]["budget"]
+        result, out, sidecar = self._run("campaign-plan", "campaign-plan.json", plan)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        count = json.loads(out.read_text())["values"][0]["value"]
+        lines = sidecar.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(count, 2)
+        self.assertIn("2 problem", lines[0])
+        items = [line[2:] for line in lines if line.startswith("- ")]
+        self.assertEqual(items, read_atcs.problems("campaign-plan", sidecar.with_name("campaign-plan.json"), self.workspace))
+
+        result, out, sidecar = self._run("campaign-plan", "campaign-plan.json", _load_example("example-campaign-plan.md"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = sidecar.read_text(encoding="utf-8")
+        self.assertIn("0 problems", text)
+        self.assertNotIn("- ", text)
+
+    def test_a_document_the_reader_cannot_read_names_why(self):
+        plan = _load_example("example-campaign-plan.md")
+        plan["baseState"]["top"] = "edited"  # its id no longer matches its body
+        result, out, sidecar = self._run("campaign-plan", "campaign-plan.json", plan)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(out.exists())
+        self.assertIn("id mismatch", sidecar.read_text(encoding="utf-8"))
+
+    def test_every_request_output_has_a_problems_output_its_workshop_reads(self):
+        text = _contract_text()
+        for output, (workshop_id, path) in REQUEST_OUTPUTS.items():
+            with self.subTest(output=output):
+                sidecar_name = output + "Problems"
+                block = _output_block(text, sidecar_name)
+                self.assertIsNotNone(block, f"no {sidecar_name} output")
+                self.assertIn(f"path: {path[: -len('.json')]}.problems.txt", block)
+                self.assertNotIn("reader:", block)
+                self.assertIn(sidecar_name, _workshop_reads(text, workshop_id))
+                purpose, _ = _workshop(text, workshop_id)
+                self.assertIn(f"output {sidecar_name}", purpose)
 
 
 class NextDecisionExampleTest(unittest.TestCase):
