@@ -193,7 +193,7 @@ function executionText(value: Record<string, ToolJson>): string {
     context: { run: { id: run.id, status: run.status, generation: run.generation,
       currentNode: run.currentNode, nextSeq: run.nextSeq, goal: run.goal, strategy: run.strategy, budget: run.budget,
       loop: run.loop, control: { owner: control.owner, epoch: control.epoch, revision: control.revision,
-        paused: control.paused, stop: control.stop } }, available: context.available, executions,
+        paused: control.paused, stop: control.stop } }, available: context.available, cite: context.cite, executions,
       reason: context.reason, method: { id: method.id, version: method.version, digest: method.digest } },
     more: 'hima_context provides the full reference graph and recorded evidence when needed',
   });
@@ -505,7 +505,8 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         let words: RunWords | undefined;
         try { words = runPackWords(deps.packsDir, context.run); }
         catch { /* Keep execution facts readable when the original method is unavailable. */ }
-        return toolJson({ runId: args.run, ...context, facts: runView(deps.ledger, context.run, words) });
+        // What an Explore here must cite leads, so it is read before the Ledger that follows it.
+        return toolJson({ runId: args.run, ...(context.cite === undefined ? {} : { cite: context.cite }), ...context, facts: runView(deps.ledger, context.run, words) });
       },
     }),
     defineTool({
@@ -540,7 +541,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         decision: { type: 'string', enum: ['goal-met', 'converged', 'next-strategy'], description: 'For an Explore strategy decision, submit this on complete together with rationale and cites. work does not submit a decision.' },
         strategy: { type: 'object', additionalProperties: true, description: 'Declared strategy values supplied with decision next-strategy on Explore complete; omit for goal-met or converged.' },
         rationale: { type: 'string', description: 'Reason for the Explore decision, grounded in cited facts; submit with decision on complete.' },
-        cites: { type: 'array', items: { type: 'string' }, description: 'Current-generation observation and required Judge verdict record ids supporting the Explore decision; submit with decision on complete.' },
+        cites: { type: 'array', items: { type: 'string' }, description: 'Current-generation observation and required Judge verdict record ids supporting the Explore decision; submit with decision on complete. context.cite lists exactly the ids the current Explore requires.' },
         proposal: { type: 'object', additionalProperties: false,
           description: 'For grow, express the research intent with the exact named fields below. Omit method, parent and inputThroughSeq to let Harness attach current Run identities. Omit inputs to use current-generation evidence, or give record sequence numbers/ids; Harness computes record identities. Reuse proposalId only for identical intent; correcting a refused proposal uses a new proposalId/requestId. Explicit wrong hashes are still refused.',
           properties: {
@@ -883,7 +884,10 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         // Doing it here rather than retyping the view's sections as tool schema keeps this tool's
         // answer and the route's one answer — the day a section is added to a Run it is in both.
         const view: unknown = JSON.parse(JSON.stringify(runView(deps.ledger, run, words)));
-        return Promise.resolve({ kind: 'run' as const, ...(view as Record<string, never>) });
+        // An owned Run's current Explore names the exact evidence ids its completion requires, ahead
+        // of the view: the same list hima_execute and hima_context carry (#64 D4).
+        const cite = run.control === undefined ? undefined : executionContext(deps, run.id).cite;
+        return Promise.resolve({ kind: 'run' as const, ...(cite === undefined ? {} : { cite: toolJson({ cite }).cite }), ...(view as Record<string, never>) });
       },
     }),
     defineTool({

@@ -426,3 +426,63 @@ test('Pack wait needs a human clearance followed by explicit Agent completion', 
     assert.equal(owner.launched().length, 0);
   });
 });
+
+test('the owner reads the exact evidence ids an Explore must cite, and a wrong citation names them', async (t) => {
+  await campaign(t, { goal: 2.3, period: 2.4 }, async (owner, host, runId) => {
+    const agent = host.ctx.get('agents')!.get(owner.context().run.control!.owner as never)!;
+    let serial = 0;
+    const tool = async (name: string, args: object) => {
+      const result = await host.ctx.tools.execute({ callId: `cite-${++serial}` as never, name, arguments: args, agent, signal: AbortSignal.timeout(30000) });
+      assert.equal(result.isError, false, JSON.stringify(result));
+      return result.content.filter((item) => item.type === 'text').map((item) => item.text).join('');
+    };
+    await owner.node('synthesize');
+    await owner.node('read-qor');
+    await owner.node('judge');
+    // Independently of the Harness: this generation's Judge ruled on its one reading, so the cites
+    // are that reading and the verdicts citing it.
+    const records = recordsOf(host, runId);
+    const reading = records.findLast((record) => record.type === 'observation');
+    assert.ok(reading?.type === 'observation');
+    const rulings = records.filter((record) => record.type === 'verdict' && record.cites.includes(reading.id));
+    assert.equal(rulings.length, 2, 'the timing probe Judge applies its two rules');
+    const expected = [reading.id, ...rulings.map((record) => record.id)].sort();
+
+    type Cite = { nodeId: string; cites?: string[]; records?: { id: string; type: string; reader?: string; nodeId?: string; ruleId?: string; outcome?: string }[] };
+    // The owner's per-turn summaries list them before the Explore is even begun.
+    const status = JSON.parse(await tool('hima_status', { run: runId })) as { cite?: Cite[] };
+    const listed = status.cite?.find((item) => item.nodeId === 'next-period');
+    assert.ok(listed, `hima_status lists what next-period must cite: ${JSON.stringify(status.cite)}`);
+    assert.deepEqual([...listed.cites!].sort(), expected);
+    const observed = listed.records!.find((record) => record.id === reading.id);
+    assert.equal(observed?.type, 'observation');
+    assert.equal(observed?.reader, reading.reader.id);
+    assert.equal(observed?.nodeId, 'read-qor');
+    for (const ruling of rulings) {
+      if (ruling.type !== 'verdict') continue;
+      assert.deepEqual(listed.records!.find((record) => record.id === ruling.id), { id: ruling.id, type: 'verdict', ruleId: ruling.ruleId, outcome: ruling.outcome });
+    }
+
+    const explore = await owner.ready('next-period');
+    const control = () => owner.context().run.control!;
+    const execute = async (requestId: string, extra: object) => JSON.parse(await tool('hima_execute', {
+      run: runId, action: 'complete', nodeId: 'next-period', executionId: explore, requestId,
+      expectedEpoch: control().epoch, expectedRevision: control().revision,
+      decision: 'next-strategy', strategy: { periodNs: 2.35 }, rationale: 'Tighten by the declared step after the 2.40 ns trial.', ...extra,
+    })) as { kind: string; reason?: string; context: { cite?: Cite[] } };
+
+    const wrong = await execute('cite-wrong', { cites: [...expected.slice(1), `${runId}#999999`] });
+    assert.equal(wrong.kind, 'refused');
+    for (const id of expected) assert.ok(wrong.reason?.includes(id), `the refusal names expected id ${id}: ${wrong.reason}`);
+    assert.deepEqual([...wrong.context.cite!.find((item) => item.nodeId === 'next-period')!.cites!].sort(), expected,
+      'hima_execute context repeats the same citable ids');
+    assert.equal(owner.execution(explore).phase, 'ready');
+
+    const accepted = await execute('cite-listed', { cites: listed.cites });
+    assert.equal(accepted.kind, 'accepted', JSON.stringify(accepted.reason));
+    const decision = recordsOf(host, runId).findLast((record) => record.type === 'decision');
+    assert.ok(decision?.type === 'decision');
+    assert.deepEqual([...decision.cites].sort(), expected);
+    assert.equal(accepted.context.cite?.some((item) => item.nodeId === 'next-period') ?? false, false, 'a completed Explore is no longer listed');
+  });
+});
