@@ -11,9 +11,9 @@ Report text comes from the Pack's own synthetic generators (`flow/tests/fixtures
 grammar `atcs.reports`/`atcs.verification`/`atcs.adapters` parse. Nothing here is a timing,
 extraction or physical result: the numbers are fixed by which netlist a task reads.
 
-The design has one leaf cell, `u_a/reg0`, under module `blk_a`. The stand-in "database" (`*.enc`)
+The design has three blocks u_a/u_b/u_c, each with leaf cells reg0 and reg1 (design/top.v). The stand-in "database" (`*.enc`)
 is the netlist text itself, so an Innovus ECO restores it, applies `ecoChangeCell`, and saves it.
-Timing: a netlist that still has `u_a/reg0` as `BUF1` (the baseline) fails setup by 0.0500 ns on the
+Timing: a netlist that still has `u_a/reg0` as `BUFFD1BWP` (the baseline) fails setup by 0.0500 ns on the
 setup scenario; once an ECO resized it, the refreshed STA still fails, by 0.0300 ns.
 """
 import argparse
@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 SETUP_SCENARIO = "func_ssg_rcworst"
-ENDPOINT = "u_a/reg0/D"
+ENDPOINT = "u_a/reg0/I"
 STARTPOINT = "U_START_0"
 BASELINE_SLACK = "-0.0500"
 REFRESHED_SLACK = "-0.0300"
@@ -63,19 +63,31 @@ def netlist_cells(netlist_text):
     return list(walk("top", ""))
 
 
+def _leaf(netlist_text, instance_path):
+    """`(start, end, master)` of the master token of the leaf cell `instance_path`, walked from `top`."""
+    def block(module):
+        return re.search(rf"(?ms)^module\s+{re.escape(module)}\b.*?^endmodule", netlist_text)
+    *parents, leaf = instance_path.split("/")
+    module = "top"
+    for name in parents:
+        module = re.search(rf"(?m)^\s*(\w+)\s+{re.escape(name)}\s*\(", block(module).group(0)).group(1)
+    found = block(module)
+    cell = re.search(rf"(?m)^\s*(\w+)\s+{re.escape(leaf)}\s*\(", found.group(0))
+    if cell is None:
+        raise SystemExit(f"stand-in cannot find {instance_path!r}")
+    return found.start() + cell.start(1), found.start() + cell.end(1), cell.group(1)
+
+
 def set_master(netlist_text, instance_path, master):
-    """The netlist with the leaf `instance_path` resized to `master` (single-level modules only)."""
-    leaf = instance_path.rsplit("/", 1)[-1]
-    updated, count = re.subn(rf"(?m)^(\s*)\w+(\s+{re.escape(leaf)}\s*\()", rf"\g<1>{master}\2", netlist_text)
-    if count != 1:
-        raise SystemExit(f"stand-in cannot resize {instance_path!r}")
-    return updated
+    """The netlist with the leaf `instance_path` resized to `master`."""
+    start, end, _ = _leaf(netlist_text, instance_path)
+    return netlist_text[:start] + master + netlist_text[end:]
 
 
 def slack_for(netlist_path):
-    """The baseline slack while u_a/reg0 is still BUF1; the refreshed slack once an ECO resized it."""
-    master = re.search(r"(?m)^\s*(\w+)\s+reg0\s*\(", Path(netlist_path).read_text(encoding="utf-8")).group(1)
-    return BASELINE_SLACK if master == "BUF1" else REFRESHED_SLACK
+    """The baseline slack while u_a/reg0 is still BUFFD1BWP; the refreshed slack once an ECO resized it."""
+    master = _leaf(Path(netlist_path).read_text(encoding="utf-8"), "u_a/reg0")[2]
+    return BASELINE_SLACK if master == "BUFFD1BWP" else REFRESHED_SLACK
 
 
 def pt_scenario(env, fixtures):
@@ -106,7 +118,7 @@ def pt_query(env, task_text, fixtures):
     slack = slack_for(env["NETLIST"])
     for startpoint, endpoint, mode, name in re.findall(r"\{(\S+) (\S+) (\S+) (\S+)\}", targets.group(1)):
         detail = fixtures.path_detail_report([
-            ("u_a/reg0/CP", "u_a/reg0/Q", "BUF1", 0.0100, 0.0050, 0.0120, 0.0400, "n_q", 1, 0.0010),
+            ("u_a/reg0/I", "u_a/reg0/Z", "BUFFD1BWP", 0.0100, 0.0050, 0.0120, 0.0400, "n_q", 1, 0.0010),
         ])
         verdict = "VIOLATED" if slack.startswith("-") else "MET"
         (out / f"{name}.rpt").write_text(

@@ -12,8 +12,8 @@ EXAMPLE = json.loads(r'''__EXAMPLE_JSON__''')
 workspace = Path(sys.argv[1])
 working = json.loads((workspace / "state" / "working-state.json").read_text(encoding="utf-8"))
 packages = {slot: dict(package, baseStateId=working["id"]) for slot, package in EXAMPLE["candidate"]["workPackages"].items()}
-packages["w01"].update(problem="setup violation on u_a/reg0/D in func_ssg_rcworst",
-                       targets=["func_ssg_rcworst|setup|u_a/reg0/D"])
+packages["w01"].update(problem="setup violation on u_a/reg0/I in func_ssg_rcworst",
+                       targets=["func_ssg_rcworst|setup|u_a/reg0/I"])
 plan = dict(EXAMPLE, baseState=working, candidate=dict(EXAMPLE["candidate"], workPackages=packages))
 out = workspace / "research" / "requests" / "campaign-plan.json"
 out.parent.mkdir(parents=True, exist_ok=True)
