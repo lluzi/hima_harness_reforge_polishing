@@ -855,7 +855,7 @@ export default class Hima extends Service {
       ...(testFixtureCanRunHere()&&process.env.HIMA_TEST_INTERACTIVE_BINDING_ID?{trustedTestQualification:{bindingId:process.env.HIMA_TEST_INTERACTIVE_BINDING_ID}}:{}),
       resolveOperation:async(run,execution)=>{
         const driving=interactiveDriving(this.deps(),run,execution);
-        return bridge.resolve({pack:driving.pack,run,execution,site:driving.site,workspace:driving.workspace});
+        return bridge.resolve({pack:driving.pack,run,execution,site:driving.site,workspace:driving.workspace,bindings:driving.bindings});
       },verifyAdminBinding:binding=>bridge.verifyAdminBinding(binding),encodeCommand:(binding,request)=>bridge.encodeCommand(binding,request),
       claimJobSlot:async request=>{
         if(!request.run.budget)return {kind:'stopped',reason:'Original Run budget is unavailable.'};

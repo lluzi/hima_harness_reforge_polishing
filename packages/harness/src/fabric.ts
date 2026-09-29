@@ -33,7 +33,7 @@ import { runExitFence } from './host-exit.js';
 // an outcome's edge leads to, and where a Run stops. What a turn itself does is `node-turns.ts`, what
 // a Run may spend `budget.ts`, what a Site will hold `job-cap.ts`, and picking a Run up again or
 // stopping one `recovery.ts`.
-import { goalDeclarationOf, boundInputs, checkPack, forkFrom, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, workshopProducersOf, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
+import { goalDeclarationOf, boundInputs, recordedInputs, checkPack, forkFrom, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, workshopProducersOf, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
 import { packDigestExcludes, snapshotPackFolder, type PackFolderSnapshot } from './pack-folder.js';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
@@ -765,7 +765,7 @@ async function admitResume(deps: FabricDeps, req: { readonly runId: string; read
     runId: run.id,
     site,
     pack,
-    bindings: boundInputs(pack, site),
+    bindings: recordedInputs(pack, site, prepared.bindings),
     workspace: prepared.workspace,
     campaignId: run.campaignId,
     // Read after the resume is on record, so the wait this resume just closed is part of it: that is
@@ -2443,9 +2443,11 @@ export function executionDriving(deps: FabricDeps, run: RunRecord, execution: No
   const adoption = run.control?.adoption;
   const adoptedWorkspace = prepared !== undefined && adoption?.workspaceSeq === prepared.seq && adoption.methodDigest === run.packDigest;
   if (prepared === undefined || (prepared.packDigest !== run.packDigest && !adoptedWorkspace)) throw new RunStartError('this execution has no verified original workspace/method identity');
+  // The inputs this execution was admitted with are the Run's recorded ones (#64 D-C01-1).
+  const bindings = recordedInputs(pack, site, prepared.bindings);
   return {
     deps: { ...deps, beforeSlotClaim: (siteName) => reconcileExecutionIntents(deps, siteName) },
-    runId: run.id, site, pack, bindings: boundInputs(pack, site), workspace: prepared.workspace,
+    runId: run.id, site, pack, bindings, workspace: prepared.workspace,
     campaignId: run.campaignId, waitedMs: ownedWaitedMs(run), nonblocking: true, executionId: execution.id,
     ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
     beforeLaunch: async (offered: LaunchIntent) => {
@@ -2457,8 +2459,17 @@ export function executionDriving(deps: FabricDeps, run: RunRecord, execution: No
       revalidate();
       const intent = launchIntentSchema.parse(offered);
       if (intent.runId !== run.id || intent.siteId !== run.siteId || intent.nodeId !== execution.nodeId || intent.attempt !== execution.attempt || intent.branchId !== execution.branchId) throw new RunStartError('launch identity does not match the admitted node execution');
+      // The Run's inputs as recorded now must still be the ones this Job was built from: a later
+      // workspace record that binds another value means the admitted execution is stale.
+      const latest = deps.ledger.records({ runId: run.id, type: 'workspace' })
+        .findLast((record): record is WorkspaceRecord => record.type === 'workspace' && record.workspace === prepared.workspace);
+      if (latest?.bindings !== undefined) {
+        const differs = pack.contract.inputs.filter((input) => latest.bindings![input.name] !== bindings[input.name]);
+        if (differs.length > 0) throw new RunStartError(`this Job's inputs differ from the Run's recorded input bindings (${differs.map((input) =>
+          `${input.name}: recorded "${latest.bindings![input.name] ?? ''}", this Job "${bindings[input.name] ?? ''}"`).join('; ')}); nothing was launched`);
+      }
       await attestLibraryQualificationPrelaunch({
-        packId: pack.id, site, bindings: boundInputs(pack, site), workspace: prepared.workspace,
+        packId: pack.id, site, bindings, workspace: prepared.workspace,
         intent, channel: channelFor(site),
       });
       revalidate();
