@@ -431,6 +431,55 @@ test('a deadline that has fired is not fired again when the deadlines are re-pro
   } finally { timer.dispose(); }
 });
 
+// Review C1 of attempt 3: an idle deadline moves later with every recorded activity. When each
+// command completed inside its own input call, the next re-projection still found an idle key, kept
+// the timer it already held and dropped the later deadline, so the first timer fired at open +
+// idleMaxMs — and with the Host's deadline stop now effective, closed a session being driven.
+test('an idle deadline moved later by completed commands is the one timer that fires, never the stale one (review C1)', async () => {
+  const runId = 'idle-moves', toolSessionId = 'idle-moves-session', idleMaxMs = 1_500;
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const address = { runId, toolSessionId, executionId: execution.id, nodeId: 'manual', actor: 'operator',
+    ownerEpoch: 1, controlRevision: 0, operationDigest: digest('a'), callerDigest: digest('b') };
+  const records: object[] = [];
+  const append = (data: Record<string, unknown>) => {
+    const at = new Date().toISOString();
+    records.push({ type: 'interactive', runId, toolSessionId, at, payload: parseInteractiveRecord({ ...address, requestId: 'r', at, ...data }) });
+  };
+  const ledger = { runs: () => [{ id: runId, siteId: 'local', status: 'running', control: { executions: { [execution.id]: { ...execution, phase: 'working' } } } }],
+    records: (query: { type?: string }) => records.filter((record) => query.type === undefined || (record as { type: string }).type === query.type) };
+  const fired: { kind: string; at: string; firedAt: number }[] = [];
+  const timer = createInteractiveTimerController({ fabric: { ledger } as never,
+    resolveOperation: async () => ({ binding: { ...binding, limits: { ...binding.limits, idleMaxMs } }, site: 'local', workspace: '/w',
+      argv: ['sh'], name: 'idle', licences: {}, commands: [] }),
+    verifyAdminBinding: async () => { throw new Error('unused'); }, encodeCommand: async () => { throw new Error('unused'); },
+    onDeadline: async (deadline) => { if (deadline.kind === 'idle') fired.push({ kind: deadline.kind, at: deadline.at, firedAt: Date.now() }); } });
+  try {
+    append({ event: 'open-intent', jobSession: toolSessionId, transcriptPath: '/fixture/transcript.log',
+      exitPath: '/fixture/session.exit', sessionDeadlineAt: new Date(Date.now() + 60_000).toISOString() });
+    append({ event: 'opened', jobSession: toolSessionId, readiness: 'ready', qualification: {
+      bindingDigest: digest('c'), adapter: binding.adapter, environment: binding.environment, mutation: 'qualified', testOnly: true } });
+    await timer.reconcile();
+    // For three idle windows the Operator's commands complete inside their own input calls.
+    const until = Date.now() + 3 * idleMaxMs;
+    let serial = 0;
+    while (Date.now() < until) {
+      await sleep(500);
+      const commandId = `c${++serial}`;
+      append({ event: 'input-intent', commandId, inputDigest: digest('d'), requestDigest: digest('b'), protocolToken: 'T'.repeat(32),
+        inputBytes: 1, submit: true, effect: 'read', cursorBefore: 0, commandDeadlineAt: new Date(Date.now() + 5_000).toISOString() });
+      append({ event: 'input-sent', commandId, inputDigest: digest('d') });
+      append({ event: 'command-completed', commandId, inputDigest: digest('d'), cursorAfter: serial });
+      await timer.reconcile();
+    }
+    assert.deepEqual(fired, [], `a session driven the whole time reached no idle deadline: ${JSON.stringify(fired)}`);
+    // Then it goes quiet: the idle deadline counted from its last activity fires, once.
+    await sleep(idleMaxMs + 500);
+    assert.equal(fired.length, 1, JSON.stringify(fired));
+    const lastActivity = Date.parse((records.at(-1) as { at: string }).at);
+    assert.equal(fired[0]!.at, new Date(lastActivity + idleMaxMs).toISOString(), 'the deadline is the one counted from the last activity');
+  } finally { timer.dispose(); }
+});
+
 // #64 D-T01-3: the Harness "closed" worker 02's interactive session, but the tool it had launched
 // kept running and kept its locks in the slot, so every retry in that slot was refused by the
 // wrapper's startup lock check. A close must end with the Job's process group observed gone, or

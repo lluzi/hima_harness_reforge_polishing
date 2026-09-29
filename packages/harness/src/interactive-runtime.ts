@@ -802,18 +802,24 @@ export async function reconcileInteractiveState(deps: InteractiveRuntimeDeps): P
 
 /** Process-local timers project durable absolute deadlines; disposal never stops a Job by itself. */
 export function createInteractiveTimerController(deps: InteractiveRuntimeDeps): InteractiveTimerController {
-  const timers = new Map<string, ReturnType<typeof setTimeout>>(); let disposed = false;
+  // One timer per deadline key, holding the absolute time it is set for. An idle deadline moves later
+  // with every recorded activity; a re-projection whose time differs replaces the timer, so the timer
+  // that fires is always the current deadline's and never one an Operator's activity has already
+  // moved (review C1 of attempt 3: the stale idle timer closed a session being driven).
+  const timers = new Map<string, { readonly timer: ReturnType<typeof setTimeout>; readonly at: string }>(); let disposed = false;
   // A deadline fires once per Host (#64 D-T02-5): every interactive call re-projects the deadlines,
   // and one that had already fired, for a session its stop did not close, used to be scheduled and
   // fired again each time — 42 notices to the owner in 17 minutes of attempt 2.
   const fired = new Set<string>();
   const schedule = (deadline: InteractiveDeadline): void => {
     const key = `${deadline.kind}:${deadline.runId}:${deadline.toolSessionId}:${deadline.commandId ?? ''}`;
-    if (timers.has(key) || disposed || fired.has(`${key}@${deadline.at}`)) return;
+    const existing = timers.get(key);
+    if (disposed || fired.has(`${key}@${deadline.at}`) || existing?.at === deadline.at) return;
+    if (existing) { clearTimeout(existing.timer); timers.delete(key); }
     const fire = (): void => {
       if (disposed) return;
       const remaining = Date.parse(deadline.at) - nowOf(deps);
-      if (remaining > 0) { timers.set(key, setTimeout(fire, Math.min(remaining, 2_147_000_000))); return; }
+      if (remaining > 0) { timers.set(key, { timer: setTimeout(fire, Math.min(remaining, 2_147_000_000)), at: deadline.at }); return; }
       timers.delete(key);
       fired.add(`${key}@${deadline.at}`);
       void deps.onDeadline(deadline).catch((error) => deps.fabric.log?.(`interactive deadline callback failed for ${deadline.toolSessionId}: ${String(error)}`));
@@ -851,10 +857,10 @@ export function createInteractiveTimerController(deps: InteractiveRuntimeDeps): 
         }
       }
       const current = new Set(deadlines.map((deadline) => `${deadline.kind}:${deadline.runId}:${deadline.toolSessionId}:${deadline.commandId ?? ''}`));
-      for (const [key, timer] of timers) if (!current.has(key)) { clearTimeout(timer); timers.delete(key); }
+      for (const [key, held] of timers) if (!current.has(key)) { clearTimeout(held.timer); timers.delete(key); }
       for (const deadline of deadlines) schedule(deadline);
       return deadlines;
     },
-    dispose() { disposed = true; for (const timer of timers.values()) clearTimeout(timer); timers.clear(); },
+    dispose() { disposed = true; for (const held of timers.values()) clearTimeout(held.timer); timers.clear(); },
   };
 }
