@@ -224,9 +224,98 @@ class NextDecisionTargetsTest(_ProbeFixture):
     def test_exact_check_keys_are_admitted(self):
         document = _fixture("next-decision-attempt-1.json")
         document["targets"] = ["func_ssg_rcworst_m40|setup|dec_tlu_perfcnt0[0]",
-                               "func_ffg_cbest_125|hold|swerv_dbg/axi_rdata_ff/dout_reg_0_"]
+                               "func_ffg_cbest_125|hold|swerv_dbg/axi_rdata_ff/dout_reg_0_",
+                               # a reserved path group, as PR03's observation writes it (probe run 2)
+                               "func_ffg_cbest_125|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**"]
         found = self._read(_probe_reader(), "next-decision", "next-decision.json", document)
         self.assertEqual([text for text in found if text.startswith("targets[")], [])
+
+
+def _stand_in_netlist(top, instances, cell="DFQD1BWP35P140"):
+    """A structural netlist holding exactly the probe's proven instance paths (the real one is
+    Site-only): one module per hierarchy prefix, every final segment a leaf `cell`."""
+    children, leaves = {}, {}
+    for path in instances:
+        segments = path.split("/")
+        for depth in range(len(segments) - 1):
+            children.setdefault("/".join(segments[:depth]), set()).add(segments[depth])
+        leaves.setdefault("/".join(segments[:-1]), set()).add(segments[-1])
+
+    def module_name(prefix):
+        return top if not prefix else "M_" + re.sub(r"[^A-Za-z0-9_]", "_", prefix)
+
+    def ident(name):
+        return name if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", name) else f"\\{name} "
+
+    lines = []
+    for prefix in sorted(set(children) | set(leaves) | {""}):
+        lines.append(f"module {module_name(prefix)} ( );")
+        for child in sorted(children.get(prefix, ())):
+            lines.append(f"  {module_name(prefix + '/' + child if prefix else child)} {ident(child)} ( );")
+        for leaf in sorted(leaves.get(prefix, ())):
+            if leaf not in children.get(prefix, ()):
+                lines.append(f"  {cell} {ident(leaf)} ( .D(d), .CP(clk), .Q(q) );")
+        lines.append("endmodule")
+    return "\n".join(lines) + "\n"
+
+
+class PlanEndpointPartTest(_ProbeFixture):
+    """Probe run 2 (final bytes): the plan was admitted 1/3. Attempt 3 passed the resolver 27 whole
+    check keys (`scenario|mode|endpoint`, some ending `@**async_default**`) instead of their
+    endpoint part, resolved nothing and wrote all three slots with empty edit domains; attempt 2
+    wrote w01 with an empty edit domain instead of failing."""
+
+    def test_the_retained_check_keys_resolve_by_their_endpoint_part(self):
+        from test_readers import _build_design_state
+        known = _fixture("known-instances.json")
+        design = _build_design_state(self.workspace, netlist_text=_stand_in_netlist(known["top"], known["instances"]))
+        body = {k: v for k, v in design.items() if k not in ("schema", "id")}
+        body["top"] = known["top"]
+        design = core.stamp("design-state", body)
+        _write(self.workspace / "state" / "working-state.json", json.dumps(design))
+        spec = importlib.util.spec_from_file_location("read_atcs_run2", READ_ATCS_PATH)
+        reader = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reader)
+        keys = _fixture("run2-plan-attempt-3-endpoints.json")
+        answer = reader.resolve_endpoints(self.workspace, keys)
+        endpoints = [re.sub(r"@\*\*\w+\*\*$", "", key.rsplit("|", 1)[1]) for key in keys]
+        proven = [endpoint for endpoint in endpoints if endpoint in set(known["instances"])]
+        self.assertEqual(len(proven), 18)  # the other 9 are nets, which need the Site's netlist
+        self.assertEqual(sorted(row["instance"] for row in answer["resolved"]), sorted(proven))
+        for row in answer["resolved"]:
+            self.assertIn("|", row["endpoint"], "each row keeps the check key it was given")
+            self.assertEqual(row["endpointPart"], re.sub(r"@\*\*\w+\*\*$", "", row["endpoint"].rsplit("|", 1)[1]))
+        self.assertTrue(any(key.endswith("@**async_default**") for key in keys))
+
+    def test_each_empty_edit_domain_names_the_endpoint_to_pass(self):
+        for name, slots in (("run2-campaign-plan-attempt-3.json", ("w01", "w02", "w03")),
+                            ("run2-campaign-plan-attempt-2.json", ("w01",))):
+            with self.subTest(document=name):
+                document = _fixture(name)
+                _write(self.workspace / "state" / "working-state.json", json.dumps(document["baseState"]))
+                found = self._read(_probe_reader(), "campaign-plan", "campaign-plan.json", document)
+                self.assertEqual(len(found), len(slots), found)
+                for text, slot in zip(found, slots):
+                    first = document["candidate"]["workPackages"][slot]["targets"][0]
+                    endpoint = re.sub(r"@\*\*\w+\*\*$", "", first.rsplit("|", 1)[1])
+                    self.assertTrue(text.startswith(f"candidate.workPackages.{slot}.editDomain: edit domain empty "
+                                                    f"for slot {slot}"), text)
+                    self.assertIn("resolver got a check key, pass the endpoint", text)
+                    self.assertIn(f"{endpoint!r} of {first!r}", text)
+                    self.assertIn("exit non-zero", text)
+
+    def test_the_knowledge_and_the_plan_purpose_state_the_rule(self):
+        knowledge = " ".join((PACK_DIR / "knowledge" / "endpoint-resolution.md").read_text(encoding="utf-8").split())
+        self.assertIn("func_ffg_cbest_125|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**", knowledge)
+        self.assertIn("`swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_`", knowledge)
+        self.assertIn("the endpoint part after the last `|`", knowledge)
+        contract = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+        purpose = " ".join(contract.split("  - id: plan-campaign\n", 1)[1].split("\n  - id: ", 1)[0].split())
+        rule = ("Pass the resolver the endpoint part of each check key (after the last |, without an @** path group "
+                "suffix). Never write a slot with an empty edit domain: when no endpoint of a slot resolves to a leaf "
+                "cell, choose other endpoints or exit non-zero naming the unresolved endpoints.")
+        self.assertIn(rule, purpose)
+        self.assertIn(rule, knowledge)
 
 
 if __name__ == "__main__":

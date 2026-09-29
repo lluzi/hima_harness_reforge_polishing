@@ -1,0 +1,242 @@
+{
+  "candidate": {
+    "workPackages": {
+      "w01": {
+        "taskId": "w01",
+        "baseStateId": "089c9d07c3338b120fa7",
+        "problem": "setup violations on the func_ssg_rcworst_m40 corner at the dec_tlu_perfcnt* nets, whose drivers resolve to weak leaf cells in swerv_dec_tlu; the loss is in driver strength and net delay on this data path, not in the launch/capture clock",
+        "targets": [
+          "func_ssg_rcworst_m40|setup|dec_tlu_perfcnt0[0]",
+          "func_ssg_rcworst_m40|setup|dec_tlu_perfcnt0[1]",
+          "func_ssg_rcworst_m40|setup|dec_tlu_perfcnt1[0]",
+          "func_ssg_rcworst_m40|setup|dec_tlu_perfcnt1[1]",
+          "func_ssg_rcworst_m40|setup|dec_tlu_perfcnt2[0]",
+          "func_ssg_rcworst_m40|setup|dec_tlu_perfcnt2[1]"
+        ],
+        "editDomain": {
+          "instances": [],
+          "nets": [],
+          "regions": []
+        },
+        "protected": {
+          "instances": [],
+          "nets": []
+        },
+        "mayAffect": [
+          "func_ssg_rcworst_m40|setup|ifu_axi_araddr[16]",
+          "func_ssg_rcworst_m40|setup|ifu_axi_araddr[18]",
+          "func_ssg_rcworst_m40|setup|ifu_axi_araddr[19]"
+        ],
+        "actions": [
+          "size_cell",
+          "insert_buffer"
+        ],
+        "budget": {
+          "xtopMinutes": 30,
+          "queries": 5,
+          "attempts": 3
+        }
+      },
+      "w02": {
+        "taskId": "w02",
+        "baseStateId": "089c9d07c3338b120fa7",
+        "problem": "hold violations on the func_ffg_cbest_125 corner across the swerv_dma_ctrl read/write buffer flop bank; the local data path is too fast against its capture clock at the cbest/125C corner",
+        "targets": [
+          "func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_0__fifo_done_bus_dff_dffsc_dout_reg_0_",
+          "func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_1__fifo_done_bus_dff_dffsc_dout_reg_0_",
+          "func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_1__fifo_done_dff_dffsc_dout_reg_0_",
+          "func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_2__fifo_done_bus_dff_dffsc_dout_reg_0_",
+          "func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+          "func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_dff_dffsc_dout_reg_0_"
+        ],
+        "editDomain": {
+          "instances": [],
+          "nets": [],
+          "regions": []
+        },
+        "protected": {
+          "instances": [],
+          "nets": []
+        },
+        "mayAffect": [
+          "func_ffg_cbest_125|hold|swerv_dbg/axi_arready_ff_dffs_dout_reg_0_",
+          "func_ffg_cbest_125|hold|swerv_dbg/axi_awready_ff_dffs_dout_reg_0_",
+          "func_ffg_cbest_125|hold|swerv_dbg/axi_bresp_ff_dout_reg_1_"
+        ],
+        "actions": [
+          "size_cell",
+          "insert_buffer"
+        ],
+        "budget": {
+          "xtopMinutes": 30,
+          "queries": 5,
+          "attempts": 3
+        }
+      },
+      "w03": {
+        "taskId": "w03",
+        "baseStateId": "089c9d07c3338b120fa7",
+        "problem": "hold violations on the func_ssg_rcworst_m40 corner across the swerv_lsu bus_intf bus_buffer AXI read-data flops; a separate block and check type from w01, so it can be researched in parallel without competing for the same margin",
+        "targets": [
+          "func_ssg_rcworst_m40|hold|swerv_lsu/bus_intf/bus_buffer/genblk9_0__buf_byteenff_dffs_dout_reg_2_@**async_default**",
+          "func_ssg_rcworst_m40|hold|swerv_lsu/bus_intf/bus_buffer/genblk9_4__buf_byteenff_dffs_dout_reg_1_@**async_default**",
+          "func_ssg_rcworst_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_arready_ff_dout_reg_0_",
+          "func_ssg_rcworst_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_awready_ff_dout_reg_0_",
+          "func_ssg_rcworst_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_bid_ff_dout_reg_0_",
+          "func_ssg_rcworst_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_bid_ff_dout_reg_1_"
+        ],
+        "editDomain": {
+          "instances": [],
+          "nets": [],
+          "regions": []
+        },
+        "protected": {
+          "instances": [],
+          "nets": []
+        },
+        "mayAffect": [
+          "func_ssg_rcworst_m40|hold|swerv_ifu/mem_ctl/axi_clken_ff_dout_reg_0_",
+          "func_ssg_rcworst_m40|hold|swerv_ifu/mem_ctl/axi_cmd_ff_dout_reg_0_@**async_default**",
+          "func_ssg_rcworst_m40|hold|swerv_ifu/mem_ctl/axi_data_ff/dout_reg_0_"
+        ],
+        "actions": [
+          "size_cell",
+          "insert_buffer"
+        ],
+        "budget": {
+          "xtopMinutes": 20,
+          "queries": 4,
+          "attempts": 2
+        }
+      }
+    },
+    "reason": "generation 1: three bounded, base-relative work packages grouped by root cause and block rather than by check type - setup driver weakness in swerv_dec_tlu (w01), cbest hold in the swerv_dma_ctrl buffer bank (w02), m40 hold in the lsu bus buffer (w03). Every edit-domain instance is a leaf cell resolved from the current observation by the Pack resolver, no two slots share an edit domain, and each slot may only size cells or insert buffers under its own xtop budget"
+  },
+  "baseState": {
+    "database": {
+      "datDigest": "e86ef476761e162d2601c39ed4effc82331d2ea0feb4fd82ae662a4b0b78cfbe",
+      "path": "baseline/database/postroute_final.enc",
+      "sha256": "79d098156f87a6ecdfc6a3591ac20b9e9533091409b9dbf8cd09fcaa1f70bc9d"
+    },
+    "def": {
+      "path": "baseline/def/swerv_wrapper.postroute.def",
+      "sha256": "73e25dc78bb761de2ab2636ed25dead880f4e6761b41f41cc54d4941ebd6192b"
+    },
+    "id": "089c9d07c3338b120fa7",
+    "netlist": {
+      "path": "baseline/netlist/swerv_wrapper.postroute.v",
+      "sha256": "6c9ed3189d9012a29229af594c22f230818e40b52bb3f307cb66ae07dc812e86"
+    },
+    "parentId": null,
+    "scenarios": [
+      "func_ssg_rcworst_m40",
+      "func_ssg_rcworst_125",
+      "func_ffg_cbest_m40",
+      "func_ffg_cbest_125"
+    ],
+    "schema": "atcs.design-state/1",
+    "sdc": [
+      {
+        "path": "baseline/sdc/0/swerv_wrapper.input.sdc",
+        "sha256": "47b51fc7a7f2ea572c78cbd48645ded06c8b21f016ae8ea6e4ca541232f9b565"
+      }
+    ],
+    "spef": {
+      "cbest": {
+        "path": "baseline/spef/cbest/swerv_wrapper.cbest.spef",
+        "sha256": "3fc820b3a7c8e15413cc225cf1498fa80cabd214995dfd5a35f7cb9760845d7b"
+      },
+      "cworst_T": {
+        "path": "baseline/spef/cworst_T/swerv_wrapper.cworst_T.spef",
+        "sha256": "c4f610b1354c91c7c60290926efbc2be485f6fcdb089cc7a640521542c5c3cd6"
+      }
+    },
+    "stage": "postroute",
+    "tools": {
+      "innovus": "23.14",
+      "primetime": "PrimeTime X-2025.06",
+      "starrc": "StarRC X-2025.06-SP1",
+      "xtop": "XTop 2025.09.tmp15"
+    },
+    "top": "swerv_wrapper"
+  },
+  "siteCapabilities": {
+    "cellLefGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lef/*.lef",
+    "design": "swerv_wrapper",
+    "edaShell": [
+      "/usr/local/bin/edarun",
+      "bash",
+      "-lc"
+    ],
+    "pgVerification": false,
+    "qualifiedReadRoots": [
+      "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input",
+      "/data/eda/project/techlib/tsmc28"
+    ],
+    "techLef": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lef/tsmcn28_10lm5X2Y2ZUTRDL.tlef",
+    "xtopContext": {
+      "ecoParameters": {
+        "bufferListForHold": [
+          "DEL025D1BWP30P140",
+          "DEL050MD1BWP30P140",
+          "DEL075MD1BWP30P140",
+          "DEL100MD1BWP30P140",
+          "DEL150MD1BWP30P140",
+          "DEL200MD1BWP30P140",
+          "DEL250MD1BWP30P140",
+          "BUFFD2BWP30P140",
+          "BUFFD4BWP30P140"
+        ],
+        "bufferListForSetup": [
+          "BUFFD2BWP30P140",
+          "BUFFD3BWP30P140",
+          "BUFFD4BWP30P140",
+          "BUFFD6BWP30P140",
+          "BUFFD8BWP30P140",
+          "BUFFD12BWP30P140",
+          "BUFFD16BWP30P140"
+        ],
+        "cellClassifyRule": "cell_attribute",
+        "cellMatchAttribute": "footprint",
+        "cellNominalSizingPattern": "D([0-9]+)BWP",
+        "cellNominalSwapKeywords": [
+          "ULVT",
+          "LVT",
+          "",
+          "HVT"
+        ],
+        "gainThreshold": 0.001
+      },
+      "removableFillers": [
+        "FILL*",
+        "DCAP*"
+      ],
+      "scenarios": [
+        {
+          "corner": "ssg_m40c",
+          "libertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ssg_m40c/*.lib",
+          "name": "func_ssg_rcworst_m40"
+        },
+        {
+          "corner": "ssg_125c",
+          "libertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ssg_125c/*.lib",
+          "name": "func_ssg_rcworst_125"
+        },
+        {
+          "corner": "ffg_m40c",
+          "libertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ffg_m40c/*.lib",
+          "name": "func_ffg_cbest_m40"
+        },
+        {
+          "corner": "ffg_125c",
+          "libertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ffg_125c/*.lib",
+          "name": "func_ffg_cbest_125"
+        }
+      ],
+      "siteMap": [
+        "unit",
+        "core"
+      ]
+    }
+  }
+}

@@ -11,3 +11,7 @@ inputs from retained PR03 Run `run-1ca6cdd3`). `test_probe_regressions.py` reads
 - `next-decision-attempt-{1,2,3}.json`: `targets` as a bare scenario, wildcards and prose.
 - `reviewer-answer-attempt-1.json`: the Team reviewer's first answer (admitted; nested
   `evidenceRefs` and long `limitations`, the shape that broke inside arrays in 2 of 5 answers).
+- `run2-campaign-plan-attempt-{2,3}.json`, `run2-plan-attempt-3-endpoints.json`: probe run 2 on
+  the final bytes (`notes/model-probe-run2`): plans written with empty edit domains, and the 27
+  whole check keys attempt 3 passed to the resolver. `known-instances.json` is the same 546 paths
+  in both runs.

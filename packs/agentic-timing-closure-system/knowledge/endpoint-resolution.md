@@ -34,6 +34,17 @@ subprocess.run([sys.executable, str(resolver), "resolve-instances", str(workspac
 answer = json.loads((here / "resolved.json").read_text())
 ```
 
+What to pass: the endpoint part after the last `|` of each check key, never the whole key. A check
+key is `<scenario>|<setup|hold>|<endpoint>`, and a reserved PrimeTime path group is folded into the
+endpoint as `@**<group>**`; drop that suffix too. From the real PR03 key
+`func_ffg_cbest_125|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**` pass
+`swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_`; from `func_ssg_rcworst_m40|setup|dec_tlu_perfcnt0[0]`
+pass `dec_tlu_perfcnt0[0]` (a net: the answer is its driver). The resolver also takes a whole key
+by that same endpoint part and reports it as `endpointPart`, but pass the endpoint.
+
+Pass the resolver the endpoint part of each check key (after the last |, without an @** path group suffix). Never write a slot with an empty edit domain: when no endpoint of a slot resolves to a leaf cell, choose other endpoints or exit non-zero naming the unresolved endpoints. A slot written with an empty edit domain is a refused plan, and the Reader's
+problem line for it names the endpoint to pass.
+
 The resolver reads the netlist of `state/working-state.json`, whose sha256 it verifies, and
 walks the design from its `top`. Each endpoint may be an instance, `instance/pin`, a net or a
 port, written hierarchically from `top`. The result has two lists:

@@ -148,6 +148,17 @@ class EndpointResolutionTest(_Fixture):
         self.assertIsNone(row.get("instance"))
         self.assertIn("module instance, not a leaf cell", row["unresolved"])
 
+    def test_a_check_key_resolves_by_its_endpoint_part(self):
+        """Probe run 2: the plan Workshop passed whole check keys; each resolves by the part after
+        the last `|`, without a reserved path-group suffix such as `@**async_default**`."""
+        keys = ("func_ssg_rcworst_m40|hold|swerv_dec_tlu/dout_reg[15]/D",
+                "func_ffg_cbest_125|hold|swerv_dec_tlu/ifu_bp_reg_0_@**async_default**",
+                "func_ssg_rcworst_m40|setup|dec_tlu_perfcnt0[0]")
+        rows = self._resolve(*keys)
+        self.assertEqual([rows[key]["instance"] for key in keys],
+                         ["swerv_dec_tlu/dout_reg[15]", "swerv_dec_tlu/ifu_bp_reg_0_", "swerv_dec_tlu/g96219"])
+        self.assertEqual(rows[keys[1]]["endpointPart"], "swerv_dec_tlu/ifu_bp_reg_0_")
+
     def test_an_absent_name_is_unresolved_and_says_where_it_looked(self):
         row = self._resolve("swerv_dec_tlu/no_such_reg/D")["swerv_dec_tlu/no_such_reg/D"]
         self.assertIn("no_such_reg", row["unresolved"])
