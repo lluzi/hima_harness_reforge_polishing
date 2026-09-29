@@ -1,3 +1,8 @@
+# Example: next decision
+
+The `next-decision` Reader (`tools/read-atcs.py`) admits this exact document with zero problems and reads `action` observe; `stateRef` and `observationRef` are the plain 20-hex `id` strings of `state/working-state.json` and `state/observation.json`, and `budgetRef` is a plain string.
+
+```json
 {
   "stateRef": "62a80a2154c907c13526",
   "observationRef": "de4af36c311de90baad2",
@@ -10,3 +15,4 @@
   "costBasis": {"queries": 1},
   "requiredArtifacts": []
 }
+```

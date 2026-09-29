@@ -1,11 +1,16 @@
+# Example: worker request
+
+The `worker-request` Reader (`tools/read-atcs.py`) admits this exact document for slot w01 (and, with only `taskId` changed, for w02 and w03): its `candidate` is the w01 package of `example-campaign-plan.md` unchanged, and every action `instance` is a full hierarchical path from `top` (`u_a/reg0`, never the bare leaf `reg0`) listed in `candidate.editDomain.instances`.
+
+```json
 {
   "candidate": {
     "taskId": "w01",
-    "baseStateId": "17adadf2abdce4a6d351",
+    "baseStateId": "3956975ce47374c313fc",
     "problem": "hold violation on endpoint X after post-route ECO",
     "targets": ["func_ssg_rcworst_m40|hold|X"],
-    "editDomain": {"instances": ["U1"], "nets": [], "regions": []},
-    "protected": {"instances": [], "nets": []},
+    "editDomain": {"instances": ["u_a/reg0"], "nets": [], "regions": []},
+    "protected": {"instances": ["u_a/reg1"], "nets": []},
     "mayAffect": [],
     "actions": ["size_cell"],
     "budget": {"xtopMinutes": 30, "queries": 5, "attempts": 3}
@@ -17,10 +22,10 @@
       "sha256": "8b46fe69ebc1002226688c1b4b4346e2d505430561242a3470c8651c3970831c"
     },
     "def": null,
-    "id": "17adadf2abdce4a6d351",
+    "id": "3956975ce47374c313fc",
     "netlist": {
       "path": "inputs/baseline/top.v",
-      "sha256": "f70503220e986dc68a11910387f8711613fbf778cb1393e663282fc82fd98caf"
+      "sha256": "c0051d99a9a0331b5a51aceb08d54b0eb267823ecc54238c738beff3574ba778"
     },
     "parentId": null,
     "scenarios": ["func_ssg_rcworst_m40"],
@@ -43,6 +48,7 @@
   },
   "siteCapabilities": {"pgVerification": false},
   "actions": [
-    {"instance": "U1", "toMaster": "CKAN2D4BWP35P140HVT"}
+    {"instance": "u_a/reg0", "toMaster": "DFQD2BWP35P140"}
   ]
 }
+```
