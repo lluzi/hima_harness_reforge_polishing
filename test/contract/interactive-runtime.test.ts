@@ -439,8 +439,10 @@ test('interactive close waits for the wrapper\'s own shutdown, and a surviving t
   });
   let mode = 'slow';
   const slot = () => path.join(home.workspace, `slot-${mode}`);
+  const notices: { owner: string; runId: string; key: string; detail?: string }[] = [];
   const deps = {
-    fabric: { ledger: host.ctx.hima.ledger, sitesDir: site.sitesDir } as never,
+    fabric: { ledger: host.ctx.hima.ledger, sitesDir: site.sitesDir,
+      notify: (owner: string, runId: string, key: string, detail?: string) => { notices.push({ owner, runId, key, detail }); return { status: 'queued' }; } } as never,
     resolveOperation: async () => ({ binding, site: 'local', workspace: home.workspace,
       argv: ['sh', wrapper, slot(), mode, process.execPath, fixture], name: `close-${mode}`, licences: { fixture: 1 },
       commands: [{ name: 'get', effect: 'read' as const }, { name: 'exit', effect: 'close' as const }] }),
@@ -504,6 +506,18 @@ test('interactive close waits for the wrapper\'s own shutdown, and a surviving t
     assert.deepEqual(records.filter((record) => record.type === 'job' && record.job.session === stubborn.session.toolSessionId).map((record) => record.type === 'job' ? record.event : ''),
       ['launched'], 'a surviving tool is not recorded as a killed Job');
     assert.equal(listInteractiveSessions(host.ctx.hima.ledger as never, run.id, 'stubborn-1')[0]?.status, 'uncertain');
+    // #64 review I1: a survivor is a visible blocker on its node and the owner is told, never a
+    // silent `working` node until the time box ends.
+    const blockers = host.ctx.hima.ledger.records({ runId: run.id, type: 'blocker' });
+    assert.equal(blockers.length, 1, JSON.stringify(blockers));
+    const blocker = blockers[0]!;
+    assert.ok(blocker.type === 'blocker' && blocker.nodeId === 'manual' && new RegExp(`process group ${pid}`).test(blocker.reason), JSON.stringify(blocker));
+    const held = host.ctx.hima.ledger.run(run.id)!.control!.executions['stubborn-1']!;
+    assert.equal(held.phase, 'uncertain', JSON.stringify(held));
+    assert.match(held.reason ?? '', new RegExp(`process group ${pid}`));
+    assert.equal(notices.length, 1, JSON.stringify(notices));
+    assert.equal(notices[0]!.owner, String(parent.id)); assert.equal(notices[0]!.runId, run.id); assert.equal(notices[0]!.key, 'stubborn-1');
+    assert.match(notices[0]!.detail ?? '', new RegExp(`process group ${pid}`));
     assert.ok(existsSync(path.join(slot(), 'tool.lock')), 'the survivor still holds its slot lock');
     const refused = await open('stubborn-2', 'open-stubborn-2');
     assert.equal(refused.status, 'refused', JSON.stringify(refused));

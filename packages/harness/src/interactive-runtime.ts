@@ -5,7 +5,7 @@ import path from 'node:path';
 import { testFixtureCanRunHere } from './interactive-binding.js';
 import { z } from 'zod';
 import { advance, budgetStanding, ownedWaitedMs } from './budget.js';
-import { controlling, identityOf, type FabricDeps } from './fabric.js';
+import { controlling, identityOf, updateExecution, type FabricDeps } from './fabric.js';
 import {
   closeInteractiveJob, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
   sendInteractiveInput, signalInteractiveJob,
@@ -504,7 +504,26 @@ class RunInteractiveAuthority implements InteractiveAuthority {
         executionId: parsed.executionId, toolSessionId: parsed.toolSessionId,
         requestId: parsed.requestId, event: parsed.event, payload: parsed as never,
       });
+      if (parsed.event === 'process-survived') await this.raiseSurvivor(parsed as ProtocolRecord & { readonly event: 'process-survived'; readonly reason?: string; readonly pid?: number });
     });
+  }
+
+  /**
+   * A tool that outlived its close holds its node, its Site slot and its locks (#64 review I1). That
+   * is a person's to see and act on, so it is raised as a blocker on the node, the execution names
+   * the surviving process group, and the owner is told — never a node silently `working` until the
+   * time box ends. Called under the Run lock, right after the `process-survived` record.
+   */
+  private async raiseSurvivor(record: ProtocolRecord & { readonly event: 'process-survived'; readonly reason?: string; readonly pid?: number }): Promise<void> {
+    const run = this.deps.fabric.ledger.run(this.request.runId);
+    const execution = run?.control?.executions[record.executionId];
+    if (!run?.control || !execution) return;
+    const reason = record.reason ?? `process group ${String(record.pid)} of interactive Job ${record.toolSessionId} survived its close`;
+    await this.deps.fabric.ledger.appendBlocker(run.id, { nodeId: execution.nodeId, attempts: execution.attempt,
+      ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }), reason });
+    if (!['completed', 'failed'].includes(execution.phase)) await updateExecution(this.deps.fabric, run.id, execution.id, { phase: 'uncertain', reason });
+    this.deps.fabric.notify?.(run.control.owner, run.id, execution.id,
+      `Node ${execution.nodeId}: ${reason}. It is a blocker on that node: a person must end that process group on Site ${run.siteId} before the node's tool slot can be used again. Other nodes are not held by it.`);
   }
 
   async recordJobLaunch(job: InteractiveJobIdentity): Promise<void> {
