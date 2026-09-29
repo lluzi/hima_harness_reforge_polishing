@@ -1035,7 +1035,7 @@ export default class Hima extends Service {
         {const missing=sourceMember.resultSchema.required.filter(field=>!(field in payload));if(payload.schema!==sourceMember.resultSchema.id||missing.length>0)return {unknowns:[],status:'refused',artifacts:[],reason:`The reviewed action does not satisfy Pack result schema ${JSON.stringify(sourceMember.resultSchema.id)}: ${[payload.schema===sourceMember.resultSchema.id?'':`its schema field is ${payload.schema===undefined?'absent':JSON.stringify(payload.schema)}, not ${JSON.stringify(sourceMember.resultSchema.id)}`,missing.length===0?'':`missing required field(s): ${missing.join(', ')}`].filter(Boolean).join('; ')}.`};}
         const planHash=payload[member.reviewedAction.planHashField];const command=payload[member.reviewedAction.commandField];const args=payload[member.reviewedAction.argumentsField];
         const planRecord=outputRecords.get(member.reviewedAction.planInput);
-        if(typeof planHash!=='string'||planHash!==planRecord?.contentSha256)return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action plan SHA-256 differs from the current reader-backed fix plan.'};
+        if(typeof planHash!=='string'||planHash!==planRecord?.contentSha256)return {unknowns:[],status:'refused',artifacts:[],reason:`The reviewed action plan SHA-256 ${typeof planHash==='string'?JSON.stringify(planHash):'(absent)'} differs from the current reader-backed fix plan ${planRecord?.contentSha256===undefined?'(unavailable)':JSON.stringify(planRecord.contentSha256)}.`};
         if(typeof command!=='string'||!args||typeof args!=='object'||Array.isArray(args))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action command or arguments are malformed.'};
         const node=pack.graph.nodes.find(item=>item.id===member.node);const tool=node?.kind==='act'&&node.parameters.tool?pack.contract.tools.find(item=>item.id===node.parameters.tool):undefined;
         const declaration=tool?.interactive?.arguments[command];if(command!==member.reviewedAction.command||!declaration||!Object.values(tool!.interactive!.commands).flat().includes(command))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action command is not the Pack recipe mutation.'};
@@ -1046,8 +1046,12 @@ export default class Hima extends Service {
         if(retainedPlan.kind!=='read')return {unknowns:[],status:'refused',artifacts:[],reason:`The exact reviewed plan bytes are unavailable: ${retainedPlan.why}`};
         let plan:Record<string,unknown>;try{plan=JSON.parse(retainedPlan.text) as Record<string,unknown>;}catch{return {unknowns:[],status:'refused',artifacts:[],reason:'The exact reviewed plan bytes are not JSON.'};}
         const candidates=plan[member.reviewedAction.actionListField];
-        if(!Array.isArray(candidates)||!candidates.some(candidate=>candidate&&typeof candidate==='object'
-            &&actionDeclaration.every(item=>(candidate as Record<string,unknown>)[item.name]===values[item.name])))return {unknowns:[],status:'refused',artifacts:[],reason:'The owner-adopted reviewed action is not one action in the exact reader-backed fix plan.'};
+        if(!Array.isArray(candidates))return {unknowns:[],status:'refused',artifacts:[],reason:`The owner-adopted reviewed action cannot be matched: the reviewed plan declares no action list at ${JSON.stringify(member.reviewedAction.actionListField)}.`};
+        if(!candidates.some(candidate=>candidate&&typeof candidate==='object'
+            &&actionDeclaration.every(item=>(candidate as Record<string,unknown>)[item.name]===values[item.name]))){
+          const adopted=actionDeclaration.map(item=>`${item.name}=${JSON.stringify(values[item.name])}`).join(', ');
+          return {unknowns:[],status:'refused',artifacts:[],reason:`The owner-adopted reviewed action (${adopted}) is not one action in the exact reader-backed fix plan at ${JSON.stringify(member.reviewedAction.actionListField)}; the adopted argument values match no plan entry.`};
+        }
         const effectiveArguments={...values,[member.reviewedAction.hostPlanHashArgument]:planHash} as Record<string,string|number|boolean>;
         inlinePayload={sourceResultRecordId:result.id,adoptionRecordId:source.adoptedRecordId!,planSha256:planHash,command,arguments:effectiveArguments};
       }
