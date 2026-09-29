@@ -4,6 +4,7 @@
 
 产品工作前阅读 `docs/product-definition.md`；安排工作切片时阅读
 `docs/polishing-backlog.md`；实施验证时阅读 `docs/testing-strategy.md`。
+ATCS 交付与方法有效性测试还须遵守 `docs/agents/fast-convergence-testing.md`。
 本地准备与运行方式见 `README.md`。
 
 所有修改和运行在 polishing 工作区进行。
