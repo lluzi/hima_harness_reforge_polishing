@@ -11,6 +11,14 @@ for a `facts.conflicts` key and has exactly `{conflictKey, decision}`: a no-fix 
 conflict, so it gets no resolution (leave it out of `select`, or list it in `deferred`). The Reader's
 refusal, one line per problem, is `integrationPlanProblems`.
 
+Expert-seat batches (`kind: xtop-session`) never appear in `facts.conflicts`: composition has already
+ranked them in `facts.recipe.sessions` (`rankedBy`: blocker coverage, then `aggregateRankGain`, then
+`value`, then id) and listed every batch it will not replay in `facts.recipe.excluded` with its codes.
+A batch excluded as `domain-collision` (its touched objects lie inside a higher-ranked batch's
+`effectiveDomain`; `collidesWith` names that batch) or `base-dump-mismatch` is not in
+`facts.considered`, so it cannot be selected and needs no resolution. Select the ranked batches you
+want replayed by their `contribution` ids; replay follows `rank`, whatever order `select` lists them in.
+
 ```json
 {
   "plan": {

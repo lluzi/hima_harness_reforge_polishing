@@ -94,6 +94,32 @@
 任一必需场景里对侧检查的净 WNS 变差超过一个舍入步（1e-4 ns）时，整批被拒绝——所以
 Operator 测到这样的一步就当场 undo。
 
+### 批次排序与域冲突（#66 D5）
+
+`xtop-session` Contribution 是整批的专家修复。组合（`composition.analyze`）不在它们之间
+挑冲突，而是给出 `facts.recipe`：先排序，再排除域冲突，最后逐条命令标记跳过。
+
+- **排序。** `rankedBy` 是 `blockerCoverage desc`、`aggregateRankGain desc`、`value desc`、
+  `id asc`。`blockerCoverage` 是这一批覆盖了多少个本批最差检查（和计划 Reader 同一个
+  `covers` 规则）。`aggregateRankGain` 是封存的 `aggregateGain` 里每个场景的目标检查 TNS
+  增益之和，加上 `oppositeEffects` 里每个对侧检查带符号的 TNS 变化；读不到的场景记 0。所以
+  对侧 TNS 损失会压低排名，但不拒绝这一批。`value`（最差目标检查的 WNS 增益）只在总增益
+  相同时才起作用。没有这两个字段的旧 Contribution 用 `valueDetail.rankTnsGain`；每个
+  `recipe.sessions[]` 的 `gainSource` 写明用的是 `aggregate` 还是 `rankTnsGain`，
+  `aggregateRankGain` 写出参与排序的数值。
+- **域冲突 `domain-collision`。** 按排名依次看每一批：它碰过的实例或 net（`touches` 加上
+  命令的 `instances`）落在一个已保留的更高排名批次的 `effectiveDomain` 里，或者更高排名
+  批次碰过的对象落在它自己的 `effectiveDomain` 里，或者两批碰了同一个对象，它就被整批放进
+  `recipe.excluded`，代码 `domain-collision`，`collidesWith` 列出与之冲突的批次和对象。
+  被排除的批次也离开 `considered` 和 `order`，不会再挡住排在它后面的批次；其余安全批次全部
+  重放。这是跨席位不相交性的真正判定点：计划只检查各席位声明的对象，派生域要到封存后才知道。
+- **逐实例跳过不变。** 两批都没有 `effectiveDomain` 时不判定域冲突，仍由原规则处理：
+  低排名批次里碰到高排名批次已改实例的命令标 `skip: shared-instance`，依赖被跳过的新建
+  对象的命令标 `depends-on-skipped`。基线 dump 不一致的批次仍以 `base-dump-mismatch` 排除，
+  且先于域冲突判定。
+- **合并臂与对照臂打平。** 组合只负责排序和排除。XTop 里合并臂与只跑自动收尾的对照臂打平时，
+  集成记录 `manualValue: none`：这一批的人工 ECO 没有带来可归功的价值，不能据此宣称收益。
+
 ## Counterexample
 
 ARCHITECTURE §10 的示例：任务 B 依赖共享 driver `U_DRV`（任务 A 的编辑对象）的当前状态
