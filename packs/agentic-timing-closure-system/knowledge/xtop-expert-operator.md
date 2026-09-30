@@ -19,7 +19,7 @@
 | `atcs_paths` | `get_paths`; `analyze_setup_path_violations` / `analyze_hold_path_violations -detail_info` | `get_paths.1` (149), `analyze_setup_path_violations.1` (16), `analyze_hold_path_violations.1` (12) |
 | `atcs_fail_reasons` | `report_fail_reasons -stats -verbose -pins`; `get_failed_pins -reasons` | `report_fail_reasons.1` (245), `get_failed_pins.1` (132) |
 | `atcs_candidates` | `list_size_cell_candidates`, `list_insert_buffer_candidates`, `list_exchange_cell_candidates` | `list_size_cell_candidates.1` (188), `list_insert_buffer_candidates.1` (185), `list_exchange_cell_candidates.1` (183) |
-| `atcs_point` | `report_timing -to <endpoint> -delay_type max\|min -path_type summary` per endpoint (GBA, no PBA option), captured by `redirect -variable`; rows `{endpoint, scenario, slack}` (#66 D3) | not yet cross-checked against a man page or `command_surface.tsv`: the atcs-v16 qualification confirms it on real XTop |
+| `atcs_point` | `report_timing -to [get_pins -exact <endpoint>] -delay_type max\|min -path_type summary` per endpoint (GBA, no PBA option), captured by `redirect -variable` with the collection built inside the script (#64 T06); rows `{endpoint, scenario, slack}`, an unread one with `unknown` (#66 D3) | not yet cross-checked against a man page or `command_surface.tsv`: the atcs-v16 qualification confirms it on real XTop |
 | `atcs_size_cell` | `size_cell` | `size_cell.1` (301) |
 | `atcs_exchange_cell` | `exchange_cell` with domain partner instances | `exchange_cell.1` (106) |
 | `atcs_insert_buffer` | `insert_buffer`; several lib cells make a chain | `insert_buffer.1` (177) |

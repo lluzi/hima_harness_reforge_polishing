@@ -438,6 +438,13 @@ proc summarize_gba_violations {args} {
 proc redirect {args} {
     stub_record redirect {*}[lrange $args 0 end-1]
     set target [lindex $args end-1]
+    # Real XTop (#64 T06, every seat's xtop_log_1.txt): redirect evaluates its command as a script
+    # string, so a collection handed in as a value arrives as its printed form ({"a/D"}), matches
+    # nothing, and XTop prints "Error: Errors detected during redirection." with an empty result.
+    if {[regexp {(^|[ \t\{])(pin|cell|net):} [lindex $args end]]} {
+        puts "Error: Errors detected during redirection."
+        error ""
+    }
     set ::stub_out ""
     set code [catch {uplevel #0 [lindex $args end]} r]
     upvar #0 $target captured
@@ -1912,7 +1919,7 @@ class PointReadTest(unittest.TestCase):
     One `report_timing -to <endpoint> -delay_type max|min -path_type summary` per endpoint (no PBA
     option); one {endpoint, scenario, slack} row per scenario the report lists, the scenario named as
     the session reference's summary table names it; an endpoint the report gives no row for reads
-    {endpoint, scenario: null, slack: null}. A read: it never calls a mutating command nor uses budget.
+    {endpoint, scenario: null, slack: null, unknown: <why>} (D-T06-3). A read: it never calls a mutating command nor uses budget.
     """
 
     def test_rows_per_endpoint_and_scenario(self):
@@ -1926,7 +1933,8 @@ class PointReadTest(unittest.TestCase):
         self.assertEqual(_reply(session, "setup"), [
             {"endpoint": "U9/D", "scenario": "func_ssg_rcworst_m40", "slack": -0.0123},
             {"endpoint": "U9/D", "scenario": "func_ssg_rcworst_125", "slack": 0.004},
-            {"endpoint": "U2/A", "scenario": None, "slack": None},
+            {"endpoint": "U2/A", "scenario": None, "slack": None,
+             "unknown": "report_timing -to U2/A printed no row naming the endpoint with a slack"},
         ])
         self.assertEqual(_reply(session, "hold"),
                          [{"endpoint": "U9/D", "scenario": "func_ffg_cbest_m40", "slack": -0.0704}])
@@ -1958,6 +1966,47 @@ class PointReadTest(unittest.TestCase):
         self.assertEqual([(line["proc"], line["rows"], "refused" in line) for line in session.reads],
                          [("atcs_point", [], True)] * 4)
         self.assertIn("invalid", session.reads[3]["refused"])
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class T06PointRedirectTest(unittest.TestCase):
+    """D-T06-3 (#64 T06, w04 xtop_log_1.txt): `atcs_point hold "<six GenFifo /D pins>"` printed
+    "Error: Errors detected during redirection." and failed with `report_timing -to <pin> failed: `; the
+    instance form returned every row with slack null. `redirect -variable` evaluates its command as a
+    script, so the pin collection must be built inside that script (`[get_pins -exact <name>]`), never
+    handed in as a value. A read XTop refuses or leaves empty is a row with an explicit `unknown` reason.
+    """
+
+    def test_the_t06_pin_list_reads_every_pins_slack(self):
+        session = Session(self).run(
+            _point_summary() + POINT_TIMING + ASYNC_FLOP
+            + "T w04 {atcs_point hold {U9/D U2/A}}\n"
+            + "T bare {atcs_point hold {UF}}\n")
+        self.assertEqual(_reply(session, "w04"), [
+            {"endpoint": "U9/D", "scenario": "func_ffg_cbest_m40", "slack": -0.0704},
+            {"endpoint": "U2/A", "scenario": "func_ffg_cbest_125", "slack": 40.0},
+        ], session.stdout)
+        rows = _reply(session, "bare")
+        self.assertEqual(rows[1], {"endpoint": "UF/D", "scenario": "func_ssg_rcworst_m40", "slack": 0.021,
+                                   "target": "UF"})
+        self.assertNotIn("Errors detected during redirection", session.stdout)
+
+    def test_a_refused_or_empty_read_names_its_unknown_reason(self):
+        session = Session(self).run(
+            _point_summary() + POINT_TIMING
+            + "T empty {atcs_point setup {U2/A}}\n"
+            + "set ::stub_fail {report_timing}\n"
+            + "T refused {atcs_point hold {U9/D U2/A}}\n")
+        (empty,) = _reply(session, "empty")
+        self.assertEqual([empty["endpoint"], empty["scenario"], empty["slack"]], ["U2/A", None, None])
+        self.assertIn("no row", empty["unknown"])
+        refused = _reply(session, "refused")
+        self.assertEqual([(row["endpoint"], row["slack"]) for row in refused], [("U9/D", None), ("U2/A", None)],
+                         "one refused endpoint never aborts the read of the others")
+        for row in refused:
+            self.assertIn("report_timing", row["unknown"])
+            self.assertIn("XTop stub refused report_timing", row["unknown"])
+        self.assertEqual(session.reads[-1]["rows"], refused)
 
 
 # L4 qualification run 4 (#64 after T05): the Site's targets are check keys whose endpoint is an instance

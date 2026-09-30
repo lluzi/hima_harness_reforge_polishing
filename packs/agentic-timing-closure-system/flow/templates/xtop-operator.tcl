@@ -109,7 +109,7 @@ save_workspace -as ${design}_operator_baseline
 #   atcs_fail_reasons and atcs_point call that returned: {"seq","proc","args",
 #   "rowsDigest","rows"}. seq is the ops.jsonl line it follows (0 = before any
 #   mutation); args as the Host sent them; rows the read's rows (atcs_point:
-#   {"endpoint","scenario","slack"} objects; the others: the non-empty lines
+#   {"endpoint","scenario","slack"[,"unknown"]} objects; the others: the non-empty lines
 #   of the text XTop gave, then any failed pins), at most ::ATCS_READ_ROWS_MAX,
 #   each text row clipped to ::ATCS_READ_ROW_CHARS; rowsDigest the sha256 of
 #   every row's compact JSON array before clipping (json.dumps(rows,
@@ -962,9 +962,11 @@ proc atcs_candidates {kind object} {
 # one `report_timing -to <endpoint> -delay_type max|min -path_type summary` per endpoint, captured,
 # and one {"endpoint","scenario","slack"} row per report line that names the endpoint and ends in
 # a number (the slack is its last number; the scenario is the first word the session reference's
-# summary table names as a scenario, else null). An endpoint the report gives no row for reads
-# {"endpoint", "scenario": null, "slack": null}. A pin is passed as its exact collection; a name
-# that is no pin (a port) is passed as given. Never mutates; returns the rows as a JSON array.
+# summary table names as a scenario, else null). An endpoint the report gives no row for, or whose
+# report_timing XTop refuses, reads {"endpoint", "scenario": null, "slack": null, "unknown": <why>}
+# and the read goes on to the next endpoint (D-T06-3). A pin is named by `[get_pins -exact <pin>]`
+# inside the redirected script; a name that is no pin (a port) is passed as given. Never mutates;
+# returns the rows as a JSON array.
 proc atcs_reference_scenarios {} {
     set names {}
     foreach check {setup hold} {
@@ -1055,16 +1057,25 @@ proc atcs_point {check end_points} {
         set expanded [expr {[llength $pins] != 1 || [lindex $pins 0 0] ne $base}]
         foreach pair $pins {
             lassign $pair pin to
-            set command [list report_timing -to $to -delay_type $delay_type -path_type summary]
+            # `redirect -variable` evaluates its command as a script string: a collection handed in as a
+            # value arrives as its printed form ({"a/D"}) and matches nothing ("Errors detected during
+            # redirection.", every seat of #64 T06). The pin collection is built inside the script; a name
+            # that is no pin (a port) is passed as given.
+            set to_word [expr {$to eq $pin ? [list $pin] : "\[get_pins -exact [list $pin]\]"}]
+            set command "report_timing -to $to_word -delay_type $delay_type -path_type summary"
             set ::atcs_capture ""
+            set unknown ""
             if {[catch {redirect -variable ::atcs_capture $command} result]} {
-                if {!$expanded} { error "report_timing -to $pin failed: $result" }
+                set said [string trim [expr {$result ne "" ? $result : $::atcs_capture}]]
+                set unknown "report_timing -to $pin failed: [expr {$said ne "" ? $said : "XTop gave no message"}]"
                 set found {}
             } else {
                 set found [atcs_point_rows [expr {$::atcs_capture ne "" ? $::atcs_capture : $result}] $pin $scenarios]
+                set unknown "report_timing -to $pin printed no row naming the endpoint with a slack"
             }
             if {[llength $found] == 0} {
-                set found [list [atcs_jobj [list endpoint [atcs_js $pin] scenario null slack null]]]
+                set found [list [atcs_jobj [list endpoint [atcs_js $pin] scenario null slack null \
+                    unknown [atcs_js [atcs_clip $unknown 500]]]]]
             }
             if {$expanded} {
                 set tagged {}
