@@ -109,7 +109,8 @@
     "test/contract/workbench-address.test.ts",
     "test/contract/workshop-recovery.host.test.ts",
     "test/contract/workshop.host.test.ts",
-    "test/contract/xtop-timing-closure.test.ts"
+    "test/contract/xtop-timing-closure.test.ts",
+    "test/contract/delegation-input-bounded.host.test.ts"
   ],
   "desktop": [
     "test/contract/campaign-graph.desktop.test.ts",

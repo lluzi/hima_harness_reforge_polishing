@@ -33,7 +33,7 @@ import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs, ownedW
 import { controlling, identityOf, drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, settleStrandedTeamExecutions, unreservedDelegationMs, type RunDelegationRequest } from './delegation-runtime.js';
-import { registerDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem } from './delegation.js';
+import { registerDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem, delegationInputSelected, selectDelegationInput, type DelegationInputSelection } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
 import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
 import { executionPack, interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
@@ -993,7 +993,7 @@ export default class Hima extends Service {
     return {sessions:listInteractiveSessions(this.ledger,runId).map(({activeCommand,...entry})=>({...entry,...(activeCommand?{activeCommand:{commandId:activeCommand.commandId,state:activeCommand.state,commandDeadlineAt:activeCommand.commandDeadlineAt}}:{})})),asOf:new Date().toISOString()};
   }
 
-  async delegationInput(sessionId:string,request:{runId:string;recordId:string}):Promise<object> {
+  async delegationInput(sessionId:string,request:{runId:string;recordId:string}&DelegationInputSelection):Promise<object> {
     const policy=delegationRuntimePolicy(this.deps(),sessionId);
     const entry=runDelegations(this.deps(),request.runId).find(item=>item.childSessionId===sessionId);
     if(!policy||!('toolsAllowed' in policy)||policy.toolsAllowed!==true||!entry||entry.effective.runRef?.runId!==request.runId||!entry.contract.inputRefs.includes(request.recordId))throw new BadRequest('This child has no current grant for that exact input reference.');
@@ -1009,7 +1009,19 @@ export default class Hima extends Service {
       ...(handoffSource===undefined?{}:{...handoffSource,source:'durable-ledger-child-handoff',identityEncoding:'sha256-native-assistant-output'}),
       ...(record.type==='observation'?{contentSha256:record.contentSha256,bytes:record.bytes}
         :record.type==='code'||record.type==='knowledge'?{sha256:record.sha256,bytes:record.bytes}:{}),
-      reason:'The typed input exceeds the bounded native child view; delegate smaller verified material.'};
+      reason:'The typed input exceeds the bounded native child view; read it in bounded parts with path, offset and limit, or delegate smaller verified material.'};
+    // #64 T05 w03: a selection reads one window of the input's retained material, under this same grant,
+    // record identity and content hash, inside the same bounded view.
+    if(delegationInputSelected(request)) {
+      if(!['observation','code','knowledge'].includes(record.type))throw new BadRequest(`A bounded selection reads the retained material of an observation, code or knowledge input; this record is ${record.type}.`);
+      const hash=record.type==='observation'?{contentSha256:record.contentSha256}:{sha256:(record as {sha256:string}).sha256};
+      const material=await readReportMaterial(this.deps(),request.runId,record.id);
+      if(material.kind!=='read')return {...base,kind:'unavailable',...hash,reason:`Recorded material is unavailable; nothing of it is delivered: ${material.why}`};
+      const answer=(value:unknown,window:object)=>({...base,kind:'selection',...hash,bytes:(record as {bytes:number}).bytes,path:request.path??'',window,value});
+      const selected=selectDelegationInput(material.text,request,(value,window)=>viewBytes(answer(value,window))<=viewLimitBytes);
+      if(!selected.ok)throw new BadRequest(`${selected.reason} Record ${record.id}; select a dotted field path or JSON pointer that exists in it, with offset and limit.`);
+      return answer(selected.value,selected.window);
+    }
     if(record.type==='code'||record.type==='knowledge') {
       if(record.bytes>1024*1024)return {...base,kind:'unavailable',reason:'This material exceeds the bounded child input view; delegate a smaller verified source.'};
       const material=await readMaterial(this.deps(),request.runId,record.id);
@@ -1061,7 +1073,7 @@ export default class Hima extends Service {
         &&viewBytes({...base,kind:'record-fact',payload,identity:'0'.repeat(64),identityEncoding:'canonical-ledger-projection'})>viewLimitBytes) {
       payload={reader:record.reader,contentSha256:record.contentSha256,bytes:record.bytes,values:record.values,
         material:{encoding:observationJson===undefined?'text':'json',truncated:true,returnedBytes:0,
-          reason:'Complete material exceeds the bounded native view limit; only typed reader values are delivered.'}};
+          reason:`Complete material exceeds the bounded native view limit (${viewLimitBytes} bytes); only typed reader values are delivered. Read it in bounded parts: path (a dotted field path or JSON pointer, such as candidate.targets), offset and limit.`}};
     }
     return bounded({...base,kind:'record-fact',payload,identity:identityOf(payload),identityEncoding:'canonical-ledger-projection'});
   }
@@ -1288,7 +1300,11 @@ export default class Hima extends Service {
           ?{maxElapsedMs:budgetCeiling,maxFollowups:(suppliedBudget.maxFollowups as number|undefined)??1,maxTokensPerTurn:(suppliedBudget.maxTokensPerTurn as number|undefined)??5_000}
           :{maxElapsedMs:budgetCeiling,maxFollowups:1,maxTokensPerTurn:5_000};
       }
-      const normalizedContract={delegationId,role:'operator' as const,task,inputRefs,nodeRef,allowedTools:['hima_interactive'],
+      // #64 T05 w03: a Pack recipe Operator may also read its exact recorded inputs in bounded windows
+      // (packs.ts admits only these two tools for it); a manual Operator contract stays interactive-only.
+      const operatorTools=materializedFromRecipe&&Array.isArray(raw.allowedTools)&&raw.allowedTools.includes('hima_delegation_input')
+        ?['hima_interactive','hima_delegation_input']:['hima_interactive'];
+      const normalizedContract={delegationId,role:'operator' as const,task,inputRefs,nodeRef,allowedTools:operatorTools,
         ...(workspaceRef===undefined?{}:{workspaceRef}),
         budgetShare:{maxElapsedMs:suppliedBudget.maxElapsedMs===undefined?budgetDefault.maxElapsedMs:Math.min(suppliedBudget.maxElapsedMs as number,budgetCeiling),
           maxFollowups:suppliedBudget.maxFollowups===undefined?budgetDefault.maxFollowups:Math.min(suppliedBudget.maxFollowups as number,budgetDefault.maxFollowups),
