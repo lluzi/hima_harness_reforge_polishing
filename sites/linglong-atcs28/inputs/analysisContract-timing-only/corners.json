@@ -1,0 +1,6 @@
+{
+  "corners": {
+    "cworst_T": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/SIGNOFF/STARRC/cworst_T.cmd",
+    "cbest": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/SIGNOFF/STARRC/cbest.cmd"
+  }
+}

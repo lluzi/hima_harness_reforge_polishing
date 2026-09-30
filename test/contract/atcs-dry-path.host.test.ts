@@ -888,3 +888,62 @@ test('ATCS 0.2.0 dry path: with generation limit 4 the third refresh is refused 
   assert.match(String(ended.status), /^ended-(budget-exhausted|goal-not-met)$/, `${row}: clearing the wait ended the Run: ${String(ended.status)}`);
   assert.equal(JSON.parse(await readFile(path.join(workspace, 'state/refresh-ledger.json'), 'utf8')).entries.length, 2);
 });
+
+test('ATCS 0.2.0 timing-only contract: an analysisContract override is the Run\'s recorded binding, reaches observe-baseline\'s and policy\'s command lines, and stamps the relaxed physical terms', async (t) => {
+  // #64 treatment attempt 3 (user decision 2026-09-29): the comparison is timing only, so the Campaign binds a
+  // Site variant of the analysis contract whose policy.json tolerates new DRC/connectivity identities
+  // (allowDegradedWorking true, maxNewConstraintFailures 1000000) and keeps degradeLimitNs 0. The Campaign file's
+  // `inputs.analysisContract` reaches startRun as `inputs`; every Job must take it (D-C01-1), never the Site file's own.
+  const home = await prepareHome(t, 0);
+  const variantDir = path.join(home.site, 'analysis-timing-only');
+  await cp(path.join(home.site, 'analysis'), variantDir, { recursive: true });
+  const sitePolicy = JSON.parse(await readFile(path.join(home.site, 'analysis/policy.json'), 'utf8'));
+  assert.deepEqual(sitePolicy, { allowDegradedWorking: false, degradeLimitNs: 0, maxNewConstraintFailures: 0 }, 'the Site contract gates on physical deltas');
+  await writeFile(path.join(variantDir, 'policy.json'), JSON.stringify({ ...sitePolicy, allowDegradedWorking: true, maxNewConstraintFailures: 1000000 }));
+  const host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  t.after(async () => { if (runId) await host.ctx.hima.cancelRun(runId).catch(() => undefined); await host.dispose().catch(() => undefined); await home.h.dispose(); });
+  const owner = await createRootAgent(host.ctx, home.h.workspace); const actor = String(owner.id);
+  const started = await host.ctx.hima.startRun({ pack: packId, site: 'local', test: true, goal: GOAL,
+    strategy: { maxPaths: MAX_PATHS }, generationLimit: 3, retryAllowance: 1, ownerSessionId: actor, timeBoxMs: 3_600_000,
+    inputs: { analysisContract: variantDir } });
+  assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') throw new Error('unreachable');
+  runId = started.run.id; const workspace = started.workspace;
+  const ledger = host.ctx.hima.ledger;
+  const recorded = ledger.records({ runId, type: 'workspace' }).findLast(record => record.type === 'workspace') as any;
+  assert.equal(recorded?.bindings?.analysisContract, variantDir, 'preparation recorded the override');
+  let sequence = 0;
+  const control = () => ledger.run(runId!)!.control!;
+  const context = () => host.ctx.hima.executionContext(runId!);
+  const act = (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}) =>
+    host.ctx.hima.executionAction({ runId: runId!, actor, origin: 'agent', action, expectedEpoch: control().epoch,
+      expectedRevision: control().revision, requestId: `timing-only-${++sequence}`, ...fields });
+  for (const nodeId of ['bind-inputs', 'read-readiness', 'check-inputs', 'baseline', 'observe-baseline', 'policy']) {
+    assert.ok(context().available.includes(nodeId), `${nodeId} is available: ${JSON.stringify(context().available)}`);
+    const begin = await act('begin', { nodeId }); assert.equal(begin.kind, 'accepted', `${nodeId} begin: ${begin.reason}`);
+    const executionId = begin.receipt!.executionId!;
+    const worked = await act('work', { executionId }); assert.notEqual(worked.kind, 'refused', `${nodeId} work: ${worked.reason}`);
+    await waitUntil(`${nodeId} settles`, () => context().executions.some(e => e.id === executionId && ['ready', 'failed'].includes(e.phase)), 120_000, 25);
+    assert.equal(context().executions.find(e => e.id === executionId)!.phase, 'ready', `${nodeId} is ready`);
+    const done = await act('complete', { nodeId, executionId }); assert.equal(done.kind, 'accepted', `${nodeId} complete: ${done.reason}`);
+  }
+  const records = ledger.records({ runId });
+  const wireOf = (nodeId: string) => {
+    const sessions = new Set(records.filter(r => r.type === 'node' && r.nodeId === nodeId).map(r => (r as any).jobSession).filter(Boolean));
+    const launched = records.filter(r => r.type === 'job' && (r as any).event === 'launched' && sessions.has((r as any).job.session));
+    assert.equal(launched.length, 1, `${nodeId} launched one Job`);
+    return String((launched[0] as any).job.wire);
+  };
+  const siteContract = path.join(home.site, 'analysis');
+  for (const nodeId of ['observe-baseline', 'policy']) {
+    const wire = wireOf(nodeId);
+    assert.ok(wire.includes(variantDir), `${nodeId}'s command line carries the timing-only contract: ${wire}`);
+    assert.ok(!wire.includes(`${siteContract}/`) && !wire.includes(`${siteContract}'`) && !wire.includes(`${siteContract} `),
+      `${nodeId}'s command line never names the Site file's own contract: ${wire}`);
+  }
+  const stamped = JSON.parse(await readFile(path.join(workspace, 'state/policy.json'), 'utf8'));
+  assert.equal(stamped.allowDegradedWorking, true);
+  assert.equal(stamped.maxNewConstraintFailures, 1000000);
+  assert.equal(stamped.degradeLimitNs, 0);
+  assert.deepEqual(stamped.goal, { setup: 0, hold: 0 }, 'the timing Goal is the Run\'s, unchanged');
+});

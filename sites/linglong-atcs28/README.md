@@ -262,6 +262,23 @@ real documents into it. `sites/linglong-atcs28/inputs/` holds a template for eac
     document at all — `physical-baseline` now runs this Pack's own Innovus export against the staged
     baseline database, with the same limits a candidate's own `implement`/`apr-run` is held to.
 
+### Timing-only analysis contract (#64 treatment attempt 3, 2026-09-29)
+
+The user decided the ATCS comparison is timing only: DRC/connectivity deltas are recorded but must not
+stop the treatment Run. `inputs/analysisContract-timing-only/` is installed on the server at
+`/data/eda/project/hima_harness/atcs-inputs/analysisContract-timing-only` (files mode 0444). A Campaign
+selects it through its Campaign file (`inputs.analysisContract`); the Site's own binding is unchanged.
+- It is byte-identical to `analysisContract/` except `policy.json` (sha256 `e2b9cd9e...`):
+  `allowDegradedWorking` true and `maxNewConstraintFailures` 1000000 (the `verify_drc -limit` /
+  `verifyConnectivity -error` bound), with `degradeLimitNs` still 0.0.
+- Effect in the Pack, with no Pack byte changed: a refreshed candidate whose only fault is new DRC or
+  connectivity identities moves the `working` pointer, so the next generation builds on it. Any WNS
+  regression against the anchor is still refused. A truncated physical report is still an evidence gap.
+  `best`, `delivery` and the goal-met gate still require zero new physical identities, and the evaluation
+  still records every delta.
+- Proof, with no EDA and no SSH: `python3 sites/linglong-atcs28/test_timing_only_contract.py -v`. The
+  Host side is the dry path's "timing-only contract" test in `test/contract/atcs-dry-path.host.test.ts`.
+
 ## Known gaps (read before using this Site for a real Run)
 
 - **Closed (final review): `techLef`/`cellLefGlob`'s own read root.** The real tech LEF and cell LEF
