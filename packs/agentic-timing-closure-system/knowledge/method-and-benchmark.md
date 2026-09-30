@@ -11,6 +11,8 @@
   §16「实施路线：先证明协作合并的最小价值」。
 - `/Users/lluzi/Documents/linglong setup/agentic_closure_campaign/HIMAPACK_DEVELOPMENT_SPEC.zh-CN.md`
   （2026-09-26 快照）§1「唯一主对照：lazy agentic migration from human flow」。
+- Issue #66（2026-09-30）ATCS-09 规格 §D1（cluster 席位）与 §D8（`workerSlots 0` 对照臂），
+  `tools/read-atcs.py` 的 `seat-clusters`。
 - 冻结对照身份：`packs/xtop-timing-closure@1.0.14`，
   digest `19207d78dc3b1e9f4fd80f6bd4c21df209f1dfffc5f83fa7afd3ac5c96fd2a92`
   （`docs/package-development/agentic-timing-closure-system/b-lazy-freeze.md`，本仓库，只读参考）。
@@ -34,6 +36,13 @@
   昂贵验证。** 如果一次实现把「多 worker 并行」等同于「多个分支各自跑完整流程后选一个」，
   说明已经偏离方法核心，应回到 Integration Fix Session 的设计（见
   `contribution-and-merge.md`），不是增加更多并行分支。
+- **人工 ECO 是瓶颈消除，不是单点演示。** 每个专家席位拥有一个同因的 blocker cluster（共享
+  startpoint 或 clock-enable 网络、层级、fail-reason 模式），在私有 XTop 会话中按最难优先逐点处理，
+  交出一批改变全局 auto-fix 入口条件的协调编辑。`read-atcs.py seat-clusters` 给出至多
+  `workerSlots` 个互不相交的候选 cluster；不设 endpoint 数量上限。
+- **合格对照是同一 Pack 的 `workerSlots 0`。** 所有席位停放，分支全部走批处理空操作，组合不选任何
+  贡献，批次只运行与处理臂相同的四遍 auto-finish。只有至少一个人工批次存活到最终 ECO，且刷新后的
+  referee 优于该对照，才可声称人工增益；平局记录为无人工价值。
 - **资源换时间但不允许模型自行提高硬上限。** Site 提供有限、可见的默认预算；报告成本时
   与「更早获得合格数据库」分开陈述，不把资源消耗包装成方法学收益。
 - **完整物理刷新次数有 Run 级硬上限，即 Goal 值 `max_physical_refreshes`（默认 2，1–4）。**

@@ -353,8 +353,9 @@ tools:
   - id: worker-slots
     file: flow/atcs_cli.py
     description: >-
-      Bind the Run's workerSlots Strategy knob (1..6) for this generation's campaign plan: slots up to it
-      may be active, every slot above it is parked (Issue #64 Task 5).
+      Bind the Run's workerSlots Strategy knob (0..6) for this generation's campaign plan: slots up to it
+      may be active, every slot above it is parked (Issue #64 Task 5); 0 parks every seat, the full-auto
+      control arm (#66 D8).
     inputs: [WORKSPACE, WORKER_SLOTS]
     argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', worker-slots, '${WORKSPACE}', '${WORKER_SLOTS}']
 
@@ -644,8 +645,9 @@ goal:
 strategy:
   maxPaths: { type: number, unit: paths, min: 100, max: 5000, default: 1000 }
   # Issue #64 Task 5: how many of the six parallel worker branches may hold an active XTop expert
-  # Team; slots above it are parked. Each active branch holds one Site Job at a time.
-  workerSlots: { type: number, unit: slots, min: 1, max: 6, default: 6 }
+  # Team; slots above it are parked. Each active branch holds one Site Job at a time. #66 D8: 0 parks
+  # every seat, the qualified full-auto control arm (the same Pack, the batch runs auto-finish alone).
+  workerSlots: { type: number, unit: slots, min: 0, max: 6, default: 6 }
   autoFinish: { type: number, unit: flag, min: 0, max: 1, default: 1, precision: 0 }
 
 words:
@@ -653,7 +655,7 @@ words:
   target_hold_wns_ns: { label: target hold WNS, unit: ns }
   max_physical_refreshes: { label: max full physical refreshes per Run, unit: count }
   maxPaths: { label: max paths per scenario query, unit: paths }
-  workerSlots: { label: parallel worker slots, unit: slots }
+  workerSlots: { label: "parallel worker slots (0 parks every seat: full-auto control)", unit: slots }
   autoFinish: { label: "auto-finish after the expert recipe (1 on, 0 off)", unit: flag }
 
 knowledge:

@@ -117,7 +117,7 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 20 | `apr-prepare` | (none -- see "Fix round 1" below) | reads `research/requests/next-decision.json` then `lifecycle.compile_intervention` + `lifecycle.stage_task` | `state/apr-task.json` (one fixed literal path for every stage; carries `taskId` and `stage`) |
 | 21 | `apr-run` | siteProfile | reads `state/apr-task.json` then `run_tool` (stage batch) + `adapters.compile_innovus_export_task` + `run_tool` (export batch) | `state/implement.json` (same shape `implement` writes) |
 | 22 | `record-experience` | reasonSource(the SAME admitted integration-plan envelope row 10 reads -- only actually read when `_merge_commit_provenance` says `"merge"`; see "Task 12c fix round" below) | `experience.record` (lineage/decision/outcome composed from `state/working-state.json`, `state/implement.json`, `state/evaluation.json`, `state/contributions-collected.json`, `state/merge-commit.json`/`state/apr-task.json` (provenance), `state/sta.json`, `state/policy.json`/`state/pointers.json`) | `state/experience.json` |
-| 23 | `worker-slots` | workerSlots(`{from: strategy}`, an integer 1..6; Issue #64 Task 5) | validates the knob; slots up to it may be active and every slot above it must be parked | `state/worker-slots.json` (stamped `worker-slots`: `workerSlots`, `activeSlots`, `parkedSlots`) |
+| 23 | `worker-slots` | workerSlots(`{from: strategy}`, an integer 0..6; Issue #64 Task 5, 0 since #66 D8) | validates the knob; slots up to it may be active and every slot above it must be parked | `state/worker-slots.json` (stamped `worker-slots`: `workerSlots`, `activeSlots`, `parkedSlots`) |
 | 24 | `operate-parked` | slot | the `xtop-operator` tool's batch path (Issue #64 Task 5): opens no XTop session for a slot `prepare-workers` parked or an active slot whose worker request is inadmissible (`workspaces.request_invalid_count` + `workspaces.bound_view` against the prepared package); refuses any other active slot (`slot-active`) | `<slot root>/parked.json` (stamped `parked-operate` receipt, `why` parked or inadmissible-request; an unreadable request or working state refuses; `prepare-workers` removes a stale one) |
 
 Site-admin utility (not a Harness graph subcommand -- no workspace, no declared output)
@@ -1291,14 +1291,16 @@ def _cmd_worker_slots(workspace, args):
 
     `bind-worker-slots` runs on every way into the plan Workshop, so the campaign-plan
     Reader reads the knob the Run holds now: slots w01..w0<n> may be active and every
-    slot above <n> must be parked. The value is an integer from 1 to 6.
+    slot above <n> must be parked. The value is an integer from 0 to 6; 0 parks every seat,
+    the qualified full-auto control arm (#66 D8): every branch runs its batch no-op and the
+    batch runs the auto-finish alone.
     """
     (raw,) = args
     if not isinstance(raw, str) or not re.fullmatch(r"[0-9]+", raw.strip()):
-        raise InputError("invalid-input", f"workerSlots must be an integer from 1 to {len(workspaces.TASK_IDS)}, got {raw!r}")
+        raise InputError("invalid-input", f"workerSlots must be an integer from 0 to {len(workspaces.TASK_IDS)}, got {raw!r}")
     count = int(raw.strip())
-    if not 1 <= count <= len(workspaces.TASK_IDS):
-        raise InputError("invalid-input", f"workerSlots must be an integer from 1 to {len(workspaces.TASK_IDS)}, got {count}")
+    if not 0 <= count <= len(workspaces.TASK_IDS):
+        raise InputError("invalid-input", f"workerSlots must be an integer from 0 to {len(workspaces.TASK_IDS)}, got {count}")
     body = {
         "workerSlots": count,
         "activeSlots": list(workspaces.TASK_IDS[:count]),

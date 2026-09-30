@@ -1188,8 +1188,10 @@ def _session_plan_master_problems(envelope, candidate, base_state, workspace, co
     master, with the object's cell function under the Site's sizing rule (drive and VT may change).
     Under the #64 worker/aggregation principle (FABRIC.md) every master finding is `Advice`: the
     Operator and XTop find a wrong master out, and the aggregation and refreshed PrimeTime judge
-    the result. Only an object outside `candidate.editDomain.instances` is counted: an action
-    outside the slot's edit domain breaks merge integrity. Other entries are not read here.
+    the result. #66 D1: an object outside `candidate.editDomain.instances` is `Advice` too: the
+    session derives its local domain in XTop (the target and plan-instance nets, their drivers and
+    loads), so a driver cell the plan does not list may be in it, and the toolkit refuses what is not.
+    Other entries are not read here.
     """
     plan = envelope.get("sessionPlan")
     if not isinstance(plan, list):
@@ -1210,10 +1212,14 @@ def _session_plan_master_problems(envelope, candidate, base_state, workspace, co
     for index, entry in entries:
         where = f"sessionPlan[{index}]"
         target, master = entry.get("object"), entry.get("toMaster")
-        if not isinstance(target, str) or target not in instances:
-            found.append(f"{where}.object{slot}: {target!r} is not in candidate.editDomain.instances; "
-                         "atcs_size_cell sizes one edit-domain leaf cell")
+        if not isinstance(target, str):
+            found.append(Advice(f"{where}.object{slot}: {target!r} is not one leaf-cell path; atcs_size_cell sizes "
+                                "one edit-domain leaf cell"))
             continue
+        if target not in instances:
+            found.append(Advice(f"{where}.object{slot}: {target!r} is not in candidate.editDomain.instances; the "
+                                "toolkit sizes it only when the session's derived local domain holds it (a driver or "
+                                "load cell of a target or plan-instance net), and refuses it otherwise"))
         current = _instance_type(hierarchy, top, target)
         if current is None or current in hierarchy:
             continue  # the edit-domain check above already names this instance
@@ -1371,6 +1377,7 @@ def _read_campaign_plan(report, workspace, extra, mods):
         found.append(f"baseState: id {base_state.get('id')!r} is not the working state {working_state_id!r}; "
                      "copy state/working-state.json unchanged")
 
+    observed = _observed_slacks(workspace, working_state_id, core)
     work_packages = candidate.get("workPackages")
     if not isinstance(work_packages, dict):
         found.append("candidate.workPackages: must be an object keyed w01..w06, one package per slot")
@@ -1387,6 +1394,7 @@ def _read_campaign_plan(report, workspace, extra, mods):
         if not workspaces_mod.is_parked(package):
             active[task_id] = package
             found += _edit_domain_problems(package, base_state, workspace, (where, ""))
+            found += _cluster_advice(package, where, observed)
 
     # Reshaped 2026-09-29 (ADR-0016): the plan is refused only for what breaks identity or merge
     # integrity -- a stale base, a second copy, a package prepare-workers cannot prepare, an active slot
@@ -1398,7 +1406,10 @@ def _read_campaign_plan(report, workspace, extra, mods):
 
     found += _worker_slot_problems(workspace, active, core, workspaces_mod)
     found += _shared_domain_problems(active)
-    found += [Advice(item) for item in _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])]
+    if _worker_slot_count(workspace, core) != 0:
+        # #66 D8: under workerSlots 0 (the full-auto control arm) no seat may cover a blocker.
+        found += [Advice(item) for item in
+                  _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])]
     parked = [task_id for task_id in workspaces_mod.TASK_IDS
               if isinstance(work_packages.get(task_id), dict) and task_id not in active]
     found += _parked_seat_problems(workspace, working_state_id, active, parked, core, workspaces_mod,
@@ -1406,18 +1417,82 @@ def _read_campaign_plan(report, workspace, extra, mods):
     return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
+def _observed_slacks(workspace, working_state_id, core):
+    """`{check key: known slack}` of `state/observation.json` of the working state; {} when unreadable."""
+    try:
+        observation = _load_json(Path(workspace) / "state" / "observation.json")
+        _verify_identity(observation, "observation-set", core)
+    except (ValueError, OSError):
+        return {}
+    if working_state_id is None or observation.get("designStateId") != working_state_id:
+        return {}
+    slacks = {}
+    for key, entry in (observation.get("checks") or {}).items():
+        slack = entry.get("slack") if isinstance(entry, dict) else None
+        value = slack.get("value") if isinstance(slack, dict) else None
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+            slacks[key] = value
+    return slacks
+
+
+def _cluster_advice(package, where, observed):
+    """#66 D1: what an active package's `cluster` says unlike its shape, as `Advice` (never counted).
+
+    A seat owns one blocker cluster `{cause, key, checks}`: `cause` one of `CLUSTER_CAUSES`, `key` the
+    shared cause it names, `checks` the check keys hardest first (worst observed slack first), and the
+    package's `targets` exactly those checks. The plan Reader counts only identity and merge integrity,
+    so a cluster of another shape is the method's advice. A package without `cluster` gets none.
+    """
+    if "cluster" not in package:
+        return []
+    cluster = package["cluster"]
+    proposer = "read-atcs.py seat-clusters proposes one per seat (knowledge example-campaign-plan.md)"
+    if not isinstance(cluster, dict):
+        return [Advice(f"{where}.cluster: should be {{\"cause\", \"key\", \"checks\"}}, got a {type(cluster).__name__}; "
+                       f"{proposer}")]
+    found = []
+    if cluster.get("cause") not in CLUSTER_CAUSES:
+        found.append(Advice(f"{where}.cluster.cause: {cluster.get('cause')!r} is not one of {', '.join(CLUSTER_CAUSES)}"))
+    if not isinstance(cluster.get("key"), str) or not cluster["key"].strip():
+        found.append(Advice(f"{where}.cluster.key: should name the shared cause (a startpoint, a hierarchy prefix, "
+                            f"a fail-reason pattern), got {cluster.get('key')!r}"))
+    checks = cluster.get("checks")
+    if not isinstance(checks, list) or not checks or not all(isinstance(key, str) for key in checks):
+        found.append(Advice(f"{where}.cluster.checks: should be the cluster's check keys, hardest first; {proposer}"))
+        return found
+    slacks = [observed[key] for key in checks if key in observed]
+    if any(later < earlier for earlier, later in zip(slacks, slacks[1:])):
+        found.append(Advice(f"{where}.cluster.checks: not hardest first; order the checks by their slack in "
+                            "state/observation.json, worst first, so the Operator works the hardest endpoint first"))
+    if package.get("targets") != checks:
+        found.append(Advice(f"{where}.targets: should be exactly cluster.checks, in its order"))
+    return found
+
+
+def _worker_slot_count(workspace, core):
+    """The verified `state/worker-slots.json` `workerSlots` count, or None when it cannot be read."""
+    try:
+        record = _load_json(Path(workspace) / "state" / "worker-slots.json")
+        _verify_identity(record, "worker-slots", core)
+    except (ValueError, OSError):
+        return None
+    count = record.get("workerSlots")
+    return count if isinstance(count, int) and not isinstance(count, bool) else None
+
+
 def _worker_slot_problems(workspace, active, core, workspaces_mod):
     """One problem per active slot above the Run's `workerSlots` knob (Issue #64 Task 5).
 
     The knob is the stamped `state/worker-slots.json` that `bind-worker-slots` writes on
-    every way into the plan Workshop; an absent or unverifiable record is one problem.
+    every way into the plan Workshop; an absent or unverifiable record is one problem. #66 D8:
+    the knob may be 0 (the full-auto control arm), and then every active slot is one problem.
     """
     try:
         record = _load_json(Path(workspace) / "state" / "worker-slots.json")
         _verify_identity(record, "worker-slots", core)
         count = record.get("workerSlots")
-        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= len(workspaces_mod.TASK_IDS):
-            raise ValueError(f"workerSlots {count!r} is not 1..{len(workspaces_mod.TASK_IDS)}")
+        if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= len(workspaces_mod.TASK_IDS):
+            raise ValueError(f"workerSlots {count!r} is not 0..{len(workspaces_mod.TASK_IDS)}")
     except (ValueError, OSError) as error:
         return [f"candidate.workPackages: state/worker-slots.json cannot be verified ({error}), so no slot can be "
                 "shown to be within workerSlots"]
@@ -2444,12 +2519,331 @@ def _resolve_instances_main(argv):
     Path(out).write_text(json.dumps(answer, indent=1, sort_keys=True) + "\n", encoding="utf-8")
 
 
+# ---------------------------------------------------------------------------
+# Cluster seating (#66 D1): `read-atcs.py seat-clusters WORKSPACE OUT [--slots N]`
+# ---------------------------------------------------------------------------
+#
+# Manual ECO is bottleneck removal: each expert seat owns one coherent blocker cluster and works it
+# hardest first. This helper proposes the partition, so the plan Workshop seats clusters instead of
+# inventing one: the required scenarios' violating checks (state/observation.json, with the fail
+# reasons of state/residual-cases.json when present) become at most `workerSlots` disjoint clusters
+# (no two seats share an endpoint cell), ordered by worst slack. It writes a candidate `workPackages`
+# block the Workshop may adopt or edit; nothing else. No endpoint count is imposed.
+
+CLUSTER_CAUSES = ("scenario-worst", "startpoint", "clock-enable", "hierarchy", "fanout", "fail-reason", "region")
+"""`workPackage.cluster.cause`: the shared cause a cluster names in its `key`."""
+
+_CLOCK_ENABLE_RE = re.compile(r"(^|_)(clk|clock|ck)_?en(able)?(_?\d*|\[\d+\])$", re.I)
+
+
+def _cell_key(instance):
+    """An instance path compared the way the plan Reader's disjointness check reads it."""
+    segments = _split_instance_path(instance)
+    return "/".join(segments) if segments else instance
+
+
+def _cell_prefix(instance):
+    """The hierarchy an instance sits in (its path without the leaf), None for a cell directly under top."""
+    segments = _split_instance_path(instance) or [instance]
+    return "/".join(segments[:-1]) or None
+
+
+def _fail_pattern(row):
+    """`<mode>:<dominant fail reason>` of a check, None when it has no fail reason."""
+    counted = [(count, reason) for reason, count in row["failReasons"].items() if count > 0]
+    return f"{row['mode']}:{max(counted, key=lambda item: (item[0], item[1]))[1]}" if counted else None
+
+
+def _row_order(row):
+    """Hardest first: worst slack, then the harder fail reasons (the larger count), then the key."""
+    return (row["slack"], -row["failWeight"], row["check"])
+
+
+def _group_order(group):
+    return _row_order(min(group["rows"], key=_row_order))
+
+
+def _merge_level(groups, slots, cause, attribute):
+    """Fold the least hard groups into a harder one sharing `attribute`, until at most `slots` remain.
+
+    Only a group no level has formed yet (cause None), or one this level formed, takes part; a group
+    formed at an earlier level (a shared startpoint) keeps its cause.
+    """
+    def value_of(group):
+        return group["key"] if group["cause"] == cause else attribute(min(group["rows"], key=_row_order))
+
+    while len(groups) > slots:
+        groups.sort(key=_group_order)
+        merged = False
+        for group in reversed(groups):
+            if group["cause"] not in (None, cause):
+                continue
+            value = value_of(group)
+            if value is None:
+                continue
+            peer = next((other for other in groups if other is not group and other["cause"] in (None, cause)
+                         and value_of(other) == value), None)
+            if peer is None:
+                continue
+            peer["rows"] += group["rows"]
+            peer["cause"], peer["key"] = cause, value
+            groups.remove(group)
+            merged = True
+            break
+        if not merged:
+            return
+
+
+def _seat_rows(workspace, working_state, observation, required):
+    """`(rows, unresolved)`: each violating check of a required scenario with its endpoint's leaf cell."""
+    case_reasons, batch_reasons = {}, {}
+    residual_path = Path(workspace) / "state" / "residual-cases.json"
+    if residual_path.is_file():
+        residual = _load_json(residual_path)
+        residual = residual if isinstance(residual, dict) else {}
+        batch = residual.get("batchFailReasons")
+        batch_reasons = batch if isinstance(batch, dict) else {}
+        for case in residual.get("cases") or []:
+            if isinstance(case, dict) and isinstance(case.get("failReasons"), dict):
+                for key in case.get("checks") or []:
+                    if isinstance(key, str):
+                        case_reasons[key] = case["failReasons"]
+
+    def reasons_of(key, mode):
+        found = case_reasons.get(key)
+        if not found:
+            found = batch_reasons.get(mode)
+        found = found if isinstance(found, dict) else {}
+        return {reason: count for reason, count in found.items()
+                if isinstance(reason, str) and isinstance(count, (int, float)) and not isinstance(count, bool)}
+
+    rows = []
+    for key, entry in (observation.get("checks") or {}).items():
+        parts = key.split("|", 2) if isinstance(key, str) else []
+        if len(parts) != 3 or parts[0] not in required or parts[1] not in ("setup", "hold") or not isinstance(entry, dict):
+            continue
+        slack = entry.get("slack")
+        value = slack.get("value") if isinstance(slack, dict) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value >= 0:
+            continue
+        raw = entry.get("endpoint")
+        startpoint = entry.get("startpoint")
+        reasons = reasons_of(key, parts[1])
+        rows.append({"check": key, "scenario": parts[0], "mode": parts[1], "slack": value,
+                     "endpoint": raw if isinstance(raw, str) and raw.strip() else _endpoint_part(key),
+                     "startpoint": startpoint if isinstance(startpoint, str) and startpoint.strip() else None,
+                     "failReasons": reasons, "failWeight": sum(reasons.values())})
+    rows.sort(key=_row_order)
+
+    answer = resolve_endpoints(workspace, sorted({row["endpoint"] for row in rows}))
+    resolved = {item["endpoint"]: item for item in answer["resolved"]}
+    why = {item["endpoint"]: item["unresolved"] for item in answer["unresolved"]}
+    modules = _netlist_index_cache[str(_safe_join(workspace, working_state["netlist"]["path"], "design-state.netlist"))]
+    workspaces_mod = _atcs_modules(workspace)["workspaces"]
+    seated, unresolved = [], []
+    for row in rows:
+        item = resolved.get(row["endpoint"])
+        if item is None and "primary port" in (why.get(row["endpoint"]) or ""):
+            # A primary port is never a target; the cell driving it is (#66 D1).
+            item, reason = _net_driver(modules, working_state.get("top"), _endpoint_part(row["endpoint"]), [])
+            if item is not None:
+                item = dict(item, via="port-driver")
+            else:
+                why[row["endpoint"]] = reason
+        if item is None or not workspaces_mod._is_safe_name(item["instance"]):
+            reason = why.get(row["endpoint"]) or f"{item['instance']!r} is not a safe Tcl name"
+            unresolved.append({"check": row["check"], "endpoint": row["endpoint"], "unresolved": reason})
+            continue
+        pin = f"{item['instance']}/{item['pin']}" if item["via"] == "pin" and item.get("pin") else None
+        seated.append(dict(row, instance=item["instance"], cell=_cell_key(item["instance"]), pin=pin,
+                           via=item["via"]))
+    return seated, unresolved
+
+
+def _clusters(rows, slots, worst):
+    """The ordered disjoint clusters of `rows` (see `seat_clusters`), every one of them, hardest first."""
+    groups = {}
+    for row in rows:  # one endpoint cell is one seat's: its checks never split
+        groups.setdefault(row["cell"], {"rows": [], "cause": None, "key": None})["rows"].append(row)
+    # Level 1, always: a startpoint shared by the checks of several cells (a clock enable, a shared source).
+    parent = {cell: cell for cell in groups}
+
+    def find(cell):
+        while parent[cell] != cell:
+            parent[cell] = parent[parent[cell]]
+            cell = parent[cell]
+        return cell
+
+    by_start = {}
+    for row in rows:
+        if row["startpoint"]:
+            by_start.setdefault(row["startpoint"], set()).add(row["cell"])
+    for cells in by_start.values():
+        cells = sorted(cells)
+        for cell in cells[1:]:
+            parent[find(cell)] = find(cells[0])
+    merged = {}
+    for cell, group in groups.items():
+        merged.setdefault(find(cell), {"rows": [], "cause": None, "key": None})["rows"] += group["rows"]
+    groups = list(merged.values())
+    for group in groups:
+        cells = {row["cell"] for row in group["rows"]}
+        if len(cells) < 2:
+            continue
+        shared = [row for row in sorted(group["rows"], key=_row_order)
+                  if row["startpoint"] and len(by_start[row["startpoint"]]) > 1]
+        key = shared[0]["startpoint"]
+        leaf = key.rsplit("/", 1)[-1]
+        group["cause"], group["key"] = ("clock-enable" if _CLOCK_ENABLE_RE.search(leaf) else "startpoint"), key
+    # Levels 2 and 3, only while more clusters than seats remain: a hierarchy, then a fail-reason pattern.
+    _merge_level(groups, slots, "hierarchy", lambda row: _cell_prefix(row["instance"]))
+    _merge_level(groups, slots, "fail-reason", _fail_pattern)
+    for group in groups:
+        group["rows"].sort(key=_row_order)
+        if group["cause"] is not None:
+            continue
+        hardest = group["rows"][0]
+        worst_rows = [row for row in group["rows"] if row["check"] in worst]
+        prefix = _cell_prefix(hardest["instance"])
+        if worst_rows:
+            group["cause"], group["key"] = "scenario-worst", f"{worst_rows[0]['scenario']}|{worst_rows[0]['mode']}"
+        elif prefix is not None:
+            group["cause"], group["key"] = "hierarchy", prefix
+        elif _fail_pattern(hardest) is not None:
+            group["cause"], group["key"] = "fail-reason", _fail_pattern(hardest)
+        else:
+            group["cause"], group["key"] = "hierarchy", hardest["instance"]
+    return sorted(groups, key=_group_order)
+
+
+def _unique(items):
+    seen, out = set(), []
+    for item in items:
+        if item is not None and item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
+def seat_clusters(workspace, slots=None):
+    """Partition the required scenarios' violating checks into at most `slots` ordered blocker clusters.
+
+    `read-atcs.py seat-clusters WORKSPACE OUT [--slots N]` (#66 D1). Read against the verified
+    working state, policy and observation (of the working state), with the fail reasons of
+    `state/residual-cases.json` (each case's own, else the evaluated batch's for its mode) when present.
+    `slots` defaults to the bound `workerSlots` knob. Every endpoint resolves to its leaf cell
+    (`resolve_endpoints`); a primary port resolves to the cell driving it, which joins the edit domain
+    while the port's check key stays in `targets` (a port is never a target pin). Clusters, never
+    sharing an endpoint cell:
+
+    1. a startpoint the checks of several cells share (`clock-enable` when it is named like one,
+       else `startpoint`), always;
+    2. while more clusters than seats remain, the least hard cluster not yet formed folds into the
+       hardest one of its hierarchy (`hierarchy`, keyed by the leaf's parent path);
+    3. then likewise by the dominant fail reason of its mode (`fail-reason`, `<mode>:<reason>`);
+    4. a cluster left unformed names the scenario whose worst check it holds (`scenario-worst`), else
+       its hierarchy.
+
+    The clusters are ordered by worst slack and the hardest `slots` are seated w01.. in order; the rest
+    are listed in `uncovered`, hardest first. Returns the candidate `workPackages` block: an active
+    package's `targets` are its `cluster.checks` hardest first (slack, then the larger fail-reason
+    count), `targetPins` the pins those endpoints name, `editDomain.instances` their leaf cells (nets
+    and regions are left to the session's derivation), `scope` every toolkit mutation at the Pack cap.
+    Writes nothing.
+    """
+    mods = _atcs_modules(workspace)
+    core, workspaces_mod, composition_mod = mods["core"], mods["workspaces"], mods["composition"]
+    workspace = Path(workspace)
+    working = _load_json(workspace / "state" / "working-state.json")
+    _verify_identity(working, "design-state", core)
+    policy = _load_json(workspace / "state" / "policy.json")
+    _verify_identity(policy, "policy", core)
+    observation = _load_json(workspace / "state" / "observation.json")
+    _verify_identity(observation, "observation-set", core)
+    if observation.get("designStateId") != working.get("id"):
+        raise ValueError(f"state/observation.json observes {observation.get('designStateId')!r}, not the working "
+                         f"state {working.get('id')!r}; observe the working state first")
+    required = policy.get("requiredScenarios")
+    if not isinstance(required, list):
+        raise ValueError("state/policy.json has no requiredScenarios list")
+    if slots is None:
+        slots = _worker_slot_count(workspace, core)
+        if slots is None:
+            raise ValueError("state/worker-slots.json cannot be verified; bind workerSlots or pass --slots N")
+    if isinstance(slots, bool) or not isinstance(slots, int) or not 0 <= slots <= len(workspaces_mod.TASK_IDS):
+        raise ValueError(f"slots must be an integer 0..{len(workspaces_mod.TASK_IDS)}, got {slots!r}")
+
+    rows, unresolved = _seat_rows(workspace, working, observation, required)
+    worst = set(composition_mod.worst_checks(observation))
+    clusters = _clusters(rows, slots, worst)
+    seated, rest = clusters[:slots], clusters[slots:]
+    checks = observation.get("checks") or {}
+    packages = {}
+    for index, task_id in enumerate(workspaces_mod.TASK_IDS):
+        if index >= len(seated):
+            why = (f"above workerSlots {slots}" if index >= slots else
+                   f"seat-clusters found no further cluster: every resolved violating check of a required scenario "
+                   f"is in {', '.join(workspaces_mod.TASK_IDS[:len(seated)]) or 'no slot'}"
+                   + (f" ({len(unresolved)} did not resolve to a leaf cell)" if unresolved else ""))
+            packages[task_id] = {"taskId": task_id, "baseStateId": working["id"], "parked": True, "problem": why}
+            continue
+        group = seated[index]
+        keys = [row["check"] for row in group["rows"]]
+        opposite = []
+        for row in group["rows"]:
+            other = "hold" if row["mode"] == "setup" else "setup"
+            candidate = f"{row['scenario']}|{other}|{row['check'].split('|', 2)[2]}"
+            if candidate in checks and candidate not in keys:
+                opposite.append(candidate)
+        hardest = group["rows"][0]
+        noun = "check" if len(keys) == 1 else "checks"
+        packages[task_id] = {
+            "taskId": task_id,
+            "baseStateId": working["id"],
+            "problem": (f"{group['cause']} cluster {group['key']}: {len(keys)} violating {noun} of the required "
+                        f"scenarios, hardest {hardest['check']} at {hardest['slack']:g} ns"),
+            "cluster": {"cause": group["cause"], "key": group["key"], "checks": keys},
+            "targets": list(keys),
+            "editDomain": {"instances": _unique(row["instance"] for row in group["rows"]), "nets": [], "regions": []},
+            "protected": {"instances": [], "nets": []},
+            "mayAffect": _unique(opposite),
+            "actions": ["size_cell", "insert_buffer", "delete_buffer"],
+            "budget": {"xtopMinutes": 60, "attempts": 3},
+            "targetPins": _unique(row["pin"] for row in group["rows"]),
+            "scope": {"commands": list(workspaces_mod.MUTATE_COMMANDS),
+                      "maxMutations": workspaces_mod.SCOPE_MAX_MUTATIONS},
+            "observe": "fast",
+        }
+    uncovered = sorted(({"check": row["check"], "slack": row["slack"],
+                         "cluster": {"cause": group["cause"], "key": group["key"]}}
+                        for group in rest for row in group["rows"]),
+                       key=lambda item: (item["slack"], item["check"]))
+    return {"schema": "atcs-seat-clusters/1", "designStateId": working["id"], "observationId": observation.get("id"),
+            "workerSlots": slots, "workPackages": packages, "uncovered": uncovered, "unresolved": unresolved}
+
+
+def _seat_clusters_main(argv):
+    usage = "usage: read-atcs.py seat-clusters WORKSPACE OUT_JSON [--slots N]"
+    if len(argv) not in (2, 4) or (len(argv) == 4 and argv[2] != "--slots"):
+        raise SystemExit(usage)
+    slots = None
+    if len(argv) == 4:
+        if not re.fullmatch(r"[0-9]+", argv[3]):
+            raise SystemExit(f"{usage}: N is an integer 0..6, got {argv[3]!r}")
+        slots = int(argv[3])
+    answer = seat_clusters(argv[0], slots)
+    Path(argv[1]).write_text(json.dumps(answer, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main():
     if len(sys.argv) >= 2 and sys.argv[1] == "resolve-instances":
         _resolve_instances_main(sys.argv[2:])
         return
     if len(sys.argv) >= 2 and sys.argv[1] == "masters":
         _masters_main(sys.argv[2:])
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "seat-clusters":
+        _seat_clusters_main(sys.argv[2:])
         return
     if len(sys.argv) < 5:
         raise SystemExit("usage: read-atcs.py <kind> REPORT OUT WORKSPACE [extra...]")
