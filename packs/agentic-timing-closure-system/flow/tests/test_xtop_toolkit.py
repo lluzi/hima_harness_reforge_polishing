@@ -2256,6 +2256,48 @@ class ReadLogTest(unittest.TestCase):
 
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class Q1HoldCellsTest(unittest.TestCase):
+    """D-Q1-3 (#64 Q1 w01 cmd-11): `atcs_insert_dummy` was sent with master "" and newInstance "", and XTop
+    answered `invalid library cell ''`; `delayCellList` was "" in every hold call; the request and the brief
+    named no cell. The session's hold buffer list (the Site's bufferListForHold, XTop's
+    eco_buffer_list_for_hold) is where a dummy master and a delay chain's cells come from: atcs_ref prints it,
+    and a call missing a master, a new name or a delay list is refused before XTop, naming it."""
+
+    HOLD_CELLS = 'ATCS:holdCells {"holdBufferList":["DELAY1","BUFX2"]'
+
+    def test_atcs_ref_names_the_sessions_hold_cells(self):
+        session = Session(self).run("T r1 {atcs_ref}\nT r2 {atcs_ref}\n")
+        for tag in ("r1", "r2"):
+            status, text = session.outcome(tag)
+            self.assertEqual(status, "OK", session.stdout + session.stderr)
+            self.assertIn(self.HOLD_CELLS, text, tag)
+        self.assertEqual([gain["kind"] for gain in session.gains], ["reference"], "gain.jsonl holds the reference only")
+
+    def test_q1_a_dummy_without_a_master_or_a_name_is_refused_naming_the_hold_list(self):
+        session = Session(self).run(
+            f"T q1 {{atcs_insert_dummy U1/A {{}} {{}} {PLAN}}}\n"
+            f"T noname {{atcs_insert_dummy U1/A DELAY1 {{}} {PLAN}}}\n")
+        status, text = session.outcome("q1")
+        self.assertEqual(status, "ERR")
+        self.assertIn("master is required", text)
+        self.assertIn("DELAY1 BUFX2", text)
+        status, text = session.outcome("noname")
+        self.assertEqual(status, "ERR")
+        self.assertIn(f"newInstance is required: a new instance name {PREFIX}", text)
+        self.assertEqual(session.calls_to("insert_dummy_cell"), [], "refused before XTop")
+        self.assertEqual(session.ops, [])
+
+    def test_a_delay_chain_without_its_list_names_the_hold_list(self):
+        session = Session(self).run(
+            f"T chain {{{HOLD} U1/A low 0.0 0.02 0 0 0 0 2 {{}} {PLAN}}}\n")
+        status, text = session.outcome("chain")
+        self.assertEqual(status, "ERR")
+        self.assertIn("maxDelayCellLength and delayCellList go together", text)
+        self.assertIn("DELAY1 BUFX2", text)
+        self.assertEqual(session.calls_to("fix_hold_gba_violations"), [])
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class CommittedFixTest(unittest.TestCase):
     """Real XTop commits a fix flow's actions (Task 7): `undo` cannot revert a targeted fix."""
 

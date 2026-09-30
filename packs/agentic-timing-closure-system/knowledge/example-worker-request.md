@@ -25,7 +25,10 @@ Liberty files that file lists in `libraryFiles` (it holds no cell table itself);
 `hima-readers/atcs-readiness/read-atcs.py masters` lists them for each instance; the Reader writes any other
 `toMaster` as advice, never as a refusal. An entry's `object` may be a cell the plan does not list, such as
 the driver or a load of a target pin's net: the session derives its local domain around the target pins
-and plan instances, and the toolkit refuses a cell outside it. The Reader writes such an object as advice.
+and plan instances, and the toolkit refuses a cell outside it. The Reader writes such an object as advice. An `atcs_insert_dummy` entry names its `toMaster` too: the dummy load's
+master, one cell of `ecoParameters.bufferListForHold` in `state/xtop-context.json` (the session's hold buffer
+list, which the Operator's `atcs_ref` prints; a delay cell is a dummy load XTop accepts). The tool never picks
+the load: XTop refuses a dummy with no master (`invalid library cell ''`, #64 Q1).
 
 ```json
 {
@@ -103,6 +106,7 @@ and plan instances, and the toolkit refuses a cell outside it. The Reader writes
     {
       "command": "atcs_insert_dummy",
       "object": "u_core/u_lsu/addr_reg_0_/D",
+      "toMaster": "DEL050MD1BWP35P140",
       "hypothesis": "a dummy load on the short hold path closes hold",
       "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"
     }

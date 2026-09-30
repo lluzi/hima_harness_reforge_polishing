@@ -891,9 +891,19 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
 }
 
 # ---- read procedures -------------------------------------------------------
+# D-Q1-3 (#64 Q1 w01 cmd-11): the request and the brief named no dummy master or delay cell, and the
+# Operator sent `atcs_insert_dummy` with master "". The session's hold buffer list (the Site's
+# bufferListForHold, XTop's eco_buffer_list_for_hold) is that source: atcs_ref names it after the reference.
+proc atcs_hold_cells_line {} {
+    return "ATCS:holdCells [atcs_jobj [list holdBufferList [atcs_jarr $::XTOP_ECO_BUFFER_LIST_FOR_HOLD] \
+        use [atcs_js {atcs_insert_dummy master: one cell of holdBufferList (a delay cell is a dummy load XTop accepts, #64 T06); delayCellList: cells of holdBufferList, leaving at least one out as the normal cell}]]]"
+}
+proc atcs_hold_cells_named {} {
+    return "the session's hold buffer list (eco_buffer_list_for_hold, the Site's bufferListForHold): [expr {[llength $::XTOP_ECO_BUFFER_LIST_FOR_HOLD] > 0 ? $::XTOP_ECO_BUFFER_LIST_FOR_HOLD : {none}}]"
+}
 proc atcs_ref {} {
-    if {$::atcs_reference_captured} { return "session reference already captured; it is never moved" }
-    return [atcs_capture_reference]
+    if {$::atcs_reference_captured} { return "session reference already captured; it is never moved\n[atcs_hold_cells_line]" }
+    return "[atcs_capture_reference]\n[atcs_hold_cells_line]"
 }
 # XTop keeps fail reasons only for the check of the last fix flow in the session: before any fix,
 # `-with_fail_reason` fails ("No fail reason since no fix or optimize flow have run yet."), and
@@ -1190,6 +1200,10 @@ proc atcs_insert_buffer {net load_pins masters new_instances new_nets plan_sha25
 proc atcs_insert_dummy {pin master new_instance plan_sha256} {
     atcs_begin_mutation $plan_sha256
     atcs_check_name pin $pin
+    if {$master eq ""} { error "master is required: one library cell for the dummy load, such as a cell of [atcs_hold_cells_named]" }
+    if {$new_instance eq ""} {
+        error "newInstance is required: a new instance name $::env(NAME_PREFIX)<letters, digits or underscores>, such as $::env(NAME_PREFIX)dum0"
+    }
     set net [atcs_pin_net $pin]
     if {![atcs_net_in_domain $net]} { error "out-of-scope pin: $pin is on net $net outside the edit domain" }
     atcs_check_master $master
@@ -1324,12 +1338,12 @@ proc atcs_fix_hold_pins {pins effort hold_target setup_margin size_cell_only use
     set delay_cell_list [atcs_list delayCellList $delay_cell_list]
     foreach cell $delay_cell_list { atcs_check_master $cell }
     if {($max_delay_cell_length >= 0) != ([llength $delay_cell_list] > 0)} {
-        error "maxDelayCellLength and delayCellList go together: give both, or -1 and an empty list"
+        error "maxDelayCellLength and delayCellList go together: give both, or -1 and an empty list; delayCellList takes cells of [atcs_hold_cells_named], leaving at least one out"
     }
     # D-T06-4(b) (#64 T06 w04/w05 seq2): XTop refuses -use_dummy_cell with "No dummy cell specified.", and
     # the documented surface names no dummy-cell list for this session to give it.
     if {$use_dummy_cell} {
-        error "useDummyCell: XTop refuses -use_dummy_cell with \"No dummy cell specified.\" and this session knows no dummy-cell list; insert a dummy load with atcs_insert_dummy <pin> <master> <newInstance> instead"
+        error "useDummyCell: XTop refuses -use_dummy_cell with \"No dummy cell specified.\" and this session knows no dummy-cell list; insert a dummy load with atcs_insert_dummy <pin> <master> <newInstance> instead, its master a cell of [atcs_hold_cells_named]"
     }
     # D-T06-4(c) (#64 T06 w01 seq3/4): XTop's hold buffer list (eco_buffer_list_for_hold, the Site's
     # bufferListForHold) must hold every delayCellList cell and at least one normal cell besides them.

@@ -1003,6 +1003,11 @@ BRIEF_TEXT_CHARS = 2000
 BRIEF_SESSION_NETS = ("the session adds each target pin's net and the plan instances' nets, one hop, to this domain "
                       "(domain.json nets): use them by pin, atcs_insert_dummy <target pin> and atcs_insert_buffer "
                       "with net \"\" and the target pins as loadPins")
+# #64 Q1 (D-Q1-3): the Operator sent atcs_insert_dummy with master "" and never a delayCellList; nothing it read
+# named a cell. The session's hold buffer list is that source, and atcs_ref prints it.
+BRIEF_HOLD_CELLS = ("atcs_ref prints this session's holdBufferList (the Site's bufferListForHold, XTop's "
+                    "eco_buffer_list_for_hold): atcs_insert_dummy takes one of its cells as master and a new name; a "
+                    "delayCellList takes cells of it and leaves at least one out as the normal cell")
 SESSION_PLAN_MAX_CHARS = 16000
 
 
@@ -1048,6 +1053,7 @@ def operator_brief(envelope):
                   if isinstance(scope.get("commands"), list) else [],
                   "maxMutations": scope.get("maxMutations") if isinstance(scope.get("maxMutations"), int) else None},
         "observe": _clip(candidate.get("observe", "fast"), BRIEF_NAME_CHARS),
+        "holdCells": BRIEF_HOLD_CELLS,
         "sessionPlan": {"count": len(plan) if isinstance(plan, list) else 0},
         "noSafeAction": None if "noSafeAction" not in envelope else
         {"chars": len(reason) if isinstance(reason, str) else 0, "head": _clip(reason if isinstance(reason, str) else "", BRIEF_TEXT_CHARS)},

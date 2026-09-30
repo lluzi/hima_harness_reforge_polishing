@@ -506,6 +506,22 @@ class WorkerRequestExampleTest(ExampleWorkspace):
         self.assertEqual(contract.count('are yours even when the brief counts editDomain.nets 0'), 6,
                          "every slot Operator's task says so too")
 
+    def test_q1_the_brief_and_the_example_name_where_dummy_and_delay_cells_come_from(self):
+        """D-Q1-3 (#64 Q1 w01): the request's sessionPlan proposed atcs_insert_dummy with no master ("the tool
+        must pick the load"), the brief named no cell, and XTop refused `invalid library cell ''`. The brief
+        now says where the cells come from (the session's hold buffer list, printed by atcs_ref), and the
+        example's dummy entry names its master from state/xtop-context.json."""
+        brief = read_atcs.operator_brief(self.worker_example("03", self.ACTIVE))
+        self.assertIn("atcs_ref", brief["holdCells"])
+        self.assertIn("bufferListForHold", brief["holdCells"])
+        self.assertIn("atcs_insert_dummy", brief["holdCells"])
+        self.assertIn("delayCellList", brief["holdCells"])
+        dummy = next(entry for entry in self.worker_example("03", self.ACTIVE)["sessionPlan"]
+                     if entry["command"] == "atcs_insert_dummy")
+        self.assertTrue(dummy.get("toMaster"), "the example's dummy entry names its master")
+        example = (PACK_DIR / "knowledge" / "example-worker-request.md").read_text(encoding="utf-8")
+        self.assertIn("An `atcs_insert_dummy` entry names its `toMaster` too", example)
+
     def test_the_six_worker_workshops_are_identical_modulo_slot(self):
         def slotless(slot):
             return (_workshop_block(f"research-worker-{slot}").replace(f"-{slot}", "-NN")
