@@ -38,6 +38,8 @@ import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interac
 import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
 import { executionPack, interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
 import { Autopilot } from './autopilot.js';
+/** How often the Host re-kicks a Run standing idle on a self-driving node (#64 D-T04-1). */
+const autopilotSweepMs = 15_000;
 import { autopilotDrives } from './packs.js';
 import { claimSlot } from './job-cap.js';
 import { recordExitFence, releaseExitFence, readHostExitStatus, type HostExitRequest, type HostExitStatus } from './host-exit.js';
@@ -563,6 +565,9 @@ export default class Hima extends Service {
       stopped: () => this.autopilotStopped || this.factStop.signal.aborted,
       pollMs: 100,
     });
+    // #64 D-T04-1: the existing kick, scheduled — a Run a non-kicking path left on a self-driving node
+    // is picked up within one period (`Autopilot.sweep`).
+    this.ctx.effect(() => { const timer = setInterval(() => this.autopilot?.sweep(), autopilotSweepMs); timer.unref?.(); return () => clearInterval(timer); });
     this.ctx.effect(() => async () => {
       this.notificationsActive = false;
       this.pendingProgressNotifications.clear();
