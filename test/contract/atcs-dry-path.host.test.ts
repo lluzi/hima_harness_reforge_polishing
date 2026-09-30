@@ -92,9 +92,10 @@ const derivedDomain = (slot: Slot) => {
   const index = SLOTS.indexOf(slot);
   return [`${blockOf(slot)}/reg0`, `${blockOf(slot)}/reg1`, ...BOUNDARY.slice(Math.max(0, index - 1), index + 1)].sort();
 };
-// Generation 1's planted collision: COLLIDER's Operator also sizes the boundary buffer it shares with
-// NEIGHBOUR, inside both derived domains; NEIGHBOUR keeps a two-step batch, so its aggregate gain ranks
-// it above COLLIDER, whose batch composition excludes with `domain-collision`.
+// Generation 1's planted overlap: NEIGHBOUR and COLLIDER both size the boundary buffer they share,
+// inside both derived domains. NEIGHBOUR keeps a two-step batch, so its aggregate gain ranks it above
+// COLLIDER. Replay is an aggregator: both batches enter the recipe, and only COLLIDER's later sizing of
+// SHARED is skipped (`shared-instance`), recorded with its reason, while its own block's sizing replays.
 const NEIGHBOUR: Slot = 'w03';
 const COLLIDER: Slot = 'w04';
 const SHARED = 'x_cd';
@@ -405,8 +406,9 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
   const operatorTasks: Drive['operatorTasks'] = [];
   /**
    * One active slot's expert loop on its block: reference, a point read of its target, (w01: a trial
-   * without gain, undone), the kept sizing, (generation 1: NEIGHBOUR a second step, COLLIDER a sizing of
-   * the boundary buffer SHARED, inside its derived domain), a point read again, close.
+   * without gain, undone), the kept sizing, (generation 1: NEIGHBOUR a second step and a sizing of the
+   * boundary buffer SHARED, COLLIDER a sizing of SHARED too, each inside its derived domain), a point
+   * read again, close.
    */
   const expertLoop = async (slot: Slot, operator: Operator, toolSessionId: string, generation: number) => {
     const root = await rootOf(slot);
@@ -431,6 +433,7 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
     if (generation === 1 && slot === NEIGHBOUR) {
       await send(operator, toolSessionId, 'atcs_point', { check: 'setup', endPoints: target }, `point-step-${tag}`);
       await send(operator, toolSessionId, 'atcs_size_cell', { instance: `${block}/reg0`, toMaster: ({ BUFFD2BWP: 'BUFFD4BWP' } as Record<string, string>)[toMaster]!, planSha256 }, `size-again-${tag}`, receipts);
+      await send(operator, toolSessionId, 'atcs_size_cell', { instance: SHARED, toMaster: 'BUFFD4BWP', planSha256 }, `size-shared-${tag}`, receipts);
     }
     if (generation === 1 && slot === COLLIDER) {
       await send(operator, toolSessionId, 'atcs_size_cell', { instance: SHARED, toMaster: 'BUFFD2BWP', planSha256 }, `size-shared-${tag}`, receipts);
@@ -716,11 +719,11 @@ test('ATCS 0.2.0 dry path: the owner acts at plan, merge and decision only; six 
   // 5a. #66 T4, batch Contributions over derived domains. Each of generation 1's six sessions derived
   //     its local topology in session (domain.json: its block's two cells and the boundary buffers
   //     one hop out) and logged its point reads (reads.jsonl), and each sealed batch carries that
-  //     record as its effectiveDomain, with its target read. COLLIDER's Operator also sized SHARED,
-  //     inside its own derived domain and inside NEIGHBOUR's: the planted collision. Composition ranks
-  //     NEIGHBOUR's two-step batch above it by aggregate gain, excludes COLLIDER's batch with
-  //     `domain-collision` and keeps every other batch; the replay enters each kept batch's sealed
-  //     effective domain.
+  //     record as its effectiveDomain, with its target read. NEIGHBOUR and COLLIDER both sized SHARED,
+  //     inside both derived domains: the planted overlap. Composition ranks NEIGHBOUR's two-step batch
+  //     above COLLIDER's by aggregate gain and, replay being an aggregator, excludes neither: every
+  //     batch enters the recipe, and only COLLIDER's later sizing of SHARED is marked skipped
+  //     (`shared-instance`, naming NEIGHBOUR); the replay enters each batch's sealed effective domain.
   const sealedFirst = (first.collected.contributions as any[]).filter((item) => item.kind === 'xtop-session');
   assert.deepEqual(sealedFirst.map((item) => item.taskId).sort(), [...SLOTS], `${row}: generation 1 sealed six batches`);
   const sealedOf = (slot: Slot) => sealedFirst.find((item) => item.taskId === slot);
@@ -737,34 +740,48 @@ test('ATCS 0.2.0 dry path: the owner acts at plan, merge and decision only; six 
     assert.deepEqual(sealed.attempted, [target], `${row}: ${slot}'s target was read`);
     assert.deepEqual(sealed.limitations.filter((item: string) => item.startsWith('seal:')), [], `${row}: ${slot}'s seal records no gap`);
   }
-  const shared = sealedOf(COLLIDER).commands.find((command: any) => command.args.instance === SHARED);
-  assert.ok(shared, `${row}: ${COLLIDER} kept a sizing of ${SHARED}, inside its derived domain`);
+  for (const slot of [NEIGHBOUR, COLLIDER]) {
+    assert.ok(sealedOf(slot).commands.some((command: any) => command.args.instance === SHARED),
+      `${row}: ${slot} kept a sizing of ${SHARED}, inside its derived domain`);
+  }
   const recipeFirst = first.facts.recipe;
-  assert.deepEqual(recipeFirst.excluded.map((item: any) => [item.taskId, item.codes,
-    item.collidesWith?.map((other: any) => [other.taskId, other.instances, other.nets])]),
-  [[COLLIDER, ['domain-collision'], [[NEIGHBOUR, [SHARED], []]]]], `${row}: the planted collision is excluded, and only it`);
-  assert.deepEqual(recipeFirst.sessions.map((item: any) => item.taskId).sort(), SLOTS.filter((slot) => slot !== COLLIDER),
-    `${row}: every other batch is ranked for replay`);
-  assert.ok(!first.facts.considered.includes(sealedOf(COLLIDER).id), `${row}: the collided batch leaves considered`);
+  assert.deepEqual(recipeFirst.excluded, [], `${row}: replay is an aggregator: no batch is excluded`);
+  assert.deepEqual(recipeFirst.sessions.map((item: any) => item.taskId).sort(), [...SLOTS],
+    `${row}: every batch, both overlapping ones included, is ranked for replay`);
+  assert.ok(first.facts.considered.includes(sealedOf(COLLIDER).id), `${row}: the overlapping batch stays considered`);
   const neighbourRank = recipeFirst.sessions.find((item: any) => item.taskId === NEIGHBOUR);
-  assert.ok(neighbourRank.aggregateRankGain > (sealedOf(COLLIDER).aggregateGain.setup.func_ssg_rcworst.tnsGain),
-    `${row}: ${NEIGHBOUR}'s two-step batch outranks ${COLLIDER}'s by aggregate gain: ${JSON.stringify(neighbourRank)}`);
+  const colliderRank = recipeFirst.sessions.find((item: any) => item.taskId === COLLIDER);
+  assert.ok(neighbourRank.rank < colliderRank.rank && neighbourRank.aggregateRankGain > colliderRank.aggregateRankGain,
+    `${row}: ${NEIGHBOUR}'s two-step batch outranks ${COLLIDER}'s by aggregate gain: ${JSON.stringify([neighbourRank, colliderRank])}`);
+  assert.deepEqual(colliderRank.commands.map((command: any) => [command.args.instance, command.skip,
+    command.sharedWith?.map((other: any) => [other.instance, other.contribution])]),
+  [[`${blockOf(COLLIDER)}/reg0`, null, undefined], [SHARED, 'shared-instance', [[SHARED, neighbourRank.contribution]]]],
+  `${row}: only ${COLLIDER}'s later sizing of ${SHARED} is skipped, naming ${NEIGHBOUR}`);
+  assert.equal(recipeFirst.skipCount, 1, `${row}: the planted overlap skips one command, never a batch`);
 
-  // 5. The replay: every generation's recipe replays every kept command of every kept batch -- w01's
-  //    undone trial and COLLIDER's collided batch are not in it -- inside each batch's sealed effective
-  //    domain, protects what it applied, and then runs the attempt-4 auto-finish in both arms.
+  // 5. The replay: every generation's recipe replays every kept command of every batch -- w01's undone
+  //    trial is not in it, and COLLIDER's later sizing of SHARED is recorded skipped with its reason --
+  //    inside each batch's sealed effective domain, protects what it applied, and then runs the
+  //    attempt-4 auto-finish in both arms.
   const batchDirs = (await readdir(path.join(workspace, 'integrations'))).sort();
   assert.equal(batchDirs.length, 2, `${row}: one replay batch per generation`);
   for (const [index, batchId] of batchDirs.entries()) {
     const batch: Batch = result.batches[index]!;
-    const kept: readonly Slot[] = batch.generation === 1 ? SLOTS.filter((slot) => slot !== COLLIDER) : batch.active;
-    const expected: string[] = kept.flatMap((slot: Slot) => Array(batch.generation === 1 && slot === NEIGHBOUR ? 2 : 1).fill(`${blockOf(slot)}/reg0`)).sort();
+    const kept: readonly Slot[] = batch.active;
+    const expected: string[] = [...kept.flatMap((slot: Slot) => Array(batch.generation === 1 && slot === NEIGHBOUR ? 2 : 1).fill(`${blockOf(slot)}/reg0`)),
+      ...(batch.generation === 1 ? [SHARED] : [])].sort();
     const merged = path.join(workspace, 'integrations', batchId, 'merged');
     const recipe = await readFile(path.join(merged, 'recipe.tcl'), 'utf8');
     const replayed = [...recipe.matchAll(/atcs_replay_step \{[^}]+\} 0 \{atcs_size_cell \{(\S+)\} \{(\S+)\}/g)].map(m => m[1]!);
     assert.deepEqual(replayed.sort(), expected, `${row}: ${batchId} replays each kept batch's kept sizings, and no undone trial`);
     const receipts = await jsonLines(path.join(merged, 'receipts.jsonl'));
-    assert.deepEqual(receipts.map(r => r.status), expected.map(() => 'applied'), `${row}: ${batchId}: every kept command applied`);
+    const skippedSteps = batch.replayRequest.steps.filter((step: any) => step.skip !== null);
+    assert.deepEqual(skippedSteps.map((step: any) => [step.slot, step.args.instance, step.skip]),
+      batch.generation === 1 ? [[COLLIDER, SHARED, 'shared-instance']] : [], `${row}: ${batchId}'s request skips only the overlapping command`);
+    assert.deepEqual(receipts.filter(r => r.status === 'applied').length, expected.length, `${row}: ${batchId}: every other kept command applied`);
+    assert.deepEqual(receipts.filter(r => r.status !== 'applied').map(r => [r.stepId, r.slot, r.status, r.attempted, r.reason]),
+      skippedSteps.map((step: any) => [step.stepId, step.slot, 'skipped', false, 'recipe']),
+      `${row}: ${batchId}: the overlapping command is recorded skipped with its reason and the replay continued`);
     // replay-prepare entered each kept batch's sealed effective domain, never the plan's package.
     assert.deepEqual(batch.replayRequest.sessions.map((item: any) => [item.slot, item.domainSource, item.domain.instances])
       .sort((a: any, b: any) => a[0].localeCompare(b[0])), kept.map((slot) => [slot, 'effectiveDomain', derivedDomain(slot)]),
@@ -785,6 +802,7 @@ test('ATCS 0.2.0 dry path: the owner acts at plan, merge and decision only; six 
       assert.equal(arm.complete, true);
     }
     assert.equal(armResult.appliedCommands, expected.length, `${row}: ${batchId}'s merged arm counts its applied commands`);
+    assert.equal(armResult.skippedCommands, skippedSteps.length, `${row}: ${batchId}'s merged arm counts its skipped commands`);
     assert.ok(armResult.protectedCount >= 1, `${row}: ${batchId}'s merged arm protected the manual batch before auto-finish: ${armResult.protectedCount}`);
     assert.deepEqual([control.appliedCommands, control.protectedCount], [0, 0], `${row}: ${batchId}'s control arm ran auto-finish alone`);
   }
