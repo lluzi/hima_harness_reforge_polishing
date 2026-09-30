@@ -68,8 +68,11 @@ export interface TeamRecipeBinding {
   readonly inlinePayload?: ReviewedActionPayload | ReviewedScopePayload;
 }
 
-/** The Host's ceiling on a Pack recipe's reviewed-scope mutation cap (`reviewedAction.maxMutations`). */
-export const REVIEWED_SCOPE_MAX_MUTATIONS = 200;
+/**
+ * The Host's ceiling on a Pack recipe's reviewed-scope mutation cap (`reviewedAction.maxMutations`).
+ * 600 since #66 H1: a manual-ECO batch is tens to hundreds of coordinated, measured edits.
+ */
+export const REVIEWED_SCOPE_MAX_MUTATIONS = 600;
 
 /**
  * Why a Reviewer's `scope` value is not one the Pack recipe allows, or undefined when it is: one
