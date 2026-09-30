@@ -3,6 +3,7 @@ allowedReadRoots:
   - /data/eda/project/hima_harness/operator-admin/atcs-v15
   - /data/eda/project/hima_harness/operator-admin/atcs-v16
   - /data/eda/project/hima_harness/operator-admin/atcs-v17
+  - /data/eda/project/hima_harness/operator-admin/atcs-v18
   - /data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation
   # Final review: the real tech LEF and cell LEF glob for this design (`prepare-workers`'
   # eda-profile.json / this Site's own siteCapabilities.json `techLef`/`cellLefGlob`) live
@@ -38,6 +39,7 @@ allowedWrappers:
   - /data/eda/project/hima_harness/operator-admin/atcs-v15/atcs-xtop-operator-v15.sh
   - /data/eda/project/hima_harness/operator-admin/atcs-v16/atcs-xtop-operator-v16.sh
   - /data/eda/project/hima_harness/operator-admin/atcs-v17/atcs-xtop-operator-v17.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v18/atcs-xtop-operator-v18.sh
 forbidden:
   - services
   - licence-servers
