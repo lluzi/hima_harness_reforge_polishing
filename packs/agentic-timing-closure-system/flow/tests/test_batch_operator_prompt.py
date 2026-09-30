@@ -35,6 +35,17 @@ def _operator(slot):
 
 
 class BatchOperatorPromptTest(unittest.TestCase):
+    def test_every_task_template_fits_the_harness_contract_bound(self):
+        """The Harness pack contract bounds a taskTemplate to 8000 characters (`packs.ts` packContract,
+        `taskTemplate: z.string().trim().min(1).max(8000)`); a template above it makes the whole Pack
+        unloadable. The #64 T06 repairs nearly crossed it: this is the cheap falsifier."""
+        team = CONTRACT.split("\nagentTeams:\n", 1)[1].split("\nworkshops:\n", 1)[0]
+        templates = [match.group(1).replace("''", "'")
+                     for match in re.finditer(r"^        taskTemplate: '(.*)'$", team, re.M)]
+        self.assertGreaterEqual(len(templates), 12)
+        for template in templates:
+            self.assertLessEqual(len(template.strip()), 8000, template[:80])
+
     def test_the_contradicting_sentences_are_gone(self):
         for slot in SLOTS:
             with self.subTest(slot=slot):
