@@ -14,7 +14,7 @@
 // Confinement: every write is under atcs-runs/qual-atcs09-<UTC> (the test's own Site copy names it as the
 // workspace root; the test's own ssh only creates it and reads files under it). Licence: the Site's
 // Empyrean mode must read `old` (the wrapper refuses otherwise) and no other XTop client may run; the Site
-// copy grants one XTop seat and the plan activates one slot. Box: the Run's time box is 20 minutes.
+// copy grants two XTop seats (the replay holds two, for its control and merged arms) and the plan activates one slot. Box: the Run's time box is 20 minutes.
 //
 // What the Pack does is not changed, except in this test's installed copy: the Run's closing reserve,
 // the Operator's time share and the six authors' shares are sized for the 20-minute box, and w01's
@@ -117,7 +117,7 @@ test('ATCS L4 Operator qualification: a real Operator reads its exact request, o
 
   const sitesDir = path.join(h.home, 'hima/sites'); await mkdir(sitesDir, { recursive: true });
   const site = { ...sitePolicy, workspaceRoot: qualRoot, bindings: { ...sitePolicy.bindings, workspaceRoot: qualRoot },
-    capacity: { ...sitePolicy.capacity, licences: { ...sitePolicy.capacity.licences, xtop: 1 } } };
+    capacity: { ...sitePolicy.capacity, licences: { ...sitePolicy.capacity.licences, xtop: 2 } } };
   await writeFile(path.join(sitesDir, `${SITE_NAME}.yml`), stringify(site));
   const permit = parse(readFileSync(path.join(SITE_DIR, 'permit.yml'), 'utf8')) as any;
   await writeFile(path.join(sitesDir, 'permit.yml'), stringify(permit));
@@ -134,7 +134,10 @@ test('ATCS L4 Operator qualification: a real Operator reads its exact request, o
   assert.equal(pin('flow_digest'), flowDigest(variant), 'the installed wrapper pins this Pack\'s flow');
   const adminDir = path.join(h.home, 'admin'); await mkdir(adminDir);
   const envFile = path.join(adminDir, 'environment.json');
-  await writeFile(envFile, `${JSON.stringify({ ...environment, pack: { ...environment.pack, digest } }, null, 2)}\n`);
+  // The qualification Site copy is rooted at qualRoot, so the environment evidence's private write root names it too
+  // (the binding check requires the qualified write root to equal the Site workspaceRoot inside the Permit roots).
+  await writeFile(envFile, `${JSON.stringify({ ...environment, pack: { ...environment.pack, digest },
+    confinement: { ...environment.confinement, privateWriteRoot: qualRoot } }, null, 2)}\n`);
   const bindingsFile = path.join(adminDir, 'bindings.json');
   await writeFile(bindingsFile, `${JSON.stringify({ ...admin, bindings: [{ ...binding,
     id: `${binding.id.split(':').slice(0, 2).join(':')}:${digest.slice(0, 16)}`, packDigest: digest,
@@ -182,7 +185,7 @@ test('ATCS L4 Operator qualification: a real Operator reads its exact request, o
     'import json, subprocess, sys', 'from pathlib import Path', 'w = Path(sys.argv[1])',
     'working = json.loads((w / "state/working-state.json").read_text())',
     'out = w / "research/requests/seat-clusters.json"; out.parent.mkdir(parents=True, exist_ok=True)',
-    'subprocess.run([sys.executable, str(w / "hima-readers/atcs-readiness/read-atcs.py"), "seat-clusters", str(w), str(out), "1"], check=True)',
+    'subprocess.run([sys.executable, str(w / "hima-readers/atcs-readiness/read-atcs.py"), "seat-clusters", str(w), str(out), "--slots", "1"], check=True)',
     'packages = json.loads(out.read_text())["workPackages"]',
     `a = packages["${ACTIVE}"]; keep = a["targets"][:${TARGETS}]`,
     'ends = [key.split("|", 2)[2] for key in keep]',
