@@ -42,8 +42,9 @@ Operator: for an active slot whose request reading is `tc_request_invalid_count`
 `tc_slot_parked` 0, the Harness materializes the slot's Operator directly from the admitted request:
 the request's operatorBrief (a bounded summary of its candidate and noSafeAction, written by
 `read-atcs.py brief` and held by the Reader to the request), sessionPlan and siteCapabilities are
-embedded in its task, never the whole request (the Harness refuses a task above 64 000 characters), and
-the request's own `candidate.scope` (`commands` from the recipe list, `maxMutations` 1..600) is the
+embedded in its task, never the whole request (the Harness refuses a task above 64 000 characters); the
+Operator reads the request's own fields with `hima_delegation_input` in bounded windows (`path`,
+`offset`, `limit`) before it opens the session, and the request's own `candidate.scope` (`commands` from the recipe list, `maxMutations` 1..600) is the
 immutable scope the Host binds with the request's plan hash. The Operator owns the seat's cluster and
 runs the expert loop of `xtop-expert-operator.md` as one batch in its interactive session: dump
 before.dump and reference; risk-assess first (`atcs_point` on every target, `atcs_paths` on the hardest

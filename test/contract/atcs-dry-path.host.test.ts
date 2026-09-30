@@ -663,7 +663,7 @@ test('ATCS 0.2.0 dry path: the owner acts at plan, merge and decision only; six 
     const at = task.indexOf(`Exact input workerRequest${nn(slot)} `);
     assert.ok(at >= 0, `${row}: ${slot}'s Operator task embeds its request`);
     const embedded = JSON.parse(task.slice(task.indexOf('\n', at) + 1).split('\n')[0]!);
-    assert.deepEqual(embedded.candidate, request.candidate, `${row}: ${slot}'s task carries every field of the request's candidate`);
+    assert.deepEqual(embedded.operatorBrief, request.operatorBrief, `${row}: ${slot}'s task carries the request's bounded brief, not its whole candidate`);
     assert.deepEqual(embedded.sessionPlan, request.sessionPlan, `${row}: ${slot}'s task carries the session plan`);
     for (const word of [...request.candidate.targetPins, ...request.candidate.editDomain.instances, 'before.dump', 'after.dump', planSha256,
       'atcs_size_cell', 'atcs_undo', 'atcs_dump_cells', 'atcs_close']) {
