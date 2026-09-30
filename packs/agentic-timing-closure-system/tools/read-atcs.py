@@ -2690,6 +2690,53 @@ def _merge_level(groups, slots, cause, attribute):
             return
 
 
+# L4 qualification run 4 (#64): the Site's PrimeTime names a check's endpoint as its instance, with no pin,
+# so a seat got `targetPins: []` and its Operator could read no target. An instance endpoint's pin comes
+# from the netlist: the flop's asynchronous pin for an `@**async_default**` check (reset recovery and
+# removal), else its data pin.
+_ASYNC_PIN_RE = re.compile(r"^(CDN|SDN|CD|SD|RN|SN|RB|SB|R|S|CLR|CLRN|PRE|PREN|RST|RSTN|RESET|RESETN|SET|SETN)$")
+_DATA_PIN_RE = re.compile(r"^(D|DA|DB|D\d+)$")
+_CLOCK_PIN_RE = re.compile(r"^(CP|CPN|CK|CKN|CLK|CLKN|G|GN|E|EN|TE|SE|SI)$")
+
+
+def _leaf_pins(modules, top, instance):
+    """The connected pin names of the leaf cell `instance` (a resolved full path), or [] when not found."""
+    segments = _split_instance_path(instance)
+    if not segments:
+        return []
+    module, index = top, 0
+    while index < len(segments):
+        body = modules.get(module)
+        if body is None:
+            return []
+        found = None
+        for count in range(len(segments) - index, 0, -1):  # longest first, as the resolver walks
+            for spelling in _spellings("/".join(segments[index:index + count])):
+                if spelling in body["instances"]:
+                    found = (spelling, count)
+                    break
+            if found:
+                break
+        if found is None:
+            return []
+        name, count = found
+        kind = body["instances"][name]
+        index += count
+        if index == len(segments):
+            return [] if kind in modules else [pin for pin, net in (body["conns"].get(name) or {}).items() if net is not None]
+        module = kind
+    return []
+
+
+def _endpoint_pin(pins, asynchronous):
+    """The endpoint pin a check reaches on a cell with `pins`: its asynchronous pin, else its data pin."""
+    for pattern in ((_ASYNC_PIN_RE,) if asynchronous else ()) + (_DATA_PIN_RE,):
+        found = [pin for pin in pins if pattern.match(pin)]
+        if found:
+            return "D" if "D" in found else found[0]
+    return None
+
+
 def _seat_rows(workspace, working_state, observation, required):
     """`(rows, unresolved)`: each violating check of a required scenario with its endpoint's leaf cell."""
     case_reasons, batch_reasons = {}, {}
@@ -2751,9 +2798,23 @@ def _seat_rows(workspace, working_state, observation, required):
             unresolved.append({"check": row["check"], "endpoint": row["endpoint"], "unresolved": reason})
             continue
         pin = f"{item['instance']}/{item['pin']}" if item["via"] == "pin" and item.get("pin") else None
+        pins = _leaf_pins(modules, working_state.get("top"), item["instance"]) if item["via"] == "instance" else []
+        if pin is None and item["via"] == "instance":
+            named = _endpoint_pin(pins, "@**async" in row["check"])
+            pin = f"{item['instance']}/{named}" if named else None
         seated.append(dict(row, instance=item["instance"], cell=_cell_key(item["instance"]), pin=pin,
-                           via=item["via"]))
+                           via=item["via"], pins=pins))
     return seated, unresolved
+
+
+def _fallback_pins(rows):
+    """An active seat never has empty target pins: the hardest instance endpoint's first input-like pin (not
+    an output, clock or scan pin), when the netlist names one; else none (the session reads the cell)."""
+    for row in rows:
+        for pin in row.get("pins") or []:
+            if not _OUTPUT_PIN_RE.match(pin) and not _CLOCK_PIN_RE.match(pin):
+                return [f"{row['instance']}/{pin}"]
+    return []
 
 
 def _clusters(rows, slots, worst):
@@ -2905,7 +2966,7 @@ def seat_clusters(workspace, slots=None):
             "mayAffect": _unique(opposite),
             "actions": ["size_cell", "insert_buffer", "delete_buffer"],
             "budget": {"xtopMinutes": 60, "attempts": 3},
-            "targetPins": _unique(row["pin"] for row in group["rows"]),
+            "targetPins": _unique(row["pin"] for row in group["rows"]) or _fallback_pins(group["rows"]),
             "scope": {"commands": list(workspaces_mod.MUTATE_COMMANDS),
                       "maxMutations": workspaces_mod.SCOPE_MAX_MUTATIONS},
             "observe": "fast",

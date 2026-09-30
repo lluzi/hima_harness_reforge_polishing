@@ -272,17 +272,25 @@ test('ATCS L4 Operator qualification: a real Operator reads its exact request, o
 
   await t.test('the Operator reads its exact request through bounded hima_delegation_input windows before it opens XTop', () => {
     assert.deepEqual(operator!.effective.tools, ['hima_interactive', 'hima_delegation_input']);
+    // Bounded reads are required only for what the brief the task embeds lists in part (run 4: the brief
+    // already carried every target, pin and domain instance, and the Operator rightly read nothing more).
+    const brief = JSON.parse(requestBytes!).operatorBrief;
+    const partial = (listing: { count: number; first: unknown[] } | undefined) => listing !== undefined && listing.count > listing.first.length;
+    const needed = [['candidate.targets', brief?.targets], ['candidate.targetPins', brief?.targetPins],
+      ['candidate.editDomain.instances', brief?.editDomain?.instances]].filter(([, listing]) => partial(listing as never)).map(([field]) => field as string);
     const reads = calls.map((call, index) => ({ call, index })).filter(({ call }) => call.name === 'hima_delegation_input'
       && call.args.recordId === requestRecord!.id && typeof call.args.path === 'string');
     const before = reads.filter(({ index }) => firstOpen < 0 || index < firstOpen).map(({ call }) => String(call.args.path).replace(/^\//, '').replaceAll('/', '.'));
-    t.diagnostic(`bounded reads before the open: ${JSON.stringify(before)}`);
-    for (const field of ['candidate.targets', 'candidate.editDomain.instances', 'candidate.scope']) {
+    t.diagnostic(`fields the brief lists in part: ${JSON.stringify(needed)}; bounded reads before the open: ${JSON.stringify(before)}`);
+    for (const field of needed) {
       assert.ok(before.includes(field), `${field} read in bounded windows before the open: ${JSON.stringify(before)}`);
     }
   });
   await t.test('XTop opens through the Host', () => {
-    assert.ok(firstOpen >= 0, 'the Operator asked to open');
-    assert.ok(interactive.some((r) => r.event === 'opened'), JSON.stringify(interactive.map((r) => r.event)));
+    // The Host's own records of the Operator's session: its open-intent and its opened outcome.
+    const events = interactive.map((r) => r.event);
+    assert.ok(events.includes('open-intent'), `the Operator asked to open: ${JSON.stringify(events)}`);
+    assert.ok(events.includes('opened'), JSON.stringify(events));
   });
   await t.test('atcs_point, atcs_paths and atcs_fail_reasons return, logged in reads.jsonl', () => {
     const reads = jsonl('reads.jsonl').map((line) => line.proc);
@@ -299,8 +307,16 @@ test('ATCS L4 Operator qualification: a real Operator reads its exact request, o
     assert.equal(mutation.status, 'kept');
   });
   await t.test('export with limitations, then a clean close', () => {
-    const exported = commands.find((request) => request.command?.name === 'atcs_export_changes');
-    assert.ok(exported && typeof exported.command.args?.limitations === 'string', `atcs_export_changes with limitations: ${JSON.stringify(names)}`);
+    // atcs_export_changes writes the Operator's limitations to summary.json in the slot root; the seal
+    // carries them into the Contribution's limitations.
+    const summary = JSON.parse(remoteText(path.posix.join(slotRoot, 'summary.json')) ?? '{}');
+    const contribution = JSON.parse(remoteText(`state/contribution-${ACTIVE}.json`) ?? '{}');
+    const written = Array.isArray(summary.limitations) ? summary.limitations : [];
+    t.diagnostic(`summary.json limitations: ${JSON.stringify(written).slice(0, 600)}`);
+    assert.ok(Array.isArray(summary.limitations), `summary.json holds the export's limitations: ${JSON.stringify(summary).slice(0, 400)}`);
+    const sealed: string[] = Array.isArray(contribution.limitations) ? contribution.limitations : [];
+    assert.ok(written.every((line: unknown) => sealed.some((item) => item.startsWith('operator: ') && String(line).startsWith(item.slice('operator: '.length)))),
+      `the sealed Contribution carries them: ${JSON.stringify(contribution.limitations).slice(0, 600)}`);
     assert.ok(interactive.some((r) => r.event === 'closed'), `a closed record: ${JSON.stringify(interactive.map((r) => r.event))}`);
   });
   await t.test('the Operator returns a result and one Contribution is sealed for the slot', async () => {

@@ -1954,7 +1954,56 @@ class PointReadTest(unittest.TestCase):
         for tag in ("check", "empty", "unsafe", "glob"):
             self.assertEqual(session.outcome(tag)[0], "ERR", tag)
         self.assertEqual(session.calls_to("report_timing"), [])
-        self.assertEqual(session.reads, [])
+        # L4 run 4: a refused read is logged too, so the read evidence is never empty.
+        self.assertEqual([(line["proc"], line["rows"], "refused" in line) for line in session.reads],
+                         [("atcs_point", [], True)] * 4)
+        self.assertIn("invalid", session.reads[3]["refused"])
+
+
+# L4 qualification run 4 (#64 after T05): the Site's targets are check keys whose endpoint is an instance
+# with the `@**async_default**` path group, and the seat's targetPins were empty. The Operator sent
+# `<instance>@**async_default**` ("invalid pin name"), the check key, and the bare instance
+# (`report_timing -to <instance>` failed). UF is such a flop: D SI CP CDN in, Q out.
+ASYNC_FLOP = (
+    "set ::cells(UF) SDFCNQARD1; array set ::pin_net {UF/D N2 UF/SI N1 UF/CP NC UF/CDN NR UF/Q N10}\n"
+    "array set ::pin_dir {UF/CDN in UF/SI in}\n"
+    "array set ::stub_timing {UF/CDN,min {func_ssg_rcworst_m40 -0.1799} UF/D,min {func_ssg_rcworst_m40 0.0210}}\n"
+)
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class InstanceTargetReadTest(unittest.TestCase):
+    """atcs_point and atcs_paths take a pin, an instance, a check key or `<instance>@**<path group>**`: the key's
+    prefix and the suffix are stripped; a cell reads through its input pins, the asynchronous ones first for an
+    async path group, one row per pin."""
+
+    def test_the_l4_forms_read_the_flops_pins(self):
+        session = Session(self).run(
+            _point_summary() + POINT_TIMING + ASYNC_FLOP
+            + "T async {atcs_point hold {UF@**async_default**}}\n"
+            + "T key {atcs_point hold {func_ssg_rcworst_m40|hold|UF@**async_default**}}\n"
+            + "T bare {atcs_point hold {UF}}\n"
+            + "T datakey {atcs_point hold {func_ssg_rcworst_m40|hold|U9/D}}\n")
+        for tag in ("async", "key"):
+            rows = _reply(session, tag)
+            self.assertEqual(rows[0], {"endpoint": "UF/CDN", "scenario": "func_ssg_rcworst_m40", "slack": -0.1799,
+                                       "target": "UF"}, tag)
+            self.assertEqual([row["endpoint"] for row in rows], ["UF/CDN", "UF/CP", "UF/D", "UF/SI"], tag)
+        self.assertEqual([row["endpoint"] for row in _reply(session, "bare")], ["UF/CP", "UF/D", "UF/SI", "UF/CDN"],
+                         "a check that is not async reads the asynchronous pins last")
+        self.assertEqual(_reply(session, "datakey"), [{"endpoint": "U9/D", "scenario": "func_ffg_cbest_m40", "slack": -0.0704}])
+        tos = [call[2] for call in session.calls_to("report_timing")]
+        self.assertEqual(tos[:4], ["pin:UF/CDN", "pin:UF/CP", "pin:UF/D", "pin:UF/SI"], "never -to <instance>")
+        self.assertNotIn("UF", tos)
+        self.assertEqual([line["proc"] for line in session.reads], ["atcs_point"] * 4)
+
+    def test_atcs_paths_reads_the_async_pins_of_an_instance_target(self):
+        session = Session(self).run(
+            ASYNC_FLOP + "T paths {atcs_paths hold 5 {func_ssg_rcworst_m40|hold|UF@**async_default** U9/D}}\n")
+        self.assertEqual(session.outcome("paths")[0], "OK", session.stdout + session.stderr)
+        (call,) = session.calls_to("get_paths")
+        self.assertEqual(call[call.index("-end_points") + 1].split(), ["UF/CDN", "UF/CP", "UF/D", "UF/SI", "U9/D"])
+        self.assertEqual(session.reads[0]["args"]["endPoints"], ["func_ssg_rcworst_m40|hold|UF@**async_default**", "U9/D"])
 
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
@@ -2023,7 +2072,12 @@ class ReadLogTest(unittest.TestCase):
             self.assertEqual(session.outcome(tag)[0], "OK", tag + session.stdout + session.stderr)
         reads = session.reads
         self.assertEqual([(line["seq"], line["proc"]) for line in reads], [
-            (0, "atcs_point"), (1, "atcs_paths"), (1, "atcs_fail_reasons"), (1, "atcs_point")])
+            (0, "atcs_point"), (1, "atcs_paths"), (1, "atcs_fail_reasons"), (1, "atcs_point"), (1, "atcs_point")])
+        # L4 run 4: the refused `bad` read is logged with no rows and its reason.
+        refused = reads.pop()
+        self.assertEqual((refused["rows"], refused["rowsDigest"]), ([], _rows_digest([])))
+        self.assertEqual(refused["args"], {"check": "both", "endPoints": "U9/D"})
+        self.assertIn("check", refused["refused"])
         for line in reads:
             self.assertEqual(sorted(line), ["args", "proc", "rows", "rowsDigest", "seq"])
             self.assertEqual(line["rowsDigest"], _rows_digest(line["rows"]), line["proc"])

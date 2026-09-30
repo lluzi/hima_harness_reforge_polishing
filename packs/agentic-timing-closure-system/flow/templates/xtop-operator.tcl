@@ -255,6 +255,19 @@ proc atcs_text_rows {text {extra {}}} {
     }
     return [list $full $shown]
 }
+# L4 run 4 (#64): a read that is refused is logged too, with no rows and its reason, so the read
+# evidence of a session is never silently empty. `args_json` holds the arguments as the Host sent them.
+proc atcs_log_refused {proc args_json reason} {
+    atcs_append [atcs_reads_path] [atcs_jobj [list seq $::atcs_seq proc [atcs_js $proc] args $args_json \
+        rowsDigest [atcs_js [atcs_sha256 {[]}]] rows {[]} refused [atcs_js [atcs_clip $reason $::ATCS_READ_ROW_CHARS]]]]
+}
+proc atcs_logged_read {proc args_json body} {
+    if {[catch {uplevel 1 $body} result options]} {
+        atcs_log_refused $proc $args_json $result
+        return -options [dict incr options -level] $result
+    }
+    return $result
+}
 proc atcs_gain_path {} { return [file join [file dirname $::env(OPS_LOG)] gain.jsonl] }
 proc atcs_reads_path {} { return [file join [file dirname $::env(OPS_LOG)] reads.jsonl] }
 proc atcs_taint_path {} { return [file join [file dirname $::env(OPS_LOG)] tainted.json] }
@@ -881,23 +894,32 @@ proc atcs_gain {check top_n} {
     return [expr {$text ne "" ? $text : $result}]
 }
 proc atcs_paths {check top_n end_points} {
+    atcs_logged_read atcs_paths [atcs_jobj [list check [atcs_js $check] topN [atcs_js $top_n] endPoints [atcs_js $end_points]]] {
     atcs_choice check $check {setup hold}
     atcs_int topN $top_n 1 100
     set end_points [atcs_list endPoints $end_points]
-    foreach pin $end_points { atcs_check_name pin $pin }
+    set pins {}
+    foreach name $end_points {
+        foreach target [atcs_read_targets $name] { lappend pins [lindex $target 0] }
+    }
     set command [list analyze_${check}_path_violations]
-    if {[llength $end_points] > 0} {
+    if {[llength $pins] > 0} {
         set delay_type [expr {$check eq "setup" ? "max" : "min"}]
-        lappend command [get_paths -delay_type $delay_type -end_points $end_points]
+        lappend command [get_paths -delay_type $delay_type -end_points $pins]
     }
     lappend command -top $top_n -detail_info
     set result [uplevel #0 $command]
     lassign [atcs_text_rows $result] full shown
     atcs_log_read atcs_paths [atcs_jobj [list check [atcs_js $check] topN $top_n endPoints [atcs_jarr $end_points]]] \
         $full $shown
-    return $result
+    set result
+    }
 }
 proc atcs_fail_reasons {pins reasons methods} {
+    atcs_logged_read atcs_fail_reasons [atcs_jobj [list pins [atcs_js $pins] reasons [atcs_js $reasons] \
+        methods [atcs_js $methods]]] [list atcs_fail_reasons_read $pins $reasons $methods]
+}
+proc atcs_fail_reasons_read {pins reasons methods} {
     set pins [atcs_list pins $pins]
     set reasons [atcs_list reasons $reasons]
     set methods [atcs_list methods $methods]
@@ -977,29 +999,84 @@ proc atcs_point_rows {text endpoint scenarios} {
     }
     return $rows
 }
+# L4 run 4 (#64): the Operator names a target as the Site reports it: a check key
+# `<scenario>|<mode>|<endpoint>`, an endpoint with a PrimeTime path group `<endpoint>@**<group>**`
+# (`**async_default**`: reset recovery/removal), a bare endpoint instance, or a pin. The key's prefix
+# and the suffix are stripped. A pin reads as itself; a cell reads through its input pins (at most
+# ATCS_TARGET_PINS_MAX), its asynchronous pins first for an async path group and last otherwise; any
+# other name (a port) is passed as given. Returns {pinName object} pairs; `object` is what `-to` takes.
+set ::ATCS_ASYNC_PINS {CDN SDN CD SD RN SN RB SB R S CLR CLRN PRE PREN RST RSTN RESET RESETN SET SETN}
+set ::ATCS_TARGET_PINS_MAX 8
+proc atcs_target_base {name} {
+    set name [lindex [split $name |] end]
+    if {[regexp {^(.+)@\*\*([A-Za-z0-9_]+)\*\*$} $name -> base group]} {
+        return [list $base [string match -nocase *async* $group]]
+    }
+    return [list $name 0]
+}
+proc atcs_read_targets {name} {
+    lassign [atcs_target_base $name] name async
+    atcs_check_name pin $name
+    set pin [get_pins -quiet -exact $name]
+    if {[sizeof_collection $pin] == 1} { return [list [list $name $pin]] }
+    set cell [get_cells -quiet -exact $name]
+    if {[sizeof_collection $cell] != 1} { return [list [list $name $name]] }
+    set asyncs {}
+    set others {}
+    foreach_in_collection each [get_pins -quiet -of_objects $cell] {
+        set direction ""
+        catch { set direction [get_attribute $each direction] }
+        if {$direction ni {in input inout}} { continue }
+        set full [get_attribute $each full_name]
+        if {[lsearch -exact $::ATCS_ASYNC_PINS [lindex [split $full /] end]] >= 0} {
+            lappend asyncs [list $full $each]
+        } else {
+            lappend others [list $full $each]
+        }
+    }
+    set found [expr {$async ? [concat $asyncs $others] : [concat $others $asyncs]}]
+    if {[llength $found] == 0} { error "instance $name has no input pin to read" }
+    return [lrange $found 0 [expr {$::ATCS_TARGET_PINS_MAX - 1}]]
+}
 proc atcs_point {check end_points} {
+    atcs_logged_read atcs_point [atcs_jobj [list check [atcs_js $check] endPoints [atcs_js $end_points]]] {
     atcs_choice check $check {setup hold}
     set end_points [atcs_list endPoints $end_points 1]
     if {[llength $end_points] > $::ATCS_POINT_MAX} { error "endPoints names at most $::ATCS_POINT_MAX end points" }
-    foreach pin $end_points { atcs_check_name pin $pin }
+    set targets {}
+    foreach name $end_points { lappend targets [list $name [atcs_read_targets $name]] }
     atcs_ensure_reference
     set scenarios [atcs_reference_scenarios]
     set delay_type [expr {$check eq "setup" ? "max" : "min"}]
     set rows {}
-    foreach pin $end_points {
-        set object [get_pins -quiet -exact $pin]
-        set to [expr {[sizeof_collection $object] == 1 ? $object : $pin}]
-        set command [list report_timing -to $to -delay_type $delay_type -path_type summary]
-        set ::atcs_capture ""
-        if {[catch {redirect -variable ::atcs_capture $command} result]} { error "report_timing -to $pin failed: $result" }
-        set found [atcs_point_rows [expr {$::atcs_capture ne "" ? $::atcs_capture : $result}] $pin $scenarios]
-        if {[llength $found] == 0} {
-            set found [list [atcs_jobj [list endpoint [atcs_js $pin] scenario null slack null]]]
+    foreach target $targets {
+        lassign $target name pins
+        set base [lindex [atcs_target_base $name] 0]
+        set expanded [expr {[llength $pins] != 1 || [lindex $pins 0 0] ne $base}]
+        foreach pair $pins {
+            lassign $pair pin to
+            set command [list report_timing -to $to -delay_type $delay_type -path_type summary]
+            set ::atcs_capture ""
+            if {[catch {redirect -variable ::atcs_capture $command} result]} {
+                if {!$expanded} { error "report_timing -to $pin failed: $result" }
+                set found {}
+            } else {
+                set found [atcs_point_rows [expr {$::atcs_capture ne "" ? $::atcs_capture : $result}] $pin $scenarios]
+            }
+            if {[llength $found] == 0} {
+                set found [list [atcs_jobj [list endpoint [atcs_js $pin] scenario null slack null]]]
+            }
+            if {$expanded} {
+                set tagged {}
+                foreach row $found { lappend tagged "[string range $row 0 end-1],\"target\":[atcs_js $base]\}" }
+                set found $tagged
+            }
+            set rows [concat $rows $found]
         }
-        set rows [concat $rows $found]
     }
     atcs_log_read atcs_point [atcs_jobj [list check [atcs_js $check] endPoints [atcs_jarr $end_points]]] $rows $rows
-    return "\[[join $rows ,]\]"
+    set result "\[[join $rows ,]\]"
+    }
 }
 
 # ---- mutation procedures ---------------------------------------------------
