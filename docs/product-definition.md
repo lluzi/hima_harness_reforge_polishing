@@ -264,6 +264,7 @@ Site 具备合法工具、许可和只读访问时，才通过独立格式 adapt
 和 [pin access 概率模型](package-development/library-intelligence-platform/research/pin-access-probability-model.zh-CN.md)。
 以上是现行产品要求；已有 Liberty 有界切片的通过证据不代表 LEF 或联合评估已经实现。
 已收口的产品决定、参考信息组织与验收场景见 [LibInsight 产品访谈](package-development/library-intelligence-platform/product-interview.zh-CN.md)。
+实施要求、用户故事、数据/接口合同与正反验收见 [LibInsight 功能规格](specs/libinsight/spec.zh-CN.md)。
 
 ## 首个里程碑与验证责任
 

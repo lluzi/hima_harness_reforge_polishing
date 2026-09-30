@@ -8,6 +8,10 @@ The user confirmed the demo definition and six acceptance scenarios at Q17. Use 
 [completed product interview](product-interview.zh-CN.md) as the scope baseline for implementation; product
 confirmation is separate from implementation and acceptance evidence.
 
+Implementation specification: [LibInsight feature spec](../../specs/libinsight/spec.zh-CN.md), published as
+[GitHub #77](https://github.com/lluzi/hima_harness_reforge_polishing/issues/77) with `ready-for-agent`. It covers the
+confirmed demo, native Liberty API integration, prototype reuse, LEF probability contracts, and falsifying tests.
+
 Status: the existing bounded Liberty E1–E4 implementation and dated validation scope are recorded in
 [S11](../../specs/next-stage-implementation/S11-library.md). LEF/pin-access probability work has research and
 model definitions; implementation and combined evaluation are pending. Historical directory, Pack and protocol
