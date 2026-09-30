@@ -790,6 +790,10 @@ export async function readDelegationResult(ctx: Context, address: { readonly eff
       || !sameWorkspace) return unavailable('The retained native Session lineage or workspace differs from the effective delegation.');
   const lastEnd = log.events.findLast(event => event.type === 'turn/end');
   const ended = lastEnd?.data as { turn?: unknown; reason?: { kind?: unknown } } | undefined;
+  if (lastEnd && Number.isSafeInteger(ended?.turn) && typeof ended?.reason?.kind === 'string' && ended.reason.kind !== 'completed') {
+    // #66 H2b: an ended turn that did not complete (for example `max-tokens` inside its reasoning) holds no result.
+    return unavailable(`The latest native child turn ended ${ended.reason.kind}, not completed, so it holds no result.`);
+  }
   if (!lastEnd || !Number.isSafeInteger(ended?.turn) || ended?.reason?.kind !== 'completed') {
     return unavailable('The latest native child turn has no explicit completed boundary; candidate completion remains unknown.');
   }
