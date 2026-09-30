@@ -204,6 +204,51 @@ class ParkedBranchTest(unittest.TestCase):
         self.assertFalse(contribution["admissible"])
         self.assertEqual([refusal["code"] for refusal in contribution["refusals"]], ["inadmissible-request"])
 
+    def _reader_problems(self, slot, text, age=0):
+        path = self.workspace / "research" / "requests" / f"worker-request-{slot}.problems.txt"
+        path.write_text(text, encoding="utf-8")
+        request = self.workspace / "research" / "requests" / f"worker-request-{slot}.json"
+        stamp = request.stat().st_mtime + age
+        os.utime(path, (stamp, stamp))
+        return path
+
+    T06_PROBLEMS = (
+        "1 problem in worker-request-w02.json (tc_request_invalid_count = 1); fix every line and write the whole "
+        "document again:\n- operatorBrief (slot w02): missing; the Host gives the Operator this bounded summary of "
+        "the request; run python3 <workspace>/hima-readers/atcs-readiness/read-atcs.py brief "
+        "<workspace>/research/requests/worker-request-w02.json after writing the request: it writes operatorBrief "
+        "in place\n")
+
+    def test_t06_an_active_slot_the_reader_refused_settles_as_a_no_fix(self):
+        """D-T06-1(a) (#64 T06 w06, here on active slot w02): the Reader refused the request three times (operatorBrief missing), no
+        worker Team ran, and the autopilot ran `operate-parked` on the active slot, which exited 3
+        (`slot-active`: the flow-side half of the rule found the request admissible). The Reader's own
+        current verdict (its `.problems.txt`) now settles the branch as an honest no-fix naming the problem."""
+        self._request("w02")
+        self._reader_problems("w02", self.T06_PROBLEMS)
+        result = _run("operate-parked", self.workspace, "w02")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipt = core.read_artifact(self.workspace / self.workers["workers"]["w02"]["root"] / "parked.json",
+                                     "parked-operate")
+        self.assertEqual(receipt["why"], "inadmissible-request")
+        self.assertIn("operatorBrief (slot w02): missing", receipt["reason"])
+        result = _run("capture-contribution", self.workspace, "w02")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        contribution = core.read_artifact(self.workspace / "state" / "contribution-w02.json", "contribution")
+        self.assertEqual([contribution["kind"], contribution["parked"]], ["no-fix", True])
+        self.assertIn("operatorBrief (slot w02): missing", contribution["diagnosis"])
+
+    def test_t06_an_admitted_or_stale_reader_verdict_keeps_the_slot_active(self):
+        self._request("w02")
+        self._reader_problems("w02", "0 problems in worker-request-w02.json: the Reader admits it "
+                                     "(tc_request_invalid_count = 0).\n")
+        result = _run("operate-parked", self.workspace, "w02")
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stderr)["code"], "slot-active")
+        self._reader_problems("w02", self.T06_PROBLEMS, age=-60)  # read before the request was rewritten
+        result = _run("operate-parked", self.workspace, "w02")
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+
     def test_operate_parked_refuses_when_it_cannot_read_the_request_or_the_working_state(self):
         """Fix round 1: only a request that parses and fails validation is skipped."""
         result = _run("operate-parked", self.workspace, "w02")  # no request written yet

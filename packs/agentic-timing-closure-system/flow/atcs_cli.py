@@ -118,7 +118,7 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 21 | `apr-run` | siteProfile | reads `state/apr-task.json` then `run_tool` (stage batch) + `adapters.compile_innovus_export_task` + `run_tool` (export batch) | `state/implement.json` (same shape `implement` writes) |
 | 22 | `record-experience` | reasonSource(the SAME admitted integration-plan envelope row 10 reads -- only actually read when `_merge_commit_provenance` says `"merge"`; see "Task 12c fix round" below) | `experience.record` (lineage/decision/outcome composed from `state/working-state.json`, `state/implement.json`, `state/evaluation.json`, `state/contributions-collected.json`, `state/merge-commit.json`/`state/apr-task.json` (provenance), `state/sta.json`, `state/policy.json`/`state/pointers.json`) | `state/experience.json` |
 | 23 | `worker-slots` | workerSlots(`{from: strategy}`, an integer 0..6; Issue #64 Task 5, 0 since #66 D8) | validates the knob; slots up to it may be active and every slot above it must be parked | `state/worker-slots.json` (stamped `worker-slots`: `workerSlots`, `activeSlots`, `parkedSlots`) |
-| 24 | `operate-parked` | slot | the `xtop-operator` tool's batch path (Issue #64 Task 5): opens no XTop session for a slot `prepare-workers` parked or an active slot whose worker request is inadmissible (`workspaces.request_invalid_count` + `workspaces.bound_view` against the prepared package); refuses any other active slot (`slot-active`) | `<slot root>/parked.json` (stamped `parked-operate` receipt, `why` parked or inadmissible-request; an unreadable request or working state refuses; `prepare-workers` removes a stale one) |
+| 24 | `operate-parked` | slot | the `xtop-operator` tool's batch path (Issue #64 Task 5): opens no XTop session for a slot `prepare-workers` parked or an active slot whose worker request is inadmissible (`workspaces.request_invalid_count` + `workspaces.bound_view` against the prepared package, or the Reader's own current `worker-request-<slot>.problems.txt` counting a problem, #64 T06 w06); refuses any other active slot (`slot-active`) | `<slot root>/parked.json` (stamped `parked-operate` receipt, `why` parked or inadmissible-request; an unreadable request or working state refuses; `prepare-workers` removes a stale one) |
 
 Site-admin utility (not a Harness graph subcommand -- no workspace, no declared output)
 -------------------------------------------------------------------------------------------
@@ -1348,6 +1348,35 @@ def _worker_request_problem_count(workspace, slot, entry):
     return count + sum(1 for field in workspaces.PREPARED_BINDING_FIELDS if prepared[field] != requested[field])
 
 
+def _reader_refusal(workspace, slot):
+    """The worker-request Reader's own current refusal of slot `slot`'s request, or ``None``.
+
+    The Reader writes ``<request>.problems.txt`` beside the request on every read: its first line
+    counts the problems (``N problem(s) in ...``, ``0 problems in ...`` when it admits the request,
+    ``... was refused before ...``). Some problems are Reader-only (#64 T06 w06: ``operatorBrief``
+    missing), so the flow-side count can call a request admissible that the Reader refused. A
+    sidecar older than the request is a verdict on earlier bytes and is ignored.
+    """
+    request = Path(workspace) / "research" / "requests" / f"worker-request-{slot}.json"
+    sidecar = request.with_name(f"worker-request-{slot}.problems.txt")
+    try:
+        if sidecar.stat().st_mtime < request.stat().st_mtime:
+            return None
+        text = sidecar.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None
+    match = re.match(r"^(\d+) problems? in ", lines[0])
+    if match and int(match.group(1)) > 0:
+        problems = [line[2:] for line in lines[1:] if line.startswith("- ")][:int(match.group(1))]
+        return f"the Reader refused its worker request: {'; '.join(problems) or lines[0]}"
+    if " was refused before its problems could be counted" in lines[0]:
+        return f"the Reader refused its worker request: {lines[0]}"
+    return None
+
+
 def _cmd_operate_parked(workspace, args):
     """The operate node of a slot that runs no session (Issue #64 Task 5): the xtop-operator batch path.
 
@@ -1356,7 +1385,8 @@ def _cmd_operate_parked(workspace, args):
     `<slot root>/parked.json`, so the branch stays a pure act chain and its capture seals
     a parked no-fix. It admits two slots: one `prepare-workers` parked (`why: parked`), and
     an active slot whose worker request is inadmissible (`why: inadmissible-request`, the
-    branch holds no Judge to stop it, so the owner skips it here). Any other active slot is
+    branch holds no Judge to stop it, so the owner skips it here) by the flow-side count or by
+    the Reader's own current verdict (`_reader_refusal`, #64 T06 w06). Any other active slot is
     refused (`slot-active`, exit 3): this path never stands in for an expert session.
     """
     (slot,) = args
@@ -1366,6 +1396,15 @@ def _cmd_operate_parked(workspace, args):
         why, reason = "parked", entry["workPackage"]["problem"]
     else:
         problems = _worker_request_problem_count(workspace, slot, entry)
+        refused = _reader_refusal(workspace, slot) if problems == 0 else None
+        if problems == 0 and refused is not None:
+            # D-T06-1(a): the branch settles as an honest no-fix instead of refusing `slot-active`.
+            body = {
+                "taskId": slot, "workPackageId": entry["workPackageId"],
+                "revision": entry["workspaceManifest"]["revision"], "why": "inadmissible-request",
+                "reason": f"slot {slot} was skipped: {refused}, so no session ran",
+            }
+            return workspace / entry["root"] / "parked.json", core.stamp("parked-operate", body)
         if problems == 0:
             raise core.AtcsError(
                 "slot-active",

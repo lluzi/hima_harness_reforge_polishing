@@ -1061,8 +1061,8 @@ def _operator_brief_problems(envelope, candidate, workspaces_mod, task_id):
         return []
     found, slot = [], f" (slot {task_id})"
     command = (f"run python3 <workspace>/hima-readers/atcs-readiness/read-atcs.py brief "
-               f"<workspace>/research/requests/worker-request-{task_id}.json after writing the request: it writes "
-               "operatorBrief in place")
+               f"<workspace>/research/requests/worker-request-{task_id}.json (brief REQUEST_JSON: that one argument, "
+               "never the workspace too) after writing the request: it writes operatorBrief in place")
     if "operatorBrief" not in envelope:
         found.append(f"operatorBrief{slot}: missing; the Host gives the Operator this bounded summary of the request; {command}")
     elif envelope.get("operatorBrief") != operator_brief(envelope):
@@ -3006,9 +3006,12 @@ def main():
         _masters_main(sys.argv[2:])
         return
     if len(sys.argv) >= 2 and sys.argv[1] == "brief":
-        if len(sys.argv) != 3:
-            raise SystemExit("usage: read-atcs.py brief REQUEST_JSON")
-        write_operator_brief(sys.argv[2])
+        # #64 T06 w02: an author passed the workspace too (`brief <request> <workspace>`) and looped on the
+        # usage error. The one argument naming an existing JSON file is the request.
+        found = [arg for arg in sys.argv[2:] if arg.endswith(".json") and Path(arg).is_file()]
+        if len(sys.argv) < 3 or len(found) != 1:
+            raise SystemExit("usage: read-atcs.py brief REQUEST_JSON (exactly one argument: the written request's path)")
+        write_operator_brief(found[0])
         return
     if len(sys.argv) >= 2 and sys.argv[1] == "seat-clusters":
         _seat_clusters_main(sys.argv[2:])

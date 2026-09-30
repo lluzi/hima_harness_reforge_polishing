@@ -2,7 +2,8 @@
 
 The `worker-request` Reader of each slot (`tools/read-atcs.py`) admits these documents with zero
 problems once each `"<...>"` string is replaced and, for an active slot, once
-`python3 <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <the written request>` has added
+`python3 <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <the written request>` (exactly one argument
+after `brief`: `brief REQUEST_JSON`, the request's path, never the workspace too) has added
 `operatorBrief` in place: the bounded summary the Host embeds in the Operator's task with `sessionPlan`
 (run it again after any change; a stale one is counted, and so is a `sessionPlan` above 16000
 characters as JSON). They are written for slot `w01`; for slot `wNN` the

@@ -1257,7 +1257,8 @@ workshops:
           assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
       Never write a request that fails this check.
       For an active slot, after writing the request run python3
-      <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <workspace>/research/requests/worker-request-w01.json:
+      <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <workspace>/research/requests/worker-request-w01.json
+      with exactly that one argument after brief, the request's absolute path (never the workspace too):
       it adds operatorBrief in place, the bounded summary of this request that the Host puts in the
       Operator's task with your sessionPlan (the task never holds the whole request). The Reader counts
       a problem for an active slot's request without it or with a stale one (run it again after any
@@ -1340,7 +1341,8 @@ workshops:
           assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
       Never write a request that fails this check.
       For an active slot, after writing the request run python3
-      <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <workspace>/research/requests/worker-request-w02.json:
+      <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <workspace>/research/requests/worker-request-w02.json
+      with exactly that one argument after brief, the request's absolute path (never the workspace too):
       it adds operatorBrief in place, the bounded summary of this request that the Host puts in the
       Operator's task with your sessionPlan (the task never holds the whole request). The Reader counts
       a problem for an active slot's request without it or with a stale one (run it again after any
@@ -1423,7 +1425,8 @@ workshops:
           assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
       Never write a request that fails this check.
       For an active slot, after writing the request run python3
-      <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <workspace>/research/requests/worker-request-w03.json:
+      <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <workspace>/research/requests/worker-request-w03.json
+      with exactly that one argument after brief, the request's absolute path (never the workspace too):
       it adds operatorBrief in place, the bounded summary of this request that the Host puts in the
       Operator's task with your sessionPlan (the task never holds the whole request). The Reader counts
       a problem for an active slot's request without it or with a stale one (run it again after any
@@ -1506,7 +1509,8 @@ workshops:
           assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
       Never write a request that fails this check.
       For an active slot, after writing the request run python3
-      <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <workspace>/research/requests/worker-request-w04.json:
+      <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <workspace>/research/requests/worker-request-w04.json
+      with exactly that one argument after brief, the request's absolute path (never the workspace too):
       it adds operatorBrief in place, the bounded summary of this request that the Host puts in the
       Operator's task with your sessionPlan (the task never holds the whole request). The Reader counts
       a problem for an active slot's request without it or with a stale one (run it again after any
@@ -1589,7 +1593,8 @@ workshops:
           assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
       Never write a request that fails this check.
       For an active slot, after writing the request run python3
-      <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <workspace>/research/requests/worker-request-w05.json:
+      <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <workspace>/research/requests/worker-request-w05.json
+      with exactly that one argument after brief, the request's absolute path (never the workspace too):
       it adds operatorBrief in place, the bounded summary of this request that the Host puts in the
       Operator's task with your sessionPlan (the task never holds the whole request). The Reader counts
       a problem for an active slot's request without it or with a stale one (run it again after any
@@ -1672,7 +1677,8 @@ workshops:
           assert workspaces.bound_view(candidate) == workspaces.bound_view(prepared)
       Never write a request that fails this check.
       For an active slot, after writing the request run python3
-      <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <workspace>/research/requests/worker-request-w06.json:
+      <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <workspace>/research/requests/worker-request-w06.json
+      with exactly that one argument after brief, the request's absolute path (never the workspace too):
       it adds operatorBrief in place, the bounded summary of this request that the Host puts in the
       Operator's task with your sessionPlan (the task never holds the whole request). The Reader counts
       a problem for an active slot's request without it or with a stale one (run it again after any

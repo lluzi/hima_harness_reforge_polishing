@@ -474,6 +474,28 @@ class WorkerRequestExampleTest(ExampleWorkspace):
         self.assertEqual(written["operatorBrief"]["targets"]["count"], len(written["candidate"]["targets"]))
         self.assertEqual(read_atcs.problems("worker-request", report, self.workspace, "w03"), [])
 
+    def test_t06_the_brief_step_takes_the_request_among_extra_arguments(self):
+        """D-T06-1(b) (#64 T06 w02): the author ran `read-atcs.py brief <request> <workspace>` and the tool
+        answered `usage: read-atcs.py brief REQUEST_JSON` (exit 1); its entry then failed closed 200 times.
+        The one argument naming an existing JSON file is the request; two such files stay a usage error."""
+        self.prepare(self.plan_with_active_slot("03"))
+        self.read_request("03", self.worker_example("03", self.ACTIVE), brief=False)
+        report = self.workspace / "research" / "requests" / "worker-request-w03.json"
+        for form in ([str(report), str(self.workspace)], [str(self.workspace), str(report)]):
+            result = subprocess.run([sys.executable, str(READER), "brief", *form], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(read_atcs.problems("worker-request", report, self.workspace, "w03"), [])
+        other = self.workspace / "other.json"
+        other.write_text("{}", encoding="utf-8")
+        result = subprocess.run([sys.executable, str(READER), "brief", str(report), str(other)],
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("usage: read-atcs.py brief REQUEST_JSON", result.stderr)
+        contract = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+        self.assertEqual(contract.count("with exactly that one argument after brief, the request's absolute path"), 6)
+        example = (PACK_DIR / "knowledge" / "example-worker-request.md").read_text(encoding="utf-8")
+        self.assertIn("`brief REQUEST_JSON`", example)
+
     def test_t06_the_brief_points_the_operator_at_the_derived_domain_nets(self):
         """D-T06-4(e): every T06 request had editDomain.nets 0 and its Operator read that as no net to insert
         on; the brief now says the session derives the sink nets (domain.json) and how to name them by pin."""
