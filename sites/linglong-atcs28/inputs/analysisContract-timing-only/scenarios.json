@@ -1,0 +1,30 @@
+[
+  {
+    "name": "func_ssg_rcworst_m40",
+    "corner": "cworst_T",
+    "libGlob": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/SIGNOFF/PT/libdb/ssg_m40c/*.db",
+    "driverLibrary": "tcbn28hpcplusbwp35p140lvtssg0p81vm40c",
+    "originalDriverLibrary": "tcbn28hpcplusbwp35p140lvtssg0p81vm40c"
+  },
+  {
+    "name": "func_ssg_rcworst_125",
+    "corner": "cworst_T",
+    "libGlob": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/SIGNOFF/PT/libdb/ssg_125c/*.db",
+    "driverLibrary": "tcbn28hpcplusbwp35p140lvtssg0p81v125c",
+    "originalDriverLibrary": "tcbn28hpcplusbwp35p140lvtssg0p81vm40c"
+  },
+  {
+    "name": "func_ffg_cbest_m40",
+    "corner": "cbest",
+    "libGlob": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/SIGNOFF/PT/libdb/ffg_m40c/*.db",
+    "driverLibrary": "tcbn28hpcplusbwp35p140lvtffg0p99vm40c",
+    "originalDriverLibrary": "tcbn28hpcplusbwp35p140lvtssg0p81vm40c"
+  },
+  {
+    "name": "func_ffg_cbest_125",
+    "corner": "cbest",
+    "libGlob": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/SIGNOFF/PT/libdb/ffg_125c/*.db",
+    "driverLibrary": "tcbn28hpcplusbwp35p140lvtffg0p99v125c",
+    "originalDriverLibrary": "tcbn28hpcplusbwp35p140lvtssg0p81vm40c"
+  }
+]
