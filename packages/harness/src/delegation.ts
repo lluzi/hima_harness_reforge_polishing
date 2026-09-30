@@ -842,7 +842,7 @@ export function delegationToolDenial(lookup: DelegationPolicyLookup, execution: 
   if (policy === undefined) return undefined;
   if (!policy.toolsAllowed) return policy.reason ?? `delegated child ${childId} has no current tool grant`;
   if (execution.agent?.options.provider !== policy.effective.model.provider || execution.agent.options.model !== policy.effective.model.model) return `delegated child ${childId} changed its effective model route`;
-  if (policy.effective.model.maxTokensPerTurn !== undefined && execution.agent.options.maxTokens !== policy.effective.model.maxTokensPerTurn) return `delegated child ${childId} changed its token limit`;
+  if (policy.effective.model.maxTokensPerTurn !== undefined && effectiveTokenLimit(execution.agent) !== policy.effective.model.maxTokensPerTurn) return `delegated child ${childId} changed its token limit`;
   if (!policy.effective.tools.includes(execution.name)) return `delegated child ${childId} was not granted tool ${execution.name}`;
   if (terminalTools.has(execution.name) || recursiveTools.has(execution.name)) return `delegated child ${childId} may not open a shell, terminal, or recursive delegation`;
   if (execution.name === delegationInputTool) {
@@ -867,6 +867,28 @@ export function delegationToolDenial(lookup: DelegationPolicyLookup, execution: 
   return undefined;
 }
 
+/**
+ * The per-request token limit a child actually runs under: its live option, or, when a cold resume
+ * rebuilt the Agent without one (dsh's continuable descriptor deliberately does not persist
+ * `maxTokens`), the limit on its latest logged request header — which the re-apply below puts there.
+ */
+function effectiveTokenLimit(agent: Readonly<ToolExecution>['agent']): number | undefined {
+  if (agent?.options.maxTokens !== undefined) return agent.options.maxTokens;
+  const header = (agent?.session as { requestHeader?: () => { config?: { maxTokens?: number } } | undefined } | undefined)?.requestHeader?.();
+  return header?.config?.maxTokens;
+}
+
 export function registerDelegationGuard(ctx: Context, lookup: DelegationPolicyLookup): () => void {
-  return ctx.tools.guard((execution) => delegationToolDenial(lookup, execution));
+  const disposeGuard = ctx.tools.guard((execution) => delegationToolDenial(lookup, execution));
+  // Re-apply the Harness-recorded per-turn limit to a delegated child whose request carries none: a
+  // settled continuable child is cold-resumed for its follow-up without `maxTokens` (#64). A limit the
+  // request does carry is left alone, so a genuinely changed limit still meets the guard above.
+  const disposeRequest = (ctx as unknown as { on(name: 'agent/request', listener: (payload: { agent: Agent }, next: () => Promise<{ maxTokens?: number }>) => Promise<{ maxTokens?: number }>): () => void })
+    .on('agent/request', async ({ agent }, next) => {
+      const config = await next();
+      if (config.maxTokens !== undefined || agent.session.header.origin !== 'subagent') return config;
+      const limit = lookup(String(agent.id))?.effective.model.maxTokensPerTurn;
+      return limit === undefined ? config : { ...config, maxTokens: limit };
+    });
+  return () => { disposeRequest(); disposeGuard(); };
 }
