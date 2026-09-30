@@ -381,8 +381,9 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.equal(request.path, `research/requests/worker-request-${slot}.json`, 'each slot reads its own request path');
     assert.equal(result.path, `state/contribution-${slot}.json`, 'each slot reads its own result path');
   }
-  // The `workerSlots` knob (1..6, default 6) is bound for the plan Reader on every way into `plan`.
-  assert.deepEqual(pack.contract.strategy.workerSlots, { type: 'number', unit: 'slots', min: 1, max: 6, default: 6 });
+  // The `workerSlots` knob (0..6, default 6) is bound for the plan Reader on every way into `plan`;
+  // #66 D8: 0 parks every seat, the qualified full-auto control arm.
+  assert.deepEqual(pack.contract.strategy.workerSlots, { type: 'number', unit: 'slots', min: 0, max: 6, default: 6 });
   assert.deepEqual(operatorNode('bind-worker-slots').parameters,
     { tool: 'worker-slots', arguments: { WORKER_SLOTS: { from: 'strategy', name: 'workerSlots' } } });
   assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.to === 'plan').map(edge => edge.from), ['bind-worker-slots']);

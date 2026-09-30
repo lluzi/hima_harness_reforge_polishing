@@ -1398,7 +1398,10 @@ def _read_campaign_plan(report, workspace, extra, mods):
 
     found += _worker_slot_problems(workspace, active, core, workspaces_mod)
     found += _shared_domain_problems(active)
-    found += [Advice(item) for item in _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])]
+    if _worker_slot_count(workspace, core) != 0:
+        # #66 D8: under workerSlots 0 (the full-auto control arm) no seat may cover a blocker.
+        found += [Advice(item) for item in
+                  _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])]
     parked = [task_id for task_id in workspaces_mod.TASK_IDS
               if isinstance(work_packages.get(task_id), dict) and task_id not in active]
     found += _parked_seat_problems(workspace, working_state_id, active, parked, core, workspaces_mod,
@@ -1406,18 +1409,30 @@ def _read_campaign_plan(report, workspace, extra, mods):
     return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
+def _worker_slot_count(workspace, core):
+    """The verified `state/worker-slots.json` `workerSlots` count, or None when it cannot be read."""
+    try:
+        record = _load_json(Path(workspace) / "state" / "worker-slots.json")
+        _verify_identity(record, "worker-slots", core)
+    except (ValueError, OSError):
+        return None
+    count = record.get("workerSlots")
+    return count if isinstance(count, int) and not isinstance(count, bool) else None
+
+
 def _worker_slot_problems(workspace, active, core, workspaces_mod):
     """One problem per active slot above the Run's `workerSlots` knob (Issue #64 Task 5).
 
     The knob is the stamped `state/worker-slots.json` that `bind-worker-slots` writes on
-    every way into the plan Workshop; an absent or unverifiable record is one problem.
+    every way into the plan Workshop; an absent or unverifiable record is one problem. #66 D8:
+    the knob may be 0 (the full-auto control arm), and then every active slot is one problem.
     """
     try:
         record = _load_json(Path(workspace) / "state" / "worker-slots.json")
         _verify_identity(record, "worker-slots", core)
         count = record.get("workerSlots")
-        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= len(workspaces_mod.TASK_IDS):
-            raise ValueError(f"workerSlots {count!r} is not 1..{len(workspaces_mod.TASK_IDS)}")
+        if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= len(workspaces_mod.TASK_IDS):
+            raise ValueError(f"workerSlots {count!r} is not 0..{len(workspaces_mod.TASK_IDS)}")
     except (ValueError, OSError) as error:
         return [f"candidate.workPackages: state/worker-slots.json cannot be verified ({error}), so no slot can be "
                 "shown to be within workerSlots"]

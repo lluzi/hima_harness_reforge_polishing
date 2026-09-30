@@ -13,6 +13,7 @@ Runnable via discovery:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import unittest
@@ -28,6 +29,12 @@ from atcs import workspaces  # noqa: E402
 from test_cli_state import (  # noqa: E402
     _make_baseline_manifest, _run, _tmp, _write_json, _write_xtop_context,
 )
+from test_readers import read_atcs  # noqa: E402
+
+
+def _write_json_at(path, obj):
+    _write_json(path, obj)
+    return path
 
 
 def _active(task_id, base_state_id):
@@ -94,8 +101,21 @@ class WorkerSlotsCliTest(unittest.TestCase):
         record = core.read_artifact(self.workspace / "state" / "worker-slots.json", "worker-slots")
         self.assertEqual(record["parkedSlots"], [])
 
-    def test_a_value_outside_one_to_six_is_refused(self):
-        for value in ("0", "7", "2.5", "six", "true"):
+    def test_zero_parks_every_seat(self):
+        """#66 D8: the qualified full-auto control arm is the same Pack with every seat parked."""
+        result = _run("worker-slots", self.workspace, "0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        record = core.read_artifact(self.workspace / "state" / "worker-slots.json", "worker-slots")
+        self.assertEqual(record["workerSlots"], 0)
+        self.assertEqual(record["activeSlots"], [])
+        self.assertEqual(record["parkedSlots"], list(workspaces.TASK_IDS))
+
+    def test_the_contract_knob_admits_zero(self):
+        contract = (TESTS_DIR.parent.parent / "contract.yml").read_text(encoding="utf-8")
+        self.assertIn("workerSlots: { type: number, unit: slots, min: 0, max: 6, default: 6 }", contract)
+
+    def test_a_value_outside_zero_to_six_is_refused(self):
+        for value in ("7", "-1", "2.5", "six", "true", ""):
             with self.subTest(value=value):
                 result = _run("worker-slots", self.workspace, value)
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
@@ -255,9 +275,6 @@ class ParkedBranchTest(unittest.TestCase):
         self.assertFalse((self.workspace / "state" / "contribution-w06.json").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 _DEF_TEXT = """VERSION 5.8 ;
 DESIGN top ;
@@ -338,3 +355,91 @@ class LocalTopologyPrepareTest(unittest.TestCase):
             return out
         _, workers = self._prepare(packages)
         self.assertEqual(workers["workers"]["w01"]["derivedRegions"], [])
+
+
+class AllParkedControlArmTest(unittest.TestCase):
+    """#66 D8: `workerSlots 0` is the qualified full-auto control arm. Every seat is parked, the plan
+    Reader admits the all-parked plan, every fork branch takes its batch no-op (`batchWhen`
+    `tc_slot_parked = 1`), every capture seals a parked no-fix, and the recipe selects nothing, so the
+    batch runs the auto-finish alone."""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+        (self.workspace / "flow").mkdir()
+        os.symlink(FLOW_DIR / "atcs", self.workspace / "flow" / "atcs")  # the Readers import the Pack's flow
+        manifest = _make_baseline_manifest(self.workspace)
+        _write_json(self.workspace / "manifest.json", manifest)
+        result = _run("baseline", self.workspace, self.workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.working_state_path = self.workspace / "state" / "working-state.json"
+        self.working_state = json.loads(self.working_state_path.read_text())
+        xtop_site = _write_xtop_context(self.workspace, self.working_state["id"])
+        eda_profile = self.workspace / "eda-profile.json"
+        _write_json(eda_profile, {"design": "top", "techLef": "tech.lef", "cellLefGlob": "*.lef", **xtop_site})
+        site_caps = self.workspace / "site-caps.json"
+        _write_json(site_caps, {"pgVerification": False})
+        result = _run("worker-slots", self.workspace, "0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        packages = {slot: _parked(slot, self.working_state["id"], "workerSlots 0: the full-auto control arm")
+                    for slot in workspaces.TASK_IDS}
+        self.plan = {"candidate": {"workPackages": packages, "reason": "control arm: every seat parked"},
+                     "baseState": self.working_state, "siteCapabilities": {"pgVerification": False}}
+        self.plan_path = _write_json_at(self.workspace / "research" / "requests" / "campaign-plan.json", self.plan)
+        result = _run("prepare-workers", self.workspace, self.working_state_path, site_caps, eda_profile,
+                      self.plan_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.workers = json.loads((self.workspace / "state" / "workers.json").read_text())
+
+    def test_the_plan_reader_admits_an_all_parked_plan(self):
+        self.assertEqual(read_atcs.problems("campaign-plan", self.plan_path, self.workspace), [])
+        (value,) = read_atcs.read("campaign-plan", self.plan_path, self.workspace)
+        self.assertEqual(value["value"], 0)
+        # workerSlots 0 allows no active seat, so no parked seat is advised to take a cluster.
+        advice = read_atcs.advice("campaign-plan", self.plan_path, self.workspace)
+        self.assertEqual([line for line in advice if "parked, but workerSlots" in line], [])
+
+    def test_an_active_seat_under_workerslots_zero_is_counted(self):
+        plan = json.loads(json.dumps(self.plan))
+        plan["candidate"]["workPackages"]["w01"] = _active("w01", self.working_state["id"])
+        path = _write_json_at(self.workspace / "research" / "requests" / "campaign-plan.json", plan)
+        (line,) = read_atcs.problems("campaign-plan", path, self.workspace)
+        self.assertIn("candidate.workPackages.w01: active, but only slots up to workerSlots 0 may be active", line)
+
+    def test_every_branch_takes_the_batch_no_op_and_the_recipe_selects_nothing(self):
+        contract = (FLOW_DIR.parent / "contract.yml").read_text(encoding="utf-8")
+        for slot in workspaces.TASK_IDS:
+            nn = slot[1:]
+            with self.subTest(slot=slot):
+                self.assertIs(self.workers["workers"][slot]["parked"], True)
+                request = _write_json_at(self.workspace / "research" / "requests" / f"worker-request-{slot}.json",
+                                         {"candidate": _parked(slot, self.working_state["id"],
+                                                               "workerSlots 0: the full-auto control arm"),
+                                          "baseState": self.working_state,
+                                          "siteCapabilities": {"pgVerification": False}})
+                values = {value["type"]: value["value"]
+                          for value in read_atcs.read("worker-request", request, self.workspace, [slot])}
+                self.assertEqual(values, {"tc_request_invalid_count": 0, "tc_slot_parked": 1})
+                team = contract.split(f"  - id: atcs-worker-{nn}\n", 1)[1].split("\n  - id: ", 1)[0]
+                self.assertIn(f"{{ input: workerRequest{nn}, value: tc_slot_parked, equals: 1 }}", team)
+                result = _run("operate-parked", self.workspace, slot)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                result = _run("capture-contribution", self.workspace, slot)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                contribution = core.read_artifact(self.workspace / "state" / f"contribution-{slot}.json",
+                                                  "contribution")
+                self.assertEqual([contribution["kind"], contribution["parked"], contribution["admissible"]],
+                                 ["no-fix", True, True])
+        result = _run("collect", self.workspace)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        collected = json.loads((self.workspace / "state" / "contributions-collected.json").read_text())
+        self.assertEqual(sorted(c["taskId"] for c in collected["contributions"]), list(workspaces.TASK_IDS))
+        self.assertEqual(collected["pending"], [])
+        result = _run("compose-facts", self.workspace, self.workspace / "research" / "requests" / "integration-plan.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        facts = core.read_artifact(self.workspace / "state" / "composition-facts.json", "composition-facts")
+        self.assertEqual(facts["recipe"]["sessions"], [], "no seat contributed, so the batch is auto-finish alone")
+
+
+if __name__ == "__main__":
+    unittest.main()
