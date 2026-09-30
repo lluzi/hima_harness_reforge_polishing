@@ -97,9 +97,9 @@ budget of 50 mutations: room for trials, one undo each, the next rungs and toolk
 1. Size down the driver or a path cell (a slower master or VT swap; it may release area):
    `atcs_size_cell` to a master from `atcs_candidates`, or `atcs_fix_hold_pins` with `sizeCellOnly 1`
    and effort `omit` (the serial flow's qualified `-size_cell_only -size_rule nominal_keywords`).
-2. Dummy load for a very small violation: `atcs_insert_dummy`, or `useDummyCell 1`.
-3. Delay or buffer chain at the sink: `atcs_insert_buffer` with several masters, or
-   `maxDelayCellLength` 1..5 with a `delayCellList` that mixes delay and normal buffers.
+2. Dummy load for a very small violation: `atcs_insert_dummy` (`useDummyCell 1` is refused: XTop says "No dummy cell specified.").
+3. Delay or buffer chain at the sink: `atcs_insert_buffer` with several masters, or `maxDelayCellLength` 1..5 with a
+   `delayCellList` from the hold buffer list (Site `bufferListForHold`) leaving one normal cell out (#64 T06 w01).
 4. Loader clustering when close loaders fail together: `maxClusterLoaderCount` 1..6 (the User Guide: try 4).
 5. Timing window when `break_setup` dominates: `fixTimingWindow 1` at effort `low` only, never with
    `sizeCellOnly` (XTop documents both incompatibilities; the toolkit refuses them).

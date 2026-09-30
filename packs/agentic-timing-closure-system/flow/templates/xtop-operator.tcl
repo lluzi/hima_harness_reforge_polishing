@@ -1280,6 +1280,29 @@ proc atcs_fix_hold_pins {pins effort hold_target setup_margin size_cell_only use
     if {($max_delay_cell_length >= 0) != ([llength $delay_cell_list] > 0)} {
         error "maxDelayCellLength and delayCellList go together: give both, or -1 and an empty list"
     }
+    # D-T06-4(b) (#64 T06 w04/w05 seq2): XTop refuses -use_dummy_cell with "No dummy cell specified.", and
+    # the documented surface names no dummy-cell list for this session to give it.
+    if {$use_dummy_cell} {
+        error "useDummyCell: XTop refuses -use_dummy_cell with \"No dummy cell specified.\" and this session knows no dummy-cell list; insert a dummy load with atcs_insert_dummy <pin> <master> <newInstance> instead"
+    }
+    # D-T06-4(c) (#64 T06 w01 seq3/4): XTop's hold buffer list (eco_buffer_list_for_hold, the Site's
+    # bufferListForHold) must hold every delayCellList cell and at least one normal cell besides them.
+    if {[llength $delay_cell_list] > 0} {
+        set hold_list $::XTOP_ECO_BUFFER_LIST_FOR_HOLD
+        if {[llength $hold_list] == 0} {
+            error "delayCellList: this session knows no hold buffer list (eco_buffer_list_for_hold), so XTop would refuse the chain"
+        }
+        foreach cell $delay_cell_list {
+            if {[lsearch -exact $hold_list $cell] < 0} {
+                error "delayCellList: $cell is not in the session's hold buffer list (eco_buffer_list_for_hold: $hold_list); XTop needs every delay cell there (\"Buffer list should contain at least 1 normal cell and 1 delay cell which is defined by delay_cell_list.\"): choose delay cells from that list"
+            }
+        }
+        set normal {}
+        foreach cell $hold_list { if {[lsearch -exact $delay_cell_list $cell] < 0} { lappend normal $cell } }
+        if {[llength $normal] == 0} {
+            error "delayCellList names every cell of the hold buffer list ($hold_list); XTop needs at least one normal cell besides the delay cells: leave one out"
+        }
+    }
     if {$effort eq "omit" && !$size_cell_only} { error "effort may be omitted only with sizeCellOnly" }
     if {$fix_timing_window && $size_cell_only} { error "fix_timing_window cannot be combined with size_cell_only" }
     if {$fix_timing_window && $effort ne "low"} { error "fix_timing_window works only with low effort, got $effort" }

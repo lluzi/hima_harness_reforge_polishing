@@ -1440,7 +1440,7 @@ class TargetedFixTest(unittest.TestCase):
     def test_fix_hold_emits_only_whitelisted_flags_and_domain_pins(self):
         session = Session(self).run(
             "set ::stub_fix_effect {U1 BUFX4}\n"
-            f"T fix {{{HOLD} {{U9/D U1/A}} high 0.01 0.02 0 1 0 4 3 {{DELAY1 DELAY2}} {PLAN}}}\n"
+            f"T fix {{{HOLD} {{U9/D U1/A}} high 0.01 0.02 0 0 0 4 3 {{DELAY1}} {PLAN}}}\n"
         )
         self.assertEqual(session.outcome("fix")[0], "OK", session.stdout)
         (call,) = session.calls_to("fix_hold_gba_violations")
@@ -1451,8 +1451,8 @@ class TargetedFixTest(unittest.TestCase):
         self.assertEqual(_after(call, "-setup_margin"), "0.02")
         self.assertEqual(_after(call, "-max_cluster_loader_count"), "4")
         self.assertEqual(_after(call, "-max_delay_cell_length"), "3")
-        self.assertEqual(_after(call, "-delay_cell_list"), "DELAY1 DELAY2")
-        self.assertIn("-use_dummy_cell", call)
+        self.assertEqual(_after(call, "-delay_cell_list"), "DELAY1")
+        self.assertNotIn("-use_dummy_cell", call, "D-T06-4(b): refused before XTop")
         self.assertNotIn("-size_cell_only", call)
         self.assertNotIn("-size_rule", call)
         self.assertEqual(session.ops[0]["cmd"], "fix_hold_gba_violations")
@@ -1486,6 +1486,34 @@ class TargetedFixTest(unittest.TestCase):
         self.assertEqual(_after(first, "-only_pins"), "pin:U9/D pin:U1/Y")
         self.assertEqual(_after(second, "-only_pins"), "pin:U9/D", "an inserting pass acts at the named pin")
         self.assertEqual(session.ops[0]["args"]["pins"], ["U9/D"], "args stay as the Host sent them")
+
+    def test_t06_dummy_and_delay_chain_calls_xtop_would_reject_are_refused_locally(self):
+        """D-T06-4(b)(c) (#64 T06): w04 seq2 and w05 seq2 sent `-use_dummy_cell` and XTop answered "No dummy
+        cell specified." (the documented surface names no dummy-cell list); w01 seq3/seq4 sent delay cells that
+        are not in the session's hold buffer list (eco_buffer_list_for_hold, the Site's bufferListForHold) and
+        XTop answered "Buffer list should contain at least 1 normal cell and 1 delay cell which is defined by
+        delay_cell_list.". Each is refused before XTop with the reason and the list to choose from, and uses
+        no budget. The Site list here is {DELAY1 BUFX2}."""
+        session = Session(self, max_mutations=1).run(
+            f"T w04seq2 {{{HOLD} U9/D medium 0 0.005 0 1 0 0 3 DELAY1 {PLAN}}}\n"
+            f"T w01seq3 {{{HOLD} U9/D low 0 0.005 0 0 0 0 3 {{DELAYX DELAY1}} {PLAN}}}\n"
+            f"T nonormal {{{HOLD} U9/D low 0 0.005 0 0 0 0 3 {{DELAY1 BUFX2}} {PLAN}}}\n"
+            f"T chain {{{HOLD} U9/D low 0 0.005 0 0 0 0 3 DELAY1 {PLAN}}}\n"
+        )
+        status, text = session.outcome("w04seq2")
+        self.assertEqual(status, "ERR")
+        self.assertIn("No dummy cell specified", text)
+        self.assertIn("atcs_insert_dummy", text)
+        status, text = session.outcome("w01seq3")
+        self.assertEqual(status, "ERR")
+        self.assertIn("DELAYX", text)
+        self.assertIn("DELAY1 BUFX2", text, "the refusal names the hold buffer list to choose from")
+        status, text = session.outcome("nonormal")
+        self.assertEqual(status, "ERR")
+        self.assertIn("normal", text)
+        self.assertEqual(session.outcome("chain")[0], "OK", "local refusals use no budget: " + session.stdout)
+        (call,) = session.calls_to("fix_hold_gba_violations")
+        self.assertEqual(_after(call, "-delay_cell_list"), "DELAY1")
 
     def test_fix_hold_omits_optional_flags_at_their_sentinels(self):
         session = Session(self).run(
@@ -2224,11 +2252,12 @@ class CommittedFixTest(unittest.TestCase):
             "set ::stub_fix_effect {U2 INVX2}\n"
             f"T hold_domain_net {{{HOLD} U1/A high 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
         )
-        # Review fix: size-only with a dummy cell still inserts (`-use_dummy_cell`).
+        # Review fix: size-only with a dummy cell would insert (`-use_dummy_cell`); since #64 T06 the toolkit
+        # refuses -use_dummy_cell outright (XTop: "No dummy cell specified."), before XTop either way.
         dummy = Session(self, domain=domain, target_pins=["U9/D"]).run(
             f"T hold_size_dummy {{{HOLD} U9/D omit 0.0 0.02 1 1 0 0 -1 {{}} {PLAN}}}\n")
         self.assertEqual(dummy.outcome("hold_size_dummy")[0], "ERR", dummy.stdout)
-        self.assertIn("U9/D is on net N2 outside the edit domain", dummy.outcome("hold_size_dummy")[1])
+        self.assertIn("No dummy cell specified", dummy.outcome("hold_size_dummy")[1])
         self.assertEqual(dummy.calls_to("fix_hold_gba_violations"), [])
         for tag in ("hold", "setup_insert", "setup_split"):
             status, message = session.outcome(tag)
@@ -2262,7 +2291,7 @@ class KnowledgeSurfaceTest(unittest.TestCase):
         f"T mv {{atcs_move_cell U3 10.5 20 {PLAN}}}\n"
         f"T rm {{atcs_remove_buffer U3 {PLAN}}}\n"
         "set ::stub_fix_effect {U1 BUFX4}\n"
-        f"T fh {{{HOLD} U1/A low 0.0 0.02 0 1 1 2 1 DELAY1 {PLAN}}}\n"
+        f"T fh {{{HOLD} U1/A low 0.0 0.02 0 0 1 2 1 DELAY1 {PLAN}}}\n"
         "set ::stub_fix_effect {U1 BUFX1}\n"
         f"T fh2 {{{HOLD} U1/A omit 0.0 0.02 1 0 0 0 -1 {{}} {PLAN}}}\n"
         "set ::stub_fix_effect {U1 BUFX2}\n"
