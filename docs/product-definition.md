@@ -159,6 +159,11 @@ R3/Q17 确认：EDA Operator 可以在已授权工具、设计工作副本和预
 用户继续使用同一对话，右侧 Workbench 展示可交互的数据洞察和可视化；洞察可以形成有依据的后续
 行动建议，并支持客户自己的检查和分析方法。
 
+用户指定 `/Users/lluzi/code/lib_insight` 为上述 Library 分析特性的 Prototype。集成以其已实现的分析
+算法、检查体系和交互为功能参考，保留原型只读；源码与合成测试核查见
+[原型能力清单](package-development/library-intelligence-platform/research/prototype-capabilities.zh-CN.md)。
+其实现与证据范围需在 HimaHarness 中独立验证，不能用已有有界报告切片代替全部原型能力。
+
 LibInsight 的两类输入评估与关联要求如下：
 
 - **Liberty 评估**：逻辑功能、pin/arc/model 完整性，PVT、时序、功耗、约束、变化和版本比较。

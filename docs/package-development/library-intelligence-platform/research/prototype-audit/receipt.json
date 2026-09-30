@@ -1,0 +1,55 @@
+{
+  "source_repository": "/Users/lluzi/code/lib_insight",
+  "source_commit": "8e3abdc47adcd4d2662c161e6b85f0a9d706df47",
+  "source_branch": "feat/review-revision",
+  "source_status_before": "clean",
+  "source_status_after": "clean",
+  "scope": "Read-only source audit; synthetic tests on git archive of exact commit inside polishing worktree. Proprietary data, native extraction, EDA and real-browser verification not exercised.",
+  "runtime": {
+    "python": "3.9.6",
+    "executable": "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "numpy": "2.0.2",
+    "pytest": "8.4.2",
+    "platform": "macOS-26.5.2-arm64-arm-64bit"
+  },
+  "tests": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q -p no:cacheprovider --basetemp=../libinsight-prototype-test-tmp --junitxml=../libinsight-prototype-results.xml",
+    "exit_code": 0,
+    "passed": 274,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "pytest_reported_seconds": 54.76,
+    "junit": "synthetic-tests.xml",
+    "junit_sha256": "62555573bafdd9936d0914ea1e93c6d20c5a6dd1f66eb12b324bd0bf01541f43"
+  },
+  "javascript_syntax": {
+    "files": [
+      "app/static/app.js",
+      "app/static/charts.js"
+    ],
+    "command": "node --check <file>",
+    "exit_code": 0,
+    "browser_runtime_test": false
+  },
+  "source_hashes": {
+    "README.md": "0e8657661ce1687e8e75b99e68af16bcfd256acdc2f9aa9a26b1ec7bf3c2eff1",
+    "CONTEXT.md": "a9d53ee31504dc81fc09849649687997bc05f23b2e98e6f805102cb357aff6a6",
+    "app/server.py": "51dcfbd503f0f52e9caf647982025fa1dab1fec7e43a7f30e2f2e0ece5ecfcf6",
+    "app/static/app.js": "7fce9012b89b76d09ec4d055c6643e2e8f3e8692c5cac9aea9031fefe58b0351",
+    "app/static/charts.js": "f2b8984d4ebdfca3c13d659e82f44c884525bf4ccb93516247bfd5b889d286fb",
+    "extract/libapi_extract.py": "272ffb53749da00340b19477199c517516a9e0beaf04718d5c332eac44a38cfe",
+    "extract/run_extract.sh": "6366d89e256c249a2f6c65d575d3bfb98ec52c0b6e1a4c8f7720b6f0cf57995a",
+    "libinsight/model.py": "ce75164827bd759102fdcd4503225fb785bfb6348808fef23001f46b70215c87",
+    "libinsight/store.py": "c6a6c0f90035ab0f96924119dc4afd6e670e96b79029b74f9edc0c50d84ad05e",
+    "libinsight/batch.py": "38d34f51f5bef5e79b1eac2410f5f1b642d45cf3d8303bd57ff6f4478bf9b5b6",
+    "libinsight/expectations/specs.py": "180dcf75400d41da23406f957d524d1c596ea539ae243a156fdcc7b2f9271f0f",
+    "libinsight/expectations/__init__.py": "bcd2e7d219800a39ef432b5a75b970a185411f42f7e6558093280b51f80b05b5",
+    "libinsight/metrics.py": "4c9d0959d22cfac84823397ec07466867d004fb862eeb05740d2fc565624546f",
+    "libinsight/voltage.py": "f7adc8d8377bafc427d420db25cdd6c77915afcb0b95b68bb13e62d1b1f67a53",
+    "libinsight/lens.py": "08f39c60309686e6a3cdc142d74f60e0b19143ba40a0dbbd688eb0cc22d83d3a",
+    "libinsight/actions.py": "19e4508ef8e942c6dfc22c92bc377c9b007f9e0b3d43d9134d351da7c1bafe28",
+    "libinsight/calibrate.py": "9c8108f802c37bd167465350dd3f59b39f40c61c0e1000adeb03f121abca0b28",
+    "libinsight/policy.py": "63e62137e407242c9ade6ea05b543250f651291d4cd29ee99342bd60b4b2fe7a"
+  }
+}

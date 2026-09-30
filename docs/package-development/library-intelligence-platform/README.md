@@ -9,6 +9,10 @@ Status: the existing bounded Liberty E1–E4 implementation and dated validation
 model definitions; implementation and combined evaluation are pending. Historical directory, Pack and protocol
 identifiers remain stable; this product-scope update does not migrate released assets.
 
+User-designated feature prototype: `/Users/lluzi/code/lib_insight`, read-only. Its existing Library analysis is the
+functional reuse baseline, separately from Hima's bounded E1–E4 slice. See the
+[source-grounded capability audit and 274-test receipt](research/prototype-capabilities.zh-CN.md).
+
 Start here:
 
 1. [Canonical competitive and Liberty strategy](competitive-liberty-strategy.zh-CN.md)
