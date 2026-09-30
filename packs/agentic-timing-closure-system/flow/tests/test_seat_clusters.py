@@ -293,5 +293,78 @@ class SeatClustersKnowledgeTest(unittest.TestCase):
         self.assertEqual(read_atcs.advice("campaign-plan", report, workspace), [])
 
 
+# L4 qualification run 4 (#64 after T05, qual-atcs09-20260930T182830Z): the Site's PrimeTime observation
+# names each endpoint as its instance (no pin), and the seat's hardest cluster was eight hold checks of
+# the `**async_default**` path group (reset recovery/removal). seat-clusters gave the seat
+# `targetPins: []`, so the Operator could read no target's slack. The request is the run's own
+# research/requests/worker-request-w01.json (live_fixtures/l4-worker-request-w01.json, copied read-only).
+L4_REQUEST = json.loads((TESTS_DIR / "live_fixtures" / "l4-worker-request-w01.json").read_text(encoding="utf-8"))
+L4_DATA_CHECK = f"{S}|hold|swerv_dbg/axi_arready_ff_dffs_dout_reg_0_"
+L4_FLOP = "SDFCNQARD1BWP40P140HVT"  # scan flop with an asynchronous clear: D SI SE CP CDN -> Q
+
+
+def l4_netlist(instances):
+    """A netlist placing each endpoint instance of the L4 request (hierarchical or flat) as an async flop."""
+    top, children = [], {}
+    for path in instances:
+        head, _, leaf = path.rpartition("/")
+        pins = "( .D(n_{0}), .SI(si_{0}), .SE(se), .CP(clk), .CDN(rst_l), .Q(q_{0}) )".format(len(top) + len(children.get(head, [])))
+        (children.setdefault(head, []) if head else top).append(f"  {L4_FLOP} {leaf} {pins};")
+    lines = ["module top ( clk, rst_l, se );", "  input clk;", "  input rst_l;", "  input se;"]
+    lines += [f"  m_{head.replace('/', '_')} {head} ( .clk(clk), .rst_l(rst_l), .se(se) );" for head in children] + top
+    lines.append("endmodule")
+    for head, cells in children.items():
+        lines += [f"module m_{head.replace('/', '_')} ( clk, rst_l, se );", "  input clk;", "  input rst_l;", "  input se;",
+                  *cells, "endmodule"]
+    return "\n".join(lines) + "\n"
+
+
+class TargetPinsFromInstanceEndpointsTest(unittest.TestCase):
+    """Every active seat gets target pins: a data check's endpoint instance reads through its data pin (`/D`),
+    an `@**async_default**` check's through the flop's asynchronous pin found in the netlist."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        candidate = L4_REQUEST["candidate"]
+        self.assertEqual(candidate["targetPins"], [], "the run's request, as seat-clusters seated it")
+        endpoints = [key.split("|", 2)[2].split("@", 1)[0] for key in candidate["targets"]]
+        endpoints.append(L4_DATA_CHECK.split("|", 2)[2])
+        workspace = _make_workspace(Path(self.tmp.name))
+        design = _build_design_state(workspace, netlist_text=l4_netlist(list(dict.fromkeys(endpoints))))
+        core.write_artifact(workspace / "state" / "working-state.json", design)
+        scenarios = sorted({key.split("|", 1)[0] for key in candidate["targets"]})
+        core.write_artifact(workspace / "state" / "policy.json", core.stamp(
+            "policy", {"requiredScenarios": scenarios, "baselineStateId": design["id"]}))
+        checks = {}
+        for rank, key in enumerate(candidate["targets"]):  # the real observation's shape: endpoint = instance
+            checks[key] = {"endpoint": key.split("|", 2)[2].split("@", 1)[0], "startpoint": "rst_l",
+                           "pathGroup": "**async_default**", "slack": core.known(-0.2 + rank * 0.01), "violated": True}
+        checks[L4_DATA_CHECK] = {"endpoint": L4_DATA_CHECK.split("|", 2)[2], "startpoint": "sb_axi_arready",
+                                 "pathGroup": "core_clock", "slack": core.known(-0.05), "violated": True}
+        core.write_artifact(workspace / "state" / "observation.json", core.stamp("observation-set", {
+            "designStateId": design["id"], "precision": "gba", "scenarios": {}, "checks": checks,
+            "missingScenarios": [], "coverage": {"complete": True, "reasons": []}, "sources": [],
+        }))
+        self.answer = read_atcs.seat_clusters(str(workspace), 2)
+        self.candidate = candidate
+
+    def test_the_async_cluster_reads_through_each_flops_asynchronous_pin(self):
+        w01 = self.answer["workPackages"]["w01"]
+        self.assertEqual(w01["targets"][:len(self.candidate["targets"])], self.candidate["targets"])
+        self.assertEqual(w01["targetPins"], [f"{instance}/CDN" for instance in dict.fromkeys(
+            key.split("|", 2)[2].split("@", 1)[0] for key in self.candidate["targets"])])
+
+    def test_a_data_check_on_an_instance_endpoint_reads_through_its_data_pin(self):
+        w02 = self.answer["workPackages"]["w02"]
+        self.assertEqual(w02["targets"], [L4_DATA_CHECK])
+        self.assertEqual(w02["targetPins"], ["swerv_dbg/axi_arready_ff_dffs_dout_reg_0_/D"])
+
+    def test_no_active_seat_has_empty_target_pins(self):
+        for slot, package in self.answer["workPackages"].items():
+            if not package.get("parked"):
+                self.assertTrue(package["targetPins"], slot)
+
+
 if __name__ == "__main__":
     unittest.main()

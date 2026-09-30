@@ -1,0 +1,186 @@
+{
+ "candidate": {
+  "actions": [
+   "size_cell",
+   "insert_buffer",
+   "delete_buffer"
+  ],
+  "baseStateId": "089c9d07c3338b120fa7",
+  "budget": {
+   "attempts": 3,
+   "xtopMinutes": 60
+  },
+  "cluster": {
+   "cause": "startpoint",
+   "checks": [
+    "func_ssg_rcworst_m40|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+    "func_ssg_rcworst_125|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+    "func_ssg_rcworst_m40|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_@**async_default**",
+    "func_ssg_rcworst_m40|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_@**async_default**",
+    "func_ssg_rcworst_m40|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_1_@**async_default**",
+    "func_ssg_rcworst_125|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_@**async_default**",
+    "func_ssg_rcworst_125|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_@**async_default**",
+    "func_ssg_rcworst_m40|hold|swerv_exu/i0_ap_e4_ff_genblock_dff_dout_reg_3_@**async_default**"
+   ],
+   "key": "rst_l"
+  },
+  "editDomain": {
+   "instances": [
+    "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_",
+    "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_",
+    "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_",
+    "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_1_"
+   ],
+   "nets": [],
+   "regions": []
+  },
+  "mayAffect": [],
+  "observe": "fast",
+  "problem": "startpoint cluster rst_l: 239 violating checks of the required scenarios, hardest func_ssg_rcworst_m40|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default** at -0.2016 ns",
+  "protected": {
+   "instances": [],
+   "nets": []
+  },
+  "scope": {
+   "commands": [
+    "atcs_size_cell",
+    "atcs_exchange_cell",
+    "atcs_insert_buffer",
+    "atcs_insert_dummy",
+    "atcs_split_load",
+    "atcs_split_net",
+    "atcs_move_cell",
+    "atcs_remove_buffer",
+    "atcs_fix_hold_pins",
+    "atcs_fix_setup_pins",
+    "atcs_undo"
+   ],
+   "maxMutations": 2
+  },
+  "targetPins": [],
+  "targets": [
+   "func_ssg_rcworst_m40|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+   "func_ssg_rcworst_125|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+   "func_ssg_rcworst_m40|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_@**async_default**",
+   "func_ssg_rcworst_m40|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_@**async_default**",
+   "func_ssg_rcworst_m40|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_1_@**async_default**",
+   "func_ssg_rcworst_125|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_@**async_default**",
+   "func_ssg_rcworst_125|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_@**async_default**",
+   "func_ssg_rcworst_m40|hold|swerv_exu/i0_ap_e4_ff_genblock_dff_dout_reg_3_@**async_default**"
+  ],
+  "taskId": "w01"
+ },
+ "baseState": {
+  "database": {
+   "datDigest": "e86ef476761e162d2601c39ed4effc82331d2ea0feb4fd82ae662a4b0b78cfbe",
+   "path": "baseline/database/postroute_final.enc",
+   "sha256": "79d098156f87a6ecdfc6a3591ac20b9e9533091409b9dbf8cd09fcaa1f70bc9d"
+  },
+  "def": {
+   "path": "baseline/def/swerv_wrapper.postroute.def",
+   "sha256": "73e25dc78bb761de2ab2636ed25dead880f4e6761b41f41cc54d4941ebd6192b"
+  },
+  "id": "089c9d07c3338b120fa7",
+  "netlist": {
+   "path": "baseline/netlist/swerv_wrapper.postroute.v",
+   "sha256": "6c9ed3189d9012a29229af594c22f230818e40b52bb3f307cb66ae07dc812e86"
+  },
+  "parentId": null,
+  "scenarios": [
+   "func_ssg_rcworst_m40",
+   "func_ssg_rcworst_125",
+   "func_ffg_cbest_m40",
+   "func_ffg_cbest_125"
+  ],
+  "schema": "atcs.design-state/1",
+  "sdc": [
+   {
+    "path": "baseline/sdc/0/swerv_wrapper.input.sdc",
+    "sha256": "47b51fc7a7f2ea572c78cbd48645ded06c8b21f016ae8ea6e4ca541232f9b565"
+   }
+  ],
+  "spef": {
+   "cbest": {
+    "path": "baseline/spef/cbest/swerv_wrapper.cbest.spef",
+    "sha256": "3fc820b3a7c8e15413cc225cf1498fa80cabd214995dfd5a35f7cb9760845d7b"
+   },
+   "cworst_T": {
+    "path": "baseline/spef/cworst_T/swerv_wrapper.cworst_T.spef",
+    "sha256": "c4f610b1354c91c7c60290926efbc2be485f6fcdb089cc7a640521542c5c3cd6"
+   }
+  },
+  "stage": "postroute",
+  "tools": {
+   "innovus": "23.14",
+   "primetime": "PrimeTime X-2025.06",
+   "starrc": "StarRC X-2025.06-SP1",
+   "xtop": "XTop 2025.09.tmp15"
+  },
+  "top": "swerv_wrapper"
+ },
+ "siteCapabilities": {
+  "pgVerification": false
+ },
+ "sessionPlan": [],
+ "operatorBrief": {
+  "schema": "atcs-operator-brief/1",
+  "taskId": "w01",
+  "problem": "startpoint cluster rst_l: 239 violating checks of the required scenarios, hardest func_ssg_rcworst_m40|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default** at -0.2016 ns",
+  "cluster": {
+   "cause": "startpoint",
+   "key": "rst_l",
+   "checks": 8
+  },
+  "targets": {
+   "count": 8,
+   "first": [
+    "func_ssg_rcworst_m40|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+    "func_ssg_rcworst_125|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_@**async_default**",
+    "func_ssg_rcworst_m40|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_@**async_default**",
+    "func_ssg_rcworst_m40|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_@**async_default**",
+    "func_ssg_rcworst_m40|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_1_@**async_default**",
+    "func_ssg_rcworst_125|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_@**async_default**",
+    "func_ssg_rcworst_125|hold|swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_@**async_default**",
+    "func_ssg_rcworst_m40|hold|swerv_exu/i0_ap_e4_ff_genblock_dff_dout_reg_3_@**async_default**"
+   ]
+  },
+  "targetPins": {
+   "count": 0,
+   "first": []
+  },
+  "editDomain": {
+   "instances": {
+    "count": 4,
+    "first": [
+     "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_",
+     "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_0_",
+     "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_wren_reg_0_",
+     "swerv_dmi_wrapper_i_dmi_jtag_to_core_sync_rden_reg_1_"
+    ]
+   },
+   "nets": 0,
+   "regions": 0
+  },
+  "scope": {
+   "commands": [
+    "atcs_size_cell",
+    "atcs_exchange_cell",
+    "atcs_insert_buffer",
+    "atcs_insert_dummy",
+    "atcs_split_load",
+    "atcs_split_net",
+    "atcs_move_cell",
+    "atcs_remove_buffer",
+    "atcs_fix_hold_pins",
+    "atcs_fix_setup_pins",
+    "atcs_undo"
+   ],
+   "maxMutations": 2
+  },
+  "observe": "fast",
+  "sessionPlan": {
+   "count": 0
+  },
+  "noSafeAction": null
+ }
+}
