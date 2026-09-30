@@ -22,7 +22,7 @@
 | `atcs_point` | `report_timing -to [get_pins -exact <endpoint>] -delay_type max\|min -path_type summary` per endpoint (GBA, no PBA option), captured by `redirect -variable` with the collection built inside the script (#64 T06); rows `{endpoint, scenario, slack}`, an unread one with `unknown` (#66 D3) | not yet cross-checked against a man page or `command_surface.tsv`: the atcs-v16 qualification confirms it on real XTop |
 | `atcs_size_cell` | `size_cell` | `size_cell.1` (301) |
 | `atcs_exchange_cell` | `exchange_cell` with domain partner instances | `exchange_cell.1` (106) |
-| `atcs_insert_buffer` | `insert_buffer`; several lib cells make a chain | `insert_buffer.1` (177) |
+| `atcs_insert_buffer` | `insert_buffer`; several lib cells make a chain; net `""` takes the load pins' one (derived) net (#64 T06) | `insert_buffer.1` (177) |
 | `atcs_insert_dummy` | `insert_dummy_cell` | `insert_dummy_cell.1` (178) |
 | `atcs_split_load` | `split_load -pin_group ...` | `split_load.1` (304) |
 | `atcs_split_net` | `split_net -rule wire_length\|cap -segment 2..16` | `split_net.1` (305) |

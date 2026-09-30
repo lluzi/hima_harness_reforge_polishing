@@ -474,6 +474,16 @@ class WorkerRequestExampleTest(ExampleWorkspace):
         self.assertEqual(written["operatorBrief"]["targets"]["count"], len(written["candidate"]["targets"]))
         self.assertEqual(read_atcs.problems("worker-request", report, self.workspace, "w03"), [])
 
+    def test_t06_the_brief_points_the_operator_at_the_derived_domain_nets(self):
+        """D-T06-4(e): every T06 request had editDomain.nets 0 and its Operator read that as no net to insert
+        on; the brief now says the session derives the sink nets (domain.json) and how to name them by pin."""
+        brief = read_atcs.operator_brief(self.worker_example("03", self.ACTIVE))
+        self.assertIn("domain.json", brief["editDomain"]["sessionNets"])
+        self.assertIn('atcs_insert_buffer with net ""', brief["editDomain"]["sessionNets"])
+        contract = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+        self.assertEqual(contract.count('are yours even when the brief counts editDomain.nets 0'), 6,
+                         "every slot Operator's task says so too")
+
     def test_the_six_worker_workshops_are_identical_modulo_slot(self):
         def slotless(slot):
             return (_workshop_block(f"research-worker-{slot}").replace(f"-{slot}", "-NN")

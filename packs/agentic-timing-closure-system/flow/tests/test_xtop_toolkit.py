@@ -835,6 +835,26 @@ class LocalTopologyDomainTest(unittest.TestCase):
         self.assertEqual(record["targetPins"], ["U9/D"])
         self.assertEqual(record["globalNets"], [])
 
+    def test_t06_sink_net_trials_need_no_net_name(self):
+        """D-T06-4(e) (#64 T06 w04, w01): the requests' editDomain.nets was empty and no read names a net, so
+        the Operators never tried atcs_insert_buffer or atcs_insert_dummy on the sink nets the session had
+        derived (domain.json nets). atcs_insert_dummy takes the pin; atcs_insert_buffer now takes net "" and
+        uses its load pins' one net, which must be in the derived domain."""
+        session = Session(self, domain={"instances": [], "nets": [], "regions": []}, target_pins=["U9/D"],
+                          local=True).run(
+            f"T buffer {{atcs_insert_buffer {{}} U9/D BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
+            f"T dummy {{atcs_insert_dummy U9/D BUFX1 {PREFIX}d1 {PLAN}}}\n"
+            f"T two_nets {{atcs_insert_buffer {{}} {{U9/D U3/A}} BUFX2 {PREFIX}b2 {PREFIX}n2 {PLAN}}}\n"
+            f"T outside {{atcs_insert_buffer {{}} U3/A BUFX2 {PREFIX}b3 {PREFIX}n3 {PLAN}}}\n"
+        )
+        self.assertEqual(session.outcome("buffer")[0], "OK", session.stdout)
+        self.assertEqual(session.outcome("dummy")[0], "OK", session.stdout)
+        self.assertIn("one net", session.outcome("two_nets")[1])
+        self.assertIn("out-of-scope net: N1", session.outcome("outside")[1])
+        (call,) = session.calls_to("insert_buffer")
+        self.assertEqual(call[-2:], ["pin:U9/D", "BUFX2"])
+        self.assertEqual(session.ops[0]["args"]["net"], "", "args stay as the Host sent them")
+
     def test_plan_instances_contribute_every_pin_net_one_hop(self):
         session = Session(self, domain={"instances": ["U9"], "nets": [], "regions": [[0, 0, 10, 10]]},
                           target_pins=["U9/D"], local=True).run("")

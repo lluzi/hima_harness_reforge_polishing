@@ -1137,10 +1137,23 @@ proc atcs_exchange_cell {instance cells plan_sha256} {
     return [atcs_mutate atcs_exchange_cell exchange_cell $args_json $plan_sha256 \
         [list exchange_cell [get_cells -exact $instance] [get_cells -exact $cells]] fix]
 }
+# `net` "" (#64 T06 D-T06-4e): the load pins' one net, which must be in the (derived) edit domain, so a
+# sink-net trial needs no net name the Operator cannot read.
 proc atcs_insert_buffer {net load_pins masters new_instances new_nets plan_sha256} {
     atcs_begin_mutation $plan_sha256
-    atcs_require_net $net
+    set sent_net $net
     set load_pins [atcs_list loadPins $load_pins 1]
+    if {$net eq ""} {
+        set nets {}
+        foreach pin $load_pins {
+            atcs_check_name pin $pin
+            set on [atcs_pin_net $pin]
+            if {[lsearch -exact $nets $on] < 0} { lappend nets $on }
+        }
+        if {[llength $nets] != 1} { error "net \"\" takes the load pins' one net, but they are on [llength $nets] nets: [join $nets {, }]" }
+        set net [lindex $nets 0]
+    }
+    atcs_require_net $net
     foreach pin $load_pins { atcs_require_pin_on_net $pin $net }
     set masters [atcs_list masters $masters 1 0]
     foreach master $masters { atcs_check_master $master }
@@ -1154,7 +1167,7 @@ proc atcs_insert_buffer {net load_pins masters new_instances new_nets plan_sha25
     atcs_require_new_names net $new_nets
     set expected [dict create]
     foreach name $new_instances master $masters { dict set expected $name $master }
-    set args_json [atcs_jobj [list net [atcs_js $net] loadPins [atcs_jarr $load_pins] masters [atcs_jarr $masters] \
+    set args_json [atcs_jobj [list net [atcs_js $sent_net] loadPins [atcs_jarr $load_pins] masters [atcs_jarr $masters] \
         newInstances [atcs_jarr $new_instances] newNets [atcs_jarr $new_nets] planSha256 [atcs_js $plan_sha256]]]
     return [atcs_mutate atcs_insert_buffer insert_buffer $args_json $plan_sha256 \
         [list insert_buffer -new_cell_names $new_instances -new_net_names $new_nets \

@@ -998,6 +998,11 @@ BRIEF_PINS = 32
 BRIEF_INSTANCES = 16
 BRIEF_NAME_CHARS = 200
 BRIEF_TEXT_CHARS = 2000
+# #64 T06 (D-T06-4e): `nets` counts only the plan's own nets (0 in every T06 request), and the Operators read
+# that as "no net to insert on". The session derives the sink nets itself (domain.json `nets`).
+BRIEF_SESSION_NETS = ("the session adds each target pin's net and the plan instances' nets, one hop, to this domain "
+                      "(domain.json nets): use them by pin, atcs_insert_dummy <target pin> and atcs_insert_buffer "
+                      "with net \"\" and the target pins as loadPins")
 SESSION_PLAN_MAX_CHARS = 16000
 
 
@@ -1037,7 +1042,8 @@ def operator_brief(envelope):
         "targetPins": _listing(candidate.get("targetPins"), BRIEF_PINS),
         "editDomain": {"instances": _listing(domain.get("instances"), BRIEF_INSTANCES),
                        "nets": len(domain.get("nets")) if isinstance(domain.get("nets"), list) else 0,
-                       "regions": len(domain.get("regions")) if isinstance(domain.get("regions"), list) else 0},
+                       "regions": len(domain.get("regions")) if isinstance(domain.get("regions"), list) else 0,
+                       "sessionNets": BRIEF_SESSION_NETS},
         "scope": {"commands": [_clip(command, BRIEF_NAME_CHARS) for command in (scope.get("commands") or [])[:32]]
                   if isinstance(scope.get("commands"), list) else [],
                   "maxMutations": scope.get("maxMutations") if isinstance(scope.get("maxMutations"), int) else None},
