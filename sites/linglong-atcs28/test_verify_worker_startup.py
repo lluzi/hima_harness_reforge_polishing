@@ -22,6 +22,8 @@ spec.loader.exec_module(verify_module)
 class _VerifierFixture(unittest.TestCase):
     """A prepared Campaign workspace and slot w01, and the verifier run against them."""
 
+    DEF_TEXT = "synthetic input\n"
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -34,6 +36,7 @@ class _VerifierFixture(unittest.TestCase):
         self.expected_flow = verify_module.flow_hash(self.w / "flow")
         for name in ("db.enc", "net.v", "design.def", "design.sdc", "rc.spef"):
             (self.w / name).write_text("synthetic input\n")
+        (self.w / "design.def").write_text(self.DEF_TEXT)
         (self.w / "db.enc.dat").mkdir()
         (self.w / "db.enc.dat/data").write_text("synthetic DB\n")
         self.base = state.design_state({"top": "top", "stage": "postroute", "root": str(self.w),
@@ -127,12 +130,13 @@ class VerifierTest(_VerifierFixture):
         # Issue #64 Task 4: the session Tcl bakes targetPins, scope.maxMutations and observe.
         text = self.manual.read_text()
         self.assertIn("set ::EDIT_DOMAIN_PINS {U2/D}", text)
-        self.assertIn("set ::ATCS_MAX_MUTATIONS {120}", text)
+        budget = f"set ::ATCS_MAX_MUTATIONS {{{workspaces.SCOPE_MAX_MUTATIONS}}}"
+        self.assertIn(budget, text)
         self.assertIn("set ::ATCS_OBSERVE {full}", text)
         result = self.run_verifier()
         self.assertEqual(result.returncode, 0, result.stderr)
         startup = Path(json.loads(result.stdout)["startup"]).read_text()
-        for line in ("set ::EDIT_DOMAIN_PINS {U2/D}", "set ::ATCS_MAX_MUTATIONS {120}", "set ::ATCS_OBSERVE {full}"):
+        for line in ("set ::EDIT_DOMAIN_PINS {U2/D}", budget, "set ::ATCS_OBSERVE {full}"):
             self.assertIn(line, startup)
 
     def test_sixth_slot_is_verified(self):
@@ -159,14 +163,18 @@ class VerifierTest(_VerifierFixture):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(sentinel.exists())
 
-    def test_manual_tcl_and_record_hash_changed_together_are_refused(self):
-        self.manual.write_text("exec arbitrary-command\n")
-        self.index["workers"]["w01"]["sessionTclSha256"] = core.file_sha256(self.manual)
-        self.index_path.write_text(json.dumps(self.index))
+    def test_a_prepared_session_tcl_that_differs_from_its_recorded_hash_is_refused(self):
+        self.manual.write_text(self.manual.read_text() + "exec arbitrary-command\n")
+        result = self.run_verifier()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("differs from its recorded sha256", result.stderr)
+
+    def test_a_missing_operator_tcl_is_refused(self):
+        (self.slot / "operator.tcl").unlink()
         self.assertNotEqual(self.run_verifier().returncode, 0)
 
-    def test_operator_tcl_change_is_refused(self):
-        (self.slot / "operator.tcl").write_text("exec arbitrary-command\n")
+    def test_a_missing_session_tcl_is_refused(self):
+        self.manual.unlink()
         self.assertNotEqual(self.run_verifier().returncode, 0)
 
     def test_sibling_slot_manifest_is_refused(self):
@@ -274,6 +282,87 @@ class VerifierTest(_VerifierFixture):
         (cache / "core.cpython-312.pyc").write_bytes(b"untrusted cache")
         self.assertEqual(self.run_verifier().returncode, 0)
 
+
+# A base DEF the Pack reads: row pitch 1152 DBU at 2000 DBU/um = 0.576 um, so a plan instance's derived
+# region is its origin +- 4 rows (2.304 um) (`adapters.def_instance_regions`).
+PLACED_DEF = """VERSION 5.8 ;
+DESIGN top ;
+UNITS DISTANCE MICRONS 2000 ;
+DIEAREA ( 0 0 ) ( 400000 400000 ) ;
+ROW core_row_0 core 0 0 N DO 1000 BY 1 STEP 280 0 ;
+ROW core_row_1 core 0 1152 FS DO 1000 BY 1 STEP 280 0 ;
+COMPONENTS 2 ;
+ - U1 SOME_CELL + PLACED ( 20000 40000 ) N ;
+ - U9 SOME_CELL + FIXED ( 1000 1000 ) N ;
+END COMPONENTS
+END DESIGN
+"""
+
+
+class PackPreparedSlotTest(_VerifierFixture):
+    """T05 (#64 attempt 5, #66 D2): every operate-worker job exited 3 with "generated Tcl differs from
+    independent regeneration" before any Agent command: the verifier recompiled the session Tcl without the
+    ATCS-09 lines prepare-workers bakes (EDIT_DOMAIN_LOCAL, ATCS_LOCAL_FANOUT_MAX, derived regions). The
+    prepared session Tcl and operator.tcl are Runtime-owned inputs: the verifier keeps its static checks and
+    starts XTop from the prepared bytes. Here the head's real `prepare-workers` prepares the slot."""
+
+    DEF_TEXT = PLACED_DEF
+
+    def prepare_with_pack(self, regions=()):
+        packages = {slot: {"taskId": slot, "baseStateId": self.base["id"], "parked": True, "problem": "none"}
+                    for slot in workspaces.TASK_IDS}
+        packages["w02"] = {"taskId": "w02", "baseStateId": self.base["id"], "problem": "synthetic", "targets": [],
+            "editDomain": {"instances": ["U1"], "nets": ["n1"], "regions": [list(r) for r in regions]},
+            "protected": {"instances": [], "nets": []}, "mayAffect": [], "actions": ["size_cell"],
+            "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1}, "targetPins": ["U2/D"],
+            "scope": {"commands": list(workspaces.MUTATE_COMMANDS), "maxMutations": workspaces.SCOPE_MAX_MUTATIONS},
+            "observe": "fast"}
+        plan = self.root / "campaign-plan.json"
+        plan.write_text(json.dumps({"candidate": {"workPackages": packages, "reason": "r"}}))
+        result = subprocess.run([sys.executable, str(self.w / "flow/atcs_cli.py"), "prepare-workers", str(self.w),
+            str(self.w / "state/working-state.json"), str(self.profile_path), str(self.profile_path), str(plan)],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.index_path = self.w / "state/workers.json"
+        self.index = json.loads(self.index_path.read_text())
+        entry = self.index["workers"]["w02"]
+        self.slot = self.w / entry["root"]
+        self.manual = Path(entry["sessionTcl"])
+        return entry
+
+    def test_a_pack_prepared_slot_with_the_atcs09_lines_starts_from_its_prepared_bytes(self):
+        entry = self.prepare_with_pack()
+        self.assertIs(entry["localTopology"], True)
+        self.assertEqual(entry["derivedRegions"], [[7.696, 17.696, 12.304, 22.304]])
+        prepared = self.manual.read_bytes()
+        for line in (b"set ::EDIT_DOMAIN_LOCAL {1}\n", b"set ::ATCS_LOCAL_FANOUT_MAX {12}\n",
+                     b"set ::EDIT_DOMAIN_REGIONS {7.696 17.696 12.304 22.304}"):
+            self.assertIn(line, prepared)
+        result = self.run_verifier("w02")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertEqual(receipt["slotRoot"], str(self.slot))
+        startup = Path(receipt["startup"])
+        self.assertTrue(startup.is_relative_to(self.admin))
+        self.assertEqual(startup.read_bytes(), prepared)
+
+    def test_a_plans_own_regions_start_too(self):
+        self.prepare_with_pack(regions=[(0, 0, 5, 5)])
+        result = self.run_verifier("w02")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(Path(json.loads(result.stdout)["startup"]).read_bytes(), self.manual.read_bytes())
+
+    def test_a_tampered_prepared_session_is_refused(self):
+        self.prepare_with_pack()
+        self.manual.write_text(self.manual.read_text().replace("{12}", "{100000}"))
+        result = self.run_verifier("w02")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("differs from its recorded sha256", result.stderr)
+
+    def test_a_missing_base_input_is_refused(self):
+        self.prepare_with_pack()
+        (self.w / "design.sdc").unlink()
+        self.assertNotEqual(self.run_verifier("w02").returncode, 0)
 
 FRESH = Path(__file__).with_name("fresh-worker-slot.py")
 WRAPPER_V13 = Path(__file__).with_name("atcs-xtop-operator-v13.sh")

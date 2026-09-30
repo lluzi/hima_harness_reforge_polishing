@@ -139,6 +139,9 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
   ].join('\n'), path.join(repoRoot, 'packs', packId, 'flow'),
     path.join(repoRoot, 'packs', packId, 'flow/tests'), workspace, capsPath], { encoding: 'utf8' });
   assert.equal(seeded.status, 0, seeded.stderr);
+  // The Reader script the Workshops call as hima-readers/atcs-readiness/read-atcs.py; this Run starts at
+  // prepare-workers, so no Reader has been shipped to the workspace yet and the stand-in authors use a copy.
+  await cp(path.join(repoRoot, 'packs', packId, 'tools/read-atcs.py'), path.join(workspace, 'seed/read-atcs.py'));
 
   const control = () => host.ctx.hima.ledger.run(runId)!.control!;
   const context = () => host.ctx.hima.executionContext(runId);
@@ -194,8 +197,13 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
     }, 60000, 25);
     return id;
   };
+  // The stand-in author copies its seed request and, for an active slot, runs the Reader's brief step
+  // its Workshop's purpose names (#64 T05 w03: the Operator's task embeds operatorBrief).
   const copyEntry = (slot: string, seed: string) => JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA,
-    entry: `import shutil, sys\nshutil.copyfile(sys.argv[1] + "/seed/${seed}.json", sys.argv[1] + "/research/requests/worker-request-${slot}.json")\n` });
+    entry: ['import json, shutil, subprocess, sys', 'w = sys.argv[1]', `target = w + "/research/requests/worker-request-${slot}.json"`,
+      `shutil.copyfile(w + "/seed/${seed}.json", target)`,
+      'if not json.load(open(target))["candidate"].get("parked"):',
+      '    subprocess.run([sys.executable, w + "/seed/read-atcs.py", "brief", target], check=True)', ''].join('\n') });
   await Promise.all(slots.map(async slot => {
     // #64 Track B: slot w02's first request is refused, as live02's were.
     await answer(await authorAsked(slot), copyEntry(slot, slot === 'w02' ? 'worker-request-w02-refused' : `worker-request-${slot}`));
@@ -231,9 +239,12 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
   const at = task.indexOf('Exact input workerRequest01 ');
   assert.ok(at >= 0, `the Operator's task embeds workerRequest01: ${task.slice(0, 400)}`);
   const embedded = JSON.parse(task.slice(task.indexOf('\n', at) + 1).split('\n')[0]!);
-  for (const field of ['taskId', 'editDomain', 'targetPins', 'problem', 'scope', 'actions']) {
-    assert.deepEqual(embedded.candidate[field], request.candidate[field], `the embedded request carries candidate.${field}`);
-  }
+  assert.equal(embedded.candidate, undefined, 'the task embeds the bounded brief, never the whole candidate');
+  assert.deepEqual(embedded.operatorBrief, request.operatorBrief, 'the embedded brief is the admitted request\'s own');
+  assert.equal(embedded.operatorBrief.taskId, request.candidate.taskId);
+  assert.deepEqual(embedded.operatorBrief.scope, { commands: request.candidate.scope.commands, maxMutations: request.candidate.scope.maxMutations });
+  assert.equal(embedded.operatorBrief.targets.count, request.candidate.targets.length);
+  assert.deepEqual(operator!.effective.tools, ['hima_interactive', 'hima_delegation_input'], `the Operator reads its exact request in bounded windows: ${JSON.stringify((operator!.effective as any).unavailable)}`);
   assert.match(task, new RegExp(planHash), 'and its plan hash');
   assert.match(task, /before\.dump/); assert.match(task, /after\.dump/);
   assert.deepEqual((operator!.effective.recipe!.inlinePayload as any).scope, { commands: ['atcs_size_cell', 'atcs_undo'], maxMutations: 2 });
@@ -472,7 +483,10 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     commands: mutations, maxMutations: recipeCap, hostPlanHashArgument: 'planSha256' });
   // #64 M-T03-1: the Operator's task embeds its request; its template names the fields it works from
   // and the exact dump names the capture seals (#64 D-T03-2).
-  assert.deepEqual(operatorMember.taskInputs, [{ input: 'workerRequest01', fields: ['candidate', 'sessionPlan', 'noSafeAction', 'siteCapabilities'] }]);
+  assert.deepEqual(operatorMember.taskInputs, [{ input: 'workerRequest01', fields: ['operatorBrief', 'sessionPlan', 'siteCapabilities'] }]);
+  // #64 T05 w03: the task holds a bounded brief; the Operator reads its exact request in bounded windows.
+  assert.deepEqual(operatorMember.allowedTools, ['hima_interactive', 'hima_delegation_input']);
+  assert.match(operatorMember.taskTemplate, /hima_delegation_input \(runId, recordId, path, offset, limit\)[^.]*window\.next/);
   for (const words of [/editDomain\.instances/, /editDomain\.nets/, /targetPins/, /Exact input workerRequest01/, /exactly this file name/]) {
     assert.match(operatorMember.taskTemplate, words, `the Operator template states ${words}`);
   }

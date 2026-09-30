@@ -125,6 +125,10 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
   ].join('\n'), path.join(repoRoot, 'packs', packId, 'flow'), path.join(repoRoot, 'packs', packId, 'flow/tests'), workspace, capsPath,
   path.join(dry, 'design/top.v')], { encoding: 'utf8' });
   assert.equal(seeded.status, 0, seeded.stderr);
+  // The Reader script the Workshops call as hima-readers/atcs-readiness/read-atcs.py; this Run starts at
+  // prepare-workers, so no Reader has been shipped yet and the stand-in authors use a copy.
+  await mkdir(path.join(workspace, 'stand-in'), { recursive: true });
+  await cp(path.join(repoRoot, 'packs', packId, 'tools/read-atcs.py'), path.join(workspace, 'stand-in/read-atcs.py'));
 
   const control = () => host.ctx.hima.ledger.run(runId!)!.control!;
   const records = () => host.ctx.hima.ledger.records({ runId: runId! });
@@ -157,7 +161,9 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
     'workers = json.loads((w / "state/workers.json").read_text())',
     `package = {k: v for k, v in workers["workers"]["${slot}"]["workPackage"].items() if k not in ("schema", "id")}`,
     'request = {"candidate": package, "baseState": json.loads((w / "state/working-state.json").read_text()), "siteCapabilities": {"pgVerification": False}}',
-    `(w / "research/requests/worker-request-${slot}.json").write_text(json.dumps(request))`, ''].join('\n');
+    `path = w / "research/requests/worker-request-${slot}.json"`, 'path.write_text(json.dumps(request))',
+    'if not package.get("parked"):',
+    '    import subprocess; subprocess.run([sys.executable, str(w / "stand-in/read-atcs.py"), "brief", str(path)], check=True)', ''].join('\n');
   await Promise.all(SLOTS.map(async slot => {
     let id = '';
     await waitUntil(`research-worker-${slot.slice(1)}'s author is asked`, () => {

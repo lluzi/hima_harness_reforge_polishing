@@ -109,7 +109,8 @@
     "test/contract/workbench-address.test.ts",
     "test/contract/workshop-recovery.host.test.ts",
     "test/contract/workshop.host.test.ts",
-    "test/contract/xtop-timing-closure.test.ts"
+    "test/contract/xtop-timing-closure.test.ts",
+    "test/contract/delegation-input-bounded.host.test.ts"
   ],
   "desktop": [
     "test/contract/campaign-graph.desktop.test.ts",
@@ -144,7 +145,8 @@
   "live-site": [
     "test/contract/jobs.live.test.ts",
     "test/contract/pack.live.test.ts",
-    "test/contract/ssh.live.test.ts"
+    "test/contract/ssh.live.test.ts",
+    "test/contract/atcs-operator-qualification.live.test.ts"
   ],
   "atcs-dry": [
     "test/contract/atcs-dry-path.host.test.ts"

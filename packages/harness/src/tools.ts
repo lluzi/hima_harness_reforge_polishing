@@ -208,11 +208,14 @@ export function guideTools(operations: {
   memory(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }): Promise<object>;
   delegate?(request: import('./delegation-runtime.js').RunDelegationRequest):Promise<object>;
   interactive?(sessionId:string,request:unknown):Promise<object>;
-  delegationInput?(sessionId:string,request:{runId:string;recordId:string}):Promise<object>;
+  delegationInput?(sessionId:string,request:{runId:string;recordId:string;path?:string;offset?:number;limit?:number}):Promise<object>;
 }): ToolDefinition[] {
   return [defineTool({
-    name:'hima_delegation_input',description:'Read one exact input reference granted to this child by its recorded delegation. No file path or record enumeration; unavailable or invalidated evidence is refused. Material hashes refer to original verified bytes and any text truncation is explicit.',
-    parameters:{runId:{type:'string',required:true},recordId:{type:'string',required:true}},
+    name:'hima_delegation_input',description:'Read one exact input reference granted to this child by its recorded delegation. No file path or record enumeration; unavailable or invalidated evidence is refused. Material hashes refer to original verified bytes and any text truncation is explicit. An input too large for one view is read in bounded windows: path names one field of its JSON document (dotted, such as candidate.targets or candidate.targets.3, or a JSON pointer such as /candidate/targets), offset and limit page its array items, object entries or string characters; each answer states the record, its content SHA-256, the path and the window {unit, offset, limit, returned, total, next}.',
+    parameters:{runId:{type:'string',required:true},recordId:{type:'string',required:true},
+      path:{type:'string',description:'Dotted field path or JSON pointer into the input\'s JSON document; empty for the whole document.'},
+      offset:{type:'number',description:'First item, entry or character of the window (default 0).'},
+      limit:{type:'number',description:'At most this many items, entries or characters (default: as many as one bounded view holds).'}},
     output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
     execute:async(args,execution)=>{if(!execution.agent||!operations.delegationInput)throw new Error('Delegated input reader is unavailable.');return toolJson(await operations.delegationInput(String(execution.agent.id),args));},
   }),defineTool({

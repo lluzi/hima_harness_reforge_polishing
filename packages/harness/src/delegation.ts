@@ -249,6 +249,77 @@ const roleTools: Readonly<Record<DelegationRole, ReadonlySet<string>>> = {
   operator: new Set(['hima_interactive', delegationInputTool]),
 };
 
+/** A bounded selection of one delegated input (`hima_delegation_input` `path`/`offset`/`limit`, #64 T05 w03). */
+export interface DelegationInputSelection { readonly path?: string; readonly offset?: number; readonly limit?: number }
+export interface DelegationInputWindow {
+  readonly unit: 'items' | 'entries' | 'chars' | 'value'; readonly offset: number; readonly limit: number | null;
+  readonly returned: number; readonly total: number; readonly next: number | null;
+}
+export const delegationInputSelected = (request: DelegationInputSelection): boolean =>
+  request.path !== undefined || request.offset !== undefined || request.limit !== undefined;
+
+const pathSegments = (named: string): string[] | undefined => {
+  if (named === '' || named === '/') return [];
+  if (named.startsWith('/')) return named.slice(1).split('/').map((part) => part.replaceAll('~1', '/').replaceAll('~0', '~'));
+  const parts = named.split('.');
+  return parts.some((part) => part === '') ? undefined : parts;
+};
+
+/**
+ * One window of the node `path` names in an input's text (its JSON document; a text that is not JSON
+ * has only the empty path): the items of an array, the entries of an object, the characters of a
+ * string, or a scalar. `fits` says whether an answer carrying a candidate value and window stays inside
+ * the reader's bounded view; the window returned is the longest from `offset`, up to `limit`, that
+ * fits. A path that names nothing in the document, or a malformed window, is a refusal.
+ */
+export function selectDelegationInput(text: string, request: DelegationInputSelection,
+  fits: (value: unknown, window: DelegationInputWindow) => boolean): { ok: true; value: unknown; window: DelegationInputWindow } | { ok: false; reason: string } {
+  const named = request.path ?? '';
+  if (typeof named !== 'string' || named.length > 1024) return { ok: false, reason: 'path must be a dotted field path or a JSON pointer of at most 1024 characters.' };
+  const offset = request.offset ?? 0;
+  if (!Number.isSafeInteger(offset) || offset < 0) return { ok: false, reason: 'offset must be a non-negative integer.' };
+  if (request.limit !== undefined && (!Number.isSafeInteger(request.limit) || request.limit < 1)) return { ok: false, reason: 'limit must be a positive integer.' };
+  const segments = pathSegments(named);
+  if (segments === undefined) return { ok: false, reason: `path ${JSON.stringify(named)} is not a dotted field path or a JSON pointer.` };
+  let node: unknown;
+  try { node = JSON.parse(text); } catch { node = text; if (segments.length > 0) return { ok: false, reason: 'This input is not JSON: only its text, at the empty path, can be selected.' }; }
+  for (const [index, segment] of segments.entries()) {
+    const at = segments.slice(0, index + 1).join('.');
+    if (Array.isArray(node)) {
+      if (!/^(0|[1-9][0-9]*)$/.test(segment) || Number(segment) >= node.length) return { ok: false, reason: `path ${JSON.stringify(named)} does not exist in this input (no item ${at}).` };
+      node = node[Number(segment)];
+    } else if (node !== null && typeof node === 'object' && Object.hasOwn(node, segment)) {
+      node = (node as Record<string, unknown>)[segment];
+    } else return { ok: false, reason: `path ${JSON.stringify(named)} does not exist in this input (no field ${at}).` };
+  }
+  const limit = request.limit ?? null;
+  const windowOf = (unit: DelegationInputWindow['unit'], returned: number, total: number): DelegationInputWindow =>
+    ({ unit, offset, limit, returned, total, next: offset + returned < total ? offset + returned : null });
+  const longest = (total: number, unit: DelegationInputWindow['unit'], slice: (count: number) => unknown) => {
+    if (offset > total) return { ok: false as const, reason: `offset ${offset} is beyond the ${total} ${unit} at this path.` };
+    let low = 0; let high = Math.min(limit ?? total - offset, total - offset);
+    while (low < high) { const mid = Math.ceil((low + high) / 2); if (fits(slice(mid), windowOf(unit, mid, total))) low = mid; else high = mid - 1; }
+    return { ok: true as const, value: slice(low), window: windowOf(unit, low, total) };
+  };
+  if (Array.isArray(node)) { const items = node; return longest(items.length, 'items', (count) => items.slice(offset, offset + count)); }
+  if (typeof node === 'string') {
+    const chars = node;
+    const found = longest(chars.length, 'chars', (count) => chars.slice(offset, offset + count));
+    // Never end a window inside a surrogate pair: the next window starts at its high half.
+    if (found.ok && found.window.returned > 1 && /[\uD800-\uDBFF]/.test(chars[offset + found.window.returned - 1] ?? '')) {
+      const returned = found.window.returned - 1;
+      return { ok: true, value: chars.slice(offset, offset + returned), window: windowOf('chars', returned, chars.length) };
+    }
+    return found;
+  }
+  if (node !== null && typeof node === 'object') {
+    const entries = Object.entries(node);
+    return longest(entries.length, 'entries', (count) => Object.fromEntries(entries.slice(offset, offset + count)));
+  }
+  if (offset !== 0) return { ok: false, reason: 'A scalar has no window: omit offset.' };
+  return { ok: true, value: node, window: windowOf('value', 1, 1) };
+}
+
 export class DelegationError extends Error {
   readonly code: 'hima/delegation-invalid' | 'hima/delegation-unavailable' | 'hima/delegation-refused';
   constructor(code: 'hima/delegation-invalid' | 'hima/delegation-unavailable' | 'hima/delegation-refused', message: string) {
