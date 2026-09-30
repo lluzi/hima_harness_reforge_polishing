@@ -491,6 +491,30 @@ test('two fork branches each hold an interactive Job driven by their own Team at
   });
 });
 
+test('an Operator that asks the Harness to close its own session settles the node ready for completion, never a failed attempt (#64 D-T03-1)', async (t) => {
+  await forkedCampaign(t, 2, async (driven) => {
+    const owner = ownerCalls(driven);
+    const { interactive, send, settleOperate, planHashOf } = await teamsReady(driven, owner);
+    const [branch] = branches;
+    const opened = await interactive(branch, { action: 'open', requestId: 'open-close-race' });
+    assert.equal(opened.status, 'opened', JSON.stringify(opened));
+    const toolSessionId = opened.session.toolSessionId as string;
+    // The whole reviewed session except the toolkit's own close: the Operator then asks the Harness
+    // to close it, as the live Operators of attempt 3 did, and the REPL ends by hangup with no exit status.
+    for (const [step, [name, args]] of reviewedSteps(owner, planHashOf).slice(0, -1).entries()) {
+      const sent = await send(branch, toolSessionId, name, args(branch), `close-race-${step}`);
+      assert.equal(sent.status, 'completed', `${name}: ${JSON.stringify(sent)}`);
+    }
+    const closed = await interactive(branch, { action: 'close', requestId: 'close-race-close', toolSessionId });
+    assert.equal(closed.status, 'closed', JSON.stringify(closed));
+    await settleOperate(branch);
+    const records = owner.records();
+    assert.equal(records.filter((record) => record.type === 'node' && record.nodeId === branch.operate
+      && (record.state === 'retrying' || record.state === 'blocked')).length, 0, 'the requested close is not a failed attempt');
+    await owner.node(branch.capture);
+  });
+});
+
 test('under a Site cap of one, the second branch\'s interactive open is refused while the first holds the slot, opens once it is free, and its stop names its branch', async (t) => {
   await forkedCampaign(t, 1, async (driven) => {
     const owner = ownerCalls(driven);
