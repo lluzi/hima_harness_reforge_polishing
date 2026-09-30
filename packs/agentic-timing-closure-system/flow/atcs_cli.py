@@ -105,7 +105,7 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 8 | `collect` | (none) | reads whichever `contribution-w0N.json` exist AND still matches `state/workers.json[slot]`'s current revision (`contribution-index` read envelope: `{"contributions","pending":[{"slot","reason"}]}` -- see "Task 12c fix round" below) | `state/contributions-collected.json` |
 | 9 | `compose-facts` | plan(the SAME admitted integration-plan envelope row 10 reads; absent on the first pass -- see "Task 12c fix round" below) | `composition.analyze` (`baseStateId` from `state/working-state.json`; `resolutions` from the admitted plan, `[]` on the first pass; `worst_checks` from `state/observation.json` when it observes that state, for the xtop-session recipe's blocker coverage) | `state/composition-facts.json` |
 | 10 | `replay-prepare` | baseState(`state/working-state.json`), plan(the admitted integration-plan envelope `{"plan":...,"facts":...}` -- see "Task 12c fix round" below), siteProfile; baseState, plan, siteProfile, autoFinish(optional knob `0`/`1`, overrides `plan.autoFinish`) | recipe batch (`composition-facts.recipe`, Issue #64 Task 6): `integration.prepare_recipe_replay` then `adapters.compile_recipe_replay_task` + `run_tool` for the merged and control arms at once (`integrations/<batchId>/{merged,control}/`); legacy `fix` selection: `integration.validate_plan` + `integration.prepare_replay` then `adapters.compile_xtop_replay_task` + `run_tool` (best-effort) | `state/replay-request.json` |
-| 11 | `reconcile` | (none -- edit domains come from `state/workers.json`, see "Task 12c fix round" below) | recipe batch: `adapters.read_replay_arm` (x2) + `integration.reconcile_recipe` (safety, choice); legacy: `integration.reconcile` | `state/integration-state.json` |
+| 11 | `reconcile` | (none -- legacy edit domains come from `state/workers.json`, see "Task 12c fix round" below; a recipe batch's from `state/replay-request.json`, each session's sealed `effectiveDomain` per `_recipe_sessions`) | recipe batch: `adapters.read_replay_arm` (x2) + `integration.reconcile_recipe` (safety, choice, `manualValue`); legacy: `integration.reconcile` | `state/integration-state.json` |
 | 12 | `presta` | baseState(`state/working-state.json`), scenariosContract, siteProfile | `integration.seal_batch` (read-only re-derivation, for `newNets`) + `adapters.compile_pt_presta_task` + `run_tool`, `verification.precheck_evidence` (a recipe batch also seals `batchKind: "recipe"` and whether the pre-check is `predictive`; it never gates) | `state/presta.json` (the stamped `precheckEvidence` artifact) |
 | 13 | `implement` | currentDesignState(`state/working-state.json`), siteProfile | `integration.seal_batch` then `adapters.compile_innovus_eco_task` + `run_tool` (a recipe batch sources the chosen ECO pair, copied under `implementations/<mergeId>/eco/` only if its sha256 still matches the seal; refuses `stale-base` unless the sealed merge commit's own `parentStateId` equals `currentDesignState["id"]`; refuses `write-once` if `implementations/<mergeId>/`'s own outputs already exist -- C2, final review) | `state/implement.json` |
 | 14 | `extract` | corners, siteProfile | `adapters.compile_starrc_task` + `run_tool` (per corner) | `state/extract.json` |
@@ -1936,10 +1936,14 @@ def _is_recipe_batch(facts, plan_raw, collected):
 
 
 def _recipe_sessions(workspace, recipe, collected, base_state_id):
-    """`{taskId: identity}` for every ranked recipe session: the slot's admitted work package
-    (`state/workers.json`: namePrefix, editDomain, targetPins) and its sealed Contribution
-    (id, revision, dump delta). A slot missing either is left out, so
-    `integration.prepare_recipe_replay` refuses it (`invalid-recipe`)."""
+    """`{taskId: identity}` for every ranked recipe session: the slot's name prefix
+    (`state/workers.json`), its sealed Contribution (id, revision, dump delta) and the domain the
+    replay enters (#66 D6). The domain is the Contribution's ``effectiveDomain`` (the worker
+    session's sealed ``domain.json``: instances, nets, regions, targetPins); only a Contribution
+    without one falls back to the slot's admitted work package (``editDomain``, ``targetPins``).
+    ``domainSource`` names which (``effectiveDomain`` or ``workPackage``). A slot missing its
+    worker entry or Contribution is left out, so `integration.prepare_recipe_replay` refuses it
+    (`invalid-recipe`)."""
     workers = (_read_plain(_paths(workspace)["workers"]).get("workers") or {})
     by_id = {contribution.get("id"): contribution for contribution in collected.get("contributions") or []}
     sessions = {}
@@ -1951,11 +1955,20 @@ def _recipe_sessions(workspace, recipe, collected, base_state_id):
             continue
         if _is_stale_base(contribution.get("baseStateId"), base_state_id):
             raise core.AtcsError("stale-base", f"recipe session {slot!r} was sealed against another base")
-        work_package = entry.get("workPackage") or {}
+        effective = contribution.get("effectiveDomain")
+        if isinstance(effective, dict):
+            source = "effectiveDomain"
+            edit_domain = {key: effective.get(key) or [] for key in ("instances", "nets", "regions")}
+            target_pins = effective.get("targetPins") or []
+        else:
+            source = "workPackage"
+            work_package = entry.get("workPackage") or {}
+            edit_domain = work_package.get("editDomain") or {}
+            target_pins = work_package.get("targetPins") or []
         sessions[slot] = {
             "contributionId": contribution["id"], "revision": contribution.get("revision"),
-            "namePrefix": entry.get("namePrefix"), "editDomain": work_package.get("editDomain") or {},
-            "targetPins": work_package.get("targetPins") or [], "delta": contribution.get("delta"),
+            "namePrefix": entry.get("namePrefix"), "editDomain": edit_domain, "targetPins": target_pins,
+            "domainSource": source, "delta": contribution.get("delta"),
         }
     return sessions
 

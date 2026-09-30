@@ -7,8 +7,9 @@
 #
 #   ::ATCS_ARM merged   000.dump; per ranked session (RECIPE_TCL): its kept
 #                       commands through the toolkit procedures, confined to
-#                       that session's own edit domain, name prefix and plan
-#                       hash, as its worker session was, then NNN.dump;
+#                       the domain its Contribution sealed (effectiveDomain,
+#                       #66 D6; its admitted package when it sealed none), its
+#                       name prefix and plan hash, then NNN.dump;
 #                       set_dont_touch on every instance the applied commands
 #                       changed; auto-finish (AUTO_FIX_TCL: the control arm's
 #                       plain auto-fix; empty when autoFinish is off);
@@ -32,8 +33,8 @@
 #   PREDICT_DIR   setup.rpt, hold.rpt: summarize_gba_violations -exclude_path;
 #                 setup-fail-reasons.rpt, hold-fail-reasons.rpt: the same with
 #                 -with_top_n FAIL_REASON_TOP_N -with_fail_reason, after auto-fix
-#   ARM_RESULT    {"arm","complete":true,"tainted","protected","protectMissing","protectCode",
-#                  "protectResult","autoFix":[{command,code,result}],
+#   ARM_RESULT    {"arm","complete":true,"tainted","appliedCommands","protected","protectedCount",
+#                  "protectMissing","protectCode","protectResult","autoFix":[{command,code,result}],
 #                  "predict":{"setup","hold"},"failReasons":{"setup","hold"},
 #                  "exportCode","exportResult"},
 #                 written last: its absence means the run never finished.
@@ -54,20 +55,25 @@ foreach file [list $env(RECIPE_TCL) $env(AUTO_FIX_TCL)] {
 file mkdir $env(DUMP_DIR)
 file mkdir $env(PREDICT_DIR)
 set ::atcs_replay_slot ""
+set ::atcs_replay_applied 0
 
 proc atcs_replay_receipt {fields} {
     atcs_append $::env(RECEIPTS_LOG) [atcs_jobj $fields]
 }
-# Enter one ranked session: its own edit domain, new-object prefix and plan
-# hash, as its worker session had them. The toolkit pins one plan hash per
-# session and treats objects a session created as its own domain, so both are
-# reset: a session never edits another session's objects.
+# Enter one ranked session: the domain its Contribution sealed (the worker
+# session's domain.json, #66 D6), its new-object prefix and plan hash. The
+# sealed domain is entered as recorded, never derived or widened here: a
+# remove_buffer whose input net the record lacks is refused, not admitted. The
+# toolkit pins one plan hash per session and treats objects a session created
+# as its own domain, so both are reset: a session never edits another
+# session's objects.
 proc atcs_replay_session {slot prefix instances nets pins regions} {
     if {[llength $regions] % 4 != 0} { error "session $slot regions must hold x1 y1 x2 y2 boxes" }
     foreach value $regions {
         if {![string is double -strict $value]} { error "session $slot regions hold a non-number '$value'" }
     }
     set ::atcs_replay_slot $slot
+    set ::EDIT_DOMAIN_LOCAL 0
     set ::EDIT_DOMAIN_INSTANCES $instances
     set ::EDIT_DOMAIN_NETS $nets
     set ::EDIT_DOMAIN_PINS $pins
@@ -77,6 +83,7 @@ proc atcs_replay_session {slot prefix instances nets pins regions} {
     set ::env(NAME_PREFIX) $prefix
     set ::atcs_plan_sha256 ""
     set_parameter eco_new_object_prefix "${prefix}eco"
+    puts "ATCS:replay-domain:$slot:[llength $instances] instances, [llength $nets] nets"
 }
 proc atcs_replay_step {step_id skip call} {
     set fields [list stepId [atcs_js $step_id] slot [atcs_js $::atcs_replay_slot]]
@@ -87,6 +94,7 @@ proc atcs_replay_step {step_id skip call} {
     set kept [llength $::atcs_kept]
     set code [catch {uplevel #0 $call} message]
     if {$code == 0 && [llength $::atcs_kept] > $kept} {
+        incr ::atcs_replay_applied
         atcs_replay_receipt [concat $fields [list status [atcs_js applied] attempted true seq [lindex $::atcs_kept end]]]
     } else {
         set reason [expr {$code == 0 ? "no-change" : [atcs_clip $message 2000]}]
@@ -170,7 +178,8 @@ if {$::ATCS_ARM eq "merged"} {
 set fh [open $env(ARM_RESULT) w]
 fconfigure $fh -encoding utf-8
 puts $fh [atcs_jobj [list arm [atcs_js $::ATCS_ARM] complete true tainted [atcs_js $::atcs_tainted] \
-    protected [atcs_jarr $protected] protectMissing [atcs_jarr $protect_missing] protectCode $protect_code protectResult [atcs_js [atcs_clip $protect_result 2000]] \
+    appliedCommands $::atcs_replay_applied protected [atcs_jarr $protected] protectedCount [llength $protected] \
+    protectMissing [atcs_jarr $protect_missing] protectCode $protect_code protectResult [atcs_js [atcs_clip $protect_result 2000]] \
     autoFix "\[[join $auto_fix ,]\]" predict [atcs_jobj [list setup $predict_setup hold $predict_hold]] \
     failReasons [atcs_jobj $fail_reason_codes] \
     exportCode $export_code exportResult [atcs_js [atcs_clip $export_result 2000]]]]

@@ -954,14 +954,15 @@ class LocalTopologyDomainTest(unittest.TestCase):
 
     def test_the_replay_never_derives(self):
         # The replay renders this same template below its own globals and enters each session's sealed
-        # domain (atcs_replay_session); it never bakes EDIT_DOMAIN_LOCAL, so the template default 0 holds.
+        # domain (atcs_replay_session); it never bakes EDIT_DOMAIN_LOCAL, so the template default 0 holds
+        # (a baked global renders as `set ::NAME {value}`; atcs_replay_session itself resets it to 0, #66 D6).
         from test_adapters import _recipe_request, _xtop_context as replay_context
         task = adapters.compile_recipe_replay_task(
             "top", "/pdk/tech.lef", "/pdk/cells/*.lef", "/ws/netlist.v", "/ws/design.def", _recipe_request(),
             "/ws/integrations/b1", replay_context())
         for arm in ("merged", "control"):
-            self.assertNotIn("set ::EDIT_DOMAIN_LOCAL", task["arms"][arm]["tcl"], arm)
-            self.assertNotIn("set ::ATCS_LOCAL_FANOUT_MAX", task["arms"][arm]["tcl"], arm)
+            self.assertNotIn("set ::EDIT_DOMAIN_LOCAL {", task["arms"][arm]["tcl"], arm)
+            self.assertNotIn("set ::ATCS_LOCAL_FANOUT_MAX {", task["arms"][arm]["tcl"], arm)
         session = Session(self, domain={"instances": ["U1"], "nets": ["N2"], "regions": []},
                           target_pins=["U9/D"], local=False).run("")
         self.assertNotIn("ATCS:domain:", session.stdout)
