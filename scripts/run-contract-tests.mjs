@@ -31,12 +31,12 @@ try {
   const selection = list ? options.slice(1) : options;
   const explicit = selection[0] === '--files';
   if ((selection.length && !explicit) || (group === '--check' && options.length)) {
-    throw new Error('usage: node scripts/run-contract-tests.mjs local|desktop|live-site [--list] [--files <path>...], or --check');
+    throw new Error('usage: node scripts/run-contract-tests.mjs local|desktop|live-site|live-model|atcs-dry [--list] [--files <path>...], or --check');
   }
   if (group === '--check') {
     console.log(`contract inventory: ${found.length} files, each assigned exactly once`);
   } else {
-    if (!Object.hasOwn(groups, group)) throw new Error('choose a group: local, desktop, live-site');
+    if (!Object.hasOwn(groups, group)) throw new Error(`choose a group: ${Object.keys(groups).join(', ')}`);
     const files = explicit ? selection.slice(1) : groups[group];
     if (!files.length) throw new Error(`no tests in ${group}`);
     if (files.some((file) => !groups[group].includes(file)) || new Set(files).size !== files.length) {
