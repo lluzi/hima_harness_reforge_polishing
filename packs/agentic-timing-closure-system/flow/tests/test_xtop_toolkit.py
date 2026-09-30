@@ -335,11 +335,22 @@ proc insert_buffer {args} {
     foreach f $::stub_insert_removes { unset ::cells($f) }
     return 1
 }
+# Real XTop (#64 T06 w01 seq1): insert_dummy_cell creates the cell in its pin's module
+# (swerv_dbg/atcs_w01_r1_dum0 for a swerv_dbg/... pin), returns "" and adds one ECO action whose
+# cells `get_eco_cells -last_n` does not list; set ::stub_dummy_as_xtop 1 to model it.
+set ::stub_dummy_as_xtop 0
 proc insert_dummy_cell {args} {
     stub_record insert_dummy_cell {*}$args
     stub_gate insert_dummy_cell
     lassign [stub_opts {-design -new_cell_name -location} $args] o pos
     set n [stub_one $o -new_cell_name]
+    if {$::stub_dummy_as_xtop} {
+        set module [join [lrange [split [stub_strip [lindex $pos 0]] /] 0 end-2] /]
+        if {$module ne ""} { set n "$module/$n" }
+        stub_act {}
+        set ::cells($n) [lindex $pos 1]
+        return ""
+    }
     stub_act [list $n]
     set ::cells($n) [lindex $pos 1]
     return 1
@@ -1757,6 +1768,23 @@ class ObservedEffectConfinementTest(unittest.TestCase):
         self.assertIs(session.ops[0]["matchesRequest"], False)
         self.assertEqual(session.ops[0]["after"], {"instances": {f"u_core/{PREFIX}z{PREFIX}b1": "BUFX2"}})
         self.assertIs(session.ops[1]["matchesRequest"], True)
+
+    def test_t06_a_dummy_xtop_places_in_the_pins_module_is_kept(self):
+        """D-T06-4(d) (#64 T06 w01 seq1): insert_dummy_cell returned code 0 with ecoActions 1 and created
+        swerv_dbg/atcs_w01_r1_dum0, which the after-dump holds, but the toolkit said "reported success but
+        the design did not change": in fast mode `get_eco_cells -last_n` does not list the new dummy. The
+        requested new instance, under its name or in its pin's module, is observed directly."""
+        session = Session(self).run(
+            "set ::stub_dummy_as_xtop 1; set ::cells(M/UF) DFFX1; set ::pin_net(M/UF/D) N1\n"
+            f"T w01 {{atcs_insert_dummy M/UF/D BUFX1 {PREFIX}dum0 {PLAN}}}\n"
+            "puts CELLS:[stub_cells]\n"
+            f"T undo {{atcs_undo {PLAN}}}\n")
+        self.assertEqual(session.outcome("w01")[0], "OK", session.stdout)
+        (op, undo) = session.ops
+        self.assertEqual([op["status"], op["matchesRequest"]], ["kept", True])
+        self.assertEqual(op["after"], {"instances": {f"M/{PREFIX}dum0": "BUFX1"}})
+        self.assertIn(f"M/{PREFIX}dum0=BUFX1", session.cells_line())
+        self.assertEqual([undo["cmd"], undo["status"]], ["undo", "kept"], session.stdout)
 
     def test_an_insert_placed_in_its_loads_module_matches_the_request(self):
         # Real XTop (Task 7, w01): `insert_buffer -new_cell_names atcs_w01_r1_chain_d0` on a load pin

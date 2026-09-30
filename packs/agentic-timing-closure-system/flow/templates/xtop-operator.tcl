@@ -506,7 +506,7 @@ proc atcs_observe_before {} {
 # in-domain changes and created instances (fillers excluded); outOfDomain holds
 # out-of-domain instances, and instance@net for a created instance on a
 # pre-existing out-of-domain net or a removed instance with an out-of-domain net.
-proc atcs_observe_after {pre} {
+proc atcs_observe_after {pre {probe {}}} {
     set c0 [dict get $pre count]
     set c1 [atcs_eco_count]
     set d0 [dict get $pre domain]
@@ -542,6 +542,14 @@ proc atcs_observe_after {pre} {
             } else {
                 lappend bad $name
             }
+        }
+        # D-T06-4(d) (#64 T06 w01 seq1): `get_eco_cells -last_n` does not list a cell insert_dummy_cell
+        # created (in its pin's module), so a requested new instance absent before the call is read directly.
+        foreach name $probe {
+            if {[dict exists $delta $name] || [lsearch -exact $bad $name] >= 0} { continue }
+            set m1 [atcs_cell_master $name]
+            if {$m1 eq ""} { continue }
+            if {[atcs_leaf_prefixed $name]} { dict set delta $name [list "" $m1] } else { lappend bad $name }
         }
     }
     # The cells every ECO action touched, moves, reconnects and swaps included: one outside
@@ -768,12 +776,23 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
                   {load_modules {}}} {
     atcs_ensure_reference
     set pre [atcs_observe_before]
+    # A requested new instance may appear under its own name or in a load pin's module; the ones absent now.
+    set probe {}
+    if {$kind eq "request"} {
+        dict for {name master} $expected {
+            if {$master eq ""} { continue }
+            foreach module [concat [list ""] $load_modules] {
+                set full [expr {$module eq "" ? $name : "$module/$name"}]
+                if {[lsearch -exact $probe $full] < 0 && [atcs_cell_master $full] eq ""} { lappend probe $full }
+            }
+        }
+    }
     atcs_commit_mutation $plan_sha256
     if {[catch {
         lassign [atcs_call $command] code result
         if {$code == 0 && $cmd eq "fix_hold_gba_violations"} { set ::atcs_fix_ran hold }
         if {$code == 0 && $cmd eq "fix_setup_gba_violations"} { set ::atcs_fix_ran setup }
-        set post [atcs_observe_after $pre]
+        set post [atcs_observe_after $pre $probe]
         set c0 [dict get $pre count]
         set c1 [dict get $post count]
         set delta [dict get $post delta]

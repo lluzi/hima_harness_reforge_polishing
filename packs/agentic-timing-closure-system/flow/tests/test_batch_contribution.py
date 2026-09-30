@@ -322,6 +322,29 @@ class BatchNetValueAdvisoryTest(unittest.TestCase):
             self.assertIn(words, text)
 
 
+class T06DummySealTest(unittest.TestCase):
+    """D-T06-4(d) (#64 T06 w01 seq1): the one real insertion of the Run, `insert_dummy_cell` on the dmcontrol
+    CDN pin, created swerv_dbg/atcs_w01_r1_dum0 (DEL025D1BWP30P140HVT) in its pin's module. The toolkit now
+    logs it kept with that instance; the seal admits it and carries the command into the batch."""
+
+    DUMMY = "swerv_dbg/atcs_w01_r1_dum0"
+
+    def _log(self):
+        log = sf.SessionLog()
+        seq = log._line("insert_dummy_cell", "atcs_insert_dummy",
+                        {"pin": "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_/CDN",
+                         "master": "DEL025D1BWP30P140HVT", "newInstance": "atcs_w01_r1_dum0"},
+                        "kept", {self.DUMMY: None}, {self.DUMMY: "DEL025D1BWP30P140HVT"}, 1, matchesRequest=True)
+        log.gain(seq, "mutation", SETUP_FLAT, _hold((-0.069, -1.190)))
+        return log
+
+    def test_the_kept_dummy_is_sealed_as_a_batch_command(self):
+        contribution = _seal(self._log(), {**BEFORE, self.DUMMY: "DEL025D1BWP30P140HVT"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(contribution["kind"], "xtop-session")
+        self.assertEqual([command["cmd"] for command in contribution["commands"]], ["insert_dummy_cell"])
+
+
 class ReadLogShapeTest(unittest.TestCase):
     def test_no_read_log_is_sealed_as_absent_and_never_refuses(self):
         log = sf.SessionLog()
