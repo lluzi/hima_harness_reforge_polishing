@@ -28,6 +28,7 @@
     "test/contract/dc-reader.test.ts",
     "test/contract/delegation-input-native.host.test.ts",
     "test/contract/delegation-prompt.test.ts",
+    "test/contract/delegation-recipe-budget.host.test.ts",
     "test/contract/delegation-run.host.test.ts",
     "test/contract/delegation-team-settlement.host.test.ts",
     "test/contract/delegation.host.test.ts",

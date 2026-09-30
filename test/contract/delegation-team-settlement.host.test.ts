@@ -266,11 +266,11 @@ test('a Team Reviewer may approve an Operator scope: typed mutations within its 
       dependencyRoles: ['reviewer'], ownerAdoption: 'required', reviewedAction }),
   ] }];
 
-  // The Pack declaration itself is held to the tool: each scope command is a mutation carrying the hash, within 1..200.
+  // The Pack declaration itself is held to the tool: each scope command is a mutation carrying the hash, within 1..600 (#66 H1).
   for (const [label, bad, pattern] of [
     ['a read command', { ...scopeRecipe, commands: ['size_cell', 'get_value'] }, /not a mutation/],
     ['a mutation without the hash argument', { ...scopeRecipe, hostPlanHashArgument: 'master' }, /hostPlanHashArgument/],
-    ['a cap above 200', { ...scopeRecipe, maxMutations: 201 }, /maxMutations[\s\S]*(<=200|too big)/i],
+    ['a cap above 600', { ...scopeRecipe, maxMutations: 601 }, /maxMutations[\s\S]*(<=600|too big)/i],
     ['a cap of zero', { ...scopeRecipe, maxMutations: 0 }, /maxMutations[\s\S]*(>=1|too small)/i],
     ['a scope field the Reviewer schema does not require', { ...scopeRecipe, scopeField: 'portfolio' }, /portfolio/],
   ] as const) {

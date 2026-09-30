@@ -445,8 +445,9 @@ export class Autopilot {
 
   /**
    * Wait for one child's next result (after anything already recorded for it), validate it, and give
-   * it one repair follow-up when it fails and the member allows one. In `native` mode the driver reads
-   * the child's completed turn itself; in `ledger` mode it waits for the recorded result.
+   * it one repair follow-up when it fails, or when its turn ended without output, and the member
+   * allows one. In `native` mode the driver reads the child's completed turn itself; in `ledger` mode
+   * it waits for the recorded result.
    */
   async #result(runId: string, row: RunDelegationView, validate: (text: string | undefined) => string | undefined, repair: string | undefined,
     executionId?: string): Promise<{ readonly kind: 'ok'; readonly recordId: string; readonly text: string } | { readonly kind: 'invalid' | 'ended'; readonly why: string }
@@ -483,13 +484,19 @@ export class Autopilot {
       if (this.#host.childResults === 'native' && this.#host.childIdle(view.childSessionId) && Date.now() - asked > this.#host.pollMs * 8) {
         asked = Date.now();
         const read = await this.#delegate(runId, { action: 'result', delegationId, requestId: `ap-result-${delegationId}-${randomUUID().slice(0, 8)}`.slice(0, 160) });
-        if (read.status === 'refused' && typeof read.reason === 'string' && /satisfy|JSON object|refused/.test(read.reason)) {
-          // The Host's own recipe-schema gate refused a completed turn before recording it.
-          if (repaired || repair === undefined) return { kind: 'invalid', why: read.reason };
+        // The Host's own recipe-schema gate refused a completed turn before recording it; or (#66 H2b)
+        // the idle child's turn ended without output, e.g. at max-tokens inside its reasoning, which
+        // no amount of waiting turns into a result.
+        const why = read.status === 'refused' && typeof read.reason === 'string' && /satisfy|JSON object|refused/.test(read.reason) ? read.reason
+          : read.status === 'unavailable' && Array.isArray(read.unknowns) && read.unknowns.some((unknown) => typeof unknown === 'string'
+            && /turn ended [\w-]+, not completed|completed native turn has no complete assistant output/.test(unknown))
+            ? 'your turn ended without output; reply with the JSON object only' : undefined;
+        if (why !== undefined) {
+          if (repaired || repair === undefined) return { kind: 'invalid', why };
           repaired = true;
-          const sent = await this.#delegate(runId, { action: 'followup', delegationId, text: `${repair} (${read.reason})`.slice(0, 7_900),
+          const sent = await this.#delegate(runId, { action: 'followup', delegationId, text: `${repair} (${why})`.slice(0, 7_900),
             requestId: `ap-repair-${delegationId}`.slice(0, 160) });
-          if (sent.status !== 'accepted' && sent.status !== 'duplicate') return { kind: 'invalid', why: `${read.reason}; its repair follow-up was refused: ${String(sent.reason ?? sent.status)}` };
+          if (sent.status !== 'accepted' && sent.status !== 'duplicate') return { kind: 'invalid', why: `${why}; its repair follow-up was refused: ${String(sent.reason ?? sent.status)}` };
           after = records().filter((record) => record.event === 'followup-intent').at(-1)?.seq ?? after;
           asked = Date.now();
         }

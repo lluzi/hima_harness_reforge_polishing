@@ -1,3 +1,4 @@
+// @hima-seam llm-replay direct
 // ADR-0016 (user decision 2026-09-29): fork branches drive themselves. A Pack declares `autopilot`
 // on a fork (or on a plain path segment) and inside it the Harness takes the node turns the owner
 // would take: a branch Workshop is authored by the branch's own child Agent (revised from the
@@ -25,7 +26,8 @@ import { homePatchFile, writeReplayOverlay } from '../../packages/desktop/src/hi
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
 import { repoRoot } from './support/dsh-home.ts';
 import { killSessions, localHome, sessionsOf, waitUntil } from './support/fabric.ts';
-import { writeMomentScenario } from './support/moments.ts';
+import { appendReplaySession, writeMomentScenario } from './support/moments.ts';
+import type { ReplayEntry } from '@deepseek-ai/dsh-llm-replay';
 import { writeLocalSite } from './support/site.ts';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
@@ -47,6 +49,11 @@ interface Fixture {
   readonly operatorFollowups: number;
   /** An extra graph edit, for the load-refusal cases. */
   readonly graphEdit?: (graph: Record<string, any>) => void;
+  /**
+   * Native children (#66 H2b): the autopilot reads each child's own completed turn, and every live
+   * model session replays this script. Absent, children are played through the Ledger.
+   */
+  readonly native?: readonly ReplayEntry[];
 }
 const defaults: Fixture = { authorMs: 30_000, operatorFollowups: 1 };
 
@@ -205,6 +212,10 @@ async function campaign(t: TestContext, fixture: Fixture, timeBoxMs: number, che
   const prior = process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
   process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = 'branch-autopilot-local';
   t.after(() => { if (prior === undefined) delete process.env.HIMA_TEST_INTERACTIVE_BINDING_ID; else process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = prior; });
+  if (fixture.native !== undefined) {
+    process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS = 'native';
+    t.after(() => { process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS = 'ledger'; });
+  }
   const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local, 'the local stand-in home must be available');
   const { h, flow } = local;
   const workspaceRoot = await realpath(h.workspace);
@@ -214,7 +225,14 @@ async function campaign(t: TestContext, fixture: Fixture, timeBoxMs: number, che
   const bindingsFile = await writeBinding(h.home, packsDir, tclsh, workspaceRoot);
   const site = await writeLocalSite(h, { allowedReadRoots: [workspaceRoot, flow.root, path.dirname(tclsh)], allowedWriteRoots: [workspaceRoot],
     allowedWrappers: ['sh', tclsh], bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot }, licences: { xtop: 2 }, parallelJobs: 2 });
-  const scenario = await writeMomentScenario(h, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
+  let scenario = await writeMomentScenario(h, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
+  if (fixture.native !== undefined) {
+    // Replay binds live sessions to scripts by first-call order; every one gets the same script.
+    await writeFile(scenario.file, `${JSON.stringify({ version: 0, type: 'session', id: 'native-first', createdAt: 0, cwd: '{{cwd}}' })}\n`);
+    await writeFile(scenario.override, `${JSON.stringify(fixture.native)}\n`);
+    scenario = { ...scenario, children: [] };
+    for (let n = 1; n <= 8; n++) scenario = await appendReplaySession(scenario, `native-${n}`, fixture.native);
+  }
   await writeReplayOverlay(h.home, { file: scenario.file, overrideFile: scenario.override, childFiles: scenario.children });
   await appendFile(homePatchFile(h.home), `\n- id: hima\n  config:\n    sitesDir: ${JSON.stringify(site.sitesDir)}\n    packsDir: ${JSON.stringify(packsDir)}\n    knowledgeDir: ${JSON.stringify(path.join(h.home, 'hima/knowledge/current'))}\n    interactiveBindingsFile: ${JSON.stringify(bindingsFile)}\n`);
   const host = await bootInProcess(h);
@@ -495,6 +513,58 @@ test('a person pausing one branch holds only that branch; continuing it lets the
     await p.answer(operator.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256 }));
     await waitUntil('the continued branch reaches the join', atJoin(driven), 60_000, 25);
     assert.deepEqual(p.ownerTurns(branchNodes), []);
+  });
+});
+
+test('a native child whose turn ends at max-tokens with no output gets one repair follow-up at once, not a wait to expiry (#66 H2b)', async (t) => {
+  // D-T04-2: the author's only turn ended `max-tokens` inside its reasoning, with no text. Its answer
+  // to the one repair follow-up is a branch-agnostic entry that writes the plan into its Workshop.
+  const plan = JSON.stringify({ actions: [{ instance: 'U1', toMaster: 'BUF2' }], scope: { commands: ['atcs_size_cell'], maxMutations: 3 } });
+  const entry = JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA, entry: `printf '%s\\n' '${plan}' > "$1/plan.json"\n` });
+  const outOfTokens: ReplayEntry = { kind: 'chunks', chunks: [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'I should first decide which of the recorded inputs to read, and' } },
+    { type: 'finish', reason: { kind: 'max-tokens' } },
+  ] };
+  const say = (text: string): ReplayEntry => ({ kind: 'chunks', chunks: [
+    { type: 'block-start', index: 0, blockType: 'text' },
+    { type: 'block-end', index: 0, block: { type: 'text', text } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ] });
+  const authorMs = 90_000;
+  await campaign(t, { ...defaults, authorMs, native: [outOfTokens, say(entry), say(entry), say(entry)] }, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    const deps = () => (driven.host.ctx.hima as any).deps();
+    const author = () => runDelegations(deps(), driven.runId).find((row) => row.delegationId.startsWith('autopilot-author-plan-a-'));
+    await waitUntil('branch a\'s author is created', () => author() !== undefined, 30_000, 25);
+    const created = Date.now();
+    // The precondition, read from the child's own native Session: its first turn ended max-tokens with no text.
+    const query = (driven.host.ctx as any).get('sessionQuery') as { readSession(id: string): Promise<{ events: { type: string; data?: any }[] }> };
+    let firstEnd: { type: string; data?: any } | undefined; let texts: string[] = [];
+    await waitUntil('the author\'s first turn ends', async () => {
+      const log = await query.readSession(author()!.childSessionId).catch(() => undefined);
+      if (log === undefined) return false;
+      firstEnd = log.events.find((event) => event.type === 'turn/end');
+      texts = log.events.filter((event) => event.type === 'assistant/message' && event.data?.turn === firstEnd?.data?.turn)
+        .flatMap((event) => (event.data?.message?.content ?? []).filter((block: any) => block.type === 'text').map((block: any) => block.text));
+      return firstEnd !== undefined;
+    }, 20_000, 25);
+    assert.equal(firstEnd!.data?.reason?.kind, 'max-tokens', JSON.stringify(firstEnd));
+    assert.deepEqual(texts, [], 'the turn produced no text');
+    const events = () => p.delegationRecords(author()!.delegationId).map((r) => r.type === 'delegation' ? r.event : '');
+    // Well inside the author's 90 s share: the output-less turn is followed up, never waited out.
+    await waitUntil('the output-less author turn gets its repair follow-up', () => events().includes('followup-intent'), 20_000, 25);
+    const waited = Date.now() - created;
+    assert.equal(author()!.state === 'expired', false, 'the author did not expire first');
+    assert.ok(waited < authorMs, `followed up after ${waited} ms`);
+    // The follow-up reached the child's own Session and says why.
+    await waitUntil('the child reads the repair', async () => JSON.stringify((await query.readSession(author()!.childSessionId)).events
+      .filter((event) => event.type !== 'assistant/message')).includes('your turn ended without output'), 10_000, 25);
+    assert.equal(events().filter((event) => event === 'followup-intent').length, 1, 'exactly one repair follow-up');
+    // The repaired turn is the author's result: the seat is not lost.
+    await waitUntil('the repaired author answer is observed', () => events().includes('result-observed'), 30_000, 25);
+    t.diagnostic(`H2b: follow-up ${waited} ms after the author was created (share ${authorMs} ms)`);
   });
 });
 
