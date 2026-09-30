@@ -22,8 +22,8 @@
 // authors, an Explore decision, the honest end), with one summary of what the region did — for a
 // fork, one line per branch.
 import { createHash, randomUUID } from 'node:crypto';
-import { executionPack, identityOf, restartBranchAt, settleBranchRefused, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
-import { autopilotOf, autopilotSegmentOf, positionOf, type ForkAutopilot, type ForkBranch, type Pack, type PackAgentTeam, type PackAgentTeamMember, type PackNode, type PackWorkshop } from './packs.js';
+import { executionContext, executionPack, identityOf, restartBranchAt, settleBranchRefused, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
+import { autopilotDrives, autopilotOf, autopilotSegmentOf, positionOf, type ForkAutopilot, type ForkBranch, type Pack, type PackAgentTeam, type PackAgentTeamMember, type PackNode, type PackWorkshop } from './packs.js';
 import { currentRecordsIn, hasEnded, type DelegationRecord, type LedgerRecord, type NodeExecution, type ObservationRecord, type RunRecord } from './ledger.js';
 import { runDelegations, type RunDelegationRequest, type RunDelegationView } from './delegation-runtime.js';
 import { parseDelegationResultObservedPayload } from './delegation.js';
@@ -120,6 +120,26 @@ export class Autopilot {
         if (this.#again.delete(runId)) this.kick(runId);
       });
     this.#running.set(runId, drive);
+  }
+
+  /**
+   * The same kick, on the Host's timer (#64 D-T04-1). A Run can come to stand on a self-driving node
+   * by a path that kicks nothing — the owner's own `hima_execution` tool calls the fabric operation
+   * directly — and then nothing began it until a person pressed Continue. So the Host looks every
+   * few seconds: a running Run with no drive in flight whose admissible nodes include one this Pack's
+   * autopilot drives is kicked. "Admissible" is the admission's own `available`, so a pause, a hold, an
+   * uncleared failure or an execution already under way never counts. It takes no turn and decides
+   * nothing; the drive it starts is the one any kick starts.
+   */
+  sweep(): void {
+    if (this.#host.stopped()) return;
+    for (const run of this.#deps().ledger.runs()) {
+      if (!active(run) || this.#running.has(run.id)) continue;
+      try {
+        const pack = executionPack(this.#deps(), run);
+        if (executionContext(this.#deps(), run.id).available.some((nodeId) => autopilotDrives(pack, nodeId))) this.kick(run.id);
+      } catch { /* a Run whose method cannot be read has nothing the autopilot could drive */ }
+    }
   }
 
   /** Every drive of this Host settled; for disposal. */
