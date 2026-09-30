@@ -49,14 +49,35 @@ def verify_database_tree(directory, workspace, write_root, read_roots):
         else:
             plain(path, workspace)
 
-def compile_session(adapters, manifest, package, operator_path, ops):
+def session_bake(workspaces, adapters, entry, package, def_path):
+    """The session edit domain and local-topology bake `prepare-workers` recorded for this slot (#66 D2),
+    each checked against the trusted snapshot: the fanout max is the Pack's own policy and the derived
+    regions are derived again here from the verified base DEF, never taken from the record alone."""
+    local = entry.get("localTopology", False)
+    if not isinstance(local, bool):
+        raise ValueError("worker local-topology record is not a boolean")
+    fanout = workspaces.LOCAL_FANOUT_MAX if local else None
+    if local and entry.get("localFanoutMax") != fanout:
+        raise ValueError("worker local fanout max differs from the Pack's policy")
+    domain = dict(package.get("editDomain") or {})
+    derived = []
+    if not domain.get("regions") and def_path is not None and def_path.is_file():
+        derived = adapters.def_instance_regions(def_path, list(domain.get("instances") or []))
+        domain["regions"] = derived
+    if json.dumps(entry.get("derivedRegions", [])) != json.dumps(derived):
+        raise ValueError("worker derived regions differ from the base DEF")
+    return {"domain": domain, "local": local, "fanout": fanout}
+
+def compile_session(adapters, manifest, package, operator_path, ops, bake):
     """The slot's session Tcl, compiled with exactly the arguments `prepare-workers` passes (Issue #64 Task 4:
-    the expert Operator's target pins, Tcl-side mutation budget and observation mode are baked in)."""
+    the expert Operator's target pins, Tcl-side mutation budget and observation mode are baked in; #66 D2:
+    the local topology, its fanout max and the regions derived from the base DEF, per `session_bake`)."""
     scope = package.get("scope")
-    return adapters.compile_xtop_analysis_manual_task(manifest, package["editDomain"], operator_path, ops,
+    extra = {"local_topology": True, "fanout_max": bake["fanout"]} if bake["local"] else {}
+    return adapters.compile_xtop_analysis_manual_task(manifest, bake["domain"], operator_path, ops,
         target_pins=package.get("targetPins"),
         max_mutations=scope.get("maxMutations") if isinstance(scope, dict) else None,
-        observe=package.get("observe"))
+        observe=package.get("observe"), **extra)
 
 def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_root):
     workspace = plain(workspace)
@@ -151,7 +172,9 @@ def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_roo
     ops = root / "ops.jsonl"
     if entry.get("opsLog") != str(ops) or entry.get("sessionTcl") != str(manual_path):
         raise ValueError("worker output/startup path mismatch")
-    manual = compile_session(adapters, manifest, package, operator_path, ops)
+    def_path = plain(workspace / base["def"]["path"], workspace) if base.get("def") else None
+    bake = session_bake(workspaces, adapters, entry, package, def_path)
+    manual = compile_session(adapters, manifest, package, operator_path, ops, bake)
     if (operator_path.read_text() != operator["tcl"] or manual_path.read_text() != manual["tcl"]
             or file_hash(manual_path) != entry.get("sessionTclSha256")):
         raise ValueError("generated Tcl differs from independent regeneration")
@@ -162,7 +185,7 @@ def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_roo
     trusted_operator = snapshot / "operator.tcl"
     trusted_operator.write_text(operator["tcl"])
     trusted_manual = snapshot / "startup.tcl"
-    trusted_manual.write_text(compile_session(adapters, manifest, package, trusted_operator, ops)["tcl"])
+    trusted_manual.write_text(compile_session(adapters, manifest, package, trusted_operator, ops, bake)["tcl"])
     print(json.dumps({"startup": str(trusted_manual), "slotRoot": str(root), "flow": expected_flow}), flush=True)
 
 if __name__ == "__main__":
