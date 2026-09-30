@@ -64,6 +64,10 @@ _Avoid_: 单个 Liberty 文件（作为整个输入范围的同义词）
 LibInsight 中描述具体设计及其所用库条件的信息，用于把 Library 洞察关联到实际设计对象和需求；归属由使用语境决定，不由文件扩展名独自决定。
 _Avoid_: 只用于重排问题的使用次数、某一类工程师的专属入口
 
+**Design-specific 分析**:
+LibInsight 内独立呈现的具体设计分析，使用导入的 Design 信息理解 critical-path cell、cell 使用情况及后续物理 pattern，并复用共同的 Library 分析基础。
+_Avoid_: 所有 Library 页面的强制 Design 叠加层、独立产品或另一套执行系统
+
 **HimaFabric**:
 承载参考路线、运行事实和执行约束的业务基础设施，为 Campaign Agent 提供可追踪、可恢复的运行环境。
 _Avoid_: 独立业务决策者、第二执行主脑
