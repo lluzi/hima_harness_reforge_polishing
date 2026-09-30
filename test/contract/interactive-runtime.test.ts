@@ -471,7 +471,7 @@ test('an idle deadline moved later by completed commands is the one timer that f
       append({ event: 'command-completed', commandId, inputDigest: digest('d'), cursorAfter: serial });
       await timer.reconcile();
     }
-    assert.deepEqual(fired, [], `a session driven the whole time reached no idle deadline: ${JSON.stringify(fired)}`);
+    assert.equal(fired.length, 0, `a session driven the whole time reached no idle deadline: ${JSON.stringify(fired)}`);
     // Then it goes quiet: the idle deadline counted from its last activity fires, once.
     await sleep(idleMaxMs + 500);
     assert.equal(fired.length, 1, JSON.stringify(fired));
