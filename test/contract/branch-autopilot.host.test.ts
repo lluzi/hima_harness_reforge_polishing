@@ -19,7 +19,7 @@ import { appendFile, cp, mkdir, readFile, realpath, writeFile } from 'node:fs/pr
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
 import {
-  BUILTIN_TCL_ADAPTER_DIGEST, WORKSHOP_ENTRY_SCHEMA, interactiveCommandsDigest, loadPack, packDigestExcludes, runDelegations,
+  BUILTIN_TCL_ADAPTER_DIGEST, WORKSHOP_ENTRY_SCHEMA, executionAction, interactiveCommandsDigest, loadPack, packDigestExcludes, runDelegations,
   type ExecutionActionRequest, type ExecutionActionResult, type LedgerRecord,
 } from '@hima/harness';
 import { homePatchFile, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
@@ -602,6 +602,73 @@ test('an Operator whose branch is done frees its share: a later branch\'s recipe
     assert.ok(a.effective.budgetShare.maxElapsedMs > 200_000, `branch a's Operator gets (nearly) its member share: ${a.effective.budgetShare.maxElapsedMs}`);
     await p.answer(a.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: await p.operate(branches[0], a) }));
     await waitUntil('both branches reach the join', atJoin(driven), 60_000, 25);
+  });
+});
+
+test('an identical rewrite after an identical failure is never re-run: the author gets one repair follow-up carrying the failure, then the branch settles refused (#64 D-T06-2)', async (t) => {
+  // T06: the w02 author's program exited 4; the autopilot re-wrote and re-ran the same retained code
+  // (same sha, same exit) about 200 times until the Run-wide research-write budget was gone. Here the
+  // author always answers the same failing program.
+  const failing = JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA, entry: 'echo "operatorBrief not written: exit 1" >&2\nexit 4\n' });
+  await campaign(t, defaults, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    const author = await p.authorAsked(branches[0]);
+    await p.answer(author, failing);
+    const codes = () => p.records().filter((r) => r.type === 'code' && r.nodeId === 'plan-a');
+    const followups = () => p.delegationRecords(author).filter((r) => r.type === 'delegation' && r.event === 'followup-intent');
+    await waitUntil('a repair follow-up, or a re-run of the failed program', () => followups().length > 0 || codes().length > 1, 30_000, 25);
+    assert.equal(codes().length, 1, `the failed program is not re-run as it stands: ${codes().length} code records of ${new Set(codes().map((r) => r.type === 'code' ? r.sha256 : '')).size} distinct sha`);
+    assert.equal(followups().length, 1, 'the author is asked to repair once');
+    const asked = await p.authorAsked(branches[0]);
+    assert.equal(asked, author, 'the same author, followed up');
+    const sent = p.delegationRecords(author).findLast((r) => r.type === 'delegation' && (r.event === 'followup-intent' || r.event === 'followup-sent'));
+    assert.match(JSON.stringify(sent), /exited 4/, 'the follow-up carries the failure');
+    assert.match(JSON.stringify(sent), /operatorBrief not written/, 'and the tail of the program\'s own log');
+    // The author answers the identical program: it is not run again, and the branch settles refused.
+    await p.answer(author, failing);
+    const settled = () => p.records().findLast((r) => r.type === 'node' && r.branchId === 'plan-a' && r.state === 'cancelled');
+    await waitUntil('branch a settles refused', () => settled() !== undefined || codes().length > 1, 30_000, 25);
+    assert.equal(codes().length, 1, 'the identical rewrite is never run');
+    const refusal = settled();
+    assert.ok(refusal?.type === 'node', 'branch a settled');
+    assert.match(refusal.reason ?? '', /settled refused/);
+    assert.match(refusal.reason ?? '', /exited 4|identical/);
+    assert.equal(p.records().filter((r) => r.type === 'research-write' && r.nodeId === 'plan-a').length, 1, 'one research write for one authored program');
+    assert.equal(followups().length, 1, 'one repair follow-up in all');
+    assert.equal(Object.values(p.control().requests).filter((request) => request.origin === 'human').length, 0, 'no person was asked');
+  });
+});
+
+test('a Run the owner\'s own tool left on a self-driving segment node is picked up by the autopilot\'s periodic kick (#64 D-T04-1)', async (t) => {
+  // D-T04-1 (every live Run): after the owner's accepted complete, the segment's first node never
+  // began until a person pressed Continue. The owner's hima_execution tool calls the fabric
+  // operation directly (tools.ts), which kicks nothing; the Host's own executionAction kicks.
+  const graphEdit = (graph: Record<string, any>) => {
+    graph.entry = 'pre';
+    graph.nodes.unshift({ id: 'pre', kind: 'act', parameters: { observes: 'seed' } }, { id: 'mid', kind: 'act', parameters: { observes: 'seed' } });
+    graph.edges.unshift({ from: 'pre', to: 'mid' }, { from: 'mid', to: 'start' });
+    graph.autopilot.push({ from: ['mid'], until: ['start'] });
+  };
+  await campaign(t, { ...defaults, graphEdit }, 300_000, async (driven) => {
+    const p = players(driven);
+    const deps = () => (driven.host.ctx.hima as any).deps();
+    let serial = 0;
+    const tool = (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}) => executionAction(deps(), {
+      runId: driven.runId, actor: driven.owner, origin: 'agent', expectedEpoch: p.control().epoch, expectedRevision: p.control().revision,
+      requestId: `tool-${++serial}`, action, ...fields });
+    assert.equal(p.run().currentNode, 'pre');
+    const begun = await tool('begin', { nodeId: 'pre' }); assert.equal(begun.kind, 'accepted', begun.reason);
+    const executionId = begun.receipt!.executionId!;
+    assert.notEqual((await tool('work', { executionId })).kind, 'refused');
+    await waitUntil('pre settles', () => p.control().executions[executionId]?.phase === 'ready', 30_000, 25);
+    const done = await tool('complete', { executionId }); assert.equal(done.kind, 'accepted', done.reason);
+    const at = Date.now();
+    await waitUntil('the Run stands on the segment node', () => p.run().currentNode === 'mid', 10_000, 25);
+    await waitUntil('the autopilot begins the segment node', () => p.autopilotTurns(['mid']).some((request) => request.receipt.action === 'begin'), 25_000, 50);
+    t.diagnostic(`D-T04-1: the autopilot began mid ${String(Date.now() - at)} ms after the owner's tool complete`);
+    await waitUntil('the segment drives to where it stops', () => p.run().currentNode === 'start', 30_000, 25);
+    assert.equal(Object.values(p.control().requests).filter((request) => request.origin === 'human').length, 0, 'no person pressed Continue');
   });
 });
 
