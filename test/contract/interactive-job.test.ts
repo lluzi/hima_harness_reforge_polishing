@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import {
-  closeInteractiveJob, interactiveCommandMarker, openInteractiveJob, observeInteractiveCommand,
+  closeInteractiveJob, interactiveCommandMarker, jobProcessGroupAlive, openInteractiveJob, observeInteractiveCommand,
   parseInteractiveRecord, readInteractiveTranscript, sendInteractiveInput, signalInteractiveJob,
   type InteractiveAuthority, type InteractiveIntent, type InteractiveQualification, type InteractiveReceipt,
   type InteractiveChannel, type InteractiveRecord, type InteractiveSession,
@@ -204,5 +204,22 @@ test('one durable tmux Job preserves REPL state, single-writer receipts, transcr
     assert.equal(noResend.status, 'duplicate', 'an uncertain send remains fenced and is never auto-replayed');
   } finally {
     if (session) spawnSync('tmux', ['kill-session', '-t', `=${session.toolSessionId}`], { timeout: 15_000 });
+  }
+});
+
+// Review m2 of attempt 3: the process probe read any exit 1 as "gone". A login shell whose `kill`
+// rejects `-s 0 --` (tcsh on an EDA host) also exits 1, and a refusal read as "gone" would admit a
+// retry into a slot a live tool still holds. Only the text of a group with no process is "gone";
+// "not permitted" is a live group this login may not signal; everything else is unknown.
+test('the process probe reads only "no such process" as gone; a usage error or silence is unknown', async () => {
+  const answering = (code: number, stderr: string): InteractiveChannel => ({ siteName: 'probe',
+    exec: async (argv) => { assert.deepEqual(argv, ['kill', '-s', '0', '--', '-4242']); return { code, stdout: new Uint8Array(), stderr }; } });
+  assert.equal(await jobProcessGroupAlive(answering(0, ''), 4242), true);
+  assert.equal(await jobProcessGroupAlive(answering(1, 'kill: (-4242) - Operation not permitted'), 4242), true);
+  for (const said of ['bash: kill: (-4242) - No such process', 'kill: kill -4242 failed: no such process', 'kill: -4242: No such process']) {
+    assert.equal(await jobProcessGroupAlive(answering(1, said), 4242), false, said);
+  }
+  for (const [code, said] of [[1, 'kill: Illegal option -s'], [1, ''], [1, 'Usage: kill [-s sigspec] pid'], [127, 'kill: not found'], [255, 'ssh: connect']] as const) {
+    await assert.rejects(jobProcessGroupAlive(answering(code, said), 4242), /cannot tell whether process group 4242 still runs/, `${code} ${said}`);
   }
 });
