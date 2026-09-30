@@ -245,7 +245,7 @@ test('an Operator-path standard-preset child crosses a real compaction on deepse
     const created = await ctx.hima.delegate({ runId, actor, action: 'create', requestId: 'qual-create', expectedEpoch: 1, expectedRevision: 0,
       contract: { delegationId: 'qual-operator-w03', role: 'researcher', task: policy, inputRefs: order,
         allowedTools: ['hima_delegation_input', 'read'], readScope: { root: opsDir },
-        budgetShare: { maxElapsedMs: 25 * 60_000, maxFollowups: 1, maxTokensPerTurn: RECIPE_MAX_TOKENS_PER_TURN }, dependencyIds: [],
+        budgetShare: { maxElapsedMs: 25 * 60_000, maxFollowups: 2, maxTokensPerTurn: RECIPE_MAX_TOKENS_PER_TURN }, dependencyIds: [],
         recipient: { kind: 'run-owner', sessionId: actor } } }, AbortSignal.timeout(60_000));
     assert.equal(created.status, 'created', JSON.stringify(created));
     const CHILD = created.receipt.childSessionId as string;
@@ -259,10 +259,26 @@ test('an Operator-path standard-preset child crosses a real compaction on deepse
 
     // ---- One turn: large reads, a real compaction, then continuation from the checkpoint. ----
     await waitForTurnEnds(ctx, CHILD, 1, 'the operating turn');
+    evidence.turnWallMs = Date.now() - started;
+    // A reply that is only text ends dsh's turn. When the child ends its turn at the RESTATE line
+    // (run 6 did), the owner's one follow-up — the recipe path, a cold resume — asks it to continue
+    // with steps 3–5 of its own policy; it is told nothing it must remember.
+    const firstTurn = (await logOf(ctx, CHILD)).events;
+    const stoppedAtRestatement = firstTurn.some((e) => e.type === 'assistant/message' && /RESTATE\s/.test(textOf(e.data.message)))
+      && !firstTurn.some((e) => e.type === 'tool/call' && e.seq > firstTurn.find((x) => x.type === 'assistant/message' && /RESTATE\s/.test(textOf(x.data.message)))!.seq);
+    let turns = 1;
+    if (stoppedAtRestatement) {
+      const now = ctx.hima.executionContext(runId).run.control;
+      const resumed = await ctx.hima.delegate({ runId, actor, action: 'followup', delegationId: 'qual-operator-w03', requestId: 'qual-continue',
+        expectedEpoch: now.epoch, expectedRevision: now.revision, text: 'Continue with steps 3, 4 and 5 of your operating policy.' }, AbortSignal.timeout(60_000));
+      assert.equal(resumed.status, 'accepted', JSON.stringify(resumed));
+      turns = 2;
+      await waitForTurnEnds(ctx, CHILD, 2, 'the continuation turn');
+    }
+    evidence.continuedByFollowup = stoppedAtRestatement;
     const turn = await logOf(ctx, CHILD);
     const all = turn.events;
-    evidence.turnWallMs = Date.now() - started;
-    const turnEnd = all.filter((e) => e.type === 'turn/end').at(0)!;
+    const turnEnd = all.filter((e) => e.type === 'turn/end').at(turns - 1)!;
     evidence.turnEnd = turnEnd.data;
     const taskMessage = all.find((e) => e.type === 'user/message' && textOf(e.data).includes(PLAN_SHA));
     assert.ok(taskMessage, 'the delegated task message is in the child log');
@@ -404,16 +420,15 @@ test('an Operator-path standard-preset child crosses a real compaction on deepse
       text: 'Follow-up: read gain.json from your operating directory with the read tool, then reply with exactly GAIN=<measuredGainPs>.' }, AbortSignal.timeout(60_000));
     evidence.followup = { status: followup.status };
     if (followup.status === 'accepted') {
-      await waitForTurnEnds(ctx, CHILD, 2, 'follow-up');
+      await waitForTurnEnds(ctx, CHILD, turns + 1, 'follow-up');
       const next = (await logOf(ctx, CHILD)).events.filter((e) => e.seq > turnEnd.seq);
       const readGain = next.find((e) => e.type === 'tool/call' && e.data.name === 'read');
       const gainResult = readGain && next.find((e) => e.type === 'tool/result' && e.data.message.content[0].toolCallId === readGain.data.callId);
       const refused = gainResult?.data.message.content[0].isError === true ? textOf({ content: gainResult.data.message.content[0].content }) : undefined;
       evidence.followup = { status: followup.status, coldResume: next.some((e) => e.type === 'session/end-seed'), readIssued: !!readGain, refused,
         reply: textOf(next.filter((e) => e.type === 'assistant/message').at(-1)?.data.message) };
-      await t.test('recipe follow-up on the cold-resumed child keeps its tools', {
-        todo: 'known defect: dsh cold resume drops maxTokens by design; Hima\'s tool guard then refuses every tool as "changed its token limit"',
-      }, () => { assert.ok(readGain && !refused, `follow-up read refused: ${refused}`); });
+      // Fixed in db7e1a6f (delegation-followup-tools.host.test.ts): the recorded limit is re-applied.
+      assert.ok(readGain && !refused, `recipe follow-up on the cold-resumed child keeps its tools: ${refused}`);
     }
 
     evidence.wallMs = Date.now() - started;
