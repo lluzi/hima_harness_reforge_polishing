@@ -1,15 +1,15 @@
 # linglong-atcs28 Site administration
 
-Current candidate (Issue 64 / ATCS-09 superseding decision, before T06, Pack 0.2.0): `atcs-xtop-operator-v18.sh` under
-`operator-admin/atcs-v18/` (wrapper sha `67fb15e19cc8a3fe...`, installed 2026-09-30, mode 0555). v18 is v17 with the atcs-v18
-paths and three pins moved: flow digest `2835a2c3d4ce57e2...` and adapter `48386a413919e040...` (best-effort replay: every sealed
-Contribution enters ranked replay, skipped commands recorded, no whole-batch refusals) and verifier `c9dca81c73dd9585...`
-(`verify-worker-startup.py` now does static checks only: Site profile/base identity, flow hash, database tree and roots,
-recorded worker manifest revision, plain-file checks, and the prepared session Tcl against its recorded sha; it starts
-XTop from the prepared bytes and no longer regenerates them). Beside it are that verifier and the same slot step
-(`293b2a3f...`) bytes as v13–v17's, and bootstrap root `operator-admin/atcs-v18/bootstraps/`. The Pack's `xtop-operator`
-binding names v18 and the Permit reads `atcs-v18`. The template `atcs-xtop-operator-v18.sh` with its placeholders filled
-is byte-identical to the installed v18 (`derive-v18.py`, count-asserted hunks).
+Current candidate (Issue 64 / ATCS-09, before T06, Pack 0.2.0): `atcs-xtop-operator-v19.sh` under `operator-admin/atcs-v19/`
+(wrapper sha `24fb0447c1803551...`, installed 2026-09-30, mode 0555). v19 is v18 with the atcs-v19 paths and the flow pin
+`3e8a24fbfc3cc098...` (adapter `48386a413919e040...` unchanged): the flow whose plans always emit target pins (data pin, or the flop's
+async pin for an `@**async_default**` check) and whose `atcs_point`/`atcs_paths` resolve an instance or check key to its
+input pins in-session and log refused reads (L4 run-4 gap). The verifier (`c9dca81c73dd9585...`, static checks only) and the slot
+step (`293b2a3f...`) are v18's bytes; bootstrap root `operator-admin/atcs-v19/bootstraps/`. The Pack's `xtop-operator`
+binding names v19 and the Permit reads `atcs-v19`. The template `atcs-xtop-operator-v19.sh` with its placeholders filled is
+byte-identical to the installed v19 (`derive-v19.py`, count-asserted hunks).
+
+Previous candidate v18 (`67fb15e19cc8a3fe...`): static-only verifier, best-effort-replay flow `2835a2c3d4ce...`.
 
 Previous candidates: v17 (`d9c7414a53670c13...`, adapter pin `98be15132d8c...`, flow pin `476ebdb793ba...`, verifier
 `014fcfa5...` with the regeneration compare that blocked T05) and v16 (`7bd590dda9ecbcd3...`, flow pin only).
