@@ -19,11 +19,12 @@
 #                       (AUTO_FIX_TCL); auto.dump; the final summaries and fail
 #                       reasons; one Innovus ECO pair into eco-control/.
 #
-# Best effort: a recipe command the composition
-# marked skip is never sent; a command that errors or that the toolkit refuses
-# is recorded as skipped with its reason, and the replay continues. Each
-# auto-fix line is attempted once and its code recorded. The Pack chooses the
-# arm afterwards (`atcs.integration.reconcile_recipe`); this file never judges.
+# Best effort (replay is an aggregator): a recipe command the composition
+# marked skip is never sent; every other command is attempted under its own
+# catch, and one that errors or that the toolkit refuses is recorded as skipped
+# with its reason while the replay continues with the next. Each auto-fix line
+# is attempted once and its code recorded. The Pack chooses the arm afterwards
+# (`atcs.integration.reconcile_recipe`); this file never judges.
 #
 # Outputs (cwd is RUN_ROOT, set by xtop-operator.tcl):
 #   RECEIPTS_LOG  one JSON line per recipe command:
@@ -33,7 +34,7 @@
 #   PREDICT_DIR   setup.rpt, hold.rpt: summarize_gba_violations -exclude_path;
 #                 setup-fail-reasons.rpt, hold-fail-reasons.rpt: the same with
 #                 -with_top_n FAIL_REASON_TOP_N -with_fail_reason, after auto-fix
-#   ARM_RESULT    {"arm","complete":true,"tainted","appliedCommands","protected","protectedCount",
+#   ARM_RESULT    {"arm","complete":true,"tainted","appliedCommands","skippedCommands","protected","protectedCount",
 #                  "protectMissing","protectCode","protectResult","autoFix":[{command,code,result}],
 #                  "predict":{"setup","hold"},"failReasons":{"setup","hold"},
 #                  "exportCode","exportResult"},
@@ -56,6 +57,7 @@ file mkdir $env(DUMP_DIR)
 file mkdir $env(PREDICT_DIR)
 set ::atcs_replay_slot ""
 set ::atcs_replay_applied 0
+set ::atcs_replay_skipped 0
 
 proc atcs_replay_receipt {fields} {
     atcs_append $::env(RECEIPTS_LOG) [atcs_jobj $fields]
@@ -88,6 +90,7 @@ proc atcs_replay_session {slot prefix instances nets pins regions} {
 proc atcs_replay_step {step_id skip call} {
     set fields [list stepId [atcs_js $step_id] slot [atcs_js $::atcs_replay_slot]]
     if {$skip} {
+        incr ::atcs_replay_skipped
         atcs_replay_receipt [concat $fields [list status [atcs_js skipped] attempted false reason [atcs_js recipe]]]
         return
     }
@@ -97,6 +100,7 @@ proc atcs_replay_step {step_id skip call} {
         incr ::atcs_replay_applied
         atcs_replay_receipt [concat $fields [list status [atcs_js applied] attempted true seq [lindex $::atcs_kept end]]]
     } else {
+        incr ::atcs_replay_skipped
         set reason [expr {$code == 0 ? "no-change" : [atcs_clip $message 2000]}]
         atcs_replay_receipt [concat $fields [list status [atcs_js skipped] attempted true reason [atcs_js $reason]]]
     }
@@ -178,7 +182,7 @@ if {$::ATCS_ARM eq "merged"} {
 set fh [open $env(ARM_RESULT) w]
 fconfigure $fh -encoding utf-8
 puts $fh [atcs_jobj [list arm [atcs_js $::ATCS_ARM] complete true tainted [atcs_js $::atcs_tainted] \
-    appliedCommands $::atcs_replay_applied protected [atcs_jarr $protected] protectedCount [llength $protected] \
+    appliedCommands $::atcs_replay_applied skippedCommands $::atcs_replay_skipped protected [atcs_jarr $protected] protectedCount [llength $protected] \
     protectMissing [atcs_jarr $protect_missing] protectCode $protect_code protectResult [atcs_js [atcs_clip $protect_result 2000]] \
     autoFix "\[[join $auto_fix ,]\]" predict [atcs_jobj [list setup $predict_setup hold $predict_hold]] \
     failReasons [atcs_jobj $fail_reason_codes] \

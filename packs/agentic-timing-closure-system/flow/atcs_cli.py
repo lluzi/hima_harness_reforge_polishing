@@ -1894,9 +1894,9 @@ def _cmd_replay_prepare(workspace, args):
     try:
         adapters.run_tool(site_profile, ["xtop", "-f", str(main_tcl_path)], cwd=output_root, log_path=log_path)
     except adapters.AdapterToolError as exc:
-        # A step failure stops the batch (architecture Sec.8.4): later steps
-        # simply stay receipt-less (pending) -- `reconcile` reports that, it
-        # is not a `replay-prepare` refusal in its own right. I3 (final
+        # A failing step is recorded and the replay continues; a run that dies
+        # leaves its later steps receipt-less (pending) -- `reconcile` reports
+        # that, it is not a `replay-prepare` refusal in its own right. I3 (final
         # review): the failure itself is no longer swallowed -- its detail and
         # log path are recorded below, never silently discarded.
         tool_failure = {"detail": exc.detail, "log": str(exc.log_path)}

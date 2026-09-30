@@ -1602,23 +1602,38 @@ class ReconcileRecipeTests(unittest.TestCase):
         self.assertEqual(warnings[0]["instances"], ["U1"])
         self.assertEqual(state["protectedChanged"], ["U1"])
 
-    def test_a_session_changing_another_sessions_instance_is_out_of_domain(self):
+    def test_a_session_changing_another_sessions_instance_is_an_out_of_domain_advisory(self):
         deltas = matching_session_deltas()
         deltas["w02"] = {"mastersChanged": {"U1": ["BUFX2", "BUFX4"]}, "added": {"atcs_w02_r1_b1": "BUFX2"},
                          "removed": {}}
         _, state = reconcile_default(merged_kw={"session_deltas": deltas})
-        self.assertTrue(any("session w02" in p and "U1" in p for p in state["arms"]["merged"]["problems"]))
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertTrue(state["arms"]["merged"]["safe"], state["arms"]["merged"]["problems"])
+        (warning,) = [w for w in state["warnings"] if w["kind"] == "outOfDomain"]
+        self.assertEqual((warning["slot"], warning["instances"]), ("w02", ["U1"]))
+        self.assertEqual(state["sessions"]["w02"]["outOfDomain"], ["U1"])
+        self.assertEqual(state["chosen"]["arm"], "merged")
 
-    def test_merged_out_of_domain_replay_change_refuses_merged_and_falls_back_to_control(self):
+    def test_merged_out_of_domain_replay_change_is_recorded_never_a_refusal(self):
+        """Replay is an aggregator: the toolkit and the Site Permit bound what executes, and the
+        refreshed PrimeTime result judges it; reconcile records the stray change as advice."""
         deltas = matching_session_deltas()
         deltas["w01"] = {"mastersChanged": {"U1": ["BUFX1", "BUFX2"], "UOUT": ["BUFX1", "BUFX2"]},
                          "added": {"FILL_7": "FILL4"}, "removed": {}}
         _, state = reconcile_default(merged_kw={"session_deltas": deltas})
-        self.assertFalse(state["arms"]["merged"]["safe"])
-        self.assertTrue(any("UOUT" in problem for problem in state["arms"]["merged"]["problems"]))
-        self.assertFalse(any("FILL_7" in problem for problem in state["arms"]["merged"]["problems"]))
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertTrue(state["arms"]["merged"]["safe"], state["arms"]["merged"]["problems"])
+        (warning,) = [w for w in state["warnings"] if w["kind"] == "outOfDomain"]
+        self.assertEqual(warning["instances"], ["UOUT"])
+        self.assertEqual(state["outOfScope"], [])
+        self.assertEqual(state["chosen"]["arm"], "merged")
+
+    def test_a_missing_session_dump_is_an_advisory_never_a_refusal(self):
+        deltas = matching_session_deltas()
+        del deltas["w02"]
+        _, state = reconcile_default(merged_kw={"session_deltas": deltas})
+        self.assertTrue(state["arms"]["merged"]["safe"], state["arms"]["merged"]["problems"])
+        self.assertEqual([w["slot"] for w in state["warnings"] if w["kind"] == "replayDeltaMissing"], ["w02"])
+        self.assertFalse(state["sessions"]["w02"]["deltaMatches"])
+        self.assertEqual(state["chosen"]["arm"], "merged")
 
     def test_control_is_chosen_when_it_predicts_better(self):
         _, state = reconcile_default(control_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.03, -0.03)}})

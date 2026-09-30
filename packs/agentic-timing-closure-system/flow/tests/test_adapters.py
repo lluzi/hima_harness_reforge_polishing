@@ -778,6 +778,27 @@ class XtopReplayEndToEndTest(unittest.TestCase):
         self.assertTrue((Path(task["dumpDir"]) / "000.dump").is_file())
         self.assertTrue((Path(task["dumpDir"]) / "001.dump").is_file())
 
+    def test_a_failing_step_is_recorded_and_the_replay_continues(self):
+        """Best effort (replay is an aggregator): the failing step gets an `error` receipt, the state
+        after it is dumped, and the next step still runs."""
+        steps = [{"stepId": "s1", "op": {"op": "size_cell", "instance": "U_BAD", "toMaster": "MOCKBUFX4"}},
+                 {"stepId": "s2", "op": {"op": "size_cell", "instance": "U_IN_DOMAIN", "toMaster": "MOCKBUFX4"}}]
+        task, script_path = self._compile_and_write(steps)
+        failing = ('proc size_cell {insts master} {\n'
+                   '    if {$insts eq "U_BAD"} { error "stub refused U_BAD" }\n'
+                   '    set ::ATCS_TEST_LAST_CALL [list size_cell $insts $master]\n}\n')
+        text = script_path.read_text(encoding="utf-8")
+        script_path.write_text(text.replace(_STUB_PROCS, _STUB_PROCS + failing, 1), encoding="utf-8")
+        result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        rows = [json.loads(line) for line in Path(task["receiptsLog"]).read_text().splitlines()]
+        self.assertEqual([(row["stepId"], row["status"]) for row in rows], [("s1", "error"), ("s2", "ok")])
+        self.assertIn("stub refused U_BAD", rows[0]["error"])
+        receipts = adapters.read_replay_receipts(task["receiptsLog"])
+        self.assertEqual([receipt["status"] for receipt in receipts], ["error", "ok"])
+        for index in (0, 1, 2):
+            self.assertTrue((Path(task["dumpDir"]) / f"{index:03d}.dump").is_file(), index)
+
     def test_a_missing_required_input_refuses_before_any_workspace_command(self):
         # DEF file does not exist -- must fail on the `file readable` check, never
         # silently proceed to `create_workspace`.

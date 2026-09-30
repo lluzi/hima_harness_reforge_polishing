@@ -75,15 +75,17 @@ proc atcs_json_escape {s} {
 atcs_dump_cells $env(DUMP_DIR)/000.dump
 
 # `STEPS_TCL` is generated per run by `atcs.adapters.compile_xtop_replay_task`;
-# it calls `atcs_replay_step {stepId opTcl dumpIndex}` once per ordered step,
-# stopping the batch (steps after a failure stay receipt-less, i.e. pending)
-# the first time one op's command raises.
+# it calls `atcs_replay_step {stepId opTcl dumpIndex}` once per ordered step.
+# Best effort: each op runs under its own catch; one that raises is recorded as
+# an `error` receipt with its message, the state after it is still dumped (so
+# the next step's before-dump exists), and the replay continues.
 proc atcs_replay_step {stepId opTcl dumpIndex} {
     set before [format "%s/%03d.dump" $::env(DUMP_DIR) [expr {$dumpIndex - 1}]]
     set after [format "%s/%03d.dump" $::env(DUMP_DIR) $dumpIndex]
     if {[catch {uplevel #0 $opTcl} err]} {
+        atcs_dump_cells $after
         atcs_receipt "{\"stepId\":\"[atcs_json_escape $stepId]\",\"status\":\"error\",\"error\":\"[atcs_json_escape $err]\"}"
-        error "replay stopped at step $stepId: $err"
+        return
     }
     atcs_dump_cells $after
     atcs_receipt "{\"stepId\":\"[atcs_json_escape $stepId]\",\"status\":\"ok\",\"beforeDump\":\"[atcs_json_escape $before]\",\"afterDump\":\"[atcs_json_escape $after]\"}"

@@ -3,11 +3,12 @@
 - `replay-prepare` (`atcs_cli._recipe_sessions` -> `integration.prepare_recipe_replay`) takes each
   ranked session's domain from its Contribution's ``effectiveDomain`` (the worker session's
   ``domain.json``), falling back to ``state/workers.json`` only for a Contribution without one.
-- `reconcile` (`integration.reconcile_recipe`) judges out-of-domain replay changes against that
-  domain, so an edit on a derived instance is never flagged.
+- `reconcile` (`integration.reconcile_recipe`) records out-of-domain replay changes against that
+  domain as advice (never a refusal), so an edit on a derived instance is never flagged.
 - `xtop-replay.tcl` enters the sealed domain and never derives or widens it; the protection block
   and the four auto-finish commands stay byte-for-byte the attempt-4 ones.
-- `arm-result.json` carries ``appliedCommands`` and ``protectedCount``; an XTop tie between the
+- `arm-result.json` carries ``appliedCommands``, ``skippedCommands`` and ``protectedCount``; replay is
+  best effort, recording each skipped command with its reason and continuing; an XTop tie between the
   merged and control arms is recorded as ``manualValue: none``, overall and per session.
 
 No test launches EDA: the CLI runs with a fake Site wrapper and the Tcl in `tclsh` over the
@@ -233,17 +234,17 @@ class EffectiveDomainReplayCliTest(unittest.TestCase):
         self.assertTrue(state["arms"]["merged"]["safe"], state["arms"]["merged"]["problems"])
         self.assertEqual(state["chosen"]["arm"], "merged")
 
-    def test_reconcile_still_flags_a_change_outside_the_effective_domain(self):
+    def test_reconcile_records_a_change_outside_the_effective_domain_as_advice(self):
         self._write_batch(self.EFFECTIVE)
         self._prepare()
         self._write_arm("merged", {"U7": "BUFX2", "U8": "BUFX4"})
         self._write_arm("control", {})
         state = self._reconcile()
-        problems = state["arms"]["merged"]["problems"]
-        self.assertTrue(any("out-of-domain" in p and "U8" in p and "effectiveDomain" in p for p in problems),
-                        problems)
-        self.assertFalse(any("U7" in p for p in problems), problems)
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertTrue(state["arms"]["merged"]["safe"], state["arms"]["merged"]["problems"])
+        (warning,) = [w for w in state["warnings"] if w["kind"] == "outOfDomain"]
+        self.assertEqual(warning["instances"], ["U8"])
+        self.assertIn("effectiveDomain", warning["detail"])
+        self.assertEqual(state["chosen"]["arm"], "merged")
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +389,41 @@ class ReplayTclshTest(unittest.TestCase):
         self.assertEqual(merged["protectedCount"], 2)
         control, _, _ = self._run_arm(task, "control")
         self.assertEqual((control["appliedCommands"], control["protectedCount"]), (0, 0))
+
+    def test_best_effort_replay_continues_past_skipped_commands_and_records_each_with_its_reason(self):
+        """Replay is an aggregator: w01's second command is refused by the toolkit and its third
+        errors in XTop, yet w02's insert after them is still applied; the arm-result counts applied
+        and skipped, reconcile lists each skipped command with its reason, and the merged arm stays
+        safe with the applied instances protected."""
+        request = _recipe_request()
+        task = self._compile(request)
+        merged, receipts, _ = self._run_arm(task, "merged")
+        self._run_arm(task, "control")
+        self.assertEqual([(r["slot"], r["status"]) for r in receipts],
+                         [("w01", "applied"), ("w01", "skipped"), ("w01", "skipped"), ("w02", "applied"),
+                          ("w02", "skipped"), ("w02", "skipped")])
+        self.assertEqual((merged["appliedCommands"], merged["skippedCommands"]), (2, 4))
+        self.assertEqual(merged["protected"], ["U1", "atcs_w02_r1_b1"])
+
+        arms = {arm: adapters.read_replay_arm(task["arms"][arm]["root"], arm, request) for arm in ("merged", "control")}
+        state = integration.reconcile_recipe(request, arms)
+        steps = request["steps"]
+        self.assertTrue(state["arms"]["merged"]["safe"], state["arms"]["merged"]["problems"])
+        self.assertEqual((state["arms"]["merged"]["appliedCommands"], state["arms"]["merged"]["skippedCommands"]),
+                         (2, 4))
+        self.assertEqual(state["sessions"]["w01"]["applied"], [steps[0]["stepId"]])
+        self.assertEqual([(s["stepId"], s["reason"]) for s in state["sessions"]["w01"]["skipped"]],
+                         [(steps[1]["stepId"], "instance U2 is already INVX1"),
+                          (steps[2]["stepId"], "split_net failed (seq 2): XTop stub refused split_net")])
+        self.assertEqual(state["sessions"]["w02"]["applied"], [steps[3]["stepId"]])
+        self.assertEqual([(s["attempted"], s["reason"]) for s in state["sessions"]["w02"]["skipped"]],
+                         [(False, "recipe:shared-instance"), (True, "out-of-scope instance: U2")])
+        self.assertEqual(state["protected"], ["U1", "atcs_w02_r1_b1"])
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        merge = integration.seal_batch(state, request, {"baseStateId": "base-1"},
+                                       [{"id": "c1", "revision": 1}, {"id": "c2", "revision": 1}])
+        self.assertEqual(merge["arms"]["merged"]["skippedCommands"], 4)
+        self.assertEqual([entry["id"] for entry in merge["contributions"]], ["c1", "c2"])
 
     def test_the_auto_finish_runs_the_attempt4_strings_after_protection_in_both_arms(self):
         task = self._compile(_recipe_request())

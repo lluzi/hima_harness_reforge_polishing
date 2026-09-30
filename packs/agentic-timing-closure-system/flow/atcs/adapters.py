@@ -1266,9 +1266,10 @@ def compile_xtop_replay_task(design, tech_lef, cell_lef_glob, netlist, def_path,
     cell/master names, never a timing query.
 
     Each step's Tcl is `atcs.integration.xtop_tcl(op)` -- this function
-    never re-derives XTop command text itself. Stops at the first failing
-    step (later steps stay receipt-less, i.e. pending -- architecture
-    Sec.8.4's recovery rule); `read_replay_receipts` turns the resulting
+    never re-derives XTop command text itself. Best effort: a failing step
+    is recorded as an `error` receipt and the replay continues with the next
+    (a step without any receipt is one the run never reached, i.e. pending --
+    architecture Sec.8.4's recovery rule); `read_replay_receipts` turns the resulting
     `receipts.jsonl` + cell dumps into the `[{"stepId","status",
     "observedDelta"}]` shape `atcs.integration.reconcile` expects.
     """
