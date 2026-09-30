@@ -76,7 +76,7 @@ short, clean kept log beats many marginal edits. XTop's gain screens trials; ref
    a stop (#64 attempt 1: w03 undid its one size, rightly, then stopped with 13 of 15 mutations left).
 7. Stop when the budget is spent (every mutation and every undo counts), when every rung the scope allows
    has been tried on the targets without gain, or when the blockers are clear. Then
-   `atcs_dump_cells after.dump`, `atcs_export_changes` and `atcs_close`.
+   `atcs_dump_cells after.dump`, `atcs_export_changes` (its `limitations`, "" if none, one per line, reach the seal) and `atcs_close`.
 
 What a refusal costs. A Host refusal (a command outside the scope, another plan hash, the budget spent) is
 free. A mutation the Host admits but the toolkit refuses (a pin or instance outside the domain, a point outside

@@ -445,7 +445,7 @@ tools:
         atcs_fix_setup_pins: [{ name: pins, type: string }, { name: methods, type: string }, { name: removeBufferOnly, type: boolean }, { name: sizeDownOnly, type: boolean }, { name: effort, type: string, choices: [medium, high] }, { name: setupTarget, type: number, minimum: -0.2, maximum: 0.2 }, { name: holdMargin, type: number, minimum: -0.2, maximum: 0.2 }, { name: planSha256, type: string }]
         atcs_undo: [{ name: planSha256, type: string }]
         atcs_dump_cells: [{ name: path, type: string }]
-        atcs_export_changes: []
+        atcs_export_changes: [{ name: limitations, type: string }]
         atcs_close: []
     argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', operate-parked, '${WORKSPACE}', '${SLOT}']
 
