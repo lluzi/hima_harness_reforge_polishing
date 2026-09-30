@@ -2,7 +2,7 @@ id: agentic-timing-closure-system
 version: "0.2.0"
 title: Agentic timing closure system
 status: development
-minimumHarnessVersion: 0.1.0
+minimumHarnessVersion: 0.2.1
 
 ontology:
   aliases:
@@ -1264,7 +1264,7 @@ workshops:
     directory: research/worker-01
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult01, residualCases, workerRequest01Problems]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult01, residualCases, workerRequest01Problems]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest01
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1341,7 +1341,7 @@ workshops:
     directory: research/worker-02
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult02, residualCases, workerRequest02Problems]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult02, residualCases, workerRequest02Problems]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest02
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1418,7 +1418,7 @@ workshops:
     directory: research/worker-03
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult03, residualCases, workerRequest03Problems]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult03, residualCases, workerRequest03Problems]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest03
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1495,7 +1495,7 @@ workshops:
     directory: research/worker-04
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult04, residualCases, workerRequest04Problems]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult04, residualCases, workerRequest04Problems]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest04
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1572,7 +1572,7 @@ workshops:
     directory: research/worker-05
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult05, residualCases, workerRequest05Problems]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult05, residualCases, workerRequest05Problems]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest05
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1649,7 +1649,7 @@ workshops:
     directory: research/worker-06
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, riskAtlas, campaignExperience, workerResult06, residualCases, workerRequest06Problems]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult06, residualCases, workerRequest06Problems]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest06
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']

@@ -55,8 +55,9 @@ does not: there is no wrong attempt, only an unmeasured one (FABRIC G45, 2026-09
 sessions by value (blocker coverage, then XTop's best per-scenario gain on a violating target check) and
 replays them before auto-finish; a plain auto-fix control arm guards the batch. XTop's prediction decides,
 WNS first: control when merged is worse on setup or hold WNS (> 1e-4); merged when better on one WNS; with
-both equal, merged only when no worse on setup and hold TNS (1e-3) and better on one, or all four tie. So a
-short, clean kept log beats many marginal edits. XTop's gain screens trials; refreshed PrimeTime judges.
+both equal, merged only when no worse on setup and hold TNS (1e-3) and better on one, or all four tie. So every
+kept edit carries its measured gain, and a batch is as large as the evidence supports: keep what measured, undo the
+rest. XTop's gain screens trials; refreshed PrimeTime judges.
 
 ### The expert loop
 
