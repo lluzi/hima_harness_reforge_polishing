@@ -2197,6 +2197,69 @@ class ExportLimitationsTest(unittest.TestCase):
 
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class Q1CloseCompletesTheSessionTest(unittest.TestCase):
+    """D-Q1-1 (#64 Q1 attempt 1): the Operator kept a size (w01-cmd-9), then returned its result without
+    `atcs_dump_cells after.dump`, `atcs_export_changes` or `atcs_close`; the session was killed at its idle
+    deadline and the kept edit was lost. The seal needs after.dump (else missing-input) and the transcript's
+    ATCS:taint line from atcs_close; a missing export is only an advisory. So `atcs_close`, the one command a
+    clean end needs, completes what was skipped: after.dump when none was written since the last mutation,
+    and the export (with a limitation saying so) when none ran in an untainted session."""
+
+    def test_q1_a_close_after_a_bare_kept_edit_leaves_a_sealable_slot(self):
+        session = Session(self).run(
+            "T before {atcs_dump_cells before.dump}\n"
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            "T close {atcs_close}\n")
+        self.assertEqual(session.outcome("size")[0], "OK", session.stdout + session.stderr)
+        status, text = session.outcome("close")
+        self.assertEqual(status, "OK", session.stdout + session.stderr)
+        self.assertIn("ATCS:taint:clean", session.stdout)
+        self.assertIn("completed after.dump and atcs_export_changes", text)
+        after = (session.root / "after.dump").read_text(encoding="utf-8")
+        self.assertIn("U1 BUFX2", after, "after.dump is the state the kept edit left")
+        self.assertEqual(len(session.calls_to("write_design_changes")), 1)
+        summary = json.loads((session.root / "summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(summary["limitations"],
+                         ["atcs_close exported this session: the Operator closed without atcs_export_changes"])
+
+    def test_a_finished_session_closes_without_writing_again(self):
+        session = Session(self).run(
+            "T before {atcs_dump_cells before.dump}\n"
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            "T after {atcs_dump_cells after.dump}\n"
+            'T export {atcs_export_changes "own limitation"}\n'
+            "file delete [file join $::operator_root after.dump]\n"
+            "T close {atcs_close}\n")
+        status, text = session.outcome("close")
+        self.assertEqual(status, "OK", session.stdout + session.stderr)
+        self.assertNotIn("completed", text)
+        self.assertFalse((session.root / "after.dump").exists(), "no second dump of an unchanged state")
+        self.assertEqual(len(session.calls_to("write_design_changes")), 1, "no second export")
+        self.assertEqual(json.loads((session.root / "summary.json").read_text(encoding="utf-8")),
+                         {"limitations": ["own limitation"]})
+
+    def test_a_mutation_after_the_dump_is_dumped_again_at_close(self):
+        session = Session(self, max_mutations=5).run(
+            "T after {atcs_dump_cells after.dump}\n"
+            "T export {atcs_export_changes}\n"
+            f"T size {{atcs_size_cell U1 BUFX4 {PLAN}}}\n"
+            "T close {atcs_close}\n")
+        status, text = session.outcome("close")
+        self.assertEqual(status, "OK", session.stdout + session.stderr)
+        self.assertIn("completed after.dump", text)
+        self.assertIn("U1 BUFX4", (session.root / "after.dump").read_text(encoding="utf-8"))
+        self.assertEqual(len(session.calls_to("write_design_changes")), 1, "the Operator's own export stands")
+
+    def test_a_tainted_session_is_dumped_but_never_exported_at_close(self):
+        session = Session(self).run('catch {atcs_taint "test taint"}\nT close {atcs_close}\n')
+        status, text = session.outcome("close")
+        self.assertEqual(status, "OK", session.stdout + session.stderr)
+        self.assertIn("ATCS:taint:tainted:test taint", session.stdout)
+        self.assertTrue((session.root / "after.dump").exists())
+        self.assertEqual(session.calls_to("write_design_changes"), [])
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class ReadLogTest(unittest.TestCase):
     """#66 D3: every `atcs_paths`, `atcs_fail_reasons` and `atcs_point` read lands in `reads.jsonl`.
 

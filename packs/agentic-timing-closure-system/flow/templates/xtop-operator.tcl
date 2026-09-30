@@ -1505,12 +1505,15 @@ proc atcs_undo {plan_sha256} {
 # root, so those are the only two names this writes, always in the slot root; any other name is
 # refused before anything is written, naming the two. The replay's own dumps go through
 # atcs_write_cell_dump, which no typed command reaches.
+set ::atcs_after_dump_seq -1
+set ::atcs_exported 0
 proc atcs_dump_cells {path} {
     set name [file tail $path]
     if {$name ni {before.dump after.dump}} {
         error "atcs_dump_cells writes only before.dump or after.dump (in the slot root $::operator_root); capture seals exactly those two names, not $name"
     }
     atcs_write_cell_dump [file join $::operator_root $name]
+    if {$name eq "after.dump"} { set ::atcs_after_dump_seq $::atcs_seq }
 }
 proc atcs_write_cell_dump {path} {
     # `get_cells -hierarchical` (documented, get_cells.1) plus
@@ -1546,16 +1549,36 @@ proc atcs_export_changes {{limitations ""}} {
     write_design_changes -format INNOVUS -eco_file_prefix $::env(ECO_PREFIX) \
         -output_dir $::eco_output_dir -keep_route
     save_workspace -as ${::design}_operator_candidate
+    set ::atcs_exported 1
     return $::eco_output_dir
 }
 # The transcript always states the taint state the capture must honour.
+# D-Q1-1 (#64 Q1 attempt 1): the Operator kept a size, then answered without after.dump, the export or the
+# close, and the kept edit was lost with the session. The seal needs after.dump and this ATCS:taint line (a
+# missing export is only an advisory), so the close, the one command a clean end needs, completes what was
+# skipped first: after.dump when none was written since the last mutation, and the export when none ran in
+# an untainted session. What it completed, or failed to, is in its reply.
 proc atcs_close {} {
+    set completed {}
+    set failed {}
+    if {$::atcs_after_dump_seq != $::atcs_seq} {
+        if {[catch {atcs_dump_cells after.dump} message]} { lappend failed "after.dump: $message" } else { lappend completed after.dump }
+    }
+    if {$::atcs_tainted eq "" && !$::atcs_exported} {
+        if {[catch {atcs_export_changes "atcs_close exported this session: the Operator closed without atcs_export_changes"} message]} {
+            lappend failed "atcs_export_changes: $message"
+        } else {
+            lappend completed atcs_export_changes
+        }
+    }
+    set note [expr {[llength $completed] > 0 ? "; completed [join $completed { and }]" : ""}]
+    if {[llength $failed] > 0} { append note "; could not complete [join $failed {; }]" }
     if {$::atcs_tainted ne ""} {
         puts "ATCS:taint:tainted:$::atcs_tainted"
-        return "closing after adapter receipt; session tainted: $::atcs_tainted"
+        return "closing after adapter receipt; session tainted: $::atcs_tainted$note"
     }
     puts "ATCS:taint:clean"
-    return "closing after adapter receipt; session clean"
+    return "closing after adapter receipt; session clean$note"
 }
 
 # ---- local-topology edit domain (#64 attempt 5) ------------------------------
