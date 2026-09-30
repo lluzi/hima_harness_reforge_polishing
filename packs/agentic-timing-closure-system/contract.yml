@@ -16,9 +16,10 @@ budget:
   timeBoxMs: 86400000
   closingReserveMs: 1800000
   # #64 Track B (live class C28), reshaped 2026-09-29 (ADR-0016): every generation is one batch and
-  # one refresh, generation 1 included (the baseline flows straight into the first plan), so the two
-  # refreshes of the #64 deal need two generations. A Run created below this is refused.
-  minimumGenerations: 2
+  # one refresh, generation 1 included (the baseline flows straight into the first plan). #66 D9: the
+  # decisive experiment is one generation and one refresh, so one generation is the floor; a Run
+  # declaring two refreshes ends honestly at the refresh-budget gate or the owner's decision.
+  minimumGenerations: 1
 
 inputs:
   - name: designStateManifest
