@@ -1,13 +1,16 @@
 # linglong-atcs28 Site administration
 
-Current candidate (Issue 64 / ATCS-09, before T06, Pack 0.2.0): `atcs-xtop-operator-v19.sh` under `operator-admin/atcs-v19/`
-(wrapper sha `24fb0447c1803551...`, installed 2026-09-30, mode 0555). v19 is v18 with the atcs-v19 paths and the flow pin
-`3e8a24fbfc3cc098...` (adapter `48386a413919e040...` unchanged): the flow whose plans always emit target pins (data pin, or the flop's
-async pin for an `@**async_default**` check) and whose `atcs_point`/`atcs_paths` resolve an instance or check key to its
-input pins in-session and log refused reads (L4 run-4 gap). The verifier (`c9dca81c73dd9585...`, static checks only) and the slot
-step (`293b2a3f...`) are v18's bytes; bootstrap root `operator-admin/atcs-v19/bootstraps/`. The Pack's `xtop-operator`
-binding names v19 and the Permit reads `atcs-v19`. The template `atcs-xtop-operator-v19.sh` with its placeholders filled is
-byte-identical to the installed v19 (`derive-v19.py`, count-asserted hunks).
+Current candidate (Issue 64 / ATCS-09, before Q1/T07, Pack 0.2.0): `atcs-xtop-operator-v20.sh` under `operator-admin/atcs-v20/`
+(wrapper sha `3b447439e01296ce...`, installed 2026-09-30, mode 0555). v20 is v19 with the atcs-v20 paths and the flow pin
+`5ec10d9cfbd76463...` / adapter `669acfb86175778a...`: the flow whose XTop adapter builds the report_timing pin collection inside the
+redirected script, names each target pin's in-domain driver for a size-only hold pass, refuses dummy/delay-chain forms it
+cannot state from the Site lists, keeps a real insertion, settles an unadmitted active slot as a no-fix, and whose seal
+refuses only a tainted session (T06 repairs). The verifier (`c9dca81c73dd9585...`, static checks only) and the slot step
+(`293b2a3f...`) are v18's bytes; bootstrap root `operator-admin/atcs-v20/bootstraps/`. The Pack's `xtop-operator` binding
+names v20 and the Permit reads `atcs-v20`. The template `atcs-xtop-operator-v20.sh` with its placeholders filled is
+byte-identical to the installed v20 (`derive-v20.py`, count-asserted hunks).
+
+Previous candidate v19 (`24fb0447c1803551...`): flow `3e8a24fbfc3c...` (in-session pin resolution, target pins always emitted).
 
 Previous candidate v18 (`67fb15e19cc8a3fe...`): static-only verifier, best-effort-replay flow `2835a2c3d4ce...`.
 
