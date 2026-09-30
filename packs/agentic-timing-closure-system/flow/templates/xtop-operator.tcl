@@ -1233,6 +1233,35 @@ proc atcs_remove_buffer {instance plan_sha256} {
     }
     return $result
 }
+# D-T06-4(a) (#64 T06 w04/w05 seq1, w01 seq2): a size-only hold pass on sink pins alone committed 0
+# solutions with `not_only_pin 100%`: it sizes the cells that drive a violating pin, and -only_pins held
+# none of them. The collection form itself is accepted (run 3: a hold fix on `{"a/CDN"}` inserted and was
+# kept; a setup fix on `{"b/Z", "c/ZN"}` sized those drivers). So each named input pin's net driver joins
+# -only_pins when that driver's cell is in the edit domain; `direction` and `get_pins -leaf -of_objects`
+# are the ones the domain derivation and atcs_point already use on real XTop.
+proc atcs_size_only_pins {pins} {
+    set out $pins
+    foreach pin $pins {
+        set object [get_pins -quiet -exact $pin]
+        if {[sizeof_collection $object] != 1} { continue }
+        set direction ""
+        catch { set direction [get_attribute $object direction] }
+        if {$direction ni {in input}} { continue }
+        set net [get_nets -quiet -of_objects $object]
+        if {[sizeof_collection $net] != 1} { continue }
+        foreach_in_collection each [get_pins -quiet -leaf -of_objects $net] {
+            set direction ""
+            catch { set direction [get_attribute $each direction] }
+            if {$direction ni {out output}} { continue }
+            set name [get_attribute $each full_name]
+            set owner [atcs_pin_owner $name]
+            if {$owner ne "" && [atcs_instance_in_domain $owner] && [lsearch -exact $out $name] < 0} {
+                lappend out $name
+            }
+        }
+    }
+    return $out
+}
 proc atcs_fix_hold_pins {pins effort hold_target setup_margin size_cell_only use_dummy_cell fix_timing_window
                          max_cluster_loader_count max_delay_cell_length delay_cell_list plan_sha256} {
     atcs_begin_mutation $plan_sha256
@@ -1266,7 +1295,8 @@ proc atcs_fix_hold_pins {pins effort hold_target setup_margin size_cell_only use
     if {$max_delay_cell_length >= 0} {
         lappend command -max_delay_cell_length $max_delay_cell_length -delay_cell_list $delay_cell_list
     }
-    lappend command -only_pins [get_pins -exact $pins]
+    set only_pins [expr {$size_cell_only && !$use_dummy_cell ? [atcs_size_only_pins $pins] : $pins}]
+    lappend command -only_pins [get_pins -exact $only_pins]
     set args_json [atcs_jobj [list pins [atcs_jarr $pins] effort [atcs_js $effort] holdTarget $hold_target \
         setupMargin $setup_margin sizeCellOnly [atcs_jbool $size_cell_only] useDummyCell [atcs_jbool $use_dummy_cell] \
         fixTimingWindow [atcs_jbool $fix_timing_window] maxClusterLoaderCount $max_cluster_loader_count \

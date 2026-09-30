@@ -1469,6 +1469,24 @@ class TargetedFixTest(unittest.TestCase):
         self.assertEqual(_after(call, "-size_rule"), "nominal_keywords")
         self.assertEqual(call.index("-size_rule"), call.index("-size_cell_only") + 1)
 
+    def test_t06_w04_size_only_pass_names_the_drivers_it_may_size(self):
+        """D-T06-4(a) (#64 T06 w04 seq1, w05 seq1, w01 seq2): `atcs_fix_hold_pins` with sizeCellOnly on the
+        cluster's sink pins reached XTop as `-only_pins {"a/D", ...}`, committed 0 solutions and reported
+        `not_only_pin 100%`. The collection form is accepted (run 3 w01's hold fix on `{"a/CDN"}` inserted
+        and was kept; w03's setup fix on `{"b/Z", "c/ZN"}` sized those drivers), but a size-only pass sizes
+        the cells that drive the pins, so a sink pin alone leaves it no candidate. The toolkit adds each
+        named input pin's in-domain driver pin; a driver outside the domain stays out."""
+        session = Session(self).run(
+            "set ::cells(UX) BUFX1; set ::pin_net(UX/Y) N2\n"
+            f"T w04 {{{HOLD} U9/D omit 0 0.005 1 0 0 0 -1 {{}} {PLAN}}}\n"
+            f"T insert {{{HOLD} U9/D medium 0 0.005 0 0 0 0 -1 {{}} {PLAN}}}\n"
+        )
+        self.assertEqual(session.outcome("w04")[0], "OK", session.stdout)
+        first, second = session.calls_to("fix_hold_gba_violations")
+        self.assertEqual(_after(first, "-only_pins"), "pin:U9/D pin:U1/Y")
+        self.assertEqual(_after(second, "-only_pins"), "pin:U9/D", "an inserting pass acts at the named pin")
+        self.assertEqual(session.ops[0]["args"]["pins"], ["U9/D"], "args stay as the Host sent them")
+
     def test_fix_hold_omits_optional_flags_at_their_sentinels(self):
         session = Session(self).run(
             "set ::stub_fix_effect {U1 BUFX4}\n"
