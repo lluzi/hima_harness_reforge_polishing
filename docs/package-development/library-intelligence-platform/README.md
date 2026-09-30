@@ -15,6 +15,7 @@ Start here:
 8. [Research verification](research-verification.md)
 9. [Current QuaLib 2026 bounded qualification](qualification/2026-09-24-qualib-2026.md)
 10. [Standard cell pin accessibility analysis and modeling research](research/pin-accessibility-report.zh-CN.md) — physical-view requirements, academic/industrial methods and validation boundaries; research only.
+11. [LEF geometry based pin access probability model](research/pin-access-probability-model.zh-CN.md) — first-principles events, blocked-pose sets, joint resources, probability metrics and future calibration; proposed model with exact synthetic checks.
 
 Research control artifacts:
 

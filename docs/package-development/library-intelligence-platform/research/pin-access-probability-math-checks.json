@@ -1,0 +1,587 @@
+{
+  "schema_version": 1,
+  "purpose": "Exact finite abstract probability checks, not physical-model validation or target-library results",
+  "enumeration_method": "Enumerate all independent Bernoulli resource states using rational weights; enumerate assignments including unserved; maximize served terminals subject to capacity-one resource uniqueness.",
+  "cases": [
+    {
+      "name": "shared_corridors",
+      "assumptions": "All terminals active and on distinct nets; each corridor has capacity one; each resource open independently with probability 3/4; options are abstract complete paths, not LEF-derived.",
+      "options": [
+        [
+          "U",
+          "V"
+        ],
+        [
+          "U",
+          "V"
+        ]
+      ],
+      "resources": [
+        "U",
+        "V"
+      ],
+      "single_pin_probabilities": [
+        {
+          "exact": "15/16",
+          "decimal": 0.9375
+        },
+        {
+          "exact": "15/16",
+          "decimal": 0.9375
+        }
+      ],
+      "all_pins_singly_accessible": {
+        "exact": "15/16",
+        "decimal": 0.9375
+      },
+      "joint_probability": {
+        "exact": "9/16",
+        "decimal": 0.5625
+      },
+      "failure_probability": {
+        "exact": "7/16",
+        "decimal": 0.4375
+      },
+      "naive_product": {
+        "exact": "225/256",
+        "decimal": 0.87890625
+      },
+      "expected_minimum_unsatisfied": {
+        "exact": "1/2",
+        "decimal": 0.5
+      },
+      "states": [
+        {
+          "available": [],
+          "weight": {
+            "exact": "1/16",
+            "decimal": 0.0625
+          },
+          "single_pin_success": [
+            false,
+            false
+          ],
+          "max_served": 0,
+          "joint_success": false
+        },
+        {
+          "available": [
+            "V"
+          ],
+          "weight": {
+            "exact": "3/16",
+            "decimal": 0.1875
+          },
+          "single_pin_success": [
+            true,
+            true
+          ],
+          "max_served": 1,
+          "joint_success": false
+        },
+        {
+          "available": [
+            "U"
+          ],
+          "weight": {
+            "exact": "3/16",
+            "decimal": 0.1875
+          },
+          "single_pin_success": [
+            true,
+            true
+          ],
+          "max_served": 1,
+          "joint_success": false
+        },
+        {
+          "available": [
+            "U",
+            "V"
+          ],
+          "weight": {
+            "exact": "9/16",
+            "decimal": 0.5625
+          },
+          "single_pin_success": [
+            true,
+            true
+          ],
+          "max_served": 2,
+          "joint_success": true
+        }
+      ]
+    },
+    {
+      "name": "disjoint_corridors",
+      "assumptions": "All terminals active and on distinct nets; each corridor has capacity one; each resource open independently with probability 3/4; options are abstract complete paths, not LEF-derived.",
+      "options": [
+        [
+          "AU",
+          "AV"
+        ],
+        [
+          "BU",
+          "BV"
+        ]
+      ],
+      "resources": [
+        "AU",
+        "AV",
+        "BU",
+        "BV"
+      ],
+      "single_pin_probabilities": [
+        {
+          "exact": "15/16",
+          "decimal": 0.9375
+        },
+        {
+          "exact": "15/16",
+          "decimal": 0.9375
+        }
+      ],
+      "all_pins_singly_accessible": {
+        "exact": "225/256",
+        "decimal": 0.87890625
+      },
+      "joint_probability": {
+        "exact": "225/256",
+        "decimal": 0.87890625
+      },
+      "failure_probability": {
+        "exact": "31/256",
+        "decimal": 0.12109375
+      },
+      "naive_product": {
+        "exact": "225/256",
+        "decimal": 0.87890625
+      },
+      "expected_minimum_unsatisfied": {
+        "exact": "1/8",
+        "decimal": 0.125
+      },
+      "states": [
+        {
+          "available": [],
+          "weight": {
+            "exact": "1/256",
+            "decimal": 0.00390625
+          },
+          "single_pin_success": [
+            false,
+            false
+          ],
+          "max_served": 0,
+          "joint_success": false
+        },
+        {
+          "available": [
+            "BV"
+          ],
+          "weight": {
+            "exact": "3/256",
+            "decimal": 0.01171875
+          },
+          "single_pin_success": [
+            false,
+            true
+          ],
+          "max_served": 1,
+          "joint_success": false
+        },
+        {
+          "available": [
+            "BU"
+          ],
+          "weight": {
+            "exact": "3/256",
+            "decimal": 0.01171875
+          },
+          "single_pin_success": [
+            false,
+            true
+          ],
+          "max_served": 1,
+          "joint_success": false
+        },
+        {
+          "available": [
+            "BU",
+            "BV"
+          ],
+          "weight": {
+            "exact": "9/256",
+            "decimal": 0.03515625
+          },
+          "single_pin_success": [
+            false,
+            true
+          ],
+          "max_served": 1,
+          "joint_success": false
+        },
+        {
+          "available": [
+            "AV"
+          ],
+          "weight": {
+            "exact": "3/256",
+            "decimal": 0.01171875
+          },
+          "single_pin_success": [
+            true,
+            false
+          ],
+          "max_served": 1,
+          "joint_success": false
+        },
+        {
+          "available": [
+            "AV",
+            "BV"
+          ],
+          "weight": {
+            "exact": "9/256",
+            "decimal": 0.03515625
+          },
+          "single_pin_success": [
+            true,
+            true
+          ],
+          "max_served": 2,
+          "joint_success": true
+        },
+        {
+          "available": [
+            "AV",
+            "BU"
+          ],
+          "weight": {
+            "exact": "9/256",
+            "decimal": 0.03515625
+          },
+          "single_pin_success": [
+            true,
+            true
+          ],
+          "max_served": 2,
+          "joint_success": true
+        },
+        {
+          "available": [
+            "AV",
+            "BU",
+            "BV"
+          ],
+          "weight": {
+            "exact": "27/256",
+            "decimal": 0.10546875
+          },
+          "single_pin_success": [
+            true,
+            true
+          ],
+          "max_served": 2,
+          "joint_success": true
+        },
+        {
+          "available": [
+            "AU"
+          ],
+          "weight": {
+            "exact": "3/256",
+            "decimal": 0.01171875
+          },
+          "single_pin_success": [
+            true,
+            false
+          ],
+          "max_served": 1,
+          "joint_success": false
+        },
+        {
+          "available": [
+            "AU",
+            "BV"
+          ],
+          "weight": {
+            "exact": "9/256",
+            "decimal": 0.03515625
+          },
+          "single_pin_success": [
+            true,
+            true
+          ],
+          "max_served": 2,
+          "joint_success": true
+        },
+        {
+          "available": [
+            "AU",
+            "BU"
+          ],
+          "weight": {
+            "exact": "9/256",
+            "decimal": 0.03515625
+          },
+          "single_pin_success": [
+            true,
+            true
+          ],
+          "max_served": 2,
+          "joint_success": true
+        },
+        {
+          "available": [
+            "AU",
+            "BU",
+            "BV"
+          ],
+          "weight": {
+            "exact": "27/256",
+            "decimal": 0.10546875
+          },
+          "single_pin_success": [
+            true,
+            true
+          ],
+          "max_served": 2,
+          "joint_success": true
+        },
+        {
+          "available": [
+            "AU",
+            "AV"
+          ],
+          "weight": {
+            "exact": "9/256",
+            "decimal": 0.03515625
+          },
+          "single_pin_success": [
+            true,
+            false
+          ],
+          "max_served": 1,
+          "joint_success": false
+        },
+        {
+          "available": [
+            "AU",
+            "AV",
+            "BV"
+          ],
+          "weight": {
+            "exact": "27/256",
+            "decimal": 0.10546875
+          },
+          "single_pin_success": [
+            true,
+            true
+          ],
+          "max_served": 2,
+          "joint_success": true
+        },
+        {
+          "available": [
+            "AU",
+            "AV",
+            "BU"
+          ],
+          "weight": {
+            "exact": "27/256",
+            "decimal": 0.10546875
+          },
+          "single_pin_success": [
+            true,
+            true
+          ],
+          "max_served": 2,
+          "joint_success": true
+        },
+        {
+          "available": [
+            "AU",
+            "AV",
+            "BU",
+            "BV"
+          ],
+          "weight": {
+            "exact": "81/256",
+            "decimal": 0.31640625
+          },
+          "single_pin_success": [
+            true,
+            true
+          ],
+          "max_served": 2,
+          "joint_success": true
+        }
+      ]
+    }
+  ],
+  "algorithm_gap": {
+    "feasibility_probability": {
+      "exact": "1",
+      "decimal": 1.0
+    },
+    "certified_greedy_policy_success": {
+      "exact": "1/2",
+      "decimal": 0.5
+    },
+    "policy": "Uniform terminal order; A prefers U then V; B only U; no rip-up/backtracking; both resources always open.",
+    "orders": [
+      {
+        "order": [
+          "A",
+          "B"
+        ],
+        "assignment": {
+          "A": "U"
+        },
+        "success": false,
+        "probability": {
+          "exact": "1/2",
+          "decimal": 0.5
+        }
+      },
+      {
+        "order": [
+          "B",
+          "A"
+        ],
+        "assignment": {
+          "B": "U",
+          "A": "V"
+        },
+        "success": true,
+        "probability": {
+          "exact": "1/2",
+          "decimal": 0.5
+        }
+      }
+    ]
+  },
+  "unknown_mass_bound": {
+    "assumptions": "Exhaustive disjoint partition under a fixed normalized finite distribution; PASS and FAIL certified against the same event.",
+    "pass": {
+      "exact": "7/10",
+      "decimal": 0.7
+    },
+    "fail": {
+      "exact": "1/5",
+      "decimal": 0.2
+    },
+    "unknown": {
+      "exact": "1/10",
+      "decimal": 0.1
+    },
+    "success_interval": [
+      {
+        "exact": "7/10",
+        "decimal": 0.7
+      },
+      {
+        "exact": "4/5",
+        "decimal": 0.8
+      }
+    ]
+  },
+  "checks_passed": [
+    "all state weights sum to one",
+    "joint success <= all individual-existence conjunction <= every pin marginal",
+    "shared correlation counterexample exact",
+    "disjoint independent comparison exact",
+    "resource availability monotonicity for every nested pair of enumerated states",
+    "existence vs greedy policy counterexample",
+    "unknown mass success interval arithmetic",
+    "blocked-pose intersection formula equals exhaustive enumeration for shared and complementary masks"
+  ],
+  "blocked_pose_set_examples": {
+    "purpose": "Illustrative constructed blocking sets, not extracted LEF geometry; verifies 1 minus mass of intersection.",
+    "cases": [
+      {
+        "name": "shared_blocking_positions",
+        "legal_positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "probability_per_position": {
+          "exact": "1/8",
+          "decimal": 0.125
+        },
+        "blocked_sets": [
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "pin_ap_success": {
+          "exact": "3/4",
+          "decimal": 0.75
+        },
+        "each_ap_success": [
+          {
+            "exact": "3/4",
+            "decimal": 0.75
+          },
+          {
+            "exact": "3/4",
+            "decimal": 0.75
+          }
+        ]
+      },
+      {
+        "name": "complementary_blocking_positions",
+        "legal_positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "probability_per_position": {
+          "exact": "1/8",
+          "decimal": 0.125
+        },
+        "blocked_sets": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "pin_ap_success": {
+          "exact": "1",
+          "decimal": 1.0
+        },
+        "each_ap_success": [
+          {
+            "exact": "3/4",
+            "decimal": 0.75
+          },
+          {
+            "exact": "3/4",
+            "decimal": 0.75
+          }
+        ]
+      }
+    ]
+  }
+}
