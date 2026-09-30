@@ -598,7 +598,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   // Issue #64 Task 3: the XTop expert toolkit. Reads never carry the plan hash; every mutation takes
   // it last, so a reviewed scope can name any of them.
   assert.deepEqual(interactiveTool.interactive.commands.read,
-    ['atcs_ref', 'atcs_gain', 'atcs_paths', 'atcs_fail_reasons', 'atcs_candidates']);
+    ['atcs_ref', 'atcs_gain', 'atcs_paths', 'atcs_fail_reasons', 'atcs_candidates', 'atcs_point']);
   assert.deepEqual(interactiveTool.interactive.commands.mutate, [
     'atcs_size_cell', 'atcs_exchange_cell', 'atcs_insert_buffer', 'atcs_insert_dummy', 'atcs_split_load',
     'atcs_split_net', 'atcs_move_cell', 'atcs_remove_buffer', 'atcs_fix_hold_pins', 'atcs_fix_setup_pins', 'atcs_undo']);

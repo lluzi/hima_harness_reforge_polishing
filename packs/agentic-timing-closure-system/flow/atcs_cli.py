@@ -1254,9 +1254,10 @@ def _cmd_prepare_workers(workspace, args):
         operator_tcl_path.parent.mkdir(parents=True, exist_ok=True)
         operator_tcl_path.write_text(operator_task["tcl"], encoding="utf-8")
 
-        # #64 attempt 5: the session derives its blockers' local topology in-session (nets and
-        # their drivers and loads); a plan that gives no region gets one box per plan instance
-        # from the base DEF. The admitted package itself is unchanged (the worker request binds to it).
+        # #66 D2: the session derives its blockers' local topology in-session (nets and their
+        # drivers and loads, one hop, nets above workspaces.LOCAL_FANOUT_MAX leaf pins left out) and
+        # records it in domain.json; a plan that gives no region gets one box per plan instance from
+        # the base DEF. The admitted package itself is unchanged (the worker request binds to it).
         session_domain = dict(validated.get("editDomain") or {})
         derived_regions = []
         if not session_domain.get("regions") and def_path is not None and def_path.is_file():
@@ -1265,7 +1266,7 @@ def _cmd_prepare_workers(workspace, args):
         analysis_task = adapters.compile_xtop_analysis_manual_task(
             manifest, session_domain, operator_tcl_path, ops_log_path,
             target_pins=validated.get("targetPins"), max_mutations=validated["scope"]["maxMutations"],
-            observe=validated.get("observe"), local_topology=True,
+            observe=validated.get("observe"), local_topology=True, fanout_max=workspaces.LOCAL_FANOUT_MAX,
         )
         analysis_tcl_path = session_dir / "xtop-analysis-manual.tcl"
         analysis_tcl_path.write_text(analysis_task["tcl"], encoding="utf-8")
@@ -1274,7 +1275,7 @@ def _cmd_prepare_workers(workspace, args):
             "workPackageId": validated["id"], "manifestId": manifest["id"], "root": manifest["root"],
             "namePrefix": manifest["namePrefix"], "sessionTcl": str(analysis_tcl_path), "opsLog": str(ops_log_path),
             "sessionTclSha256": core.file_sha256(analysis_tcl_path),
-            "derivedRegions": derived_regions, "localTopology": True,
+            "derivedRegions": derived_regions, "localTopology": True, "localFanoutMax": workspaces.LOCAL_FANOUT_MAX,
             # G2: the full stamped artifacts, not just their ids -- `capture-contribution
             # <slot>` composes `base_ref` from these directly, so it needs no argv path
             # of its own beyond the slot name.

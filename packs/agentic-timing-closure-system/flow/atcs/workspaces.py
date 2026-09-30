@@ -163,6 +163,17 @@ the Harness ceiling of 200 so a runaway loop still stops.
 
 OBSERVE_MODES = ("fast", "full")
 
+LOCAL_FANOUT_MAX = 12
+"""Every active worker session's local-topology cap (#66 D2), baked as `ATCS_LOCAL_FANOUT_MAX`.
+
+`prepare-workers` bakes each active slot's session with `EDIT_DOMAIN_LOCAL 1` and this cap: before
+its ready line the session widens the plan's edit domain to the nets of its target pins and of its
+plan instances' pins, and the leaf cells on them, one hop; a net with more leaf pins than this is
+global (clock, reset, scan enable) and stays out, and `atcs_remove_buffer` never admits one as a
+buffer's input net. The replay never derives (its sessions enter their sealed domains). Lower it
+when the per-mutation observation of a cluster-scale domain is too slow on real XTop.
+"""
+
 PARKED_FIELDS = ("taskId", "baseStateId", "parked", "problem")
 """The whole of a parked package: its identity and why the plan parked the slot."""
 

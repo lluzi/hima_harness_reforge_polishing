@@ -49,6 +49,7 @@ save_workspace -as ${design}_operator_baseline
 # agent drives, classified in contract.yml `interactive.commands`:
 #
 #   read    atcs_ref atcs_gain atcs_paths atcs_fail_reasons atcs_candidates
+#           atcs_point
 #   mutate  atcs_size_cell atcs_exchange_cell atcs_insert_buffer
 #           atcs_insert_dummy atcs_split_load atcs_split_net atcs_move_cell
 #           atcs_remove_buffer atcs_fix_hold_pins atcs_fix_setup_pins atcs_undo
@@ -104,6 +105,17 @@ save_workspace -as ${design}_operator_baseline
 # tainted.json (beside ops.jsonl) exists once the session is tainted:
 #   {"reason","seq"}; atcs_export_changes then refuses, and atcs_close prints
 #   ATCS:taint:tainted:<reason> (else ATCS:taint:clean) to the transcript.
+# reads.jsonl (beside ops.jsonl, #66 D3), one line per atcs_paths,
+#   atcs_fail_reasons and atcs_point call that returned: {"seq","proc","args",
+#   "rowsDigest","rows"}. seq is the ops.jsonl line it follows (0 = before any
+#   mutation); args as the Host sent them; rows the read's rows (atcs_point:
+#   {"endpoint","scenario","slack"} objects; the others: the non-empty lines
+#   of the text XTop gave, then any failed pins), at most ::ATCS_READ_ROWS_MAX,
+#   each text row clipped to ::ATCS_READ_ROW_CHARS; rowsDigest the sha256 of
+#   every row's compact JSON array before clipping (json.dumps(rows,
+#   ensure_ascii=False, separators=(",", ":")) in Python). Reads use no budget.
+# domain.json (beside ops.jsonl, #66 D2) in a local-topology session: see
+#   atcs_derive_local_domain at the end of this file.
 ########################################################################
 foreach {atcs_name atcs_default} {EDIT_DOMAIN_INSTANCES {} EDIT_DOMAIN_NETS {} EDIT_DOMAIN_PINS {}
         EDIT_DOMAIN_REGIONS {} ATCS_MAX_MUTATIONS 1 ATCS_OBSERVE fast XTOP_REMOVABLE_FILLERS {}
@@ -134,6 +146,10 @@ set ::ATCS_HOLD_EFFORTS {omit low medium high ultra_high extreme_high}
 set ::ATCS_SETUP_EFFORTS {medium high}
 set ::ATCS_FIX_SETUP_METHODS {size_cell insert_buffer split_net}
 set ::ATCS_FAIL_REASON_METHODS {insert_buffer size_cell split_net remove_buffer move_cell}
+set ::ATCS_POINT_MAX 100
+set ::ATCS_READ_ROWS_MAX 200
+set ::ATCS_READ_ROW_CHARS 500
+array set ::atcs_reference_text {}
 
 # ---- JSON ------------------------------------------------------------------
 set ::atcs_json_map [list "\\" "\\\\" "\"" "\\\"" "\n" "\\n" "\r" "\\r" "\t" "\\t" "\b" "\\b" "\f" "\\f"]
@@ -165,7 +181,82 @@ proc atcs_append {path line} {
     puts $fh $line
     close $fh
 }
+# ---- sha256 (reads.jsonl rowsDigest; plain Tcl 8.5, no package) -----------------
+set ::atcs_sha256_k {
+    0x428a2f98 0x71374491 0xb5c0fbcf 0xe9b5dba5 0x3956c25b 0x59f111f1 0x923f82a4 0xab1c5ed5
+    0xd807aa98 0x12835b01 0x243185be 0x550c7dc3 0x72be5d74 0x80deb1fe 0x9bdc06a7 0xc19bf174
+    0xe49b69c1 0xefbe4786 0x0fc19dc6 0x240ca1cc 0x2de92c6f 0x4a7484aa 0x5cb0a9dc 0x76f988da
+    0x983e5152 0xa831c66d 0xb00327c8 0xbf597fc7 0xc6e00bf3 0xd5a79147 0x06ca6351 0x14292967
+    0x27b70a85 0x2e1b2138 0x4d2c6dfc 0x53380d13 0x650a7354 0x766a0abb 0x81c2c92e 0x92722c85
+    0xa2bfe8a1 0xa81a664b 0xc24b8b70 0xc76c51a3 0xd192e819 0xd6990624 0xf40e3585 0x106aa070
+    0x19a4c116 0x1e376c08 0x2748774c 0x34b0bcb5 0x391c0cb3 0x4ed8aa4a 0x5b9cca4f 0x682e6ff3
+    0x748f82ee 0x78a5636f 0x84c87814 0x8cc70208 0x90befffa 0xa4506ceb 0xbef9a3f7 0xc67178f2
+}
+# Hex sha256 of a string's UTF-8 bytes.
+proc atcs_sha256 {text} {
+    set data [encoding convertto utf-8 $text]
+    set bits [expr {[string length $data] * 8}]
+    append data \x80
+    append data [string repeat \x00 [expr {(56 - [string length $data] % 64 + 64) % 64}]]
+    append data [binary format II [expr {($bits >> 32) & 0xffffffff}] [expr {$bits & 0xffffffff}]]
+    set h [list 0x6a09e667 0xbb67ae85 0x3c6ef372 0xa54ff53a 0x510e527f 0x9b05688c 0x1f83d9ab 0x5be0cd19]
+    set k $::atcs_sha256_k
+    set n [string length $data]
+    for {set off 0} {$off < $n} {incr off 64} {
+        binary scan $data @${off}Iu16 w
+        for {set t 16} {$t < 64} {incr t} {
+            set x [lindex $w [expr {$t - 15}]]
+            set y [lindex $w [expr {$t - 2}]]
+            set s0 [expr {((($x >> 7) | ($x << 25)) ^ (($x >> 18) | ($x << 14)) ^ ($x >> 3)) & 0xffffffff}]
+            set s1 [expr {((($y >> 17) | ($y << 15)) ^ (($y >> 19) | ($y << 13)) ^ ($y >> 10)) & 0xffffffff}]
+            lappend w [expr {([lindex $w [expr {$t - 16}]] + $s0 + [lindex $w [expr {$t - 7}]] + $s1) & 0xffffffff}]
+        }
+        lassign $h a b c d e f g hh
+        for {set t 0} {$t < 64} {incr t} {
+            set s1 [expr {((($e >> 6) | ($e << 26)) ^ (($e >> 11) | ($e << 21)) ^ (($e >> 25) | ($e << 7)))
+                & 0xffffffff}]
+            set t1 [expr {($hh + $s1 + (($e & $f) ^ (~$e & $g)) + [lindex $k $t] + [lindex $w $t]) & 0xffffffff}]
+            set s0 [expr {((($a >> 2) | ($a << 30)) ^ (($a >> 13) | ($a << 19)) ^ (($a >> 22) | ($a << 10)))
+                & 0xffffffff}]
+            set t2 [expr {($s0 + (($a & $b) ^ ($a & $c) ^ ($b & $c))) & 0xffffffff}]
+            set hh $g
+            set g $f
+            set f $e
+            set e [expr {($d + $t1) & 0xffffffff}]
+            set d $c
+            set c $b
+            set b $a
+            set a [expr {($t1 + $t2) & 0xffffffff}]
+        }
+        set next {}
+        foreach old $h new [list $a $b $c $d $e $f $g $hh] { lappend next [expr {($old + $new) & 0xffffffff}] }
+        set h $next
+    }
+    return [format %08x%08x%08x%08x%08x%08x%08x%08x {*}$h]
+}
+
+# ---- read log (#66 D3) -------------------------------------------------------
+# One reads.jsonl line per read that returned. `full` and `shown` are the rows as JSON values,
+# before and after clipping; the digest covers `full`.
+proc atcs_log_read {proc args_json full shown} {
+    set digest [atcs_sha256 "\[[join $full ,]\]"]
+    set shown [lrange $shown 0 [expr {$::ATCS_READ_ROWS_MAX - 1}]]
+    atcs_append [atcs_reads_path] [atcs_jobj [list seq $::atcs_seq proc [atcs_js $proc] args $args_json \
+        rowsDigest [atcs_js $digest] rows "\[[join $shown ,]\]"]]
+}
+# The non-empty lines of `text` then `extra`, as JSON strings: {full shown}.
+proc atcs_text_rows {text {extra {}}} {
+    set full {}
+    set shown {}
+    foreach line [concat [split $text "\n"] $extra] {
+        if {[string trim $line] eq ""} { continue }
+        lappend full [atcs_js $line]
+        if {[llength $shown] < $::ATCS_READ_ROWS_MAX} { lappend shown [atcs_js [atcs_clip $line $::ATCS_READ_ROW_CHARS]] }
+    }
+    return [list $full $shown]
+}
 proc atcs_gain_path {} { return [file join [file dirname $::env(OPS_LOG)] gain.jsonl] }
+proc atcs_reads_path {} { return [file join [file dirname $::env(OPS_LOG)] reads.jsonl] }
 proc atcs_taint_path {} { return [file join [file dirname $::env(OPS_LOG)] tainted.json] }
 
 # ---- argument validation ---------------------------------------------------
@@ -537,6 +628,7 @@ proc atcs_capture_reference {} {
     foreach check {setup hold} {
         set entry [atcs_summarize $check {-as_reference -exclude_path}]
         if {[lindex $entry 1] != 0} { error "session reference capture failed for $check: [lindex $entry 2]" }
+        set ::atcs_reference_text($check) [expr {[lindex $entry 3] ne "" ? [lindex $entry 3] : [lindex $entry 2]}]
         lappend pairs $check [atcs_summary_json $entry]
     }
     set ::atcs_reference_captured 1
@@ -799,7 +891,11 @@ proc atcs_paths {check top_n end_points} {
         lappend command [get_paths -delay_type $delay_type -end_points $end_points]
     }
     lappend command -top $top_n -detail_info
-    return [uplevel #0 $command]
+    set result [uplevel #0 $command]
+    lassign [atcs_text_rows $result] full shown
+    atcs_log_read atcs_paths [atcs_jobj [list check [atcs_js $check] topN $top_n endPoints [atcs_jarr $end_points]]] \
+        $full $shown
+    return $result
 }
 proc atcs_fail_reasons {pins reasons methods} {
     set pins [atcs_list pins $pins]
@@ -814,26 +910,96 @@ proc atcs_fail_reasons {pins reasons methods} {
     set method_option {}
     if {[llength $methods] > 0} { set method_option [list -methods $methods] }
     set pairs {}
+    set report ""
+    set names {}
     if {[llength $pins] > 0} {
         # report_fail_reasons prints its report and returns "" (real XTop, Issue #64 Task 7): capture it.
         # Before any fix or optimize flow it prints an empty table (XTop keeps no fail reasons yet).
         set command [concat [list report_fail_reasons] $method_option [list -stats -verbose -pins $pins]]
         set ::atcs_capture ""
         set result [uplevel #0 [list redirect -variable ::atcs_capture $command]]
-        lappend pairs report [atcs_js [expr {$::atcs_capture ne "" ? $::atcs_capture : $result}]]
+        set report [expr {$::atcs_capture ne "" ? $::atcs_capture : $result}]
+        lappend pairs report [atcs_js $report]
     }
     if {[llength $reasons] > 0} {
         set failed [uplevel #0 [concat [list get_failed_pins] $method_option [list -reasons $reasons]]]
-        set names {}
         foreach_in_collection pin $failed { lappend names [get_attribute [get_pins $pin] full_name] }
         lappend pairs failedPins [atcs_jarr $names]
     }
+    lassign [atcs_text_rows $report $names] full shown
+    atcs_log_read atcs_fail_reasons [atcs_jobj [list pins [atcs_jarr $pins] reasons [atcs_jarr $reasons] \
+        methods [atcs_jarr $methods]]] $full $shown
     return [atcs_jobj $pairs]
 }
 proc atcs_candidates {kind object} {
     atcs_choice kind $kind {size_cell insert_buffer exchange_cell}
     atcs_check_name [expr {$kind eq "insert_buffer" ? "pin" : "instance"}] $object
     return [uplevel #0 [list list_${kind}_candidates $object]]
+}
+# #66 D3: each named endpoint's slack for one check in the session's GBA mode (no PBA option):
+# one `report_timing -to <endpoint> -delay_type max|min -path_type summary` per endpoint, captured,
+# and one {"endpoint","scenario","slack"} row per report line that names the endpoint and ends in
+# a number (the slack is its last number; the scenario is the first word the session reference's
+# summary table names as a scenario, else null). An endpoint the report gives no row for reads
+# {"endpoint", "scenario": null, "slack": null}. A pin is passed as its exact collection; a name
+# that is no pin (a port) is passed as given. Never mutates; returns the rows as a JSON array.
+proc atcs_reference_scenarios {} {
+    set names {}
+    foreach check {setup hold} {
+        if {![info exists ::atcs_reference_text($check)]} { continue }
+        set inside 0
+        foreach line [split $::atcs_reference_text($check) "\n"] {
+            if {[regexp {^\s*Scenario\s} $line]} { set inside 1; continue }
+            if {!$inside} { continue }
+            if {[string trim $line] eq "" || [string match "###*" [string trim $line]]} { set inside 0; continue }
+            if {[regexp {^\s+(\S+)\s+-?[0-9]} $line -> name]} { lappend names $name }
+        }
+    }
+    return [lsort -unique $names]
+}
+proc atcs_point_rows {text endpoint scenarios} {
+    set names [lsort -unique [list $endpoint [string map {\\ ""} $endpoint]]]
+    set rows {}
+    foreach line [split $text "\n"] {
+        set tokens [regexp -all -inline {\S+} $line]
+        set named 0
+        foreach name $names { if {[lsearch -exact $tokens $name] >= 0} { set named 1 } }
+        if {!$named} { continue }
+        set slack ""
+        set scenario ""
+        foreach token $tokens {
+            if {[regexp {^-?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][-+]?[0-9]+)?$} $token]} { set slack $token }
+            if {$scenario eq "" && [lsearch -exact $scenarios $token] >= 0} { set scenario $token }
+        }
+        if {$slack eq ""} { continue }
+        lappend rows [atcs_jobj [list endpoint [atcs_js $endpoint] \
+            scenario [expr {$scenario eq "" ? "null" : [atcs_js $scenario]}] slack [scan $slack %g]]]
+    }
+    return $rows
+}
+proc atcs_point {check end_points} {
+    atcs_choice check $check {setup hold}
+    set end_points [atcs_list endPoints $end_points 1]
+    if {[llength $end_points] > $::ATCS_POINT_MAX} { error "endPoints names at most $::ATCS_POINT_MAX end points" }
+    foreach pin $end_points { atcs_check_name pin $pin }
+    atcs_ensure_reference
+    set scenarios [atcs_reference_scenarios]
+    set delay_type [expr {$check eq "setup" ? "max" : "min"}]
+    set rows {}
+    foreach pin $end_points {
+        set object [get_pins -quiet -exact $pin]
+        set to [expr {[sizeof_collection $object] == 1 ? $object : $pin}]
+        set command [list report_timing -to $to -delay_type $delay_type -path_type summary]
+        set ::atcs_capture ""
+        if {[catch {redirect -variable ::atcs_capture $command} result]} { error "report_timing -to $pin failed: $result" }
+        set found [atcs_point_rows [expr {$::atcs_capture ne "" ? $::atcs_capture : $result}] $pin $scenarios]
+        if {[llength $found] == 0} {
+            set found [list [atcs_jobj [list endpoint [atcs_js $pin] scenario null slack null]]]
+        }
+        set rows [concat $rows $found]
+    }
+    atcs_log_read atcs_point [atcs_jobj [list check [atcs_js $check] endPoints [atcs_jarr $end_points]]] $rows $rows
+    return "\[[join $rows ,]\]"
 }
 
 # ---- mutation procedures ---------------------------------------------------
@@ -955,13 +1121,29 @@ proc atcs_move_cell {instance x y plan_sha256} {
     return [atcs_mutate atcs_move_cell move_cell $args_json $plan_sha256 \
         [list move_cell -to "($x,$y)" [get_cells -exact $instance]] move {} {} $instance]
 }
+# In a local-topology session (#66 D2), removing a domain buffer whose input net lies outside the
+# domain admits that one net: the reconnect puts the buffer's loads on it. A net with more leaf pins
+# than ::ATCS_LOCAL_FANOUT_MAX is global and never admitted. The admission holds only when the
+# removal is kept; domain.json then records the net, so the replay enters it with the session.
 proc atcs_remove_buffer {instance plan_sha256} {
     atcs_begin_mutation $plan_sha256
     atcs_require_instance $instance
-    atcs_require_instance_nets $instance
+    set admitted [atcs_admit_buffer_input_net $instance]
     set args_json [atcs_jobj [list instance [atcs_js $instance] planSha256 [atcs_js $plan_sha256]]]
-    return [atcs_mutate atcs_remove_buffer remove_buffer $args_json $plan_sha256 \
-        [list remove_buffer [get_cells -exact $instance]] request [dict create $instance ""]]
+    if {[catch {
+        atcs_require_instance_nets $instance
+        atcs_mutate atcs_remove_buffer remove_buffer $args_json $plan_sha256 \
+            [list remove_buffer [get_cells -exact $instance]] request [dict create $instance ""]
+    } result options]} {
+        atcs_withdraw_net $admitted
+        return -options $options $result
+    }
+    if {$admitted ne "" && [catch {
+        atcs_write_domain_record $::atcs_domain_global $::atcs_domain_unresolved $::atcs_domain_error
+    } message]} {
+        atcs_taint "domain.json write failed after the kept removal of $instance admitted net $admitted: $message"
+    }
+    return $result
 }
 proc atcs_fix_hold_pins {pins effort hold_target setup_margin size_cell_only use_dummy_cell fix_timing_window
                          max_cluster_loader_count max_delay_cell_length delay_cell_list plan_sha256} {
@@ -1174,6 +1356,35 @@ proc atcs_close {} {
 # slots' kept edits reach into each other's domain, and the replay enters it. A derivation that
 # fails leaves the plan's domain as it was and records the error.
 proc atcs_domain_record_path {} { return [file join [file dirname $::env(OPS_LOG)] domain.json] }
+# The net on `instance`'s single input pin that the domain lacks, now admitted to ::EDIT_DOMAIN_NETS;
+# "" when the session is not local, the instance was created by this session, XTop names no single
+# input pin (`direction` in or input), or its input net is already in the domain. Refuses a global one.
+proc atcs_admit_buffer_input_net {instance} {
+    if {!$::EDIT_DOMAIN_LOCAL || [atcs_member $::atcs_session_instances $instance]} { return "" }
+    set cell [get_cells -quiet -exact $instance]
+    if {[sizeof_collection $cell] != 1} { return "" }
+    set inputs {}
+    foreach_in_collection pin [get_pins -quiet -of_objects $cell] {
+        if {[catch {get_attribute $pin direction} direction] || [lsearch -exact {in input} $direction] < 0} { continue }
+        set net [get_nets -quiet -of_objects $pin]
+        if {[sizeof_collection $net] == 1} { lappend inputs [get_attribute $net full_name] }
+    }
+    set inputs [lsort -unique $inputs]
+    if {[llength $inputs] != 1} { return "" }
+    set net [lindex $inputs 0]
+    if {[atcs_net_in_domain $net]} { return "" }
+    set count [llength [atcs_pin_names_of [get_nets -quiet -exact $net]]]
+    if {$count > $::ATCS_LOCAL_FANOUT_MAX} {
+        error "out-of-scope net: $net (on $instance) has $count leaf pins, above the local fanout max $::ATCS_LOCAL_FANOUT_MAX; it is global"
+    }
+    lappend ::EDIT_DOMAIN_NETS $net
+    return $net
+}
+proc atcs_withdraw_net {net} {
+    if {$net eq ""} { return }
+    set at [lsearch -exact $::EDIT_DOMAIN_NETS $net]
+    if {$at >= 0} { set ::EDIT_DOMAIN_NETS [lreplace $::EDIT_DOMAIN_NETS $at $at] }
+}
 proc atcs_pin_names_of {object} {
     set names {}
     foreach_in_collection pin [get_pins -quiet -leaf -of_objects $object] {
@@ -1223,7 +1434,7 @@ proc atcs_write_domain_record {global unresolved error} {
     set fields [list schema [atcs_js atcs-local-domain/1] fanoutMax $::ATCS_LOCAL_FANOUT_MAX \
         planInstances [atcs_jarr $::atcs_plan_instances] planNets [atcs_jarr $::atcs_plan_nets] \
         targetPins [atcs_jarr [lsort -unique $::EDIT_DOMAIN_PINS]] \
-        instances [atcs_jarr $::EDIT_DOMAIN_INSTANCES] nets [atcs_jarr $::EDIT_DOMAIN_NETS] \
+        instances [atcs_jarr $::EDIT_DOMAIN_INSTANCES] nets [atcs_jarr [lsort -unique $::EDIT_DOMAIN_NETS]] \
         regions "\[[join $boxes ,]\]" globalNets "\[[join $global ,]\]" unresolved [atcs_jarr $unresolved]]
     if {$error ne ""} { lappend fields error [atcs_js [atcs_clip $error 2000]] }
     set fh [open [atcs_domain_record_path] w]
@@ -1240,10 +1451,14 @@ if {$::EDIT_DOMAIN_LOCAL} {
     set atcs_saved [list $::EDIT_DOMAIN_INSTANCES $::EDIT_DOMAIN_NETS]
     if {[catch {atcs_derive_local_domain} atcs_derived]} {
         lassign $atcs_saved ::EDIT_DOMAIN_INSTANCES ::EDIT_DOMAIN_NETS
-        atcs_write_domain_record {} {} $atcs_derived
+        set ::atcs_domain_global {}
+        set ::atcs_domain_unresolved {}
+        set ::atcs_domain_error $atcs_derived
     } else {
-        atcs_write_domain_record {*}$atcs_derived ""
+        lassign $atcs_derived ::atcs_domain_global ::atcs_domain_unresolved
+        set ::atcs_domain_error ""
     }
+    atcs_write_domain_record $::atcs_domain_global $::atcs_domain_unresolved $::atcs_domain_error
     puts "ATCS:domain:[llength $::EDIT_DOMAIN_INSTANCES] instances, [llength $::EDIT_DOMAIN_NETS] nets"
 }
 

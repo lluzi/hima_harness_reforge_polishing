@@ -90,7 +90,7 @@ class ExpertOperatorReadinessTest(unittest.TestCase):
 
     def test_the_contract_classes_are_read(self):
         self.assertEqual({name: len(procs) for name, procs in self.commands.items()},
-                         {"read": 5, "mutate": 11, "save": 2, "close": 1})
+                         {"read": 6, "mutate": 11, "save": 2, "close": 1})
 
     def test_every_procedure_the_operator_is_told_of_exists_in_the_rendered_session(self):
         for label, text in self.texts.items():

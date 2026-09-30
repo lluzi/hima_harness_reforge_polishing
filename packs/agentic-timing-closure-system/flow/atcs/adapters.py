@@ -1189,9 +1189,9 @@ def def_instance_regions(def_path, instances, margin_rows=REGION_MARGIN_ROWS):
     return boxes
 
 
-LOCAL_FANOUT_MAX = 12
+LOCAL_FANOUT_MAX = workspaces_module.LOCAL_FANOUT_MAX
 """A net with more leaf pins than this is global (clock, reset, scan enable): the local-topology
-domain (#64 attempt 5) never takes it, nor the cells on it."""
+domain (#66 D2) never takes it, nor the cells on it (`workspaces.LOCAL_FANOUT_MAX`)."""
 
 
 def compile_xtop_analysis_manual_task(workspace_manifest, edit_domain, operator_tcl_path, ops_log_path,

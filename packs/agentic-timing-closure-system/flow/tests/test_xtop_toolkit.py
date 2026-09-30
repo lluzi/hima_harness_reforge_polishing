@@ -22,6 +22,7 @@ against the Tcl procedures themselves.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -44,7 +45,7 @@ PREFIX = "atcs_w01_r1_"
 PLAN = "a" * 64
 OTHER_PLAN = "b" * 64
 
-READ_PROCS = ["atcs_ref", "atcs_gain", "atcs_paths", "atcs_fail_reasons", "atcs_candidates"]
+READ_PROCS = ["atcs_ref", "atcs_gain", "atcs_paths", "atcs_fail_reasons", "atcs_candidates", "atcs_point"]
 MUTATE_PROCS = [
     "atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load",
     "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins",
@@ -105,6 +106,11 @@ XTOP_SURFACE = {
     "count_eco_actions": {"last_n", "types"},
     "get_eco_cells": {"last_n", "show_remove_cell_max_num", "types"},
 }
+
+# #66 D3 names `report_timing -to <pin> -path_type summary` (GBA, PBA off) for `atcs_point`, and #66 D2's
+# remove_buffer admission reads a pin's `direction` attribute. Neither is checked here against the
+# server-only `command_surface.tsv`: the v16 wrapper qualification must confirm both on real XTop.
+SPEC_SURFACE = {"report_timing": {"delay_type", "path_type", "to"}}
 
 # Stricter than the surface: the only flags each targeted-fix procedure may emit (Task 3 brief,
 # widened by the controller toward the frozen Pack's qualified strings, closure.py ~681-690).
@@ -268,6 +274,10 @@ proc get_attribute {obj attr args} {
     set name [stub_strip $obj]
     if {$attr eq "full_name"} { return $name }
     if {$attr eq "ref_name" && [string match "cell:*" $obj]} { return $::cells($name) }
+    if {$attr eq "direction" && [string match "pin:*" $obj]} {
+        if {[info exists ::pin_dir($name)]} { return $::pin_dir($name) }
+        return [expr {[lsearch -exact {A B D CK CP} [lindex [split $name /] end]] >= 0 ? "in" : "out"}]
+    }
     error "get_attribute: unsupported $attr on $obj"
 }
 proc sizeof_collection {c} { stub_record sizeof_collection $c; return [llength $c] }
@@ -409,9 +419,11 @@ proc undo {args} {
     set ::actions [lrange $::actions 0 end-1]
     return ""
 }
+set ::stub_summary_text ""
 proc summarize_gba_violations {args} {
     stub_record summarize_gba_violations {*}$args
     stub_gate summarize_gba_violations
+    if {$::stub_summary_text ne ""} { append ::stub_out $::stub_summary_text; return "" }
     if {[lsearch -exact $args -with_fail_reason] >= 0 && $::stub_fix_ran eq "0"} {
         puts "Error: No fail reason since no fix or optimize flow have run yet."
         error ""
@@ -435,7 +447,8 @@ proc redirect {args} {
     return ""
 }
 proc get_paths {args} { stub_record get_paths {*}$args; return [list path:1 path:2] }
-proc analyze_setup_path_violations {args} { stub_record analyze_setup_path_violations {*}$args; return "SETUP-ANALYSIS" }
+set ::stub_analysis_text "SETUP-ANALYSIS"
+proc analyze_setup_path_violations {args} { stub_record analyze_setup_path_violations {*}$args; return $::stub_analysis_text }
 proc analyze_hold_path_violations {args} { stub_record analyze_hold_path_violations {*}$args; return "HOLD-ANALYSIS" }
 # Real XTop prints the report and returns "" (Task 7 fix round 1); `redirect -variable` captures it.
 set ::stub_out ""
@@ -446,6 +459,24 @@ proc list_size_cell_candidates {args} { stub_record list_size_cell_candidates {*
 proc list_insert_buffer_candidates {args} { stub_record list_insert_buffer_candidates {*}$args; return "BUFX2" }
 proc list_exchange_cell_candidates {args} { stub_record list_exchange_cell_candidates {*}$args; return "INVX2" }
 proc write_design_changes {args} { stub_record write_design_changes {*}$args; return "" }
+# report_timing -to <pin> -delay_type max|min -path_type summary: prints one summary row per scenario
+# from ::stub_timing(<endpoint>,<max|min>) = {scenario slack ...} and returns "".
+array set ::stub_timing {}
+proc report_timing {args} {
+    stub_record report_timing {*}$args
+    stub_gate report_timing
+    lassign [stub_opts {-to -delay_type -path_type} $args] o pos
+    set endpoint [stub_strip [stub_one $o -to]]
+    set key "$endpoint,[stub_one $o -delay_type]"
+    append ::stub_out "Startpoint        Endpoint        Scenario        Slack\n"
+    append ::stub_out "---------------------------------------------------------\n"
+    if {[info exists ::stub_timing($key)]} {
+        foreach {scenario slack} $::stub_timing($key) {
+            append ::stub_out "U1/Y (BUFX1)      $endpoint     $scenario   $slack (VIOLATED)\n"
+        }
+    }
+    return ""
+}
 proc stub_cells {} {
     set out {}
     foreach n [lsort [array names ::cells]] { lappend out "$n=$::cells($n)" }
@@ -550,13 +581,15 @@ class Session:
         )
         self.calls_path = self.tmp / "calls.txt"
 
-    def run(self, commands):
+    def run(self, commands, before=""):
+        """`before`: Tcl run after the stub and before the session (a stub override the session setup sees)."""
         script = self.tmp / "session.tcl"
         preamble = f'set env(STUB_CALLS) "{self.calls_path}"\n'
         session = self.analysis["tcl"]
         # Only what the toolkit emits after session setup is recorded.
         script.write_text(
-            preamble + STUB_XTOP + session + "\nfile delete -force $env(STUB_CALLS)\n" + commands + "\n",
+            preamble + STUB_XTOP + before + "\n" + session + "\nfile delete -force $env(STUB_CALLS)\n" + commands
+            + "\n",
             encoding="utf-8",
         )
         result = subprocess.run([TCLSH, str(script)], capture_output=True, text=True)
@@ -584,6 +617,10 @@ class Session:
     @property
     def gains(self):
         return self._jsonl("gain.jsonl")
+
+    @property
+    def reads(self):
+        return self._jsonl("reads.jsonl")
 
     @property
     def calls(self):
@@ -642,6 +679,11 @@ class ToolkitContractTest(unittest.TestCase):
         self.assertEqual(_contract_choices(SETUP, "effort"), ["medium", "high"])
         self.assertEqual(_contract_choices(HOLD, "effort"),
                          ["omit", "low", "medium", "high", "ultra_high", "extreme_high"])
+
+    def test_point_reads_named_end_points_of_one_check(self):
+        # #66 D3: a single-endpoint slack read; a read, so no plan hash.
+        self.assertEqual(_contract_arguments()["atcs_point"], [("check", "string"), ("endPoints", "string")])
+        self.assertEqual(_contract_choices("atcs_point", "check"), ["setup", "hold"])
 
     def test_move_cell_is_absolute_only(self):
         self.assertEqual(
@@ -800,7 +842,134 @@ class LocalTopologyDomainTest(unittest.TestCase):
         self.assertIn("out-of-scope", session.outcome("size_driver")[1])
         self.assertFalse((session.root / "domain.json").exists())
 
+    def test_the_ready_line_counts_the_derived_domain(self):
+        session = Session(self, domain={"instances": [], "nets": [], "regions": []}, target_pins=["U9/D"],
+                          local=True).run("")
+        self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+        lines = session.stdout.splitlines()
+        self.assertIn("ATCS:domain:3 instances, 1 nets", lines)
+        self.assertLess(lines.index("ATCS:domain:3 instances, 1 nets"), lines.index("HIMA:hima-tcl-line-v1:1:READY"))
 
+    def test_unresolved_names_are_recorded_never_fatal(self):
+        session = Session(self, domain={"instances": ["U9", "U_GHOST"], "nets": [], "regions": []},
+                          target_pins=["U9/D", "UX/D"], local=True).run(f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n")
+        self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+        self.assertIn("HIMA:hima-tcl-line-v1:1:READY", session.stdout)
+        record = self._domain_json(session)
+        self.assertEqual(record["unresolved"], ["UX/D", "U_GHOST"])
+        self.assertNotIn("error", record)
+        self.assertEqual(record["nets"], ["N2", "N9"])
+        self.assertEqual(session.outcome("size")[0], "OK", session.stdout)
+
+    def test_a_failed_derivation_keeps_the_plans_domain_and_records_the_error(self):
+        broken_get_nets = (
+            "rename get_nets stub_get_nets\n"
+            "set ::stub_break_derive 1\n"
+            "proc get_nets {args} {\n"
+            "    if {$::stub_break_derive} { error \"stub: get_nets broke\" }\n"
+            "    return [uplevel 1 [linsert $args 0 stub_get_nets]]\n"
+            "}\n"
+        )
+        session = Session(self, domain={"instances": ["U9"], "nets": [], "regions": []}, target_pins=["U9/D"],
+                          local=True).run(
+            "set ::stub_break_derive 0\n"
+            f"T derived {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            f"T plan {{atcs_size_cell U9 DFFX2 {PLAN}}}\n", before=broken_get_nets)
+        self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+        self.assertIn("ATCS:domain:1 instances, 0 nets", session.stdout.splitlines())
+        record = self._domain_json(session)
+        self.assertIn("stub: get_nets broke", record["error"])
+        self.assertEqual((record["instances"], record["nets"]), (["U9"], []))
+        self.assertIn("out-of-scope", session.outcome("derived")[1])
+        self.assertEqual(session.outcome("plan")[0], "OK", session.stdout)
+
+    def test_remove_buffer_on_a_derived_driver_admits_its_input_net(self):
+        # U1 (A on N1, Y on N2) drives the target pin's net N2: it is a derived domain cell, its input
+        # net N1 is a second hop. Removing it reconnects N1 to N2's loads, so N1 joins the session's
+        # nets, and domain.json records it for the replay.
+        session = Session(self, domain={"instances": [], "nets": [], "regions": []}, target_pins=["U9/D"],
+                          local=True).run(
+            f"T remove {{atcs_remove_buffer U1 {PLAN}}}\n"
+            f"T on_input_net {{atcs_insert_buffer N1 U3/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n")
+        self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+        self.assertEqual(session.outcome("remove")[0], "OK", session.stdout)
+        self.assertEqual([op["status"] for op in session.ops if op["cmd"] == "remove_buffer"], ["kept"])
+        self.assertEqual(session.outcome("on_input_net")[0], "OK", session.stdout)
+        record = self._domain_json(session)
+        self.assertEqual(record["nets"], ["N1", "N2"])
+        self.assertEqual(record["instances"], ["U1", "U2", "U9"], "admission adds the net only, not its cells")
+
+    def test_remove_buffer_of_a_load_buffer_stays_refused(self):
+        # U2 (A on N2, Y on N4) is a load of the target net: removing it would merge its output net N4,
+        # which only the input-net admission could not justify.
+        session = Session(self, domain={"instances": [], "nets": [], "regions": []}, target_pins=["U9/D"],
+                          local=True).run(f"T remove {{atcs_remove_buffer U2 {PLAN}}}\n")
+        self.assertIn("out-of-scope net: N4", session.outcome("remove")[1])
+        self.assertEqual(session.calls_to("remove_buffer"), [])
+        self.assertEqual(self._domain_json(session)["nets"], ["N2"])
+
+    def test_remove_buffer_never_admits_a_global_input_net(self):
+        wide_n1 = "array set ::pin_net {UX1/A N1 UX2/A N1}\narray set ::cells {UX1 BUFX1 UX2 BUFX1}\n"
+        session = Session(self, domain={"instances": [], "nets": [], "regions": []}, target_pins=["U9/D"])
+        session.analysis = adapters.compile_xtop_analysis_manual_task(
+            {"namePrefix": PREFIX}, {"instances": [], "nets": [], "regions": []}, session.root / "operator.tcl",
+            session.root / "ops.jsonl", target_pins=["U9/D"], max_mutations=10, local_topology=True, fanout_max=4)
+        session.run(f"T remove {{atcs_remove_buffer U1 {PLAN}}}\n", before=wide_n1)
+        self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+        status, message = session.outcome("remove")
+        self.assertEqual(status, "ERR")
+        self.assertIn("out-of-scope net: N1", message)
+        self.assertIn("5 leaf pins", message)
+        self.assertEqual(session.calls_to("remove_buffer"), [])
+        self.assertEqual(self._domain_json(session)["nets"], ["N2"])
+
+    def test_without_a_direction_attribute_nothing_is_admitted(self):
+        no_direction = (
+            "rename get_attribute stub_get_attribute\n"
+            "proc get_attribute {obj attr args} {\n"
+            "    if {$attr eq \"direction\"} { error \"get_attribute: no attribute direction\" }\n"
+            "    return [uplevel 1 [linsert $args 0 stub_get_attribute $obj $attr]]\n"
+            "}\n"
+        )
+        session = Session(self, domain={"instances": [], "nets": [], "regions": []}, target_pins=["U9/D"],
+                          local=True).run(f"T remove {{atcs_remove_buffer U1 {PLAN}}}\n", before=no_direction)
+        self.assertIn("out-of-scope net: N1 (on U1)", session.outcome("remove")[1])
+        self.assertEqual(session.calls_to("remove_buffer"), [])
+
+    def test_a_removal_that_is_not_kept_admits_nothing(self):
+        session = Session(self, domain={"instances": [], "nets": [], "regions": []}, target_pins=["U9/D"],
+                          local=True).run(
+            "set ::stub_fail {remove_buffer}\n"
+            f"T remove {{atcs_remove_buffer U1 {PLAN}}}\n"
+            f"T on_input_net {{atcs_insert_buffer N1 U3/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n")
+        self.assertEqual(session.outcome("remove")[0], "ERR", session.stdout)
+        self.assertIn("out-of-scope net: N1", session.outcome("on_input_net")[1])
+        self.assertEqual(self._domain_json(session)["nets"], ["N2"])
+
+    def test_without_the_local_flag_remove_buffer_admits_nothing(self):
+        session = Session(self, domain={"instances": ["U1"], "nets": ["N2"], "regions": []},
+                          target_pins=["U9/D"]).run(f"T remove {{atcs_remove_buffer U1 {PLAN}}}\n")
+        self.assertIn("out-of-scope net: N1 (on U1)", session.outcome("remove")[1])
+        self.assertEqual(session.calls_to("remove_buffer"), [])
+
+    def test_the_replay_never_derives(self):
+        # The replay renders this same template below its own globals and enters each session's sealed
+        # domain (atcs_replay_session); it never bakes EDIT_DOMAIN_LOCAL, so the template default 0 holds.
+        from test_adapters import _recipe_request, _xtop_context as replay_context
+        task = adapters.compile_recipe_replay_task(
+            "top", "/pdk/tech.lef", "/pdk/cells/*.lef", "/ws/netlist.v", "/ws/design.def", _recipe_request(),
+            "/ws/integrations/b1", replay_context())
+        for arm in ("merged", "control"):
+            self.assertNotIn("set ::EDIT_DOMAIN_LOCAL", task["arms"][arm]["tcl"], arm)
+            self.assertNotIn("set ::ATCS_LOCAL_FANOUT_MAX", task["arms"][arm]["tcl"], arm)
+        session = Session(self, domain={"instances": ["U1"], "nets": ["N2"], "regions": []},
+                          target_pins=["U9/D"], local=False).run("")
+        self.assertNotIn("ATCS:domain:", session.stdout)
+        self.assertFalse((session.root / "domain.json").exists())
+        self.assertEqual(session.calls_to("get_pins"), [], "no derivation query runs after setup either")
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class DomainConfinementTest(unittest.TestCase):
     """Each mutation refuses an out-of-domain object before any mutating XTop call."""
 
@@ -1705,6 +1874,138 @@ class ReadProceduresTest(unittest.TestCase):
         self.assertEqual(commands, [f"{base} -with_fail_reason -hold", f"{base} -setup",
                                     f"{base} -hold", f"{base} -with_fail_reason -setup"])
 
+def _rows_digest(rows):
+    """sha256 of the rows' compact JSON (`reads.jsonl` rowsDigest, taken before clipping)."""
+    text = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _reply(session, tag):
+    status, text = session.outcome(tag)
+    if status != "OK":
+        raise AssertionError(f"{tag}: {status} {text}\n{session.stdout}{session.stderr}")
+    return json.loads(text)
+
+
+POINT_TIMING = (
+    "array set ::stub_timing {U9/D,max {func_ssg_rcworst_m40 -0.0123 func_ssg_rcworst_125 0.0040} "
+    "U9/D,min {func_ffg_cbest_m40 -0.0704} lsu_axi_arvalid,max {func_ssg_rcworst_m40 -0.1488} "
+    "U2/A,min {func_ffg_cbest_125 0040}}\n"
+)
+
+
+def _point_summary():
+    import live_session_samples as live
+    return f"set ::stub_summary_text {{{live.LIVE_TOP_N_BEFORE_FIX_SETUP}}}\n"
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class PointReadTest(unittest.TestCase):
+    """#66 D3: `atcs_point check endPoints` reads each named endpoint's slack in the session's GBA mode.
+
+    One `report_timing -to <endpoint> -delay_type max|min -path_type summary` per endpoint (no PBA
+    option); one {endpoint, scenario, slack} row per scenario the report lists, the scenario named as
+    the session reference's summary table names it; an endpoint the report gives no row for reads
+    {endpoint, scenario: null, slack: null}. A read: it never calls a mutating command nor uses budget.
+    """
+
+    def test_rows_per_endpoint_and_scenario(self):
+        session = Session(self, max_mutations=1).run(
+            _point_summary() + POINT_TIMING
+            + "T setup {atcs_point setup {U9/D U2/A}}\n"
+            + "T hold {atcs_point hold {U9/D}}\n"
+            + "T port {atcs_point setup {lsu_axi_arvalid}}\n"
+            + "T decimal {atcs_point hold {U2/A}}\n"
+            + f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n")
+        self.assertEqual(_reply(session, "setup"), [
+            {"endpoint": "U9/D", "scenario": "func_ssg_rcworst_m40", "slack": -0.0123},
+            {"endpoint": "U9/D", "scenario": "func_ssg_rcworst_125", "slack": 0.004},
+            {"endpoint": "U2/A", "scenario": None, "slack": None},
+        ])
+        self.assertEqual(_reply(session, "hold"),
+                         [{"endpoint": "U9/D", "scenario": "func_ffg_cbest_m40", "slack": -0.0704}])
+        self.assertEqual(_reply(session, "port"),
+                         [{"endpoint": "lsu_axi_arvalid", "scenario": "func_ssg_rcworst_m40", "slack": -0.1488}])
+        self.assertEqual(_reply(session, "decimal"),
+                         [{"endpoint": "U2/A", "scenario": "func_ffg_cbest_125", "slack": 40.0}], "never octal")
+        calls = [call[1:] for call in session.calls_to("report_timing")][:4]
+        self.assertEqual(calls, [
+            ["-to", "pin:U9/D", "-delay_type", "max", "-path_type", "summary"],
+            ["-to", "pin:U2/A", "-delay_type", "max", "-path_type", "summary"],
+            ["-to", "pin:U9/D", "-delay_type", "min", "-path_type", "summary"],
+            ["-to", "lsu_axi_arvalid", "-delay_type", "max", "-path_type", "summary"],
+        ])
+        self.assertEqual(session.outcome("size")[0], "OK", "reads use no mutation budget" + session.stdout)
+        self.assertEqual([call[0] for call in session.calls if call[0] in MUTATING_XTOP], ["size_cell"])
+
+    def test_refuses_a_bad_check_an_empty_list_and_an_unsafe_name(self):
+        session = Session(self).run(
+            POINT_TIMING
+            + "T check {atcs_point both {U9/D}}\n"
+            + "T empty {atcs_point setup {}}\n"
+            + "T unsafe {atcs_point setup {U9/D;x}}\n"
+            + "T glob {atcs_point setup {U*}}\n")
+        for tag in ("check", "empty", "unsafe", "glob"):
+            self.assertEqual(session.outcome(tag)[0], "ERR", tag)
+        self.assertEqual(session.calls_to("report_timing"), [])
+        self.assertEqual(session.reads, [])
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class ReadLogTest(unittest.TestCase):
+    """#66 D3: every `atcs_paths`, `atcs_fail_reasons` and `atcs_point` read lands in `reads.jsonl`.
+
+    One line per successful call: {seq (the ops.jsonl line it follows, 0 before any mutation), proc,
+    args (as the Host sent them), rowsDigest (sha256 of the full rows' compact JSON), rows (at most
+    200, each text row clipped)}. Reads stay free of the mutation budget.
+    """
+
+    def test_reads_before_and_after_a_mutation(self):
+        session = Session(self).run(
+            _point_summary() + POINT_TIMING
+            + "T point_before {atcs_point setup {U9/D}}\n"
+            + f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            + "T paths {atcs_paths setup 5 {}}\n"
+            + "T reasons {atcs_fail_reasons {U1/A} {} {}}\n"
+            + "T point_after {atcs_point hold {U9/D}}\n"
+            + "T gain {atcs_gain setup 5}\nT ref {atcs_ref}\nT cands {atcs_candidates size_cell U1}\n"
+            + "T bad {atcs_point both {U9/D}}\n")
+        for tag in ("point_before", "size", "paths", "reasons", "point_after", "gain", "ref", "cands"):
+            self.assertEqual(session.outcome(tag)[0], "OK", tag + session.stdout + session.stderr)
+        reads = session.reads
+        self.assertEqual([(line["seq"], line["proc"]) for line in reads], [
+            (0, "atcs_point"), (1, "atcs_paths"), (1, "atcs_fail_reasons"), (1, "atcs_point")])
+        for line in reads:
+            self.assertEqual(sorted(line), ["args", "proc", "rows", "rowsDigest", "seq"])
+            self.assertEqual(line["rowsDigest"], _rows_digest(line["rows"]), line["proc"])
+        self.assertEqual(reads[0]["args"], {"check": "setup", "endPoints": ["U9/D"]})
+        self.assertEqual(reads[0]["rows"], [
+            {"endpoint": "U9/D", "scenario": "func_ssg_rcworst_m40", "slack": -0.0123},
+            {"endpoint": "U9/D", "scenario": "func_ssg_rcworst_125", "slack": 0.004}])
+        self.assertEqual(reads[1]["args"], {"check": "setup", "topN": 5, "endPoints": []})
+        self.assertEqual(reads[1]["rows"], ["SETUP-ANALYSIS"])
+        self.assertEqual(reads[2]["args"], {"pins": ["U1/A"], "reasons": [], "methods": []})
+        self.assertEqual(reads[2]["rows"], ["REASONS"])
+        self.assertEqual(reads[3]["rows"], [{"endpoint": "U9/D", "scenario": "func_ffg_cbest_m40", "slack": -0.0704}])
+        self.assertEqual(len(session.ops), 1, "reads never write ops.jsonl")
+
+    def test_rows_are_clipped_but_the_digest_covers_them_all(self):
+        long_row = "x" * 1000
+        lines = [long_row] + [f"path {k} \u00fcber sl\u00e4ck -0.{k:04d}" for k in range(250)]
+        session = Session(self).run(
+            f"set ::stub_analysis_text [string repeat x 1000]\n"
+            "for {set k 0} {$k < 250} {incr k} {\n"
+            "    append ::stub_analysis_text \"\\npath $k \\u00fcber sl\\u00e4ck -0.[format %04d $k]\"\n"
+            "}\n"
+            "T paths {atcs_paths setup 100 {}}\n")
+        self.assertEqual(session.outcome("paths")[0], "OK", session.stdout + session.stderr)
+        (line,) = session.reads
+        self.assertEqual(len(line["rows"]), 200)
+        self.assertEqual(line["rows"][0], "x" * 500 + "...[truncated]")
+        self.assertEqual(line["rows"][1:], lines[1:200])
+        self.assertEqual(line["rowsDigest"], _rows_digest(lines))
+
+
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class CommittedFixTest(unittest.TestCase):
     """Real XTop commits a fix flow's actions (Task 7): `undo` cannot revert a targeted fix."""
@@ -1780,6 +2081,7 @@ class KnowledgeSurfaceTest(unittest.TestCase):
         "T reasons {atcs_fail_reasons {U1/A} {legal_fail_no_space_on_row} {size_cell}}\n"
         "T c1 {atcs_candidates size_cell U1}\nT c2 {atcs_candidates insert_buffer U1/Y}\n"
         "T c3 {atcs_candidates exchange_cell U2}\n"
+        "T point {atcs_point setup {U9/D}}\n"
         f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
         f"set ::stub_exchange_effect {{U2 INVX2}}\nT exch {{atcs_exchange_cell U2 U1 {PLAN}}}\n"
         f"T ins {{atcs_insert_buffer N1 UOUT/A BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
@@ -1799,7 +2101,7 @@ class KnowledgeSurfaceTest(unittest.TestCase):
         "T dump {atcs_dump_cells before.dump}\n"
         "T export {atcs_export_changes}\n"
     )
-    TAGS = ("ref", "gain", "paths", "reasons", "c1", "c2", "c3", "size", "exch", "ins", "dummy", "sl", "sn",
+    TAGS = ("ref", "gain", "paths", "reasons", "c1", "c2", "c3", "point", "size", "exch", "ins", "dummy", "sl", "sn",
             "mv", "rm", "fh", "fh2", "fs", "undo", "dump", "export")
 
     def test_a_full_expert_session_stays_on_the_documented_surface(self):
@@ -1808,20 +2110,21 @@ class KnowledgeSurfaceTest(unittest.TestCase):
             for tag in self.TAGS:
                 self.assertEqual(session.outcome(tag)[0], "OK", f"{observe} {tag}\n{session.stdout}{session.stderr}")
             emitted = set()
+            surface = {**XTOP_SURFACE, **SPEC_SURFACE}
             for call in session.calls:
                 command = call[0]
-                self.assertIn(command, XTOP_SURFACE, f"{command} is not on the knowledge-pack command surface")
+                self.assertIn(command, surface, f"{command} is not on the knowledge-pack command surface")
                 for word in call[1:]:
                     match = _OPTION_WORD.match(word)
                     if match:
-                        self.assertIn(match.group(1), XTOP_SURFACE[command], f"{command} -{match.group(1)}")
+                        self.assertIn(match.group(1), surface[command], f"{command} -{match.group(1)}")
                 emitted.add(command)
             for command in ("size_cell", "exchange_cell", "insert_buffer", "insert_dummy_cell", "split_load",
                             "split_net", "move_cell", "remove_buffer", "fix_hold_gba_violations",
                             "fix_setup_gba_violations", "undo", "summarize_gba_violations", "get_paths",
                             "analyze_setup_path_violations", "report_fail_reasons", "get_failed_pins",
                             "list_size_cell_candidates", "list_insert_buffer_candidates",
-                            "list_exchange_cell_candidates", "count_eco_actions"):
+                            "list_exchange_cell_candidates", "count_eco_actions", "report_timing"):
                 self.assertIn(command, emitted, observe)
             # Fast mode always reads get_eco_cells; full mode reads it for ECO actions that change no master.
             self.assertIn("get_eco_cells", emitted, observe)

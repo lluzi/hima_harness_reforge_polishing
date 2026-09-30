@@ -19,6 +19,7 @@
 | `atcs_paths` | `get_paths`; `analyze_setup_path_violations` / `analyze_hold_path_violations -detail_info` | `get_paths.1` (149), `analyze_setup_path_violations.1` (16), `analyze_hold_path_violations.1` (12) |
 | `atcs_fail_reasons` | `report_fail_reasons -stats -verbose -pins`; `get_failed_pins -reasons` | `report_fail_reasons.1` (245), `get_failed_pins.1` (132) |
 | `atcs_candidates` | `list_size_cell_candidates`, `list_insert_buffer_candidates`, `list_exchange_cell_candidates` | `list_size_cell_candidates.1` (188), `list_insert_buffer_candidates.1` (185), `list_exchange_cell_candidates.1` (183) |
+| `atcs_point` | `report_timing -to <endpoint> -delay_type max\|min -path_type summary` per endpoint (GBA, no PBA option), captured by `redirect -variable`; rows `{endpoint, scenario, slack}` (#66 D3) | not yet cross-checked against a man page or `command_surface.tsv`: the atcs-v16 qualification confirms it on real XTop |
 | `atcs_size_cell` | `size_cell` | `size_cell.1` (301) |
 | `atcs_exchange_cell` | `exchange_cell` with domain partner instances | `exchange_cell.1` (106) |
 | `atcs_insert_buffer` | `insert_buffer`; several lib cells make a chain | `insert_buffer.1` (177) |
@@ -39,7 +40,8 @@
 - The plan Workshop clusters the blockers into slot work packages: `targetPins` (instance pins,
   `<instance path>/<pin>`, not primary ports), a disjoint `editDomain`, and a `scope` whose commands
   name the moves the cluster may need. `editDomain.nets` are XTop's names: a pin inside a module sits on
-  its local net (`swerv_dbg/rst_l`), not PrimeTime's flattened one (`FE_OCPN9798_rst_l`; Task 7).
+  its local net (`swerv_dbg/rst_l`), not PrimeTime's flattened one (`FE_OCPN9798_rst_l`; Task 7). The session
+  widens it once to the targets' local topology, one hop; nets above 12 leaf pins stay out (`domain.json`, #66 D2).
 - A research Workshop writes a slot's worker request, and the worker Team runs: the Researcher proposes
   ladder moves with falsifiers, the Reviewer sharpens the plan and sets the scope, the Operator runs the
   loop below in its `xtop-operator` session (its template condenses it; it cannot read this file).
@@ -59,18 +61,16 @@ short, clean kept log beats many marginal edits. XTop's gain screens trials; ref
 ### The expert loop
 
 1. `atcs_dump_cells before.dump`, then `atcs_ref` once: the setup and hold reference of every gain.
-2. Diagnose before changing anything: `atcs_paths` (check, topN, endPoints = the target pins) gives
-   the paths and XTop's analysis; the request's evidence (the prior batch's fail reasons; none in the
-   first generation) says why auto-fix left them; `atcs_candidates` gives the path cells' masters. XTop
-   keeps no fail reasons in a session before its first fix (Task 7: an empty table): read
-   `atcs_fail_reasons` on the target pins after the slot's own fix, setup reasons after a setup fix.
+2. Diagnose first: `atcs_point` reads each target pin's slack; `atcs_paths` (check, topN; end points fail in PBA, G50)
+   gives the paths and XTop's analysis; the request's evidence says why auto-fix left them; `atcs_candidates` the path
+   cells' masters. XTop keeps no fail reasons before the first fix: read `atcs_fail_reasons` on the targets after it.
 3. Choose one move from the failing check's ladder, steered by the fail-reason table. Change one
    principal variable per trial (method, master, margin or pin set), or the gain cannot be attributed.
 4. Trial it; every mutation, `atcs_undo` too, ends in `planSha256`, the plan hash the Host checks. XTop
    commits a targeted fix ("The committed actions cannot be undone", Task 7): try `atcs_fix_hold_pins` or
    `atcs_fix_setup_pins` after the manual moves you can undo, and measure it the same way. One that may insert
    (hold unless `sizeCellOnly` without `useDummyCell`, setup `insert_buffer`/`split_net`) needs its pins' nets in the domain.
-5. `atcs_gain` for the target and the opposite check; the toolkit also logs both after each kept mutation.
+5. `atcs_point` on the targets, `atcs_gain` on the opposite check; `reads.jsonl` keeps every path, reason and point read.
 6. Keep the trial only if the target slack improved and the opposite check did not break. Otherwise
    `atcs_undo` at once, then try the next rung (another master, method, margin or pin set): an undo is never
    a stop (#64 attempt 1: w03 undid its one size, rightly, then stopped with 13 of 15 mutations left).
@@ -108,8 +108,8 @@ A residual after step 5 is a density or clock problem. Both are outside this upg
 
 ### Setup ladder
 
-1. Remove buffer from a redundant chain: `atcs_remove_buffer` (every net of it in the domain), or
-   `atcs_fix_setup_pins` with `removeBufferOnly 1`, as its own pass.
+1. Remove buffer from a redundant chain: `atcs_remove_buffer` (its nets in the domain; a local session admits a
+   buffer's input net, never a global one), or `atcs_fix_setup_pins` with `removeBufferOnly 1`, as its own pass.
 2. Size up or VT-swap the weak stage: `atcs_size_cell`, `atcs_exchange_cell` (partner instances in
    the domain), or `methods size_cell`.
 3. Buffer to raise drive or isolate a load: `atcs_insert_buffer`, `atcs_split_load`, or

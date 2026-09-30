@@ -255,9 +255,6 @@ class ParkedBranchTest(unittest.TestCase):
         self.assertFalse((self.workspace / "state" / "contribution-w06.json").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 _DEF_TEXT = """VERSION 5.8 ;
 DESIGN top ;
@@ -313,6 +310,11 @@ class LocalTopologyPrepareTest(unittest.TestCase):
         entry = workers["workers"]["w01"]
         tcl = (workspace / entry["root"] / "xtop-analysis-manual.tcl").read_text()
         self.assertIn("set ::EDIT_DOMAIN_LOCAL {1}\n", tcl)
+        # #66 D2: every active session is baked with the Pack's local fanout cap (default 12).
+        self.assertEqual(workspaces.LOCAL_FANOUT_MAX, 12)
+        self.assertIn(f"set ::ATCS_LOCAL_FANOUT_MAX {{{workspaces.LOCAL_FANOUT_MAX}}}\n", tcl)
+        self.assertEqual(entry["localFanoutMax"], workspaces.LOCAL_FANOUT_MAX)
+        self.assertIs(entry["localTopology"], True)
         # Row pitch 1152 DBU = 0.576 um; 4 rows = 2.304 um around each instance's origin (um).
         self.assertEqual(entry["derivedRegions"], [[7.696, 17.696, 12.304, 22.304],
                                                    [47.696, 27.696, 52.304, 32.304]])
@@ -338,3 +340,19 @@ class LocalTopologyPrepareTest(unittest.TestCase):
             return out
         _, workers = self._prepare(packages)
         self.assertEqual(workers["workers"]["w01"]["derivedRegions"], [])
+
+    def test_a_parked_slot_gets_no_session_and_no_derivation(self):
+        def packages(base):
+            out = {slot: _parked(slot, base) for slot in workspaces.TASK_IDS}
+            out["w01"] = dict(_active("w01", base), editDomain={"instances": ["U1"], "nets": [], "regions": []})
+            return out
+        workspace, workers = self._prepare(packages)
+        parked = workers["workers"]["w02"]
+        self.assertTrue(parked["parked"])
+        for key in ("sessionTcl", "localTopology", "localFanoutMax", "derivedRegions"):
+            self.assertNotIn(key, parked)
+        self.assertFalse((workspace / parked["root"] / "xtop-analysis-manual.tcl").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()

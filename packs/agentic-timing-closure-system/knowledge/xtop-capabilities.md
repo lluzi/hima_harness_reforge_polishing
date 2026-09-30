@@ -50,6 +50,8 @@ still treat their real-world effect as unverified until a `contribution`'s
 | Need | Command (documented) | Flags relevant to this Pack |
 |---|---|---|
 | Path query | `get_paths` | `-start_points`, `-end_points`, `-through_points`, `-scenario`, `-group`, `-delay_type {all\|min\|max}`, `-path_type`, `-lower_bound`, `-upper_bound`, `-filter` |
+| Single-endpoint slack (`atcs_point`, #66 D3) | `report_timing` | `-to <pin collection, or a name that is no pin> -delay_type {max\|min} -path_type summary`, captured by `redirect -variable`; GBA, no PBA option. **Named by the #66 spec, not yet cross-checked** against a man page or `command_surface.tsv` (the server was not read for this change): the atcs-v16 wrapper qualification must confirm the command, its options and its summary format on real XTop. The toolkit reads a row from each report line that names the endpoint and ends in a number (the slack is the last number; the scenario is a scenario name the session reference's summary table lists, else null) |
+| Pin direction (`atcs_remove_buffer` input-net admission, #66 D2) | `get_attribute <pin> direction` | `in`/`input` marks the buffer's input pin. **Not yet cross-checked** (same caveat as `report_timing`); if real XTop lacks the attribute, no net is admitted and the removal stays refused as before |
 | Per-instance attribute query | `get_attribute` | `object_spec attr_name [-class {design\|pin\|cell\|port\|net\|lib_cell\|lib_pin\|lib\|timing_path}] [-scenario sce]` |
 | Whole-design cell enumeration (`atcs_dump_cells`) | `get_cells` | `[-hierarchical] [-quiet] [-regex \| -exact] [-nocase] [patterns \| -of_objects objects] [-filter expression]`; `command_surface.tsv` row 123, `documentation_status = man+completion` |
 | Iterate a collection (`atcs_dump_cells`) | `foreach_in_collection` | `iter_var collection body`; `command_surface.tsv` row 120, `documentation_status = man-only`. `get_attribute.1`'s own worked example re-wraps the loop variable (`foreach_in_collection i [get_dont_touch_cells] {set_dont_touch [get_cells $i] 0}`) rather than treating it as an already-typed cell object — `atcs_dump_cells` follows the identical `[get_cells $i]` re-wrap before every `get_attribute` call on it. |
@@ -94,6 +96,13 @@ Boundaries a compiler must respect, each confirmed directly in the man page text
   `placement_legalization_obligated(1)` turns a legalization failure into a hard
   error. A compiled action that requires legalized placement must set that parameter
   explicitly rather than assume the default behavior fails closed.
+- **A local-topology session (#66 D2) derives its edit domain once, before its ready line.**
+  The target pins' and plan instances' pins' nets, and the leaf cells on them (drivers and loads), one hop,
+  from `get_pins -leaf -of_objects <net>` and `get_nets -of_objects <pin>` (`get_pins -leaf` on a net
+  collection is unverified on real XTop); a net with more leaf pins than `ATCS_LOCAL_FANOUT_MAX` (12) is
+  global (clock, reset, scan enable), stays out and is listed in `domain.json` `globalNets`. Names that do
+  not resolve are listed in `unresolved`; a derivation that errors keeps the plan's domain and records
+  `error`. The replay never derives: it enters each session's sealed domain.
 - **`remove_buffer` refuses to leave a pass-through net or an already-cascaded pair
   broken.** Its man page lists these as explicit error conditions; a buffer-deletion
   request compiled without checking that the target is a genuinely cascaded
