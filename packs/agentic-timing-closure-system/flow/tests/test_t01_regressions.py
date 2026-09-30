@@ -196,12 +196,16 @@ class SizeMoveMasterTest(T01Workspace):
         (line,) = self.advised("03", document)
         self.assertIn("is already the master of", line)
 
-    def test_a_size_entry_outside_the_edit_domain_is_counted(self):
+    def test_a_size_entry_outside_the_plan_edit_domain_is_advice(self):
+        """#66 D1: the session derives its local domain in XTop (a driver or load cell of a target net is in
+        it), so the toolkit is the gate; a size entry outside the plan's instances is advice, never counted."""
         document = self.request("03")
         index, entry = size_entry(document)
         entry.update(object=W02_REG, toMaster="SDFCNQARD2BWP35P140")
-        (line,) = self.problems("03", document)
+        lines = [line for line in self.advised("03", document) if line.startswith(f"sessionPlan[{index}].object")]
+        (line,) = lines
         self.assertTrue(line.startswith(f"sessionPlan[{index}].object (slot w03): "), line)
+        self.assertIn("toolkit", line)
 
     def test_a_context_for_another_state_is_one_advice(self):
         path = self.workspace / "state" / "xtop-context.json"

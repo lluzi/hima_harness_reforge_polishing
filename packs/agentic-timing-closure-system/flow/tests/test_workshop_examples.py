@@ -259,6 +259,37 @@ class PlanCampaignExampleTest(ExampleWorkspace):
         _run_snippet(code, self.workspace, {"packages": plan["candidate"]["workPackages"],
                                             "site_capabilities": plan["siteCapabilities"]})
 
+    def test_every_active_example_package_names_its_cluster_hardest_first(self):
+        """#66 D1: a seat owns one blocker cluster; its targets are the cluster's checks, hardest first."""
+        observation = json.loads((self.workspace / "state" / "observation.json").read_text())["checks"]
+        for slot, package in self.plan()["candidate"]["workPackages"].items():
+            with self.subTest(slot=slot):
+                cluster = package["cluster"]
+                self.assertEqual(set(cluster), {"cause", "key", "checks"})
+                self.assertIn(cluster["cause"], read_atcs.CLUSTER_CAUSES)
+                self.assertTrue(cluster["key"])
+                self.assertEqual(package["targets"], cluster["checks"])
+                slacks = [observation[key]["slack"]["value"] for key in cluster["checks"]]
+                self.assertEqual(slacks, sorted(slacks))
+
+    def test_a_cluster_of_the_wrong_shape_is_advice_never_counted(self):
+        """#66 D1: the plan Reader counts identity and merge integrity only; the cluster's shape is advice."""
+        plan = self.plan()
+        packages = plan["candidate"]["workPackages"]
+        packages["w01"]["targets"].reverse()
+        packages["w01"]["cluster"]["checks"].reverse()                        # not hardest first
+        packages["w02"]["cluster"]["cause"] = "vibes"                         # not a cause
+        packages["w03"]["cluster"]["checks"] = packages["w03"]["targets"] + [f"{SCENARIO}|hold|u_core/u_dec/ins_reg_7_/D"]
+        packages["w04"]["cluster"] = "u_core/u_exu"                           # not an object
+        report = _write(self.workspace / "research" / "requests" / "campaign-plan.json", json.dumps(plan))
+        self.assertEqual(read_atcs.problems("campaign-plan", report, self.workspace), [])
+        advice = read_atcs.advice("campaign-plan", report, self.workspace)
+        self.assertEqual([line.split(":", 1)[0] for line in advice], [
+            "candidate.workPackages.w01.cluster.checks", "candidate.workPackages.w02.cluster.cause",
+            "candidate.workPackages.w03.targets", "candidate.workPackages.w04.cluster"], advice)
+        self.assertIn("hardest first", advice[0])
+        self.assertIn("seat-clusters", advice[3])
+
     def test_the_active_example_shows_every_required_field(self):
         active = self.plan()["candidate"]["workPackages"]["w01"]
         for field in ("taskId", "baseStateId", *workspaces._REQUIRED_WORK_PACKAGE_FIELDS, "observe"):
@@ -652,8 +683,11 @@ class Live02ToExampleShapeTest(unittest.TestCase):
         # The four uncovered blockers (the async_default hold group) become w04's cluster.
         blockers = [key for key in _live02_blockers(self.workspace) if "@**async_default**" in key]
         self.assertEqual(len(blockers), 4)
+        observed = json.loads((self.workspace / "state" / "observation.json").read_text())["checks"]
+        blockers.sort(key=lambda key: (observed[key]["slack"]["value"], key))  # hardest first (#66 D1)
         w04 = copy.deepcopy(example["w01"])
         w04.update(taskId="w04", baseStateId=w01["baseStateId"], targets=blockers, targetPins=[],
+                   cluster={"cause": "scenario-worst", "key": "hold", "checks": list(blockers)},
                    problem="the four required scenarios' worst hold check, in the async_default group",
                    editDomain={"instances": ["swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_"], "nets": [], "regions": []},
                    mayAffect=[])

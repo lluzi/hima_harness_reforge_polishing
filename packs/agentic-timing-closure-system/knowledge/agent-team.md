@@ -21,6 +21,13 @@ restarts the branch at its Workshop and asks the same author again with the item
 beside the request, at most the fork's declared number of revisions, in the same generation and
 without a person.
 
+Clusters (#66 D1): each active slot's package names one blocker cluster, `cluster {cause, key, checks}`
+(knowledge example-campaign-plan.md), and its `targets` are the cluster's checks, hardest first. The plan
+Workshop starts from `read-atcs.py seat-clusters`, which partitions the violating checks into at most
+`workerSlots` disjoint clusters by shared startpoint, hierarchy and fail-reason pattern. The seat's work is
+the cluster, worked hardest first, not one endpoint. `workerSlots` 0 parks every seat: the full-auto
+control arm, whose branches all run the batch no-op.
+
 Operator: for an active slot whose request reading is `tc_request_invalid_count` 0 and
 `tc_slot_parked` 0, the Harness materializes the slot's Operator directly from the admitted request:
 the request's candidate, sessionPlan, noSafeAction and siteCapabilities are embedded in its task, and

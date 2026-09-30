@@ -5,7 +5,9 @@ problems once each `"<...>"` string is replaced. They are written for slot `w01`
 only change is `taskId`, exactly `wNN`. `candidate` is the slot's prepared package,
 `state/workers.json` `workers.<slot>.workPackage` with only its `schema` and `id` removed, never edited,
 narrowed or widened; `baseState` is `state/working-state.json` verbatim; `siteCapabilities` is copied
-from the campaign plan. The Reader's refusal, one line per problem, is `workerRequestNNProblems`.
+from the campaign plan. The candidate carries the plan's `cluster` unchanged: the seat's blocker
+cluster, its `targets` hardest first. The Reader's refusal, one line per problem, is
+`workerRequestNNProblems`.
 
 ## Active slot
 
@@ -16,7 +18,9 @@ object's cell function, the name up to the drive digits of `ecoParameters.cellNo
 up); the drive or the VT may change, the function may not. The cells are the `cell (NAME)` groups of the
 Liberty files that file lists in `libraryFiles` (it holds no cell table itself);
 `hima-readers/atcs-readiness/read-atcs.py masters` lists them for each instance; the Reader writes any other
-`toMaster` as advice, never as a refusal.
+`toMaster` as advice, never as a refusal. An entry's `object` may be a cell the plan does not list, such as
+the driver or a load of a target pin's net: the session derives its local domain around the target pins
+and plan instances, and the toolkit refuses a cell outside it. The Reader writes such an object as advice.
 
 ```json
 {
@@ -24,6 +28,14 @@ Liberty files that file lists in `libraryFiles` (it holds no cell table itself);
     "taskId": "w01",
     "baseStateId": "<id of state/working-state.json>",
     "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
+    "cluster": {
+      "cause": "scenario-worst",
+      "key": "func_ssg_rcworst_m40",
+      "checks": [
+        "func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D",
+        "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"
+      ]
+    },
     "targets": [
       "func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D",
       "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"
@@ -107,6 +119,14 @@ honest no-fix.
     "taskId": "w01",
     "baseStateId": "<id of state/working-state.json>",
     "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
+    "cluster": {
+      "cause": "scenario-worst",
+      "key": "func_ssg_rcworst_m40",
+      "checks": [
+        "func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D",
+        "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"
+      ]
+    },
     "targets": [
       "func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D",
       "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"
