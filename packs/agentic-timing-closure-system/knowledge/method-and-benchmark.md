@@ -53,8 +53,9 @@
   该节点没有出边，清除后 Run 如实结束。需要更多刷新的人应以更高的 `max_physical_refreshes`
   新建一个 Run。
   选择 `implement`/`earlier-apr` 前先确认还剩一次刷新，并把它花在联合方案上。
-  每次刷新都要一个研究批次的 generation，第一个 generation 用于基线与首次决策，所以本 Pack
-  声明 `budget.minimumGenerations: 3`：generation 上限低于 3 的 Run 在创建时即被拒绝。
+  每个 generation 是一个研究批次加一次刷新（第一个 generation 也是，基线直接进入首个计划）。
+  决定性实验只要一个 generation、一次刷新（#66 D9），所以本 Pack 声明
+  `budget.minimumGenerations: 1`；刷新上限仍由 `max_physical_refreshes` 决定，用尽时如实结束。
 - **timing closure 不等同于整芯 signoff 或 tapeout-ready。** 遗留的全芯 DRC/PG 问题（例如
   Golden Flow 记录的 72,799 条全芯 DRC）不在本 Pack 的整改目标内；报告合格状态时必须与
   「设计已全面签核」明确区分。

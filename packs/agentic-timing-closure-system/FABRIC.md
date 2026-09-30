@@ -692,3 +692,21 @@ Known gaps carried from earlier tasks:
   task, an Operator-requested close settles its node done, and capture reads exactly the dump names
   the Operator template states (`before.dump`, `after.dump`). No re-review loop by direction; the gate
   is the green Pack suite, the contract tests and the dry path's measured wall time.
+- 2026-09-30 ATCS-09 (#66, parent #64; tickets #67-#75): six-seat batch manual ECO plus the complete
+  Global Auto-Finish, against the complete Global Auto-Finish alone. D1 cluster seating
+  (`read-atcs.py seat-clusters`, cluster shape as Reader advice; #68), D2 in-session local-topology edit
+  domain and D3 `atcs_point` with the `reads.jsonl` read log and `atcs_export_changes limitations`
+  (#67), D4 batch Contribution seal (`effectiveDomain`, per-command gain and blockers, `aggregateGain`,
+  batch-net gates; #71), D5 composition by blocker coverage then aggregate gain with `domain-collision`
+  (#72), D6 replay and reconcile on the effective domain with `appliedCommands`, `protectedCount` and
+  the `manualValue` tie record (#73), D7 the Operator prompt and budgets (#74: `atcs-worker-NN`
+  version 6 risk-assesses every target, works the cluster point to point hardest first, keeps every
+  measured gain, undoes every regression at once and hands over one batch; share 40 min, 4
+  follow-ups, 12000 tokens a turn; `SCOPE_MAX_MUTATIONS` and `reviewedAction.maxMutations` 600; the
+  author's turn 48000 tokens and reads only its package, residual cases and the worker-request
+  example), D8 the `workerSlots 0` control arm (#69), D9 `budget.minimumGenerations` 1 for the
+  one-generation, one-refresh experiment (#74; kits and brief outside the Pack). The Harness seams
+  H1 (reviewed-scope cap 600) and H2 (recipe Operator share honoured; output-less turn follow-up) are
+  #70 and are required by D7's bounds. The gate is the green Pack suite and the ATCS contract test at
+  the merged head; the dry-path derived-domain fixture (#75), the wrapper v16 re-pin and the live
+  T05 / C-full record follow on #64.

@@ -213,7 +213,7 @@ class ExpertScopeWorkPackageTest(unittest.TestCase):
 
     def test_the_toolkit_surface_and_recipe_cap_are_pinned(self):
         self.assertEqual(workspaces.MUTATE_COMMANDS, EXPERT_COMMANDS)
-        self.assertEqual(workspaces.SCOPE_MAX_MUTATIONS, 120)
+        self.assertEqual(workspaces.SCOPE_MAX_MUTATIONS, 600)
         self.assertEqual(workspaces.OBSERVE_MODES, ("fast", "full"))
         self.assertEqual(workspaces.TASK_IDS, ("w01", "w02", "w03", "w04", "w05", "w06"))
 
@@ -229,7 +229,7 @@ class ExpertScopeWorkPackageTest(unittest.TestCase):
         package = self._package(observe="full",
                                 editDomain={"instances": ["U1/BUF1"], "nets": ["n1"], "regions": [[0, 0, 10.5, 20]]})
         stamped = workspaces.validate_work_package(package, self.base_state, self.caps)
-        self.assertEqual(stamped["scope"], {"commands": list(EXPERT_COMMANDS), "maxMutations": 120})
+        self.assertEqual(stamped["scope"], {"commands": list(EXPERT_COMMANDS), "maxMutations": 600})
         self.assertEqual(stamped["targetPins"], ["U1/reg/D"])
         self.assertEqual(stamped["observe"], "full")
 
@@ -255,12 +255,13 @@ class ExpertScopeWorkPackageTest(unittest.TestCase):
 
     def test_the_request_budget_is_one_to_the_recipe_cap(self):
         # ADR-0016: the request's own scope is the one the Host binds, so a budget below the cap is
-        # the request's to choose; outside 1..120 or not an integer it is refused.
-        for budget in (0, 121, 201, True, "120", 120.0):
+        # the request's to choose; outside 1..600 (#66 D7, the Harness ceiling since H1) or not an
+        # integer it is refused.
+        for budget in (0, 601, 1000, True, "600", 600.0):
             with self.subTest(budget=budget):
                 scope = {"commands": ["atcs_size_cell", "atcs_undo"], "maxMutations": budget}
                 self.assertGreaterEqual(self._problems(self._package(scope=scope)), 1)
-        for budget in (1, 119, 120):
+        for budget in (1, 120, 599, 600):
             with self.subTest(budget=budget):
                 scope = {"commands": ["atcs_size_cell", "atcs_undo"], "maxMutations": budget}
                 self.assertEqual(self._problems(self._package(scope=scope)), 0)

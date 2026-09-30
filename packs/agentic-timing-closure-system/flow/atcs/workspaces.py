@@ -153,12 +153,14 @@ MUTATE_COMMANDS = (
 )
 """The Task 3 toolkit's mutation procedures, in `contract.yml` order."""
 
-SCOPE_MAX_MUTATIONS = 120
+SCOPE_MAX_MUTATIONS = 600
 """The worker Teams' recipe cap (`reviewedAction.maxMutations`) and every session's Tcl-side budget.
 
-An expert loop needs dozens of trials and each `atcs_undo` counts, so 120
-leaves room for about 60 trials each followed by its undo; it stays below
-the Harness ceiling of 200 so a runaway loop still stops.
+A seat works a blocker cluster point to point and hands over one batch of
+tens to hundreds of measured edits (#66 D7), and each `atcs_undo` counts, so
+600 leaves room for about 300 trials each followed by its undo. It equals the
+Harness ceiling (`REVIEWED_SCOPE_MAX_MUTATIONS` 600 since #66 H1), which still
+stops a runaway loop.
 """
 
 OBSERVE_MODES = ("fast", "full")

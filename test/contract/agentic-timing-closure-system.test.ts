@@ -97,10 +97,8 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
   const host = await bootInProcess(h); let cleanupRunId: string | undefined;
   t.after(async () => { if (cleanupRunId) { try { await host.ctx.hima.cancelRun(cleanupRunId); } catch { /* ended */ } } await host.dispose(); await h.dispose(); });
   const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
-  // #64 Track B (C28), reshaped 2026-09-29: one generation cannot reach the default two refreshes; the
-  // Pack declares budget.minimumGenerations 2 and the Harness refuses such a Run at creation.
-  await assert.rejects(host.ctx.hima.startRun({ pack: packId, site: 'local', goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0, max_physical_refreshes: 2 },
-    ownerSessionId: actor, timeBoxMs: 300000, generationLimit: 1 }), /generation limit is 1, but Pack agentic-timing-closure-system declares it needs at least 2 generations/);
+  // #66 D9: the decisive experiment is one generation and one refresh, so the Pack declares
+  // budget.minimumGenerations 1 (asserted below) and a one-generation Run is no longer refused.
   // #64 Track B (from #63): the physical-refresh cap is a Goal value fixed when the Run is created.
   // 3, not the default 2, so the assertions below prove the creation value reached the Run's goal and
   // is what the refresh-budget Judge binds.
@@ -456,15 +454,15 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.equal(slotless(team, slot), slotless(team01, '01'), `${team.id} is Team 01 for slot w${slot}`);
   }
   const team = team01;
-  assert.equal(team.version, '5');
+  assert.equal(team.version, '6', '#66 D7: the Operator works its cluster as one batch');
   assert.deepEqual(team.members.map(item => item.id), ['reviewer', 'operator'], 'the Researcher is the branch\'s own author; no approval member');
   const reviewer = team.members.find(item => item.id === 'reviewer')!;
   const operatorMember = team.members.find(item => item.id === 'operator')!;
   assert.equal(reviewer.optional, true, 'the Reviewer is optional advice whose absence never blocks');
   assert.deepEqual(reviewer.resultSchema, { id: 'atcs-worker-review/3', required: ['schema', 'planSha256', 'evidenceRefs', 'limitations'] });
   assert.match(reviewer.taskTemplate, /Advisory only: nothing waits for you/);
-  assert.equal(operatorMember.budgetShare.maxTokensPerTurn, 5000);
-  assert.equal(operatorMember.budgetShare.maxFollowups, 1, 'one repair follow-up for a result failing its schema');
+  // #66 D7 (Harness H2a honours it): 40 minutes, four follow-ups and 12000 tokens a turn hold a batch.
+  assert.deepEqual(operatorMember.budgetShare, { maxElapsedMs: 2400000, maxFollowups: 4, maxTokensPerTurn: 12000 });
   assert.equal(operatorMember.followup, 'reuse-same-child');
   assert.deepEqual(team.batchWhen, [{ input: 'workerRequest01', value: 'tc_slot_parked', equals: 1 },
     { input: 'workerRequest01', value: 'tc_request_invalid_count', above: 0 }], 'a parked or refused slot runs the batch no-op');
@@ -478,7 +476,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   for (const words of [/editDomain\.instances/, /editDomain\.nets/, /targetPins/, /Exact input workerRequest01/, /exactly this file name/]) {
     assert.match(operatorMember.taskTemplate, words, `the Operator template states ${words}`);
   }
-  assert.equal(recipeCap, 120, 'the recipe cap leaves room for dozens of trials and their undos, below the Harness 200');
+  assert.equal(recipeCap, 600, '#66 D7: a batch of tens to hundreds of trials and their undos, at the Harness ceiling (H1)');
   assert.deepEqual(operatorMember.resultSchema, { id: 'atcs-worker-session/1',
     required: ['schema', 'planSha256', 'mutationReceipts', 'stopReason', 'limitations'] });
   // The Operator template is the knowledge file's expert loop, in order.
@@ -500,7 +498,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual((pack.graph as any).autopilot, [
     { from: ['bind-inputs'], until: ['plan', 'wait-for-person'] },
     { from: ['read-campaign-plan'], until: ['decide'] },
-    { fork: 'prepare-workers', revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 16000 } },
+    { fork: 'prepare-workers', revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 48000 } },
     { from: ['check-worker-results'], until: ['compose'] },
     { from: ['read-integration-plan'], until: ['decide'] },
   ], 'the owner acts at plan, compose and decide only');
@@ -541,9 +539,9 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual(edgesTo('extract'), ['implement->']);
   assert.equal(nodeOf('apr-run'), undefined, 'no earlier-APR detour');
   assert.ok(pack.contract.rules.includes('refresh-budget'));
-  // #64 Track B (C28), reshaped: every generation refreshes once, so the two refreshes of the default
-  // cap need two generations; a Run created with fewer is refused at creation.
-  assert.equal((pack.contract.budget as any).minimumGenerations, 2);
+  // #64 Track B (C28), reshaped: every generation refreshes once. #66 D9: one generation is the floor
+  // (the decisive experiment is one generation, one refresh).
+  assert.equal((pack.contract.budget as any).minimumGenerations, 1);
   assert.equal((pack.contract.goal as any).max_physical_refreshes.default, 2);
 
   // #64 Track B (from #63 slice 3 gap 1): every request output has an itemized `<output>Problems`
