@@ -432,7 +432,7 @@ class WorkerResultDescriptionTest(unittest.TestCase):
             block = text.split(f"  - name: workerResult0{slot}\n", 1)[1].split("\n  - name: ", 1)[0]
             words = " ".join(block.split())
             for field in ("effectiveDomain", "attempted", "aggregateGain", "oppositeEffects", "physicalRisk",
-                          "undone", "reads", "limitations", "batch-net"):
+                          "undone", "reads", "limitations", "batch-net", "advisories"):
                 self.assertIn(field, words, f"workerResult0{slot}")
 
 if __name__ == "__main__":

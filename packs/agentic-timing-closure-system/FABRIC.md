@@ -332,11 +332,8 @@ Schema limits and how the graph expresses them:
   composition keeps every session with its predicted value and marks a shared-instance command
   skipped, naming its holder; `reconcile` records the session that did not reproduce (the skipped
   command, `deltaMatches: false`, a `replayMismatch` warning) and chooses the arm on XTop's prediction.
-  Known limit, flow code (the wrapper-pinned digest): `capture-contribution`'s value gates
-  (`contributions._session_value`: `no-predicted-gain`, `breaks-target-check`,
-  `breaks-opposite-check`) still refuse a session whose kept commands XTop measured as no gain or as
-  harmful in some required scenario; lifting them to advice needs a flow change and a wrapper
-  requalification. Proving tests: `ComposeFactsSecondPassTest.test_a_refused_plan_with_malformed_resolutions_is_not_applied`
+  The value findings (`no-predicted-gain`, `breaks-target-check`, `breaks-opposite-check`) are
+  advisories since the 2026-09-30 replay-aggregator decision (see Reviews, ATCS-09). Proving tests: `ComposeFactsSecondPassTest.test_a_refused_plan_with_malformed_resolutions_is_not_applied`
   (RED: exit 3), `IntegrationPlanExampleTest.test_a_resolution_for_a_no_fix_contribution_is_counted`,
   `test_wild_contribution_flow.py` (green on arrival).
 - G49 (Issue #64 treatment attempt 1, retry slot hygiene; Site side, no flow change) Every Operator
@@ -696,10 +693,25 @@ Known gaps carried from earlier tasks:
   Global Auto-Finish, against the complete Global Auto-Finish alone. D1 cluster seating
   (`read-atcs.py seat-clusters`, cluster shape as Reader advice; #68), D2 in-session local-topology edit
   domain and D3 `atcs_point` with the `reads.jsonl` read log and `atcs_export_changes limitations`
-  (#67), D4 batch Contribution seal (`effectiveDomain`, per-command gain and blockers, `aggregateGain`,
-  batch-net gates; #71), D5 composition by blocker coverage then aggregate gain with `domain-collision`
-  (#72), D6 replay and reconcile on the effective domain with `appliedCommands`, `protectedCount` and
-  the `manualValue` tie record (#73), D7 the Operator prompt and budgets (#74: `atcs-worker-NN`
+  (#67), D4 batch Contribution seal (`effectiveDomain`, per-command gain and blockers, `aggregateGain`;
+  #71), D5 composition by blocker coverage then aggregate gain (#72), D6 replay and reconcile on the
+  effective domain with `appliedCommands`, `skippedCommands`, `protectedCount` and the `manualValue`
+  tie record (#73). Superseding user decision (2026-09-30, #64, branch `atcs09/R`): replay is an
+  aggregator, not a second methodology judge. Every sealed Contribution of a completed private
+  session enters ranked replay; the seal refuses only corrupt data (`tainted`, `trace-mismatch`) or an
+  edit outside its admitted domain (`out-of-scope`), and records `no-predicted-gain`,
+  `breaks-target-check`, `breaks-opposite-check`, `missing-gain-line` and `missing-export` as
+  batch-net `advisories`; composition keeps the ranking, has no `domain-collision` exclusion (an
+  overlapping command is skipped by itself, `shared-instance`/`depends-on-skipped`) and still
+  excludes `base-dump-mismatch`; replay attempts every command in rank order under its own catch and
+  records each skipped one with its reason (the legacy step replay continues past a failing step
+  too); reconcile makes an arm unsafe only for corrupt evidence and records a replay delta mismatch,
+  a missing session dump and an out-of-domain replay change as `warnings`
+  (`replayMismatch`, `replayDeltaMissing`, `outOfDomain`). Applied instances are `set_dont_touch`
+  protected, then the four-pass Global Auto-Finish runs byte-for-byte unchanged. The typed command
+  surface and the Site Permit bound what executes; the refreshed Innovus/StarRC/PrimeTime result plus
+  DRC/connectivity judges quality. The dry path proves it on a planted overlap (both batches ranked,
+  the later sizing of the shared buffer skipped with its reason). D7 the Operator prompt and budgets (#74: `atcs-worker-NN`
   version 6 risk-assesses every target, works the cluster point to point hardest first, keeps every
   measured gain, undoes every regression at once and hands over one batch; share 40 min, 4
   follow-ups, 12000 tokens a turn; `SCOPE_MAX_MUTATIONS` and `reviewedAction.maxMutations` 600; the
