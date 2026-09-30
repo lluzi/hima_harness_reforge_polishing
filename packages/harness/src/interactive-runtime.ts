@@ -460,7 +460,8 @@ class RunInteractiveAuthority implements InteractiveAuthority {
       if (intent.action === 'input' && view?.activeCommand !== undefined) {
         const reply = view.activeCommand.state === 'sent' && intent.record.effect === 'reply'
           && intent.record.replyToCommandId === view.activeCommand.commandId;
-        if (!reply) return { kind: 'refused', reason: `interactive command ${view.activeCommand.commandId} still owns the single-writer lease (${view.activeCommand.state})` };
+        if (!reply) return { kind: 'refused', reason: `interactive command ${view.activeCommand.commandId} still owns the single-writer lease (${view.activeCommand.state});`
+          + ` its completion is not recorded yet: call observe with commandId "${view.activeCommand.commandId}" to record it, then send the next input` };
       }
       let payload: ProtocolRecord = intent.record;
       const scope = this.request.reviewedScope;
@@ -602,6 +603,15 @@ async function resolved(deps: InteractiveRuntimeDeps, request: InteractiveAddres
   catch (error) { return { reason: error instanceof Error ? error.message : String(error) }; }
 }
 
+/**
+ * How long an input or observe call waits for its command's completion. Omitted, it is the binding's
+ * whole call wait (review I1 of attempt 3): a wait of 0 returned "sent" at once, and the completion
+ * was then recorded only if the Operator knew to call `observe` with the right command id — w01 read
+ * DONE three times and never did, and its lease could never be settled.
+ */
+const callWait = (waitMs: number | undefined, binding: InteractiveBinding): number =>
+  Math.min(waitMs ?? binding.limits.callWaitMaxMs, binding.limits.callWaitMaxMs);
+
 /** The close grace for one binding: the Host's override when it has one, else the declared one. */
 const closeGraceFor = (deps: InteractiveRuntimeDeps, binding: InteractiveBinding): InteractiveCloseGrace =>
   deps.closeGrace ?? interactiveCloseGrace(binding.limits.closeGraceMs);
@@ -718,7 +728,7 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
     return observeInteractiveToken(on, { ...request, requestId: command.requestId, session, protocolToken: command.protocolToken,
       callerDigest: command.callerDigest,
       inputDigest: command.inputDigest, operationDigest: command.operationDigest,
-      cursorBefore: command.cursorBefore, waitMs: Math.min(request.waitMs ?? 0, facts.derived.binding.limits.callWaitMaxMs) }, authority);
+      cursorBefore: command.cursorBefore, waitMs: callWait(request.waitMs, facts.derived.binding) }, authority);
   }
   if (request.action === 'input') {
     if (view.status !== 'ready') return { status: 'refused', reason: `interactive mutation requires one ready admitted session; current state is ${view.status}` };
@@ -738,7 +748,7 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
       Date.parse(session.sessionDeadlineAt), runDeadline ?? Number.MAX_SAFE_INTEGER);
     return sendInteractiveInput(on, { ...request, session, callerDigest, protocolToken: token, requestDigest, text: encoded.text,
       submit: encoded.submit, effect: encoded.effect, cursorBefore: view.lastCursor ?? 0,
-      waitMs: Math.min(request.waitMs ?? 0, facts.derived.binding.limits.callWaitMaxMs),
+      waitMs: callWait(request.waitMs, facts.derived.binding),
       commandDeadlineAt: new Date(commandDeadline).toISOString() }, authority);
   }
   if (request.action === 'signal') return signalInteractiveJob(on, { ...request, callerDigest, session }, authority);
