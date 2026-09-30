@@ -68,6 +68,10 @@ _Avoid_: 只用于重排问题的使用次数、某一类工程师的专属入�
 LibInsight 内独立呈现的具体设计分析，使用导入的 Design 信息理解 critical-path cell、cell 使用情况及后续物理 pattern，并复用共同的 Library 分析基础。
 _Avoid_: 所有 Library 页面的强制 Design 叠加层、独立产品或另一套执行系统
 
+**建议工作范围**:
+在声明的 pin/arc、corner、数据覆盖、质量规则和已有使用限制下，LibInsight 推导的可用工作区域；用户目标可以进一步收窄该区域，cell 级范围是选定相关条件的共同范围。
+_Avoid_: 无条件安全区、已通过物理验证的保证、两个可独立取最大值的轴范围
+
 **HimaFabric**:
 承载参考路线、运行事实和执行约束的业务基础设施，为 Campaign Agent 提供可追踪、可恢复的运行环境。
 _Avoid_: 独立业务决策者、第二执行主脑
