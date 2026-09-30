@@ -153,6 +153,9 @@ R3/Q17 确认：EDA Operator 可以在已授权工具、设计工作副本和预
 
 ## LibInsight 产品面
 
+状态：用户已通过产品访谈 Q17 确认下述 demo 范围与验收重点，作为后续实施依据；这不是产品实现或
+验收通过声明。完整决定与六项验收场景见 [已确认访谈](package-development/library-intelligence-platform/product-interview.zh-CN.md)。
+
 用户于 2026-09-29 明确：将此前 Library Insight / Library Intelligence 与 pin access 分析合并为
 **LibInsight**，形成同时评估 Liberty（`.lib`）与 LEF（`.lef`）的统一标准单元库能力。它沿用
 2026-09-22 确定的三类分析任务和现有 Data Insight 工作模式，由同一业务方法组织电气与物理评估。
@@ -260,7 +263,7 @@ Site 具备合法工具、许可和只读访问时，才通过独立格式 adapt
 见 [LibInsight 三类用户分析与统一视图决定](adr/0012-library-intelligence-has-three-user-analysis-surfaces.md)
 和 [pin access 概率模型](package-development/library-intelligence-platform/research/pin-access-probability-model.zh-CN.md)。
 以上是现行产品要求；已有 Liberty 有界切片的通过证据不代表 LEF 或联合评估已经实现。
-持续访谈的已确认项与待定决策见 [LibInsight 产品访谈](package-development/library-intelligence-platform/product-interview.zh-CN.md)。
+已收口的产品决定、参考信息组织与验收场景见 [LibInsight 产品访谈](package-development/library-intelligence-platform/product-interview.zh-CN.md)。
 
 ## 首个里程碑与验证责任
 

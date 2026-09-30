@@ -4,6 +4,10 @@ LibInsight is the unified HimaHarness capability for Liberty (`.lib`) and LEF (`
 geometry-based pin access probabilities and traceable cross-view cell/pin analysis. The canonical scope is in
 [the product definition](../../product-definition.md#libinsight-产品面).
 
+The user confirmed the demo definition and six acceptance scenarios at Q17. Use the
+[completed product interview](product-interview.zh-CN.md) as the scope baseline for implementation; product
+confirmation is separate from implementation and acceptance evidence.
+
 Status: the existing bounded Liberty E1–E4 implementation and dated validation scope are recorded in
 [S11](../../specs/next-stage-implementation/S11-library.md). LEF/pin-access probability work has research and
 model definitions; implementation and combined evaluation are pending. Historical directory, Pack and protocol
