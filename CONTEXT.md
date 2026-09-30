@@ -53,8 +53,16 @@ _Avoid_: 所有数据浏览的强制入口、Campaign 业务实体本身的替�
 _Avoid_: Live Run 子页、独立 BI 应用、第二份数据或执行权威
 
 **LibInsight**:
-HimaHarness 中统一评估标准单元库的业务能力，涵盖 Liberty 的逻辑与电气评估、LEF 的物理几何与 pin access 概率评估，并关联同一库版本、cell 和 pin 的跨视图证据。
+HimaHarness 中以 Library 为共同分析基础的库洞察能力，涵盖 Liberty 的逻辑与电气评估、LEF 的物理几何与 pin access 概率评估；加入 Design 信息后，将库特性与具体设计关联，形成设计指导。
 _Avoid_: Library Insight、Library Intelligence（作为现行产品名称）；独立 Pin Access 产品、仅 Liberty 文件查看器
+
+**Library 输入**:
+LibInsight 用于理解与评估库本身的 Library 及相关 PDK 库信息，不依赖某一个具体 Design 才有分析价值。
+_Avoid_: 单个 Liberty 文件（作为整个输入范围的同义词）
+
+**Design 输入**:
+LibInsight 中描述具体设计及其所用库条件的信息，用于把 Library 洞察关联到实际设计对象和需求；归属由使用语境决定，不由文件扩展名独自决定。
+_Avoid_: 只用于重排问题的使用次数、某一类工程师的专属入口
 
 **HimaFabric**:
 承载参考路线、运行事实和执行约束的业务基础设施，为 Campaign Agent 提供可追踪、可恢复的运行环境。

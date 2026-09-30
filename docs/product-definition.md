@@ -164,7 +164,18 @@ R3/Q17 确认：EDA Operator 可以在已授权工具、设计工作副本和预
 [原型能力清单](package-development/library-intelligence-platform/research/prototype-capabilities.zh-CN.md)。
 其实现与证据范围需在 HimaHarness 中独立验证，不能用已有有界报告切片代替全部原型能力。
 
-LibInsight 的两类输入评估与关联要求如下：
+2026-09-29 访谈进一步明确：LibInsight 的两类入口是 **Library 输入**与 **Design 输入**。
+Library 输入包括 Library 及相关 PDK 中的库信息；Design 输入包括 DEF、设计使用的 Liberty、Netlist、
+Timing Report 等具体设计信息。`.lib`/`.lef` 是评估视图，不是这两类入口的划分依据；同一种格式
+可以在不同使用语境中承担库证据或设计关联条件。
+
+用户划分为“只关心 Library”与“同时关心 Library 和 Design”两类，使用共同的 Library 分析基础。
+库分析本身必须独立成立：从质量、能力与机会出发，说明这套库值得做什么、需要做什么、哪些改进
+可能转化为设计收益；具体 Design 未提供时，潜在收益仍是带条件的研究判断。Design 加入后，把库
+信息与具体设计结合，给出设计指导；不能预先将其作用限制为原型 Usage Lens 的问题重排。
+芯片设计者与 DTCO 方法学工程师不作为互斥产品路线。
+
+Library 侧的电气/物理评估与跨视图关联要求如下：
 
 - **Liberty 评估**：逻辑功能、pin/arc/model 完整性，PVT、时序、功耗、约束、变化和版本比较。
 - **LEF 评估**：cell/pin/PORT/OBS 的几何、层与位置，以及结合声明的技术规则、via、routing grid
@@ -197,6 +208,12 @@ LibInsight 的两类输入评估与关联要求如下：
 独立验证物理解析与规则计算，但结果归入同一 LibInsight。设计采用、真实 PPA、相关性和芯片结果
 仍须由 HimaHarness 的设计证据与实际 EDA 验证补充，不能由 Liberty 或 LEF 模型概率单独推导。
 
+2026-09-29 原型体验确认：保留 Overall 风险矩阵、直觉式点击展开、input transition × output load
+Heatmap 及可靠性标示、每个 cell 的 Sensitivity 呈现，以及 Overall rule configuration。
+用户要求降低交互深度：每类分析尽量收敛在一个标签页内，细节在当前标签内展开，避免多级下钻后
+逐层回退；数据与由其得出的结论并排展示，并直接表达问题实际影响，缩短信息、洞察到后续行动的距离。
+具体标签粒度、风险矩阵轴、影响指标、可靠性含义和规则配置范围仍在访谈中，不把视觉形式提前冻结。
+
 一线 AE 的竞品观察进一步明确共同能力：trend 分析允许切换 output load；用户可过滤不关注的 Cell；
 同一视图可用类别、数值与 corner 等三个维度联合表达；客户可以增加自己的 Python 分析算法。HimaHarness
 应在三类分析内部提供这些能力，但 Python 算法须使用受控输入/输出 schema、fixture、版本和执行边界，
@@ -206,6 +223,7 @@ Site 具备合法工具、许可和只读访问时，才通过独立格式 adapt
 见 [LibInsight 三类用户分析与统一视图决定](adr/0012-library-intelligence-has-three-user-analysis-surfaces.md)
 和 [pin access 概率模型](package-development/library-intelligence-platform/research/pin-access-probability-model.zh-CN.md)。
 以上是现行产品要求；已有 Liberty 有界切片的通过证据不代表 LEF 或联合评估已经实现。
+持续访谈的已确认项与待定决策见 [LibInsight 产品访谈](package-development/library-intelligence-platform/product-interview.zh-CN.md)。
 
 ## 首个里程碑与验证责任
 
