@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 
 from atcs import core
@@ -46,6 +47,7 @@ class SessionLog:
     def __init__(self, reference=None):
         self.ops = []
         self.gains = []
+        self.reads = []
         self.seq = 0
         reference = reference or {"setup": (-0.020, -0.100, 4), "hold": (-0.070, -1.200, 30)}
         self.gains.append({"seq": 0, "kind": "reference", "checks": {
@@ -152,8 +154,32 @@ class SessionLog:
         if status == "kept" and gain is not None:
             self.gain(seq, kind, *gain)
 
+    def read(self, proc, args, rows):
+        """One ``reads.jsonl`` line at the current seq, as `atcs_log_read` writes it (#66 D3)."""
+        self.reads.append({"seq": self.seq, "proc": proc, "args": dict(args), "rowsDigest": rows_digest(rows),
+                           "rows": list(rows)})
+
+    def point(self, check, rows):
+        """One `atcs_point` read; ``rows`` are ``(endpoint, scenario, slack)`` triples."""
+        names = []
+        for endpoint, _, _ in rows:
+            if endpoint not in names:
+                names.append(endpoint)
+        self.read("atcs_point", {"check": check, "endPoints": names},
+                  [{"endpoint": endpoint, "scenario": scenario, "slack": slack} for endpoint, scenario, slack in rows])
+
+    def probe(self, check, pair, endpoints, fail_reasons=False):
+        """One `atcs_gain` probe line at the current seq: ``pair`` is ``(ref, cur)`` of ``(wns, tns)``;
+        ``endpoints`` its top-N rows ``(slack, scenario, name[, reasons])`` in the real layout."""
+        text = delta_text(check, *pair) + top_n_table(check, endpoints, fail_reasons)
+        self.gains.append({"seq": self.seq, "kind": "probe", "topN": len(endpoints), "checks": {
+            check: summary_entry(check, text, top_n=len(endpoints), fail_reason=fail_reasons)}})
+
     def ops_text(self):
         return "".join(json.dumps(line) + "\n" for line in self.ops)
+
+    def reads_text(self):
+        return "".join(json.dumps(line) + "\n" for line in self.reads)
 
     def gain_text(self):
         return "".join(json.dumps(line) + "\n" for line in self.gains)
@@ -209,13 +235,50 @@ def delta_text(check, reference, current, fail_reasons=None):
     return text
 
 
+def rows_digest(rows):
+    """``reads.jsonl`` ``rowsDigest``: sha256 of the rows' compact JSON (ticket A's contract)."""
+    return hashlib.sha256(json.dumps(rows, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def top_n_table(check, endpoints, fail_reasons=False):
+    """``### <check> top N endpoints ###`` in the real layout (`live_session_samples.LIVE_PROBE_HOLD`)."""
+    header = "  Slack    Scenario                Name" + ("       Fail Reason      " if fail_reasons else "")
+    text = f"### {check} top {len(endpoints)} endpoints ###\n{header}\n{'-' * 60}\n"
+    for row in endpoints:
+        slack, scenario, name = row[:3]
+        reasons = f"    {row[3]}" if fail_reasons and len(row) > 3 else ""
+        text += f"{slack:>7.4f}    {scenario:<20}    {name}{reasons}\n"
+    return text
+
+
+def domain_record(plan_instances, instances, nets=(), target_pins=(), plan_nets=(), global_nets=(), unresolved=(),
+                  regions=(), error=None, fanout_max=12):
+    """``domain.json`` in the shape `atcs_write_domain_record` writes (schema atcs-local-domain/1)."""
+    record = {"schema": "atcs-local-domain/1", "fanoutMax": fanout_max, "planInstances": sorted(plan_instances),
+              "planNets": sorted(plan_nets), "targetPins": sorted(target_pins), "instances": sorted(instances),
+              "nets": sorted(nets), "regions": [list(box) for box in regions],
+              "globalNets": [{"net": net, "pins": pins} for net, pins in global_nets],
+              "unresolved": sorted(unresolved)}
+    if error is not None:
+        record["error"] = error
+    return record
+
+
 def dump_text(mapping):
     return "".join(f"{name} {master}\n" for name, master in mapping.items())
 
 
-def write_session(root, log, before, after, tainted=None, transcript="ATCS:taint:clean", eco_output=True):
-    """Write one slot's Operator outputs under `root` (a `pathlib.Path`)."""
+def write_session(root, log, before, after, tainted=None, transcript="ATCS:taint:clean", eco_output=True,
+                  domain=None, summary=None):
+    """Write one slot's Operator outputs under `root` (a `pathlib.Path`); ``reads.jsonl`` when the log
+    has reads, ``domain.json`` when ``domain`` is given, ``summary.json`` when ``summary`` is given."""
     root.mkdir(parents=True, exist_ok=True)
+    if log.reads:
+        (root / "reads.jsonl").write_text(log.reads_text(), encoding="utf-8")
+    if domain is not None:
+        (root / "domain.json").write_text(json.dumps(domain) + "\n", encoding="utf-8")
+    if summary is not None:
+        (root / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
     (root / "before.dump").write_text(dump_text(before), encoding="utf-8")
     (root / "after.dump").write_text(dump_text(after), encoding="utf-8")
     (root / "ops.jsonl").write_text(log.ops_text(), encoding="utf-8")

@@ -1610,18 +1610,304 @@ def _latest_fail_reasons(gain_lines, last_kept_seq):
     return {}, None
 
 
-def seal_session(base_ref, result_refs, ops_text, gain_text):
+# ---------------------------------------------------------------------------
+# #66 D4: the batch record -- per-command and aggregate evidence of one session
+# ---------------------------------------------------------------------------
+#
+# A seat works point to point through its cluster and hands over one batch. Beside the fields
+# above, `seal_session` seals, from the files the toolkit writes beside ``ops.jsonl``:
+#
+# - ``effectiveDomain``: the session's ``domain.json`` record (schema ``atcs-local-domain/1``:
+#   ``fanoutMax, planInstances, planNets, targetPins, instances, nets, regions, globalNets,
+#   unresolved[, error]``) as written, or ``null`` when the file is absent or unreadable. The
+#   seal's domain check reads its ``instances`` (plus the plan's and the session-created ones);
+#   ``session.domainSource`` says which domain was checked (``domain.json`` or ``plan``).
+# - ``commands[].gain``: the command's own ``gain.jsonl`` reading, per check and scenario (the
+#   required ones, else every scenario the readings name): ``{"seq", "fromSeq", "target": {check:
+#   {scenario: {"wns","tns","wnsGain","tnsGain"} | null}}, "opposite": {...}}``; the gains are
+#   against the reading of the design state the command started from (``fromSeq``: the latest
+#   reference/mutation/undo reading of that state), so a command after an undo is measured against
+#   the state the undo restored.
+# - ``commands[].blockers``: the target checks (``scenario|check|endpoint``) whose slack, read by
+#   ``atcs_point`` (``reads.jsonl``) or an ``atcs_gain`` probe's top-N table (``gain.jsonl``),
+#   improved from the last reading of the state the command started from to the first reading of
+#   the state it left. A point row with no scenario reads every target of its check and endpoint.
+# - ``attempted``: the target checks read at least once (named by an ``atcs_point`` or
+#   ``atcs_paths`` read of their check, by an ``atcs_fail_reasons`` read's pins, or listed by a
+#   probe's top-N table).
+# - ``aggregateGain`` / ``oppositeEffects``: per required scenario, the WNS and TNS delta of the
+#   target checks / the opposite checks between the session reference and the last reading
+#   (``{check: {scenario: {"wnsGain","tnsGain","referenceWns"} | null}}``, `_scenario_gains`).
+# - ``physicalRisk``: ``{"legalFailures"`` (``legal_fail_*`` endpoints in ``failReasons``),
+#   ``"newCells"`` (instances the kept log created), ``"newNets"``, ``"moves"`` (kept
+#   ``move_cell``), ``"tainted"}``.
+# - ``undone``: ``{"count", "commands": [{"seq","proc","cmd","args","gain"}]}``, the undone trials.
+# - ``reads``: the ``reads.jsonl`` summary ``{"present", "lines", "afterMutation", "byProc",
+#   "entries": [{"seq","proc","args","rowsDigest","rows"}], "malformed"}`` (``rows`` a count;
+#   ``malformed`` the line numbers skipped). The read log never refuses.
+# - ``limitations``: the Operator's own (``summary.json`` ``limitations``, ``operator: `` first),
+#   then the seal's (``seal: ``: no or an unreadable domain record, a failed derivation, target
+#   checks never read, no or malformed read lines).
+
+DOMAIN_SCHEMA = "atcs-local-domain/1"
+_DOMAIN_NAME_LISTS = ("planInstances", "planNets", "targetPins", "instances", "nets", "unresolved")
+READ_PROCS = ("atcs_paths", "atcs_fail_reasons", "atcs_point")
+_LIMITATION_CHARS = 500
+_OPERATOR_LIMITATIONS_MAX = 20
+_NEVER_READ_SHOWN = 10
+
+
+def parse_domain_record(text):
+    """``(record, problem)`` for a session's ``domain.json`` text; ``(None, None)`` when absent.
+
+    ``problem`` names why a present record is unusable (not JSON, another schema, a name list that
+    is not a list of names, regions/globalNets not lists, a non-string error); the seal then checks
+    the plan's domain, which is never wider.
+    """
+    if text is None:
+        return None, None
+    try:
+        record = json.loads(text)
+    except ValueError as exc:
+        return None, f"invalid JSON: {exc}"
+    if not isinstance(record, dict) or record.get("schema") != DOMAIN_SCHEMA:
+        return None, f"schema is not {DOMAIN_SCHEMA}"
+    for key in _DOMAIN_NAME_LISTS:
+        value = record.get(key)
+        if not isinstance(value, list) or not all(_is_nonempty_string(item) for item in value):
+            return None, f"{key} must be a list of names"
+    for key in ("regions", "globalNets"):
+        if not isinstance(record.get(key), list):
+            return None, f"{key} must be a list"
+    if "error" in record and not isinstance(record["error"], str):
+        return None, "error must be a string"
+    return record, None
+
+
+def parse_read_log(text):
+    """``(lines, malformed)``: the ``reads.jsonl`` lines in the toolkit's shape and the line numbers skipped.
+
+    A line is ``{"seq": int >= 0, "proc": atcs_paths|atcs_fail_reasons|atcs_point, "args": object,
+    "rowsDigest": str, "rows": list}``. Reads are evidence the seal cites, never a gate: a line of
+    another shape is skipped and named, not raised.
+    """
+    lines, malformed = [], []
+    for line_number, raw_line in enumerate((text or "").splitlines(), start=1):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except ValueError:
+            malformed.append(line_number)
+            continue
+        if (not isinstance(record, dict) or not _is_plain_int(record.get("seq")) or record["seq"] < 0
+                or record.get("proc") not in READ_PROCS or not isinstance(record.get("args"), dict)
+                or not isinstance(record.get("rowsDigest"), str) or not isinstance(record.get("rows"), list)):
+            malformed.append(line_number)
+            continue
+        lines.append(record)
+    return lines, malformed
+
+
+def _target_key(target):
+    """``(scenario, check, endpoint)`` of a ``scenario|check|endpoint`` check id, else ``None``."""
+    parts = target.split("|", 2) if isinstance(target, str) else []
+    if len(parts) == 3 and parts[1] in SESSION_CHECKS and parts[0] and parts[2]:
+        return tuple(parts)
+    return None
+
+
+def _same_endpoint(left, right):
+    return left == right or left.replace("\\", "") == right.replace("\\", "")
+
+
+def _top_n_rows(text):
+    """``{check: [(scenario, endpoint, slack)]}`` from a probe's ``### <check> top N endpoints ###`` tables."""
+    tables = {}
+    check = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        match = re.match(r"^### (setup|hold) top \d+ endpoints ###$", line)
+        if match:
+            check = match.group(1)
+            tables.setdefault(check, [])
+            continue
+        if check is None:
+            continue
+        if not line or line.startswith("###"):
+            check = None
+            continue
+        tokens = line.split()
+        if len(tokens) >= 3 and _NUMBER.match(tokens[0]):
+            tables[check].append((tokens[1], tokens[2], float(tokens[0])))
+    return tables
+
+
+def _point_readings(reads, gain_lines):
+    """Every endpoint-slack reading, in seq order: ``[(seq, check, [(scenario|None, endpoint, slack|None)])]``."""
+    readings = []
+    for read in reads:
+        check = read["args"].get("check")
+        if read["proc"] != "atcs_point" or check not in SESSION_CHECKS:
+            continue
+        rows = []
+        for row in read["rows"]:
+            if isinstance(row, dict) and _is_nonempty_string(row.get("endpoint")):
+                scenario = row.get("scenario") if _is_nonempty_string(row.get("scenario")) else None
+                slack = row.get("slack") if _is_finite_number(row.get("slack")) else None
+                rows.append((scenario, row["endpoint"], slack))
+        readings.append((read["seq"], check, rows))
+    for gain_line in gain_lines:
+        if gain_line["kind"] != "probe":
+            continue
+        for check, entry in sorted(gain_line["checks"].items()):
+            if entry["code"] == 0:
+                for table_check, rows in sorted(_top_n_rows(entry["text"]).items()):
+                    if table_check == check:
+                        readings.append((gain_line["seq"], check, rows))
+    readings.sort(key=lambda reading: reading[0])
+    return readings
+
+
+def _reading_slack(rows, scenario, endpoint):
+    """The target's slack in one reading: its scenario's row, else a row naming no scenario; ``None`` if unread."""
+    for wanted in (scenario, None):
+        known = [slack for row_scenario, row_endpoint, slack in rows
+                 if row_scenario == wanted and _same_endpoint(row_endpoint, endpoint) and slack is not None]
+        if known:
+            return min(known)
+    return None
+
+
+def _state_keys(lines):
+    """``{seq: kept-edit stack after that ops line}`` (seq 0: the session start), per the undo rule."""
+    stack, keys = [], {0: ()}
+    for line in lines:
+        if line["status"] == "kept":
+            if line["cmd"] == "undo":
+                if line.get("undoes") in stack:
+                    stack.remove(line["undoes"])
+            else:
+                stack.append(line["seq"])
+        keys[line["seq"]] = tuple(stack)
+    return keys
+
+
+def _state_at(keys, seq):
+    """The design state a reading at ``seq`` saw: the stack after the last ops line at or before it."""
+    if seq in keys:
+        return keys[seq]
+    earlier = [known for known in keys if known <= seq]
+    return keys[max(earlier)] if earlier else ()
+
+
+def _blockers(seq, keys, series):
+    """The target checks whose read slack improved across the kept command at ``seq``."""
+    before, after = _state_at(keys, seq - 1), _state_at(keys, seq)
+    improved = []
+    for target, readings in sorted(series.items()):
+        prior = [slack for at, slack in readings if at < seq and _state_at(keys, at) == before]
+        post = [slack for at, slack in readings if at >= seq and _state_at(keys, at) == after]
+        if prior and post and post[0] > prior[-1] + 1e-9:
+            improved.append(target)
+    return improved
+
+
+def _attempted(targets, reads, readings):
+    attempted = set()
+    for target in targets:
+        key = _target_key(target)
+        if key is None:
+            continue
+        scenario, check, endpoint = key
+        for read in reads:
+            args = read["args"]
+            names = args.get("pins") if read["proc"] == "atcs_fail_reasons" else args.get("endPoints")
+            if read["proc"] != "atcs_fail_reasons" and args.get("check") != check:
+                continue
+            if isinstance(names, list) and any(isinstance(name, str) and _same_endpoint(name, endpoint)
+                                               for name in names):
+                attempted.add(target)
+        for _, reading_check, rows in readings:
+            if reading_check == check and any(row_scenario in (scenario, None) and _same_endpoint(row_endpoint, endpoint)
+                                              for row_scenario, row_endpoint, _ in rows):
+                attempted.add(target)
+    return sorted(attempted)
+
+
+def _step_gain(line, gain_lines, keys, target_checks, required_scenarios):
+    """One command's own reading and its gain over the reading of the state it started from."""
+    seq = line["seq"]
+    kind = "undo" if line["cmd"] == "undo" else "mutation"
+    reading = next((g for g in gain_lines if g["seq"] == seq and g["kind"] == kind), None)
+    before = _state_at(keys, seq - 1)
+    priors = [g for g in gain_lines if g["seq"] < seq and g["kind"] in ("reference", "mutation", "undo")
+              and _state_at(keys, g["seq"]) == before]
+    prior = priors[-1] if priors else None
+    current_rows, prior_rows = _gain_reading(reading)[0], _gain_reading(prior)[0]
+    result = {"seq": seq, "fromSeq": prior["seq"] if prior is not None else None, "target": {}, "opposite": {}}
+    for check in SESSION_CHECKS:
+        current = ((current_rows.get(check) or {}).get("scenarios")) or {}
+        earlier = ((prior_rows.get(check) or {}).get("scenarios")) or {}
+        names = list(required_scenarios) if required_scenarios else sorted(set(current) | set(earlier))
+        entries = {}
+        for name in names:
+            cur, ref = current.get(name) or {}, dict(earlier.get(name) or {})
+            if prior is not None and prior["kind"] == "reference" and not ref:
+                ref = {"worst": cur.get("worst0"), "tns": cur.get("tns0")}
+            if not all(_is_finite_number(cur.get(key)) for key in ("worst", "tns")):
+                entries[name] = None
+                continue
+            known = all(_is_finite_number(ref.get(key)) for key in ("worst", "tns"))
+            entries[name] = {"wns": cur["worst"], "tns": cur["tns"],
+                             "wnsGain": round(cur["worst"] - ref["worst"], 9) if known else None,
+                             "tnsGain": round(cur["tns"] - ref["tns"], 9) if known else None}
+        result["target" if check in target_checks else "opposite"][check] = entries
+    return result
+
+
+def _reads_summary(reads, malformed, present):
+    by_proc = {}
+    for read in reads:
+        by_proc[read["proc"]] = by_proc.get(read["proc"], 0) + 1
+    return {"present": present, "lines": len(reads), "afterMutation": sum(1 for read in reads if read["seq"] > 0),
+            "byProc": dict(sorted(by_proc.items())),
+            "entries": [{"seq": read["seq"], "proc": read["proc"], "args": read["args"],
+                         "rowsDigest": read["rowsDigest"], "rows": len(read["rows"])} for read in reads],
+            "malformed": list(malformed)}
+
+
+def _operator_limitations(value):
+    items = [item.strip() for item in (value if isinstance(value, list) else []) if _is_nonempty_string(item)
+             and item.strip()]
+    return [f"operator: {item[:_LIMITATION_CHARS]}" for item in items[:_OPERATOR_LIMITATIONS_MAX]]
+
+
+def seal_session(base_ref, result_refs, ops_text, gain_text, reads_text=None):
     """Seal one worker's Task 3 XTop session into an ``xtop-session`` (or ``no-fix``) Contribution.
 
     `result_refs`: ``{"beforeDump", "afterDump"`` (paths), ``"evidence":
     {"taintedJson": obj|None, "transcriptTaint": "clean"|"tainted:<why>"|None,
     "ecoOutput": bool}, "fillerPatterns": [glob, ...], "requiredScenarios": [name, ...] (optional;
     the scenarios whose rows the gain gates read, all of the readings' when absent), "diagnosis":
-    str|None}``. `ops_text`/`gain_text` are the raw ``ops.jsonl`` /
-    ``gain.jsonl`` texts. Raises `AtcsError` only for unusable input (a
-    ``base_ref`` whose parts disagree, an unreadable dump, a malformed log);
+    str|None, "domainText": str|None`` (the session's ``domain.json`` text, #66 D2; absent = the
+    plan's domain), ``"operatorLimitations": [str, ...]}`` (optional). `ops_text`/`gain_text`/
+    `reads_text` are the raw ``ops.jsonl`` / ``gain.jsonl`` / ``reads.jsonl`` texts (``reads_text``
+    ``None`` = no read log). Raises `AtcsError` only for unusable input (a
+    ``base_ref`` whose parts disagree, an unreadable dump, a malformed ops or gain log);
     every content problem is a refusal on the returned Contribution -- see
-    the block comment above for the codes and the shape.
+    the block comments above for the codes and the shape.
+
+    The seal is of one batch (#66 D4). The domain check reads the session's effective domain (its
+    ``domain.json`` ``instances``, plus the plan's ``editDomain.instances`` and the instances the
+    session created under its ``namePrefix``); without a usable record it reads the plan's domain.
+    The value gates are batch-net: ``no-predicted-gain``, ``breaks-target-check`` and
+    ``breaks-opposite-check`` compare the batch's last reading with the session reference, the net
+    effect of every kept command, never a single step. A trial that hurt and was undone, or a kept
+    step whose loss later steps recovered, does not refuse; a batch whose net opposite-check WNS is
+    worse by more than one rounding step (1e-4 ns) in any required scenario is refused as a whole
+    (the Operator undoes such a step when it measures it).
     """
     manifest = core.require(base_ref, "workspaceManifest", "base_ref")
     work_package = core.require(base_ref, "workPackage", "base_ref")
@@ -1631,6 +1917,8 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
 
     lines = parse_session_log(ops_text)
     gain_lines = parse_gain_log(gain_text)
+    reads, malformed_reads = parse_read_log(reads_text)
+    domain_record, domain_problem = parse_domain_record(result_refs.get("domainText"))
 
     before_path = core.require(result_refs, "beforeDump", "result_refs")
     after_path = core.require(result_refs, "afterDump", "result_refs")
@@ -1695,9 +1983,12 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
                       "prestaHoldWns": core.unknown("not predicted by an xtop-session")})
     fail_reasons, fail_reasons_seq = _latest_fail_reasons(gain_lines, last_kept_seq)
 
-    # Domain: editDomain instances plus instances created under this workspace's prefix.
+    # Domain: the effective (derived) domain's instances when domain.json is usable, plus the
+    # plan's editDomain instances, plus instances created under this workspace's prefix.
     edit_domain = work_package.get("editDomain") or {}
     domain = set(edit_domain.get("instances") or [])
+    if domain_record is not None:
+        domain |= set(domain_record["instances"])
 
     def out_of_domain(name):
         if name in before:
@@ -1781,6 +2072,57 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
     checks = set(work_package.get("targets") or []) | set(work_package.get("mayAffect") or [])
     has_prediction = any(core.is_known(predicted[key]) for key in ("xtopSetupWns", "xtopHoldWns"))
 
+    # #66 D4: the batch record (see the block comment above `parse_domain_record`).
+    targets = sorted(work_package.get("targets") or [])
+    keys = _state_keys(lines)
+    readings = _point_readings(reads, gain_lines)
+    series = {}
+    for target in targets:
+        key = _target_key(target)
+        if key is None:
+            continue
+        scenario, check, endpoint = key
+        for at, reading_check, rows in readings:
+            slack = _reading_slack(rows, scenario, endpoint) if reading_check == check else None
+            if slack is not None:
+                series.setdefault(target, []).append((at, slack))
+    for line, command in zip(kept_lines, commands):
+        command["gain"] = _step_gain(line, gain_lines, keys, target_checks, required_scenarios)
+        command["blockers"] = _blockers(line["seq"], keys, series)
+    attempted = _attempted(targets, reads, readings)
+    net_gains = _scenario_gains(gain_summary, required_scenarios)
+    by_seq = {line["seq"]: line for line in lines}
+    undone_commands = [{"seq": seq, "proc": by_seq[seq]["proc"], "cmd": by_seq[seq]["cmd"],
+                        "args": by_seq[seq]["args"],
+                        "gain": _step_gain(by_seq[seq], gain_lines, keys, target_checks, required_scenarios)}
+                       for seq in undone if seq in by_seq]
+    physical_risk = {
+        "legalFailures": sum(count for reasons in fail_reasons.values() for reason, count in reasons.items()
+                             if reason.startswith("legal_fail")),
+        "newCells": sum(1 for name, master in running.items() if master is not None and before.get(name) is None),
+        "newNets": len({net for command in commands for net in command.get("newNets") or []}),
+        "moves": sum(1 for command in commands if command["cmd"] == "move_cell"),
+        "tainted": any(refusal["code"] == "tainted" for refusal in refusals),
+    }
+    limitations = _operator_limitations(result_refs.get("operatorLimitations"))
+    if domain_record is None and domain_problem is None:
+        limitations.append("seal: domain.json absent: the seal checked the plan's editDomain.instances")
+    elif domain_record is None:
+        limitations.append(f"seal: domain.json unreadable ({domain_problem}): the seal checked the plan's "
+                           "editDomain.instances")
+    elif domain_record.get("error"):
+        limitations.append(f"seal: the session's domain derivation failed "
+                           f"({domain_record['error'][:_LIMITATION_CHARS]}); the plan's domain held")
+    never_read = [target for target in targets if target not in attempted]
+    if never_read:
+        shown = never_read[:_NEVER_READ_SHOWN]
+        more = f" (+{len(never_read) - len(shown)} more)" if len(never_read) > len(shown) else ""
+        limitations.append(f"seal: {len(never_read)} of {len(targets)} target checks never read: {shown}{more}")
+    if reads_text is None:
+        limitations.append("seal: reads.jsonl absent: no read to cite")
+    if malformed_reads:
+        limitations.append(f"seal: reads.jsonl lines {malformed_reads} malformed and skipped")
+
     body = {
         "taskId": core.require(manifest, "taskId", "workspaceManifest"),
         "revision": core.require(manifest, "revision", "workspaceManifest"),
@@ -1803,8 +2145,16 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
         "failReasons": fail_reasons,
         "value": value,
         "valueDetail": value_detail,
-        "targets": sorted(work_package.get("targets") or []),
+        "targets": targets,
         "targetPins": sorted(work_package.get("targetPins") or []),
+        "effectiveDomain": domain_record,
+        "attempted": attempted,
+        "aggregateGain": {check: gains for check, gains in net_gains.items() if check in target_checks},
+        "oppositeEffects": {check: gains for check, gains in net_gains.items() if check not in target_checks},
+        "physicalRisk": physical_risk,
+        "undone": {"count": len(undone), "commands": undone_commands},
+        "reads": _reads_summary(reads, malformed_reads, reads_text is not None),
+        "limitations": limitations,
         "validationLevel": "xtop" if has_prediction else "none",
         "diagnosis": diagnosis,
         "session": {
@@ -1813,6 +2163,7 @@ def seal_session(base_ref, result_refs, ops_text, gain_text):
                                                         if isinstance(line.get("observe"), str)}),
             "predictedFromSeq": last_reading["seq"] if last_reading is not None else None,
             "failReasonsFromSeq": fail_reasons_seq, "fillerPatterns": filler_patterns,
+            "domainSource": "domain.json" if domain_record is not None else "plan",
         },
         "admissible": not refusals,
         "refusals": refusals,

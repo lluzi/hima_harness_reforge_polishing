@@ -65,6 +65,35 @@
   仅用于 composition facts 中已命名的冲突，`decision` 的形式是
   `<keep|drop|revise>:<contributionId>`，并带上该冲突自己的 `conflictKey`。
 
+### 批量 Contribution 记录（#66 D4）
+
+一个专家席位点对点处理自己的 blocker 簇：逐个试验、测量、不安全的立即 undo，最后交出
+一批保留的编辑。`seal_session` 把这一批封成一个 `xtop-session` Contribution，在原有字段
+（`commands`、`delta`、`touches`、`gainSummary`、`failReasons`、`value`、`valueDetail`）
+之外再记录：
+
+- `effectiveDomain`：会话写在 `ops.jsonl` 旁的 `domain.json`（`atcs-local-domain/1`）原样
+  封入；缺失或不可读时为 `null`。封存的域检查读它的 `instances`（加上计划的
+  `editDomain.instances` 和本会话以 `namePrefix` 新建的实例）；没有可用记录时退回计划的域，
+  `session.domainSource` 写明用的是哪一个。派生域里的实例上保留的编辑因此被接纳。
+- `commands[].gain`：该命令自己的 `gain.jsonl` 读数，按检查和场景分 `target`/`opposite`，
+  增益相对它开始时那个设计状态的读数（`fromSeq`；undo 之后的命令相对 undo 恢复的状态）。
+- `commands[].blockers`：该命令之后的读数里 slack 变好的目标检查（`atcs_point` 的
+  `reads.jsonl` 行或 `atcs_gain` 探测的 top-N 表）。不需要 Operator 额外声明。
+- `attempted`：至少读过一次的目标检查；`aggregateGain`：每个必需场景里目标检查族在会话
+  参考与最后读数之间的 WNS/TNS 变化；`oppositeEffects`：对侧检查的同样变化。
+- `physicalRisk`：`{legalFailures, newCells, newNets, moves, tainted}`；`undone`：撤销的
+  试验数和它们的命令（各带自己的 `gain`）；`reads`：`reads.jsonl` 摘要（每行的 `seq`、
+  `proc`、`args`、`rowsDigest`，供引用证据；读日志从不拒绝）；`limitations`：Operator 在
+  `summary.json` 写的（`operator: ` 前缀在前），然后是封存自己的（`seal: `，例如没读过的
+  目标、缺失的域记录）。
+
+价值门是 batch-net 的：`no-predicted-gain`、`breaks-target-check`、`breaks-opposite-check`
+比较的是这一批最后的读数与会话参考，也就是整批保留命令的净效果，从不看单步。中途伤害了
+对侧检查但已 undo 的试验不会拒绝整批；一个保留步的损失被后续步骤补回，也不会拒绝。
+任一必需场景里对侧检查的净 WNS 变差超过一个舍入步（1e-4 ns）时，整批被拒绝——所以
+Operator 测到这样的一步就当场 undo。
+
 ## Counterexample
 
 ARCHITECTURE §10 的示例：任务 B 依赖共享 driver `U_DRV`（任务 A 的编辑对象）的当前状态

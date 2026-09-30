@@ -168,27 +168,51 @@ outputs:
   - name: workerResult01
     path: state/contribution-w01.json
     reader: atcs-worker-result-01
-    description: Slot w01's sealed M3 Contribution.
+    description: >-
+      Slot w01's sealed M3 Contribution: an xtop-session batch (commands, each with its own
+      measured gain and the blockers it improved; effectiveDomain, attempted, aggregateGain,
+      oppositeEffects, physicalRisk, undone, reads, limitations; value gates batch-net, the last
+      reading against the session reference), a no-fix, or a parked no-fix.
   - name: workerResult02
     path: state/contribution-w02.json
     reader: atcs-worker-result-02
-    description: Slot w02's sealed M3 Contribution.
+    description: >-
+      Slot w02's sealed M3 Contribution: an xtop-session batch (commands, each with its own
+      measured gain and the blockers it improved; effectiveDomain, attempted, aggregateGain,
+      oppositeEffects, physicalRisk, undone, reads, limitations; value gates batch-net, the last
+      reading against the session reference), a no-fix, or a parked no-fix.
   - name: workerResult03
     path: state/contribution-w03.json
     reader: atcs-worker-result-03
-    description: Slot w03's sealed M3 Contribution.
+    description: >-
+      Slot w03's sealed M3 Contribution: an xtop-session batch (commands, each with its own
+      measured gain and the blockers it improved; effectiveDomain, attempted, aggregateGain,
+      oppositeEffects, physicalRisk, undone, reads, limitations; value gates batch-net, the last
+      reading against the session reference), a no-fix, or a parked no-fix.
   - name: workerResult04
     path: state/contribution-w04.json
     reader: atcs-worker-result-04
-    description: Slot w04's sealed M3 Contribution.
+    description: >-
+      Slot w04's sealed M3 Contribution: an xtop-session batch (commands, each with its own
+      measured gain and the blockers it improved; effectiveDomain, attempted, aggregateGain,
+      oppositeEffects, physicalRisk, undone, reads, limitations; value gates batch-net, the last
+      reading against the session reference), a no-fix, or a parked no-fix.
   - name: workerResult05
     path: state/contribution-w05.json
     reader: atcs-worker-result-05
-    description: Slot w05's sealed M3 Contribution.
+    description: >-
+      Slot w05's sealed M3 Contribution: an xtop-session batch (commands, each with its own
+      measured gain and the blockers it improved; effectiveDomain, attempted, aggregateGain,
+      oppositeEffects, physicalRisk, undone, reads, limitations; value gates batch-net, the last
+      reading against the session reference), a no-fix, or a parked no-fix.
   - name: workerResult06
     path: state/contribution-w06.json
     reader: atcs-worker-result-06
-    description: Slot w06's sealed M3 Contribution.
+    description: >-
+      Slot w06's sealed M3 Contribution: an xtop-session batch (commands, each with its own
+      measured gain and the blockers it improved; effectiveDomain, attempted, aggregateGain,
+      oppositeEffects, physicalRisk, undone, reads, limitations; value gates batch-net, the last
+      reading against the session reference), a no-fix, or a parked no-fix.
   - name: contributionIndex
     path: state/contributions-collected.json
     reader: atcs-contribution-index

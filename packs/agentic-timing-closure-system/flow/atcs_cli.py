@@ -1465,9 +1465,18 @@ def _seal_xtop_session(workspace, root, base_ref, before_dump, after_dump, ops_l
     ``requiredScenarios``; none when that file is absent, so every filler
     change then counts as an out-of-domain change and every scenario row
     is read).
+
+    #66 D4: also beside ``ops.jsonl``, ``reads.jsonl`` (the read log; absent = none) and
+    ``domain.json`` (the session's effective domain; absent = the plan's), and from
+    ``summary.json`` the Operator's ``limitations`` (a list of strings), all sealed into the batch
+    record (`contributions.seal_session`).
     """
     gain_path = ops_log_path.parent / "gain.jsonl"
     gain_text = _read_text(str(gain_path)) if gain_path.is_file() else ""
+    reads_path = ops_log_path.parent / "reads.jsonl"
+    reads_text = _read_text(str(reads_path)) if reads_path.is_file() else None
+    domain_path = ops_log_path.parent / "domain.json"
+    domain_text = _read_text(str(domain_path)) if domain_path.is_file() else None
     tainted = None
     if tainted_path.is_file():
         try:
@@ -1491,9 +1500,10 @@ def _seal_xtop_session(workspace, root, base_ref, before_dump, after_dump, ops_l
             "ecoOutput": eco_output.is_dir() and any(path.is_file() for path in eco_output.rglob("*")),
         },
         "fillerPatterns": filler_patterns, "requiredScenarios": required_scenarios,
-        "diagnosis": summary.get("diagnosis"),
+        "diagnosis": summary.get("diagnosis"), "domainText": domain_text,
+        "operatorLimitations": summary.get("limitations"),
     }
-    return contributions.seal_session(base_ref, result_refs, operation_trace, gain_text)
+    return contributions.seal_session(base_ref, result_refs, operation_trace, gain_text, reads_text)
 
 
 _PARKED_FORBIDDEN_OUTPUTS = ("before.dump", "after.dump", "ops.jsonl", "gain.jsonl", "tainted.json", "eco_output",
