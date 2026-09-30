@@ -622,7 +622,7 @@ test('an identical rewrite after an identical failure is never re-run: the autho
     assert.equal(followups().length, 1, 'the author is asked to repair once');
     const asked = await p.authorAsked(branches[0]);
     assert.equal(asked, author, 'the same author, followed up');
-    const sent = p.delegationRecords(author).findLast((r) => r.type === 'delegation' && (r.event === 'followup-intent' || r.event === 'followup-sent'));
+    const sent = p.delegationRecords(author).findLast((r) => r.type === 'delegation' && r.event === 'followup-sent');
     assert.match(JSON.stringify(sent), /exited 4/, 'the follow-up carries the failure');
     assert.match(JSON.stringify(sent), /operatorBrief not written/, 'and the tail of the program\'s own log');
     // The author answers the identical program: it is not run again, and the branch settles refused.
@@ -637,6 +637,32 @@ test('an identical rewrite after an identical failure is never re-run: the autho
     assert.equal(p.records().filter((r) => r.type === 'research-write' && r.nodeId === 'plan-a').length, 1, 'one research write for one authored program');
     assert.equal(followups().length, 1, 'one repair follow-up in all');
     assert.equal(Object.values(p.control().requests).filter((request) => request.origin === 'human').length, 0, 'no person was asked');
+  });
+});
+
+test('each revised failing program runs once, and the author\'s follow-up allowance bounds the branch before it settles refused (#64 D-T06-2)', async (t) => {
+  await campaign(t, defaults, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    const codes = () => p.records().filter((r) => r.type === 'code' && r.nodeId === 'plan-a');
+    const settled = () => p.records().findLast((r) => r.type === 'node' && r.branchId === 'plan-a' && r.state === 'cancelled');
+    let answers = 0;
+    while (settled() === undefined && answers < 8) {
+      const author = await Promise.race([p.authorAsked(branches[0]),
+        waitUntil('branch a settles', () => settled() !== undefined, 60_000, 25).then(() => '')]);
+      if (author === '') break;
+      answers += 1;
+      await p.answer(author, JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA, entry: `# revision ${String(answers)}\nexit 4\n` }));
+      await waitUntil(`revision ${String(answers)} runs or the branch settles`, () => codes().length >= answers || settled() !== undefined, 30_000, 25);
+    }
+    const refusal = settled();
+    assert.ok(refusal?.type === 'node', 'branch a settled refused');
+    assert.match(refusal.reason ?? '', /follow-up allowance is exhausted/);
+    const author = runDelegations((driven.host.ctx.hima as any).deps(), driven.runId).find((row) => row.delegationId.startsWith('autopilot-author-plan-a-'))!;
+    assert.equal(author.followups, 3, 'the author\'s declared allowance, and no more');
+    assert.equal(answers, 4, 'the first entry and one revision per follow-up');
+    assert.equal(codes().length, answers, 'each authored program ran exactly once');
+    assert.equal(new Set(codes().map((r) => r.type === 'code' ? r.sha256 : '')).size, answers);
   });
 });
 

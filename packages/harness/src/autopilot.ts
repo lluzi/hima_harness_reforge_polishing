@@ -21,13 +21,14 @@
 // When the owner hears. Once, when the Run leaves the self-driving region (a Workshop the owner
 // authors, an Explore decision, the honest end), with one summary of what the region did — for a
 // fork, one line per branch.
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { executionPack, identityOf, restartBranchAt, settleBranchRefused, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
 import { autopilotOf, autopilotSegmentOf, positionOf, type ForkAutopilot, type ForkBranch, type Pack, type PackAgentTeam, type PackAgentTeamMember, type PackNode, type PackWorkshop } from './packs.js';
 import { currentRecordsIn, hasEnded, type DelegationRecord, type LedgerRecord, type NodeExecution, type ObservationRecord, type RunRecord } from './ledger.js';
 import { runDelegations, type RunDelegationRequest, type RunDelegationView } from './delegation-runtime.js';
 import { parseDelegationResultObservedPayload } from './delegation.js';
 import type { FabricDeps } from './node-turns.js';
+import { jobTail } from './jobs.js';
 
 /** What the driver needs of its Host: the owner's own operations, and nothing that decides. */
 export interface AutopilotHost {
@@ -63,6 +64,7 @@ export const WORKSHOP_ENTRY_SCHEMA = 'hima-workshop-entry/1';
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => { setTimeout(resolve, ms).unref?.(); });
 const refused = (why: string): Turn => ({ refused: why });
+const sha256Of = (text: string): string => createHash('sha256').update(Buffer.from(text, 'utf8')).digest('hex');
 
 /** A Run the driver may take a turn on: running, owned, and not stopping. */
 function active(run: RunRecord | undefined): run is RunRecord {
@@ -522,9 +524,20 @@ export class Autopilot {
       const retained = this.#retainedEntry(runId, node.id, workshop);
       if (retained !== undefined) entry = await this.#host.readMaterial(runId, retained);
     }
+    // #64 D-T06-2: a program that failed by its own exit is never run again as it stands. Rewriting the
+    // same bytes after the same failure is no revision; its author is asked to repair it instead, with
+    // the failure, within the author's follow-up allowance, and an unchanged answer settles the branch.
+    const failed = this.#failedProgram(runId, node.id, branchId);
+    if (entry !== undefined && failed !== undefined && sha256Of(entry) === failed.sha256) entry = undefined;
     if (entry === undefined) {
-      const authored = await this.#author(runId, pack, node, workshop, execution, branchId, fork, recommended.data, revising);
+      const failure = failed === undefined ? undefined : { attempt: failed.attempt, text: await this.#failureText(runId, failed) };
+      const authored = await this.#author(runId, pack, node, workshop, execution, branchId, fork, recommended.data, revising, failure);
       if ('turn' in authored) return authored.turn;
+      const again = failed?.failures.get(sha256Of(authored.entry));
+      if (again !== undefined) {
+        return refused(`Workshop ${workshop.id}'s author answered with the program (sha256 ${sha256Of(authored.entry).slice(0, 12)}) that already failed: ${again}; `
+          + 'an identical rewrite after an identical failure is not run again');
+      }
       entry = authored.entry; author = authored.childSessionId;
     }
     const wrote = await this.#act(runId, { action: 'write', executionId: execution.id, path: workshop.entry, content: entry,
@@ -533,6 +546,39 @@ export class Autopilot {
     const worked = await this.#act(runId, { action: 'work', executionId: execution.id });
     if (worked.kind === 'refused') return refused(`Workshop ${workshop.id}'s entry could not be run: ${worked.reason ?? ''}`);
     return 'moved';
+  }
+
+  /**
+   * The program this node's latest attempt in this branch and generation ran, when that attempt failed
+   * by the program's own non-zero exit (the Agent-owned Workshop's `retrying`), with every program of
+   * this generation that failed so, by content hash.
+   */
+  #failedProgram(runId: string, nodeId: string, branchId: string): { readonly sha256: string; readonly attempt: number; readonly session: string;
+    readonly reason: string; readonly failures: ReadonlyMap<string, string> } | undefined {
+    const generation = this.#run(runId)!.generation ?? 1;
+    const records = this.#deps().ledger.records({ runId }).filter((record) => record.generation === generation
+      && 'branchId' in record && record.branchId === branchId);
+    const failures = new Map<string, string>();
+    let last: { sha256: string; attempt: number; session: string; reason: string } | undefined;
+    for (const record of records) {
+      if (record.type !== 'node' || record.nodeId !== nodeId || !['done', 'retrying', 'blocked', 'cancelled'].includes(record.state)) continue;
+      last = undefined;
+      if (record.state !== 'retrying' || record.jobSession === undefined) continue;
+      const session = record.jobSession;
+      const exit = records.findLast((item) => item.type === 'job' && item.event === 'finished' && item.job.session === session);
+      const code = records.findLast((item) => item.type === 'code' && item.nodeId === nodeId && item.attempt === record.attempt && item.seq < record.seq);
+      if (exit?.type !== 'job' || exit.exitCode === undefined || exit.exitCode === 0 || code?.type !== 'code') continue;
+      const reason = record.reason ?? `the program exited ${String(exit.exitCode)}`;
+      failures.set(code.sha256, reason);
+      last = { sha256: code.sha256, attempt: record.attempt, session, reason };
+    }
+    return last === undefined ? undefined : { ...last, failures };
+  }
+
+  /** The failure an author repairs from: the attempt's reason and the tail of the program's own log. */
+  async #failureText(runId: string, failed: { readonly session: string; readonly reason: string }): Promise<string> {
+    const tail = await jobTail(this.#deps(), { run: runId, session: failed.session, lines: 40 }).then((read) => read.text.trim().slice(-2_400), () => '');
+    return `Your previous entry ran and failed: ${failed.reason}.${tail === '' ? '' : `\nThe tail of its log:\n${tail}`}`;
   }
 
   /** Whether the author was already asked to revise after the branch's latest restart (a drive picked
@@ -573,7 +619,7 @@ export class Autopilot {
    * a revision its message carries the Reader's itemized problems. It answers one JSON object.
    */
   async #author(runId: string, pack: Pack, node: PackNode, workshop: PackWorkshop, execution: NodeExecution, branchId: string,
-    fork: ForkAutopilot, recommended: unknown, revising: boolean): Promise<{ readonly entry: string; readonly childSessionId: string } | { readonly turn: Turn }> {
+    fork: ForkAutopilot, recommended: unknown, revising: boolean, failure?: { readonly attempt: number; readonly text: string }): Promise<{ readonly entry: string; readonly childSessionId: string } | { readonly turn: Turn }> {
     const run = this.#run(runId)!;
     const refs: string[] = [];
     const described: string[] = [];
@@ -612,7 +658,7 @@ export class Autopilot {
         `Purpose: ${(data.purpose ?? workshop.purpose).slice(0, 3_200)}`,
         `Program: ${data.language ?? workshop.language} file ${workshop.entry}, run once as ${(data.argv ?? workshop.argv).join(' ')} in ${data.directory ?? workshop.directory}. It must write ${data.produces?.name ?? workshop.produces} at ${data.produces?.path ?? '(its declared path)'} before it exits 0, reading its inputs from their files at run time.`,
         described.length === 0 ? 'Recorded inputs: none.' : `Recorded inputs (read with hima_delegation_input): ${described.join('; ')}.`,
-        problemsText, format,
+        problemsText, failure === undefined ? '' : `${failure.text.slice(0, 2_800)}\nWrite an entry that repairs this failure.`, format,
       ].filter(Boolean).join('\n').slice(0, 7_900);
       const created = await this.#delegate(runId, { action: 'create', requestId: `ap-author-${delegationId}`.slice(0, 160), contract: {
         delegationId, role: 'researcher', task, inputRefs: refs, nodeRef: node.id, allowedTools: ['hima_delegation_input'],
@@ -622,6 +668,14 @@ export class Autopilot {
       } });
       row = views();
       if (row === undefined) return { turn: refused(`the branch child could not be created for Workshop ${workshop.id}: ${String(created.reason ?? created.status)}`) };
+    } else if (failure !== undefined) {
+      // One repair follow-up per failed attempt, charged to the author's allowance; a refused one (the
+      // allowance is spent) settles the branch below, as a refused revision does.
+      const text = `${failure.text}\nRepair ${workshop.entry} so that it exits 0 having written what it must. ${format}`;
+      const sent = await this.#delegate(runId, { action: 'followup', delegationId, text: text.slice(0, 7_900),
+        requestId: `ap-repair-${delegationId}-${String(failure.attempt)}`.slice(0, 160) });
+      if (sent.status !== 'accepted' && sent.status !== 'duplicate') return { turn: refused(`the branch child could not be asked to repair Workshop ${workshop.id} after its program failed (${failure.text.split('\n')[0]!.slice(0, 400)}): ${String(sent.reason ?? sent.status)}`) };
+      row = views()!;
     } else if (revising && !this.#followedUpSinceRestart(runId, node.id, branchId, delegationId)) {
       const text = `${problemsText.trim()}\nRevise ${workshop.entry} so that every counted problem is gone. ${format}`;
       const sent = await this.#delegate(runId, { action: 'followup', delegationId, text: text.slice(0, 7_900),
