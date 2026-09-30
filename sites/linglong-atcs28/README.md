@@ -1,10 +1,15 @@
 # linglong-atcs28 Site administration
 
-Current candidate (Issue 64, before treatment attempt 3, Pack 0.2.0): `atcs-xtop-operator-v14.sh` under
-`operator-admin/atcs-v14/` (wrapper sha `2f4ced1aa18d76d3...`, installed 2026-09-29, mode 0555). Beside it are the same
-verifier (`014fcfa5...`) and slot step (`293b2a3f...`) bytes as v13's, and bootstrap root
-`operator-admin/atcs-v14/bootstraps/`. The Pack's `xtop-operator` binding names v14 and the Permit reads
-`atcs-v14`.
+Current candidate (Issue 64, before treatment attempt 4, Pack 0.2.0 at 9fd1331e): `atcs-xtop-operator-v15.sh` under
+`operator-admin/atcs-v15/` (wrapper sha `60d951f3a95cdfa4...`, installed 2026-09-30, mode 0555). v15 is v14 with the
+atcs-v15 paths and one pin changed: `flow_digest` `31fbee29426050...`, the Pack flow whose Operator template states the
+dump names `before.dump`/`after.dump` exactly (treatment attempt 3, D-T03-2). Beside it are the same verifier
+(`014fcfa5...`) and slot step (`293b2a3f...`) bytes as v13's and v14's, and bootstrap root
+`operator-admin/atcs-v15/bootstraps/`. The Pack's `xtop-operator` binding names v15 and the Permit reads `atcs-v15`.
+The template `atcs-xtop-operator-v15.sh` with its placeholders filled is byte-identical to the installed v15.
+
+Previous candidate (before treatment attempt 3): `atcs-xtop-operator-v14.sh` under `operator-admin/atcs-v14/`
+(wrapper sha `2f4ced1aa18d76d3...`, installed 2026-09-29, mode 0555), flow pin `a47368518262...`.
 
 Why: in treatment attempt 2 every Harness close left the podman container and its XTop running (FABRIC G51).
 The Harness closes a Job by hanging it up, then sends TERM to its process group after 15 s. v13 ran
