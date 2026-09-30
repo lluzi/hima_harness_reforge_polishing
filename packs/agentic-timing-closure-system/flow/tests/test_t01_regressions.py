@@ -426,7 +426,7 @@ class OperatorLoopTest(unittest.TestCase):
     def test_each_team_carries_the_next_rung_and_the_wide_default_scope(self):
         """ADR-0016: the Operator works from the request itself; the branch child that authored the
         request is its Researcher, the Reviewer is advisory only, and the wide default scope is the
-        request's own candidate.scope (the plan states every toolkit mutation and the 120 cap)."""
+        request's own candidate.scope (the plan states every toolkit mutation and the 600 cap)."""
         for slot in SLOTS:
             members = team_members(slot)
             with self.subTest(slot=slot):

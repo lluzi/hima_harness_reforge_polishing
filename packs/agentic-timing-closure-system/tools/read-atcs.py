@@ -763,7 +763,7 @@ _WORK_PACKAGE_FORMATS = {
     "targetPins": 'a list of "<instance path>/<pin>" pins of leaf cells, full hierarchical paths, never a top-level port',
     "scope": ('{"commands": [toolkit mutations only, always with atcs_undo; never atcs_ref, atcs_paths, atcs_gain, '
               'atcs_candidates, atcs_fail_reasons, atcs_dump_cells, atcs_export_changes or atcs_close], '
-              '"maxMutations": 120}'),
+              '"maxMutations": 600}'),
     "observe": '"fast" or "full"',
     "parked": ('a parked slot is exactly {"taskId", "baseStateId", "parked": true, "problem"} and no other key'),
 }

@@ -454,15 +454,15 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.equal(slotless(team, slot), slotless(team01, '01'), `${team.id} is Team 01 for slot w${slot}`);
   }
   const team = team01;
-  assert.equal(team.version, '5');
+  assert.equal(team.version, '6', '#66 D7: the Operator works its cluster as one batch');
   assert.deepEqual(team.members.map(item => item.id), ['reviewer', 'operator'], 'the Researcher is the branch\'s own author; no approval member');
   const reviewer = team.members.find(item => item.id === 'reviewer')!;
   const operatorMember = team.members.find(item => item.id === 'operator')!;
   assert.equal(reviewer.optional, true, 'the Reviewer is optional advice whose absence never blocks');
   assert.deepEqual(reviewer.resultSchema, { id: 'atcs-worker-review/3', required: ['schema', 'planSha256', 'evidenceRefs', 'limitations'] });
   assert.match(reviewer.taskTemplate, /Advisory only: nothing waits for you/);
-  assert.equal(operatorMember.budgetShare.maxTokensPerTurn, 5000);
-  assert.equal(operatorMember.budgetShare.maxFollowups, 1, 'one repair follow-up for a result failing its schema');
+  // #66 D7 (Harness H2a honours it): 40 minutes, four follow-ups and 12000 tokens a turn hold a batch.
+  assert.deepEqual(operatorMember.budgetShare, { maxElapsedMs: 2400000, maxFollowups: 4, maxTokensPerTurn: 12000 });
   assert.equal(operatorMember.followup, 'reuse-same-child');
   assert.deepEqual(team.batchWhen, [{ input: 'workerRequest01', value: 'tc_slot_parked', equals: 1 },
     { input: 'workerRequest01', value: 'tc_request_invalid_count', above: 0 }], 'a parked or refused slot runs the batch no-op');
@@ -476,7 +476,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   for (const words of [/editDomain\.instances/, /editDomain\.nets/, /targetPins/, /Exact input workerRequest01/, /exactly this file name/]) {
     assert.match(operatorMember.taskTemplate, words, `the Operator template states ${words}`);
   }
-  assert.equal(recipeCap, 120, 'the recipe cap leaves room for dozens of trials and their undos, below the Harness 200');
+  assert.equal(recipeCap, 600, '#66 D7: a batch of tens to hundreds of trials and their undos, at the Harness ceiling (H1)');
   assert.deepEqual(operatorMember.resultSchema, { id: 'atcs-worker-session/1',
     required: ['schema', 'planSha256', 'mutationReceipts', 'stopReason', 'limitations'] });
   // The Operator template is the knowledge file's expert loop, in order.
@@ -498,7 +498,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual((pack.graph as any).autopilot, [
     { from: ['bind-inputs'], until: ['plan', 'wait-for-person'] },
     { from: ['read-campaign-plan'], until: ['decide'] },
-    { fork: 'prepare-workers', revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 16000 } },
+    { fork: 'prepare-workers', revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 48000 } },
     { from: ['check-worker-results'], until: ['compose'] },
     { from: ['read-integration-plan'], until: ['decide'] },
   ], 'the owner acts at plan, compose and decide only');

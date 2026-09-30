@@ -79,7 +79,7 @@ and plan instances, and the toolkit refuses a cell outside it. The Reader writes
     ],
     "scope": {
       "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo"],
-      "maxMutations": 120
+      "maxMutations": 600
     },
     "observe": "fast"
   },
@@ -170,7 +170,7 @@ honest no-fix.
     ],
     "scope": {
       "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo"],
-      "maxMutations": 120
+      "maxMutations": 600
     },
     "observe": "fast"
   },
