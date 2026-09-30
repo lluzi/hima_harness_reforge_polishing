@@ -107,10 +107,10 @@ XTOP_SURFACE = {
     "get_eco_cells": {"last_n", "show_remove_cell_max_num", "types"},
 }
 
-# #66 D3 names `report_timing -to <pin> -path_type summary` (GBA, PBA off) for `atcs_point`, and #66 D2's
-# remove_buffer admission reads a pin's `direction` attribute. Neither is checked here against the
-# server-only `command_surface.tsv`: the v16 wrapper qualification must confirm both on real XTop.
-SPEC_SURFACE = {"report_timing": {"delay_type", "path_type", "to"}}
+# #66 D2's remove_buffer admission reads a pin's `direction` attribute, not checked here against the
+# server-only `command_surface.tsv`. `atcs_point` emits no command of its own since #64 Q1 (XTop has no
+# `report_timing`): it reads the `summarize_gba_violations -with_top_n` table.
+SPEC_SURFACE = {}
 
 # Stricter than the surface: the only flags each targeted-fix procedure may emit (Task 3 brief,
 # widened by the controller toward the frozen Pack's qualified strings, closure.py ~681-690).
@@ -434,6 +434,15 @@ set ::stub_summary_text ""
 proc summarize_gba_violations {args} {
     stub_record summarize_gba_violations {*}$args
     stub_gate summarize_gba_violations
+    # Real XTop (Task 7, T06, Q1): `-with_top_n N` prints the check's summary, then its
+    # `### <check> top N endpoints ###` table, rows `<slack> <scenario> <endpoint>`, worst first; here
+    # from the violating (negative) ::stub_timing rows.
+    set top [lsearch -exact $args -with_top_n]
+    if {$top >= 0 && [array size ::stub_timing] > 0} {
+        set check [expr {[lsearch -exact $args -setup] >= 0 ? "setup" : "hold"}]
+        append ::stub_out [stub_top_n_text $check [lindex $args [expr {$top + 1}]]]
+        return ""
+    }
     if {$::stub_summary_text ne ""} { append ::stub_out $::stub_summary_text; return "" }
     if {[lsearch -exact $args -with_fail_reason] >= 0 && $::stub_fix_ran eq "0"} {
         puts "Error: No fail reason since no fix or optimize flow have run yet."
@@ -477,23 +486,32 @@ proc list_size_cell_candidates {args} { stub_record list_size_cell_candidates {*
 proc list_insert_buffer_candidates {args} { stub_record list_insert_buffer_candidates {*}$args; return "BUFX2" }
 proc list_exchange_cell_candidates {args} { stub_record list_exchange_cell_candidates {*}$args; return "INVX2" }
 proc write_design_changes {args} { stub_record write_design_changes {*}$args; return "" }
-# report_timing -to <pin> -delay_type max|min -path_type summary: prints one summary row per scenario
-# from ::stub_timing(<endpoint>,<max|min>) = {scenario slack ...} and returns "".
+# Real XTop has no `report_timing` (#64 Q1: "invalid command name "report_timing""): this stub defines
+# none. ::stub_timing(<endpoint>,<max|min>) = {scenario slack ...} is the design's endpoint slacks, which
+# `summarize_gba_violations -with_top_n` lists; ::stub_violations(<check>) overrides the summary's count.
 array set ::stub_timing {}
-proc report_timing {args} {
-    stub_record report_timing {*}$args
-    stub_gate report_timing
-    lassign [stub_opts {-to -delay_type -path_type} $args] o pos
-    set endpoint [stub_strip [stub_one $o -to]]
-    set key "$endpoint,[stub_one $o -delay_type]"
-    append ::stub_out "Startpoint        Endpoint        Scenario        Slack\n"
-    append ::stub_out "---------------------------------------------------------\n"
-    if {[info exists ::stub_timing($key)]} {
+array set ::stub_violations {}
+proc stub_top_n_text {check n} {
+    set type [expr {$check eq "setup" ? "max" : "min"}]
+    set rows {}
+    set violating {}
+    foreach key [array names ::stub_timing *,$type] {
+        set endpoint [string range $key 0 end-[string length ",$type"]]
         foreach {scenario slack} $::stub_timing($key) {
-            append ::stub_out "U1/Y (BUFX1)      $endpoint     $scenario   $slack (VIOLATED)\n"
+            if {[scan $slack %g] < 0} {
+                lappend rows [list [scan $slack %g] $slack $scenario $endpoint]
+                if {[lsearch -exact $violating $endpoint] < 0} { lappend violating $endpoint }
+            }
         }
     }
-    return ""
+    set count [expr {[info exists ::stub_violations($check)] ? $::stub_violations($check) : [llength $violating]}]
+    set rows [lrange [lsort -real -index 0 $rows] 0 [expr {$n - 1}]]
+    set text "### $check summary ###\nScenario                  Count    Count0    D_Count\n"
+    append text "total                  $count    $count    +0\n"
+    append text "### $check top [llength $rows] endpoints ###\n  Slack    Scenario                Name\n"
+    append text "--------------------------------------------------------\n"
+    foreach row $rows { append text "[lindex $row 1]    [lindex $row 2]    [lindex $row 3]\n" }
+    return $text
 }
 proc stub_cells {} {
     set out {}
@@ -1997,54 +2015,83 @@ def _reply(session, tag):
 POINT_TIMING = (
     "array set ::stub_timing {U9/D,max {func_ssg_rcworst_m40 -0.0123 func_ssg_rcworst_125 0.0040} "
     "U9/D,min {func_ffg_cbest_m40 -0.0704} lsu_axi_arvalid,max {func_ssg_rcworst_m40 -0.1488} "
-    "U2/A,min {func_ffg_cbest_125 0040}}\n"
+    "U2/A,min {func_ffg_cbest_125 -0040}}\n"
 )
-
-
-def _point_summary():
-    import live_session_samples as live
-    return f"set ::stub_summary_text {{{live.LIVE_TOP_N_BEFORE_FIX_SETUP}}}\n"
+POINT_COMMAND = "summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n 10000"
 
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class PointReadTest(unittest.TestCase):
-    """#66 D3: `atcs_point check endPoints` reads each named endpoint's slack in the session's GBA mode.
+    """#66 D3 / D-Q1-2: `atcs_point check endPoints` reads each named endpoint's slack in the session's GBA mode.
 
-    One `report_timing -to <endpoint> -delay_type max|min -path_type summary` per endpoint (no PBA
-    option); one {endpoint, scenario, slack} row per scenario the report lists, the scenario named as
-    the session reference's summary table names it; an endpoint the report gives no row for reads
-    {endpoint, scenario: null, slack: null, unknown: <why>} (D-T06-3). A read: it never calls a mutating command nor uses budget.
+    Real XTop has no `report_timing` (#64 Q1). One `summarize_gba_violations -with_delta -with_reference
+    -exclude_path -with_top_n 10000 -<check>` per call (the atcs_gain probe's command, whose top-N endpoint
+    table real XTop prints); one {endpoint, scenario, slack} row per table row naming the endpoint; an
+    endpoint the table does not name reads {endpoint, scenario: null, slack: null, unknown: <why>}. A read:
+    it never calls a mutating command nor uses budget.
     """
 
-    def test_rows_per_endpoint_and_scenario(self):
+    def test_rows_per_endpoint_from_the_summary_listing(self):
         session = Session(self, max_mutations=1).run(
-            _point_summary() + POINT_TIMING
+            POINT_TIMING
             + "T setup {atcs_point setup {U9/D U2/A}}\n"
             + "T hold {atcs_point hold {U9/D}}\n"
             + "T port {atcs_point setup {lsu_axi_arvalid}}\n"
             + "T decimal {atcs_point hold {U2/A}}\n"
             + f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n")
-        self.assertEqual(_reply(session, "setup"), [
-            {"endpoint": "U9/D", "scenario": "func_ssg_rcworst_m40", "slack": -0.0123},
-            {"endpoint": "U9/D", "scenario": "func_ssg_rcworst_125", "slack": 0.004},
-            {"endpoint": "U2/A", "scenario": None, "slack": None,
-             "unknown": "report_timing -to U2/A printed no row naming the endpoint with a slack"},
-        ])
+        setup = _reply(session, "setup")
+        self.assertEqual(setup[0], {"endpoint": "U9/D", "scenario": "func_ssg_rcworst_m40", "slack": -0.0123})
+        self.assertEqual(setup[1]["endpoint"], "U2/A")
+        self.assertIsNone(setup[1]["slack"])
+        self.assertEqual(setup[1]["unknown"],
+                         f"not among the 2 violating setup endpoints {POINT_COMMAND} -setup lists (its summary counts 2): "
+                         "no setup violation in any scenario")
         self.assertEqual(_reply(session, "hold"),
                          [{"endpoint": "U9/D", "scenario": "func_ffg_cbest_m40", "slack": -0.0704}])
         self.assertEqual(_reply(session, "port"),
                          [{"endpoint": "lsu_axi_arvalid", "scenario": "func_ssg_rcworst_m40", "slack": -0.1488}])
         self.assertEqual(_reply(session, "decimal"),
-                         [{"endpoint": "U2/A", "scenario": "func_ffg_cbest_125", "slack": 40.0}], "never octal")
-        calls = [call[1:] for call in session.calls_to("report_timing")][:4]
-        self.assertEqual(calls, [
-            ["-to", "pin:U9/D", "-delay_type", "max", "-path_type", "summary"],
-            ["-to", "pin:U2/A", "-delay_type", "max", "-path_type", "summary"],
-            ["-to", "pin:U9/D", "-delay_type", "min", "-path_type", "summary"],
-            ["-to", "lsu_axi_arvalid", "-delay_type", "max", "-path_type", "summary"],
-        ])
+                         [{"endpoint": "U2/A", "scenario": "func_ffg_cbest_125", "slack": -40.0}], "never octal")
+        listings = [call[1:] for call in session.calls_to("summarize_gba_violations") if "-with_top_n" in call]
+        self.assertEqual(listings, [POINT_COMMAND.split()[1:] + ["-setup"], POINT_COMMAND.split()[1:] + ["-hold"],
+                                    POINT_COMMAND.split()[1:] + ["-setup"], POINT_COMMAND.split()[1:] + ["-hold"]],
+                         "one listing per atcs_point call, whatever the number of endpoints")
         self.assertEqual(session.outcome("size")[0], "OK", "reads use no mutation budget" + session.stdout)
         self.assertEqual([call[0] for call in session.calls if call[0] in MUTATING_XTOP], ["size_cell"])
+
+    def test_q1_real_xtop_has_no_report_timing_every_row_has_a_slack_or_a_reason(self):
+        # #64 Q1 (w01 cmd-3, opreq-4/5): every row read `report_timing -to <pin> failed: invalid command name
+        # "report_timing"` with slack null, 151 of 151. The stub, like real XTop, has no report_timing.
+        session = Session(self).run(
+            POINT_TIMING + ASYNC_FLOP + "T q1 {atcs_point hold {UF@**async_default** U9/D}}\n")
+        rows = _reply(session, "q1")
+        self.assertEqual(rows[0], {"endpoint": "UF/CDN", "scenario": "func_ssg_rcworst_m40", "slack": -0.1799, "target": "UF"})
+        self.assertEqual(rows[-1], {"endpoint": "U9/D", "scenario": "func_ffg_cbest_m40", "slack": -0.0704})
+        for row in rows:
+            self.assertTrue(isinstance(row["slack"], float) or row.get("unknown"), row)
+            self.assertNotIn("report_timing", json.dumps(row))
+        self.assertEqual(session.calls_to("report_timing"), [])
+        self.assertNotIn("invalid command name", session.stdout + session.stderr)
+
+    def test_an_endpoint_below_the_listing_reads_as_above_its_last_row(self):
+        session = Session(self).run(
+            POINT_TIMING + "set ::stub_violations(hold) 7430\n"
+            + "array set ::stub_timing {U3/A,min {func_ssg_rcworst_m40 0.0100}}\n"
+            + "T hold {atcs_point hold {U3/A}}\n")
+        (row,) = _reply(session, "hold")
+        self.assertEqual([row["endpoint"], row["scenario"], row["slack"]], ["U3/A", None, None])
+        self.assertEqual(row["unknown"], f"not among the 2 worst hold endpoints {POINT_COMMAND} -hold lists of the 7430 it counts: "
+                                         "its slack is above the last listed, -0.0704")
+
+    def test_a_failed_listing_names_xtops_own_words_for_every_endpoint(self):
+        session = Session(self).run(
+            POINT_TIMING + "T ref {atcs_ref}\nset ::stub_fail {summarize_gba_violations}\n"
+            + "T refused {atcs_point hold {U9/D U2/A}}\n")
+        refused = _reply(session, "refused")
+        self.assertEqual([(row["endpoint"], row["slack"]) for row in refused], [("U9/D", None), ("U2/A", None)])
+        for row in refused:
+            self.assertEqual(row["unknown"], f"{POINT_COMMAND} -hold failed: XTop stub refused summarize_gba_violations")
+        self.assertEqual(session.reads[-1]["rows"], refused)
 
     def test_refuses_a_bad_check_an_empty_list_and_an_unsafe_name(self):
         session = Session(self).run(
@@ -2055,52 +2102,11 @@ class PointReadTest(unittest.TestCase):
             + "T glob {atcs_point setup {U*}}\n")
         for tag in ("check", "empty", "unsafe", "glob"):
             self.assertEqual(session.outcome(tag)[0], "ERR", tag)
-        self.assertEqual(session.calls_to("report_timing"), [])
+        self.assertEqual([call for call in session.calls_to("summarize_gba_violations") if "-with_top_n" in call], [])
         # L4 run 4: a refused read is logged too, so the read evidence is never empty.
         self.assertEqual([(line["proc"], line["rows"], "refused" in line) for line in session.reads],
                          [("atcs_point", [], True)] * 4)
         self.assertIn("invalid", session.reads[3]["refused"])
-
-
-@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
-class T06PointRedirectTest(unittest.TestCase):
-    """D-T06-3 (#64 T06, w04 xtop_log_1.txt): `atcs_point hold "<six GenFifo /D pins>"` printed
-    "Error: Errors detected during redirection." and failed with `report_timing -to <pin> failed: `; the
-    instance form returned every row with slack null. `redirect -variable` evaluates its command as a
-    script, so the pin collection must be built inside that script (`[get_pins -exact <name>]`), never
-    handed in as a value. A read XTop refuses or leaves empty is a row with an explicit `unknown` reason.
-    """
-
-    def test_the_t06_pin_list_reads_every_pins_slack(self):
-        session = Session(self).run(
-            _point_summary() + POINT_TIMING + ASYNC_FLOP
-            + "T w04 {atcs_point hold {U9/D U2/A}}\n"
-            + "T bare {atcs_point hold {UF}}\n")
-        self.assertEqual(_reply(session, "w04"), [
-            {"endpoint": "U9/D", "scenario": "func_ffg_cbest_m40", "slack": -0.0704},
-            {"endpoint": "U2/A", "scenario": "func_ffg_cbest_125", "slack": 40.0},
-        ], session.stdout)
-        rows = _reply(session, "bare")
-        self.assertEqual(rows[1], {"endpoint": "UF/D", "scenario": "func_ssg_rcworst_m40", "slack": 0.021,
-                                   "target": "UF"})
-        self.assertNotIn("Errors detected during redirection", session.stdout)
-
-    def test_a_refused_or_empty_read_names_its_unknown_reason(self):
-        session = Session(self).run(
-            _point_summary() + POINT_TIMING
-            + "T empty {atcs_point setup {U2/A}}\n"
-            + "set ::stub_fail {report_timing}\n"
-            + "T refused {atcs_point hold {U9/D U2/A}}\n")
-        (empty,) = _reply(session, "empty")
-        self.assertEqual([empty["endpoint"], empty["scenario"], empty["slack"]], ["U2/A", None, None])
-        self.assertIn("no row", empty["unknown"])
-        refused = _reply(session, "refused")
-        self.assertEqual([(row["endpoint"], row["slack"]) for row in refused], [("U9/D", None), ("U2/A", None)],
-                         "one refused endpoint never aborts the read of the others")
-        for row in refused:
-            self.assertIn("report_timing", row["unknown"])
-            self.assertIn("XTop stub refused report_timing", row["unknown"])
-        self.assertEqual(session.reads[-1]["rows"], refused)
 
 
 # L4 qualification run 4 (#64 after T05): the Site's targets are check keys whose endpoint is an instance
@@ -2122,7 +2128,7 @@ class InstanceTargetReadTest(unittest.TestCase):
 
     def test_the_l4_forms_read_the_flops_pins(self):
         session = Session(self).run(
-            _point_summary() + POINT_TIMING + ASYNC_FLOP
+            POINT_TIMING + ASYNC_FLOP
             + "T async {atcs_point hold {UF@**async_default**}}\n"
             + "T key {atcs_point hold {func_ssg_rcworst_m40|hold|UF@**async_default**}}\n"
             + "T bare {atcs_point hold {UF}}\n"
@@ -2135,9 +2141,7 @@ class InstanceTargetReadTest(unittest.TestCase):
         self.assertEqual([row["endpoint"] for row in _reply(session, "bare")], ["UF/CP", "UF/D", "UF/SI", "UF/CDN"],
                          "a check that is not async reads the asynchronous pins last")
         self.assertEqual(_reply(session, "datakey"), [{"endpoint": "U9/D", "scenario": "func_ffg_cbest_m40", "slack": -0.0704}])
-        tos = [call[2] for call in session.calls_to("report_timing")]
-        self.assertEqual(tos[:4], ["pin:UF/CDN", "pin:UF/CP", "pin:UF/D", "pin:UF/SI"], "never -to <instance>")
-        self.assertNotIn("UF", tos)
+        self.assertEqual(session.calls_to("report_timing"), [], "real XTop has no report_timing")
         self.assertEqual([line["proc"] for line in session.reads], ["atcs_point"] * 4)
 
     def test_atcs_paths_reads_the_async_pins_of_an_instance_target(self):
@@ -2203,7 +2207,7 @@ class ReadLogTest(unittest.TestCase):
 
     def test_reads_before_and_after_a_mutation(self):
         session = Session(self).run(
-            _point_summary() + POINT_TIMING
+            POINT_TIMING
             + "T point_before {atcs_point setup {U9/D}}\n"
             + f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
             + "T paths {atcs_paths setup 5 {}}\n"
@@ -2226,8 +2230,7 @@ class ReadLogTest(unittest.TestCase):
             self.assertEqual(line["rowsDigest"], _rows_digest(line["rows"]), line["proc"])
         self.assertEqual(reads[0]["args"], {"check": "setup", "endPoints": ["U9/D"]})
         self.assertEqual(reads[0]["rows"], [
-            {"endpoint": "U9/D", "scenario": "func_ssg_rcworst_m40", "slack": -0.0123},
-            {"endpoint": "U9/D", "scenario": "func_ssg_rcworst_125", "slack": 0.004}])
+            {"endpoint": "U9/D", "scenario": "func_ssg_rcworst_m40", "slack": -0.0123}])
         self.assertEqual(reads[1]["args"], {"check": "setup", "topN": 5, "endPoints": []})
         self.assertEqual(reads[1]["rows"], ["SETUP-ANALYSIS"])
         self.assertEqual(reads[2]["args"], {"pins": ["U1/A"], "reasons": [], "methods": []})
@@ -2371,7 +2374,7 @@ class KnowledgeSurfaceTest(unittest.TestCase):
                             "fix_setup_gba_violations", "undo", "summarize_gba_violations", "get_paths",
                             "analyze_setup_path_violations", "report_fail_reasons", "get_failed_pins",
                             "list_size_cell_candidates", "list_insert_buffer_candidates",
-                            "list_exchange_cell_candidates", "count_eco_actions", "report_timing"):
+                            "list_exchange_cell_candidates", "count_eco_actions"):
                 self.assertIn(command, emitted, observe)
             # Fast mode always reads get_eco_cells; full mode reads it for ECO actions that change no master.
             self.assertIn("get_eco_cells", emitted, observe)

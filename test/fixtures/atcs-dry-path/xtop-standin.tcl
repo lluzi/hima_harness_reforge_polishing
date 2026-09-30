@@ -10,8 +10,8 @@
 #   the setup endpoint of block X is u_X/reg0/I in func_ssg_rcworst, with a slack fixed by the
 #   master of u_X/reg0: BUFFD1BWP -0.0500, BUFFD2BWP -0.0300, BUFFD4BWP -0.0100, BUFFD8BWP -0.0050. Nothing else
 #   violates: no hold check, no func_ffg_cbest check. The same model is eda-standin.py's PrimeTime.
-#   `report_timing -to <pin> -delay_type max|min -path_type summary` (`atcs_point`) prints one row per
-#   scenario from that model: the endpoint, the scenario and its slack (0.1000 where nothing fails).
+#   Like real XTop (#64 Q1) it has no `report_timing`: `atcs_point` reads the failing endpoints from the
+#   `summarize_gba_violations -with_top_n` table, as `atcs_gain` does.
 #
 # Collections as XTop answers them: `get_pins -of_objects` of a cell gives its pins, of a net the pins
 # on that net -- what a session's in-session domain derivation (#66 D2) walks one hop out.
@@ -398,18 +398,6 @@ proc redirect {args} {
     set captured [expr {$::stub_out ne "" ? $::stub_out : $r}]
     set ::stub_out ""
     if {$code} { error $r }
-    return ""
-}
-proc report_timing {args} {
-    stub_record report_timing {*}$args
-    lassign [stub_opts {-to -delay_type -path_type} $args] o pos
-    set endpoint [stub_strip [stub_one $o -to]]
-    set failing [expr {[stub_one $o -delay_type] eq "max" && [lsearch -exact [stub_failing_endpoints] $endpoint] >= 0}]
-    append ::stub_out "Endpoint                  Scenario                  Slack\n" [string repeat - 60] "\n"
-    foreach scenario $::stub_scenarios {
-        set slack [expr {$failing && $scenario eq "func_ssg_rcworst" ? [stub_slack $::cells([stub_owner $endpoint])] : 0.1000}]
-        append ::stub_out [format "%-26s%-26s%.4f\n" $endpoint $scenario $slack]
-    }
     return ""
 }
 proc get_paths {args} { stub_record get_paths {*}$args; return [list path:1] }

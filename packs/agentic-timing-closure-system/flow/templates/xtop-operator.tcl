@@ -977,48 +977,45 @@ proc atcs_candidates {kind object} {
     atcs_check_name [expr {$kind eq "insert_buffer" ? "pin" : "instance"}] $object
     return [uplevel #0 [list list_${kind}_candidates $object]]
 }
-# #66 D3: each named endpoint's slack for one check in the session's GBA mode (no PBA option):
-# one `report_timing -to <endpoint> -delay_type max|min -path_type summary` per endpoint, captured,
-# and one {"endpoint","scenario","slack"} row per report line that names the endpoint and ends in
-# a number (the slack is its last number; the scenario is the first word the session reference's
-# summary table names as a scenario, else null). An endpoint the report gives no row for, or whose
-# report_timing XTop refuses, reads {"endpoint", "scenario": null, "slack": null, "unknown": <why>}
-# and the read goes on to the next endpoint (D-T06-3). A pin is named by `[get_pins -exact <pin>]`
-# inside the redirected script; a name that is no pin (a port) is passed as given. Never mutates;
+# #66 D3: each named endpoint's slack for one check in the session's GBA mode (no PBA option).
+# D-Q1-2 (#64 Q1, w01 cmd-3, opreq-4/5): real XTop has no `report_timing` ("invalid command name
+# "report_timing"", 151 of 151 rows null). The one per-endpoint listing XTop is proven to print is the
+# top-N endpoint table of the atcs_gain probe's own command (`summarize_gba_violations -with_delta
+# -with_reference -exclude_path -with_top_n N -<check>`, Task 7, T06, Q1: `### <check> top N endpoints ###`
+# then rows `<slack> <scenario> <endpoint>`). atcs_point reads that table once per call, with
+# N = ::ATCS_POINT_TOP_N, and returns each named endpoint's rows {"endpoint","scenario","slack"}. An
+# endpoint the table does not name reads {"endpoint","scenario":null,"slack":null,"unknown":<why>}: no
+# violation of the check in any scenario when the table lists every violating endpoint the same summary
+# counts, else a slack above the last listed one; a failed summary names XTop's own text. Never mutates;
 # returns the rows as a JSON array.
-proc atcs_reference_scenarios {} {
-    set names {}
-    foreach check {setup hold} {
-        if {![info exists ::atcs_reference_text($check)]} { continue }
-        set inside 0
-        foreach line [split $::atcs_reference_text($check) "\n"] {
-            if {[regexp {^\s*Scenario\s} $line]} { set inside 1; continue }
-            if {!$inside} { continue }
-            if {[string trim $line] eq "" || [string match "###*" [string trim $line]]} { set inside 0; continue }
-            if {[regexp {^\s+(\S+)\s+-?[0-9]} $line -> name]} { lappend names $name }
-        }
-    }
-    return [lsort -unique $names]
-}
-proc atcs_point_rows {text endpoint scenarios} {
-    set names [lsort -unique [list $endpoint [string map {\\ ""} $endpoint]]]
+set ::ATCS_POINT_TOP_N 10000
+# The rows `{slack scenario name}` of every `### <check> top N endpoints ###` table in `text`.
+proc atcs_top_n_rows {text check} {
     set rows {}
+    set inside 0
     foreach line [split $text "\n"] {
-        set tokens [regexp -all -inline {\S+} $line]
-        set named 0
-        foreach name $names { if {[lsearch -exact $tokens $name] >= 0} { set named 1 } }
-        if {!$named} { continue }
-        set slack ""
-        set scenario ""
-        foreach token $tokens {
-            if {[regexp {^-?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][-+]?[0-9]+)?$} $token]} { set slack $token }
-            if {$scenario eq "" && [lsearch -exact $scenarios $token] >= 0} { set scenario $token }
-        }
-        if {$slack eq ""} { continue }
-        lappend rows [atcs_jobj [list endpoint [atcs_js $endpoint] \
-            scenario [expr {$scenario eq "" ? "null" : [atcs_js $scenario]}] slack [scan $slack %g]]]
+        set trimmed [string trim $line]
+        if {[regexp "^### $check top \[0-9\]+ endpoints ###\$" $trimmed]} { set inside 1; continue }
+        if {!$inside} { continue }
+        if {$trimmed eq "" || [string match "###*" $trimmed]} { set inside 0; continue }
+        set tokens [regexp -all -inline {\S+} $trimmed]
+        if {[llength $tokens] < 3} { continue }
+        lassign $tokens slack scenario name
+        if {![regexp {^-?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][-+]?[0-9]+)?$} $slack]} { continue }
+        lappend rows [list $slack $scenario $name]
     }
     return $rows
+}
+# The `total` row's Count of the `### <check> summary ###` table in `text`, or "" when it prints none.
+proc atcs_summary_total {text check} {
+    set inside 0
+    foreach line [split $text "\n"] {
+        set trimmed [string trim $line]
+        if {$trimmed eq "### $check summary ###"} { set inside 1; continue }
+        if {$inside && [regexp {^total\s+([0-9]+)(\s|$)} $trimmed -> count]} { return $count }
+        if {[string match "###*" $trimmed]} { set inside 0 }
+    }
+    return ""
 }
 # L4 run 4 (#64): the Operator names a target as the Site reports it: a check key
 # `<scenario>|<mode>|<endpoint>`, an endpoint with a PrimeTime path group `<endpoint>@**<group>**`
@@ -1067,34 +1064,51 @@ proc atcs_point {check end_points} {
     set targets {}
     foreach name $end_points { lappend targets [list $name [atcs_read_targets $name]] }
     atcs_ensure_reference
-    set scenarios [atcs_reference_scenarios]
-    set delay_type [expr {$check eq "setup" ? "max" : "min"}]
+    lassign [atcs_summarize $check [list -with_delta -with_reference -exclude_path -with_top_n $::ATCS_POINT_TOP_N]] \
+        command code result text
+    set listed {}
+    set by_name [dict create]
+    if {$code != 0} {
+        # XTop's own words, as it printed or returned them (it prints "Error: ..." and returns "").
+        set said [string trim [expr {$result ne "" ? $result : $text}]]
+        set failed "$command failed: [expr {$said ne "" ? [atcs_clip $said 300] : "XTop gave no message"}]"
+    } else {
+        set failed ""
+        foreach row [atcs_top_n_rows $text $check] {
+            set name [string map {\\ ""} [lindex $row 2]]
+            dict lappend by_name $name $row
+            if {[lsearch -exact $listed $name] < 0} { lappend listed $name }
+        }
+        set total [atcs_summary_total $text $check]
+        set shown [llength $listed]
+        if {$shown == 0 && $total eq ""} {
+            set absent "$command printed no $check summary and no top-N endpoint table"
+        } elseif {$total ne "" && $shown >= $total} {
+            set absent "not among the $shown violating $check endpoints $command lists (its summary counts $total): no $check violation in any scenario"
+        } else {
+            set last [expr {$shown > 0 ? [lindex [lindex [dict get $by_name [lindex $listed end]] end] 0] : "none"}]
+            set absent "not among the $shown worst $check endpoints $command lists[expr {$total ne "" ? " of the $total it counts" : ""}]: its slack is above the last listed, $last"
+        }
+    }
     set rows {}
     foreach target $targets {
         lassign $target name pins
         set base [lindex [atcs_target_base $name] 0]
         set expanded [expr {[llength $pins] != 1 || [lindex $pins 0 0] ne $base}]
         foreach pair $pins {
-            lassign $pair pin to
-            # `redirect -variable` evaluates its command as a script string: a collection handed in as a
-            # value arrives as its printed form ({"a/D"}) and matches nothing ("Errors detected during
-            # redirection.", every seat of #64 T06). The pin collection is built inside the script; a name
-            # that is no pin (a port) is passed as given.
-            set to_word [expr {$to eq $pin ? [list $pin] : "\[get_pins -exact [list $pin]\]"}]
-            set command "report_timing -to $to_word -delay_type $delay_type -path_type summary"
-            set ::atcs_capture ""
-            set unknown ""
-            if {[catch {redirect -variable ::atcs_capture $command} result]} {
-                set said [string trim [expr {$result ne "" ? $result : $::atcs_capture}]]
-                set unknown "report_timing -to $pin failed: [expr {$said ne "" ? $said : "XTop gave no message"}]"
-                set found {}
-            } else {
-                set found [atcs_point_rows [expr {$::atcs_capture ne "" ? $::atcs_capture : $result}] $pin $scenarios]
-                set unknown "report_timing -to $pin printed no row naming the endpoint with a slack"
+            set pin [lindex $pair 0]
+            set found {}
+            set key [string map {\\ ""} $pin]
+            if {$failed eq "" && [dict exists $by_name $key]} {
+                foreach row [dict get $by_name $key] {
+                    lassign $row slack scenario
+                    lappend found [atcs_jobj [list endpoint [atcs_js $pin] scenario [atcs_js $scenario] slack [scan $slack %g]]]
+                }
             }
             if {[llength $found] == 0} {
+                set why [expr {$failed ne "" ? $failed : $absent}]
                 set found [list [atcs_jobj [list endpoint [atcs_js $pin] scenario null slack null \
-                    unknown [atcs_js [atcs_clip $unknown 500]]]]]
+                    unknown [atcs_js [atcs_clip $why 500]]]]]
             }
             if {$expanded} {
                 set tagged {}
