@@ -54,6 +54,10 @@ interface Fixture {
    * model session replays this script. Absent, children are played through the Ledger.
    */
   readonly native?: readonly ReplayEntry[];
+  /** The Operator member's declared share (60 s when absent). */
+  readonly operatorMs?: number;
+  /** The Site's job lanes (2 when absent); a Run's delegation time is its time box on each lane. */
+  readonly lanes?: number;
 }
 const defaults: Fixture = { authorMs: 30_000, operatorFollowups: 1 };
 
@@ -67,7 +71,7 @@ const teamOf = (branch: Branch, fixture: Fixture) => ({ id: branch.team, version
     terminal: ['completed', 'cancelled', 'expired', 'uncertain', 'refused'], refusalConditions: ['missing-evidence'] },
   { id: 'operator', role: 'operator', node: branch.operate, taskTemplate: `Operate branch ${branch.id}'s session inside the plan's scope.`,
     inputs: [branch.output], allowedTools: ['hima_interactive'], scopePolicy: 'site-qualified-interactive-only',
-    budgetShare: { maxElapsedMs: 60_000, maxFollowups: fixture.operatorFollowups }, dependencyRoles: [],
+    budgetShare: { maxElapsedMs: fixture.operatorMs ?? 60_000, maxFollowups: fixture.operatorFollowups }, dependencyRoles: [],
     resultSchema: { id: 'fixture-operator/1', required: ['schema', 'planSha256'] }, recipient: 'run-owner', ownerAdoption: 'required',
     identity: 'one-child-per-role-per-execution', followup: fixture.operatorFollowups === 0 ? 'forbidden' : 'reuse-same-child',
     cancellation: 'request-stop-preserve-unknown', terminal: ['completed', 'cancelled', 'expired', 'uncertain', 'refused'],
@@ -224,7 +228,7 @@ async function campaign(t: TestContext, fixture: Fixture, timeBoxMs: number, che
   await writePack(packsDir, tclsh, fixture);
   const bindingsFile = await writeBinding(h.home, packsDir, tclsh, workspaceRoot);
   const site = await writeLocalSite(h, { allowedReadRoots: [workspaceRoot, flow.root, path.dirname(tclsh)], allowedWriteRoots: [workspaceRoot],
-    allowedWrappers: ['sh', tclsh], bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot }, licences: { xtop: 2 }, parallelJobs: 2 });
+    allowedWrappers: ['sh', tclsh], bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot }, licences: { xtop: 2 }, parallelJobs: fixture.lanes ?? 2 });
   let scenario = await writeMomentScenario(h, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
   if (fixture.native !== undefined) {
     // Replay binds live sessions to scripts by first-call order; every one gets the same script.
@@ -565,6 +569,39 @@ test('a native child whose turn ends at max-tokens with no output gets one repai
     // The repaired turn is the author's result: the seat is not lost.
     await waitUntil('the repaired author answer is observed', () => events().includes('result-observed'), 30_000, 25);
     t.diagnostic(`H2b: follow-up ${waited} ms after the author was created (share ${authorMs} ms)`);
+  });
+});
+
+test('an Operator whose branch is done frees its share: a later branch\'s recipe Operator still gets its member share (#66 H2a, ATCS-09 dry w04)', async (t) => {
+  // One lane and a 300 s time box: 300 s of delegation time. The two authors hold 30 s each (a
+  // completed author keeps its reservation while a follow-up is still allowed), which leaves 240 s,
+  // and each Operator member declares exactly that. Branch b's Operator takes it all, finishes, and
+  // its result is adopted; its execution is settled, so it can never work again. Branch a, held until
+  // then, must still get an Operator: the dry path's generation 2 starved exactly here.
+  const operatorMs = 240_000;
+  await campaign(t, { ...defaults, operatorMs, lanes: 1 }, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    const paused = await p.human('pause', { nodeId: 'read-plan-a' });
+    assert.equal(paused.kind, 'accepted', paused.reason);
+    await Promise.all(branches.map(async (branch) => p.answer(await p.authorAsked(branch), p.entry(branch))));
+    const b = await p.operatorOf(branches[1]);
+    assert.equal(b.effective.budgetShare.maxElapsedMs, operatorMs, 'branch b\'s Operator gets its member share');
+    await p.answer(b.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: await p.operate(branches[1], b) }));
+    await waitUntil('branch b reaches the join', () => p.run().fork?.branches['plan-b']?.state === 'done', 60_000, 25);
+    const continued = await p.human('continue', { nodeId: 'read-plan-a' });
+    assert.equal(continued.kind, 'accepted', continued.reason);
+    // Branch a's Operator, or the refusal that settles its branch instead.
+    const refusedA = () => p.records().find((r) => r.type === 'node' && r.branchId === 'plan-a' && r.state === 'cancelled');
+    await waitUntil('branch a\'s Operator is materialized or its branch settles', () => refusedA() !== undefined
+      || runDelegations((driven.host.ctx.hima as any).deps(), driven.runId).some((row) => row.effective.recipe?.teamId === 'team-a'), 60_000, 25);
+    const settled = refusedA();
+    assert.equal(settled, undefined, `branch a was starved: ${settled?.type === 'node' ? settled.reason : ''}`);
+    const a = await p.operatorOf(branches[0]);
+    t.diagnostic(`Operator shares: b ${b.effective.budgetShare.maxElapsedMs} ms, a ${a.effective.budgetShare.maxElapsedMs} ms`);
+    assert.ok(a.effective.budgetShare.maxElapsedMs > 200_000, `branch a's Operator gets (nearly) its member share: ${a.effective.budgetShare.maxElapsedMs}`);
+    await p.answer(a.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: await p.operate(branches[0], a) }));
+    await waitUntil('both branches reach the join', atJoin(driven), 60_000, 25);
   });
 });
 

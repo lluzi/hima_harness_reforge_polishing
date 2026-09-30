@@ -98,9 +98,20 @@ function holdsReservation(entry: RunDelegationView, now: number): boolean {
 }
 /** What one child counts against its Run's delegation time: its whole share while it holds its
  *  reservation, else the time from its admission to the record that ended it (never more than the share). */
-function chargedMs(deps: FabricDeps, entry: RunDelegationView, now: number): number {
+/**
+ * A completed recipe Operator whose interactive execution is no longer `begun` can never work again:
+ * a follow-up would reach a child with no session to operate. Its reservation ends with its result
+ * (#66 H2a, ATCS-09 dry path): with a 40-minute member share, a finished Operator held as if still
+ * running starved the next generation's Operators of the Run's delegation time.
+ */
+function settledOperator(run: RunRecord | undefined, entry: RunDelegationView): boolean {
+    const executionId = entry.effective.recipe?.executionId;
+    return entry.state === 'completed' && entry.effective.role === 'operator' && executionId !== undefined
+        && run?.control?.executions[executionId]?.phase !== 'begun';
+}
+function chargedMs(deps: FabricDeps, entry: RunDelegationView, now: number, run?: RunRecord): number {
     const share = entry.effective.budgetShare.maxElapsedMs;
-    if (holdsReservation(entry, now)) return share;
+    if (holdsReservation(entry, now) && !settledOperator(run, entry)) return share;
     const endedBy = entry.state === 'completed' ? entry.resultRecordId
         : entry.state === 'cancelled' || entry.state === 'expired' || entry.state === 'refused'
             || (entry.state === 'cancel-requested' && entry.stopObserved === true) ? entry.recordId : undefined;
@@ -122,7 +133,7 @@ export function runningDelegations(entries: readonly RunDelegationView[], now = 
  *  child's charge. Undefined for a Run with no Budget, which admits no child share. */
 export function unreservedDelegationMs(deps: FabricDeps, run: RunRecord, entries: readonly RunDelegationView[] = runDelegations(deps, run.id), now = Date.now()): number | undefined {
     if (!run.budget) return undefined;
-    return delegationLanes(run) * run.budget.timeBoxMs - entries.reduce((total, entry) => total + chargedMs(deps, entry, now), 0);
+    return delegationLanes(run) * run.budget.timeBoxMs - entries.reduce((total, entry) => total + chargedMs(deps, entry, now, run), 0);
 }
 /** The node execution a delegation belongs to, when it belongs to one. */
 interface DelegationTarget { readonly nodeId?: string; readonly executionId?: string }
