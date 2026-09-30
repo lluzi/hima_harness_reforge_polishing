@@ -472,7 +472,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     commands: mutations, maxMutations: recipeCap, hostPlanHashArgument: 'planSha256' });
   // #64 M-T03-1: the Operator's task embeds its request; its template names the fields it works from
   // and the exact dump names the capture seals (#64 D-T03-2).
-  assert.deepEqual(operatorMember.taskInputs, [{ input: 'workerRequest01', fields: ['candidate', 'sessionPlan', 'noSafeAction', 'siteCapabilities'] }]);
+  assert.deepEqual(operatorMember.taskInputs, [{ input: 'workerRequest01', fields: ['operatorBrief', 'sessionPlan', 'siteCapabilities'] }]);
   for (const words of [/editDomain\.instances/, /editDomain\.nets/, /targetPins/, /Exact input workerRequest01/, /exactly this file name/]) {
     assert.match(operatorMember.taskTemplate, words, `the Operator template states ${words}`);
   }

@@ -273,6 +273,7 @@ class WorkPackageReaderTest(unittest.TestCase):
 
     def _write_envelope(self, candidate, site_capabilities=None, prepared=None):
         envelope = {"candidate": candidate, "baseState": self.design, "siteCapabilities": site_capabilities or {}}
+        envelope["operatorBrief"] = read_atcs.operator_brief(envelope)  # the Workshop's `read-atcs.py brief` step
         report = self.workspace / "flow" / "records" / "work-package.json"
         _write(report, json.dumps(envelope))
         _prepare_slot(self.workspace, candidate if prepared is None else prepared)
@@ -494,6 +495,7 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
             "baseState": self.design,
             "siteCapabilities": {},
         }
+        envelope["operatorBrief"] = read_atcs.operator_brief(envelope)  # the Workshop's `read-atcs.py brief` step
         report = self.workspace / "flow" / "records" / "worker-request.json"
         _write(report, json.dumps(envelope))
         _prepare_slot(self.workspace, candidate)
@@ -571,6 +573,7 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
             "baseState": design,
             "siteCapabilities": {},
         }
+        envelope["operatorBrief"] = read_atcs.operator_brief(envelope)  # the Workshop's `read-atcs.py brief` step
         report = self.workspace / "flow" / "records" / "worker-request-escaped.json"
         _write(report, json.dumps(envelope))
         _prepare_slot(self.workspace, candidate)

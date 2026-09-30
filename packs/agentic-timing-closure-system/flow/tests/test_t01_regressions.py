@@ -113,6 +113,7 @@ class T01Workspace(unittest.TestCase):
         return document
 
     def problems(self, slot, document):
+        document = dict(document, operatorBrief=read_atcs.operator_brief(document))  # the Workshop's `brief` step
         report = _write(self.workspace / "research" / "requests" / f"worker-request-w{slot}.json", json.dumps(document))
         found = read_atcs.problems("worker-request", report, self.workspace, f"w{slot}")
         value = next(item for item in read_atcs.read("worker-request", report, self.workspace, [f"w{slot}"])

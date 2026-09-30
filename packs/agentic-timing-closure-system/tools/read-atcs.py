@@ -956,6 +956,8 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
     if expected_task_id is not None:
         found += _prepared_package_problems(workspace, expected_task_id, candidate, core, workspaces_mod)
     found += _no_safe_action_problems(envelope, candidate, workspaces_mod, slot)
+    if expected_task_id is not None:
+        found += _operator_brief_problems(envelope, candidate, workspaces_mod, expected_task_id)
     # T63 real-run failure, then C23 (#63, ported): every edit-domain instance is a leaf cell and
     # every target pin a leaf cell's pin, each a full path from `top` in the sha-verified base netlist.
     if not workspaces_mod.is_parked(candidate):
@@ -983,6 +985,100 @@ def _with_slot_parked(read, report, mods):
     else:
         parked = _emit("tc_slot_parked", "count", mods["core"].unknown("the worker request has no readable candidate"))
     return values + [parked], found
+
+
+# #64 T05 (slot w03): the Host embeds the Operator's request fields in its task and refuses a task above
+# 64 000 characters (the Harness delegation bound). The admitted w03 request was 83 034 bytes (256 targets, the
+# same 256 checks again in its cluster, a 19 450-character noSafeAction), so its Operator was never created.
+# The Operator's task now embeds `operatorBrief`, this bounded projection of the request, and the sessionPlan;
+# the exact request stays the Reader observation the task names.
+OPERATOR_BRIEF_SCHEMA = "atcs-operator-brief/1"
+BRIEF_TARGETS = 64
+BRIEF_PINS = 32
+BRIEF_INSTANCES = 16
+BRIEF_NAME_CHARS = 200
+BRIEF_TEXT_CHARS = 2000
+SESSION_PLAN_MAX_CHARS = 16000
+
+
+def _clip(text, limit):
+    text = text if isinstance(text, str) else json.dumps(text, ensure_ascii=False, sort_keys=True)
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
+def _listing(value, shown):
+    items = value if isinstance(value, list) else []
+    return {"count": len(items), "first": [_clip(item, BRIEF_NAME_CHARS) for item in items[:shown]]}
+
+
+def operator_brief(envelope):
+    """The bounded summary of a worker request that the Host embeds in the slot Operator's task.
+
+    Deterministic in the request (its own `operatorBrief` is never read): the cluster's cause and key and
+    its check count, the first targets (hardest first, as the plan orders them), target pins and domain
+    instances with their counts, the scope, the observation mode, the sessionPlan length and the head of
+    any noSafeAction. Every name and text is clipped, so the brief stays far inside the task bound.
+    """
+    envelope = envelope if isinstance(envelope, dict) else {}
+    candidate = envelope.get("candidate") if isinstance(envelope.get("candidate"), dict) else {}
+    cluster = candidate.get("cluster") if isinstance(candidate.get("cluster"), dict) else {}
+    domain = candidate.get("editDomain") if isinstance(candidate.get("editDomain"), dict) else {}
+    scope = candidate.get("scope") if isinstance(candidate.get("scope"), dict) else {}
+    plan = envelope.get("sessionPlan")
+    reason = envelope.get("noSafeAction")
+    return {
+        "schema": OPERATOR_BRIEF_SCHEMA,
+        "taskId": _clip(candidate.get("taskId"), BRIEF_NAME_CHARS),
+        "problem": _clip(candidate.get("problem", ""), BRIEF_TEXT_CHARS),
+        "cluster": {"cause": _clip(cluster.get("cause", ""), BRIEF_NAME_CHARS),
+                    "key": _clip(cluster.get("key", ""), BRIEF_NAME_CHARS),
+                    "checks": len(cluster.get("checks")) if isinstance(cluster.get("checks"), list) else 0},
+        "targets": _listing(candidate.get("targets"), BRIEF_TARGETS),
+        "targetPins": _listing(candidate.get("targetPins"), BRIEF_PINS),
+        "editDomain": {"instances": _listing(domain.get("instances"), BRIEF_INSTANCES),
+                       "nets": len(domain.get("nets")) if isinstance(domain.get("nets"), list) else 0,
+                       "regions": len(domain.get("regions")) if isinstance(domain.get("regions"), list) else 0},
+        "scope": {"commands": [_clip(command, BRIEF_NAME_CHARS) for command in (scope.get("commands") or [])[:32]]
+                  if isinstance(scope.get("commands"), list) else [],
+                  "maxMutations": scope.get("maxMutations") if isinstance(scope.get("maxMutations"), int) else None},
+        "observe": _clip(candidate.get("observe", "fast"), BRIEF_NAME_CHARS),
+        "sessionPlan": {"count": len(plan) if isinstance(plan, list) else 0},
+        "noSafeAction": None if "noSafeAction" not in envelope else
+        {"chars": len(reason) if isinstance(reason, str) else 0, "head": _clip(reason if isinstance(reason, str) else "", BRIEF_TEXT_CHARS)},
+    }
+
+
+def _operator_brief_problems(envelope, candidate, workspaces_mod, task_id):
+    """An active slot's request carries `operatorBrief` equal to `operator_brief` of it, and a sessionPlan within
+    SESSION_PLAN_MAX_CHARS: both reach the Operator's bounded task. A parked slot's Operator never runs."""
+    if workspaces_mod.is_parked(candidate):
+        return []
+    found, slot = [], f" (slot {task_id})"
+    command = (f"run python3 <workspace>/hima-readers/atcs-readiness/read-atcs.py brief "
+               f"<workspace>/research/requests/worker-request-{task_id}.json after writing the request: it writes "
+               "operatorBrief in place")
+    if "operatorBrief" not in envelope:
+        found.append(f"operatorBrief{slot}: missing; the Host gives the Operator this bounded summary of the request; {command}")
+    elif envelope.get("operatorBrief") != operator_brief(envelope):
+        found.append(f"operatorBrief{slot}: differs from the Pack's summary of this request (the request changed after "
+                     f"the summary was written); {command}")
+    plan = envelope.get("sessionPlan")
+    if plan is not None:
+        size = len(json.dumps(plan, ensure_ascii=False, separators=(",", ":")))
+        if size > SESSION_PLAN_MAX_CHARS:
+            found.append(f"sessionPlan{slot}: {size} characters as JSON, above the {SESSION_PLAN_MAX_CHARS} the Operator's "
+                         "task holds; keep the ordered moves and shorten each hypothesis and falsifier")
+    return found
+
+
+def write_operator_brief(path):
+    """`read-atcs.py brief REQUEST_JSON`: rewrite the request in place with its `operatorBrief`."""
+    target = Path(path)
+    envelope = _load_json(target)
+    if not isinstance(envelope, dict):
+        raise SystemExit(f"{target}: must be one JSON object")
+    envelope["operatorBrief"] = operator_brief(envelope)
+    target.write_text(json.dumps(envelope, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def _no_safe_action_problems(envelope, candidate, workspaces_mod, slot):
@@ -2841,6 +2937,11 @@ def main():
         return
     if len(sys.argv) >= 2 and sys.argv[1] == "masters":
         _masters_main(sys.argv[2:])
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "brief":
+        if len(sys.argv) != 3:
+            raise SystemExit("usage: read-atcs.py brief REQUEST_JSON")
+        write_operator_brief(sys.argv[2])
         return
     if len(sys.argv) >= 2 and sys.argv[1] == "seat-clusters":
         _seat_clusters_main(sys.argv[2:])

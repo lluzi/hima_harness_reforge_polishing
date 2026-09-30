@@ -18,6 +18,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -37,6 +38,7 @@ from test_readers import _build_design_state, _make_workspace, _write, read_atcs
 
 CONTRACT = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
 SLOTS = [task_id[1:] for task_id in workspaces.TASK_IDS]
+READER = Path(__file__).resolve().parents[2] / "tools" / "read-atcs.py"
 
 STATE_ID = "<id of state/working-state.json>"
 STATE_OBJECT = "<the whole JSON object in state/working-state.json, verbatim>"
@@ -386,7 +388,9 @@ class WorkerRequestExampleTest(ExampleWorkspace):
         example["candidate"]["taskId"] = f"w{slot}"
         return example
 
-    def read_request(self, slot, envelope):
+    def read_request(self, slot, envelope, brief=True):
+        if brief:  # the Workshop's `read-atcs.py brief` step, which its purpose names
+            envelope = dict(envelope, operatorBrief=read_atcs.operator_brief(envelope))
         report = _write(self.workspace / "research" / "requests" / f"worker-request-w{slot}.json", json.dumps(envelope))
         value = next(item for item in read_atcs.read("worker-request", report, self.workspace, [f"w{slot}"])
                      if item["type"] == "tc_request_invalid_count")
@@ -402,6 +406,52 @@ class WorkerRequestExampleTest(ExampleWorkspace):
         plan["candidate"]["workPackages"] = {
             task_id: active if task_id == f"w{slot}" else dict(parked, taskId=task_id) for task_id in workspaces.TASK_IDS}
         return plan
+
+    def brief_problems(self, slot, envelope):
+        self.read_request(slot, envelope, brief=False)
+        report = self.workspace / "research" / "requests" / f"worker-request-w{slot}.json"
+        return [line for line in read_atcs.problems("worker-request", report, self.workspace, f"w{slot}")
+                if line.startswith(("operatorBrief", "sessionPlan"))]
+
+    def test_an_active_request_without_its_operator_brief_is_counted(self):
+        # #64 T05 w03: the Operator's task embeds operatorBrief, never the whole request.
+        self.prepare(self.plan_with_active_slot("03"))
+        (line,) = self.brief_problems("03", self.worker_example("03", self.ACTIVE))
+        self.assertTrue(line.startswith("operatorBrief (slot w03): missing"), line)
+        self.assertIn("read-atcs.py brief <workspace>/research/requests/worker-request-w03.json", line)
+
+    def test_a_stale_operator_brief_is_counted(self):
+        self.prepare(self.plan_with_active_slot("03"))
+        example = self.worker_example("03", self.ACTIVE)
+        example["operatorBrief"] = read_atcs.operator_brief(example)
+        example["sessionPlan"] = example["sessionPlan"][:1]
+        (line,) = self.brief_problems("03", example)
+        self.assertTrue(line.startswith("operatorBrief (slot w03): differs from the Pack's summary"), line)
+
+    def test_a_session_plan_above_the_task_share_is_counted(self):
+        self.prepare(self.plan_with_active_slot("03"))
+        example = self.worker_example("03", self.ACTIVE)
+        step = dict(example["sessionPlan"][0], hypothesis="h" * 2000)
+        example["sessionPlan"] = [step] * 9
+        example["operatorBrief"] = read_atcs.operator_brief(example)
+        (line,) = self.brief_problems("03", example)
+        self.assertTrue(line.startswith(f"sessionPlan (slot w03): "), line)
+        self.assertIn(f"above the {read_atcs.SESSION_PLAN_MAX_CHARS}", line)
+
+    def test_a_parked_request_needs_no_operator_brief(self):
+        self.prepare(self.plan_with_active_slot("01"))
+        self.assertEqual(self.brief_problems("02", self.worker_example("02", self.PARKED)), [])
+
+    def test_the_brief_step_writes_the_summary_the_reader_admits(self):
+        self.prepare(self.plan_with_active_slot("03"))
+        self.read_request("03", self.worker_example("03", self.ACTIVE), brief=False)
+        report = self.workspace / "research" / "requests" / "worker-request-w03.json"
+        result = subprocess.run([sys.executable, str(READER), "brief", str(report)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        written = json.loads(report.read_text())
+        self.assertEqual(written["operatorBrief"]["schema"], "atcs-operator-brief/1")
+        self.assertEqual(written["operatorBrief"]["targets"]["count"], len(written["candidate"]["targets"]))
+        self.assertEqual(read_atcs.problems("worker-request", report, self.workspace, "w03"), [])
 
     def test_the_six_worker_workshops_are_identical_modulo_slot(self):
         def slotless(slot):
