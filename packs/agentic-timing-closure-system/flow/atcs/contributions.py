@@ -1013,14 +1013,13 @@ def _script_sha256(path):
 #   legacy replay has nothing to do for a session.
 #
 # ``kind`` is ``"xtop-session"`` when ``commands`` is non-empty, else
-# ``"no-fix"`` with a deterministic diagnosis. Refusal codes (the
+# ``"no-fix"`` with a deterministic diagnosis. A session is refused only for
+# corrupt data or an edit outside its admitted scope. Refusal codes (the
 # Contribution is still sealed and returned, never raised away):
 #
 # - ``tainted``: ``tainted.json`` exists, an ``uncertain`` line exists, or the
-#   XTop transcript's ``ATCS:taint:`` line is missing or not ``clean``;
-# - ``missing-gain-line``: a kept line has no gain line of its kind and seq,
-#   or the last gain line predates the last kept line;
-# - ``missing-export``: kept commands but no ``eco_output/`` files;
+#   XTop transcript's ``ATCS:taint:`` line is missing or not ``clean`` (the
+#   session did not complete, or its design state is unknown);
 # - ``trace-mismatch``: the log does not explain the dump delta (a logged
 #   change the dump lacks, an untraced in-domain change, a precondition the
 #   running state does not hold, a kept typed request whose logged effect
@@ -1028,7 +1027,12 @@ def _script_sha256(path):
 #   stack, or a seq gap);
 # - ``out-of-scope``: a changed object outside the domain, collected into
 #   ``outOfScope``. The domain is ``editDomain.instances`` plus instances
-#   this session created whose leaf name starts with ``namePrefix``;
+#   this session created whose leaf name starts with ``namePrefix``.
+#
+# Advisory codes (``advisories: [{"code", "detail"}]``; replay is an
+# aggregator, so these never refuse: the refreshed Innovus/StarRC/PrimeTime
+# result is the quality judge, and the ranking already reads the gains):
+#
 # - ``no-predicted-gain``: kept commands with which no violating required
 #   scenario improves on a target check (WNS first, then TNS), or none can
 #   be read;
@@ -1038,7 +1042,12 @@ def _script_sha256(path):
 # - ``breaks-opposite-check``: kept commands with which a required
 #   scenario's non-target check (setup for a hold repair, and so on) got
 #   worse in WNS by more than one rounding step, or cannot be read. A TNS
-#   loss there is charged to the rank (``valueDetail.rankTnsGain``) instead.
+#   loss there is charged to the rank (``valueDetail.rankTnsGain``) as well;
+# - ``missing-gain-line``: a kept line has no gain line of its kind and seq,
+#   or the last gain line predates the last kept line (the value is then
+#   read from what the gain log holds);
+# - ``missing-export``: kept commands but no ``eco_output/`` files (replay
+#   runs the kept commands, never the worker's own export).
 #
 # Typed requests (size/exchange/insert/remove) must show exactly their
 # requested effect in their own logged delta; fixes, splits, moves and
@@ -1417,6 +1426,9 @@ def _session_value(target_checks, reference, predicted, gain_summary=None, requi
       violating in the reference (``referenceWns`` < 0): the largest WNS improvement, then the
       largest TNS improvement, then the scenario name ascending. ``value`` is the WNS gain of the
       best target check by the same order (ties: hold before setup); 0.0 when none can be read.
+    The three codes below are advisories (#64 replay-aggregator decision): recorded on the
+    Contribution, never a refusal.
+
     - ``no-predicted-gain``: no violating required scenario improves on any target check (WNS
       first, then TNS), including when none can be read.
     - ``breaks-target-check``: a required scenario's target-check WNS got worse by more than
@@ -1427,7 +1439,7 @@ def _session_value(target_checks, reference, predicted, gain_summary=None, requi
       ``rankTnsGain`` = target TNS gain plus every opposite check's signed TNS gain, the rank's
       tie-break, so an opposite TNS loss lowers the rank without refusing.
 
-    Returns ``(value, detail, refusals)``, ``refusals`` a list of ``(code, detail)``.
+    Returns ``(value, detail, advisories)``, ``advisories`` a list of ``(code, detail)``.
     """
     wns_gain, tns_gain = {}, {}
     for check in SESSION_CHECKS:
@@ -1460,16 +1472,16 @@ def _session_value(target_checks, reference, predicted, gain_summary=None, requi
               "wnsGain": wns_gain, "tnsGain": tns_gain, "targetTnsGain": target_tns_gain,
               "rankTnsGain": rank_tns_gain}
 
-    refusals = []
+    advisories = []
     improving = {check: sorted(name for name, gain in scenario_gains[check].items()
                                if gain is not None and gain["referenceWns"] < 0 and _improves(gain))
                  for check in target_checks}
     if not any(improving.values()):
         if not best:
-            refusals.append(("no-predicted-gain", f"no violating required scenario of target {list(target_checks)} "
+            advisories.append(("no-predicted-gain", f"no violating required scenario of target {list(target_checks)} "
                                                   "can be read"))
         else:
-            refusals.append(("no-predicted-gain", "no violating required scenario improves on target "
+            advisories.append(("no-predicted-gain", "no violating required scenario improves on target "
                                                   f"{list(target_checks)}: {scenario_gains}"))
     detail["improvingScenarios"] = improving
     # A repair is not admitted on its best scenario alone: its own check must not get worse elsewhere.
@@ -1477,17 +1489,17 @@ def _session_value(target_checks, reference, predicted, gain_summary=None, requi
         worse = {name: gain["wnsGain"] for name, gain in sorted(scenario_gains[check].items())
                  if gain is not None and gain["wnsGain"] < -_OPPOSITE_TOLERANCE}
         if worse:
-            refusals.append(("breaks-target-check", f"target {check} WNS got worse in {worse}"))
+            advisories.append(("breaks-target-check", f"target {check} WNS got worse in {worse}"))
 
     for check in opposite:
         unknown = sorted(name for name, gain in scenario_gains[check].items() if gain is None)
         broken = {name: gain["wnsGain"] for name, gain in sorted(scenario_gains[check].items())
                   if gain is not None and gain["wnsGain"] < -_OPPOSITE_TOLERANCE}
         if unknown or not scenario_gains[check]:
-            refusals.append(("breaks-opposite-check", f"opposite {check} cannot be read for {unknown or 'any scenario'}"))
+            advisories.append(("breaks-opposite-check", f"opposite {check} cannot be read for {unknown or 'any scenario'}"))
         elif broken:
-            refusals.append(("breaks-opposite-check", f"opposite {check} WNS got worse in {broken}"))
-    return value, detail, refusals
+            advisories.append(("breaks-opposite-check", f"opposite {check} WNS got worse in {broken}"))
+    return value, detail, advisories
 
 
 def leaf_name(name):
@@ -1895,19 +1907,21 @@ def seal_session(base_ref, result_refs, ops_text, gain_text, reads_text=None):
     plan's domain), ``"operatorLimitations": [str, ...]}`` (optional). `ops_text`/`gain_text`/
     `reads_text` are the raw ``ops.jsonl`` / ``gain.jsonl`` / ``reads.jsonl`` texts (``reads_text``
     ``None`` = no read log). Raises `AtcsError` only for unusable input (a
-    ``base_ref`` whose parts disagree, an unreadable dump, a malformed ops or gain log);
-    every content problem is a refusal on the returned Contribution -- see
-    the block comments above for the codes and the shape.
+    ``base_ref`` whose parts disagree, an unreadable dump, a malformed ops or gain log).
+    A session is refused (``admissible: false``, ``refusals``) only for corrupt data (a tainted
+    or unclosed session, a log that does not explain the dumps) or an edit outside its admitted
+    domain; every quality finding is an advisory (``advisories``) and never refuses -- see the
+    block comments above for the codes and the shape.
 
     The seal is of one batch (#66 D4). The domain check reads the session's effective domain (its
     ``domain.json`` ``instances``, plus the plan's ``editDomain.instances`` and the instances the
     session created under its ``namePrefix``); without a usable record it reads the plan's domain.
-    The value gates are batch-net: ``no-predicted-gain``, ``breaks-target-check`` and
+    The value advisories are batch-net: ``no-predicted-gain``, ``breaks-target-check`` and
     ``breaks-opposite-check`` compare the batch's last reading with the session reference, the net
-    effect of every kept command, never a single step. A trial that hurt and was undone, or a kept
-    step whose loss later steps recovered, does not refuse; a batch whose net opposite-check WNS is
-    worse by more than one rounding step (1e-4 ns) in any required scenario is refused as a whole
-    (the Operator undoes such a step when it measures it).
+    effect of every kept command, never a single step. A batch whose net opposite-check WNS is
+    worse by more than one rounding step (1e-4 ns) in a required scenario is sealed admissible
+    with a ``breaks-opposite-check`` advisory and enters the recipe like any other batch: replay
+    is an aggregator, and the refreshed PrimeTime result is the judge.
     """
     manifest = core.require(base_ref, "workspaceManifest", "base_ref")
     work_package = core.require(base_ref, "workPackage", "base_ref")
@@ -1930,9 +1944,13 @@ def seal_session(base_ref, result_refs, ops_text, gain_text, reads_text=None):
     required_scenarios = [name for name in (result_refs.get("requiredScenarios") or []) if _is_nonempty_string(name)]
 
     refusals = []
+    advisories = []
 
     def refuse(code, detail):
         refusals.append({"code": code, "detail": detail})
+
+    def advise(code, detail):
+        advisories.append({"code": code, "detail": detail})
 
     # Taint: tainted.json, an uncertain line, or a missing or unclean ATCS:taint: line refuses the slot.
     if evidence.get("taintedJson") is not None:
@@ -1960,7 +1978,7 @@ def seal_session(base_ref, result_refs, ops_text, gain_text, reads_text=None):
     for line in kept_all:
         kind = "undo" if line["cmd"] == "undo" else "mutation"
         if (line["seq"], kind) not in gain_keys:
-            refuse("missing-gain-line", f"kept seq {line['seq']} has no {kind} gain line")
+            advise("missing-gain-line", f"kept seq {line['seq']} has no {kind} gain line")
     last_kept_seq = max((line["seq"] for line in kept_all), default=0)
     references = [gain_line for gain_line in gain_lines if gain_line["kind"] == "reference"]
     # `predicted` comes from the last mutation/undo reading: every kept line has one (checked
@@ -1971,7 +1989,7 @@ def seal_session(base_ref, result_refs, ops_text, gain_text, reads_text=None):
     reference_line = references[0] if references else None
     last_reading = readings[-1] if readings else reference_line
     if kept_all and (last_reading is None or last_reading["seq"] < last_kept_seq):
-        refuse("missing-gain-line", f"no gain reading at or after the last kept seq {last_kept_seq}")
+        advise("missing-gain-line", f"no gain reading at or after the last kept seq {last_kept_seq}")
 
     reference = _gain_measures(reference_line)
     if last_reading is not None and last_reading is not reference_line:
@@ -2045,11 +2063,11 @@ def seal_session(base_ref, result_refs, ops_text, gain_text, reads_text=None):
     target_checks = _target_checks(work_package)
     if commands:
         if not evidence.get("ecoOutput"):
-            refuse("missing-export", "kept commands but eco_output/ holds no exported change files")
-        value, value_detail, gain_refusals = _session_value(target_checks, reference, predicted, gain_summary,
-                                                            required_scenarios)
-        for code, detail in gain_refusals:
-            refuse(code, detail)
+            advise("missing-export", "kept commands but eco_output/ holds no exported change files")
+        value, value_detail, gain_advisories = _session_value(target_checks, reference, predicted, gain_summary,
+                                                              required_scenarios)
+        for code, detail in gain_advisories:
+            advise(code, detail)
     else:
         value, value_detail = 0.0, {"targetChecks": target_checks,
                                     "oppositeChecks": [c for c in SESSION_CHECKS if c not in target_checks],
@@ -2167,6 +2185,7 @@ def seal_session(base_ref, result_refs, ops_text, gain_text, reads_text=None):
         },
         "admissible": not refusals,
         "refusals": refusals,
+        "advisories": advisories,
         "outOfScope": sorted(out_of_scope),
     }
     return core.stamp("contribution", body)

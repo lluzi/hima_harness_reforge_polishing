@@ -4,7 +4,8 @@ A seat works point to point through its cluster: it measures each trial, undoes 
 and keeps a batch. `contributions.seal_session` seals that batch with per-command and aggregate
 evidence read from the files the toolkit writes beside ``ops.jsonl`` (``gain.jsonl``,
 ``reads.jsonl``, ``domain.json``), checks its domain against the session's effective (derived)
-domain, and gates its value on the batch's net effect.
+domain, and records its value findings on the batch's net effect as advisories (replay is an
+aggregator: only corrupt data or an out-of-scope edit refuses a batch).
 
 Runnable via discovery:
     python3 -m unittest discover -s packs/agentic-timing-closure-system/flow/tests -v
@@ -68,6 +69,10 @@ def _seal(log, after, before=None, domain=DOMAIN, base_ref=None, required=("func
 
 def _codes(contribution):
     return sorted({refusal["code"] for refusal in contribution["refusals"]})
+
+
+def _advisories(contribution):
+    return sorted({advisory["code"] for advisory in contribution["advisories"]})
 
 
 def _batch():
@@ -240,8 +245,9 @@ class EffectiveDomainTest(unittest.TestCase):
                       contribution["limitations"])
 
 
-class BatchNetValueGateTest(unittest.TestCase):
-    """The value gates read the batch's net effect (last reading against the reference), never a step."""
+class BatchNetValueAdvisoryTest(unittest.TestCase):
+    """The value findings read the batch's net effect (last reading against the reference), never a
+    step, and are advisories: they never refuse a batch."""
 
     def test_a_mid_batch_regression_that_was_undone_does_not_refuse(self):
         log = sf.SessionLog()
@@ -250,6 +256,7 @@ class BatchNetValueGateTest(unittest.TestCase):
         log.size("U1", "BUFX1", "BUFX2", gain=(SETUP_FLAT, _hold((-0.060, -1.000))))
         contribution = _seal(log, {**BEFORE, "U1": "BUFX2"})
         self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(contribution["advisories"], [])
         self.assertEqual(contribution["undone"]["count"], 1)
 
     def test_a_kept_step_regression_the_batch_recovers_does_not_refuse(self):
@@ -261,14 +268,16 @@ class BatchNetValueGateTest(unittest.TestCase):
         first = contribution["commands"][0]["gain"]["opposite"]["setup"]["func_ss"]
         self.assertAlmostEqual(first["wnsGain"], -0.030)
 
-    def test_a_net_opposite_wns_loss_above_one_rounding_step_refuses_the_whole_batch(self):
+    def test_a_net_opposite_wns_loss_above_one_rounding_step_is_an_advisory_never_a_refusal(self):
         log = sf.SessionLog()
         log.size("U1", "BUFX1", "BUFX2", gain=(SETUP_FLAT, _hold((-0.060, -1.000))))
         log.size("U2", "BUFX1", "BUFX2", gain=(SETUP_FLAT, _hold((-0.050, -0.800))))
         log.size("U3", "INVX1", "INVX2", gain=(((-0.020, -0.100), (-0.0202, -0.100)), _hold((-0.040, -0.600))))
         contribution = _seal(log, {**BEFORE, "U1": "BUFX2", "U2": "BUFX2", "U3": "INVX2"})
-        self.assertFalse(contribution["admissible"])
-        self.assertEqual(_codes(contribution), ["breaks-opposite-check"])
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(contribution["refusals"], [])
+        self.assertEqual(_advisories(contribution), ["breaks-opposite-check"])
+        self.assertIn("setup", contribution["advisories"][0]["detail"])
         self.assertEqual(len(contribution["commands"]), 3)
         self.assertAlmostEqual(contribution["oppositeEffects"]["setup"]["func_ss"]["wnsGain"], -0.0002)
 
@@ -277,14 +286,34 @@ class BatchNetValueGateTest(unittest.TestCase):
         log.size("U1", "BUFX1", "BUFX2", gain=(((-0.020, -0.100), (-0.0201, -0.101)), _hold((-0.060, -1.000))))
         contribution = _seal(log, {**BEFORE, "U1": "BUFX2"})
         self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(contribution["advisories"], [])
 
-    def test_a_net_opposite_wns_loss_outside_the_required_scenarios_does_not_refuse(self):
+    def test_a_net_opposite_wns_loss_outside_the_required_scenarios_is_not_flagged(self):
         log = sf.SessionLog()
         log.size("U1", "BUFX1", "BUFX2", gain=(((-0.020, -0.100), (-0.090, -0.900)), _hold((-0.060, -1.000))))
         contribution = _seal(log, {**BEFORE, "U1": "BUFX2"}, required=("func_other",))
-        self.assertNotIn("breaks-opposite-check", [r["code"] for r in contribution["refusals"]
-                                                   if "WNS got worse" in r["detail"]])
+        self.assertNotIn("breaks-opposite-check", [a["code"] for a in contribution["advisories"]
+                                                   if "WNS got worse" in a["detail"]])
         self.assertIsNone(contribution["oppositeEffects"]["setup"]["func_other"])
+
+    def test_no_gain_and_a_broken_target_check_are_advisories_too(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=(SETUP_FLAT, _hold((-0.090, -1.500))))
+        contribution = _seal(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(_advisories(contribution), ["breaks-target-check", "no-predicted-gain"])
+
+    def test_corrupt_data_still_refuses(self):
+        """A log that does not explain the dumps (U2 changed with no command) is refused, and an
+        unparseable ops log is unusable input."""
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=(SETUP_FLAT, _hold((-0.060, -1.000))))
+        contribution = _seal(log, {**BEFORE, "U1": "BUFX2", "U2": "BUFX4"})
+        self.assertFalse(contribution["admissible"])
+        self.assertEqual(_codes(contribution), ["trace-mismatch"])
+        with self.assertRaises(core.AtcsError) as ctx:
+            contributions.seal_session(sf.make_base_ref(targets=TARGETS), {}, "{not json\n", "")
+        self.assertEqual(ctx.exception.code, "malformed-ops-log")
 
     def test_the_seal_and_the_knowledge_state_the_gates_are_batch_net(self):
         self.assertIn("batch-net", " ".join(contributions.seal_session.__doc__.split()))

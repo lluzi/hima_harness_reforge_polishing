@@ -241,18 +241,13 @@ batch:
   unreadable scenario counts 0. A Contribution sealed without those two fields falls back to
   ``valueDetail.rankTnsGain``; ``gainSource`` (``"aggregate"`` or ``"rankTnsGain"``) says which.
   A session's recipe ``tnsGain`` stays its ``rankTnsGain`` (the total-row reading). ``rank``
-  starts at 1 and numbers the kept batches only.
-- **Domain collision (#66 D5).** Walking the ranked batches, a batch collides with a kept
-  higher-ranked batch when, with at least one of the two carrying an ``effectiveDomain``, an
-  instance or net it touched (``touches`` plus its commands' ``instances``) lies inside the
-  higher batch's ``effectiveDomain``, one the higher batch touched lies inside its own, or both
-  touched the same one (names compare without escape backslashes). A colliding batch is listed
-  in ``recipe.excluded`` with code ``domain-collision`` and ``collidesWith: [{"contribution",
-  "taskId", "instances", "nets"}]`` (every kept higher batch it collides with, in rank order),
-  is removed from ``considered`` and ``order`` and does not shadow the batches below it; every
-  other batch is kept. Two batches without an ``effectiveDomain`` never collide here: the
-  per-instance skip below decides for them, unchanged.
-- **Skip, never refuse.** Walking the kept sessions in rank order, a command is
+  starts at 1 and numbers every ranked batch.
+- **Every admitted batch enters (replay is an aggregator).** Overlapping batches are never
+  excluded as a whole: their commands are attempted in rank order, and a command that no
+  longer applies is skipped by itself, here (below) or by the toolkit at replay, with its
+  reason. A session's ``advisories`` (sealed quality findings such as ``breaks-opposite-check``)
+  are copied onto its recipe entry as codes and never exclude it.
+- **Skip, never refuse.** Walking the sessions in rank order, a command is
   marked ``skip: "shared-instance"`` (with ``sharedWith: [{"instance",
   "contribution", "rank"}]``) when any of its ``instances`` was touched by a
   non-skipped command of a higher-ranked session; the higher-ranked session
@@ -260,17 +255,18 @@ batch:
   session created is marked ``skip: "depends-on-skipped"`` (with
   ``dependsOn``). Every other command has ``skip: null``. Nothing is
   removed: the recipe lists every kept command of every ranked session.
-- **Excluded.** An inadmissible session (any Contribution carrying the
-  ``session`` field) is listed under ``recipe.excluded`` with its refusal
-  codes and is never ranked; it is still absent from ``considered``.
+- **Excluded.** Only corrupt data excludes: an inadmissible session (any
+  Contribution carrying the ``session`` field; the seal refuses only a tainted
+  session, a log that does not explain its dumps, or an out-of-scope edit) is
+  listed under ``recipe.excluded`` with its refusal codes and is never ranked;
+  it is still absent from ``considered``.
 
 ``recipe`` is ``{"rankedBy", "worstChecks", "sessions": [{"rank",
 "contribution", "taskId", "blockerCoverage", "coveredChecks", "aggregateRankGain", "gainSource",
-"value", "tnsGain", "commands": [{"seq", "proc", "cmd", "args", "instances",
+"value", "tnsGain", "advisories", "commands": [{"seq", "proc", "cmd", "args", "instances",
 "skip"[, "sharedWith"|"dependsOn"]}], "executedCount", "skipCount"}],
-"excluded": [{"contribution", "taskId", "codes"[, "collidesWith"]}], "commandCount",
-"skipCount"}``; with no sessions its lists are empty. ``order`` lists the
-ranked sessions first, in rank order, then every other considered id in
+"excluded": [{"contribution", "taskId", "codes"}], "commandCount", "skipCount"}``; with no
+sessions its lists are empty. ``order`` lists the ranked sessions first, in rank order, then every other considered id in
 the dependency-respecting order below.
 
 `resolutions` and `unresolvedCount`
@@ -727,53 +723,6 @@ def aggregate_rank_gain(contribution):
     return _number((contribution.get("valueDetail") or {}).get("rankTnsGain")), "rankTnsGain"
 
 
-def _name_key(name):
-    """Names compare without Verilog escape backslashes (a dump and XTop may spell them differently)."""
-    return name.replace("\\", "")
-
-
-def _names(values):
-    """``{key: name}`` for the string names in `values`."""
-    return {_name_key(name): name for name in values or [] if _is_nonempty_string(name)}
-
-
-def _batch_objects(contribution):
-    """``(touched, domain)``: a batch's touched ``{"instances", "nets"}`` (``touches`` plus every
-    command's ``instances``) and its ``effectiveDomain``'s ``{"instances", "nets"}``, or None."""
-    touches = contribution.get("touches") if isinstance(contribution.get("touches"), dict) else {}
-    commands = [command for command in contribution.get("commands") or [] if isinstance(command, dict)]
-    touched = {
-        "instances": _names(list(touches.get("instances") or [])
-                            + [name for command in commands for name in command.get("instances") or []]),
-        "nets": _names(touches.get("nets")),
-    }
-    record = contribution.get("effectiveDomain")
-    domain = ({kind: _names(record.get(kind)) for kind in ("instances", "nets")}
-              if isinstance(record, dict) else None)
-    return touched, domain
-
-
-def _collision(lower, higher):
-    """``{"instances", "nets"}`` on which two batches collide, or None (#66 D5).
-
-    Decided only when at least one of them carries an ``effectiveDomain``: an object the lower batch
-    touched inside the higher batch's domain, one the higher batch touched inside the lower batch's
-    domain, or one both touched. Without either domain the per-instance skip decides instead.
-    """
-    (low_touched, low_domain), (high_touched, high_domain) = lower, higher
-    if low_domain is None and high_domain is None:
-        return None
-    found = {}
-    for kind in ("instances", "nets"):
-        keys = set(low_touched[kind]) & set(high_touched[kind])
-        if high_domain is not None:
-            keys |= set(low_touched[kind]) & set(high_domain[kind])
-        if low_domain is not None:
-            keys |= set(high_touched[kind]) & set(low_domain[kind])
-        found[kind] = sorted(low_touched[kind].get(key) or high_touched[kind][key] for key in keys)
-    return found if found["instances"] or found["nets"] else None
-
-
 def _recipe(sessions, excluded, worst, identity_excluded=(), endpoints=None):
     """The ranked recipe over admitted `xtop-session` Contributions -- see the module docstring."""
     ranked = []
@@ -783,25 +732,10 @@ def _recipe(sessions, excluded, worst, identity_excluded=(), endpoints=None):
         ranked.append((len(covered), gain, _number(contribution.get("value")), contribution, covered, source))
     ranked.sort(key=lambda item: (-item[0], -item[1], -item[2], item[3]["id"]))
 
-    kept, collided = [], []
-    for item in ranked:
-        contribution = item[3]
-        objects = _batch_objects(contribution)
-        collides = []
-        for higher, higher_objects in kept:
-            shared = _collision(objects, higher_objects)
-            if shared is not None:
-                collides.append({"contribution": higher[3]["id"], "taskId": higher[3].get("taskId"), **shared})
-        if collides:
-            collided.append({"contribution": contribution["id"], "taskId": contribution.get("taskId"),
-                             "codes": ["domain-collision"], "collidesWith": collides})
-        else:
-            kept.append((item, objects))
-
     changed_by = {}
     entries = []
     command_count = skip_count = 0
-    for rank, ((coverage, gain, value, contribution, covered, source), _objects) in enumerate(kept, start=1):
+    for rank, (coverage, gain, value, contribution, covered, source) in enumerate(ranked, start=1):
         own_changed = set()
         skipped_created = set()
         commands = []
@@ -836,6 +770,8 @@ def _recipe(sessions, excluded, worst, identity_excluded=(), endpoints=None):
             "blockerCoverage": coverage, "coveredChecks": covered, "aggregateRankGain": gain,
             "gainSource": source, "value": value,
             "tnsGain": _number((contribution.get("valueDetail") or {}).get("rankTnsGain")),
+            "advisories": sorted({advisory.get("code") for advisory in contribution.get("advisories") or []
+                                  if isinstance(advisory, dict) and _is_nonempty_string(advisory.get("code"))}),
             "commands": commands, "executedCount": len(commands) - skipped, "skipCount": skipped,
         })
 
@@ -848,8 +784,7 @@ def _recipe(sessions, excluded, worst, identity_excluded=(), endpoints=None):
               "codes": sorted({refusal.get("code") for refusal in contribution.get("refusals") or []
                                if isinstance(refusal, dict)})} for contribution in excluded]
             + [{"contribution": contribution["id"], "taskId": contribution.get("taskId"),
-                "codes": ["base-dump-mismatch"]} for contribution in identity_excluded]
-            + collided,
+                "codes": ["base-dump-mismatch"]} for contribution in identity_excluded],
             key=lambda item: item["contribution"]),
         "commandCount": command_count,
         "skipCount": skip_count,
@@ -904,11 +839,6 @@ def analyze(base_state_id, contributions, resolutions, worst_keys=None, worst_en
     ]
     endpoints = worst_endpoints if isinstance(worst_endpoints, dict) else {}
     recipe = _recipe(session_contributions, excluded_sessions, worst, identity_excluded, endpoints)
-    # #66 D5: a batch excluded as `domain-collision` leaves `considered`/`order` too, like a
-    # `base-dump-mismatch` one: it is not part of this batch at all.
-    collided_ids = {entry["contribution"] for entry in recipe["excluded"] if "domain-collision" in entry["codes"]}
-    considered_contributions = [contribution for contribution in considered_contributions
-                                if contribution["id"] not in collided_ids]
     considered_ids = sorted(contribution["id"] for contribution in considered_contributions)
     kind_by_id = {contribution["id"]: contribution.get("kind") for contribution in considered_contributions}
 
