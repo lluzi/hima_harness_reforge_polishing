@@ -1280,9 +1280,13 @@ export default class Hima extends Service {
         const totalAvailableMs=unreservedMs===undefined?20*60_000:Math.max(0,unreservedMs);
         const remainingMs=timeBoxRemainingMs(run,ownedWaitedMs(run))??20*60_000;
         // Leave admission-time clock drift outside the child share; authority re-reads the deadline.
-        budgetCeiling=Math.min(20*60_000,totalAvailableMs,Math.max(0,remainingMs-1_000));
+        // #66 H2a: a recipe Operator's share is the Pack's Team member share, held only to the lane and
+        // the time box; the 20-minute, one-follow-up, 5000-token ceiling is the Host's manual default.
+        budgetCeiling=Math.min(materializedFromRecipe?Number.POSITIVE_INFINITY:20*60_000,totalAvailableMs,Math.max(0,remainingMs-1_000));
         if(budgetCeiling<1)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation has no remaining Run time budget.'};
-        budgetDefault={maxElapsedMs:budgetCeiling,maxFollowups:1,maxTokensPerTurn:5_000};
+        budgetDefault=materializedFromRecipe
+          ?{maxElapsedMs:budgetCeiling,maxFollowups:(suppliedBudget.maxFollowups as number|undefined)??1,maxTokensPerTurn:(suppliedBudget.maxTokensPerTurn as number|undefined)??5_000}
+          :{maxElapsedMs:budgetCeiling,maxFollowups:1,maxTokensPerTurn:5_000};
       }
       const normalizedContract={delegationId,role:'operator' as const,task,inputRefs,nodeRef,allowedTools:['hima_interactive'],
         ...(workspaceRef===undefined?{}:{workspaceRef}),
