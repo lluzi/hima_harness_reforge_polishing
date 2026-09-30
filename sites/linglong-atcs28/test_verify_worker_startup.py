@@ -163,14 +163,18 @@ class VerifierTest(_VerifierFixture):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(sentinel.exists())
 
-    def test_manual_tcl_and_record_hash_changed_together_are_refused(self):
-        self.manual.write_text("exec arbitrary-command\n")
-        self.index["workers"]["w01"]["sessionTclSha256"] = core.file_sha256(self.manual)
-        self.index_path.write_text(json.dumps(self.index))
+    def test_a_prepared_session_tcl_that_differs_from_its_recorded_hash_is_refused(self):
+        self.manual.write_text(self.manual.read_text() + "exec arbitrary-command\n")
+        result = self.run_verifier()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("differs from its recorded sha256", result.stderr)
+
+    def test_a_missing_operator_tcl_is_refused(self):
+        (self.slot / "operator.tcl").unlink()
         self.assertNotEqual(self.run_verifier().returncode, 0)
 
-    def test_operator_tcl_change_is_refused(self):
-        (self.slot / "operator.tcl").write_text("exec arbitrary-command\n")
+    def test_a_missing_session_tcl_is_refused(self):
+        self.manual.unlink()
         self.assertNotEqual(self.run_verifier().returncode, 0)
 
     def test_sibling_slot_manifest_is_refused(self):
@@ -297,10 +301,10 @@ END DESIGN
 
 class PackPreparedSlotTest(_VerifierFixture):
     """T05 (#64 attempt 5, #66 D2): every operate-worker job exited 3 with "generated Tcl differs from
-    independent regeneration" before any Agent command. The fixture above prepares its slot with its own
-    copy of an older `prepare-workers` call; here the head's real `prepare-workers` prepares it, baking
-    the local topology, the fanout max and the regions derived from the base DEF, and the verifier must
-    regenerate those exact bytes."""
+    independent regeneration" before any Agent command: the verifier recompiled the session Tcl without the
+    ATCS-09 lines prepare-workers bakes (EDIT_DOMAIN_LOCAL, ATCS_LOCAL_FANOUT_MAX, derived regions). The
+    prepared session Tcl and operator.tcl are Runtime-owned inputs: the verifier keeps its static checks and
+    starts XTop from the prepared bytes. Here the head's real `prepare-workers` prepares the slot."""
 
     DEF_TEXT = PLACED_DEF
 
@@ -326,67 +330,39 @@ class PackPreparedSlotTest(_VerifierFixture):
         self.manual = Path(entry["sessionTcl"])
         return entry
 
-    def test_the_pack_prepared_session_is_regenerated_byte_for_byte(self):
+    def test_a_pack_prepared_slot_with_the_atcs09_lines_starts_from_its_prepared_bytes(self):
         entry = self.prepare_with_pack()
         self.assertIs(entry["localTopology"], True)
-        self.assertEqual(entry["localFanoutMax"], workspaces.LOCAL_FANOUT_MAX)
         self.assertEqual(entry["derivedRegions"], [[7.696, 17.696, 12.304, 22.304]])
-        self.assertEqual(entry["workPackage"]["editDomain"]["regions"], [])
-        prepared = self.manual.read_text()
-        self.assertIn("set ::EDIT_DOMAIN_LOCAL {1}\n", prepared)
-        self.assertIn("set ::EDIT_DOMAIN_REGIONS {7.696 17.696 12.304 22.304}", prepared)
+        prepared = self.manual.read_bytes()
+        for line in (b"set ::EDIT_DOMAIN_LOCAL {1}\n", b"set ::ATCS_LOCAL_FANOUT_MAX {12}\n",
+                     b"set ::EDIT_DOMAIN_REGIONS {7.696 17.696 12.304 22.304}"):
+            self.assertIn(line, prepared)
         result = self.run_verifier("w02")
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads(result.stdout)
         self.assertEqual(receipt["slotRoot"], str(self.slot))
-        # The trusted startup the wrapper launches is the prepared session, but for its operator path.
-        startup = Path(receipt["startup"]).read_text()
-        self.assertEqual(startup, prepared.replace(str(self.slot / "operator.tcl"),
-                                                   str(Path(receipt["startup"]).with_name("operator.tcl"))))
+        startup = Path(receipt["startup"])
+        self.assertTrue(startup.is_relative_to(self.admin))
+        self.assertEqual(startup.read_bytes(), prepared)
 
-    def test_a_plans_own_regions_are_regenerated(self):
-        entry = self.prepare_with_pack(regions=[(0, 0, 5, 5)])
-        self.assertEqual(entry["derivedRegions"], [])
+    def test_a_plans_own_regions_start_too(self):
+        self.prepare_with_pack(regions=[(0, 0, 5, 5)])
         result = self.run_verifier("w02")
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(Path(json.loads(result.stdout)["startup"]).read_bytes(), self.manual.read_bytes())
 
-    def rebake(self, **changes):
-        """A consistent forgery: the record, the session Tcl and its recorded hash changed together."""
-        entry = self.index["workers"]["w02"]
-        entry.update(changes)
-        bake = {"domain": dict(entry["workPackage"]["editDomain"], regions=entry["derivedRegions"]),
-                "local": entry["localTopology"], "fanout": entry["localFanoutMax"]}
-        manual = verify_module.compile_session(adapters, entry["workspaceManifest"], entry["workPackage"],
-                                               self.slot / "operator.tcl", self.slot / "ops.jsonl", bake)
-        self.manual.write_text(manual["tcl"])
-        entry["sessionTclSha256"] = core.file_sha256(self.manual)
-        self.index_path.write_text(json.dumps(self.index))
-        return self.run_verifier("w02")
-
-    def test_a_widened_fanout_max_is_refused(self):
+    def test_a_tampered_prepared_session_is_refused(self):
         self.prepare_with_pack()
-        result = self.rebake(localFanoutMax=100000)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("local fanout max differs", result.stderr)
-
-    def test_widened_derived_regions_are_refused(self):
-        self.prepare_with_pack()
-        result = self.rebake(derivedRegions=[[0.0, 0.0, 400.0, 400.0]])
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("derived regions differ", result.stderr)
-
-    def test_a_session_without_its_local_topology_is_still_refused(self):
-        self.prepare_with_pack()
-        entry = self.index["workers"]["w02"]
-        stale = verify_module.compile_session(adapters, entry["workspaceManifest"], entry["workPackage"],
-            self.slot / "operator.tcl", self.slot / "ops.jsonl",
-            {"domain": dict(entry["workPackage"]["editDomain"], regions=entry["derivedRegions"]),
-             "local": False, "fanout": None})
-        self.manual.write_text(stale["tcl"])
+        self.manual.write_text(self.manual.read_text().replace("{12}", "{100000}"))
         result = self.run_verifier("w02")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("generated Tcl differs", result.stderr)
+        self.assertIn("differs from its recorded sha256", result.stderr)
 
+    def test_a_missing_base_input_is_refused(self):
+        self.prepare_with_pack()
+        (self.w / "design.sdc").unlink()
+        self.assertNotEqual(self.run_verifier("w02").returncode, 0)
 
 FRESH = Path(__file__).with_name("fresh-worker-slot.py")
 WRAPPER_V13 = Path(__file__).with_name("atcs-xtop-operator-v13.sh")

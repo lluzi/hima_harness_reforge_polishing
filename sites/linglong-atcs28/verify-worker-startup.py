@@ -49,36 +49,6 @@ def verify_database_tree(directory, workspace, write_root, read_roots):
         else:
             plain(path, workspace)
 
-def session_bake(workspaces, adapters, entry, package, def_path):
-    """The session edit domain and local-topology bake `prepare-workers` recorded for this slot (#66 D2),
-    each checked against the trusted snapshot: the fanout max is the Pack's own policy and the derived
-    regions are derived again here from the verified base DEF, never taken from the record alone."""
-    local = entry.get("localTopology", False)
-    if not isinstance(local, bool):
-        raise ValueError("worker local-topology record is not a boolean")
-    fanout = workspaces.LOCAL_FANOUT_MAX if local else None
-    if local and entry.get("localFanoutMax") != fanout:
-        raise ValueError("worker local fanout max differs from the Pack's policy")
-    domain = dict(package.get("editDomain") or {})
-    derived = []
-    if not domain.get("regions") and def_path is not None and def_path.is_file():
-        derived = adapters.def_instance_regions(def_path, list(domain.get("instances") or []))
-        domain["regions"] = derived
-    if json.dumps(entry.get("derivedRegions", [])) != json.dumps(derived):
-        raise ValueError("worker derived regions differ from the base DEF")
-    return {"domain": domain, "local": local, "fanout": fanout}
-
-def compile_session(adapters, manifest, package, operator_path, ops, bake):
-    """The slot's session Tcl, compiled with exactly the arguments `prepare-workers` passes (Issue #64 Task 4:
-    the expert Operator's target pins, Tcl-side mutation budget and observation mode are baked in; #66 D2:
-    the local topology, its fanout max and the regions derived from the base DEF, per `session_bake`)."""
-    scope = package.get("scope")
-    extra = {"local_topology": True, "fanout_max": bake["fanout"]} if bake["local"] else {}
-    return adapters.compile_xtop_analysis_manual_task(manifest, bake["domain"], operator_path, ops,
-        target_pins=package.get("targetPins"),
-        max_mutations=scope.get("maxMutations") if isinstance(scope, dict) else None,
-        observe=package.get("observe"), **extra)
-
 def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_root):
     workspace = plain(workspace)
     if slot not in ("w01", "w02", "w03", "w04", "w05", "w06"):
@@ -103,7 +73,7 @@ def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_roo
         raise ValueError("source changed while preparing the trusted snapshot")
     sys.path.insert(0, str(trusted))
     import atcs_cli as cli
-    from atcs import core, adapters, workspaces
+    from atcs import core, workspaces
     base = cli._read_declared(plain(workspace / "state/working-state.json", workspace), "design-state")
     if base["top"] != profile["design"]:
         raise ValueError("base design differs from the administrator Site profile")
@@ -164,28 +134,25 @@ def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_roo
             path = plain(ref["path"])
             if not any(path.is_relative_to(read_root) for read_root in roots):
                 raise ValueError("timing library escapes qualified read roots")
-    operator = adapters.compile_xtop_operator_task(manifest, profile["design"], profile["techLef"],
-        profile["cellLefGlob"], str(workspace / base["netlist"]["path"]),
-        str(workspace / base["def"]["path"]), str(root), context)
+    # #64 T05: the session Tcl and operator.tcl are Runtime-owned inputs that prepare-workers generated. The
+    # verifier does not regenerate them: it checks they are plain files of this slot and that the session Tcl
+    # matches its recorded hash, and starts XTop from a copy of exactly those prepared bytes.
     operator_path = plain(root / "operator.tcl", root)
     manual_path = plain(root / "xtop-analysis-manual.tcl", root)
     ops = root / "ops.jsonl"
     if entry.get("opsLog") != str(ops) or entry.get("sessionTcl") != str(manual_path):
         raise ValueError("worker output/startup path mismatch")
-    def_path = plain(workspace / base["def"]["path"], workspace) if base.get("def") else None
-    bake = session_bake(workspaces, adapters, entry, package, def_path)
-    manual = compile_session(adapters, manifest, package, operator_path, ops, bake)
-    if (operator_path.read_text() != operator["tcl"] or manual_path.read_text() != manual["tcl"]
-            or file_hash(manual_path) != entry.get("sessionTclSha256")):
-        raise ValueError("generated Tcl differs from independent regeneration")
+    if not operator_path.is_file() or not manual_path.is_file():
+        raise ValueError("prepared session input is not a plain file")
+    manual = manual_path.read_bytes()
+    if hashlib.sha256(manual).hexdigest() != entry.get("sessionTclSha256"):
+        raise ValueError("prepared session Tcl differs from its recorded sha256")
     for path in root.rglob("*"):
         plain(path, root)
         if path.is_file() and path.stat().st_nlink != 1:
             raise ValueError("writable slot contains a multiply linked file")
-    trusted_operator = snapshot / "operator.tcl"
-    trusted_operator.write_text(operator["tcl"])
     trusted_manual = snapshot / "startup.tcl"
-    trusted_manual.write_text(compile_session(adapters, manifest, package, trusted_operator, ops, bake)["tcl"])
+    trusted_manual.write_bytes(manual)
     print(json.dumps({"startup": str(trusted_manual), "slotRoot": str(root), "flow": expected_flow}), flush=True)
 
 if __name__ == "__main__":
