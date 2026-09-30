@@ -1,0 +1,8 @@
+id: composition-checked
+version: "1"
+title: The composition analysis completed with a conflict count
+# The second rule of check-composition (ADR-0016): an Explore weighs a Judge of two rules, and a refused
+# composition goes to the owner's decision, so the Judge states that the count was read at all.
+requires: [{ type: tc_unresolved_conflict_count }]
+subject: { type: tc_unresolved_conflict_count }
+predicate: { op: gte, threshold: 0, unit: count }

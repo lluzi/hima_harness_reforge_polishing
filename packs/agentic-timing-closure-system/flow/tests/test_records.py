@@ -76,33 +76,25 @@ SPEC_VALUE_NAMES = [
     "tc_refresh_count",
     "tc_refreshes_completed",
     "tc_accepted_artifact_ready",
-    "tc_stop_required",
-    "tc_next_action",
+    "tc_slot_parked",
     "tc_selected_contribution_count",
 ]
 
-# The eleven base Judge rule ids plus the six single-predicate split-part ids that
-# the three compound rules (replay-consistent, final-evidence-ready,
-# required-constraints-pass) compile down to.
+# ADR-0016 (2026-09-29): the Judge rules the reshaped graph routes on -- identity, merge integrity
+# and the refresh-budget Goal cap, and the decision's evidence -- each named in SPEC "Judge rules".
 SPEC_RULE_IDS = [
     "inputs-ready",
-    "request-admissible",
-    "replay-consistent",
-    "composition-ready",
-    "presta-model-qualified",
-    "final-evidence-ready",
-    "required-constraints-pass",
-    "setup-goal",
-    "hold-goal",
-    "artifact-ready",
-    "continue-or-wait",
     "refresh-budget",
+    "request-admissible",
+    "request-checked",
+    "worker-result-admissible",
+    "composition-ready",
+    "composition-checked",
     "replay-consistent-mismatch",
     "replay-consistent-scope",
-    "final-evidence-ready-coverage",
     "final-evidence-ready-identity",
-    "required-constraints-pass-failures",
-    "required-constraints-pass-unknowns",
+    "setup-goal",
+    "hold-goal",
 ]
 
 
@@ -449,7 +441,8 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
         declared = re.findall(r"^    path: (\S+)$", CONTRACT_PATH.read_text(encoding="utf-8"), re.M)
         tool_written = [path for path in declared if path.split("/")[0] in ("state", "accepted", "apr")]
         self.assertTrue(tool_written)
-        self.assertIn("state/apr-task.json", tool_written, "the one APR task output is state/apr-task.json")
+        # ADR-0016: the earlier-APR route is retired from the reference graph, and with it state/apr-task.json.
+        self.assertNotIn("state/apr-task.json", tool_written)
         self.assertEqual(sorted(set(tool_written) - written), [], "contract.yml declares tool outputs atcs_cli.py never writes")
 
     def test_next_decision_reader_admits_exactly_the_cli_apr_stages(self):
@@ -474,16 +467,14 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
         for src, dst, outcome in edges:
             if outcome is None:
                 then.setdefault(src, []).append(dst)
+        # ADR-0016: the final evaluation's checks are facts the one decision reads, not a routed chain;
+        # the replay's integrity pair stays a chain, each Judge also carrying the other rule so the
+        # owner's decision after it weighs two verdicts.
         chains = [
             ["replay-consistent-mismatch", "replay-consistent-scope"],
-            ["final-evidence-ready-coverage", "final-evidence-ready-identity",
-             "required-constraints-pass-failures", "required-constraints-pass-unknowns",
-             "setup-goal", "hold-goal"],
         ]
         for chain in chains:
-            # A gate that re-judges every part of the chain at once (goal-met-gate) is not a chain start.
-            starts = [node for node, rule in first.items()
-                      if rule == chain[0] and not set(chain) <= set(nodes[node][1])]
+            starts = [node for node, rule in first.items() if rule == chain[0]]
             self.assertTrue(starts, f"no judge starts the chain {chain}")
             for start in starts:
                 seen, node = [first[start]], start

@@ -1,7 +1,9 @@
-// Issue #64 Track B: the ATCS expert Operator's loop, through the worker Team seam, with no model and
-// no EDA. The Pack's own fork runs from `prepare-workers` (slots w01 and w02 active, w03..w06 parked);
-// each active slot's Team (atcs-worker-NN version 4, scope mode) adopts a synthetic Researcher and a
-// Reviewer approving `{commands: [atcs_size_cell, atcs_undo], maxMutations: 3}`, and each Operator
+// Issue #64 Track B, reshaped 2026-09-29 (ADR-0016): the ATCS expert Operator's loop, through the
+// worker Team seam, with no model and no EDA. The Pack's own self-driving fork runs from
+// `prepare-workers` (slots w01 and w02 active, w03..w06 parked); each branch's author child (played by
+// this test through the Ledger handoff shape) writes its slot's request, whose own scope is
+// `{commands: [atcs_size_cell, atcs_undo], maxMutations: 3}`; the Harness materializes each active
+// slot's Operator (atcs-worker-NN version 5, request scope) from that request, and each Operator
 // session is the dry-path REPL (test/fixtures/atcs-dry-path/atcs-dry-repl.tcl): `tclsh` on the very
 // session Tcl `prepare-workers` rendered for the slot -- the Pack's typed `atcs_*` toolkit with its
 // edit domain, reference, gain and undo -- over the in-memory XTop of xtop-standin.tcl. The Operator's
@@ -14,7 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { appendFile, cp, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
-import { BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest, loadPack, packDigestExcludes, runDelegations } from '@hima/harness';
+import { BUILTIN_TCL_ADAPTER_DIGEST, WORKSHOP_ENTRY_SCHEMA, interactiveCommandsDigest, loadPack, packDigestExcludes, runDelegations } from '@hima/harness';
 import { repoRoot } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { localHome, waitUntil } from './support/fabric.ts';
@@ -31,10 +33,13 @@ const SCOPE = { commands: ['atcs_size_cell', 'atcs_undo'], maxMutations: 3 };
 test('ATCS expert Operator through the Team seam: a scope of three mutations admits three and refuses the fourth, undo is logged, an out-of-domain object is refused, and the kept log drops what was undone', async (t) => {
   process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
   process.env.HIMA_TEST_SILENT_AGENT = '1';
-  const prior = process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
+  const prior = { binding: process.env.HIMA_TEST_INTERACTIVE_BINDING_ID, results: process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS };
   process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = 'atcs-expert';
-  t.after(() => { if (prior === undefined) delete process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
-    else process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = prior; });
+  process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS = 'ledger';
+  t.after(() => {
+    if (prior.binding === undefined) delete process.env.HIMA_TEST_INTERACTIVE_BINDING_ID; else process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = prior.binding;
+    if (prior.results === undefined) delete process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS; else process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS = prior.results;
+  });
   const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local);
   const h = { ...local.h, workspace: await realpath(local.h.workspace) };
   const packsDir = path.join(h.home, 'hima/packs');
@@ -50,7 +55,11 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
   tool.interactive.argv = [wrapper, '${WORKSPACE}/flow/atcs-dry-repl.tcl', '${WORKSPACE}', '${SLOT}'];
   await writeFile(path.join(variant, 'contract.yml'), stringify(contract));
   const graph = parse(await readFile(path.join(variant, 'graph.yml'), 'utf8')) as any;
-  graph.entry = 'prepare-workers'; // the fork; the stages before it are the dry path's (atcs-dry group)
+  graph.entry = 'prepare-workers'; // the fork, opened by the owner; the stages before it are the dry path's (atcs-dry group)
+  graph.autopilot = graph.autopilot.filter((item: any) => item.fork !== undefined || item.from?.[0] === 'check-worker-results');
+  // Six authors and two Operators are charged against the Run's delegation time; each author's share
+  // is sized for this test, not a live Campaign's 15 minutes.
+  graph.autopilot.find((item: any) => item.fork !== undefined).author.maxElapsedMs = 120000;
   await writeFile(path.join(variant, 'graph.yml'), stringify(graph));
   for (const file of ['atcs-dry-repl.tcl', 'xtop-standin.tcl']) await cp(path.join(dry, file), path.join(variant, 'flow', file));
   const capsPath = path.join(h.workspace, 'caps.json');
@@ -110,7 +119,7 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
     'base=state.design_state(manifest); core.write_artifact(w/"state/working-state.json",base)',
     'caps={"design":"top","techLef":str(w/"lef"/"tech.lef"),"cellLefGlob":str(w/"lef"/"cells.lef"),"pgVerification":False,**f._write_xtop_context(w,base["id"],("func_ssg_rcworst","func_ffg_cbest"))}',
     'f._write_json(Path(sys.argv[4]),caps)',
-    'def active(slot, block): return {"taskId":slot,"baseStateId":base["id"],"problem":"setup at "+block+"/reg0/I","targets":["func_ssg_rcworst|setup|"+block+"/reg0/I"],"editDomain":{"instances":[block+"/reg0",block+"/reg1"],"nets":[],"regions":[]},"protected":{"instances":[],"nets":[]},"mayAffect":[],"actions":["size_cell"],"budget":{"xtopMinutes":1,"attempts":1},"targetPins":[block+"/reg0/I"],"scope":{"commands":list(workspaces.MUTATE_COMMANDS),"maxMutations":workspaces.SCOPE_MAX_MUTATIONS},"observe":"fast"}',
+    'def active(slot, block): return {"taskId":slot,"baseStateId":base["id"],"problem":"setup at "+block+"/reg0/I","targets":["func_ssg_rcworst|setup|"+block+"/reg0/I"],"editDomain":{"instances":[block+"/reg0",block+"/reg1"],"nets":[],"regions":[]},"protected":{"instances":[],"nets":[]},"mayAffect":[],"actions":["size_cell"],"budget":{"xtopMinutes":1,"attempts":1},"targetPins":[block+"/reg0/I"],"scope":{"commands":["atcs_size_cell","atcs_undo"],"maxMutations":3},"observe":"fast"}',
     'packages={s:({"taskId":s,"baseStateId":base["id"],"parked":True,"problem":"no blocker cluster left"} if s not in ("w01","w02") else active(s, "u_a" if s=="w01" else "u_b")) for s in workspaces.TASK_IDS}',
     'f._write_json(w/"research/requests/campaign-plan.json",{"candidate":{"workPackages":packages,"reason":"one block each"},"baseState":base,"siteCapabilities":{"pgVerification":False}})',
   ].join('\n'), path.join(repoRoot, 'packs', packId, 'flow'), path.join(repoRoot, 'packs', packId, 'flow/tests'), workspace, capsPath,
@@ -119,72 +128,59 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
 
   const control = () => host.ctx.hima.ledger.run(runId!)!.control!;
   const records = () => host.ctx.hima.ledger.records({ runId: runId! });
+  const deps = () => (host.ctx.hima as any).deps();
   let serial = 0;
-  const act = (action: string, fields: Record<string, unknown> = {}) => host.ctx.hima.executionAction({ runId: runId!, actor,
+  const act = (action: string, fields: Record<string, unknown> = {}) => host.ctx.hima.executionAction({ runId: runId!, actor, origin: 'agent',
     action: action as never, requestId: `expert-${++serial}`, expectedEpoch: control().epoch, expectedRevision: control().revision, ...fields });
-  const begin = async (nodeId: string) => {
-    const begun = await act('begin', { nodeId }); assert.equal(begun.kind, 'accepted', `begin ${nodeId}: ${JSON.stringify(begun)}`);
-    return begun.receipt!.executionId!;
-  };
-  const node = async (nodeId: string, entry?: string) => {
-    const id = await begin(nodeId);
-    if (entry !== undefined) {
-      assert.equal((await act('recommend', { executionId: id })).kind, 'accepted');
-      assert.equal((await act('write', { executionId: id, path: 'entry.py', content: entry })).kind, 'accepted');
-    }
-    assert.equal((await act('work', { executionId: id })).kind, 'accepted', nodeId);
-    await waitUntil(`${nodeId} settles`, () => ['ready', 'failed'].includes(control().executions[id]?.phase ?? ''), 30_000, 25);
-    assert.equal(control().executions[id]?.phase, 'ready', `${nodeId}: ${JSON.stringify(control().executions[id])}`);
-    assert.equal((await act('complete', { executionId: id })).kind, 'accepted', nodeId);
-    return id;
-  };
-  await node('prepare-workers');
+  const prepare = await act('begin', { nodeId: 'prepare-workers' }); assert.equal(prepare.kind, 'accepted', JSON.stringify(prepare));
+  const prepareId = prepare.receipt!.executionId!;
+  assert.equal((await act('work', { executionId: prepareId })).kind, 'accepted');
+  await waitUntil('prepare-workers settles', () => ['ready', 'failed'].includes(control().executions[prepareId]?.phase ?? ''), 30_000, 25);
+  assert.equal((await act('complete', { executionId: prepareId })).kind, 'accepted');
   const workers = JSON.parse(await readFile(path.join(workspace, 'state/workers.json'), 'utf8'));
-  // Each branch's Workshop writes its slot's request from the prepared package.
-  const entry = (slot: string) => [
-    'import json, sys', 'from pathlib import Path', 'w = Path(sys.argv[1])',
-    'workers = json.loads((w / "state/workers.json").read_text())',
-    `package = {k: v for k, v in workers["workers"]["${slot}"]["workPackage"].items() if k not in ("schema", "id")}`,
-    'request = {"candidate": package, "baseState": json.loads((w / "state/working-state.json").read_text()), "siteCapabilities": {"pgVerification": False}}',
-    `(w / "research/requests/worker-request-${slot}.json").write_text(json.dumps(request))`, ''].join('\n');
-  for (const slot of SLOTS) {
-    await node(`research-worker-${slot.slice(1)}`, entry(slot));
-    await node(`read-worker-request-${slot.slice(1)}`);
-  }
-  for (const slot of SLOTS.filter(slot => !ACTIVE.includes(slot))) await node(`operate-worker-${slot.slice(1)}`);
-
-  // Each active slot's Team: Researcher, a Reviewer approving SCOPE, the Operator's session.
-  const resultAndAdopt = async (delegationId: string, value: unknown) => {
-    const row = runDelegations((host.ctx.hima as any).deps(), runId!).find(item => item.delegationId === delegationId)!;
+  // Each branch's child is played through the Ledger's production handoff shape (no model claim).
+  const answer = async (delegationId: string, value: unknown) => {
+    const row = runDelegations(deps(), runId!).find(item => item.delegationId === delegationId)!;
     const text = JSON.stringify(value);
-    const record = await host.ctx.hima.ledger.appendDelegation(runId!, { delegationId, parentSessionId: actor,
-      childSessionId: row.childSessionId, requestId: 'result-' + delegationId, requestDigest: 'a'.repeat(64),
+    await host.ctx.hima.ledger.appendDelegation(runId!, { delegationId, parentSessionId: actor,
+      childSessionId: row.childSessionId, requestId: `result-${delegationId}-${++serial}`.slice(0, 160), requestDigest: 'a'.repeat(64),
       event: 'result-observed', payload: { candidate: true, source: 'native-live-session', handoff: {
         outputIdentity: createHash('sha256').update(JSON.stringify([{ type: 'text', text }])).digest('hex'),
         contract: { recordId: row.contractRecordId, requestDigest: row.requestDigest },
         output: { text, content: [{ type: 'text', text }], truncated: false }, completedTurn: { turn: 1, endSeq: 1 },
         unknowns: [], evidence: { artifactRefs: [], diffRefs: [], testRefs: [], limitations: ['synthetic model result'] },
       } } });
-    const adoption = await host.ctx.hima.delegate({ runId, actor, action: 'adopt', delegationId, resultRecordId: record.id,
-      requestId: 'adopt-' + delegationId, expectedEpoch: control().epoch, expectedRevision: control().revision } as never) as any;
-    assert.equal(adoption.status, 'accepted', JSON.stringify(adoption));
   };
+  // Each branch's author writes its slot's request from the prepared package.
+  const entry = (slot: string) => [
+    'import json, sys', 'from pathlib import Path', 'w = Path(sys.argv[1])',
+    'workers = json.loads((w / "state/workers.json").read_text())',
+    `package = {k: v for k, v in workers["workers"]["${slot}"]["workPackage"].items() if k not in ("schema", "id")}`,
+    'request = {"candidate": package, "baseState": json.loads((w / "state/working-state.json").read_text()), "siteCapabilities": {"pgVerification": False}}',
+    `(w / "research/requests/worker-request-${slot}.json").write_text(json.dumps(request))`, ''].join('\n');
+  await Promise.all(SLOTS.map(async slot => {
+    let id = '';
+    await waitUntil(`research-worker-${slot.slice(1)}'s author is asked`, () => {
+      const row = runDelegations(deps(), runId!).find(item => item.delegationId.startsWith(`autopilot-author-research-worker-${slot.slice(1)}-`) && item.state === 'accepted');
+      if (row !== undefined) id = row.delegationId;
+      return row !== undefined;
+    }, 60_000, 25);
+    await answer(id, { schema: WORKSHOP_ENTRY_SCHEMA, entry: entry(slot) });
+  }));
+
+  // Each active slot's Operator, materialized by the Harness from the slot's admitted request.
   const sessions = new Map<string, { executionId: string; planHash: string; operatorId: string; delegationId: string; toolSessionId?: string; root: string }>();
   for (const slot of ACTIVE) {
-    const executionId = await begin(`operate-worker-${slot.slice(1)}`);
+    let operator: ReturnType<typeof runDelegations>[number] | undefined;
+    await waitUntil(`${slot}'s Operator is materialized`, () => {
+      operator = runDelegations(deps(), runId!).find(row => row.effective.recipe?.teamId === `atcs-worker-${slot.slice(1)}` && row.effective.recipe.memberId === 'operator');
+      return operator !== undefined;
+    }, 60_000, 25);
     const planHash = createHash('sha256').update(await readFile(path.join(workspace, `research/requests/worker-request-${slot}.json`))).digest('hex');
-    const create = (memberId: string): Promise<any> => host.ctx.hima.delegate({ runId, actor, action: 'create', requestId: `create-${memberId}-${slot}`,
-      expectedEpoch: control().epoch, expectedRevision: control().revision,
-      recipe: { teamId: `atcs-worker-${slot.slice(1)}`, version: '4', memberId, executionId } } as never) as Promise<any>;
-    const researcher: any = await create('researcher'); assert.equal(researcher.status, 'created', JSON.stringify(researcher));
-    await resultAndAdopt(researcher.effectiveContract.delegationId, { schema: 'atcs-worker-research/1', hypotheses: ['size the block\'s reg0 up one step'],
-      evidenceRefs: researcher.effectiveContract.inputRefs, limitations: ['synthetic'] });
-    const reviewer: any = await create('reviewer'); assert.equal(reviewer.status, 'created', JSON.stringify(reviewer));
-    await resultAndAdopt(reviewer.effectiveContract.delegationId, { schema: 'atcs-worker-review/2', planSha256: planHash, scope: SCOPE,
-      evidenceRefs: reviewer.effectiveContract.inputRefs, limitations: ['synthetic'] });
-    const operator: any = await create('operator'); assert.equal(operator.status, 'created', JSON.stringify(operator));
-    sessions.set(slot, { executionId, planHash, operatorId: operator.receipt.childSessionId, delegationId: operator.effectiveContract.delegationId,
-      root: path.join(workspace, workers.workers[slot].root) });
+    assert.equal(operator!.effective.recipe!.inlinePayload!.planSha256, planHash, `${slot}'s Operator is bound to its request's bytes`);
+    assert.deepEqual((operator!.effective.recipe!.inlinePayload as any).scope, SCOPE, `${slot}'s scope is its request's own`);
+    sessions.set(slot, { executionId: operator!.effective.recipe!.executionId, planHash, operatorId: operator!.childSessionId,
+      delegationId: operator!.delegationId, root: path.join(workspace, workers.workers[slot].root) });
   }
   const interactive = (slot: string, body: any) => {
     const session = sessions.get(slot)!;
@@ -221,7 +217,7 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
   assert.match(fourth.reason, /admits at most 3 mutations in this approved execution; 3 were already admitted/);
   // Outside the scope is free and refused by the Host too; a read still answers.
   const outside = await input('w01', 'atcs_remove_buffer', { instance: 'u_a/reg1', planSha256: w01.planHash }, 'w01-outside');
-  assert.equal(outside.status, 'refused'); assert.match(outside.reason, /outside the immutable owner-adopted reviewed scope/);
+  assert.equal(outside.status, 'refused'); assert.match(outside.reason, /outside the immutable/);
   await ok('w01', 'atcs_gain', { check: 'setup', topN: 5 }, 'w01-gain');
   await ok('w01', 'atcs_dump_cells', { path: path.join(w01.root, 'after.dump') }, 'w01-after');
   await ok('w01', 'atcs_export_changes', {}, 'w01-export');
@@ -241,12 +237,10 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
   for (const slot of ACTIVE) {
     const session = sessions.get(slot)!;
     await waitUntil(`${slot}'s session is ready`, () => control().executions[session.executionId]?.phase === 'ready', 30_000, 25);
-    await resultAndAdopt(session.delegationId, { schema: 'atcs-worker-session/1', planSha256: session.planHash,
+    await answer(session.delegationId, { schema: 'atcs-worker-session/1', planSha256: session.planHash,
       mutationReceipts: slot === 'w01' ? ['w01-trial', 'w01-undo', 'w01-size'] : ['w02-foreign', 'w02-size'],
       stopReason: slot === 'w01' ? 'budget' : 'no-candidate-gains', limitations: ['synthetic Tcl; no commercial qualification'] });
-    assert.equal((await act('complete', { executionId: session.executionId })).kind, 'accepted');
   }
-
   // The session logs: w01 kept its trial, undid it (logged against the trial's seq) and kept reg0;
   // w02's refused out-of-domain call reached no XTop and left no line; nothing of mutation 4 exists.
   const lines = async (file: string) => (await readFile(file, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
@@ -260,9 +254,7 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
   assert.equal(interactiveInputs.filter(r => (r as any).payload?.scopeMutation === true).length, 3, 'the Host admitted exactly three w01 mutations');
 
   // The kept command log each capture seals, and the recipe replays: w01's undone trial is not in it.
-  for (const slot of SLOTS) { await node(`capture-worker-${slot.slice(1)}`); await node(`read-worker-result-${slot.slice(1)}`); }
-  await node('check-worker-results');
-  await node('collect');
+  await waitUntil('the join collects every slot', () => records().some(r => r.type === 'node' && r.nodeId === 'collect' && r.state === 'done'), 120_000, 50);
   const collected = JSON.parse(await readFile(path.join(workspace, 'state/contributions-collected.json'), 'utf8'));
   const sealed = (slot: string) => collected.contributions.find((item: any) => item.taskId === slot);
   assert.equal(sealed('w01').kind, 'xtop-session');

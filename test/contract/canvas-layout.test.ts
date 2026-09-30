@@ -413,7 +413,7 @@ test('the ATCS reference graph spreads into lanes where no two nodes or their la
   // Every node of the shipped graph is placed, however many it has (the count is read from graph.yml,
   // not written here, so a Pack change does not leave a stale number behind).
   assert.equal(scene.nodes.length, loadPack(packsDir, 'agentic-timing-closure-system').graph.nodes.length);
-  assert.ok(scene.nodes.length > 100);
+  assert.ok(scene.nodes.length > 60);
   const rows = new Set(scene.nodes.map((n) => n.row));
   assert.ok(rows.size >= 3, `expected several lanes, got rows ${[...rows].join(', ')}`);
   for (let i = 0; i < scene.nodes.length; i++) {
@@ -449,10 +449,6 @@ test('the six ATCS worker chains run side by side in their own lanes, between th
   assert.equal(join.y, fork.y, 'the join returns to the fork\'s own lane');
   const lanes = chains.map((chain) => chain[0]!.y);
   assert.equal(lanes.reduce((sum, y) => sum + y, 0) / lanes.length, fork.y, 'the six lanes fan symmetrically about the fork');
-  // A chain that no static edge enters (the earlier-APR detour, entered only through its revisit) is
-  // pulled up against the node it feeds rather than parked at the entry column.
-  assert.equal(at('apr-run').rank, at('extract').rank - 1, 'the earlier-APR detour sits right before the extract it feeds');
-  assert.equal(at('apr-prepare').rank, at('apr-run').rank - 1, 'the whole detour chain slides up with it');
 });
 
 for (const packId of shippedPackIds) {
@@ -484,7 +480,8 @@ test('the ATCS outcome chips sit clear of one another and of every node\'s glyph
   const scene = shippedScene('agentic-timing-closure-system');
   // `FabricCanvas`'s own chip pill: `text.length * 6.5 + 16` wide, 18 tall, centred on the chip point.
   const chips = scene.edges.flatMap((e) => e.chip === undefined ? [] : [{ edge: `${e.from} -> ${e.to}`, left: e.chip.x - (e.chip.text.length * 6.5 + 16) / 2, right: e.chip.x + (e.chip.text.length * 6.5 + 16) / 2, top: e.chip.y - 9, bottom: e.chip.y + 9 }]);
-  assert.ok(chips.length > 60);
+  // ADR-0016: every in-loop Judge labels its three outcomes, nine Judges of them.
+  assert.ok(chips.length >= 20);
   for (let i = 0; i < chips.length; i++) {
     for (let j = i + 1; j < chips.length; j++) assert.ok(!overlaps(chips[i]!, chips[j]!), `the chips of ${chips[i]!.edge} and ${chips[j]!.edge} overlap`);
     for (const n of scene.nodes) {
@@ -501,7 +498,8 @@ test('the ATCS revisit arcs nest by span above the lanes instead of drawing over
   // One arc per `revisit: true` edge of the shipped graph, counted from graph.yml.
   assert.equal(arcs.length, (loadPack(packsDir, 'agentic-timing-closure-system').graph.edges as { revisit?: boolean }[])
     .filter((edge) => edge.revisit === true).length);
-  assert.ok(arcs.length >= 9);
+  // ADR-0016: one decision per generation, so one revisit arc, from the decision to the next generation.
+  assert.ok(arcs.length >= 1);
   const apex = (d: string) => Math.min(...samplePath(d).map((p) => p.y));
   const top = Math.min(...scene.nodes.map((n) => n.y)) - NODE / 2;
   for (const arc of arcs) {
@@ -511,7 +509,7 @@ test('the ATCS revisit arcs nest by span above the lanes instead of drawing over
   const spanOf = (e: typeof arcs[number]) => Math.abs(scene.nodes.find((n) => n.id === e.from)!.x - scene.nodes.find((n) => n.id === e.to)!.x);
   const widest = arcs.reduce((a, b) => (spanOf(b) > spanOf(a) ? b : a));
   const narrowest = arcs.reduce((a, b) => (spanOf(b) < spanOf(a) ? b : a));
-  assert.ok(apex(widest.path) < apex(narrowest.path), 'a wider back-edge rises higher than a narrow one');
+  if (arcs.length > 1) assert.ok(apex(widest.path) < apex(narrowest.path), 'a wider back-edge rises higher than a narrow one');
 });
 
 // #41 task 6: the node card's own words — a Job folded to what a person reads on its Job tab, and

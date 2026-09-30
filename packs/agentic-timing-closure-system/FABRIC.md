@@ -58,32 +58,37 @@ helper from `flow/atcs_cli.py`.
 - `test/contract/agentic-timing-closure-system.test.ts` — node/edge count assertion only (Issue
   #64 Task 5: 132 nodes, 172 edges).
 
-How the reference graph expresses SPEC behaviour 1–9:
+2026-09-29 reshape (ADR-0016, Pack 0.2.0 generation shape): the file list above is Task 14's
+history. The graph now has 81 nodes and 103 edges (from 136/178): the in-loop owner decisions
+(`decide-next`, `read-next-decision`, `check-next-decision`, `check-continue`, the `route-*` Judges
+and `revisit-*` Explores, the earlier-APR detour and the observation-request Workshop) are gone with
+their readers, rules, outputs and the chooser `atcs-revisit`; `rules/composition-checked.yml` is new.
 
-- Inputs and baseline: `bind-inputs` → `inputs-ready` (FAIL → wait) → `baseline` (seeds
-  `state/working-state.json`) → `observe-baseline` → `policy` (Goal targets bound from the Run) →
-  `physical-baseline` → `risk` → `residual` (PT path-detail evidence for the baseline's failing
-  checks) → the owner's first decision, `evaluate-next-investment`, taken on the baseline itself.
-- Research: `diagnose-and-observe` → `request-admissible` (FAIL revisits the Workshop) →
-  `observe-query` → `risk` → `bind-worker-slots` (the `workerSlots` knob) → `plan-campaign` →
-  `request-admissible` → `prepare-workers`, which forks six parallel branches, one per slot w01..w06
-  (Workshop → request reading → operate: the Team Operator's XTop session, or the `operate-parked`
-  no-op → `capture-contribution` → result reading), joined at `check-worker-results`
-  (`worker-result-admissible`, both outcomes) → `collect`.
-- Composition: `compose-facts` (no resolutions) → `compose-contributions` → `request-admissible` on
-  the one integration-plan document → `compose-facts` again with the admitted plan's resolutions →
-  `composition-ready` → `replay-prepare` → `reconcile` → `replay-consistent-mismatch` →
-  `replay-consistent-scope` → `presta` → `presta-model-qualified` (FAIL → next decision).
-- Implementation: `implement` → `extract` → `sta` → `physical` → `evaluate` → coverage → identity →
-  constraint failures (FAIL → `adopt`, where M7 bars best/delivery) → constraint unknowns → setup
-  Goal → hold Goal → `adopt` → `artifact-ready` → `residual` → `record-experience` → next decision.
-- Decision: `request-admissible` → `continue-or-wait` (FAIL → wait) → routing Judges on
-  `tc_next_action` (observe, research, compose, revise, implement, earlier-apr, goal-met), each
-  ending in its own Explore node's single revisit edge.
-- Earlier APR (executable): fresh readiness reading → `check-apr-scope` → `apr-prepare` (stage from
-  the admitted next-decision) → `apr-run` (Innovus) → the implementation chain from `extract`.
-- Goal met: fresh readings of the acceptance record and the final evaluation → every final rule
-  again → `atcs-goal-met`, which the Harness refuses unless every gate verdict passed.
+How the reference graph expresses SPEC behaviour 1–9 (current):
+
+- Inputs and baseline (autopilot segment `bind-inputs` .. `plan`): `bind-inputs` → `inputs-ready`
+  (FAIL/UNDETERMINED → wait, the honest end) → `baseline` → `observe-baseline` → `policy` →
+  `physical-baseline` → `risk` → `residual` → `read-refresh-budget` → `refresh-budget` (the Goal cap;
+  FAIL/UNDETERMINED → wait, the honest end) → `bind-worker-slots` → the owner's `plan`.
+- Plan (owner Workshop `plan-campaign`) → `request-admissible`, `request-checked` (FAIL/UNDETERMINED →
+  the owner's decision) → `prepare-workers`, which forks six self-driving branches, one per slot
+  w01..w06 (the branch author's Workshop → request reading → operate: the Operator's XTop session
+  working from the embedded request inside its own scope, or the `operate-parked` no-op → capture →
+  result reading), joined at `check-worker-results` (every outcome collects).
+- Merge (autopilot segment `check-worker-results` .. `compose`): `collect` → `compose-facts` → the
+  owner's `compose` Workshop; then (autopilot segment `read-integration-plan` .. `decide`)
+  `request-admissible` → the admitted composition facts → `composition-ready`, `composition-checked`
+  → `replay-prepare` → `reconcile` → replay mismatch and scope (identity and domain integrity) →
+  `presta`, read as advice.
+- One refresh: `implement` → `extract` → `sta` → `physical` → `evaluate` → `adopt` → the acceptance
+  reading → `observe-working` (the automatic re-observation of the working state) → risk, residual,
+  `record-experience` → a fresh final-evaluation reading → `check-generation`
+  (`final-evidence-ready-identity`, setup Goal, hold Goal; every outcome goes to the decision).
+- Decision: `decide` (Explore, chooser `atcs-goal-met`) — continue: the next generation from the
+  working state, entering at `read-refresh-budget`; stop: the honest end, goal not met. A goal-met
+  choice is refused unless every gate verdict passed.
+- Every in-loop Judge labels PASS, FAIL and UNDETERMINED; only the input and refresh-budget gates
+  reach `wait-for-person`. Everything else a Reader finds is advice in its problems file.
 - There is no `converge` block; the Run's budget ending is the Runtime's.
 
 ## Gaps
@@ -681,3 +686,9 @@ Known gaps carried from earlier tasks:
     `precision: gba`, documented why.
   - **Pending re-review**: this FABRIC.md's own G27-G33 and the four batches' combined diff have not
     yet had a second reviewer pass since batch C landed.
+- 2026-09-29 reshape (ADR-0016, #64): the generation is plan → six self-driving branches → merge →
+  one refresh → evaluate → automatic re-observation → one owner decision. The Reviewer is optional
+  advice, the Operator is materialized from the admitted request with every field embedded in its
+  task, an Operator-requested close settles its node done, and capture reads exactly the dump names
+  the Operator template states (`before.dump`, `after.dump`). No re-review loop by direction; the gate
+  is the green Pack suite, the contract tests and the dry path's measured wall time.

@@ -988,7 +988,7 @@ class TaintAndFailureTest(unittest.TestCase):
             "set ::stub_fail {}\n"
             f"T next {{atcs_size_cell U2 INVX2 {PLAN}}}\n"
             "T export {atcs_export_changes}\n"
-            f'T dump {{atcs_dump_cells "{Path("/dev/null")}"}}\n'
+            "T dump {atcs_dump_cells before.dump}\n"
         )
         status, message = session.outcome("size")
         self.assertEqual(status, "ERR")
@@ -1727,7 +1727,7 @@ class KnowledgeSurfaceTest(unittest.TestCase):
         "set ::stub_fix_effect {U1 BUFX2}\n"
         f"T fs {{{SETUP} U1/A {{split_net}} 0 1 high 0.0 0.02 {PLAN}}}\n"
         f"T undo {{atcs_undo {PLAN}}}\n"
-        f'T dump {{atcs_dump_cells "{Path("/dev/null")}"}}\n'
+        "T dump {atcs_dump_cells before.dump}\n"
         "T export {atcs_export_changes}\n"
     )
     TAGS = ("ref", "gain", "paths", "reasons", "c1", "c2", "c3", "size", "exch", "ins", "dummy", "sl", "sn",

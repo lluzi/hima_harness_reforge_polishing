@@ -6,11 +6,11 @@
 
 **探索的对象**：多个独立 workspace 各自研究并试改一组 timing checks（可以是共享 driver 的 setup/hold 窗口、某个区域的 fanout/SI 等耦合问题），产出带 base/state-out、确定操作、脚本与实际效果证据的 ECO Contribution。
 
-**测量的对象**：`tc_*` 系列 typed value（详见 SPEC.md 的 Semantics 章节），其来源分别是输入核验、请求校验、Contribution 重放/组合分析、PT/XTop 预演、最终 PrimeTime STA 与身份核验、物理 DRC/connectivity 检查、以及 `next-decision` 产物。closure 的联合判据是 `tc_final_setup_wns_ns >= 0.0` 且 `tc_final_hold_wns_ns >= 0.0`，在固定合格 PBA 口径、全部必要 checks 覆盖、身份核验通过、必需约束通过之后才成立。
+**测量的对象**：`tc_*` 系列 typed value（详见 SPEC.md 的 Semantics 章节），其来源分别是输入核验、请求校验、Contribution 重放/组合分析、PT/XTop 预演、最终 PrimeTime STA 与身份核验、物理 DRC/connectivity 检查、以及每代末自动重新观测的工作态。closure 的联合判据是 `tc_final_setup_wns_ns >= 0.0` 且 `tc_final_hold_wns_ns >= 0.0`，在固定合格 PBA 口径、全部必要 checks 覆盖、身份核验通过、必需约束通过之后才成立。
 
-**结束的方式**：timing closure（goal-met）、缺输入/能力（wait）、当前允许范围内无值得继续动作（`tc_stop_required=1` 到 wait）、预算耗尽（Runtime 已有 budget ending）、用户暂停/取消。任何一种结束都不等同于整芯 signoff 或 tapeout-ready；预算耗尽不叫 converged 或 clean。
+**结束的方式**：timing closure（goal-met）、缺输入/能力（wait）、owner 在每代唯一的决定处选择诚实停止（目标未达成）、refresh 上限用尽（到 wait）、预算耗尽（Runtime 已有 budget ending）、用户暂停/取消。任何一种结束都不等同于整芯 signoff 或 tapeout-ready；预算耗尽不叫 converged 或 clean。
 
-**人不应猜测的地方**：`auto` 的范围判定结果（full-flow 还是 post-route-only，以及缺项列表）；一次 Contribution 是否已经被真正采用（必须来自数据库对象关系，不能靠命名匹配）；一次 nextDecision 的 `action` 编码含义；封批是否等待了全部 worker（不是）；工作态与最佳态哪个是可交付的（`bestVerifiedState`，不是 `workingState`）。
+**人不应猜测的地方**：`auto` 的范围判定结果（full-flow 还是 post-route-only，以及缺项列表）；一次 Contribution 是否已经被真正采用（必须来自数据库对象关系，不能靠命名匹配）；封批是否等待了全部 worker（不是）；工作态与最佳态哪个是可交付的（`bestVerifiedState`，不是 `workingState`）。
 
 **source-linked 反例**（继承自 B_lazy 已跑通的同一 Foundation Flow 与 Run 证据，供后续 Reader/Rule 测试使用，见 Golden Flow 一节）：
 - 真零 vs 缺值：B_lazy Run `run-ddabd488-f05c-44d6-9c9b-45abccaff226` 的 `endpointDelta` 报告 `missing: 6`——六个端点身份在新报告中消失而非被修复；这必须落在 `tc_missing_prior_check_count`/`tc_fixed_check_count` 的“消失不计 fixed”规则下，不能被读成 `tc_fixed_check_count += 6`。

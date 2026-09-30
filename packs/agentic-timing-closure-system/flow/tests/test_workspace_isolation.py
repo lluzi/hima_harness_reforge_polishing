@@ -253,11 +253,17 @@ class ExpertScopeWorkPackageTest(unittest.TestCase):
                 scope = {"commands": commands, "maxMutations": 120}
                 self.assertGreaterEqual(self._problems(self._package(scope=scope)), 1)
 
-    def test_the_tcl_side_budget_equals_the_recipe_cap(self):
-        for budget in (1, 119, 121, 201, True, "120", 120.0):
+    def test_the_request_budget_is_one_to_the_recipe_cap(self):
+        # ADR-0016: the request's own scope is the one the Host binds, so a budget below the cap is
+        # the request's to choose; outside 1..120 or not an integer it is refused.
+        for budget in (0, 121, 201, True, "120", 120.0):
             with self.subTest(budget=budget):
                 scope = {"commands": ["atcs_size_cell", "atcs_undo"], "maxMutations": budget}
                 self.assertGreaterEqual(self._problems(self._package(scope=scope)), 1)
+        for budget in (1, 119, 120):
+            with self.subTest(budget=budget):
+                scope = {"commands": ["atcs_size_cell", "atcs_undo"], "maxMutations": budget}
+                self.assertEqual(self._problems(self._package(scope=scope)), 0)
 
     def test_a_scope_has_exactly_commands_and_max_mutations(self):
         for scope in ({"commands": ["atcs_undo"]}, {"commands": ["atcs_undo"], "maxMutations": 120, "effort": "high"},

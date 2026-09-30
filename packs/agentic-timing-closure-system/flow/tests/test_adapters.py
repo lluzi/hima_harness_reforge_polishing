@@ -669,14 +669,48 @@ class DumpCellsTest(unittest.TestCase):
         )
         (run_root / "operator.tcl").write_text(operator_task["tcl"], encoding="utf-8")
         script_path = tmp / "dump-session.tcl"
-        dump_path = tmp / "cells.dump"
+        # #64 D-T03-2: the typed dump writes only before.dump or after.dump, always in the slot root.
+        dump_path = run_root / "before.dump"
         script_path.write_text(
-            _STUB_PROCS + analysis_task["tcl"] + f'\natcs_dump_cells "{dump_path}"\n', encoding="utf-8",
+            _STUB_PROCS + analysis_task["tcl"] + f'\natcs_dump_cells "{tmp / "elsewhere" / "before.dump"}"\n', encoding="utf-8",
         )
         result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         parsed = contributions_module.parse_cell_dump(dump_path.read_text(encoding="utf-8"))
         self.assertEqual(parsed, {"U_IN_DOMAIN": "MASTERX", "U_OUT_DOMAIN": "MASTERX"})
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class DumpNameConfinementTest(unittest.TestCase):
+    """#64 D-T03-2: an Operator that named its dumps w04-before.dump left capture nothing to seal. The
+    typed dump states the two names capture seals and refuses any other, before writing anything; the
+    replay's own dumps go through atcs_write_cell_dump, which no typed command reaches."""
+
+    def test_any_other_name_is_refused_naming_the_two(self):
+        tmp = _tmp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        for name in ("tech.lef", "cells.lef", "netlist.v", "design.def"):
+            (tmp / name).write_text("stub", encoding="utf-8")
+        run_root = tmp / "run"
+        run_root.mkdir()
+        manifest = {"namePrefix": "atcs_w04_r1_"}
+        operator_task = adapters.compile_xtop_operator_task(
+            manifest, "top", str(tmp / "tech.lef"), str(tmp / "cells.lef"),
+            str(tmp / "netlist.v"), str(tmp / "design.def"), str(run_root), _xtop_context(tmp),
+        )
+        analysis_task = adapters.compile_xtop_analysis_manual_task(
+            manifest, {"instances": [], "nets": []}, run_root / "operator.tcl", run_root / "ops.jsonl", max_mutations=1,
+        )
+        (run_root / "operator.tcl").write_text(operator_task["tcl"], encoding="utf-8")
+        script_path = tmp / "dump-names.tcl"
+        script_path.write_text(_STUB_PROCS + analysis_task["tcl"]
+                               + '\nputs [catch {atcs_dump_cells w04-before.dump} message]\nputs $message\n', encoding="utf-8")
+        result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("1\natcs_dump_cells writes only before.dump or after.dump", result.stdout)
+        self.assertFalse((run_root / "w04-before.dump").exists())
+        self.assertFalse((tmp / "w04-before.dump").exists())
+        self.assertIn("atcs_write_cell_dump", (PACK_DIR / "flow" / "templates" / "xtop-replay.tcl").read_text(encoding="utf-8"))
 
 
 class XtopReplayWorkspaceTest(unittest.TestCase):

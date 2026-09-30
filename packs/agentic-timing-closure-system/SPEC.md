@@ -6,7 +6,7 @@
 
 建议的 Goal 参数为 `target_setup_wns_ns = 0.0`、`target_hold_wns_ns = 0.0`，单位 ns，表示最终有效分析中必要 checks 的最差 slack 下限；项目若另有已批准的正 margin 要求，在开始前固定，不在探索中改变。最终分析允许采用预先确定、覆盖合格的 PBA 口径，不要求 GBA 同时 clean。
 
-Goal 另含 `max_physical_refreshes`（count，1–4，默认 2）：本 Run 允许完成的完整物理刷新次数上限。它由人在创建 Run 时固定，Run 内的 Strategy 决定或修订都不能改变它；用尽后 Run 停在 `wait-for-person` 并结束，需要更多刷新须以更高的值新建 Run。
+Goal 另含 `max_physical_refreshes`（count，1–4，默认 2）：本 Run 允许完成的完整物理刷新次数上限。它由人在创建 Run 时固定，Run 内的 Strategy 决定或修订都不能改变它；每一代开始时由刷新预算 gate 检查，用尽后 Run 到达 `wait-for-person`（诚实结束，它没有出边，清除即结束），需要更多刷新须以更高的值新建 Run。
 
 主要业务结果是可恢复、与最终证据一致的 Innovus 数据库。优化优先级是：在生效资源/成本硬上限内最早获得合格结果；其后报告 seat-hours、工程师时间、完整物理刷新次数与其他代价。不给本 SPEC 写未经测量的倍数承诺。
 
@@ -91,8 +91,7 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 | 产物 | 唯一汇总生产者 | 主要消费者 |
 |---|---|---|
 | `baselineState` / `inputReadiness` | 状态绑定与输入核验工具 | 所有研究及模式判断 |
-| `currentObservations` | 观察汇总工具，引用各工具原始结果 | diagnose、plan、worker |
-| `observationRequest` | diagnose Workshop | 请求校验与查询工具 |
+| `currentObservations` | 观察汇总工具，引用各工具原始结果；每代刷新后在工作状态上自动重测 | plan、worker、owner 决定 |
 | `riskAtlas` | 风险汇总工具，事实/假设分区 | planner 与阶段决策 |
 | `campaignPlan` | plan Workshop | owner、工作区准备、委派 |
 | `workerManifestNN` / `workerResultNN` | 对应 worker 准备/结果捕获工具 | worker 与 collect |
@@ -103,11 +102,10 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 | `precheckEvidence` / `physicalDelta` | 各检查原件的汇总工具 | 下一次投入决策 |
 | `finalEvaluation` | 最终测量汇总工具 | Reader、Judge、采用 |
 | `acceptanceRecord` / `campaignExperience` | 采用 / 经验记录工具 | 后续状态、报告、结束 |
-| `nextDecision` | 下一项投入 Workshop | owner 及确定决策合法性检查 |
 
 `NN` 必须在方法编译时展开为有界 slots 或经现有受控委派结果引用实现，不假设 Harness 支持任意动态 output 名。产物入口可更新，历史原件和所引用的版本不得覆盖。模型不能直接写出 `finalEvaluation` 中的测量值。
 
-**编译决策：worker slots 与 Workshop 目录**（本任务固定，供后续 FABRIC/Workshop 编译直接引用，不再作为开放问题）：worker slots 精确为 6 个（Issue #64 Task 5 由 3 个扩为 6 个并行 fork 分支）：`workerRequest01`..`workerRequest06`；`workerResult01`..`workerResult06`；准备结果统一记录在 `workerManifests`（`state/workers.json`）。`NN` 在编译时展开为这六个有界 slots，不存在第七个或动态命名的 worker 产物；Strategy 旋钮 `workerSlots`（1..6，默认 6）之上的 slot 与计划停放（parked）的 slot 以无操作分支运行。对应的 Workshop 目录固定为 `research/diagnose`、`research/plan`、`research/worker-01`..`research/worker-06`、`research/compose`、`research/next`。每个 Workshop 的 argv 固定为 `[python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']`：三个操作数分别是本次生成的程序、Campaign 根和本次私有代码目录，不按猜测的父目录层数反推路径。
+**编译决策：worker slots 与 Workshop 目录**（本任务固定，供后续 FABRIC/Workshop 编译直接引用，不再作为开放问题）：worker slots 精确为 6 个（Issue #64 Task 5 由 3 个扩为 6 个并行 fork 分支）：`workerRequest01`..`workerRequest06`；`workerResult01`..`workerResult06`；准备结果统一记录在 `workerManifests`（`state/workers.json`）。`NN` 在编译时展开为这六个有界 slots，不存在第七个或动态命名的 worker 产物；Strategy 旋钮 `workerSlots`（1..6，默认 6）之上的 slot 与计划停放（parked）的 slot 以无操作分支运行。对应的 Workshop 目录固定为 `research/plan`、`research/worker-01`..`research/worker-06`、`research/compose`。每个 Workshop 的 argv 固定为 `[python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']`：三个操作数分别是本次生成的程序、Campaign 根和本次私有代码目录，不按猜测的父目录层数反推路径。
 
 **Tools、wrappers 与实际启动路径**：
 
@@ -125,14 +123,16 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 **参考图的行为合同**：
 
 1. 绑定并核验输入，确定范围，形成共同基线和初始观察。
-2. Agent 选择补查、拆分工作、继续已有研究、组合、真实试验或结束说明。
+2. owner 在计划 Workshop 中把当前问题拆成六个有界 slot；补查不是路由出来的决定，每次刷新后在工作状态上自动重测。
 3. 在私有 workspace 中，Operator 持续分析→有界试改→检查→修订/提交；查询可以返回同一研究上下文，不强制完整重跑。
 4. 收集就绪贡献，生成交互/依赖事实；Agent 按等待价值与成本决定是否封批。
 5. 集成 session 从明确父状态重放具体修改。重复去重；冲突局部协商/rebase；其余有效贡献保留。原子组不可无记录拆分。
 6. 适用的联合预验证通过或有充分理由进行受控物理试验后，从集成状态统一导出。
 7. Innovus 落实、物理差异检查、新 RC、全部必要 STA 与动作相关检查形成真实评价。
-8. 更新 working/best/delivery 相应指针，记录经验，并由当前 owner 作下一决定。
-9. 在 full-flow 范围，可基于总时间判断直接执行已声明早期 APR 阶段；post-route-only 不创建该类 Job。
+8. 更新 working/best/delivery 相应指针，在工作状态上重测并更新风险与 residual，记录经验，并由当前 owner 作这一代唯一的决定：继续下一代或停止。
+9. 早期 APR 阶段路由在本版参考图中不启用（2026-09-29 形状）；其工具与知识保留为方法资料，恢复需修订参考图。
+
+**一代的形状（用户决定 2026-09-29，ADR-0016）**：计划 → 六个自驱专家分支 → 合并（compose、replay、reconcile、presta）→ 一次刷新 → 评价 → 自动重测 → owner 的唯一决定。决定只有两个结果：从工作状态继续下一代（revisit 回到每代开始的刷新预算 gate），或停止（诚实结束，`stop` 决定）；全部必需判定 PASS 时也可 goal-met。owner 只在计划 Workshop、合并 Workshop（join 处的 compose）与决定处行动；其余由参考图的 `autopilot` 声明交给 Harness 自驱：分支 Workshop 由分支自己的 child Agent 编写（Reader 拒绝时按逐条问题修订），Operator 以请求原文为任务、以请求自身的 scope 为边界，schema 有效的成员结果自动采用。一代之内不向人提问；`wait-for-person` 只是诚实结束（最低输入缺失、刷新上限用尽）。
 
 同一候选必要验证可以用完整汇合的 fork。全部研究任务不绑定为一个必须全部结束的 fork；现有 owner/委派/独立 Job 方式收集就绪成果，批次内再使用合适的执行形状。具体图、Workshop 形状与恢复行为必须在未来 `hima_pack_check` 和现有 Harness 测试面验证；本 SPEC 不声称已验证动态封批的实现。
 
@@ -152,7 +152,8 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 |---|---|---|---|
 | `tc_required_input_missing_count` | count | 输入核验；post-route 最低必要输入缺项数 | 显式核验才可为 0 |
 | `tc_lifecycle_available` | count | full-flow 完整性成立为 1，否则 0 并附缺项 | 未完成核验为 unknown |
-| `tc_request_invalid_count` | count | typed 请求结构/引用/范围的失败项；覆盖 `observationRequest`、`work-package` 等请求类产物，也覆盖 `next-decision` 本身的 schema/结构失败项（例如 `action` 不在允许枚举内、缺必需字段、引用的 state/observation/budget 不可解析） | 合法性报告完整才可为 0；对应产物未经过完整合法性校验则 unknown |
+| `tc_request_invalid_count` | count | typed 请求的身份与合并完整性失败项（`campaignPlan`、`work-package`、`workerRequestNN`、`integrationPlan`）；其余发现写入 problems 文件作为 advice，不计数 | 合法性报告完整才可为 0；对应产物未经过完整合法性校验则 unknown |
+| `tc_slot_parked` | count | worker 请求的 candidate 为 parked 形状时为 1，活动 slot 为 0；worker Team 的 `batchWhen` 读取它，决定走 batch no-op | 无可读 candidate 为 unknown |
 | `tc_pending_research_count` | count | 当前实际未完成研究数 | 不是必须等于 0 才可封批 |
 | `tc_ready_contribution_count` | count | 合同有效、可进入当前集成的提交数 | 有效 no-fix 不计作修复贡献 |
 | `tc_worker_refusal_count` | count | 单个 worker 槽位已封存 Contribution 的拒绝项数（`refusals[]`；不可接纳的 Contribution 至少计 1）；worker fork 的 join `check-worker-results` 以此逐分支判定 | 可接纳的 xtop-session、no-fix 与 parked no-fix 为 0 |
@@ -174,11 +175,7 @@ Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pa
 | `tc_refresh_count` | count | 已完成的实际完整物理刷新次数 | 与研究次数、generation 分开 |
 | `tc_refreshes_completed` | count | 刷新预算 gate 处读取的已完成完整物理刷新次数（`state/refresh-ledger.json`） | 与 `tc_refresh_count` 同一事实、不同缺席规则：从未写过账本且无 STA 回执为 known(0)；账本缺失但存在 STA 回执或其归档、或账本不可验证为 unknown |
 | `tc_accepted_artifact_ready` | count | 对应选择的实际 DB/恢复材料核验完备为 1 | 存在同名文件不足以为 1 |
-| `tc_stop_required` | count | 当前研究合同内必须等待外部输入/范围条件成立为 1 | 配套明确 reason；不是全局不可行证明 |
-| `tc_next_action` | count | 下一项投资决策；来自通过 schema 校验的 `next-decision` 产物的 `action` 字段编码 | 编码为 1 observe、2 research、3 compose、4 revise、5 implement、6 earlier-apr、7 wait、8 goal-met；只在 `next-decision` 通过 schema 校验时产生对应编码，否则为 unknown |
 | `tc_selected_contribution_count` | count | 当前 `integration-plan` 的 `select` 列表长度，即本批次选定进入集成重放的贡献数 | `select` 明确为空但仍需封批（例如 no-fix 批次）时为 0；未产生有效 `integration-plan` 为 unknown |
-
-`tc_next_action` 与 `tc_stop_required` 来自同一个 `next-decision` Reader，两者必须一致：`tc_next_action == 7`（wait）当且仅当 `tc_stop_required == 1`；`tc_next_action` 为其余任一编码时 `tc_stop_required` 必须为 0。Reader 在这两者不一致时拒绝整份 `next-decision` 文档（两个值都记 unknown，并各自带上不一致的 reason），不产出一份自相矛盾的判决。
 
 当前 Harness 的 Judge 节点的出边只由该节点 `rules[0]` 的判定结果决定；列表中排在其后的规则从不被读取，也不参与路由（`packs.ts:701`）。因此本 SPEC 中出现的复合谓词（`replay-consistent`、`final-evidence-ready`、`required-constraints-pass`）编译为按下一章 Judge rules 所列顺序串联的多个单谓词判定节点——每个节点各自的 `rules[0]` 只决定该节点自己的出边——不假装现有单谓词 YAML 支持任意复合表达式；一个 Judge 节点的路由结果只反映它自己 `rules[0]` 的判定，不能被误当作整条串联链或全部规则已经通过。
 
@@ -196,28 +193,15 @@ Judge 只执行已声明谓词，不解释根因、不选择最佳修复。Reade
 
 | Rule | 必需值与谓词 | 通过后的用途 | 不通过的处理 |
 |---|---|---|---|
-| `inputs-ready` | `tc_required_input_missing_count == 0` | 进入研究 | 等待缺失最低输入 |
-| `request-admissible` | `tc_request_invalid_count == 0` | 执行本次查询/试验 | 返回明确诊断以修订请求 |
-| `replay-consistent` | `tc_replay_mismatch_count == 0` 且 `tc_out_of_scope_edit_count == 0` | 继续集成 | 恢复/局部修订，不假称实际采用 |
-| `composition-ready` | `tc_unresolved_conflict_count == 0` | 封闭当前选择组合 | 处理冲突或缩小当前批次 |
-| `presta-model-qualified` | `tc_presta_gate_net_count == 0` | 使用该预演支持相应决策 | 该模型结论 unknown；可另选适用物理 probe，不一律终止 |
-| `final-evidence-ready` | `tc_missing_required_check_count == 0`、`tc_final_identity_error_count == 0` | 判断最终 Goal | 补测或修复身份问题 |
-| `required-constraints-pass` | `tc_applicable_constraint_failure_count == 0`、`tc_applicable_constraint_unknown_count == 0` | 允许对应结果的采用 | 不采用为合格结果，保留候选与原因 |
-| `setup-goal` | `tc_final_setup_wns_ns >= target_setup_wns_ns` | 联合 Goal 的一部分 | 继续研究，不单独宣布失败终态 |
-| `hold-goal` | `tc_final_hold_wns_ns >= target_hold_wns_ns` | 联合 Goal 的一部分 | 同上 |
-| `artifact-ready` | `tc_accepted_artifact_ready == 1` | 支持交付/最终化 | 恢复或完成产物核验 |
-| `continue-or-wait` | `tc_stop_required == 0` | 合法下一研究动作 | FAIL 到声明 wait，带具体外部需求 |
-| `refresh-budget` | `tc_refreshes_completed < max_physical_refreshes` | 允许再做一次完整物理刷新（`implement`/`apr-prepare`） | FAIL/UNDETERMINED 到 `wait-for-person`，Run 结束；更多刷新须新建 Run |
+| `inputs-ready` | `tc_required_input_missing_count == 0` | 进入研究 | FAIL/UNDETERMINED 到 `wait-for-person`：诚实结束，附缺项 |
+| `refresh-budget` | `tc_refreshes_completed < max_physical_refreshes` | 每代开始：允许这一代的一次完整物理刷新 | FAIL/UNDETERMINED 到 `wait-for-person`，Run 结束；更多刷新须新建 Run |
+| `request-admissible` / `request-checked` | `tc_request_invalid_count == 0` / `>= 0` | 计划或集成计划的身份与合并完整性成立 | 到 owner 的决定；逐条问题写在 problems 文件 |
+| `worker-result-admissible` | `tc_worker_refusal_count == 0` | fork 的 join 逐分支判定 | 所有结果都进入 collect；被拒 slot 由组合排除，不由路由排除 |
+| `composition-ready` / `composition-checked` | `tc_unresolved_conflict_count == 0` / `>= 0` | 封闭当前选择组合 | 到 owner 的决定 |
+| `replay-consistent-mismatch` / `replay-consistent-scope` | `tc_replay_mismatch_count == 0`、`tc_out_of_scope_edit_count == 0` | 继续到预演与刷新 | 到 owner 的决定，不假称实际采用 |
+| `final-evidence-ready-identity`、`setup-goal`、`hold-goal` | `tc_final_identity_error_count == 0`；最终 setup/hold WNS 达到 Goal | 决定处的证据（`check-generation`） | 均到 owner 的决定；goal-met 需要全部 PASS |
 
-表中复合条件在未来 FABRIC 中编译为当前 schema 支持的多个规则及顺序，不假装现有单谓词 YAML 支持任意表达式。证据/约束规则先于 Goal；所有最终必需规则都通过才允许 goal-met 决定。一个 Judge 第一条规则的路由不能被误当作全部规则已经通过。
-
-**编译决策：复合规则的拆分**。三条复合规则在编译时拆分为按顺序串联的单谓词 Judge 节点，文件按 `<id>-<part>` 命名：
-
-- `replay-consistent` 拆分为 `replay-consistent-mismatch`（谓词 `tc_replay_mismatch_count == 0`）与 `replay-consistent-scope`（谓词 `tc_out_of_scope_edit_count == 0`），按此顺序串联——前者 PASS 才判后者，任一 FAIL 都路由到“恢复/局部修订”。
-- `final-evidence-ready` 拆分为 `final-evidence-ready-coverage`（谓词 `tc_missing_required_check_count == 0`）与 `final-evidence-ready-identity`（谓词 `tc_final_identity_error_count == 0`），按此顺序串联。
-- `required-constraints-pass` 拆分为 `required-constraints-pass-failures`（谓词 `tc_applicable_constraint_failure_count == 0`）与 `required-constraints-pass-unknowns`（谓词 `tc_applicable_constraint_unknown_count == 0`），按此顺序串联。
-
-其余 9 条规则（`inputs-ready`、`request-admissible`、`composition-ready`、`presta-model-qualified`、`setup-goal`、`hold-goal`、`artifact-ready`、`continue-or-wait`、`refresh-budget`）本身即单谓词，编译时不拆分，直接对应一个 Judge 节点。
+2026-09-29（ADR-0016）起，循环内的 Judge 只保留身份与合并完整性检查以及刷新预算 Goal 上限，每个都显式标注三种结果的出边（自驱段内未标注的 UNDETERMINED 会等人，加载即拒绝）。最终评价的覆盖、约束失败/未知、预演模型与产物就绪不再路由：它们仍由 Reader 记为事实，采用工具按固定政策自行决定是否移动工作指针，owner 在决定处读取这些事实。一个 Judge 第一条规则的路由不能被误当作全部规则已经通过；进入 Explore 前的 Judge 至少两条规则，均引用本代最新的读数。
 
 定性根因置信度或未经校准的预测不作为硬拒绝谓词。模型内不利与已证实非法分开，允许预算内有范围的真实试验。
 
@@ -227,30 +211,19 @@ Judge 只执行已声明谓词，不解释根因、不选择最佳修复。Reade
 
 ## Choosers
 
-当前 Harness 的 Chooser DSL 不是完整工程推理引擎。Agent/Workshop 提出下一次行动及证据；Chooser 与现有 owner 执行接口承担合法策略和终态映射。不得用一条“score 下降就继续”替代本方法。
+当前 Harness 的 Chooser DSL 不是完整工程推理引擎。每一代只有一个 owner 决定（`decide`，chooser `atcs-goal-met` 只作建议）：
 
-`nextDecision` 至少包含：当前 state/observation/预算引用、待解决问题、选定动作、作用对象、理由、反证/停止条件、预计成本依据、所需产物。它是计划，不是测量。`nextDecision` 的 `action` 字段由 `tc_next_action` 编码；owner 执行接口按该编码路由到下表对应的领域行动，不解释文字原因；`tc_next_action` 为 unknown 时不路由到任何行动；这与 `request-admissible` 未通过是同一件事——同一个 `next-decision` Reader 在拒绝该文档时把 `tc_request_invalid_count` 记为非 0，`request-admissible` 因此可判 FAIL，而不是凭空假设 unknown 等于未通过。
-
-允许的领域行动及其前置条件：
-
-| 行动 | 所读证据 | 具体后果 |
+| 决定 | 所读证据 | 具体后果 |
 |---|---|---|
-| Observe | 现有覆盖、竞争解释、查询成本 | 新的 PT/XTop/physical 查询，返回同一问题 |
-| Research | 风险、已有贡献、可用能力和资源 | 创建/继续明确 worker，不重复无新依据的同一试验 |
-| Compose | 就绪贡献、依赖、交互、等待价值 | 选择当前批次并进入集成 |
-| Revise | 实际重放/预验证/物理反馈 | 只修订相关提交或交互组，保留其他成果 |
-| Implement | MergeCommit、相关检查、仍需物理证据的问题 | 一次联合实际实现与刷新 |
-| Earlier APR | `tc_lifecycle_available == 1` 及时间/机制比较 | 执行用户资料支持的早期阶段，不要求 local ECO 耗尽 |
-| Wait/Stop explanation | `tc_stop_required` 及具体缺项/范围/预算事实 | 通过现有合法路径停止新试验、保留结果和限制 |
-| Goal met | 全部当前最终规则通过、产物可恢复 | 请求现有 Explore goal-met 结束 |
+| 继续（next-strategy） | 本代评价、重测的工作状态、风险与 residual、贡献与经验 | revisit 到下一代开始的刷新预算 gate，再从工作状态计划 |
+| 停止（stop） | 同上，以及为何不值得再投入一代的理由 | 诚实结束：Run 以 Goal 未满足结束，保留全部结果与限制 |
+| Goal met | 本代全部必需判定 PASS（身份、setup、hold） | Explore goal-met 结束 |
 
-`tc_selected_contribution_count` 在 Compose 动作时被读取，用于确认当前批次确实选中了贡献、值得进入集成重放；批次为 0 而仍需封批（例如只封一个 no-fix 批次以推进决策）时，Chooser 必须另有等待价值依据说明为何以空批次继续，不能默认省略集成检查、也不能把 0 当作组合失败的隐含证据。
-
-动态封批只收集当前决定采用的贡献，不等待无依赖的所有在研任务；必要时等待某个贡献比多付一次完整刷新更便宜。延期/取消任务保留其事实；若已开始执行，以真实结束/取消结果回收资源。
+决定引用本代证据（Harness 列出必须引用的 id）。计划或合并完整性被拒时同样到这个决定：owner 可以继续到下一代重新计划，或停止。代数上限与刷新上限由 Runtime 与刷新预算 gate 执行，不由 chooser 判断。
 
 每个下一步都引用已获得的新信息或明确未测假设，不能仅增加 revision 就重试。研究进展可以表现为排除错误机制、合并更好的操作或保留更有价值的物理选择，不要求每次 WNS/TNS 单调改善。
 
-本 SPEC 不启用以聚合 score 稳定为依据的自动 converged 结束。具体图的 revisit、wait 和 owner decision 使用现有 Harness 语义；若未来编译发现某条转移不可表达，要修订 Pack 表达或报告缺口，不能另写隐藏运行循环。
+本 SPEC 不启用以聚合 score 稳定为依据的自动 converged 结束。
 
 知识依据：`over-constrain-and-read-the-violation.md` 使预测只指导下一试验；`end-honestly-in-more-than-one-way.md` 排除把耗尽预算或“感觉没进步”当作闭合/全局不可行。
 
@@ -258,13 +231,14 @@ Judge 只执行已声明谓词，不解释根因、不选择最佳修复。Reade
 
 | 业务结束/暂停情况 | 何种事实触发 | 现有 Harness 路径 | 允许的结论 |
 |---|---|---|---|
-| Timing closure | 当前最终 setup/hold、必要约束、覆盖、产物规则全部通过 | Explore 显式 goal-met | 在固定合同下闭合；不扩大为整芯 signoff |
-| 缺输入/能力 | `inputs-ready` 或 `continue-or-wait` 等相关规则失败，附具体缺项 | 已声明 wait | 条件阻断，不是设计不可闭合 |
-| 当前允许范围内无值得继续动作 | 有记录的候选/机制/成本分析，以及明确需要的外部改变 | `tc_stop_required=1` 使 continue-or-wait 失败到 wait | 有边界的策略/范围限制；不宣称数学上无解 |
-| 预算耗尽 | Runtime 实际硬预算事实 | Runtime 已有 budget ending | 未完成及已有结果；不叫 converged 或 clean |
+| Timing closure | 本代身份、setup、hold 判定全部通过 | owner 在 `decide` 显式 goal-met | 在固定合同下闭合；不扩大为整芯 signoff |
+| owner 停止 | owner 在 `decide` 引用本代证据选择 stop | Explore `stop` 决定，Run 以 Goal 未满足结束 | 有边界的策略/范围结论；不宣称数学上无解 |
+| 缺最低输入 | `inputs-ready` 失败，附具体缺项 | `wait-for-person`（诚实结束） | 条件阻断，不是设计不可闭合 |
+| 刷新上限用尽 | 每代开始的 `refresh-budget` 失败 | `wait-for-person`（诚实结束） | 本 Run 的刷新额度已用完 |
+| 预算耗尽 | Runtime 实际硬预算事实（time box、代数上限） | Runtime 已有 budget ending | 未完成及已有结果；不叫 converged 或 clean |
 | 用户暂停/取消 | Harness 真实控制记录 | 已有 pause/cancel 语义 | 如实记录 Job 是否仍在结束/收束 |
 
-post-route-only 出现无法本地解决的 Residual Case 时，可形成所需资料/能力说明，但不能在该 Run 中偷偷转 APR。Full-flow 可以更早选择 APR 而非必须进入 wait。
+post-route-only 出现无法本地解决的 Residual Case 时，可形成所需资料/能力说明，但不能在该 Run 中偷偷转 APR。早期 APR 路由在本版参考图中不启用。
 
 关闭时交付已持有的最佳已验证状态、工作状态、贡献与集成记录、剩余问题、成本和真实原因。没有合格 DB 时明确没有，不能把最近 checkpoint 标成 best 以满足产物要求。
 
@@ -278,19 +252,17 @@ post-route-only 出现无法本地解决的 Residual Case 时，可形成所需�
 
 | Workshop | 读入的声明产物 | 运行时研究内容 | 产出 | 后续消费者 |
 |---|---|---|---|---|
-| `diagnose-and-observe` | baselineState、currentObservations、riskAtlas、campaignExperience | 根因竞争、最低成本区分性查询、path 覆盖/PBA 策略 | observationRequest | 请求 Reader、合法性检查、真实查询 tool |
 | `plan-campaign` | inputReadiness、currentObservations、riskAtlas、contributionIndex | 问题分解、worker 作用域、共享依赖、成本与任务预算 | campaignPlan | 计划 Reader、owner 与 workspace 准备 |
-| `research-worker` | workerManifestNN、对应已记录工具结果、有关经验 | 分析算法、候选生成、manual/auto 策略、补查与修订 | worker 请求/研究结果的声明 artifact | 合格 Operator/tool 与 Contribution 捕获 |
+| `research-worker` | workerManifestNN、对应已记录工具结果、有关经验 | 分析算法、候选生成、manual/auto 策略；由分支 child Agent 编写，Reader 拒绝时按逐条问题修订 | worker 请求：Operator 的任务原文与 scope | 合格 Operator/tool 与 Contribution 捕获 |
 | `compose-contributions` | contributionIndex、compositionFacts、integrationState | 顺序、去重、联合窗口、局部冲突修订/rebase | integrationPlan | 计划 Reader、确定重放 tool |
-| `evaluate-next-investment` | precheckEvidence、physicalDelta、finalEvaluation、experience、成本 | 下一次观察/修复/封批/APR/结束理由 | nextDecision | 请求 Reader、owner/合法图路径 |
 
 Python 研究程序在 admitted Workshop 目录中读声明资料、计算并产出计划/派生分析；不直接启动未登记商业进程。工具交互在已 admitted 节点的真实 Operator session 中完成，多条 manual/query 不必拆成多张图节点。
 
-Workshop 文件合同统一为 `language: python`、`entry: entry.py`、`argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']`。三个操作数分别是本次生成的程序、Campaign 根和本次私有代码目录；不得按猜测的父目录层数反推路径。静态 directory 分别为 `research/diagnose`、`research/plan`、`research/worker-01`..`research/worker-06`、`research/compose`、`research/next`。worker 变体（`worker-01`..`worker-06`）在方法编译时展开对应静态 reads/produces，`research-worker-NN` 的输出准确指向 `workerRequestNN`。不把 Harness 提供的保留变量重复声明为业务 inputs。
+Workshop 文件合同统一为 `language: python`、`entry: entry.py`、`argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']`。三个操作数分别是本次生成的程序、Campaign 根和本次私有代码目录；不得按猜测的父目录层数反推路径。静态 directory 分别为 `research/plan`、`research/worker-01`..`research/worker-06`、`research/compose`。worker 变体（`worker-01`..`worker-06`）在方法编译时展开对应静态 reads/produces，`research-worker-NN` 的输出准确指向 `workerRequestNN`。不把 Harness 提供的保留变量重复声明为业务 inputs。
 
-**每个 Workshop 的产出如何变成 Semantics 声明的 value**（编译决策，闭合“Workshop 产出未必是 typed value”这条自检）：`diagnose-and-observe` 的 `observationRequest` 由请求 Reader 校验产出 `tc_request_invalid_count`；`plan-campaign` 的 `campaignPlan` 与 `research-worker` 的 `workerRequestNN`/其研究结果一起，由计划/收集 Reader 核验产出 `tc_pending_research_count` 与 `tc_ready_contribution_count`（后者读 `contributionIndex` 中 Contribution 的 `admissible` 字段）；`compose-contributions` 的 `integrationPlan` 连同 `compositionFacts` 由确定重放 Reader 产出 `tc_unresolved_conflict_count`、`tc_replay_mismatch_count`、`tc_out_of_scope_edit_count` 与 `tc_selected_contribution_count`（`integrationPlan.select` 的长度）；`evaluate-next-investment` 的 `nextDecision` 由请求 Reader 产出 `tc_next_action`（`action` 字段编码）、`tc_stop_required`，以及 `tc_request_invalid_count`（`next-decision` 自身的 schema/结构失败项，只有其合法性校验完整才可为 0）——`request-admissible` 因此能读到一个 `nextDecision` 真正产出的值，`tc_next_action` 为 unknown 时这条路由是可达的。不存在未经声明 Reader 直接消费的 Workshop 输出。
+**每个 Workshop 的产出如何变成 Semantics 声明的 value**（编译决策）：`plan-campaign` 的 `campaignPlan` 由计划 Reader 产出 `tc_request_invalid_count`（身份与合并完整性）；`research-worker-NN` 的 `workerRequestNN` 由请求 Reader 产出 `tc_request_invalid_count` 与 `tc_slot_parked`；其研究结果由收集 Reader 核验产出 `tc_pending_research_count` 与 `tc_ready_contribution_count`；`compose-contributions` 的 `integrationPlan` 连同 `compositionFacts` 由确定重放 Reader 产出 `tc_unresolved_conflict_count`、`tc_replay_mismatch_count`、`tc_out_of_scope_edit_count` 与 `tc_selected_contribution_count`。不存在未经声明 Reader 直接消费的 Workshop 输出。
 
-每个 worker 保有独立上下文和私有写域；单一工具 session 保持单写者。子任务结果由 owner 显式采用为候选贡献，不能自行完成整个 Campaign 或改 Goal。
+每个 worker 保有独立上下文和私有写域；单一工具 session 保持单写者。自驱分支内，满足声明 schema 的成员结果由 Harness 代 owner 自动采用（ADR-0016），schema 失败给一次修复追问后该分支以 refused 结束，不找人；子任务不能自行完成整个 Campaign 或改 Goal。
 
 Code 与文档可以由 Agent 自主生成，但其输出是待检验的研究结果。引用事实必须可追溯；新算法能否改善问题由工具反馈决定，代码量和文字解释不作成功标准。
 

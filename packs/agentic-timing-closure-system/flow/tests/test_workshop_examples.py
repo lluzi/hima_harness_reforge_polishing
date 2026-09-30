@@ -113,11 +113,9 @@ def _workshop_block(workshop_id):
 KNOWLEDGE = PACK_DIR / "knowledge"
 # Each request-writing Workshop, its example and the Reader kind that admits it.
 EXAMPLES = {
-    "diagnose-and-observe": "example-observation-request.md",
     "plan-campaign": "example-campaign-plan.md",
     **{f"research-worker-{slot}": "example-worker-request.md" for slot in ("01", "02", "03", "04", "05", "06")},
     "compose-contributions": "example-integration-plan.md",
-    "evaluate-next-investment": "example-next-decision.md",
 }
 
 
@@ -293,7 +291,8 @@ class PlanCampaignExampleTest(ExampleWorkspace):
         code = _snippet("plan-campaign", "like this:")
         with self.assertRaises(AssertionError):
             _run_snippet(code, self.workspace, {"packages": packages, "site_capabilities": plan["siteCapabilities"]})
-        self.assertEqual(self.read_plan(plan), 1, "the Reader counts the same uncovered worst hold check")
+        # ADR-0016: the Workshop's own self-check still refuses it; the Reader advises, never counts, it.
+        self.assertEqual(self.read_plan(plan), 0, "an uncovered worst hold check is the Reader's advice")
 
     def test_the_checklist_names_the_validators_own_sets(self):
         purpose = _workshop_block("plan-campaign")
@@ -358,7 +357,8 @@ class WorkerRequestExampleTest(ExampleWorkspace):
 
     def read_request(self, slot, envelope):
         report = _write(self.workspace / "research" / "requests" / f"worker-request-w{slot}.json", json.dumps(envelope))
-        (value,) = read_atcs.read("worker-request", report, self.workspace, [f"w{slot}"])
+        value = next(item for item in read_atcs.read("worker-request", report, self.workspace, [f"w{slot}"])
+                     if item["type"] == "tc_request_invalid_count")
         return value["value"]
 
     def plan_with_active_slot(self, slot):
@@ -481,9 +481,10 @@ class NoSafeMoveExampleTest(WorkerRequestExampleTest):
         self.assertEqual(self.read_request("02", parked), 1)
 
     def test_the_team_reviews_no_move_for_a_no_safe_move_request(self):
+        # ADR-0016: the Operator works from the request itself (no Researcher or Reviewer in between),
+        # so its own template carries the no-safe-move path: mutate nothing and say so.
         team = CONTRACT.split("\nagentTeams:\n", 1)[1].split("\nworkshops:\n", 1)[0]
-        self.assertEqual(team.count("When the request states noSafeAction, propose no move"), 6)
-        self.assertEqual(team.count('then approve only {"commands": ["atcs_undo"], "maxMutations": 1}'), 6)
+        self.assertEqual(team.count("When the request states noSafeAction, mutate nothing"), 6)
         self.assertEqual(team.count("with stopReason no-safe-action"), 6)
         self.assertEqual(team.count("stopReason (budget, no-candidate-gains, blockers-clear, no-safe-action, tainted or refused)"), 6)
 
@@ -513,46 +514,27 @@ def _reviewer_format_problems(reply):
 
 
 class ReviewerReplyFormatTest(unittest.TestCase):
-    """#64 Track B (from #63 probe item 2): in 2 of 5 first answers the reviewer's reply broke
-    inside an array; the admitted answer shows the shape that grows that long (nested
-    evidenceRefs, long limitations). Every Team's reviewer template now caps the reply and names
-    every field, and ends with an example reply that keeps the caps."""
+    """ADR-0016: the Reviewer is an optional advisory member; nothing waits for it and nothing is gated
+    on it. Its template still names every required field and caps the reply (#64 Track B, from #63
+    probe item 2), and the probe answer that broke a reply still breaks the caps."""
 
-    def test_every_reviewer_names_each_required_field_and_the_rules(self):
+    def test_every_reviewer_is_advisory_and_names_each_required_field_and_the_rules(self):
         for slot in ("01", "02", "03", "04", "05", "06"):
             template, required = _reviewer_template(slot)
-            instructions = template.split("Example reply (shape only):", 1)[0]
             for field in required:
-                self.assertRegex(instructions, rf"\b{field}\b", f"slot {slot}")
-            for rule in ("exactly one JSON object and nothing else", "no prose", "no Markdown fence",
-                         "no trailing commas", "a list of Runtime input record-id strings",
-                         "at most three strings, each under 200 characters", "no nested object except scope"):
+                self.assertRegex(template, rf"\b{field}\b", f"slot {slot}")
+            for rule in ("Advisory only: nothing waits for you and nothing is gated on you",
+                         "exactly one JSON object and nothing else", "at most three limitations under 200 characters"):
                 self.assertIn(rule, template, f"slot {slot}")
+            self.assertEqual(required, ["schema", "planSha256", "evidenceRefs", "limitations"])
 
-    def test_the_example_reply_keeps_the_caps_and_the_probe_answer_breaks_them(self):
-        template, required = _reviewer_template()
-        example = json.loads(template.split("Example reply (shape only):", 1)[1])
-        self.assertEqual(sorted(example), sorted(required))
-        self.assertEqual(example["schema"], "atcs-worker-review/2")
-        self.assertIn("atcs_undo", example["scope"]["commands"])
-        self.assertEqual(_reviewer_format_problems(example), [])
+    def test_the_probe_answer_breaks_the_caps(self):
         probe = json.loads((TESTS_DIR / "live_fixtures" / "probe-reviewer-answer.json").read_text(encoding="utf-8"))
         self.assertEqual(_reviewer_format_problems(probe), [
-            "arguments is a nested object",  # review/1's action; review/2 nests only scope
+            "arguments is a nested object",
             "evidenceRefs is not a list of record-id strings",
             "limitations is not at most three strings under 200 characters",
         ])
-
-
-class ObservationRequestExampleTest(ExampleWorkspace):
-    def test_the_example_reads_with_zero_problems(self):
-        example = _fill(_example("example-observation-request.md"), self.design)
-        report = _write(self.workspace / "research" / "requests" / "observation-request.json", json.dumps(example))
-        self.assertEqual(read_atcs.problems("observation-request", report, self.workspace), [])
-        del example["maxPaths"]
-        _write(report, json.dumps(example))
-        self.assertEqual(read_atcs.problems("observation-request", report, self.workspace),
-                         ["maxPaths: missing field; required format: a positive integer"])
 
 
 class IntegrationPlanExampleTest(ExampleWorkspace):
@@ -624,16 +606,6 @@ class IntegrationPlanExampleTest(ExampleWorkspace):
         self.assertTrue(found and all(line.startswith("plan.") for line in found), found)
 
 
-class NextDecisionExampleTest(ExampleWorkspace):
-    def test_the_example_reads_with_zero_problems_and_observes(self):
-        observation_id = json.loads((self.workspace / "state" / "observation.json").read_text())["id"]
-        example = _fill(_example("example-next-decision.md"), self.design, {"<id of state/observation.json>": observation_id})
-        report = _write(self.workspace / "research" / "requests" / "next-decision.json", json.dumps(example))
-        self.assertEqual(read_atcs.problems("next-decision", report, self.workspace), [])
-        values = {value["type"]: value["value"] for value in read_atcs.read("next-decision", report, self.workspace)}
-        self.assertEqual(values["tc_next_action"], 1)
-
-
 class Live02ToExampleShapeTest(unittest.TestCase):
     """The live02 plan reads 41; corrected along its 41 lines (and its netlist advice) into the example's shape,
     it reads 0 with no advice.
@@ -658,7 +630,8 @@ class Live02ToExampleShapeTest(unittest.TestCase):
         return read_atcs.problems("campaign-plan", self.report, self.workspace)
 
     def test_the_live_plan_reads_41_and_its_corrected_shape_reads_0(self):
-        self.assertEqual(len(read_atcs.problems("campaign-plan", self.report, self.workspace)), 41)
+        # ADR-0016: 37 of the live 41 stay counted; the four uncovered-blocker lines are advice.
+        self.assertEqual(len(read_atcs.problems("campaign-plan", self.report, self.workspace)), 37)
         plan = json.loads(self.report.read_text())
         packages = plan["candidate"]["workPackages"]
         example = _example("example-campaign-plan.md")["candidate"]["workPackages"]

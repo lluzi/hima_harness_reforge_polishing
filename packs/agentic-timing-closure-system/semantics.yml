@@ -21,12 +21,17 @@ values:
       set (init/place/cts/route/postroute) hash-binds successfully, 0
       otherwise (with `lifecycleMissing` naming every gap); unknown when the
       lifecycle check itself could not complete.
+  tc_slot_parked:
+    unit: count
+    description: >-
+      1 when a worker request's candidate is the parked shape (its slot runs the batch no-op and no
+      Team member), 0 for an active slot. The worker Team's batchWhen reads it (ADR-0016).
   tc_request_invalid_count:
     unit: count
     description: >-
-      Structural/reference/scope failures in a typed request-shaped
-      artifact (observationRequest, work-package, workerRequestNN,
-      next-decision). 0 only when this Reader completed a full legality
+      Identity and merge-integrity failures in a typed request-shaped
+      artifact (campaignPlan, work-package, workerRequestNN,
+      integrationPlan); other findings are advice (ADR-0016). 0 only when this Reader completed a full legality
       check and found none; unknown when the corresponding artifact was
       never fully checked (e.g. a companion reference could not be
       resolved).
@@ -149,16 +154,6 @@ values:
       1 only when the accepted candidate's actual on-disk database/recovery
       material re-hashes to the identity recorded at evaluation time; a
       same-named file is never sufficient.
-  tc_stop_required:
-    unit: count
-    description: 1 iff the current next-decision's `action` is `wait`, with a concrete reason; never evidence that the problem is globally unsolvable.
-  tc_next_action:
-    unit: count
-    description: >-
-      The next-investment decision, encoded from a schema-valid
-      `next-decision.action`: 1 observe, 2 research, 3 compose, 4 revise,
-      5 implement, 6 earlier-apr, 7 wait, 8 goal-met. unknown whenever the
-      `next-decision` document itself fails structural validation.
   tc_selected_contribution_count:
     unit: count
     description: >-

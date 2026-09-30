@@ -11,18 +11,22 @@ import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { writeMomentScenario } from './support/moments.ts';
 import { writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
-import { retainRunMaterial, runDelegations, BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest } from '@hima/harness';
+import { retainRunMaterial, runDelegations, BUILTIN_TCL_ADAPTER_DIGEST, WORKSHOP_ENTRY_SCHEMA, interactiveCommandsDigest } from '@hima/harness';
 import { himaCommand } from './support/command.ts';
 import { writeLocalSite } from './support/site.ts';
 
 const packId = 'agentic-timing-closure-system';
-test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, parked slots pass as no-ops, and the join collects every slot', async t => {
+test('ATCS forks six self-driving worker branches: each branch\'s child authors its request, a refused request is revised in its own branch, slot w01\'s Operator works from its embedded request, parked slots pass as no-ops, and the join collects every slot with no owner turn inside the fork', async t => {
   process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
   process.env.HIMA_TEST_SILENT_AGENT = '1';
-  const prior = process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
+  const prior = { binding: process.env.HIMA_TEST_INTERACTIVE_BINDING_ID, results: process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS };
   process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = 'atcs-local';
-  t.after(() => { if (prior === undefined) delete process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
-    else process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = prior; });
+  // Every branch child is played by this test through the Ledger's production handoff shape.
+  process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS = 'ledger';
+  t.after(() => {
+    if (prior.binding === undefined) delete process.env.HIMA_TEST_INTERACTIVE_BINDING_ID; else process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = prior.binding;
+    if (prior.results === undefined) delete process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS; else process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS = prior.results;
+  });
   const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local);
   const h = { ...local.h, workspace: await realpath(local.h.workspace) };
   const packsDir = path.join(h.home, 'hima/packs');
@@ -37,13 +41,17 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   // The interactive session is the synthetic REPL for slot w01; the batch path stays the Pack's own
   // `operate-parked` no-op, which is how a parked slot's operate node settles without XTop.
   tool.interactive.argv = [wrapper, '${WORKSPACE}/flow/atcs-repl.tcl', '${WORKSPACE}/workspaces/w01/r1'];
-  // The Pack's own licence declaration stands: the xtop seat is the interactive session's.
-  // Each member's elapsed share is sized for a loaded host: at 10 s the Operator child could expire
-  // before its interactive open on a busy machine ("no available project workspace").
   for (const member of contract.agentTeams[0].members) member.budgetShare.maxElapsedMs = 60000;
   await writeFile(path.join(variant, 'contract.yml'), stringify(contract));
   const graph = parse(await readFile(path.join(variant, 'graph.yml'), 'utf8')) as any;
-  graph.entry = 'prepare-workers'; // Start at the fork; pre-EDA preparation is separately Python-tested.
+  // Start at the fork, which the owner opens here; pre-EDA preparation and the plan are the dry
+  // path's and the Pack's Python tests'. The fork and the join-to-compose segment stay self-driving.
+  graph.entry = 'prepare-workers';
+  graph.autopilot = graph.autopilot.filter((item: any) => item.fork !== undefined || item.from?.[0] === 'check-worker-results');
+  assert.equal(graph.autopilot.length, 2);
+  // Each author's share is sized for this test's time box: six authors and an Operator are charged
+  // against the Run's delegation time, and the Pack's own 15-minute share is a live Campaign's.
+  graph.autopilot.find((item: any) => item.fork !== undefined).author.maxElapsedMs = 60000;
   await writeFile(path.join(variant, 'graph.yml'), stringify(graph));
   await cp(path.join(repoRoot, 'test/fixtures/interactive-job/atcs-repl.tcl'), path.join(variant, 'flow/atcs-repl.tcl'));
   const capsPath = path.join(h.workspace, 'caps.json');
@@ -87,34 +95,33 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   const replay = await writeMomentScenario(h, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
   await writeReplayOverlay(h.home, { file: replay.file, overrideFile: replay.override, childFiles: replay.children });
   const host = await bootInProcess(h); let cleanupRunId: string | undefined;
-  t.after(async () => { if (cleanupRunId) await host.ctx.hima.cancelRun(cleanupRunId); await host.dispose(); await h.dispose(); });
+  t.after(async () => { if (cleanupRunId) { try { await host.ctx.hima.cancelRun(cleanupRunId); } catch { /* ended */ } } await host.dispose(); await h.dispose(); });
   const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
-  // #64 Track B (C28): live02's generation limit of 2 cannot reach the default two refreshes; the Pack
-  // declares budget.minimumGenerations 3 and the Harness refuses such a Run at creation.
+  // #64 Track B (C28), reshaped 2026-09-29: one generation cannot reach the default two refreshes; the
+  // Pack declares budget.minimumGenerations 2 and the Harness refuses such a Run at creation.
   await assert.rejects(host.ctx.hima.startRun({ pack: packId, site: 'local', goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0, max_physical_refreshes: 2 },
-    ownerSessionId: actor, timeBoxMs: 300000, generationLimit: 2 }), /generation limit is 2, but Pack agentic-timing-closure-system declares it needs at least 3 generations/);
+    ownerSessionId: actor, timeBoxMs: 300000, generationLimit: 1 }), /generation limit is 1, but Pack agentic-timing-closure-system declares it needs at least 2 generations/);
   // #64 Track B (from #63): the physical-refresh cap is a Goal value fixed when the Run is created.
   // 3, not the default 2, so the assertions below prove the creation value reached the Run's goal and
-  // is what both refresh-budget Judges bind.
+  // is what the refresh-budget Judge binds.
   const started = await host.ctx.hima.startRun({ pack: packId, site: 'local',
-    goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0, max_physical_refreshes: 3 }, ownerSessionId: actor, timeBoxMs: 300000 });
+    goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0, max_physical_refreshes: 3 }, ownerSessionId: actor, timeBoxMs: 1_800_000 });
   assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
   const runId = started.run.id; cleanupRunId = runId;
   const createdRun = host.ctx.hima.ledger.run(runId)!;
   assert.equal(createdRun.goal?.max_physical_refreshes, 3);
   assert.equal(createdRun.strategy?.max_physical_refreshes, undefined);
-  for (const judgeId of ['check-refresh-budget', 'check-refresh-budget-apr']) {
-    const reference = (pack.graph.nodes.find(node => node.id === judgeId) as any).parameters.bind.max_physical_refreshes;
-    assert.deepEqual(reference, { from: 'goal', name: 'max_physical_refreshes' });
-    assert.equal(createdRun.goal?.[reference.name], 3, `${judgeId} binds the Run's creation value`);
-  }
+  const reference = (pack.graph.nodes.find(node => node.id === 'check-refresh-budget') as any).parameters.bind.max_physical_refreshes;
+  assert.deepEqual(reference, { from: 'goal', name: 'max_physical_refreshes' });
+  assert.equal(createdRun.goal?.[reference.name], 3, 'check-refresh-budget binds the Run\'s creation value');
   // An owner's next-strategy Explore decision (and a revision) is admitted through strategyFrom
   // over the Run's Strategy (fabric.ts completeAdmittedNode, revisionAction); the cap is no knob there.
   assert.ok('error' in strategyFrom(pack.contract.strategy, { ...createdRun.strategy, max_physical_refreshes: 4 }));
   const workspace = started.workspace;
   assert.ok(workspace);
   // Real Pack producers seed the base, the XTop context and one admitted campaign plan: slot w01
-  // works one blocker cluster and w02..w06 are parked. All files are synthetic.
+  // works one blocker cluster inside a scope of two commands and two mutations, and w02..w06 are
+  // parked. All files are synthetic.
   const seeded = spawnSync('python3', ['-c', [
     'import sys,json; from pathlib import Path',
     'sys.path.insert(0,sys.argv[1]); sys.path.insert(0,sys.argv[2])',
@@ -125,7 +132,7 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
     'base=state.design_state(manifest); core.write_artifact(w/"state/working-state.json",base)',
     'caps={"design":"top","techLef":"tech.lef","cellLefGlob":"*.lef","pgVerification":False,**f._write_xtop_context(w,base["id"],("func_ss",))}',
     'f._write_json(Path(sys.argv[4]),caps)',
-    'active={"taskId":"w01","baseStateId":base["id"],"problem":"synthetic sizing","targets":[],"editDomain":{"instances":["U1"],"nets":[],"regions":[]},"protected":{"instances":[],"nets":[]},"mayAffect":[],"actions":["size_cell"],"budget":{"xtopMinutes":1,"queries":1,"attempts":1},"targetPins":["U1/A"],"scope":{"commands":list(workspaces.MUTATE_COMMANDS),"maxMutations":workspaces.SCOPE_MAX_MUTATIONS}}',
+    'active={"taskId":"w01","baseStateId":base["id"],"problem":"synthetic sizing","targets":[],"editDomain":{"instances":["U1"],"nets":[],"regions":[]},"protected":{"instances":[],"nets":[]},"mayAffect":[],"actions":["size_cell"],"budget":{"xtopMinutes":1,"queries":1,"attempts":1},"targetPins":["U1/A"],"scope":{"commands":["atcs_size_cell","atcs_undo"],"maxMutations":2}}',
     'packages={s:({"taskId":s,"baseStateId":base["id"],"parked":True,"problem":"one blocker cluster; slot "+s+" has none"} if s!="w01" else active) for s in workspaces.TASK_IDS}',
     'f._write_json(w/"research/requests/campaign-plan.json",{"candidate":{"workPackages":packages,"reason":"one blocker cluster"},"baseState":base,"siteCapabilities":{"pgVerification":False}})',
     '[f._write_json(w/"seed"/("worker-request-"+s+".json"),{"candidate":p,"baseState":base,"siteCapabilities":{"pgVerification":False}}) for s,p in packages.items()]',
@@ -138,131 +145,102 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   const control = () => host.ctx.hima.ledger.run(runId)!.control!;
   const context = () => host.ctx.hima.executionContext(runId);
   const records = () => host.ctx.hima.ledger.records({ runId });
+  const deps = () => (host.ctx.hima as any).deps();
   let serial = 0;
-  const act = (action: string, fields: Record<string, unknown> = {}) => host.ctx.hima.executionAction({ runId, actor,
+  const act = (action: string, fields: Record<string, unknown> = {}) => host.ctx.hima.executionAction({ runId, actor, origin: 'agent',
     action: action as never, requestId: `atcs-${++serial}`, expectedEpoch: control().epoch, expectedRevision: control().revision, ...fields });
-  const begin = async (nodeId: string): Promise<string> => {
-    const begun = await act('begin', { nodeId });
-    assert.equal(begun.kind, 'accepted', `begin ${nodeId}: ${JSON.stringify(begun)}`);
-    return begun.receipt!.executionId!;
-  };
-  const workAndComplete = async (nodeId: string, id: string) => {
-    const work = await act('work', { executionId: id });
-    assert.equal(work.kind, 'accepted', `work ${nodeId}: ${JSON.stringify(work)}`);
-    await waitUntil('ATCS node settles: ' + nodeId, () => ['ready', 'failed'].includes(control().executions[id]?.phase ?? ''), 20000, 25);
-    assert.equal(control().executions[id]?.phase, 'ready', `${nodeId}: ${JSON.stringify(control().executions[id])}`);
-    const done = await act('complete', { executionId: id });
-    assert.equal(done.kind, 'accepted', `complete ${nodeId}: ${JSON.stringify(done)}`);
-  };
-  const node = async (nodeId: string) => { const id = await begin(nodeId); await workAndComplete(nodeId, id); return id; };
   const slots = ['w01', 'w02', 'w03', 'w04', 'w05', 'w06'];
   const nn = (slot: string) => slot.slice(1);
+  const branchNodes = slots.flatMap(slot => ['research-worker-', 'read-worker-request-', 'operate-worker-', 'capture-worker-', 'read-worker-result-'].map(prefix => prefix + nn(slot)));
 
-  // The fork opens at prepare-workers: six branches, one per slot, and nothing launched on its own.
-  await node('prepare-workers');
-  assert.deepEqual([...context().available].sort(), slots.map(slot => `research-worker-${nn(slot)}`));
+  // The owner opens the fork at prepare-workers: six branches, one per slot.
+  const begun = await act('begin', { nodeId: 'prepare-workers' });
+  assert.equal(begun.kind, 'accepted', JSON.stringify(begun));
+  const prepare = begun.receipt!.executionId!;
+  assert.equal((await act('work', { executionId: prepare })).kind, 'accepted');
+  await waitUntil('prepare-workers settles', () => ['ready', 'failed'].includes(control().executions[prepare]?.phase ?? ''), 20000, 25);
+  assert.equal(control().executions[prepare]?.phase, 'ready', JSON.stringify(control().executions[prepare]));
+  assert.equal((await act('complete', { executionId: prepare })).kind, 'accepted');
   assert.ok(context().run.fork, 'the Run stands inside the worker fork');
   const workers = JSON.parse(await readFile(path.join(workspace, 'state/workers.json'), 'utf8'));
   assert.deepEqual(workers.requiredSlots, slots);
   assert.deepEqual(slots.filter(slot => workers.workers[slot].parked === true), slots.slice(1));
+  // Inside the fork the owner's node turn is refused: the branches are the Pack's autopilot's.
+  const fenced = await act('begin', { nodeId: 'research-worker-01' });
+  assert.equal(fenced.kind, 'refused');
+  assert.match(fenced.reason ?? '', /driven by this Pack's autopilot/);
 
-  // Each branch's Workshop writes its own slot's request, and its own Reader admits it.
-  const copyEntry = (slot: string, seed: string) => `import shutil, sys\nshutil.copyfile(sys.argv[1] + "/seed/${seed}.json", sys.argv[1] + "/research/requests/worker-request-${slot}.json")\n`;
-  for (const slot of slots) {
-    const id = await begin(`research-worker-${nn(slot)}`);
-    assert.equal((await act('recommend', { executionId: id })).kind, 'accepted');
+  // Each branch's own child Agent authors its research Workshop; this test plays each child through
+  // the Ledger's production handoff shape (deterministic stand-ins, no model-quality claim).
+  const answer = async (delegationId: string, text: string) => {
+    const row = runDelegations(deps(), runId).find(item => item.delegationId === delegationId)!;
+    await host.ctx.hima.ledger.appendDelegation(runId, { delegationId, parentSessionId: actor, childSessionId: row.childSessionId,
+      requestId: `result-${delegationId}-${++serial}`.slice(0, 160), requestDigest: 'a'.repeat(64), event: 'result-observed', payload: {
+        candidate: true, source: 'native-live-session', handoff: {
+          outputIdentity: createHash('sha256').update(JSON.stringify([{ type: 'text', text }])).digest('hex'),
+          contract: { recordId: row.contractRecordId, requestDigest: row.requestDigest },
+          output: { text, content: [{ type: 'text', text }], truncated: false }, completedTurn: { turn: 1, endSeq: 1 },
+          unknowns: [], evidence: { artifactRefs: [], diffRefs: [], testRefs: [], limitations: ['synthetic model result'] },
+        } } });
+  };
+  const own = (delegationId: string) => records().filter(record => record.type === 'delegation' && record.delegationId === delegationId);
+  const authorAsked = async (slot: string): Promise<string> => {
+    let id = '';
+    await waitUntil(`research-worker-${nn(slot)}'s author is asked`, () => {
+      const row = runDelegations(deps(), runId).find(item => item.delegationId.startsWith(`autopilot-author-research-worker-${nn(slot)}-`));
+      if (row === undefined || row.state !== 'accepted') return false;
+      const asked = own(row.delegationId).filter(record => record.type === 'delegation' && (record.event === 'created' || record.event === 'followup-sent')).at(-1)?.seq ?? 0;
+      const answered = own(row.delegationId).filter(record => record.type === 'delegation' && record.event === 'result-observed').at(-1)?.seq ?? 0;
+      id = row.delegationId;
+      return asked > answered;
+    }, 60000, 25);
+    return id;
+  };
+  const copyEntry = (slot: string, seed: string) => JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA,
+    entry: `import shutil, sys\nshutil.copyfile(sys.argv[1] + "/seed/${seed}.json", sys.argv[1] + "/research/requests/worker-request-${slot}.json")\n` });
+  await Promise.all(slots.map(async slot => {
     // #64 Track B: slot w02's first request is refused, as live02's were.
-    const entry = copyEntry(slot, slot === 'w02' ? 'worker-request-w02-refused' : `worker-request-${slot}`);
-    const written = await act('write', { executionId: id, path: 'entry.py', content: entry });
-    assert.equal(written.kind, 'accepted', JSON.stringify(written));
-    await workAndComplete(`research-worker-${nn(slot)}`, id);
-    await node(`read-worker-request-${nn(slot)}`);
-    if (slot === 'w02') {
-      // A refused request is revised, not parked, and costs no generation (#64 Track B, from #63 gap 2):
-      // the Reader counts it and writes why beside it, the owner revises the branch's Workshop, and
-      // the Harness reruns that branch from the Workshop while every other branch keeps its place.
-      const refused = records().findLast(record => record.type === 'observation' && record.reader.id === 'atcs-worker-request-02');
-      assert.ok(refused?.type === 'observation');
-      assert.deepEqual(refused.values.map(value => [value.type, value.value]), [['tc_request_invalid_count', 2]]);
-      const why = await readFile(path.join(workspace, 'research/requests/worker-request-w02.problems.txt'), 'utf8');
-      assert.match(why, /^2 problems in worker-request-w02\.json/);
-      assert.match(why, /^- candidate\.taskId \(slot w02\): must be 'w02' for this slot, got 'w02-parked'/m);
-      assert.match(why, /^- candidate\.taskId \(slot w02\): taskId must be one of .*required format: exactly the slot key/m);
-      const generation = context().run.generation;
-      const branchesBefore = context().run.fork!.branches;
-      const revised = await host.ctx.tools.execute({ name: 'hima_execute', agent: owner, callId: 'revise-w02' as never,
-        signal: AbortSignal.timeout(10_000), arguments: { run: runId, action: 'revise', expectedEpoch: control().epoch,
-          expectedRevision: control().revision, requestId: 'revise-research-worker-02', revision: {
-            revisionId: 'w02-request-v2', reason: 'workerRequest02Problems: taskId must be w02', changedNodes: ['research-worker-02'],
-            changes: [{ nodeId: 'research-worker-02', scope: 'workshop', path: 'entry.py', content: copyEntry('w02', 'worker-request-w02') }] } } });
-      assert.equal(revised.isError, false, JSON.stringify(revised));
-      assert.equal((revised as unknown as { value: { kind: string } }).value.kind, 'accepted', JSON.stringify(revised));
-      assert.equal(context().run.generation, generation, 'the retry spends no generation');
-      assert.equal(records().filter(record => record.type === 'decision').length, 0, 'no Explore decided the retry');
-      const branchesAfter = context().run.fork!.branches;
-      assert.deepEqual(branchesAfter['research-worker-02'], { currentNode: 'research-worker-02', state: 'running' });
-      assert.deepEqual(branchesAfter['research-worker-01'], branchesBefore['research-worker-01'], 'slot w01 keeps its place');
-      const rerun = await begin('research-worker-02');
-      assert.equal((await act('recommend', { executionId: rerun })).kind, 'accepted');
-      await workAndComplete('research-worker-02', rerun);
-      await node('read-worker-request-02');
-      assert.match(await readFile(path.join(workspace, 'research/requests/worker-request-w02.problems.txt'), 'utf8'),
-        /^0 problems in worker-request-w02\.json/);
-    }
-    const reading = records().findLast(record => record.type === 'observation' && record.reader.id === `atcs-worker-request-${nn(slot)}`);
-    assert.ok(reading?.type === 'observation');
-    assert.equal(reading.branchId, `research-worker-${nn(slot)}`, `slot ${slot}'s request is read in its own branch`);
-    assert.deepEqual(reading.values.map(value => [value.type, value.value]), [['tc_request_invalid_count', 0]], `slot ${slot}'s request is admitted`);
-  }
-  assert.deepEqual([...context().available].sort(), slots.map(slot => `operate-worker-${nn(slot)}`));
+    await answer(await authorAsked(slot), copyEntry(slot, slot === 'w02' ? 'worker-request-w02-refused' : `worker-request-${slot}`));
+    if (slot !== 'w02') return;
+    // A refused request is revised in its own branch, in the same generation and without a person:
+    // the Reader counts it and writes why beside it, and the autopilot restarts the branch at its
+    // Workshop and asks the same author again with those problems.
+    const followup = await authorAsked(slot);
+    const why = await readFile(path.join(workspace, 'research/requests/worker-request-w02.problems.txt'), 'utf8');
+    assert.match(why, /^2 problems in worker-request-w02\.json/);
+    assert.match(why, /^- candidate\.taskId \(slot w02\): must be 'w02' for this slot, got 'w02-parked'/m);
+    assert.match(why, /^- candidate\.taskId \(slot w02\): taskId must be one of .*required format: exactly the slot key/m);
+    const refused = records().findLast(record => record.type === 'observation' && record.reader.id === 'atcs-worker-request-02');
+    assert.ok(refused?.type === 'observation');
+    assert.deepEqual(refused.values.map(value => [value.type, value.value]), [['tc_request_invalid_count', 2], ['tc_slot_parked', 1]]);
+    await answer(followup, copyEntry(slot, 'worker-request-w02'));
+  }));
 
-  // A parked slot's operate node is the Pack's batch no-op: no Team, no interactive session, no XTop.
-  for (const slot of slots.slice(1)) await node(`operate-worker-${nn(slot)}`);
-  for (const slot of slots.slice(1)) {
-    const receipt = JSON.parse(await readFile(path.join(workspace, workers.workers[slot].root, 'parked.json'), 'utf8'));
-    assert.equal(receipt.taskId, slot);
-  }
-  assert.equal(runDelegations((host.ctx.hima as any).deps(), runId).length, 0, 'no Team member is created for a parked slot');
-
-  // Slot w01's Team approves an expert scope and its Operator mutates only inside it.
+  // Slot w01's Operator is materialized with its admitted request embedded in its task and bound to
+  // that request's own scope; a parked slot's operate node is the Pack's batch no-op.
+  let operator: ReturnType<typeof runDelegations>[number] | undefined;
+  await waitUntil('slot w01\'s Operator is materialized', () => {
+    operator = runDelegations(deps(), runId).find(row => row.effective.recipe?.teamId === 'atcs-worker-01' && row.effective.recipe.memberId === 'operator');
+    return operator !== undefined;
+  }, 60000, 25);
   const planReading = records().findLast(record => record.type === 'observation' && record.reader.id === 'atcs-worker-request-01');
   assert.ok(planReading?.type === 'observation');
   const planHash = planReading.contentSha256;
-  assert.equal(planHash, createHash('sha256').update(await readFile(path.join(workspace, 'research/requests/worker-request-w01.json'))).digest('hex'));
-  const executionId = await begin('operate-worker-01');
-  const create = (memberId: string) => host.ctx.hima.delegate({ runId, actor, action: 'create', requestId: 'create-' + memberId,
-    expectedEpoch: control().epoch, expectedRevision: control().revision,
-    recipe: { teamId: 'atcs-worker-01', version: '4', memberId, executionId } } as never) as Promise<any>;
-  // Deterministic model stand-ins use the production Ledger handoff shape; no model-quality claim.
-  const resultAndAdopt = async (child: any, value: any) => {
-    const id = child.effectiveContract.delegationId;
-    const row = runDelegations((host.ctx.hima as any).deps(), runId).find(item => item.delegationId === id)!;
-    const text = JSON.stringify(value);
-    const record = await host.ctx.hima.ledger.appendDelegation(runId, { delegationId: id, parentSessionId: actor,
-      childSessionId: row.childSessionId, requestId: 'result-' + id, requestDigest: 'a'.repeat(64),
-      event: 'result-observed', payload: { candidate: true, source: 'native-live-session', handoff: {
-        outputIdentity: createHash('sha256').update(JSON.stringify([{ type: 'text', text }])).digest('hex'),
-        contract: { recordId: row.contractRecordId, requestDigest: row.requestDigest },
-        output: { text, content: [{ type: 'text', text }], truncated: false }, completedTurn: { turn: 1, endSeq: 1 },
-        unknowns: [], evidence: { artifactRefs: [], diffRefs: [], testRefs: [], limitations: ['synthetic model result'] },
-      } } });
-    const adoption = await host.ctx.hima.delegate({ runId, actor, action: 'adopt', delegationId: id,
-      resultRecordId: record.id, requestId: 'adopt-' + id,
-      expectedEpoch: control().epoch, expectedRevision: control().revision } as never) as any;
-    assert.equal(adoption.status, 'accepted', JSON.stringify(adoption));
-  };
-  const researcher = await create('researcher'); assert.equal(researcher.status, 'created', JSON.stringify(researcher));
-  assert.deepEqual(researcher.effectiveContract.inputRefs, [planReading.id], 'the Researcher reads its own slot\'s request');
-  await resultAndAdopt(researcher, { schema: 'atcs-worker-research/1', hypotheses: ['synthetic sizing'],
-    evidenceRefs: researcher.effectiveContract.inputRefs, limitations: ['no EDA'] });
-  const reviewer = await create('reviewer'); assert.equal(reviewer.status, 'created', JSON.stringify(reviewer));
-  // The Reviewer approves a scope: two of the recipe's mutations and a budget below the recipe cap.
-  await resultAndAdopt(reviewer, { schema: 'atcs-worker-review/2', planSha256: planHash,
-    scope: { commands: ['atcs_size_cell', 'atcs_undo'], maxMutations: 2 },
-    evidenceRefs: reviewer.effectiveContract.inputRefs, limitations: ['no EDA'] });
-  const operator = await create('operator'); assert.equal(operator.status, 'created', JSON.stringify(operator));
-  const operatorId = operator.receipt.childSessionId;
-  const interactive = (body: any) => host.ctx.hima.interactive(operatorId, { runId, executionId,
+  const requestBytes = await readFile(path.join(workspace, 'research/requests/worker-request-w01.json'));
+  assert.equal(planHash, createHash('sha256').update(requestBytes).digest('hex'));
+  const request = JSON.parse(requestBytes.toString('utf8'));
+  const task = operator!.contract.task;
+  const at = task.indexOf('Exact input workerRequest01 ');
+  assert.ok(at >= 0, `the Operator's task embeds workerRequest01: ${task.slice(0, 400)}`);
+  const embedded = JSON.parse(task.slice(task.indexOf('\n', at) + 1).split('\n')[0]!);
+  for (const field of ['taskId', 'editDomain', 'targetPins', 'problem', 'scope', 'actions']) {
+    assert.deepEqual(embedded.candidate[field], request.candidate[field], `the embedded request carries candidate.${field}`);
+  }
+  assert.match(task, new RegExp(planHash), 'and its plan hash');
+  assert.match(task, /before\.dump/); assert.match(task, /after\.dump/);
+  assert.deepEqual((operator!.effective.recipe!.inlinePayload as any).scope, { commands: ['atcs_size_cell', 'atcs_undo'], maxMutations: 2 });
+  const executionId = operator!.effective.recipe!.executionId;
+  const interactive = (body: any) => host.ctx.hima.interactive(operator!.childSessionId, { runId, executionId,
     nodeId: 'operate-worker-01', ownerEpoch: control().epoch, controlRevision: control().revision, ...body }) as Promise<any>;
   const opened = await interactive({ action: 'open', requestId: 'open' }); assert.equal(opened.status, 'opened', JSON.stringify(opened));
   const toolSessionId = opened.session.toolSessionId;
@@ -274,11 +252,11 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   };
   await send('atcs_dump_cells', { path: path.join(slotRoot, 'before.dump') }, 'before');
   await send('atcs_ref', {}, 'reference');
-  // Outside the approved scope, or under another plan hash, the Host refuses before the tool sees it.
+  // Outside the request's scope, or under another plan hash, the Host refuses before the tool sees it.
   const outsideScope = await interactive({ action: 'input', requestId: 'outside', commandId: 'outside', toolSessionId,
     command: { name: 'atcs_remove_buffer', args: { instance: 'U1', planSha256: planHash } }, waitMs: 0 });
   assert.equal(outsideScope.status, 'refused', JSON.stringify(outsideScope));
-  assert.match(outsideScope.reason, /outside the immutable owner-adopted reviewed scope/);
+  assert.match(outsideScope.reason, /outside the immutable/);
   const staleHash = await interactive({ action: 'input', requestId: 'stale', commandId: 'stale', toolSessionId,
     command: { name: 'atcs_size_cell', args: { instance: 'U1', toMaster: 'BUF2', planSha256: 'f'.repeat(64) } }, waitMs: 0 });
   assert.equal(staleHash.status, 'refused', JSON.stringify(staleHash));
@@ -290,10 +268,32 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   await send('atcs_export_changes', {}, 'export');
   await send('atcs_close', {}, 'exit');
   await waitUntil('ATCS synthetic Operator is ready', () => control().executions[executionId]?.phase === 'ready', 5000, 25);
-  await resultAndAdopt(operator, { schema: 'atcs-worker-session/1', planSha256: planHash, mutationReceipts: ['mutation'],
-    stopReason: 'no-candidate-gains', limitations: ['synthetic Tcl; no commercial qualification'] });
-  const completed = await act('complete', { executionId });
-  assert.equal(completed.kind, 'accepted', JSON.stringify(completed));
+  await answer(operator!.delegationId, JSON.stringify({ schema: 'atcs-worker-session/1', planSha256: planHash, mutationReceipts: ['mutation'],
+    stopReason: 'no-candidate-gains', limitations: ['synthetic Tcl; no commercial qualification'] }));
+
+  // Every branch captures and reads its own result; the join judges all six and collects, with no
+  // owner turn on the way.
+  await waitUntil('the join collects every slot', () => records().some(record => record.type === 'node' && record.nodeId === 'collect' && record.state === 'done'), 120000, 50);
+  assert.equal(context().run.fork, undefined, 'the join closed the fork');
+  const ownerTurns = Object.values(control().requests).filter(request => request.origin !== 'autopilot' && request.origin !== 'human'
+    && ['begin', 'work', 'write', 'complete'].includes(request.receipt.action)
+    && [...branchNodes, 'check-worker-results', 'collect'].includes(control().executions[request.receipt.executionId ?? '']?.nodeId ?? ''));
+  assert.deepEqual(ownerTurns, [], 'the owner took no turn inside the fork or at the join');
+  assert.ok(own(operator!.delegationId).some(record => record.type === 'delegation' && record.event === 'result-adopted'), 'the Operator\'s schema-valid result was adopted');
+  const restarts = records().filter(record => record.type === 'resumed' && record.kind === 'restart');
+  assert.deepEqual(restarts.map(record => record.type === 'resumed' ? [record.nodeId, record.writer] : []), [['research-worker-02', 'executor']],
+    'slot w02 was revised once, by the autopilot');
+  assert.equal(records().filter(record => record.type === 'decision').length, 0, 'no Explore decided the revision');
+  for (const slot of slots) {
+    const reading = records().findLast(record => record.type === 'observation' && record.reader.id === `atcs-worker-request-${nn(slot)}`);
+    assert.ok(reading?.type === 'observation');
+    assert.equal(reading.branchId, `research-worker-${nn(slot)}`, `slot ${slot}'s request is read in its own branch`);
+    assert.deepEqual(reading.values.map(value => [value.type, value.value]), [['tc_request_invalid_count', 0], ['tc_slot_parked', slot === 'w01' ? 0 : 1]], `slot ${slot}'s request is admitted`);
+  }
+  for (const slot of slots.slice(1)) {
+    const receipt = JSON.parse(await readFile(path.join(workspace, workers.workers[slot].root, 'parked.json'), 'utf8'));
+    assert.equal(receipt.taskId, slot);
+  }
   const interactiveJobs = records().filter(record => record.type === 'job' && record.event === 'launched' && record.nodeId?.startsWith('operate-worker-'));
   assert.deepEqual(interactiveJobs.map(record => record.type === 'job' ? [record.nodeId, record.branchId] : []).sort(),
     slots.map(slot => [`operate-worker-${nn(slot)}`, `research-worker-${nn(slot)}`]), 'each operate Job runs in its own branch');
@@ -301,25 +301,11 @@ test('ATCS forks six worker branches: slot w01\'s Team runs its expert session, 
   // active slot's interactive session holds the xtop seat.
   assert.deepEqual(interactiveJobs.map(record => record.type === 'job' ? [record.nodeId, record.licences ?? null] : []).sort(),
     slots.map(slot => [`operate-worker-${nn(slot)}`, slot === 'w01' ? { xtop: 1 } : null]), 'only the session holds a seat');
-  for (const slot of slots.slice(1)) {
-    assert.equal(records().filter(record => record.type === 'job' && record.event === 'launched' && record.licences !== undefined
-      && record.branchId === `research-worker-${nn(slot)}`).length, 0, `parked slot ${slot} claims no licence`);
-  }
-  assert.equal(runDelegations((host.ctx.hima as any).deps(), runId).length, 3,
-    'the Run holds exactly slot w01\'s three Team members and none for a parked slot');
-
-  // Every branch captures and reads its own result; the join then judges all six.
-  for (const slot of slots) {
-    await node(`capture-worker-${nn(slot)}`);
-    await node(`read-worker-result-${nn(slot)}`);
-  }
-  assert.deepEqual(context().available, ['check-worker-results']);
-  await node('check-worker-results');
-  assert.equal(context().run.fork, undefined, 'the join closed the fork');
+  const members = runDelegations(deps(), runId).filter(row => row.effective.recipe !== undefined);
+  assert.deepEqual(members.map(row => [row.effective.recipe!.teamId, row.effective.recipe!.memberId]), [['atcs-worker-01', 'operator']],
+    'the Run holds exactly slot w01\'s Operator: no Team for a parked slot, and the advisory Reviewer is never waited for');
   assert.deepEqual(records().filter(record => record.type === 'verdict').map(record => record.type === 'verdict' ? [record.branchId, record.ruleId, record.outcome] : []),
     slots.map(slot => [`research-worker-${nn(slot)}`, 'worker-result-admissible', 'PASS']), 'the join judged each slot\'s sealed result');
-  assert.deepEqual(context().available, ['collect']);
-  await node('collect');
 
   const joined = JSON.parse(await readFile(path.join(workspace, 'state/contributions-collected.json'), 'utf8'));
   assert.deepEqual(joined.pending, [], 'every slot, active or parked, sealed a Contribution');
@@ -353,8 +339,8 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
 
   const packDir = path.join(repoRoot, 'packs', packId);
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
-  // Issue #64 Task 4: every worker slot's Team is v4 in Harness scope mode. The Reviewer approves
-  // `{scope: {commands, maxMutations}, planSha256}` within the recipe; the Operator runs the expert loop.
+  // Issue #64, reshaped 2026-09-29 (ADR-0016): every worker slot's Team is v5. The Operator works in
+  // its admitted request's own `candidate.scope` within the recipe; the Reviewer is optional advice.
   const operatorTool = pack.contract.tools.find(item => item.id === 'xtop-operator')!;
   const mutations = operatorTool.interactive!.commands.mutate;
   const toolkit = spawnSync('python3', ['-c', 'import json,sys; sys.path.insert(0, sys.argv[1]); from atcs import workspaces; '
@@ -384,7 +370,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.equal(join.kind, 'judge');
   assert.deepEqual(join.parameters.rules, ['worker-result-admissible']);
   assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.from === 'check-worker-results')
-    .map(edge => [edge.outcome, edge.to]).sort(), [['FAIL', 'collect'], ['PASS', 'collect']],
+    .map(edge => [edge.outcome, edge.to]).sort(), [['FAIL', 'collect'], ['PASS', 'collect'], ['UNDETERMINED', 'collect']],
   'every joined outcome collects: a refused slot is excluded by the ranked recipe, not by the route');
   const operatorNode = (id: string) => (pack.graph.nodes as any[]).find(node => node.id === id);
   for (const slot of slots) {
@@ -405,8 +391,8 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   const replayPrepare = pack.contract.tools.find(item => item.id === 'replay-prepare')!;
   assert.ok(replayPrepare.inputs.includes('AUTO_FINISH'));
   assert.equal(replayPrepare.argv[replayPrepare.argv.length - 1], '${AUTO_FINISH}');
-  assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.to === 'bind-worker-slots').map(edge => [edge.from, edge.revisit === true]).sort(),
-    [['revisit-research', true], ['risk-query', false]]);
+  assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.to === 'bind-worker-slots').map(edge => [edge.from, edge.outcome]),
+    [['check-refresh-budget', 'PASS']], 'every generation plans only past the refresh-budget gate');
   const planner = pack.contract.workshops.find(item => item.id === 'plan-campaign')!;
   for (const words of [/parked/, /workerSlots/, /worst setup check and the worst hold check/, /targetPins/, /share no instance/, /check key in the slot.s targets/, /share no edit-domain net/, /fail reasons/]) {
     assert.match(planner.purpose, words, `plan-campaign purpose states ${words}`);
@@ -416,9 +402,8 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   // as declared knowledge (knowledge/example-*.md), and flow/tests/test_workshop_examples.py pins each
   // against its validator and Reader. Here: each example is declared, listed by its Workshop, named in
   // its purpose, and the loaded Pack holds the same parseable JSON.
-  const examples: Record<string, string> = { 'diagnose-and-observe': 'example-observation-request.md',
+  const examples: Record<string, string> = {
     'plan-campaign': 'example-campaign-plan.md', 'compose-contributions': 'example-integration-plan.md',
-    'evaluate-next-investment': 'example-next-decision.md',
     ...Object.fromEntries(slots.map(slot => [`research-worker-${slot.slice(1)}`, 'example-worker-request.md'])) };
   for (const workshop of pack.contract.workshops) {
     const file = examples[workshop.id]!;
@@ -470,30 +455,28 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.equal(slotless(team, slot), slotless(team01, '01'), `${team.id} is Team 01 for slot w${slot}`);
   }
   const team = team01;
-  assert.equal(team.version, '4');
-  const researcher = team.members.find(item => item.id === 'researcher')!;
+  assert.equal(team.version, '5');
+  assert.deepEqual(team.members.map(item => item.id), ['reviewer', 'operator'], 'the Researcher is the branch\'s own author; no approval member');
   const reviewer = team.members.find(item => item.id === 'reviewer')!;
   const operatorMember = team.members.find(item => item.id === 'operator')!;
-  assert.equal(researcher.budgetShare.maxTokensPerTurn, 16000); // #64 Track B probe: 8000 truncated 2 of 3 replies
-  assert.equal(researcher.budgetShare.maxFollowups, 1);
-  assert.match(researcher.taskTemplate, /targetPins/);
-  assert.match(researcher.taskTemplate, /fail reason/);
-  for (const [member, followups] of [[reviewer, 1], [operatorMember, 0]] as const) {
-    assert.equal(member.budgetShare.maxTokensPerTurn, 5000);
-    assert.equal(member.budgetShare.maxFollowups, followups);
-  }
-  assert.deepEqual(reviewer.resultSchema, { id: 'atcs-worker-review/2',
-    required: ['schema', 'planSha256', 'scope', 'evidenceRefs', 'limitations'] });
-  assert.match(reviewer.taskTemplate, /atcs_undo/);
-  // Review fix round 1: only Host refusals are free; a toolkit refusal spends one approved mutation,
-  // so the Reviewer sizes the budget to the loop (trials, their undos and refusals), not a token count.
-  assert.match(reviewer.taskTemplate, /trials[^.]*undo[^.]*refusals/);
-  assert.doesNotMatch(operatorMember.taskTemplate, /refused call costs nothing/);
+  assert.equal(reviewer.optional, true, 'the Reviewer is optional advice whose absence never blocks');
+  assert.deepEqual(reviewer.resultSchema, { id: 'atcs-worker-review/3', required: ['schema', 'planSha256', 'evidenceRefs', 'limitations'] });
+  assert.match(reviewer.taskTemplate, /Advisory only: nothing waits for you/);
+  assert.equal(operatorMember.budgetShare.maxTokensPerTurn, 5000);
+  assert.equal(operatorMember.budgetShare.maxFollowups, 1, 'one repair follow-up for a result failing its schema');
+  assert.equal(operatorMember.followup, 'reuse-same-child');
+  assert.deepEqual(team.batchWhen, [{ input: 'workerRequest01', value: 'tc_slot_parked', equals: 1 },
+    { input: 'workerRequest01', value: 'tc_request_invalid_count', above: 0 }], 'a parked or refused slot runs the batch no-op');
   assert.match(operatorMember.taskTemplate, /Host refus[^.]*free/);
-  assert.match(operatorMember.taskTemplate, /toolkit refus[^.]*costs one approved mutation/);
-  assert.deepEqual(operatorMember.reviewedAction, { mode: 'scope', fromRole: 'reviewer', planInput: 'workerRequest01',
-    commands: mutations, maxMutations: recipeCap, hostPlanHashArgument: 'planSha256', planHashField: 'planSha256',
-    scopeField: 'scope' });
+  assert.match(operatorMember.taskTemplate, /toolkit refus[^.]*costs one/);
+  assert.deepEqual(operatorMember.reviewedAction, { mode: 'request-scope', planInput: 'workerRequest01', scopePath: ['candidate', 'scope'],
+    commands: mutations, maxMutations: recipeCap, hostPlanHashArgument: 'planSha256' });
+  // #64 M-T03-1: the Operator's task embeds its request; its template names the fields it works from
+  // and the exact dump names the capture seals (#64 D-T03-2).
+  assert.deepEqual(operatorMember.taskInputs, [{ input: 'workerRequest01', fields: ['candidate', 'sessionPlan', 'noSafeAction', 'siteCapabilities'] }]);
+  for (const words of [/editDomain\.instances/, /editDomain\.nets/, /targetPins/, /Exact input workerRequest01/, /exactly this file name/]) {
+    assert.match(operatorMember.taskTemplate, words, `the Operator template states ${words}`);
+  }
   assert.equal(recipeCap, 120, 'the recipe cap leaves room for dozens of trials and their undos, below the Harness 200');
   assert.deepEqual(operatorMember.resultSchema, { id: 'atcs-worker-session/1',
     required: ['schema', 'planSha256', 'mutationReceipts', 'stopReason', 'limitations'] });
@@ -507,14 +490,25 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   }
   assert.ok(pack.contract.knowledge.some(item => item.file === 'xtop-expert-operator.md'));
   assert.equal(packStage(packDir).stage, 'compiled');
-  // #64 Track B (from #63 slice 2): +4 nodes, a fresh refresh-budget reading and its Judge before
-  // `implement` and before `apr-prepare`; +6 edges.
-  assert.equal(pack.graph.nodes.length, 136);
-  // Final review (Minor): +2 edges -- check-setup-goal/check-hold-goal each gain
-  // an explicit UNDETERMINED edge to `residual` (an unknown final WNS is an
-  // evidence gap, not a person-facing wait) instead of falling through to the
-  // engine's own unlabelled-UNDETERMINED default (wait-for-person).
-  assert.equal(pack.graph.edges.length, 178);
+  // The 2026-09-29 reshape (ADR-0016): plan -> six self-driving branches -> merge -> one refresh ->
+  // evaluate -> automatic re-observation -> one owner decision. 136 nodes and 178 edges before.
+  assert.equal(pack.graph.nodes.length, 81);
+  assert.equal(pack.graph.edges.length, 103);
+  assert.deepEqual((pack.graph.nodes as any[]).filter(node => node.kind === 'explore').map(node => node.id), ['decide'], 'one owner decision per generation');
+  assert.deepEqual((pack.graph.nodes as any[]).filter(node => node.kind === 'wait').map(node => node.id), ['wait-for-person'], 'a person only as the honest end');
+  assert.deepEqual((pack.graph as any).autopilot, [
+    { from: ['bind-inputs'], until: ['plan', 'wait-for-person'] },
+    { from: ['read-campaign-plan'], until: ['decide'] },
+    { fork: 'prepare-workers', revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 16000 } },
+    { from: ['check-worker-results'], until: ['compose'] },
+    { from: ['read-integration-plan'], until: ['decide'] },
+  ], 'the owner acts at plan, compose and decide only');
+  // Every in-loop Judge labels all three outcomes: an UNDETERMINED never falls through to a person.
+  for (const node of (pack.graph.nodes as any[]).filter(item => item.kind === 'judge' && item.id !== 'check-inputs' && item.id !== 'check-refresh-budget')) {
+    const outcomes = (pack.graph.edges as any[]).filter(edge => edge.from === node.id).map(edge => edge.outcome).sort();
+    assert.deepEqual(outcomes, ['FAIL', 'PASS', 'UNDETERMINED'], `${node.id} labels its outcomes`);
+    assert.ok(!(pack.graph.edges as any[]).some(edge => edge.from === node.id && edge.to === 'wait-for-person'), `${node.id} never waits for a person`);
+  }
 
   // #64 Track B (from #63 slice 2): every Explore revisit consumes a Harness generation, so
   // `generationLimit` bounds revisits, not Innovus/StarRC/PrimeTime refreshes (live02 spent both
@@ -532,28 +526,24 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     .map(edge => `${edge.outcome ?? ''}${edge.revisit ? 'revisit' : ''}->${edge.to}`).sort();
   const edgesTo = (id: string) => (pack.graph.edges as any[]).filter(edge => edge.to === id)
     .map(edge => `${edge.from}->${edge.outcome ?? ''}${edge.revisit ? 'revisit' : ''}`).sort();
-  for (const [read, check, refresh] of [['read-refresh-budget', 'check-refresh-budget', 'implement'],
-    ['read-refresh-budget-apr', 'check-refresh-budget-apr', 'apr-prepare']] as const) {
-    assert.equal(nodeOf(read).kind, 'act');
-    assert.equal(nodeOf(read).parameters.observes, 'workingState');
-    assert.equal(nodeOf(check).kind, 'judge');
-    assert.deepEqual(nodeOf(check).parameters.rules, ['refresh-budget']);
-    assert.deepEqual(nodeOf(check).parameters.bind, { max_physical_refreshes: { from: 'goal', name: 'max_physical_refreshes' } });
-    assert.deepEqual(edgesFrom(read), [`->${check}`]);
-    assert.deepEqual(edgesFrom(check), ['FAIL->wait-for-person', `PASS->${refresh}`]);
-    assert.deepEqual(edgesTo(refresh), [`${check}->PASS`], `${refresh} is entered only through ${check}`);
-  }
-  assert.deepEqual(edgesTo('read-refresh-budget'), ['check-presta-model->PASS', 'revisit-implement->revisit']);
-  assert.deepEqual(edgesTo('read-refresh-budget-apr'), ['revisit-earlier-apr->revisit']);
-  // The refreshing nodes behind the two gates are entered only from behind them.
-  assert.deepEqual(edgesTo('apr-run'), ['apr-prepare->']);
-  assert.deepEqual(edgesTo('extract'), ['apr-run->', 'implement->']);
-  assert.deepEqual(edgesFrom('check-presta-model'), ['FAIL->decide-next', 'PASS->read-refresh-budget']);
+  // One refresh per generation: its cap gate is read at the start of every generation, before the plan.
+  assert.equal(nodeOf('read-refresh-budget').kind, 'act');
+  assert.equal(nodeOf('read-refresh-budget').parameters.observes, 'workingState');
+  assert.equal(nodeOf('check-refresh-budget').kind, 'judge');
+  assert.deepEqual(nodeOf('check-refresh-budget').parameters.rules, ['refresh-budget']);
+  assert.deepEqual(nodeOf('check-refresh-budget').parameters.bind, { max_physical_refreshes: { from: 'goal', name: 'max_physical_refreshes' } });
+  assert.deepEqual(edgesFrom('read-refresh-budget'), ['->check-refresh-budget']);
+  assert.deepEqual(edgesFrom('check-refresh-budget'), ['FAIL->wait-for-person', 'PASS->bind-worker-slots', 'UNDETERMINED->wait-for-person']);
+  assert.deepEqual(edgesTo('read-refresh-budget'), ['decide->revisit', 'residual-baseline->']);
+  assert.deepEqual(edgesFrom('decide'), ['revisit->read-refresh-budget'], 'continue is the next generation from the working state');
+  assert.deepEqual(edgesTo('implement'), ['read-precheck->']);
+  assert.deepEqual(edgesTo('extract'), ['implement->']);
+  assert.equal(nodeOf('apr-run'), undefined, 'no earlier-APR detour');
   assert.ok(pack.contract.rules.includes('refresh-budget'));
-  // #64 Track B (C28): the two refreshes of the default cap need three generations; a Run created
-  // with fewer is refused at creation (Harness budget.minimumGenerations).
-  assert.equal((pack.contract.budget as any).minimumGenerations, 3);
-  assert.equal((pack.contract.goal as any).max_physical_refreshes.default + 1, 3);
+  // #64 Track B (C28), reshaped: every generation refreshes once, so the two refreshes of the default
+  // cap need two generations; a Run created with fewer is refused at creation.
+  assert.equal((pack.contract.budget as any).minimumGenerations, 2);
+  assert.equal((pack.contract.goal as any).max_physical_refreshes.default, 2);
 
   // #64 Track B (from #63 slice 3 gap 1): every request output has an itemized `<output>Problems`
   // beside it (written by tools/read-atcs.py, no reader), read by the Workshop that produces it.
@@ -641,28 +631,20 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     for (const pattern of forbidden) assert.doesNotMatch(word, pattern, `argv word "${word}" references a forbidden path`);
   }
 
-  // The next-decision Reader (tools/read-atcs.py) refuses stateRef/observationRef that are not a
-  // 20-hex artifact `id` and a budgetRef that is not a string; the Workshop purpose must say so, or
-  // the Researcher guesses (Issue 63: objects of 64-hex content hashes, request-admissible FAIL).
-  const decider = pack.contract.workshops.find((w: { produces?: string }) => w.produces === 'nextDecision');
-  assert.ok(decider, 'a workshop produces nextDecision');
-  assert.match(decider.purpose, /stateRef is the `id` \(20 lowercase hex\) of state\/working-state\.json/);
-  assert.match(decider.purpose, /observationRef is the `id` \(20 lowercase hex\) of the observation/);
-  assert.match(decider.purpose, /budgetRef is a non-empty string/);
-
-  // A Team member whose reply is not exactly one JSON object is refused before result-observed, and its
-  // delegation id is fixed per execution, so without one same-child follow-up the Team can never
-  // complete and the execution stays begun (Issue 63: a reviewer reply missing one closing bracket).
-  const workerTeam = pack.contract.agentTeams.find((t: { id: string }) => t.id === 'atcs-worker-01');
-  for (const role of ['researcher', 'reviewer']) {
-    const member = workerTeam.members.find((m: { id: string }) => m.id === role);
-    assert.equal(member.followup, 'reuse-same-child', `${role} allows one repair follow-up`);
-    assert.equal(member.budgetShare.maxFollowups, 1, `${role} allocates exactly one follow-up`);
-    assert.match(member.taskTemplate, /If the owner returns a refusal of your reply, answer with the corrected single JSON object only/);
+  // The reshape removed the owner's in-loop decisions: no next-decision or observation-request
+  // Workshop, Reader or output remains, and no rule routes on them.
+  for (const gone of ['nextDecision', 'observationRequest', 'aprTask']) {
+    assert.equal(pack.contract.outputs.find(output => output.name === gone), undefined, `${gone} is gone`);
   }
-  // The owner must know to use that follow-up, or it escalates a formatting refusal to a person.
+  assert.deepEqual(pack.contract.workshops.map(item => item.id).filter(id => !/^research-worker-\d\d$/.test(id)), ['plan-campaign', 'compose-contributions']);
+  // Each branch Workshop declares its revision: a refused request is revised by the branch's author.
+  for (const slot of slots) {
+    const workshop = pack.contract.workshops.find(item => item.id === `research-worker-${slot.slice(1)}`)! as any;
+    assert.deepEqual(workshop.revision, { refusedWhen: 'tc_request_invalid_count', problems: `workerRequest${slot.slice(1)}Problems` });
+  }
   const teamKnowledge = await readFile(path.join(repoRoot, 'packs', packId, 'knowledge/agent-team.md'), 'utf8');
-  assert.match(teamKnowledge, /The recipe allows one\nfollow-up to the same child/);
+  assert.match(teamKnowledge, /the owner takes none/);
+  assert.match(teamKnowledge, /Reviewer: optional and advisory/);
 
   installPackMethod({ from: packDir, to: path.join(h.home, 'hima/packs', packId) });
   const host = await bootInProcess(h);

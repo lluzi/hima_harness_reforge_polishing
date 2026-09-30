@@ -1,8 +1,0 @@
-id: presta-model-qualified
-version: "1"
-title: Every new net of the pre-checked batch has a qualifying RC model
-# Issue #64 Task 6: the gate reads tc_presta_gate_net_count, which equals the unqualified-net count
-# for a legacy batch and is 0 for a recipe batch (its evidence says predictive: false instead).
-requires: [{ type: tc_presta_gate_net_count }]
-subject: { type: tc_presta_gate_net_count }
-predicate: { op: eq, threshold: 0, unit: count }

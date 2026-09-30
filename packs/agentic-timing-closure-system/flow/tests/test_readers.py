@@ -331,7 +331,9 @@ class WorkPackageReaderTest(unittest.TestCase):
         sizing actions, so a request is admitted on its package alone."""
         report = self._write_envelope(self._valid_candidate())
         values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
-        self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 0}])
+        # ADR-0016: tc_slot_parked tells the worker Team's batchWhen that this slot is active.
+        self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 0},
+                                  {"type": "tc_slot_parked", "unit": "count", "value": 0}])
 
     def test_a_scope_command_outside_the_toolkit_mutations_is_invalid(self):
         for command in ("atcs_ref", "atcs_export_changes", "size_cell", "exec"):
@@ -415,7 +417,8 @@ class WorkPackageReaderTest(unittest.TestCase):
         parked = {"taskId": "w05", "baseStateId": self.design["id"], "parked": True, "problem": "no cluster left"}
         report = self._write_envelope(parked)
         values = read_atcs.read("worker-request", report, self.workspace, extra=["w05"])
-        self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 0}])
+        self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 0},
+                                  {"type": "tc_slot_parked", "unit": "count", "value": 1}])
 
     def test_parking_must_agree_with_the_prepared_package(self):
         parked = {"taskId": "w05", "baseStateId": self.design["id"], "parked": True, "problem": "no cluster left"}
@@ -685,6 +688,11 @@ class CampaignPlanReaderTest(unittest.TestCase):
         self.assertEqual([v["type"] for v in values], ["tc_request_invalid_count"])
         return values[0]["value"]
 
+    def _advised(self, work_packages, **kwargs):
+        """ADR-0016: what the plan Reader writes as advice, never counted."""
+        report = self._write_envelope(work_packages, **kwargs)
+        return read_atcs.advice("campaign-plan", report, self.workspace)
+
     def test_six_disjoint_blocker_covering_packages_have_zero_invalid_count(self):
         report = self._write_envelope(self._six())
         values = read_atcs.read("campaign-plan", report, self.workspace)
@@ -702,8 +710,10 @@ class CampaignPlanReaderTest(unittest.TestCase):
                 del packages[slot]
                 self.assertGreaterEqual(self._count(packages), 1)
 
-    def test_blank_reason_is_counted(self):
-        self.assertGreaterEqual(self._count(self._six(), reason="   "), 1)
+    def test_blank_reason_is_advice(self):
+        """ADR-0016: why these clusters is the method's advice, never a refusal of the plan."""
+        self.assertEqual(self._count(self._six(), reason="   "), 0)
+        self.assertTrue(any(line.startswith("candidate.reason") for line in self._advised(self._six(), reason="   ")))
 
     def test_tampered_base_state_is_refused(self):
         report = self._write_envelope(self._six())
@@ -776,13 +786,17 @@ class CampaignPlanReaderTest(unittest.TestCase):
 
     # ---- blockers first --------------------------------------------------------------------
 
-    def test_the_worst_setup_check_outside_every_active_slots_target_pins_is_counted(self):
+    # ADR-0016: blockers first is the method's advice; the plan is refused only for identity and merge
+    # integrity, so an uncovered blocker is advised and never counted.
+    def test_the_worst_setup_check_outside_every_active_slots_target_pins_is_advised(self):
         packages = self._six()
         packages["w01"]["targetPins"] = ["U1/B"]  # U1/A ends the worst setup check
-        self.assertGreaterEqual(self._count(packages), 1)
+        self.assertEqual(self._count(packages), 0)
+        self.assertTrue(any("is covered by no active slot" in line for line in self._advised(packages)))
 
-    def test_the_worst_hold_check_outside_every_active_slots_target_pins_is_counted(self):
-        self.assertGreaterEqual(self._count(self._six(parked=("w02",))), 1)  # U2/A ends the worst hold check
+    def test_the_worst_hold_check_outside_every_active_slots_target_pins_is_advised(self):
+        self.assertEqual(self._count(self._six(parked=("w02",))), 0)  # U2/A ends the worst hold check
+        self.assertTrue(any("U2/A" in line for line in self._advised(self._six(parked=("w02",)))))
 
     def test_a_less_severe_check_may_wait(self):
         packages = self._six()
@@ -805,8 +819,9 @@ class CampaignPlanReaderTest(unittest.TestCase):
         active slot's `targets` covers it (the same `composition.covers` rule the recipe ranks by)."""
         self._write_observation({f"{self.SCENARIO}|setup|out_port": -0.20, f"{self.SCENARIO}|hold|U2/A": -0.10})
         packages = self._six()
-        self.assertGreaterEqual(self._count(packages), 1, "a port blocker named nowhere is uncovered")
+        self.assertTrue(any("out_port" in line for line in self._advised(packages)), "a port blocker named nowhere is advised")
         packages["w01"]["targets"].append(f"{self.SCENARIO}|setup|out_port")
+        self.assertFalse(any("out_port" in line for line in self._advised(packages)))
         self.assertEqual(self._count(packages), 0)
 
     def test_the_worst_check_of_a_scenario_that_is_not_required_may_wait(self):
@@ -818,17 +833,20 @@ class CampaignPlanReaderTest(unittest.TestCase):
         self._write_observation({f"{self.SCENARIO}|setup|U1/A": 0.02})
         self.assertEqual(self._count(self._six(parked=workspaces.TASK_IDS)), 0)
 
-    def test_an_observation_of_another_design_state_is_counted(self):
-        """Blockers are read from the evidence the plan Workshop cites; a stale observation cannot rank them."""
+    def test_an_observation_of_another_design_state_is_advised(self):
+        """Blockers are read from the evidence the plan Workshop cites; a stale observation cannot rank them,
+        which the Reader says as advice (the refresh chain observes the working state itself, ADR-0016)."""
         self._write_observation({f"{self.SCENARIO}|setup|U1/A": -0.20}, design_state_id="f" * 20)
-        self.assertGreaterEqual(self._count(self._six()), 1)
+        self.assertEqual(self._count(self._six()), 0)
+        self.assertTrue(any("observe the working state" in line for line in self._advised(self._six())))
 
-    def test_missing_observation_or_policy_is_counted(self):
+    def test_missing_observation_or_policy_is_advised(self):
         for name in ("observation.json", "policy.json"):
             with self.subTest(missing=name):
                 self.setUp()
                 (self.workspace / "state" / name).unlink()
-                self.assertGreaterEqual(self._count(self._six()), 1)
+                self.assertEqual(self._count(self._six()), 0)
+                self.assertTrue(any("blockers cannot be established" in line for line in self._advised(self._six())))
 
     # ---- parking and the workerSlots knob ---------------------------------------------------
 
@@ -1769,7 +1787,7 @@ class SemanticsCoverageTest(unittest.TestCase):
         "tc_final_setup_wns_ns", "tc_final_hold_wns_ns", "tc_missing_required_check_count",
         "tc_final_identity_error_count", "tc_applicable_constraint_failure_count",
         "tc_applicable_constraint_unknown_count", "tc_fixed_check_count", "tc_missing_prior_check_count",
-        "tc_refresh_count", "tc_accepted_artifact_ready", "tc_stop_required", "tc_next_action",
+        "tc_refresh_count", "tc_accepted_artifact_ready", "tc_slot_parked",
         "tc_selected_contribution_count", "tc_worker_refusal_count", "tc_presta_gate_net_count",
         "tc_batch_guarantee_unevidenced", "tc_refreshes_completed",
     }

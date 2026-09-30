@@ -195,15 +195,17 @@ class RefreshBudgetDeclarationTest(unittest.TestCase):
         self.assertNotIn("refresh", strategy.lower())
         self.assertNotIn("refreshLimit", text)
 
-    def test_both_budget_judges_bind_the_cap_from_goal(self):
+    def test_the_one_budget_judge_binds_the_cap_from_goal_at_every_generation_start(self):
+        """ADR-0016: every generation holds one refresh, so one gate at the generation's start caps it."""
         text = (PACK_DIR / "graph.yml").read_text(encoding="utf-8")
         binds = re.findall(
             r"^  - id: (check-refresh-budget\S*)\n    kind: judge\n    parameters:\n      rules: \[refresh-budget\]\n      bind: (.*)$",
             text, re.M)
         self.assertEqual(sorted(binds), [
             ("check-refresh-budget", "{ max_physical_refreshes: { from: goal, name: max_physical_refreshes } }"),
-            ("check-refresh-budget-apr", "{ max_physical_refreshes: { from: goal, name: max_physical_refreshes } }"),
         ])
+        self.assertIn("{ from: decide, to: read-refresh-budget, revisit: true }", text)
+        self.assertIn("{ from: check-refresh-budget, to: wait-for-person, outcome: FAIL }", text)
 
 
 if __name__ == "__main__":

@@ -1117,7 +1117,18 @@ proc atcs_undo {plan_sha256} {
     }
 }
 
+# The Operator's typed dump. #64 D-T03-2: capture seals exactly before.dump and after.dump in the slot
+# root, so those are the only two names this writes, always in the slot root; any other name is
+# refused before anything is written, naming the two. The replay's own dumps go through
+# atcs_write_cell_dump, which no typed command reaches.
 proc atcs_dump_cells {path} {
+    set name [file tail $path]
+    if {$name ni {before.dump after.dump}} {
+        error "atcs_dump_cells writes only before.dump or after.dump (in the slot root $::operator_root); capture seals exactly those two names, not $name"
+    }
+    atcs_write_cell_dump [file join $::operator_root $name]
+}
+proc atcs_write_cell_dump {path} {
     # `get_cells -hierarchical` (documented, get_cells.1) plus
     # `foreach_in_collection` (documented, foreach_in_collection.1) is the
     # confirmed way to iterate every cell; `full_name`/`ref_name` are

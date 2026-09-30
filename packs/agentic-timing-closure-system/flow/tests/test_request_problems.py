@@ -50,12 +50,10 @@ LIVE02_C23_LINES = 10
 
 # Each request output, its document path and the Workshop that writes it (contract.yml).
 REQUEST_OUTPUTS = {
-    "observationRequest": ("research/requests/observation-request.json", "diagnose-and-observe"),
     "campaignPlan": ("research/requests/campaign-plan.json", "plan-campaign"),
     **{f"workerRequest{slot[1:]}": (f"research/requests/worker-request-{slot}.json", f"research-worker-{slot[1:]}")
        for slot in SLOTS},
     "integrationPlan": ("research/requests/integration-plan.json", "compose-contributions"),
-    "nextDecision": ("research/requests/next-decision.json", "evaluate-next-investment"),
 }
 
 
@@ -98,8 +96,9 @@ class Live02PlanProblemsTest(unittest.TestCase):
     def test_forty_one_problems_one_line_each(self):
         found = read_atcs.problems("campaign-plan", self.plan, self.workspace)
         (value,) = read_atcs.read("campaign-plan", self.plan, self.workspace)
-        self.assertEqual(value["value"], 41, "the live count")
-        self.assertEqual(len(found), 41)
+        # ADR-0016: the four uncovered-blocker lines of the live 41 are advice now; 37 stay counted.
+        self.assertEqual(value["value"], 37, "the live count less the four blocker lines, now advice")
+        self.assertEqual(len(found), 37)
         c23 = [line for line in read_atcs.advice("campaign-plan", self.plan, self.workspace)
                if re.match(r"^candidate\.workPackages\.w0[1-6]\.(editDomain|targetPins): ", line)]
         self.assertEqual(len(c23), LIVE02_C23_LINES, c23)
@@ -127,8 +126,9 @@ class Live02PlanProblemsTest(unittest.TestCase):
         self.assertEqual(len(lines("candidate.workPackages.w01.targetPins: targetPin 'ifu_axi_araddr[")), 2)
         (shared,) = lines("candidate.workPackages: instance 'swerv_dma_ctrl' is claimed by active slots w01, w02, w03")
         self.assertIn("share no instance", shared)
-        blockers = lines("candidate.workPackages: blocker ")
-        self.assertEqual(len(blockers), 4)
+        blockers = [line for line in read_atcs.advice("campaign-plan", self.plan, self.workspace)
+                    if line.startswith("candidate.workPackages: blocker ")]
+        self.assertEqual(len(blockers), 4, "the four blocker lines are advice (ADR-0016)")
         self.assertTrue(all("|hold|swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_" in line for line in blockers))
 
     def test_the_reader_process_writes_the_same_lines_beside_the_plan(self):
@@ -137,7 +137,7 @@ class Live02PlanProblemsTest(unittest.TestCase):
         with mock.patch.object(sys, "argv", ["read-atcs.py", "campaign-plan", str(self.plan), str(out), str(self.workspace)]):
             read_atcs.main()
         sidecar = (self.workspace / "research" / "requests" / "campaign-plan.problems.txt").read_text().splitlines()
-        count = 41
+        count = 37
         self.assertEqual(sidecar[0], f"{count} problems in campaign-plan.json (tc_request_invalid_count = {count}); "
                                      "fix every line and write the whole document again:")
         found = read_atcs.problems("campaign-plan", self.plan, self.workspace)
@@ -270,13 +270,15 @@ class ProblemsWiringTest(unittest.TestCase):
         operator = self.CONTRACT.split("  - id: xtop-operator\n", 1)[1].split("\n  - id: ", 1)[0]
         self.assertIn("A refused active request is revised, not parked", " ".join(operator.split()))
 
-    def test_the_decision_workshop_also_reads_the_plan_refusals_routed_to_it(self):
-        workshop = self._workshop("evaluate-next-investment")
-        reads = re.search(r"^    reads: \[(.*)\]$", workshop, re.M).group(1).split(", ")
-        for name in ("campaignPlanProblems", "integrationPlanProblems"):
-            self.assertIn(name, reads)
-            self.assertIn(name, workshop.split("    directory:")[0])
-
+    def test_the_owner_decides_on_a_refused_plan_and_no_decision_workshop_remains(self):
+        """ADR-0016: a refused plan or integration plan goes to the owner's one decision (graph.yml);
+        the decision is the Explore itself, so no next-decision Workshop, output or Reader remains."""
+        self.assertNotIn("  - id: evaluate-next-investment\n", self.CONTRACT)
+        self.assertNotIn("  - name: nextDecision\n", self.CONTRACT)
+        graph = (PACK_DIR / "graph.yml").read_text(encoding="utf-8")
+        for judge in ("check-campaign-plan", "check-integration-plan"):
+            for outcome in ("FAIL", "UNDETERMINED"):
+                self.assertIn(f"{{ from: {judge}, to: decide, outcome: {outcome} }}", graph)
 
 if __name__ == "__main__":
     unittest.main()

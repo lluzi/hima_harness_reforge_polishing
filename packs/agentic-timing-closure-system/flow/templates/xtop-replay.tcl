@@ -94,7 +94,7 @@ proc atcs_replay_step {step_id skip call} {
     }
 }
 proc atcs_replay_session_end {index} {
-    atcs_dump_cells [format "%s/%03d.dump" $::env(DUMP_DIR) $index]
+    atcs_write_cell_dump [format "%s/%03d.dump" $::env(DUMP_DIR) $index]
 }
 # Every instance an applied command changed and that still exists: the masters
 # the kept toolkit lines recorded on their `after` side.
@@ -118,7 +118,7 @@ proc atcs_replay_read_lines {path} {
     return $lines
 }
 
-atcs_dump_cells [file join $env(DUMP_DIR) 000.dump]
+atcs_write_cell_dump [file join $env(DUMP_DIR) 000.dump]
 source $env(RECIPE_TCL)
 
 # Only instances that still exist are protected (a later command may have removed
@@ -148,7 +148,7 @@ foreach line [atcs_replay_read_lines $env(AUTO_FIX_TCL)] {
     set code [catch {uplevel #0 $line} result]
     lappend auto_fix [atcs_jobj [list command [atcs_js $line] code $code result [atcs_js [atcs_clip $result 2000]]]]
 }
-atcs_dump_cells [file join $env(DUMP_DIR) auto.dump]
+atcs_write_cell_dump [file join $env(DUMP_DIR) auto.dump]
 
 set predict_setup [catch {redirect -file [file join $env(PREDICT_DIR) setup.rpt] {summarize_gba_violations -exclude_path -setup}}]
 set predict_hold [catch {redirect -file [file join $env(PREDICT_DIR) hold.rpt] {summarize_gba_violations -exclude_path -hold}}]

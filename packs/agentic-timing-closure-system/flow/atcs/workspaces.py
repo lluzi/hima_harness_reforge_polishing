@@ -53,17 +53,15 @@ is bound by four more fields, all baked into the session Tcl by
   toolkit's mutations, the same list as `contract.yml`
   `xtop-operator.interactive.commands.mutate`) and must keep `atcs_undo`,
   because the expert loop undoes every trial XTop's gain does not support.
-  It is the widest set the slot's Reviewer should approve from, and the
-  narrowing is advisory: the Harness enforces the recipe's static command
-  list and the Reviewer's approved subset, and the session Tcl does not
-  check command names. The worker-request Reader binds the request to this
-  package (`state/workers.json[slot].workPackage`) field by field.
-  `maxMutations` must equal `SCOPE_MAX_MUTATIONS`, the worker Teams' recipe
-  cap: it becomes the session's Tcl-side budget (`::ATCS_MAX_MUTATIONS`),
-  which only backs the Host. The budget that binds is the Reviewer's approved
-  `scope.maxMutations` (1..recipe cap), which the Host counts per approved
-  execution; a Tcl budget below it would refuse mutations the Reviewer
-  approved, one above it could never be reached.
+  It is the scope the Host binds for the slot's Operator (2026-09-29,
+  ADR-0016: the admitted request's own `candidate.scope`, with the request's
+  plan hash): only these commands mutate. The plan's wide default is every
+  mutation. The worker-request Reader binds the request to this package
+  (`state/workers.json[slot].workPackage`) field by field.
+  `maxMutations` is an integer 1..`SCOPE_MAX_MUTATIONS` (the worker Teams'
+  recipe cap, the wide default): the Host counts it per execution (undo
+  included), and it is also the session's Tcl-side budget
+  (`::ATCS_MAX_MUTATIONS`), which backs the Host.
 - `targetPins` is a list of distinct full hierarchical pin paths
   (``<instance path>/<pin>``, no wildcard, Tcl-safe): the blockers' endpoint
   pins, the only pins besides domain-instance pins a targeted fix may name.
@@ -209,10 +207,10 @@ def _expert_problems(obj):
                 if "atcs_undo" not in commands:
                     problems.append("scope.commands must keep atcs_undo: the expert loop undoes every trial without gain")
             budget = scope["maxMutations"]
-            if isinstance(budget, bool) or not isinstance(budget, int) or budget != SCOPE_MAX_MUTATIONS:
+            if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= SCOPE_MAX_MUTATIONS:
                 problems.append(
-                    f"scope.maxMutations must be the recipe cap {SCOPE_MAX_MUTATIONS} (the Reviewer's budget binds), "
-                    f"got {budget!r}"
+                    f"scope.maxMutations must be an integer 1..{SCOPE_MAX_MUTATIONS} (the recipe cap, the wide "
+                    f"default), got {budget!r}"
                 )
     if "targetPins" in obj:
         pins = obj["targetPins"]

@@ -29,10 +29,14 @@ class TeamTurnBudgetTest(unittest.TestCase):
     PROBED_TRUNCATED_TURN = 8598
     REQUIRED = 16000
 
-    def test_every_researcher_turn_budget_holds_the_probed_reply(self):
-        for slot in SLOTS:
-            self.assertGreaterEqual(self.REQUIRED, self.PROBED_TRUNCATED_TURN)
-            self.assertGreaterEqual(_member_budget(slot, "researcher"), self.REQUIRED, f"atcs-worker-{slot} researcher maxTokensPerTurn")
+    def test_the_branch_researcher_turn_budget_holds_the_probed_reply(self):
+        """ADR-0016: the branch's Researcher is the fork's child Agent that authors the research Workshop
+        entry (graph.yml autopilot author share); its turn is reasoning plus one JSON object too."""
+        graph = (PACK_DIR / "graph.yml").read_text(encoding="utf-8")
+        fork = re.search(r"\{ fork: prepare-workers, [^\n]*maxTokensPerTurn: (\d+)", graph)
+        self.assertIsNotNone(fork, "the self-driving fork declares its author's turn budget")
+        self.assertGreaterEqual(self.REQUIRED, self.PROBED_TRUNCATED_TURN)
+        self.assertGreaterEqual(int(fork.group(1)), self.REQUIRED)
 
 
 

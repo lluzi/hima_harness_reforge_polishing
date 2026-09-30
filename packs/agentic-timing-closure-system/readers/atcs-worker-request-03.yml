@@ -5,3 +5,4 @@ argv: [/usr/bin/python3, '${READER}', 'worker-request', '${REPORT}', '${OUT}', '
 reportKind: atcs-worker-request/1
 emits:
   - tc_request_invalid_count
+  - tc_slot_parked

@@ -925,13 +925,13 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
 
     Issue #64 Task 4: that validator covers the expert Operator fields (`scope`
     commands within the toolkit mutations and keeping `atcs_undo`,
-    `scope.maxMutations` at the recipe cap, `targetPins`, `observe`,
+    `scope.maxMutations` 1..the recipe cap, `targetPins`, `observe`,
     `editDomain.regions`). A slot argument outside `workspaces.TASK_IDS`
     (w01..w06) is a declaration error and is refused. Every edit-domain
     instance and target pin must resolve as a full hierarchical path in the
     verified base netlist (the pin's owner a leaf cell); each one that does not
-    is a counted problem. There is no top-level `actions` list: the worker Team
-    approves a scope. For a worker slot the candidate is also bound to the
+    is a counted problem. There is no top-level `actions` list: the request's own
+    scope is the one the Host binds for the Operator. For a worker slot the candidate is also bound to the
     package `prepare-workers` prepared for it (`_prepared_package_problems`).
     """
     core = mods["core"]
@@ -963,6 +963,26 @@ def _read_request_envelope(report, workspace, expected_task_id, mods):
     if not workspaces_mod.is_parked(candidate):
         found += _session_plan_master_problems(envelope, candidate, base_state, workspace, core, slot)
     return [_emit_count("tc_request_invalid_count", len(found))], found
+
+
+def _with_slot_parked(read, report, mods):
+    """A worker request's `(values, problems)` with `tc_slot_parked` added (ADR-0016).
+
+    1 when the request's candidate is the parked shape, 0 for an active slot, unknown when the
+    document has no readable candidate: the worker Team's `batchWhen` runs a parked slot's batch
+    no-op on it, without asking anyone.
+    """
+    values, found = read
+    try:
+        envelope = _load_json(report)
+        candidate = envelope.get("candidate") if isinstance(envelope, dict) else None
+    except (ValueError, OSError):
+        candidate = None
+    if isinstance(candidate, dict):
+        parked = _emit_count("tc_slot_parked", 1 if mods["workspaces"].is_parked(candidate) else 0)
+    else:
+        parked = _emit("tc_slot_parked", "count", mods["core"].unknown("the worker request has no readable candidate"))
+    return values + [parked], found
 
 
 def _no_safe_action_problems(envelope, candidate, workspaces_mod, slot):
@@ -1368,13 +1388,17 @@ def _read_campaign_plan(report, workspace, extra, mods):
             active[task_id] = package
             found += _edit_domain_problems(package, base_state, workspace, (where, ""))
 
+    # Reshaped 2026-09-29 (ADR-0016): the plan is refused only for what breaks identity or merge
+    # integrity -- a stale base, a second copy, a package prepare-workers cannot prepare, an active slot
+    # above the knob, two slots claiming one instance or net. Why these clusters, and whether the
+    # blockers come first, are the method's advice to the plan Workshop, never a refusal.
     reason = candidate.get("reason")
     if not isinstance(reason, str) or not reason.strip():
-        found.append("candidate.reason: must be a non-empty string saying why these clusters, in this order")
+        found.append(Advice("candidate.reason: should be a non-empty string saying why these clusters, in this order"))
 
     found += _worker_slot_problems(workspace, active, core, workspaces_mod)
     found += _shared_domain_problems(active)
-    found += _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])
+    found += [Advice(item) for item in _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])]
     parked = [task_id for task_id in workspaces_mod.TASK_IDS
               if isinstance(work_packages.get(task_id), dict) and task_id not in active]
     found += _parked_seat_problems(workspace, working_state_id, active, parked, core, workspaces_mod,
@@ -2182,7 +2206,8 @@ _REQUEST_HANDLERS = {
     "observation-request": lambda report, workspace, extra, mods: _read_observation_request(report, workspace, extra, mods),
     "work-package": lambda report, workspace, extra, mods: _read_request_envelope(report, workspace, None, mods),
     "campaign-plan": lambda report, workspace, extra, mods: _read_campaign_plan(report, workspace, extra, mods),
-    "worker-request": lambda report, workspace, extra, mods: _read_request_envelope(report, workspace, extra[0] if extra else None, mods),
+    "worker-request": lambda report, workspace, extra, mods: _with_slot_parked(
+        _read_request_envelope(report, workspace, extra[0] if extra else None, mods), report, mods),
     "integration-plan": lambda report, workspace, extra, mods: _read_integration_plan(report, workspace, extra, mods),
     "next-decision": lambda report, workspace, extra, mods: _read_next_decision(report, workspace, extra, mods),
 }

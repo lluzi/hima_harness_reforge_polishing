@@ -115,7 +115,8 @@ class T01Workspace(unittest.TestCase):
     def problems(self, slot, document):
         report = _write(self.workspace / "research" / "requests" / f"worker-request-w{slot}.json", json.dumps(document))
         found = read_atcs.problems("worker-request", report, self.workspace, f"w{slot}")
-        (value,) = read_atcs.read("worker-request", report, self.workspace, [f"w{slot}"])
+        value = next(item for item in read_atcs.read("worker-request", report, self.workspace, [f"w{slot}"])
+                     if item["type"] == "tc_request_invalid_count")
         self.assertEqual(value["value"], len(found), found)
         return found
 
@@ -419,21 +420,20 @@ class OperatorLoopTest(unittest.TestCase):
             self.assertIn(words, text)
 
     def test_each_team_carries_the_next_rung_and_the_wide_default_scope(self):
+        """ADR-0016: the Operator works from the request itself; the branch child that authored the
+        request is its Researcher, the Reviewer is advisory only, and the wide default scope is the
+        request's own candidate.scope (the plan states every toolkit mutation and the 120 cap)."""
         for slot in SLOTS:
             members = team_members(slot)
             with self.subTest(slot=slot):
                 self.assertIn("then try the next rung of the ladder", members["operator"])
                 self.assertIn("an undo is never the end of the session", members["operator"])
                 self.assertIn("no wrong attempt, only an unmeasured one", members["operator"])
-                self.assertIn("never tell the Operator to stop after one undo", members["researcher"])
-                reviewer = members["reviewer"]
-                self.assertIn("sharpen the plan and record concerns", reviewer)
-                self.assertIn("scope.commands defaults to every command of candidate.scope.commands", reviewer)
-                self.assertIn("scope.maxMutations defaults to 50", reviewer)
-                self.assertIn("never below 3", reviewer)
-                example = json.loads(reviewer.split("Example reply (shape only): ", 1)[1].split("'", 1)[0])
-                self.assertGreaterEqual(example["scope"]["maxMutations"], 3)
-                self.assertIn("atcs_undo", example["scope"]["commands"])
+                self.assertNotIn("researcher", members)
+                self.assertIn("Advisory only: nothing waits for you and nothing is gated on you", members["reviewer"])
+                self.assertIn("optional: true", members["reviewer"])
+                self.assertIn("mode: request-scope", members["operator"])
+                self.assertIn("scopePath: [candidate, scope]", members["operator"])
 
     def test_the_recipe_cap_leaves_room_for_the_default(self):
         from atcs import workspaces
