@@ -1704,6 +1704,11 @@ workshops:
       an empty select needs a stated waiting-value reason. Copy the shape of knowledge
       example-integration-plan.md and change only the values: a resolution only for a facts.conflicts
       key, exactly {conflictKey, decision}.
+      Zero ready Contributions (every seat parked, no-fix or unsealed) is a designed outcome, not a
+      failure: a compose with zero selected Contributions is a valid, required step. Write the plan with
+      an empty select and that reason; the batch then runs the auto-finish alone and its record states
+      manualValue none. Never skip or refuse this Workshop, and never ask the person inside a generation:
+      closing the Run is only the designed continue|stop at decide.
     directory: research/compose
     entry: entry.py
     language: python

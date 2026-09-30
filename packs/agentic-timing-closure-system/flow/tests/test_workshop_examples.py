@@ -376,6 +376,27 @@ class RetainedBadPlanTest(ExampleWorkspace):
         self.assertEqual(self.read_plan(self.plan()), 0, "the example, fixed, is admitted")
 
 
+class ComposeZeroContributionGuidanceTest(unittest.TestCase):
+    """#64 T05 D-T05-3: after the join with zero sealed Contributions the owner refused its own compose
+    Workshop as a "hollow ceremony" and asked the person two questions. The designed path (#66 D8; attempt
+    4's generation 2 took it) is an empty compose, then the batch runs the auto-finish alone."""
+
+    def purpose(self):
+        return " ".join(_workshop_block("compose-contributions").split("purpose: >-", 1)[1]
+                        .split("    directory:", 1)[0].split())
+
+    def test_an_empty_compose_is_a_valid_required_step(self):
+        text = self.purpose()
+        for words in ("a compose with zero selected Contributions is a valid, required step",
+                      "the batch then runs the auto-finish alone", "manualValue none"):
+            self.assertIn(words, text)
+
+    def test_the_owner_never_asks_the_person_inside_a_generation(self):
+        text = self.purpose()
+        self.assertIn("never ask the person inside a generation", text)
+        self.assertIn("closing the Run is only the designed continue|stop at decide", text)
+
+
 class WorkerRequestExampleTest(ExampleWorkspace):
     ACTIVE = "Active slot"
     NO_SAFE_MOVE = "Active slot with no safe move"
