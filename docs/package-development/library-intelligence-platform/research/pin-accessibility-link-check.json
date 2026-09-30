@@ -1,0 +1,320 @@
+{
+  "checked_at_utc": "2026-09-30T02:36:55.637684+00:00",
+  "method": "curl GET, redirects followed, 18s timeout, 20MB limit; HTTP reachability does not establish semantic validity",
+  "files_scanned": [
+    "pin-accessibility-contract.md",
+    "pin-accessibility-industry-evidence.md",
+    "pin-accessibility-report.zh-CN.md",
+    "pin-accessibility-academic-evidence.md"
+  ],
+  "results": [
+    {
+      "url": "https://arxiv.org/html/2603.13665v1",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "text/html; charset=utf-8",
+      "resolved_url": "https://arxiv.org/html/2603.13665v1",
+      "bytes": 603629,
+      "sha256": "705a093a1ba696ad42f0bb1a124dd3abfaa6036a26637ea90af9e7242aefccdc",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://arxiv.org/pdf/1805.10012",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "application/pdf",
+      "resolved_url": "https://arxiv.org/pdf/1805.10012",
+      "bytes": 2657053,
+      "sha256": "9546695e62359b8975b5ea7867f891a362e32e6624dab7528d6588429ffeb871",
+      "pdf_magic": true,
+      "error": ""
+    },
+    {
+      "url": "https://doi.org/10.1109/ASP-DAC47756.2020.9045729",
+      "curl_exit": 0,
+      "http_status": "202",
+      "content_type": "text/html; charset=UTF-8",
+      "resolved_url": "https://ieeexplore.ieee.org/document/9045729/",
+      "bytes": 0,
+      "sha256": null,
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://doi.org/10.1109/DAC18072.2020.9218532",
+      "curl_exit": 0,
+      "http_status": "202",
+      "content_type": "text/html; charset=UTF-8",
+      "resolved_url": "https://ieeexplore.ieee.org/document/9218532/",
+      "bytes": 0,
+      "sha256": null,
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://doi.org/10.1109/TCAD.2021.3066528",
+      "curl_exit": 0,
+      "http_status": "202",
+      "content_type": "text/html; charset=UTF-8",
+      "resolved_url": "https://ieeexplore.ieee.org/document/9380647/",
+      "bytes": 0,
+      "sha256": null,
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://doi.org/10.1109/TCAD.2024.3405894",
+      "curl_exit": 0,
+      "http_status": "202",
+      "content_type": "text/html; charset=UTF-8",
+      "resolved_url": "https://ieeexplore.ieee.org/document/10539331/",
+      "bytes": 0,
+      "sha256": null,
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://doi.org/10.1145/3061639.3062302",
+      "curl_exit": 0,
+      "http_status": "403",
+      "content_type": "text/html; charset=UTF-8",
+      "resolved_url": "https://dl.acm.org/doi/10.1145/3061639.3062302",
+      "bytes": 5482,
+      "sha256": "455f6159f18ef1eea2ed61a3b590c70399ca1b26171a61614929b21875b60c94",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://doi.org/10.1145/3372780.3375562",
+      "curl_exit": 0,
+      "http_status": "403",
+      "content_type": "text/html; charset=UTF-8",
+      "resolved_url": "https://dl.acm.org/doi/10.1145/3372780.3375562",
+      "bytes": 5482,
+      "sha256": "2b4b4efebe48a3c96d80c56fb940bbb671b63f98590e772df14e61dc3943256c",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://github.com/The-OpenROAD-Project/OpenROAD/tree/master/src/drt",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "text/html; charset=utf-8",
+      "resolved_url": "https://github.com/The-OpenROAD-Project/OpenROAD/tree/master/src/drt",
+      "bytes": 350290,
+      "sha256": "e9274db7b9b12f372cddbf71b913e586b3154c19d15b7c65b4e3a4b0835668f6",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://ieeexplore.ieee.org/document/9045729/",
+      "curl_exit": 0,
+      "http_status": "202",
+      "content_type": "text/html; charset=UTF-8",
+      "resolved_url": "https://ieeexplore.ieee.org/document/9045729/",
+      "bytes": 0,
+      "sha256": null,
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://investor.synopsys.com/news/news-details/2025/Synopsys-Collaborates-with-TSMC-to-Drive-the-Next-Wave-of-AI-and-Multi-Die-Innovation/default.aspx",
+      "curl_exit": 0,
+      "http_status": "403",
+      "content_type": "text/html; charset=UTF-8",
+      "resolved_url": "https://investor.synopsys.com/news/news-details/2025/Synopsys-Collaborates-with-TSMC-to-Drive-the-Next-Wave-of-AI-and-Multi-Die-Innovation/default.aspx",
+      "bytes": 5488,
+      "sha256": "e45e73a2538b6652ced32dcbfa96601c09a3aeda2fafb31cbacc611e5b9e4b3f",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://ispd.cc/ispd2026/slides/2025/protected/11_1_slides.pdf",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "application/pdf",
+      "resolved_url": "https://ispd.cc/ispd2027/slides/2025/protected/11_1_slides.pdf",
+      "bytes": 1952576,
+      "sha256": "da32bd4f38966c8dc627823c23e98e016a49eb2caad989c76bf2337fff9d311d",
+      "pdf_magic": true,
+      "error": ""
+    },
+    {
+      "url": "https://khu.elsevierpure.com/en/publications/pin-accessibility-and-routing-congestion-aware-drc-hotspot-predic/",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "text/html;charset=UTF-8",
+      "resolved_url": "https://khu.elsevierpure.com/en/publications/pin-accessibility-and-routing-congestion-aware-drc-hotspot-predic/",
+      "bytes": 60864,
+      "sha256": "b4a69c828b9f613d819975b12dd57be506575202e76cd3b6525c354085b68a60",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://login.cadence.com/content/cadence-www/global/ja_JP/home/resources/datasheets/innovus-implementation-system-ds.html",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "text/html; charset=UTF-8",
+      "resolved_url": "https://login.cadence.com/content/cadence-www/global/ja_JP/home/resources/datasheets/innovus-implementation-system-ds.html",
+      "bytes": 238113,
+      "sha256": "0c04a9b550a889cff1037405a2534db63442ad60c8c1c975eaa709419116cd52",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://openroad.readthedocs.io/en/latest/main/src/drt/README.html",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "text/html; charset=utf-8",
+      "resolved_url": "https://openroad.readthedocs.io/en/latest/main/src/drt/README.html",
+      "bytes": 67612,
+      "sha256": "f2b9725b79e1968cbfb5b2bb51926e2e5e33ee712468a709cae37a83ac8cf49d",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://picture.iczhiku.com/resource/ieee/wyKSlfpQpIaaRxvm.pdf",
+      "curl_exit": 0,
+      "http_status": "403",
+      "content_type": "application/xml",
+      "resolved_url": "https://picture.iczhiku.com/resource/ieee/wyKSlfpQpIaaRxvm.pdf",
+      "bytes": 381,
+      "sha256": "ca5aa80de9ea97145f69d8ecff63e9b24e967da0cac2fecba87d6f44b918ad16",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://pure.kaist.ac.kr/en/publications/pin-accessibility-driven-cell-layout-redesign-and-placement-optim/",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "text/html;charset=UTF-8",
+      "resolved_url": "https://pure.kaist.ac.kr/en/publications/pin-accessibility-driven-cell-layout-redesign-and-placement-optim/",
+      "bytes": 44517,
+      "sha256": "6f529a0ea4c5e1c2871fe4af3e426d9011d8de0ef24434c12af4c21b0fad98b7",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://vlsicad.ucsd.edu/Publications/Conferences/377/c377.pdf",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "application/pdf",
+      "resolved_url": "https://vlsicad.ucsd.edu/Publications/Conferences/377/c377.pdf",
+      "bytes": 1302422,
+      "sha256": "64382fd540891e0452338946d8886bc31a6ffba1a92a462fbbdf175f2e6036fd",
+      "pdf_magic": true,
+      "error": ""
+    },
+    {
+      "url": "https://vlsicad.ucsd.edu/Publications/Journals/j133.pdf",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "application/pdf",
+      "resolved_url": "https://vlsicad.ucsd.edu/Publications/Journals/j133.pdf",
+      "bytes": 1338946,
+      "sha256": "aebc7fc2a6f2a5b09573fab38528d7fcbdba5f832d2fb9f8e47e05ce63b3092e",
+      "pdf_magic": true,
+      "error": ""
+    },
+    {
+      "url": "https://vlsicad.ucsd.edu/Publications/Journals/j135.pdf",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "application/pdf",
+      "resolved_url": "https://vlsicad.ucsd.edu/Publications/Journals/j135.pdf",
+      "bytes": 498624,
+      "sha256": "4f79befc8bc03c9d8c018622d1a1b2dcbba849c991a873a3a84cfa0abec3788d",
+      "pdf_magic": true,
+      "error": ""
+    },
+    {
+      "url": "https://www.cerc.utexas.edu/utda/publications/C174.pdf",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "application/pdf",
+      "resolved_url": "https://www.cerc.utexas.edu/utda/publications/C174.pdf",
+      "bytes": 637721,
+      "sha256": "40073087433ffbc1f9066f6a185b4fa5fd59c6884557469015021d0a576ba64a",
+      "pdf_magic": true,
+      "error": ""
+    },
+    {
+      "url": "https://www.cerc.utexas.edu/utda/publications/C187.pdf",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "application/pdf",
+      "resolved_url": "https://www.cerc.utexas.edu/utda/publications/C187.pdf",
+      "bytes": 1745169,
+      "sha256": "c71d4df014c6e64e00ad8f69d97324c635907ad9b2678ea39c9d6663d496e98c",
+      "pdf_magic": true,
+      "error": ""
+    },
+    {
+      "url": "https://www.cerc.utexas.edu/utda/publications/publications.html",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "text/html",
+      "resolved_url": "https://www.cerc.utexas.edu/utda/publications/publications.html",
+      "bytes": 231886,
+      "sha256": "8dd7dae1b2d3c276b335a8878a9f0cc34d1441d50e15e28fb6957554cb1d15a9",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://www.imec-int.com/en/articles/how-power-chips-backside",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "text/html; charset=utf-8",
+      "resolved_url": "https://www.imec-int.com/en/articles/how-power-chips-backside",
+      "bytes": 257970,
+      "sha256": "85d078b99d62966874196944160c8a0ae8d9a803ca7b9ead9a300407cce9cb59",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://www.ispd.cc/slides/2020/ispd20_library_based_drv_prediction.pdf",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "application/pdf",
+      "resolved_url": "https://www.ispd.cc/slides/2020/ispd20_library_based_drv_prediction.pdf",
+      "bytes": 1735214,
+      "sha256": "9317a48a08f47e8364cc2338926c79497fee08b5f5768659cb42665fc93252b8",
+      "pdf_magic": true,
+      "error": ""
+    },
+    {
+      "url": "https://www.sigda.org/publications/ispd-25-toc/",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "text/html; charset=UTF-8",
+      "resolved_url": "https://www.sigda.org/publications/ispd-25-toc/",
+      "bytes": 119278,
+      "sha256": "71d2b0ace9ca20c69c8396fdd9c4b23531a3e08d806af85b0559bafb00846352",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://www.synopsys.com/designware-ip/memories-logic-libraries/standard-cell.html",
+      "curl_exit": 0,
+      "http_status": "200",
+      "content_type": "text/html;charset=utf-8",
+      "resolved_url": "https://www.synopsys.com/designware-ip/memories-logic-libraries/standard-cell.html",
+      "bytes": 181626,
+      "sha256": "c9c115f5755ce062e77c21f40996cfffbb18b96d074b973f7b027301132f2ec5",
+      "pdf_magic": false,
+      "error": ""
+    },
+    {
+      "url": "https://ywwwer.github.io/publications/papers/CELL_GLSVLSI15_Ye.pdf",
+      "curl_exit": 0,
+      "http_status": "404",
+      "content_type": "text/html; charset=utf-8",
+      "resolved_url": "https://ywwwer.github.io/publications/papers/CELL_GLSVLSI15_Ye.pdf",
+      "bytes": 9379,
+      "sha256": "b620507312c5e97566a3c6cfaf99144fefc18a0da7d941401dfa0f5f58fb0368",
+      "pdf_magic": false,
+      "error": ""
+    }
+  ]
+}
