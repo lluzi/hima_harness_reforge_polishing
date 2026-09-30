@@ -1,5 +1,12 @@
 # S11：Library facts、typed report 与受控分析方法
 
+> **2026-09-29 产品范围更新：** 统一名称为 **LibInsight**，同时覆盖 `.lib` 与 `.lef` 评估，
+> pin access 概率分析属于其中的 LEF 能力。完整要求见[产品定义](../../product-definition.md#libinsight-产品面)。
+> 下列 E1–E4 是既有有界 Liberty 切片；其 PASS 不表示新增物理评估或跨视图关联已经完成。
+> 后续沿用现有 Pack、Reader 和 Insight 呈现职责补充实施规格，不直接改名 Pack/协议或虚构验收。
+> 当前 `libraryInsightDocument` 要求 corners 与每个 finding 的 corner，并仅区分 synthetic/native-qualified；
+> 承载 LEF 和参考环境概率前须明确非 PVT 条件与模型证据的表示及兼容方案，不用伪造 corner 或原生验证标签填空。
+
 > **2026-09-25 现行状态：** 原先 `lib.name()` exit 139 环境阻塞已经解除；
 > `library-intelligence@0.3.2` 的默认图从 `qualify-api` 开始，包含可运行 native tool 与
 > E2–E4 的 typed facts/report/result/proposal 路径。

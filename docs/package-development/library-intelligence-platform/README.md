@@ -1,7 +1,13 @@
-# Library Intelligence Platform development track
+# LibInsight development track
 
-Status: research and executable first-slice specification complete. The earlier Liberty API runtime blocker was
-removed by a bounded QuaLib 2026 qualification on 2026-09-24; product E1 integration and E2–E4 remain open.
+LibInsight is the unified HimaHarness capability for Liberty (`.lib`) and LEF (`.lef`) evaluation, including
+geometry-based pin access probabilities and traceable cross-view cell/pin analysis. The canonical scope is in
+[the product definition](../../product-definition.md#libinsight-产品面).
+
+Status: the existing bounded Liberty E1–E4 implementation and dated validation scope are recorded in
+[S11](../../specs/next-stage-implementation/S11-library.md). LEF/pin-access probability work has research and
+model definitions; implementation and combined evaluation are pending. Historical directory, Pack and protocol
+identifiers remain stable; this product-scope update does not migrate released assets.
 
 Start here:
 

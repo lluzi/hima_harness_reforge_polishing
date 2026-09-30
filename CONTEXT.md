@@ -52,6 +52,10 @@ _Avoid_: 所有数据浏览的强制入口、Campaign 业务实体本身的替�
 以数据分析、可交互比较、发现和证据理解为中心，与 Campaign 同级的产品工作模式；需要实际计算或行动时关联既有受控执行能力。
 _Avoid_: Live Run 子页、独立 BI 应用、第二份数据或执行权威
 
+**LibInsight**:
+HimaHarness 中统一评估标准单元库的业务能力，涵盖 Liberty 的逻辑与电气评估、LEF 的物理几何与 pin access 概率评估，并关联同一库版本、cell 和 pin 的跨视图证据。
+_Avoid_: Library Insight、Library Intelligence（作为现行产品名称）；独立 Pin Access 产品、仅 Liberty 文件查看器
+
 **HimaFabric**:
 承载参考路线、运行事实和执行约束的业务基础设施，为 Campaign Agent 提供可追踪、可恢复的运行环境。
 _Avoid_: 独立业务决策者、第二执行主脑

@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Library Intelligence 只呈现三类用户分析
+# LibInsight 统一库评估并呈现三类用户分析
 
 用户于 2026-09-22 决定：Library Intelligence 是 HimaHarness 基于 Liberty API 提供的原生业务能力，
 用户通过同一对话发起分析，在右侧 Workbench 查看洞察并形成后续行动。产品面不按 Catalog、图表、
@@ -24,3 +24,17 @@ Trend 的 load 切换、Cell filter、多维视图和客户算法属于三类分
 
 2026-09-23 补充：三类分析属于与 Campaign 同级的 Data Insight 工作模式；不是 Campaign 下新增三个
 页面。Start/标签层级见 [ADR-0013](0013-campaign-and-data-insight-are-peer-workbench-modes.md)。
+
+## 2026-09-29 范围与名称更新
+
+用户明确将此前 Library Insight / Library Intelligence 与 pin access 分析合并为 **LibInsight**，
+统一覆盖 `.lib` 与 `.lef` 评估。此决定扩展原先以 Liberty API 为中心的范围，三类业务分析、
+Data Insight 宿主以及现有执行/事实归属继续适用。pin access 属于 LEF 评估，二者通过可核实的
+库版本、cell/pin 映射与 Liberty 逻辑/电气证据关联；不形成另一个产品或独立 Pack 生命周期。
+
+统一的是用户任务、对象和报告关联；不同格式仍需各自合格的读取/计算方法，概率与实测保留各自
+证据含义。只提供一种视图时允许部分评估并显式标明缺项。完整现行要求以
+[产品定义](../product-definition.md#libinsight-产品面)为准。
+
+历史文档名称、`library-intelligence` Pack 身份及现有报告协议 ID 保留可追溯性；本次产品定义更新
+不直接改名已发布资产或改变运行中的协议。现有 Liberty 验收不覆盖新增 LEF/pin-access 功能。

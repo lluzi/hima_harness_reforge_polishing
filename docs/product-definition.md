@@ -151,29 +151,46 @@ R3/Q17 确认：EDA Operator 可以在已授权工具、设计工作副本和预
 本轮用户选择先完成方案、接口和验收标准，尚未实施。具体范围、建议接口和分级验证见
 [交互式终端与 EDA Operator 方案](specs/interactive-eda-v1/spec.zh-CN.md)。
 
-## Library Intelligence 产品面
+## LibInsight 产品面
 
-用户于 2026-09-22 明确：Library Intelligence 是 HimaHarness 基于 Liberty API 提供的原生业务能力。
+用户于 2026-09-29 明确：将此前 Library Insight / Library Intelligence 与 pin access 分析合并为
+**LibInsight**，形成同时评估 Liberty（`.lib`）与 LEF（`.lef`）的统一标准单元库能力。它沿用
+2026-09-22 确定的三类分析任务和现有 Data Insight 工作模式，由同一业务方法组织电气与物理评估。
 用户继续使用同一对话，右侧 Workbench 展示可交互的数据洞察和可视化；洞察可以形成有依据的后续
 行动建议，并支持客户自己的检查和分析方法。
+
+LibInsight 的两类输入评估与关联要求如下：
+
+- **Liberty 评估**：逻辑功能、pin/arc/model 完整性，PVT、时序、功耗、约束、变化和版本比较。
+- **LEF 评估**：cell/pin/PORT/OBS 的几何、层与位置，以及结合声明的技术规则、via、routing grid
+  和环境分布计算的 pin access 概率、联合冲突、逃逸瓶颈和敏感性。可先计算参考环境下的模型概率，
+  未来用实际 placement/routing 分别校准规则覆盖、环境分布与算法成功率。
+- **统一关联**：在同一库版本、cell/pin 分析中呈现逻辑、电气和物理结果。跨视图映射须有版本、
+  来源与映射依据，不能只凭同名自动确认；多 PVT 电气视图可以关联同一物理 master，但须证明对应关系。
+  不把 Liberty area 与 LEF 宽高乘积未经单位/语义核对就判为一致或不一致。
+
+仅有 `.lib` 或仅有 `.lef` 时可完成相应评估，另一侧和跨视图结论显示缺失/未知；缺失不替换为零或
+默认通过。两侧具备且身份明确时提供联合比较，例如“电气表现更好，但 pin access 风险更高”的 cell
+候选及其条件。测量、文件声明、模型概率与未验证推断分别标注，不合成无条件的库质量总分。
 
 面向用户只呈现三类分析，不把 Catalog、图表、Finding、Rule Studio、报告和 Action Center 分别包装成
 多个产品功能：
 
 1. **库健康与发布风险分析——这套库可靠吗？** 检查版本与 corner/view 身份、结构和单位完整性、
    Cell/pin/arc/constraint/model coverage、跨 PVT 一致性、数值趋势异常和 revision regression，帮助
-   用户判断能否交付、哪些问题需要阻塞或复查。
+   用户判断能否交付、哪些问题需要阻塞或复查；包括 LEF 几何/映射缺项和有证据的接入风险。
 2. **库性能与竞争力分析——这套库强在哪里、弱在哪里？** 分析 Cell family、drive/VT/PVT、delay、
    transition、constraint、area、leakage、internal power、variation 和工作域，帮助用户比较版本/方案、
-   识别优势、短板和 Library 开发优先级。
+   识别优势、短板和 Library 开发优先级，并比较相同物理评价条件下的 pin access 概率与敏感性。
 3. **设计影响与行动分析——它对我的芯片意味着什么？** 将 Library finding 与当前设计实际使用的
    Cell/instance、path/endpoint、slew/load、mode 和商业工具结果连接，帮助用户决定先处理什么、下一项
    最便宜验证是什么，以及是否需要 candidate、STA/SPICE 或 matched implementation。
 
 自定义规则、数据探索、可视化、证据追溯、报告和后续动作是三类分析的共同能力，不作为一级产品导航。
 用户可以在分析过程中用自然语言增加组织规则或保存分析方法；产品把它们编译为受控、可测试、可版本化
-资产，不让自由模型代码直接成为结果权威。Liberty API 能提供 Library 内事实和候选副本能力；设计采用、
-真实 PPA、相关性和芯片结果仍须由 HimaHarness 的设计证据与实际 EDA 验证补充，不能由 Liberty 单独推导。
+资产，不让自由模型代码直接成为结果权威。Liberty API 承担其已验证的电气视图读取能力；LEF 评估需
+独立验证物理解析与规则计算，但结果归入同一 LibInsight。设计采用、真实 PPA、相关性和芯片结果
+仍须由 HimaHarness 的设计证据与实际 EDA 验证补充，不能由 Liberty 或 LEF 模型概率单独推导。
 
 一线 AE 的竞品观察进一步明确共同能力：trend 分析允许切换 output load；用户可过滤不关注的 Cell；
 同一视图可用类别、数值与 corner 等三个维度联合表达；客户可以增加自己的 Python 分析算法。HimaHarness
@@ -181,7 +198,9 @@ R3/Q17 确认：EDA Operator 可以在已授权工具、设计工作副本和预
 不能成为无审计的自由代码。Milkyway、NDM 等第三方数据库不属于 Liberty API 的直接读取范围；只有在
 Site 具备合法工具、许可和只读访问时，才通过独立格式 adapter 投影到相同语义身份，并保留原数据库为
 权威。本要求不扩展为“任意格式天然支持”的产品承诺。
-见 [Library Intelligence 三类用户分析决定](adr/0012-library-intelligence-has-three-user-analysis-surfaces.md)。
+见 [LibInsight 三类用户分析与统一视图决定](adr/0012-library-intelligence-has-three-user-analysis-surfaces.md)
+和 [pin access 概率模型](package-development/library-intelligence-platform/research/pin-access-probability-model.zh-CN.md)。
+以上是现行产品要求；已有 Liberty 有界切片的通过证据不代表 LEF 或联合评估已经实现。
 
 ## 首个里程碑与验证责任
 
