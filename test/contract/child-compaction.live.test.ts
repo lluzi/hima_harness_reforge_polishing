@@ -237,10 +237,10 @@ test('an Operator-path standard-preset child crosses a real compaction on deepse
       '2. Then, before any further tool call, write exactly one line, filled from what your context holds:',
       '   RESTATE task=<task identity> slot=<slot> request=<request record id> plan=<plan hash>',
       boundedReads
-        ? `3. Fetch the request again with hima_delegation_input, reading only the field path candidate.taskId, then only candidate.cluster (bounded reads).`
+        ? '3. Fetch the request again with hima_delegation_input using bounded reads only: path candidate.taskId; then page path candidate.targets with offset/limit (limit 64) until window.next is null; then page path candidate.editDomain.instances the same way. Note contentSha256, the targets total and the instances total.'
         : '3. Fetch the authoritative request again with hima_delegation_input and note its contentSha256.',
       '4. Read domain.json from the operating directory with the read tool (read-only).',
-      `5. Finish with one JSON object and nothing after it: {"task":…,"slot":…,"request":…,"plan":…,"requestSha256":<contentSha256 of the request>,${boundedReads ? '"requestTaskId":<candidate.taskId>,' : ''}"domainRegion":<region field of domain.json>}`,
+      `5. Finish with one JSON object and nothing after it: {"task":…,"slot":…,"request":…,"plan":…,"requestSha256":<contentSha256 of the request>,${boundedReads ? '"requestTaskId":<candidate.taskId>,"targetsTotal":<number>,"instancesTotal":<number>,' : ''}"domainRegion":<region field of domain.json>}`,
     ].join('\n');
     const created = await ctx.hima.delegate({ runId, actor, action: 'create', requestId: 'qual-create', expectedEpoch: 1, expectedRevision: 0,
       contract: { delegationId: 'qual-operator-w03', role: 'researcher', task: policy, inputRefs: order,
@@ -343,11 +343,28 @@ test('an Operator-path standard-preset child crosses a real compaction on deepse
     await t.test('bounded field reads of the real w03 request through hima_delegation_input', {
       todo: boundedReads ? false : 'pending atcs09/V: hima_delegation_input has no path/offset schema yet; whole-document reads above 40 000 bytes are refused',
     }, () => {
-      const bounded = fetches.filter((f) => typeof JSON.parse(f.data.arguments).path === 'string');
-      assert.ok(bounded.length >= 1, 'the child used a bounded field read');
-      const taskIdRead = bounded.find((f) => JSON.parse(f.data.arguments).path === 'candidate.taskId');
-      assert.ok(taskIdRead && JSON.stringify(resultOf(taskIdRead)!.data).includes(JSON.stringify(requestDoc.candidate.taskId).slice(1, -1)));
+      const args = (c: Event) => JSON.parse(c.data.arguments) as { path?: string; offset?: number; limit?: number };
+      const selection = (c: Event) => JSON.parse(textOf({ content: resultOf(c)!.data.message.content[0].content }));
+      const bounded = fetches.filter((f) => typeof args(f).path === 'string');
+      evidence.boundedReads = bounded.map((f) => ({ ...args(f), window: selection(f).window }));
+      const taskIdRead = bounded.find((f) => ['candidate.taskId', '/candidate/taskId'].includes(args(f).path!));
+      assert.ok(taskIdRead, 'the child read candidate.taskId by path');
+      assert.equal(selection(taskIdRead).value, requestDoc.candidate.taskId);
+      for (const [field, total] of [['targets', requestDoc.candidate.targets.length], ['editDomain.instances', requestDoc.candidate.editDomain.instances.length]] as const) {
+        const pages = bounded.filter((f) => [`candidate.${field}`, `/candidate/${field.replace('.', '/')}`].includes(args(f).path!));
+        assert.ok(pages.length >= 1, `the child paged candidate.${field}`);
+        for (const page of pages) {
+          const answer = selection(page);
+          assert.equal(answer.kind, 'selection');
+          assert.equal(answer.contentSha256, W03_SHA256);
+          assert.ok(JSON.stringify(answer).length <= 40_000, 'every page stays one bounded view');
+        }
+        const covered = new Set(pages.flatMap((f) => { const w = selection(f).window; return Array.from({ length: w.returned }, (_, i) => w.offset + i); }));
+        assert.equal(covered.size, total, `the pages of candidate.${field} cover all ${total} items`);
+      }
       assert.equal(json.requestTaskId, requestDoc.candidate.taskId);
+      assert.equal(json.targetsTotal, requestDoc.candidate.targets.length);
+      assert.equal(json.instancesTotal, requestDoc.candidate.editDomain.instances.length);
     });
 
     // The child's turn becomes a durable Ledger handoff through the same seam an owner uses.
