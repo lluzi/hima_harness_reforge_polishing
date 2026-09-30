@@ -815,8 +815,9 @@ def _hold_gain(delta_wns, delta_tns=0.1):
     return NO_GAIN, ((-0.070, -1.200), (-0.070 + delta_wns, -1.200 + delta_tns))
 
 
-def _session(slot, sizes, gain, targets=None, target_pins=None, extra=None, before=None):
-    """Seal one admitted session in `slot` that sizes each `(instance, to)` in `sizes`."""
+def _session(slot, sizes, gain, targets=None, target_pins=None, extra=None, before=None, domain=None):
+    """Seal one admitted session in `slot` that sizes each `(instance, to)` in `sizes`; `domain` is the
+    session's ``domain.json`` record (#66 D2), absent by default."""
     before = dict(before or SESSION_BEFORE)
     base_ref = sf.make_base_ref(slot=slot, instances=tuple(sorted(before)), targets=targets,
                                 target_pins=target_pins)
@@ -835,7 +836,8 @@ def _session(slot, sizes, gain, targets=None, target_pins=None, extra=None, befo
         contribution = contributions.seal_session(
             base_ref,
             {"beforeDump": str(before_path), "afterDump": str(after_path),
-             "evidence": {"taintedJson": None, "transcriptTaint": "clean", "ecoOutput": True}},
+             "evidence": {"taintedJson": None, "transcriptTaint": "clean", "ecoOutput": True},
+             "domainText": json.dumps(domain) if domain is not None else None},
             log.ops_text(), log.gain_text())
     return contribution
 
@@ -957,7 +959,7 @@ class XtopSessionRecipeTests(unittest.TestCase):
         self.assertEqual([entry["contribution"] for entry in recipe["sessions"]], [clean["id"], lossy["id"]])
         self.assertAlmostEqual(recipe["sessions"][1]["tnsGain"], 0.05)
         self.assertEqual(recipe["rankedBy"],
-                         ["blockerCoverage desc", "value desc", "rankTnsGain desc", "id asc"])
+                         ["blockerCoverage desc", "aggregateRankGain desc", "value desc", "id asc"])
 
     def test_a_reserved_group_blocker_is_covered_by_its_raw_endpoint(self):
         """Issue #64 Task 5 fix round 1: a check in a reserved PT path group is keyed `<pin>@<group>`;
@@ -995,6 +997,194 @@ class XtopSessionRecipeTests(unittest.TestCase):
             "b|setup|P5": {"slack": core.unknown("not reported")},
         }}
         self.assertEqual(composition.worst_checks(observation), ["a|hold|P3", "a|setup|P2"])
+
+
+# ---------------------------------------------------------------------------
+# #66 D5: whole batches rank by aggregate gain; a batch whose touched objects lie
+# inside a higher-ranked batch's effective domain is excluded as `domain-collision`.
+# ---------------------------------------------------------------------------
+
+RANKED_BY = ["blockerCoverage desc", "aggregateRankGain desc", "value desc", "id asc"]
+
+
+def _domain(instances, nets=()):
+    return sf.domain_record(plan_instances=instances, instances=instances, nets=nets, target_pins=["U1/D"])
+
+
+def _ids(recipe):
+    return [entry["contribution"] for entry in recipe["sessions"]]
+
+
+class BatchAggregateRankingTests(unittest.TestCase):
+    def test_a_batch_with_more_aggregate_gain_ranks_above_a_batch_with_more_value(self):
+        sharp = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.10))
+        batch = _session("w02", [("U2", "BUFX2"), ("U3", "INVX2")], _hold_gain(0.010, 0.60))
+        self.assertGreater(sharp["value"], batch["value"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [sharp, batch], [])["recipe"]
+
+        self.assertEqual(recipe["rankedBy"], RANKED_BY)
+        self.assertEqual(_ids(recipe), [batch["id"], sharp["id"]])
+        self.assertEqual([entry["rank"] for entry in recipe["sessions"]], [1, 2])
+        self.assertAlmostEqual(recipe["sessions"][0]["aggregateRankGain"], 0.60)
+        self.assertAlmostEqual(recipe["sessions"][1]["aggregateRankGain"], 0.10)
+        self.assertEqual({entry["gainSource"] for entry in recipe["sessions"]}, {"aggregate"})
+
+    def test_blocker_coverage_still_ranks_before_aggregate_gain(self):
+        covers = _session("w01", [("U1", "BUFX2")], _hold_gain(0.005, 0.05),
+                          targets=["func_ss|hold|U1/D"], target_pins=["U1/D"])
+        bulk = _session("w02", [("U2", "BUFX2")], _hold_gain(0.040, 0.90),
+                        targets=["func_ss|hold|U2/D"], target_pins=["U2/D"])
+        recipe = composition.analyze(BASE_STATE_ID, [bulk, covers], [], worst_keys=["func_ss|hold|U1/D"])["recipe"]
+        self.assertEqual(_ids(recipe), [covers["id"], bulk["id"]])
+
+    def test_value_breaks_an_aggregate_gain_tie(self):
+        low = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.20))
+        high = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020, 0.20))
+        recipe = composition.analyze(BASE_STATE_ID, [low, high], [])["recipe"]
+        self.assertEqual(_ids(recipe), [high["id"], low["id"]])
+
+    def test_an_opposite_checks_signed_tns_loss_is_charged_to_the_aggregate_gain(self):
+        clean = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.10))
+        setup_loss = ((-0.020, -0.100), (-0.020, -0.550))  # setup WNS flat, setup TNS 0.45 worse
+        lossy = _session("w02", [("U2", "BUFX2")], (setup_loss, _hold_gain(0.010, 0.50)[1]))
+        self.assertTrue(lossy["admissible"], lossy["refusals"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [lossy, clean], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [clean["id"], lossy["id"]])
+        self.assertAlmostEqual(recipe["sessions"][1]["aggregateRankGain"], 0.05)
+
+    def test_the_aggregate_gain_sums_every_scenario_of_the_sealed_aggregate_and_opposite_effects(self):
+        """Read from the sealed `aggregateGain`/`oppositeEffects` (per required scenario), not from the
+        total-row `rankTnsGain`; an unreadable scenario counts 0."""
+        summed = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.05))
+        summed["aggregateGain"] = {"hold": {
+            "func_ss": {"wnsGain": 0.01, "tnsGain": 0.2, "referenceWns": -0.07},
+            "func_ff": {"wnsGain": 0.02, "tnsGain": 0.3, "referenceWns": -0.05},
+            "func_tt": None}}
+        summed["oppositeEffects"] = {"setup": {
+            "func_ss": {"wnsGain": 0.0, "tnsGain": -0.1, "referenceWns": -0.02},
+            "func_ff": {"wnsGain": 0.0, "tnsGain": 0.0, "referenceWns": 0.01}}}
+        total_row = _session("w02", [("U2", "BUFX2")], _hold_gain(0.010, 0.35))
+        self.assertGreater(total_row["valueDetail"]["rankTnsGain"], summed["valueDetail"]["rankTnsGain"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [total_row, summed], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [summed["id"], total_row["id"]])
+        self.assertAlmostEqual(recipe["sessions"][0]["aggregateRankGain"], 0.4)
+
+    def test_a_contribution_without_the_aggregate_fields_ranks_by_its_rank_tns_gain(self):
+        legacy = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.30))
+        del legacy["aggregateGain"], legacy["oppositeEffects"]
+        batch = _session("w02", [("U2", "BUFX2")], _hold_gain(0.010, 0.20))
+
+        recipe = composition.analyze(BASE_STATE_ID, [batch, legacy], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [legacy["id"], batch["id"]])
+        first = recipe["sessions"][0]
+        self.assertEqual(first["gainSource"], "rankTnsGain")
+        self.assertAlmostEqual(first["aggregateRankGain"], legacy["valueDetail"]["rankTnsGain"])
+
+
+class DomainCollisionTests(unittest.TestCase):
+    def test_a_batch_touching_a_higher_ranked_batchs_domain_is_excluded_and_every_other_batch_is_kept(self):
+        high = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.30), domain=_domain(["U1", "U2"], ["N1"]))
+        planted = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020, 0.20), domain=_domain(["U2", "U3"]))
+        other = _session("w03", [("U4", "BUFX2")], _hold_gain(0.010, 0.10), domain=_domain(["U4"]))
+        for contribution in (high, planted, other):
+            self.assertTrue(contribution["admissible"], contribution["refusals"])
+
+        facts = composition.analyze(BASE_STATE_ID, [other, planted, high], [])
+
+        recipe = facts["recipe"]
+        self.assertEqual(_ids(recipe), [high["id"], other["id"]])
+        self.assertEqual([entry["rank"] for entry in recipe["sessions"]], [1, 2])
+        self.assertEqual(recipe["excluded"], [{
+            "contribution": planted["id"], "taskId": "w02", "codes": ["domain-collision"],
+            "collidesWith": [{"contribution": high["id"], "taskId": "w01", "instances": ["U2"], "nets": []}],
+        }])
+        self.assertEqual(recipe["skipCount"], 0)
+        self.assertEqual(recipe["commandCount"], 2)
+        self.assertEqual(facts["conflicts"], [])
+        self.assertNotIn(planted["id"], facts["considered"])
+        self.assertEqual(facts["order"], [high["id"], other["id"]])
+
+    def test_a_higher_ranked_edit_inside_the_lower_ranked_domain_is_a_collision(self):
+        high = _session("w01", [("U1", "BUFX2"), ("U3", "INVX2")], _hold_gain(0.030, 0.30),
+                        domain=_domain(["U1"]))
+        low = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020, 0.20), domain=_domain(["U2", "U3"]))
+        self.assertTrue(high["admissible"], high["refusals"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [high, low], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [high["id"]])
+        self.assertEqual(recipe["excluded"][0]["codes"], ["domain-collision"])
+        self.assertEqual(recipe["excluded"][0]["collidesWith"][0]["instances"], ["U3"])
+
+    def test_a_buffer_on_a_net_of_a_higher_ranked_domain_is_a_collision(self):
+        def buffer_n1(log, after):
+            log.insert("N1", ["U2/D"], ["DELAY1"], ["atcs_w02_r1_b1"], ["atcs_w02_r1_n1"],
+                       gain=_hold_gain(0.020, 0.20))
+            after["atcs_w02_r1_b1"] = "DELAY1"
+
+        high = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.30), domain=_domain(["U1"], ["N1"]))
+        low = _session("w02", [], _hold_gain(0.020, 0.20), extra=buffer_n1, domain=_domain(["U2"], ["N2"]))
+        self.assertTrue(low["admissible"], low["refusals"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [high, low], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [high["id"]])
+        self.assertEqual(recipe["excluded"][0]["collidesWith"],
+                         [{"contribution": high["id"], "taskId": "w01", "instances": [], "nets": ["N1"]}])
+
+    def test_an_excluded_batch_neither_shadows_nor_skips_the_batches_below_it(self):
+        high = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.30), domain=_domain(["U1", "U2"]))
+        planted = _session("w02", [("U2", "BUFX2"), ("U4", "BUFX2")], _hold_gain(0.020, 0.20),
+                           domain=_domain(["U2", "U4"]))
+        below = _session("w03", [("U4", "BUFX4")], _hold_gain(0.010, 0.10))
+
+        recipe = composition.analyze(BASE_STATE_ID, [high, planted, below], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [high["id"], below["id"]])
+        self.assertEqual([command["skip"] for command in recipe["sessions"][1]["commands"]], [None])
+        self.assertEqual([entry["contribution"] for entry in recipe["excluded"]], [planted["id"]])
+
+    def test_disjoint_domains_keep_every_batch(self):
+        one = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.30), domain=_domain(["U1"], ["N1"]))
+        two = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020, 0.20), domain=_domain(["U2"], ["N2"]))
+        recipe = composition.analyze(BASE_STATE_ID, [two, one], [])["recipe"]
+        self.assertEqual(_ids(recipe), [one["id"], two["id"]])
+        self.assertEqual(recipe["excluded"], [])
+
+    def test_without_an_effective_domain_the_per_instance_skip_is_unchanged(self):
+        high = _session("w01", [("U1", "BUFX2"), ("U2", "BUFX2")], _hold_gain(0.030, 0.30))
+        low = _session("w02", [("U3", "INVX2"), ("U1", "BUFX4")], _hold_gain(0.010, 0.10))
+        self.assertIsNone(high["effectiveDomain"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [low, high], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [high["id"], low["id"]])
+        self.assertEqual(recipe["excluded"], [])
+        self.assertEqual([command["skip"] for command in recipe["sessions"][1]["commands"]],
+                         [None, "shared-instance"])
+
+    def test_the_collision_does_not_depend_on_input_order(self):
+        high = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.30), domain=_domain(["U1", "U2"]))
+        planted = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020, 0.20), domain=_domain(["U2"]))
+        one = composition.analyze(BASE_STATE_ID, [high, planted], [])
+        two = composition.analyze(BASE_STATE_ID, [planted, high], [])
+        self.assertEqual(one["id"], two["id"])
+
+    def test_base_dump_mismatch_is_still_decided_before_the_collision(self):
+        one = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.30), domain=_domain(["U1", "U2"]))
+        two = _session("w02", [("U3", "INVX2")], _hold_gain(0.020, 0.20), domain=_domain(["U3"]))
+        odd = _session("w03", [("U2", "BUFX2")], _hold_gain(0.050, 0.50), domain=_domain(["U2"]),
+                       before={**SESSION_BEFORE, "U9": "BUFX1"})
+        recipe = composition.analyze(BASE_STATE_ID, [odd, one, two], [])["recipe"]
+        self.assertEqual(_ids(recipe), [one["id"], two["id"]])
+        self.assertEqual(recipe["excluded"],
+                         [{"contribution": odd["id"], "taskId": "w03", "codes": ["base-dump-mismatch"]}])
 
 
 if __name__ == "__main__":
