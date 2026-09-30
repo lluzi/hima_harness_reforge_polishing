@@ -398,7 +398,7 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
     await send(operator, toolSessionId, 'atcs_size_cell', { instance: `${block}/reg0`, toMaster, planSha256 }, `size-${tag}`, receipts);
     await send(operator, toolSessionId, 'atcs_gain', { check: 'setup', topN: 5 }, `gain-${tag}`);
     await send(operator, toolSessionId, 'atcs_dump_cells', { path: path.join(root, 'after.dump') }, `after-${tag}`);
-    await send(operator, toolSessionId, 'atcs_export_changes', {}, `export-${tag}`);
+    await send(operator, toolSessionId, 'atcs_export_changes', { limitations: '' }, `export-${tag}`);
     await send(operator, toolSessionId, 'atcs_close', {}, `close-${tag}`);
     await waitUntil(`${slot}'s Operator session is ready`, () => control().executions[operator.effective.recipe!.executionId]?.phase === 'ready', 30_000, 25);
     return { planSha256, receipts };

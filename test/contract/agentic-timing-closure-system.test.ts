@@ -265,7 +265,7 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
     command: { name: 'atcs_size_cell', args: { instance: 'U1', toMaster: 'BUF2', planSha256: planHash } }, waitMs: 0 });
   assert.equal(duplicate.status, 'duplicate');
   await send('atcs_dump_cells', { path: path.join(slotRoot, 'after.dump') }, 'after');
-  await send('atcs_export_changes', {}, 'export');
+  await send('atcs_export_changes', { limitations: '' }, 'export');
   await send('atcs_close', {}, 'exit');
   await waitUntil('ATCS synthetic Operator is ready', () => control().executions[executionId]?.phase === 'ready', 5000, 25);
   await answer(operator!.delegationId, JSON.stringify({ schema: 'atcs-worker-session/1', planSha256: planHash, mutationReceipts: ['mutation'],

@@ -1327,7 +1327,19 @@ proc atcs_write_cell_dump {path} {
     close $fh
 }
 # A tainted session's changes are untrusted: no ECO export (tainted.json records why).
-proc atcs_export_changes {} {
+# `limitations` (#67 after #71): the Operator's own limitations, one or more sentences, clipped to 2000
+# characters, one entry per non-empty line, written first (a tainted session's too) to summary.json in
+# the slot root as {"limitations": [...]}, where capture-contribution reads them for the seal.
+proc atcs_export_changes {{limitations ""}} {
+    set items {}
+    foreach line [split [string range $limitations 0 1999] "\n"] {
+        set line [string trim $line]
+        if {$line ne ""} { lappend items $line }
+    }
+    set fh [open [file join $::operator_root summary.json] w]
+    fconfigure $fh -encoding utf-8
+    puts $fh [atcs_jobj [list limitations [atcs_jarr $items]]]
+    close $fh
     if {$::atcs_tainted ne ""} { error "session tainted, export refused: $::atcs_tainted" }
     file mkdir $::eco_output_dir
     write_design_changes -format INNOVUS -eco_file_prefix $::env(ECO_PREFIX) \

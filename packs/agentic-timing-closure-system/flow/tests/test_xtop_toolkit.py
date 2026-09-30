@@ -685,6 +685,11 @@ class ToolkitContractTest(unittest.TestCase):
         self.assertEqual(_contract_arguments()["atcs_point"], [("check", "string"), ("endPoints", "string")])
         self.assertEqual(_contract_choices("atcs_point", "check"), ["setup", "hold"])
 
+    def test_export_takes_the_operators_limitations(self):
+        # All declared interactive arguments are required (interactive-binding.ts encodeTcl): an Operator
+        # with none sends "".
+        self.assertEqual(_contract_arguments()["atcs_export_changes"], [("limitations", "string")])
+
     def test_move_cell_is_absolute_only(self):
         self.assertEqual(
             _contract_arguments()["atcs_move_cell"],
@@ -1949,6 +1954,49 @@ class PointReadTest(unittest.TestCase):
             self.assertEqual(session.outcome(tag)[0], "ERR", tag)
         self.assertEqual(session.calls_to("report_timing"), [])
         self.assertEqual(session.reads, [])
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class ExportLimitationsTest(unittest.TestCase):
+    """#71 finding for #67: `atcs_export_changes limitations` writes the Operator's own limitations to
+    `summary.json` in the slot root (`{"limitations": [...]}`, one entry per non-empty line, the text
+    clipped to 2000 characters first), where `capture-contribution` reads them for the seal. The file
+    is written before the taint check, so a tainted session's limitations still reach the seal."""
+
+    def _summary(self, session):
+        return json.loads((session.root / "summary.json").read_text(encoding="utf-8"))
+
+    def test_limitations_split_on_newlines(self):
+        session = Session(self).run(
+            'T export {atcs_export_changes "hold blocker U9/D is port-limited.\\n\\n  N1 is global; not edited.  "}\n')
+        self.assertEqual(session.outcome("export")[0], "OK", session.stdout + session.stderr)
+        self.assertEqual(self._summary(session),
+                         {"limitations": ["hold blocker U9/D is port-limited.", "N1 is global; not edited."]})
+        self.assertEqual(len(session.calls_to("write_design_changes")), 1)
+
+    def test_an_empty_argument_and_no_argument_write_an_empty_list(self):
+        for script in ('T export {atcs_export_changes ""}\n', "T export {atcs_export_changes}\n"):
+            session = Session(self).run(script)
+            self.assertEqual(session.outcome("export")[0], "OK", session.stdout + session.stderr)
+            self.assertEqual(self._summary(session), {"limitations": []})
+
+    def test_the_text_is_clipped_to_2000_characters(self):
+        session = Session(self).run('T export {atcs_export_changes [string repeat x 2500]}\n')
+        self.assertEqual(session.outcome("export")[0], "OK", session.stdout + session.stderr)
+        (item,) = self._summary(session)["limitations"]
+        self.assertEqual(item, "x" * 2000)
+
+    def test_a_tainted_session_still_records_its_limitations(self):
+        session = Session(self).run(
+            'catch {atcs_taint "test taint"}\nT export {atcs_export_changes "session tainted by an uncertain fix"}\n',
+)
+        self.assertEqual(session.outcome("export")[0], "ERR")
+        self.assertEqual(self._summary(session), {"limitations": ["session tainted by an uncertain fix"]})
+        self.assertEqual(session.calls_to("write_design_changes"), [])
+
+    def test_the_seal_carries_them(self):
+        from atcs import contributions
+        self.assertEqual(contributions._operator_limitations(["a", " ", "b"]), ["operator: a", "operator: b"])
 
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
