@@ -698,8 +698,8 @@ Known gaps carried from earlier tasks:
   effective domain with `appliedCommands`, `skippedCommands`, `protectedCount` and the `manualValue`
   tie record (#73). Superseding user decision (2026-09-30, #64, branch `atcs09/R`): replay is an
   aggregator, not a second methodology judge. Every sealed Contribution of a completed private
-  session enters ranked replay; the seal refuses only corrupt data (`tainted`, `trace-mismatch`) or an
-  edit outside its admitted domain (`out-of-scope`), and records `no-predicted-gain`,
+  session enters ranked replay; the seal refuses only a tainted session (`tainted`; T06 repairs,
+  branch `atcs09/P`), and records `trace-mismatch`, `out-of-scope`, `no-predicted-gain`,
   `breaks-target-check`, `breaks-opposite-check`, `missing-gain-line` and `missing-export` as
   batch-net `advisories`; composition keeps the ranking, has no `domain-collision` exclusion (an
   overlapping command is skipped by itself, `shared-instance`/`depends-on-skipped`) and still
