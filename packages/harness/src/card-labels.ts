@@ -451,6 +451,7 @@ export function chosenSaid(decision: { readonly chosen: DecisionChoice }, words?
   switch (chosen.kind) {
     case 'goal-met': return 'goal met';
     case 'converged': return convergedSaid(chosen.converged);
+    case 'stopped': return 'stopped by the owner, goal not met';
     // The whole Strategy chosen, in the pack's words (#58): every knob, the ones the chooser moved
     // and the ones it carried over, because what the next generation is set to is what a person
     // reads this decision against.
@@ -477,6 +478,7 @@ const chosenColour: Readonly<Record<ChosenKind, string>> = {
   'goal-met': good,
   converged: plain,
   'next-strategy': good,
+  stopped: plain,
 };
 
 /** The colour the card says this decision in, on both of its mounts. */

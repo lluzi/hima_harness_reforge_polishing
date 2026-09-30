@@ -174,7 +174,8 @@ export function delegationRuntimePolicy(deps: FabricDeps, childSessionId: string
 export interface RunDelegationRequest {
     readonly runId: string;
     readonly actor: string;
-    readonly origin?: 'agent' | 'human';
+    /** `autopilot`: the Host's own driver inside a Pack-declared autopilot region (ADR-0016). */
+    readonly origin?: 'agent' | 'human' | 'autopilot';
     readonly action: 'create' | 'followup' | 'cancel' | 'result' | 'adopt';
     readonly expectedEpoch: number;
     readonly expectedRevision: number;
@@ -194,8 +195,12 @@ function authority(deps: FabricDeps, request: RunDelegationRequest): DelegationA
         const control = run.control!;
         if (control.epoch !== request.expectedEpoch || control.owner !== request.actor && !(request.origin === 'human' && control.guideSessionId === request.actor))
             throw new Error('Delegation owner or epoch is stale.');
-        if (write && (control.revision !== request.expectedRevision || run.status !== 'running' || control.stop || heldFor(run, target) || runExitFence(run) || executionContext(deps, run.id).budget.phase !== 'active'))
-            throw new Error('Re-read the Run: its revision, hold, exit fence or budget does not permit delegation.');
+        if (write) {
+            const why = request.origin !== 'autopilot' && control.revision !== request.expectedRevision ? `its control revision is ${control.revision}, not ${request.expectedRevision}`
+                : run.status !== 'running' ? `it is ${run.status}` : control.stop ? 'it has a stop request' : heldFor(run, target) ? 'a hold covers this delegation\'s node or branch'
+                : runExitFence(run) ? 'the App is reaching its exit boundary' : executionContext(deps, run.id).budget.phase !== 'active' ? `its budget is ${executionContext(deps, run.id).budget.phase}` : undefined;
+            if (why !== undefined) throw new Error(`Re-read the Run: ${why}, which does not permit delegation.`);
+        }
         return run;
     };
     const append = async (entry: RunDelegationView | {
@@ -343,7 +348,7 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
             if (prior) return prior.requestDigest === requestDigest && prior.event === 'result-adopted'
                 ? { status: 'duplicate', artifacts: [], unknowns: [], adoptedRecordId: prior.id }
                 : { status: 'refused', artifacts: [], unknowns: [], reason: 'Adoption request identity already names different intent.' };
-            if (latest.control.revision !== request.expectedRevision || latest.status !== 'running' || latest.control.stop || heldFor(latest, targetOf(found.effective))
+            if ((request.origin !== 'autopilot' && latest.control.revision !== request.expectedRevision) || latest.status !== 'running' || latest.control.stop || heldFor(latest, targetOf(found.effective))
                 || runExitFence(latest) || executionContext(deps, latest.id).budget.phase !== 'active')
                 return { status: 'refused', artifacts: [], unknowns: [], reason: 'Re-read the active unheld Run before adopting a child result.' };
             const result = all.filter(row => row.delegationId === found.delegationId && row.event === 'result-observed').at(-1);
@@ -417,7 +422,7 @@ export async function operateRunDelegation(ctx: Context, deps: FabricDeps, reque
         await controlling(deps, run.id, async () => {
             const latest = deps.ledger.run(run.id);
             if (!latest?.control || latest.control.owner !== found.parentSessionId || latest.control.epoch !== request.expectedEpoch
-                || latest.control.revision !== request.expectedRevision) throw new Error('Re-read the Run before recording this child result.');
+                || (request.origin !== 'autopilot' && latest.control.revision !== request.expectedRevision)) throw new Error('Re-read the Run before recording this child result.');
             if (!records(deps, run.id).some(r => r.requestId === request.requestId)) {
                 const handoff = candidateHandoff!;
                 await deps.ledger.appendDelegation(run.id, { delegationId: found.delegationId, parentSessionId: found.parentSessionId,

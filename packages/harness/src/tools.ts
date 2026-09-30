@@ -572,7 +572,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
             } } },
           } } },
         } },
-        decision: { type: 'string', enum: ['goal-met', 'converged', 'next-strategy'], description: 'For an Explore strategy decision, submit this on complete together with rationale and cites. work does not submit a decision.' },
+        decision: { type: 'string', enum: ['goal-met', 'converged', 'next-strategy', 'stop'], description: 'For an Explore strategy decision, submit this on complete together with rationale and cites: next-strategy continues with the next generation, stop ends the Campaign honestly with its Goal not met, goal-met needs every required verdict PASS. work does not submit a decision.' },
         strategy: { type: 'object', additionalProperties: true, description: 'Declared strategy values supplied with decision next-strategy on Explore complete; omit for goal-met or converged.' },
         rationale: { type: 'string', description: 'Reason for the Explore decision, grounded in cited facts; submit with decision on complete.' },
         cites: { type: 'array', items: { type: 'string' }, description: 'Current-generation observation and required Judge verdict record ids supporting the Explore decision; submit with decision on complete. context.cite lists exactly the ids the current Explore requires.' },

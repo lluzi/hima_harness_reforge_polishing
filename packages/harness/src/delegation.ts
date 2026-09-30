@@ -287,7 +287,8 @@ const delegationContractSchema = z.strictObject({
 function assertContract(contract: DelegationContract): void {
   delegationContractSchema.parse(contract);
   if (!idPattern.test(contract.delegationId) || !idPattern.test(contract.parentSessionId)) throw new DelegationError('hima/delegation-invalid', 'Delegation and parent session identities must be bounded plain identifiers.');
-  if (contract.task.trim() === '' || contract.task.length > 8_000) throw new DelegationError('hima/delegation-invalid', 'A bounded non-empty delegated task is required.');
+  // 64k: a Team member's task may embed the exact Reader-backed request it works from (#64 M-T03-1).
+  if (contract.task.trim() === '' || contract.task.length > 64_000) throw new DelegationError('hima/delegation-invalid', 'A bounded non-empty delegated task is required.');
   for (const ref of [...contract.inputRefs, ...contract.dependencyIds]) if (!plainRef.test(ref)) throw new DelegationError('hima/delegation-invalid', `Delegation reference ${JSON.stringify(ref)} is invalid.`);
   if (!Number.isSafeInteger(contract.budgetShare.maxElapsedMs) || contract.budgetShare.maxElapsedMs <= 0
       || !Number.isSafeInteger(contract.budgetShare.maxFollowups) || contract.budgetShare.maxFollowups < 0) {

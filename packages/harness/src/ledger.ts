@@ -595,6 +595,8 @@ export type RunStrategy = z.infer<typeof runStrategy>;
 export const decisionChoice = z.union([
   z.strictObject({ strategy: runStrategy }),
   z.strictObject({ goalMet: z.literal(true) }),
+  /** The owner's honest ending (v31, ADR-0016): stop here, the Goal not met, on the cited evidence. */
+  z.strictObject({ stopped: z.literal(true) }),
   z.strictObject({
     converged: z.strictObject({
       read: z.string().min(1),
@@ -1531,7 +1533,9 @@ export const executionRequest = z.strictObject({
   digest: sha256Hex, actor: z.string(), epoch: z.number().int().nonnegative(),
   revision: z.number().int().nonnegative(), at: z.string(),
   state: z.enum(['admitted', 'done', 'uncertain']), receipt: executionReceipt,
-  origin: z.enum(['agent', 'human']).optional(),
+  /** `autopilot` (v31, ADR-0016): the Harness took this node turn inside a Pack-declared autopilot
+   *  region, under the owner's epoch; never an owner or a person. */
+  origin: z.enum(['agent', 'human', 'autopilot']).optional(),
 });
 export const runControl = z.strictObject({
   mode: z.literal('agent'),
@@ -1876,7 +1880,10 @@ export const ledgerSpec = defineDomain({
   // the silent-loss direction `group` was under 7: a v29 reader would strip `invalidates` and hand
   // superseded observations and code back as current evidence. So v29 refuses this domain at open,
   // and the offline importer copies a v29 store unchanged into an empty v30 home.
-  version: 30,
+  // 31: the Harness drives Pack-declared autopilot regions (ADR-0016): a control request may carry
+  // `origin: 'autopilot'`, and an Explore decision may be the owner's honest `stopped` ending. Both
+  // grow strict shapes, so a v30 reader refuses a v31 store at open; a v30 store imports unchanged.
+  version: 31,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -2108,6 +2115,17 @@ export class Ledger {
    *  record exists to say a person acted, and the executor may not sign a person's name. */
   async appendResumed(runId: string, data: Omit<ResumedRecord, keyof typeof base | 'type'>): Promise<ResumedRecord> {
     return this.#append(runId, 'person', (h) => ({ ...h, type: 'resumed', ...data }));
+  }
+
+  /**
+   * The Harness's own restart of one self-driving branch at its Workshop (ADR-0016), after the Pack's
+   * Reader refused what the Workshop wrote: the same `restart` shape a person's is, and its
+   * `invalidates` takes the refused reading out of the current evidence, but written by the executor,
+   * because no person asked for it.
+   */
+  async appendAutopilotRestart(runId: string, data: { readonly nodeId: string; readonly requestId: string; readonly invalidates: readonly string[] }): Promise<ResumedRecord> {
+    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'resumed', nodeId: data.nodeId, who: 'hima autopilot',
+      requestId: data.requestId, kind: 'restart' as const, invalidates: [...data.invalidates] }));
   }
 
   /** What an Explore node's chooser decided, appended by the executor. Never a verdict: D7 stands. */
@@ -2388,6 +2406,16 @@ const v26v27LedgerDocument = z.strictObject({
 });
 
 const v28LedgerDocument=z.strictObject({unit:z.strictObject({name:z.literal('hima_ledger'),version:z.literal(28)}),global:z.null(),tables:z.strictObject({runs:z.record(z.string(),runRecord),records:z.record(z.string(),v28LedgerRecord)})});
+/** v30 is the v31 vocabulary without autopilot origins or stopped decisions: a pure pass-through import. */
+const v30LedgerDocument=z.strictObject({unit:z.strictObject({name:z.literal('hima_ledger'),version:z.literal(30)}),global:z.null(),tables:z.strictObject({runs:z.record(z.string(),runRecord),records:z.record(z.string(),ledgerRecord)})})
+  .superRefine((document, context) => {
+    if (Object.values(document.tables.runs).some((run) => Object.values(run.control?.requests ?? {}).some((request) => request.origin === 'autopilot'))) {
+      context.addIssue({ code: 'custom', message: 'an autopilot control request requires source v31' });
+    }
+    if (Object.values(document.tables.records).some((record) => record.type === 'decision' && 'stopped' in record.chosen)) {
+      context.addIssue({ code: 'custom', message: 'a stopped decision requires source v31' });
+    }
+  });
 /** v29 is the v30 vocabulary without the restart fields on `resumed`: a pure pass-through import. */
 const v29LedgerDocument=z.strictObject({unit:z.strictObject({name:z.literal('hima_ledger'),version:z.literal(29)}),global:z.null(),tables:z.strictObject({runs:z.record(z.string(),runRecord),records:z.record(z.string(),v29LedgerRecord)})});
 
@@ -2435,10 +2463,10 @@ function readLegacyLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> {
 }
 
 /** Validate a v19 or v20 offline snapshot without changing fields or pretending it is live. */
-function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> | z.infer<typeof priorPolishingDocument> | z.infer<typeof v25LedgerDocument> | z.infer<typeof v26v27LedgerDocument> | z.infer<typeof v28LedgerDocument> | z.infer<typeof v29LedgerDocument> {
+function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> | z.infer<typeof priorPolishingDocument> | z.infer<typeof v25LedgerDocument> | z.infer<typeof v26v27LedgerDocument> | z.infer<typeof v28LedgerDocument> | z.infer<typeof v29LedgerDocument> | z.infer<typeof v30LedgerDocument> {
   const input: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   const version = (input as { unit?: { version?: unknown } } | null)?.unit?.version;
-  const document = version === 29 ? v29LedgerDocument.parse(input) : version === 28 ? v28LedgerDocument.parse(input) : version === 26 || version === 27 ? v26v27LedgerDocument.parse(input) : version === 25 ? v25LedgerDocument.parse(input) : version === 21 || version === 22 || version === 23 || version === 24 ? priorPolishingDocument.parse(input)
+  const document = version === 30 ? v30LedgerDocument.parse(input) : version === 29 ? v29LedgerDocument.parse(input) : version === 28 ? v28LedgerDocument.parse(input) : version === 26 || version === 27 ? v26v27LedgerDocument.parse(input) : version === 25 ? v25LedgerDocument.parse(input) : version === 21 || version === 22 || version === 23 || version === 24 ? priorPolishingDocument.parse(input)
     : version === 20 ? v20LedgerDocument.parse(input) : readLegacyLedger(bytes);
   if (!isDeepStrictEqual(input, document)) throw new Error('ledger import contains unsupported fields or values; import would change stored facts');
   validateImportDocument(document as unknown as ImportDocument, Number(version));
@@ -2472,7 +2500,7 @@ function sameImportSnapshot(a: BigIntStats, b: BigIntStats): boolean {
 
 export interface LegacyLedgerImportReceipt {
   readonly format: 'hima-ledger-import-v1';
-  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29; readonly sha256: string; readonly bytes: number; readonly backup: string };
+  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30; readonly sha256: string; readonly bytes: number; readonly backup: string };
   readonly target: { readonly version: number; readonly sha256: string; readonly file: string };
   readonly importedAt: string;
   readonly runs: number;
@@ -2494,7 +2522,7 @@ export interface LegacyLedgerImportReceipt {
  */
 export async function importLegacyLedger(request: { readonly sourceFile: string; readonly home: string }): Promise<LegacyLedgerImportReceipt> {
   // Import copies existing facts, without inventing adoption events or mutating the original home.
-  if (ledgerSpec.version !== 30) throw new Error('legacy import supports only the reviewed v19-v29-to-v30 transition');
+  if (ledgerSpec.version !== 31) throw new Error('legacy import supports only the reviewed v19-v30-to-v31 transition');
   const source = path.resolve(request.sourceFile);
   const home = path.resolve(request.home);
   const parent = path.dirname(home);

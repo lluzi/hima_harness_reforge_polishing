@@ -86,7 +86,7 @@ import {
 import path from 'node:path';
 import { counted } from './words.js';
 import type { JudgedBranch, Judge } from './judge.js';
-import type { ReaderRef } from './ledger.js';
+import type { InteractiveRecord, ReaderRef } from './ledger.js';
 import { SiteUnreadableError } from './errors.js';
 import { materializeWorkshopRevision, type WorkspaceRevisionAsset } from './workspace.js';
 import { retainRunMaterial } from './experience.js';
@@ -430,6 +430,19 @@ export async function waitForJob(ctx: Driving, node: PackNode, attempt: number, 
       unreadableSince = undefined;
     }
     if (stoppedElsewhere(ctx, session)) return stoppedWithJob(ctx, node, attempt, session, finish);
+    // #64 D-T03-1: a session its own Operator asked the Harness to close ends by that close — hangup
+    // and TERM to its process group — and may write no exit status, or the signal's. That is the
+    // requested end of the session, never a failed attempt: wait for the close to record its outcome,
+    // then settle the node from it.
+    if (status.state.state === 'gone' || (status.state.state === 'finished' && status.state.exitCode !== 0)) {
+      const asked = requestedCloseOf(ctx, session);
+      if (asked === 'pending') { await waitForNextPoll(waitingSince, stopSignal); continue; }
+      if (asked === 'closed') {
+        await appendNode(ctx, node, 'done', attempt, { jobSession: session,
+          reason: `its Operator closed tmux session ${session}; the session ended by that close, not by a failure` });
+        return { kind: 'settled' };
+      }
+    }
     if (status.state.state === 'finished') {
       const { exitCode } = status.state;
       // Exit 0 settles the node. Anything else is a failed attempt, and what becomes of a failed
@@ -455,6 +468,22 @@ export async function waitForJob(ctx: Driving, node: PackNode, attempt: number, 
     if (timeBoxSpent(existingRun(ctx.deps.ledger, ctx.runId), ctx.waitedMs)) return timeBoxReached(ctx, node, attempt, session, finish);
     await waitForNextPoll(waitingSince, stopSignal);
   }
+}
+
+/**
+ * Whether the session's own Operator asked the Harness to close it (#64 D-T03-1): `pending` while
+ * that close has not recorded its outcome, `closed` once it recorded the session closed. A Host stop
+ * (a deadline, an Operator lost to a restart) is not the Operator's request and answers undefined.
+ */
+export function requestedCloseOf(ctx: Pick<Driving, 'deps' | 'runId'>, session: string): 'pending' | 'closed' | undefined {
+  const records = ctx.deps.ledger.records({ runId: ctx.runId, type: 'interactive' })
+    .filter((record): record is InteractiveRecord => record.type === 'interactive' && record.toolSessionId === session);
+  const intent = records.findLast((record) => record.event === 'close-intent' && !/^(deadline-|operator-ended-close-)/.test(record.requestId));
+  if (intent === undefined) return undefined;
+  const outcome = records.find((record) => record.seq > intent.seq && record.requestId === intent.requestId
+    && ['closed', 'close-uncertain', 'process-survived'].includes(record.event));
+  if (outcome === undefined) return 'pending';
+  return outcome.event === 'closed' ? 'closed' : undefined;
 }
 
 /**
@@ -1890,9 +1919,13 @@ function branchesAt(ctx: Driving, run: RunRecord, joinId: string): readonly Judg
   const fork = graph === undefined ? undefined : forkJoinedAt(graph, joinId);
   if (fork === undefined) return undefined;
   const generation = run.loop?.generation ?? run.generation;
-  const observations = currentRecordsIn(ctx.deps.ledger.records({ runId: run.id }))
-    .filter((r): r is ObservationRecord => r.type === 'observation');
+  const records = currentRecordsIn(ctx.deps.ledger.records({ runId: run.id }));
+  const observations = records.filter((r): r is ObservationRecord => r.type === 'observation');
   return fork.branches.map((branch) => {
+    // A branch the autopilot settled refused (ADR-0016) stopped before its result: whatever it read on
+    // the way is not its result, so the join is handed no reading and answers UNDETERMINED for it.
+    const last = records.findLast((r) => r.type === 'node' && r.branchId === branch.id && r.generation === generation && r.loopId === run.loop?.id);
+    if (last?.type === 'node' && last.state === 'cancelled') return { branchId: branch.id };
     const read = observations.findLast(
       (r): r is ObservationRecord => r.type === 'observation' && r.branchId === branch.id && r.generation === generation && r.loopId === run.loop?.id,
     );

@@ -472,7 +472,7 @@ export const cancelSessions = (cancel: CancelSessions): readonly string[] =>
  * reader keys on: the card's colour and its state attribute, the words both mounts say it in, and
  * the ending HimaFabric writes when it acts on it.
  */
-export type ChosenKind = 'goal-met' | 'converged' | 'next-strategy';
+export type ChosenKind = 'goal-met' | 'converged' | 'next-strategy' | 'stopped';
 
 /** What an Explore node decided when it decided the exploration had stopped learning. */
 export type ConvergedChoice = Extract<DecisionChoice, { converged: unknown }>['converged'];
@@ -492,7 +492,8 @@ export type ConvergedChoice = Extract<DecisionChoice, { converged: unknown }>['c
 export type Chosen =
   | { readonly kind: 'goal-met' }
   | { readonly kind: 'converged'; readonly converged: ConvergedChoice }
-  | { readonly kind: 'next-strategy'; readonly strategy: RunStrategy };
+  | { readonly kind: 'next-strategy'; readonly strategy: RunStrategy }
+  | { readonly kind: 'stopped' };
 
 /**
  * Read one decision's choice.
@@ -502,6 +503,7 @@ export type Chosen =
  */
 export function chosenAs(decision: { readonly chosen: DecisionChoice }): Chosen {
   if ('goalMet' in decision.chosen) return { kind: 'goal-met' };
+  if ('stopped' in decision.chosen) return { kind: 'stopped' };
   if ('converged' in decision.chosen) return { kind: 'converged', converged: decision.chosen.converged };
   return { kind: 'next-strategy', strategy: decision.chosen.strategy };
 }

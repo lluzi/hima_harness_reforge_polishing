@@ -33,7 +33,7 @@ import { runExitFence } from './host-exit.js';
 // an outcome's edge leads to, and where a Run stops. What a turn itself does is `node-turns.ts`, what
 // a Run may spend `budget.ts`, what a Site will hold `job-cap.ts`, and picking a Run up again or
 // stopping one `recovery.ts`.
-import { goalDeclarationOf, boundInputs, recordedInputs, checkPack, forkFrom, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, workshopProducersOf, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
+import { autopilotDrives, goalDeclarationOf, boundInputs, recordedInputs, checkPack, forkFrom, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, workshopProducersOf, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
 import { packDigestExcludes, snapshotPackFolder, type PackFolderSnapshot } from './pack-folder.js';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
@@ -121,6 +121,7 @@ import {
   exploreEvidence,
   exploreCitation,
   settleFailedAttempt,
+  requestedCloseOf,
   type ExploreCitation,
   type Driving,
   type FabricDeps,
@@ -966,6 +967,8 @@ const ENDED_BY: Readonly<Record<ChosenKind, RunStatus | undefined>> = {
   'goal-met': 'ended-goal-met',
   converged: 'ended-converged',
   'next-strategy': undefined,
+  // The owner's honest ending (ADR-0016): the Goal not met, stopped on the cited evidence.
+  stopped: 'ended-goal-not-met',
 };
 
 /** The same three, one level down: which outcome a decision closes a drill-down Loop with, and which
@@ -974,6 +977,8 @@ const CLOSED_BY: Readonly<Record<ChosenKind, LoopOutcome | undefined>> = {
   'goal-met': 'goal-met',
   converged: 'converged',
   'next-strategy': undefined,
+  // A Loop the owner stops closes as its generation limit would: the sub-question left unanswered.
+  stopped: 'generation-limit',
 };
 
 /** The Strategy a decision chose, as the row's own patch: nothing at all for a decision that chose
@@ -1323,9 +1328,15 @@ export interface ExecutionActionRequest {
   readonly nodeId?: string; readonly executionId?: string; readonly targetOwner?: string;
   readonly path?: string; readonly content?: string; readonly output?: string; readonly file?: string;
   readonly assetRun?: string; readonly assetPath?: string;
-  readonly decision?: 'goal-met' | 'converged' | 'next-strategy';
+  readonly decision?: 'goal-met' | 'converged' | 'next-strategy' | 'stop';
   readonly strategy?: Readonly<Record<string, StrategyValue>>; readonly rationale?: string;
-  readonly cites?: readonly string[]; readonly origin?: 'agent' | 'human';
+  /**
+   * `autopilot` is the Harness itself taking a node turn inside a Pack-declared autopilot region
+   * (ADR-0016), under the owner's identity and epoch. No tool sets it; only the Host's driver does.
+   */
+  readonly cites?: readonly string[]; readonly origin?: 'agent' | 'human' | 'autopilot';
+  /** For an autopilot Workshop write: the branch child Agent that authored the bytes (ADR-0016). */
+  readonly onBehalfOf?: string;
   /** Structured PLS-10 proposal for grow, parsed again by Fabric before any acceptance. */
   readonly proposal?: unknown;
   /** Structured PLS-11 change request for revise. */
@@ -1966,13 +1977,20 @@ export function executionPack(deps: FabricDeps, run: RunRecord): Pack {
   const reference = loadRunPack(deps.packsDir, run.packId, run.packDigest);
   return withGrowthGraphs(reference, acceptedGrowthGraphs(deps, reference, run.id));
 }
-function inputIdentity(deps: FabricDeps, run: RunRecord, throughSeq = run.nextSeq - 1): string {
+/**
+ * The evidence an execution was admitted on. A fork branch's execution is admitted on the unbranched
+ * evidence and its own branch's — never a sibling branch's, which it does not read and which moves
+ * under it while the branches run at once (ADR-0016: a sibling's revision, or a sibling's reading
+ * landing inside this admission, is not a change to this execution's inputs).
+ */
+function inputIdentity(deps: FabricDeps, run: RunRecord, throughSeq = run.nextSeq - 1, branchId?: string): string {
   const records = currentRecordsIn(deps.ledger.records({ runId: run.id }));
+  const mine = (record: LedgerRecord): boolean => branchId === undefined || !('branchId' in record) || record.branchId === undefined || record.branchId === branchId;
   return identityOf({
     method: run.packDigest, site: run.siteId, goal: run.goal, strategy: run.strategy,
     generation: run.generation, loop: run.loop,
     workspace: records.findLast((record) => record.type === 'workspace' && record.seq <= throughSeq),
-    evidence: records.filter((record) => record.seq <= throughSeq && ((record.type === 'observation' || record.type === 'verdict') && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id || record.type === 'growth' || record.type === 'revision')),
+    evidence: records.filter((record) => record.seq <= throughSeq && ((record.type === 'observation' || record.type === 'verdict') && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id && mine(record) || record.type === 'growth' || record.type === 'revision')),
   });
 }
 /** Pause follows dependency edges, including Loop entry/return, but never a future revisit. */
@@ -2013,7 +2031,7 @@ function executionHolds(control: RunControl): NonNullable<ExecutionContext['hold
       if (!['pause', 'handoff', 'adopt'].includes(request.receipt.action) || data.scope !== scope) continue;
       // Repeating a pause cannot downgrade an earlier human or unknown hold.
       if (held.source === 'human' || (held.source === 'unknown' && data.newHold !== true && request.origin === 'agent')) continue;
-      held = { scope, source: request.origin ?? 'unknown', actor: request.actor, requestId: request.receipt.requestId };
+      held = { scope, source: request.origin === 'autopilot' ? 'agent' : request.origin ?? 'unknown', actor: request.actor, requestId: request.receipt.requestId };
     }
     return held;
   });
@@ -2110,6 +2128,18 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       || ((req.action === 'continue' || req.action === 'measure-value') && control.guideSessionId === req.actor));
     if ((control.owner !== req.actor && !humanEmergencyControl) || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
     if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/.test(req.requestId)) return no('request identity must be a bounded plain identifier');
+    const autopilot = req.origin === 'autopilot';
+    if (autopilot && !['begin', 'work', 'write', 'complete', 'recommend', 'read', 'knowledge'].includes(req.action)) return no('the autopilot takes node turns only');
+    // ADR-0016: inside a Pack-declared autopilot region the Harness takes the node turns; the owner
+    // reads facts there and acts at the region's end. Its own begin/work/write/complete are fenced.
+    if (req.origin !== 'autopilot' && req.origin !== 'human' && ['begin', 'work', 'write', 'complete'].includes(req.action)) {
+      const nodeId = req.action === 'begin' ? req.nodeId : (req.executionId === undefined ? undefined : control.executions[req.executionId]?.nodeId);
+      try {
+        if (nodeId !== undefined && autopilotDrives(executionPack(deps, run), nodeId)) {
+          return no(`node ${nodeId} is driven by this Pack's autopilot: the Harness takes its turns and tells you once the Run leaves the self-driving region; read facts, pause or cancel instead`);
+        }
+      } catch { /* an unreadable method is answered by the ordinary checks below */ }
+    }
     const digest = identityOf(req);
     const before = Object.hasOwn(control.requests, req.requestId) ? control.requests[req.requestId] : undefined;
     if (before !== undefined && before.receipt.action === 'revise') {
@@ -2117,11 +2147,13 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       if (before.state === 'uncertain') return no('the admitted revision has inconsistent or incomplete persisted facts; it cannot be treated as applied');
       return { ...answer('duplicate', { receipt: before.receipt, data: before.receipt.data }), notification: repeatedNotification };
     }
-    if (!deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return no('the calling conversation is not live on this Host');
+    if (!autopilot && !deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return no('the calling conversation is not live on this Host');
     if (before !== undefined) return before.digest === digest
       ? { ...answer('duplicate', { receipt: before.receipt, data: before.receipt.data }), notification: repeatedNotification }
       : no('this request identity was already used with different contents');
-    if (req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
+    // The autopilot acts on the row as it stands under this admission lock, which is what a revision
+    // check protects a conversational decision against; every precondition below is asked of it.
+    if (!autopilot && req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
     if (req.action === 'measure-value') {
       if (req.origin !== 'human') return no('value-study human effort can be recorded only by an authenticated human control request');
       const parsed = humanEffortMeasurement.safeParse(req.measurement);
@@ -2316,12 +2348,13 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     const currentFailures = context.executions.filter((execution) => execution.nodeId === node.id && execution.supersededBy === undefined && execution.phase === 'failed').length;
     const workshopAuthoring = node.kind === 'act' && node.parameters.workshop !== undefined;
     if (!workshopAuthoring && ((!revised && retry.spent > retry.allowance) || (revised && currentFailures > retry.allowance))) return no('this node has spent its retry allowance; a human must clear its blocker');
+    const branchId = run.fork === undefined ? undefined : Object.entries(run.fork.branches).find(([, branch]) => branch.state !== 'done' && branch.currentNode === node.id)?.[0];
     const execution: NodeExecution = {
       id: `execution-${randomUUID()}`, nodeId: node.id, kind: node.kind,
       generation: run.generation ?? 1, attempt: attemptOf(deps.ledger, run.id, node.id),
-      methodDigest: run.packDigest!, inputDigest: inputIdentity(deps, run), phase: 'begun',
+      methodDigest: run.packDigest!, inputDigest: inputIdentity(deps, run, run.nextSeq - 1, branchId), phase: 'begun',
       inputThroughSeq: run.nextSeq - 1,
-      ...(run.fork === undefined ? {} : { branchId: Object.entries(run.fork.branches).find(([, branch]) => branch.state !== 'done' && branch.currentNode === node.id)?.[0] }),
+      ...(run.fork === undefined ? {} : { branchId }),
       ...(run.loop === undefined ? {} : { loopId: run.loop.id, loopGeneration: run.loop.generation }),
     };
     const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id,
@@ -2453,6 +2486,104 @@ function executionAnswer(deps: FabricDeps, runId: string, kind: ExecutionActionR
   return { kind, context: executionContext(deps, runId), ...extra };
 }
 
+/** The nodes of the fork branch `branchId` of the Run's open fork, in order. */
+function openBranchNodes(pack: Pack, run: RunRecord, branchId: string): readonly string[] {
+  if (run.fork === undefined) return [];
+  const at = positionOf(pack, run.fork.from);
+  const drawn = at === undefined ? undefined : forkFrom(at.graph, at.node);
+  return drawn?.ok ? drawn.branches.find((branch) => branch.id === branchId)?.nodes ?? [] : [];
+}
+
+/** The records one execution wrote, as a revision or a restart takes them out of current evidence. */
+function recordsOfExecutions(all: readonly LedgerRecord[], executions: readonly NodeExecution[]): string[] {
+  const current = currentRecordsIn(all);
+  const invalidates = new Set<string>();
+  for (const execution of executions) {
+    const terminal = all.filter((record) => record.type === 'node' && record.nodeId === execution.nodeId
+      && record.attempt === execution.attempt && record.generation === execution.generation
+      && record.loopId === execution.loopId && record.branchId === execution.branchId).at(-1)?.seq ?? execution.inputThroughSeq ?? 0;
+    for (const record of current) if (record.seq > (execution.inputThroughSeq ?? 0) && record.seq <= terminal
+      && record.generation === execution.generation && record.loopId === execution.loopId
+      && (!('branchId' in record) || record.branchId === execution.branchId)) invalidates.add(record.id);
+  }
+  return [...invalidates];
+}
+
+/**
+ * ADR-0016: settle one self-driving fork branch as **refused** — the branch's remaining nodes are not
+ * run, and it stands at the join with its refusal on record. Never a person: a node that spent its
+ * allowance, or a Team member whose result failed its schema after the one repair, ends the branch
+ * here. What is written: one `cancelled` node record at the node the branch stopped at, naming why;
+ * the branch's failed executions superseded (so no uncleared Hard blocker holds the time box or the
+ * join); the automatic holds those failures left on the branch's nodes released (a person's or an
+ * Agent's hold is kept, and then nothing settles); and the branch moved to the join as done, closing
+ * the fork when it was the last. Refused while a Job of the branch is still open.
+ */
+export function settleBranchRefused(deps: FabricDeps, runId: string, branchId: string, reason: string): Promise<boolean> {
+  return controlling(deps, runId, async () => {
+    const run = existingRun(deps.ledger, runId);
+    const control = run.control; const fork = run.fork; const branch = fork?.branches[branchId];
+    if (run.status !== 'running' || control === undefined || fork === undefined || branch === undefined || branch.state === 'done') return false;
+    const pack = executionPack(deps, run);
+    const nodes = openBranchNodes(pack, run, branchId);
+    if (deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === runId && job.nodeId !== undefined && nodes.includes(job.nodeId))) return false;
+    const holds = executionHolds(control);
+    if (holds.some((hold) => nodes.includes(hold.scope) && hold.source !== 'unknown')) return false;
+    const stoppedAt = positionOf(pack, branch.currentNode)?.node;
+    if (stoppedAt !== undefined) {
+      await recordNode(deps.ledger, runId, stoppedAt, 'cancelled', currentAttemptOf(deps.ledger, runId, stoppedAt.id),
+        { branchId, reason: `hima autopilot: branch ${branchId} settled refused at ${stoppedAt.id}: ${reason}` });
+    }
+    const latest = existingRun(deps.ledger, runId).control!;
+    const supersededBy = `autopilot-refused:${branchId}`;
+    const executions = Object.fromEntries(Object.entries(latest.executions).map(([id, execution]) =>
+      [id, execution.branchId === branchId && execution.supersededBy === undefined && execution.generation === (run.generation ?? 1)
+        && execution.loopId === run.loop?.id && ['failed', 'begun', 'ready', 'uncertain'].includes(execution.phase)
+        ? { ...execution, supersededBy } : execution]));
+    await advance(deps.ledger, runId, {}, { branch: { id: branchId, currentNode: fork.join, state: 'done' },
+      control: { ...latest, revision: latest.revision + 1, executions, paused: latest.paused.filter((scope) => !nodes.includes(scope)
+        || holds.find((hold) => hold.scope === scope)?.source !== 'unknown') } });
+    const after = existingRun(deps.ledger, runId).fork;
+    if (after !== undefined && Object.values(after.branches).every((held) => held.state === 'done')) {
+      await advance(deps.ledger, runId, {}, { fork: null, onlyWhileRunning: true });
+    }
+    return true;
+  });
+}
+
+/**
+ * ADR-0016: start one self-driving branch again at its Workshop `nodeId`, after the Pack's Reader
+ * refused what the Workshop wrote. The branch's executions from that node on are superseded, the
+ * records they wrote leave the current evidence through one executor-written `restart`, and the
+ * branch stands at the Workshop again; the other branches are untouched. Refused while a Job of the
+ * branch is open, or when the node is not upstream of where the branch stands.
+ */
+export function restartBranchAt(deps: FabricDeps, runId: string, branchId: string, nodeId: string, requestId: string): Promise<boolean> {
+  return controlling(deps, runId, async () => {
+    const run = existingRun(deps.ledger, runId);
+    const control = run.control; const branch = run.fork?.branches[branchId];
+    if (run.status !== 'running' || control === undefined || branch === undefined || branch.state === 'done') return false;
+    const pack = executionPack(deps, run);
+    const nodes = openBranchNodes(pack, run, branchId);
+    const from = nodes.indexOf(nodeId); const to = nodes.indexOf(branch.currentNode);
+    if (from < 0 || to < from) return false;
+    const span = nodes.slice(from, to + 1);
+    if (deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === runId && job.nodeId !== undefined && nodes.includes(job.nodeId))) return false;
+    const superseded = Object.values(control.executions).filter((execution) => execution.branchId === branchId
+      && execution.supersededBy === undefined && span.includes(execution.nodeId) && execution.generation === (run.generation ?? 1)
+      && execution.loopId === run.loop?.id);
+    if (superseded.some((execution) => execution.phase === 'working' || execution.phase === 'uncertain')) return false;
+    const invalidates = recordsOfExecutions(deps.ledger.records({ runId }), superseded);
+    await deps.ledger.appendAutopilotRestart(runId, { nodeId, requestId, invalidates });
+    const latest = existingRun(deps.ledger, runId).control!;
+    const ids = new Set(superseded.map((execution) => execution.id));
+    await advance(deps.ledger, runId, {}, { branch: { id: branchId, currentNode: nodeId, state: 'running' },
+      control: { ...latest, revision: latest.revision + 1, executions: Object.fromEntries(Object.entries(latest.executions)
+        .map(([id, execution]) => [id, ids.has(id) ? { ...execution, supersededBy: requestId } : execution])) } });
+    return true;
+  });
+}
+
 /** Must be called under the Run's admission queue; it preserves intervening facts. */
 export async function updateExecution(deps: FabricDeps, runId: string, executionId: string, change: Partial<NodeExecution>, requestId?: string, requestState: 'done' | 'uncertain' = 'done'): Promise<void> {
   const run = existingRun(deps.ledger, runId);
@@ -2544,7 +2675,7 @@ export async function settleStrandedExecution(deps:FabricDeps,runId:string,execu
 
 /** Reuse the exact Fabric input/method/hold checks before resolving an interactive Pack operation. */
 export function interactiveDriving(deps:FabricDeps,run:RunRecord,execution:NodeExecution):Driving {
-  if(execution.inputThroughSeq===undefined||execution.inputDigest!==inputIdentity(deps,run,execution.inputThroughSeq))throw new RunStartError('Interactive input evidence changed; inspect the original execution.');
+  if(execution.inputThroughSeq===undefined||execution.inputDigest!==inputIdentity(deps,run,execution.inputThroughSeq,execution.branchId))throw new RunStartError('Interactive input evidence changed; inspect the original execution.');
   return executionDriving(deps,run,execution);
 }
 
@@ -2705,7 +2836,9 @@ export async function recordExecutionResult(ctx: Driving, execution: NodeExecuti
     } });
   }
   if (result.kind === 'budget-exhausted') await requestExecutionBudgetStop(ctx.deps, ctx.runId);
-  if (phase === 'ready' || phase === 'failed') {
+  // An autopilot node's settlement is the driver's to act on, not the owner's (ADR-0016): the owner is
+  // told once, when the Run leaves the self-driving region.
+  if ((phase === 'ready' || phase === 'failed') && !autopilotDrives(ctx.pack, execution.nodeId)) {
     const owner = existingRun(ctx.deps.ledger, ctx.runId).control?.owner;
     if (owner !== undefined) ctx.deps.notify?.(owner, ctx.runId, execution.id);
   }
@@ -2756,7 +2889,7 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   const paused = executionPauseReason(executionPack(deps, run), run, execution.nodeId);
   if (paused !== undefined && (req.action === 'work' || req.action === 'complete')) return no(paused);
   if (experimentBudgetSpent(run, ownedWaitedMs(run)) && (req.action === 'write' || req.action === 'work' && (execution.kind === 'act' || timeBoxSpent(run, ownedWaitedMs(run))))) return no('the Campaign is in its closing reserve or has exhausted its hard time box; no experiment or Workshop write may start');
-  if (execution.inputThroughSeq === undefined || execution.inputDigest !== inputIdentity(deps, run, execution.inputThroughSeq)) return no('the execution input version no longer matches the Run');
+  if (execution.inputThroughSeq === undefined || execution.inputDigest !== inputIdentity(deps, run, execution.inputThroughSeq, execution.branchId)) return no('the execution input version no longer matches the Run');
   let ctx: Driving;
   try { ctx = executionDriving(deps, run, execution); } catch (error) { return no((error as Error).message); }
   const position = positionOf(ctx.pack, execution.nodeId);
@@ -2776,7 +2909,7 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
     try {
       let result: Step;
       if (node.kind === 'act') result = node.parameters.workshop !== undefined
-        ? await launchWrittenWorkshop(ctx, node, execution.attempt, req.actor)
+        ? await launchWrittenWorkshop(ctx, node, execution.attempt, req.onBehalfOf ?? req.actor)
         : node.parameters.tool !== undefined ? await toolNode(ctx, run, node, execution.attempt) : await observeNode(ctx, node, execution.attempt);
       else if (node.kind === 'judge') result = await judgeNode(ctx, run, node, execution.attempt);
       else if (node.kind === 'wait') {
@@ -2854,7 +2987,8 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
   if (node.kind === 'wait' && execution.humanClearance === undefined) return no('this node requires an explicit human clearance of its blocker');
   if (execution.jobSession !== undefined) {
     const actual = await jobStatus(deps, { run: run.id, session: execution.jobSession });
-    if (actual.state.state !== 'finished' || actual.state.exitCode !== 0) return no('the Job has no confirmed successful exit');
+    // #64 D-T03-1: a session its own Operator closed ended by that close, which is its successful end.
+    if ((actual.state.state !== 'finished' || actual.state.exitCode !== 0) && requestedCloseOf(ctx, execution.jobSession) !== 'closed') return no('the Job has no confirmed successful exit');
   }
   let decision: Parameters<Ledger['appendDecision']>[1] | undefined;
   if (node.kind === 'explore' && !opensALoop(node)) {
@@ -2884,6 +3018,10 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
       if (req.strategy !== undefined) return no('a goal-met decision cannot also choose a Strategy');
       if (evidence.verdicts.some((verdict) => verdict.outcome !== 'PASS')) return no('goal-met requires actual PASS verdicts for every required constraint and goal rule');
       chosen = { goalMet: true };
+    } else if (req.decision === 'stop') {
+      // The owner's honest ending (ADR-0016): the Goal not met, on the cited current evidence.
+      if (req.strategy !== undefined) return no('a stop decision cannot also choose a Strategy');
+      chosen = { stopped: true };
     } else if (req.decision === 'converged') {
       if (req.strategy !== undefined) return no('a converged decision cannot also choose a Strategy');
       const advice = exploreRecommendation(ctx, node);
@@ -2956,7 +3094,7 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
   const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
   if (mutates) await recordExecutionAction(deps, run, req, digest, {}, receipt, {}, 'admitted');
   try {
-    const built = await buildWorkshopScope(ctx, node, execution.attempt, req.actor);
+    const built = await buildWorkshopScope(ctx, node, execution.attempt, req.onBehalfOf ?? req.actor);
     if (!built.ok) {
       if (mutates) await updateExecution(deps, runId, execution.id, {}, req.requestId);
       return no(built.reason);
@@ -2972,7 +3110,7 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
       const unavailableInputs = inputs.unavailable.map(input => input.file);
       const candidates = await listRunKnowledge(deps, runId, resolved.declaration.id, unavailableInputs, projectWorkspace);
       const historical = await readRunKnowledge(deps, {
-        runId, nodeId: execution.nodeId, attempt: execution.attempt, sessionId: req.actor,
+        runId, nodeId: execution.nodeId, attempt: execution.attempt, sessionId: req.onBehalfOf ?? req.actor,
         workshop: resolved.declaration.id, ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
         summary: true, unavailableInputs, workspaceRef: projectWorkspace,
       });
@@ -2997,7 +3135,7 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
       else {
         const inputs = await captureWorkshopInputs(scope);
         data = await readRunKnowledge(deps, {
-          runId, nodeId: execution.nodeId, attempt: execution.attempt, sessionId: req.actor,
+          runId, nodeId: execution.nodeId, attempt: execution.attempt, sessionId: req.onBehalfOf ?? req.actor,
           workshop: resolved.declaration.id, ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
           ...(req.assetRun === undefined ? {} : { sourceRun: req.assetRun }),
           ...(req.assetPath === undefined ? {} : { assetPath: req.assetPath }),

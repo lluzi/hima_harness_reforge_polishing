@@ -490,5 +490,8 @@ test('a Team Reviewer may approve an Operator scope: typed mutations within its 
     ['ready', 'failed', 'completed'].includes(control().executions[executionId]!.phase), 10_000, 25);
   const reopened = await interactive({ action: 'open', requestId: 'open-2' });
   assert.equal(reopened.status, 'refused', JSON.stringify(reopened));
-  assert.match(reopened.reason, /the interactive execution is absent, settled, failed or superseded/);
+  // #64 D-T03-1: the session this Operator closed settles its execution ready (the close is its end,
+  // never a failed attempt), and a ready execution admits no second open either.
+  assert.match(reopened.reason, /the interactive execution is absent, settled, failed or superseded|requires the freshly begun execution/);
+  assert.equal(control().executions[executionId]!.phase, 'ready', 'the requested close settled the execution ready');
 });

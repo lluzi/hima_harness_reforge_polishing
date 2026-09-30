@@ -414,6 +414,8 @@ function describeRun(deps: FabricDeps, run: RunRecord): string {
       ? 'goal met'
       : chosen.kind === 'converged'
         ? convergedSaid(chosen.converged)
+        : chosen.kind === 'stopped'
+          ? 'stop (the owner\'s honest ending)'
         // The whole Strategy it chose, in the pack's own words — the card's very sentence (#58), so
         // a person reading a Campaign at a terminal and one watching it in the window read one
         // decision said one way.

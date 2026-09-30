@@ -1891,7 +1891,9 @@ function generationRow(g: Generation): string {
       ? 'goal met'
       : 'converged' in g.decision.chosen
         ? `converged on ${g.decision.chosen.converged.read} at ${g.decision.chosen.converged.values.join(' then ')}`
-        : `next strategy: periodNs ${String(g.decision.chosen.strategy.periodNs)}`;
+        : 'stopped' in g.decision.chosen
+          ? 'stopped'
+          : `next strategy: periodNs ${String(g.decision.chosen.strategy.periodNs)}`;
   const wall = g.wallMs === undefined ? 'unknown' : `${(g.wallMs / 1000).toFixed(1)} s`;
   return `| ${String(g.n)} | ${show(g.askedNs)} → ${show(g.observedPeriodNs)} | ${show(g.observedSlackNs)} | ${verdicts || 'none'} | ${chosen} | ${wall} |`;
 }

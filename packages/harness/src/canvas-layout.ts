@@ -626,7 +626,9 @@ function placeChips(edges: PlacedEdge[], nodes: readonly PlacedNode[]): void {
     // Where the path itself is crowded (a staircase of FAIL detours), the pill may sit a little off
     // its line, near the path's own midpoint, rather than on another chip or node.
     const middle = along[Math.floor(along.length / 2)] ?? chip;
-    const near = [0, 14, -14, 28, -28, 42, -42].flatMap((dy) => [0, 24, -24, 48, -48].map((dx) => ({ ...chip, x: middle.x + dx, y: middle.y + dy })));
+    // A short hop between two close nodes (a Judge whose FAIL and UNDETERMINED both reach a wait just
+    // below it) leaves no free spot on the path itself, so the search widens a little further out.
+    const near = [0, 14, -14, 28, -28, 42, -42, 56, -56, 70, -70].flatMap((dy) => [0, 24, -24, 48, -48, 72, -72, 96, -96].map((dx) => ({ ...chip, x: middle.x + dx, y: middle.y + dy })));
     const candidates = (straight(edge) ? [0, 1, 2, 3].map((k) => ({ ...chip, y: chip.y - 20 * k })).concat(along) : along).concat(near);
     const placed = candidates.find((candidate) => !blocked.some((box) => meets(chipBox(candidate), box))) ?? chip;
     blocked.push(chipBox(placed));

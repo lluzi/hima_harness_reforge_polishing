@@ -36,7 +36,9 @@ import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operator
 import { registerDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
 import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
-import { interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
+import { executionPack, interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
+import { Autopilot } from './autopilot.js';
+import { autopilotDrives } from './packs.js';
 import { claimSlot } from './job-cap.js';
 import { recordExitFence, releaseExitFence, readHostExitStatus, type HostExitRequest, type HostExitStatus } from './host-exit.js';
 import { nativeSessionMemoryEvidence } from './native-session-memory.js';
@@ -84,6 +86,8 @@ export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discover
 export { WORK_MEMORY_SCHEMA, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, recordExperienceAdoption } from './experience.js';
 export * from './delegation.js';
 export { runDelegations, delegationRuntimePolicy, operateRunDelegation } from './delegation-runtime.js';
+export { WORKSHOP_ENTRY_SCHEMA } from './autopilot.js';
+export { autopilotOf, autopilotSegmentOf, autopilotDrives } from './packs.js';
 export * from './interactive-job.js';
 export * from './interactive-runtime.js';
 export * from './interactive-binding.js';
@@ -503,6 +507,9 @@ export default class Hima extends Service {
   private readonly pendingProgressNotifications = new Map<string, MessageId>();
   private readonly guideNoticeIdentities = new Map<string,string>();
   private readonly factStop = new AbortController();
+  /** The Harness's own driver of Pack-declared autopilot regions (ADR-0016). */
+  private autopilot: Autopilot | undefined;
+  private autopilotStopped = false;
   /** Browser-only Site drafts awaiting the same person's explicit Save. The reviewed result stays
    *  on the Host, so saving cannot silently rerun probes and persist facts the person never saw. */
   private readonly siteDiscoveryReviews = new Map<string, { readonly owner: string; readonly name: string; readonly result: SiteDiscoveryResult; readonly identity: SiteSaveIdentity }>();
@@ -543,12 +550,27 @@ export default class Hima extends Service {
     this.ctx.effect(() => { this.notificationsActive = true; return () => { this.notificationsActive = false; }; });
     // The judge takes the ledger's one verdict-writer capability here; nothing else can obtain it.
     this.judge = createJudge(this.ledger, this.config.packsDir);
+    this.autopilot = new Autopilot({
+      deps: () => this.deps(),
+      execute: request => executionAction(this.deps(), request),
+      delegate: request => this.runDelegation(request),
+      childIdle: id => { const agent = this.ctx.get('agents')?.get(id as never); return agent === undefined || agent.status === 'idle'; },
+      childResults: process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS === 'ledger' ? 'ledger' : 'native',
+      notifyOwner: (runId, key, detail) => { const owner = this.ledger.run(runId)?.control?.owner; if (owner !== undefined) this.deps().notify?.(owner, runId, key, detail); },
+      readMaterial: async (runId, recordId) => { const read = await readMaterial(this.deps(), runId, recordId); return read.kind === 'read' ? read.text : undefined; },
+      readReading: async (runId, recordId) => { const read = await readReportMaterial(this.deps(), runId, recordId); return read.kind === 'read' ? read.text : undefined; },
+      log: line => { this.ctx.logger.info(line); if (process.env.HIMA_AUTOPILOT_DEBUG === '1') process.stderr.write(`${line}\n`); },
+      stopped: () => this.autopilotStopped || this.factStop.signal.aborted,
+      pollMs: 100,
+    });
     this.ctx.effect(() => async () => {
       this.notificationsActive = false;
       this.pendingProgressNotifications.clear();
       for(const timer of this.delegationTimers.values())clearTimeout(timer);this.delegationTimers.clear();
       this.interactiveTimers?.dispose();
+      this.autopilotStopped = true;
       this.factStop.abort();
+      await this.autopilot?.drain();
       await drainExecutionObservers(this.ledger);
       await this.reconciled?.catch(() => undefined);
       await domain.close();
@@ -716,6 +738,8 @@ export default class Hima extends Service {
       await this.interactiveTimers!.reconcile();
       for(const run of this.ledger.runs())if(run.control&&run.status==='running')await this.settleStrandedTeams(run.id);
       found = await reconcileRuns(this.deps());
+      // A Run left standing in a self-driving region carries on from its facts (ADR-0016).
+      for(const run of this.ledger.runs())if(run.control&&run.status==='running')this.autopilot?.kick(run.id);
     } catch (err) {
       // Only a fault outside any single Run reaches here — the ledger itself, or a host disposed
       // while a resumed Run was still being carried on. Logged, never thrown: the next host that
@@ -755,7 +779,7 @@ export default class Hima extends Service {
           const result=await operateInteractive(runtime,{runId:run.id,executionId:session.executionId,nodeId:session.nodeId,toolSessionId:session.toolSessionId,
             actor:control.owner,ownerEpoch:control.epoch,controlRevision:control.revision,requestId,hostStop:'recovery',action:'close'});
           this.ctx.logger.info(`hima: interactive session ${session.toolSessionId} of ${run.id} without a live Operator: ${JSON.stringify(result)}`);
-          if(result.status==='duplicate')return;
+          if(result.status==='duplicate'||this.autopilotNode(run.id,session.nodeId))return;
           this.deps().notify?.(control.owner,run.id,session.executionId,result.status==='refused'
             ?`Interactive session ${session.toolSessionId} of node ${session.nodeId} has no Operator that may still drive it, and the Host could not close it: ${result.reason}`
             :`Interactive session ${session.toolSessionId} of node ${session.nodeId} has no Operator that may still drive it; the Host closed it (${result.status}). Its execution settles from the Job's own records; inspect them before a retry.`);
@@ -798,7 +822,17 @@ export default class Hima extends Service {
 
   startRun(request: StartRunRequest): Promise<StartRunResult> {
     if (this.exitRequest) return Promise.reject(new Error('the App is closing; no new Campaign may start'));
-    return startRun(this.deps(), request);
+    return startRun(this.deps(), request).then(started => { if (started.kind === 'ran') this.autopilot?.kick(started.run.id); return started; });
+  }
+
+  /** What the autopilot told each Run's owner, oldest first (ADR-0016); for inspection and tests. */
+  autopilotNotices(runId: string): readonly string[] { return this.autopilot?.notices(runId) ?? []; }
+
+  /** Whether the Pack's autopilot drives this node of this Run. */
+  private autopilotNode(runId: string, nodeId: string): boolean {
+    const run = this.ledger.run(runId);
+    if (!run?.control) return false;
+    try { return autopilotDrives(executionPack(this.deps(), run), nodeId); } catch { return false; }
   }
 
   private guideDeps() {
@@ -911,6 +945,8 @@ export default class Hima extends Service {
         const common={runId:run.id,executionId:deadline.executionId,nodeId:deadline.nodeId,toolSessionId:deadline.toolSessionId,actor:run.control.owner,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,requestId,hostStop:'deadline' as const};
         const result=await operateInteractive(runtime,deadline.kind==='command'?{...common,action:'signal',signal:'interrupt'}:{...common,action:'close'});
         this.ctx.logger.info(`Interactive ${deadline.kind} deadline: ${JSON.stringify(result)}`);
+        // ADR-0016: an autopilot node's deadline is a Ledger fact the driver acts on, never a person's notice.
+        if(this.autopilotNode(run.id,deadline.nodeId))return;
         this.deps().notify?.(run.control.owner,run.id,deadline.executionId,result.status==='refused'
           ?`An interactive ${deadline.kind} deadline of session ${deadline.toolSessionId} was reached, and the Host could not stop it: ${result.reason}`
           :`An interactive ${deadline.kind} deadline of session ${deadline.toolSessionId} was reached and the Host ${deadline.kind==='command'?'interrupted the command':'closed the session'} (${result.status}). Inspect the exact stop receipt and original Job; no checkpoint or successful design result is implied.`);
@@ -1031,6 +1067,12 @@ export default class Hima extends Service {
   }
 
   async delegate(request:RunDelegationRequest,signal:AbortSignal=AbortSignal.timeout(30000)):Promise<object> {
+    // Only the Host's own driver acts as the autopilot; no caller of this service may.
+    if(request.origin==='autopilot')return {unknowns:[],status:'refused',artifacts:[],reason:'only the Harness takes autopilot turns'};
+    return this.runDelegation(request,signal);
+  }
+
+  private async runDelegation(request:RunDelegationRequest,signal:AbortSignal=AbortSignal.timeout(30000)):Promise<Record<string,unknown>> {
     await authorizeProjectRun(this.guideDeps(),request.actor,request.runId);
     let normalizedRequest=request;
     let materializedFromRecipe=false;
@@ -1071,26 +1113,43 @@ export default class Hima extends Service {
       }
       let inlinePayload:import('./delegation.js').TeamRecipeBinding['inlinePayload'];
       let reviewOutput:import('./delegation.js').TeamRecipeBinding['reviewOutput'];
-      const operatorConsumer=team.members.find(item=>item.reviewedAction?.fromRole===member.id);
+      const operatorConsumer=team.members.find(item=>item.reviewedAction!==undefined&&item.reviewedAction.mode!=='request-scope'&&item.reviewedAction.fromRole===member.id);
       if(operatorConsumer?.reviewedAction?.mode==='scope') {
         const reviewed=operatorConsumer.reviewedAction;
         const tool=nodeTool(pack,operatorConsumer.node);
         if(reviewed.commands.some(command=>!tool?.interactive?.arguments[command]))return {unknowns:[],status:'refused',artifacts:[],reason:'The Pack Reviewer output contract has no matching typed Operator command.'};
         reviewOutput={mode:'scope',scopeField:reviewed.scopeField,commands:reviewed.commands,maxMutations:reviewed.maxMutations};
-      } else if(operatorConsumer?.reviewedAction) {
+      } else if(operatorConsumer?.reviewedAction&&operatorConsumer.reviewedAction.mode!=='request-scope') {
         const tool=nodeTool(pack,operatorConsumer.node);
         const declaration=tool?.interactive?.arguments[operatorConsumer.reviewedAction.command];
         if(!declaration)return {unknowns:[],status:'refused',artifacts:[],reason:'The Pack Reviewer output contract has no matching typed Operator command.'};
         reviewOutput={command:operatorConsumer.reviewedAction.command,
           arguments:declaration.filter(item=>item.name!==operatorConsumer.reviewedAction!.hostPlanHashArgument).map(item=>item.name)};
       }
-      if(member.reviewedAction) {
+      if(member.reviewedAction?.mode==='request-scope') {
+        // ADR-0016: the admitted request is the Operator's scope. The Host reads it out of the exact
+        // Reader-backed bytes, holds it to the Pack recipe and binds every mutation to that reading.
+        const reviewed=member.reviewedAction;
+        const planRecord=outputRecords.get(reviewed.planInput);
+        if(!planRecord)return {unknowns:[],status:'refused',artifacts:[],reason:'The request scope plan input has no current Reader observation.'};
+        const retainedPlan=await readReportMaterial(this.deps(),run.id,planRecord.id);
+        if(retainedPlan.kind!=='read')return {unknowns:[],status:'refused',artifacts:[],reason:`The exact request scope bytes are unavailable: ${retainedPlan.why}`};
+        let plan:unknown;try{plan=JSON.parse(retainedPlan.text);}catch{return {unknowns:[],status:'refused',artifacts:[],reason:'The request scope plan bytes are not JSON.'};}
+        let scope:unknown=plan;
+        for(const key of reviewed.scopePath)scope=scope!==null&&typeof scope==='object'&&!Array.isArray(scope)?(scope as Record<string,unknown>)[key]:undefined;
+        const problem=reviewedScopeProblem(scope,reviewed);
+        if(problem!==undefined)return {unknowns:[],status:'refused',artifacts:[],reason:`The admitted request's ${reviewed.scopePath.join('.')} is not a scope the Pack recipe allows: ${problem}.`};
+        const {commands,maxMutations}=scope as {commands:string[];maxMutations:number};
+        inlinePayload={mode:'scope',sourceResultRecordId:planRecord.id,adoptionRecordId:planRecord.id,planSha256:planRecord.contentSha256,
+          planHashArgument:reviewed.hostPlanHashArgument,scope:{commands,maxMutations}};
+      } else if(member.reviewedAction) {
+        const reviewedFrom=member.reviewedAction.fromRole;
         const source=existing.find(row=>row.effective.recipe?.teamId===team.id&&row.effective.recipe.version===team.version
-          &&row.effective.recipe.memberId===member.reviewedAction!.fromRole&&row.effective.recipe.executionId===execution.id)!;
+          &&row.effective.recipe.memberId===reviewedFrom&&row.effective.recipe.executionId===execution.id)!;
         const result=this.ledger.record(source.resultRecordId!);if(!result||result.type!=='delegation'||result.event!=='result-observed')return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action result record is unavailable.'};
         let observed:ReturnType<typeof parseDelegationResultObservedPayload>;try{observed=parseDelegationResultObservedPayload(result.payload);}catch{return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action handoff is malformed.'};}
         let payload:Record<string,unknown>;try{payload=JSON.parse(observed.handoff.output.text) as Record<string,unknown>;}catch{return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action must be one JSON object.'};}
-        const sourceMember=team.members.find(item=>item.id===member.reviewedAction!.fromRole)!;
+        const sourceMember=team.members.find(item=>item.id===reviewedFrom)!;
         if(payload.schema!==sourceMember.resultSchema.id||sourceMember.resultSchema.required.some(field=>!(field in payload)))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action does not satisfy its Pack result schema.'};
         if(member.reviewedAction.mode==='scope') {
           const reviewed=member.reviewedAction;
@@ -1129,7 +1188,23 @@ export default class Hima extends Service {
       const delegationId=`team-${team.id}-${member.id}-${identityOf({runId:run.id,executionId:execution.id}).slice(0,16)}`;
       const priorRecipe=existing.find(row=>row.delegationId===delegationId);
       const recipeDigest=identityOf({packDigest:run.packDigest,team,member});
-      const task=[member.taskTemplate,`Runtime inputs: ${inputRefs.join(', ')}.`,inlinePayload?`${inlinePayload.mode==='scope'?'Immutable reviewed scope':'Immutable reviewed action'}: ${JSON.stringify(inlinePayload)}.`:''].filter(Boolean).join('\n');
+      // #64 M-T03-1: the exact Reader-backed bytes of each declared task input, embedded, so the member
+      // works from the request itself and never from a record id it cannot read.
+      const embedded:string[]=[];
+      for(const wanted of member.taskInputs) {
+        const reading=outputRecords.get(wanted.input);
+        if(!reading)return {unknowns:[],status:'refused',artifacts:[],reason:`Task input ${wanted.input} has no current Reader observation.`};
+        const bytes=await readReportMaterial(this.deps(),run.id,reading.id);
+        if(bytes.kind!=='read')return {unknowns:[],status:'refused',artifacts:[],reason:`The exact bytes of task input ${wanted.input} are unavailable: ${bytes.why}`};
+        let text=bytes.text;
+        if(wanted.fields!==undefined) {
+          let value:unknown;try{value=JSON.parse(bytes.text);}catch{return {unknowns:[],status:'refused',artifacts:[],reason:`Task input ${wanted.input} is not JSON, so its fields cannot be picked.`};}
+          if(value===null||typeof value!=='object'||Array.isArray(value))return {unknowns:[],status:'refused',artifacts:[],reason:`Task input ${wanted.input} is not one JSON object.`};
+          text=JSON.stringify(Object.fromEntries(wanted.fields.filter(field=>field in (value as object)).map(field=>[field,(value as Record<string,unknown>)[field]])));
+        }
+        embedded.push(`Exact input ${wanted.input} (Reader observation ${reading.id}, content SHA-256 ${reading.contentSha256}${wanted.fields===undefined?'':`, fields ${wanted.fields.join(', ')}`}):\n${text}`);
+      }
+      const task=[member.taskTemplate,`Runtime inputs: ${inputRefs.join(', ')}.`,inlinePayload?`${inlinePayload.mode==='scope'?'Immutable reviewed scope':'Immutable reviewed action'}: ${JSON.stringify(inlinePayload)}.`:'',...embedded].filter(Boolean).join('\n');
       normalizedRequest={...request,recipe:undefined,...(priorRecipe?.reservation.admittedRevision===undefined?{}:{expectedRevision:priorRecipe.reservation.admittedRevision}),contract:{delegationId,role:member.role,task,inputRefs,nodeRef:member.node,
         allowedTools:member.allowedTools,budgetShare:member.budgetShare,dependencyIds,recipient:{kind:'run-owner',sessionId:run.control.owner},
         recipe:{teamId:team.id,version:team.version,memberId:member.id,executionId:execution.id,recipeDigest,resultSchema:member.resultSchema,...(inlinePayload?{inlinePayload}:{})}}};
@@ -1279,8 +1354,10 @@ export default class Hima extends Service {
   executionContext(runId: string): ExecutionContext { return executionContext(this.deps(), runId); }
 
   async executionAction(request: ExecutionActionRequest): Promise<ExecutionActionResult> {
+    // Only the Host's own driver acts as the autopilot; no caller of this service may.
+    if(request.origin==='autopilot')return {kind:'refused',context:this.executionContext(request.runId),reason:'only the Harness takes autopilot turns'};
     const result=await executionAction(this.deps(),request);
-    if(result.kind==='accepted')this.notifyGuideBoundary(request.runId);
+    if(result.kind==='accepted'){this.notifyGuideBoundary(request.runId);this.autopilot?.kick(request.runId);}
     return result;
   }
 

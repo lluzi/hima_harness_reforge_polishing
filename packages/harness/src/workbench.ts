@@ -1037,6 +1037,7 @@ const decisionGlyphs: Readonly<Record<ChosenKind, Glyph>> = {
   'goal-met': 'done',
   converged: 'waiting',
   'next-strategy': 'running',
+  stopped: 'missed',
 };
 
 const decisionGlyph = (decision: DecisionView): Glyph => decisionGlyphs[chosenKind(decision)];
