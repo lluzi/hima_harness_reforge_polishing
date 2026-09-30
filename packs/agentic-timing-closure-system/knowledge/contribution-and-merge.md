@@ -95,9 +95,11 @@
 超过一个舍入步（1e-4 ns）时，这一批照样 `admissible: true`，带 `breaks-opposite-check`
 进入排序和重放；Operator 测到这样的一步仍应当场 undo，因为排名和最终 PrimeTime 都会算这笔账。
 
-只有损坏的数据或越权的编辑才拒绝一批（`admissible: false`，`refusals`）：`tainted`
-（会话没有正常关闭，或设计状态未知）、`trace-mismatch`（命令日志解释不了前后 dump）、
-`out-of-scope`（改了域外的对象）；日志不可解析、基线身份不一致在封存时直接报错。质量
+只有设计状态未知才拒绝一批（`admissible: false`，`refusals`）：`tainted`（会话没有正常
+关闭，或设计状态未知）。`trace-mismatch`（命令日志解释不了前后 dump）和 `out-of-scope`
+（改了域外的对象）自 #64 T06 起也只是 advisory（D-T06-7：重放是聚合器；T06 w01 的真实插入
+被日志漏记，整批曾因此被排除）：这一批照样进入排序，重放在会话域内逐条尝试其命令；日志
+不可解析、基线身份不一致在封存时直接报错。质量
 的裁判是刷新后的 Innovus/StarRC/PrimeTime 结果加 DRC/连通性，不是封存前的证据门。
 
 ### 批次排序与聚合重放（#66 D5，#64 聚合决定）
@@ -120,8 +122,8 @@
   recipe。低排名批次里碰到高排名批次已改实例的命令标 `skip: shared-instance`（`sharedWith`
   写明是谁），依赖被跳过的新建对象的命令标 `depends-on-skipped`；其余命令在重放时按排名
   依次尝试，已不适用、出错或被工具包拒绝的命令记为 `skipped` 并写明原因，重放继续。
-- **只有损坏数据才排除。** 被封存拒绝的批次（`tainted`、`trace-mismatch`、`out-of-scope`）
-  以其拒绝代码列在 `recipe.excluded`；基线 dump 与多数不一致的批次以 `base-dump-mismatch`
+- **只有损坏数据才排除。** 被封存拒绝的批次（`tainted`）以其拒绝代码列在
+  `recipe.excluded`；基线 dump 与多数不一致的批次以 `base-dump-mismatch`
   排除。
 - **重放记录。** 每个会话的 `applied`（步骤 id）和 `skipped`（`{stepId, attempted,
   reason}`）；`arm-result.json` 与集成状态的 `appliedCommands`、`skippedCommands`、

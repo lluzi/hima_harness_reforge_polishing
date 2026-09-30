@@ -257,7 +257,8 @@ batch:
   removed: the recipe lists every kept command of every ranked session.
 - **Excluded.** Only corrupt data excludes: an inadmissible session (any
   Contribution carrying the ``session`` field; the seal refuses only a tainted
-  session, a log that does not explain its dumps, or an out-of-scope edit) is
+  session since #64 T06, where a log that does not explain its dumps and an
+  out-of-scope edit became advisories) is
   listed under ``recipe.excluded`` with its refusal codes and is never ranked;
   it is still absent from ``considered``.
 

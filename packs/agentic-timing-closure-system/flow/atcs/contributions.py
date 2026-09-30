@@ -1013,13 +1013,18 @@ def _script_sha256(path):
 #   legacy replay has nothing to do for a session.
 #
 # ``kind`` is ``"xtop-session"`` when ``commands`` is non-empty, else
-# ``"no-fix"`` with a deterministic diagnosis. A session is refused only for
-# corrupt data or an edit outside its admitted scope. Refusal codes (the
+# ``"no-fix"`` with a deterministic diagnosis. A session is refused only when
+# its design state is unknown (#64 T06, D-T06-7: replay is an aggregator, so a
+# log that does not explain its dumps and an edit outside the domain are
+# advisories, and the Contribution enters the recipe). Refusal code (the
 # Contribution is still sealed and returned, never raised away):
 #
 # - ``tainted``: ``tainted.json`` exists, an ``uncertain`` line exists, or the
 #   XTop transcript's ``ATCS:taint:`` line is missing or not ``clean`` (the
-#   session did not complete, or its design state is unknown);
+#   session did not complete, or its design state is unknown).
+#
+# Trace advisory codes (``advisories``; before T06 these refused):
+#
 # - ``trace-mismatch``: the log does not explain the dump delta (a logged
 #   change the dump lacks, an untraced in-domain change, a precondition the
 #   running state does not hold, a kept typed request whose logged effect
@@ -1908,10 +1913,11 @@ def seal_session(base_ref, result_refs, ops_text, gain_text, reads_text=None):
     `reads_text` are the raw ``ops.jsonl`` / ``gain.jsonl`` / ``reads.jsonl`` texts (``reads_text``
     ``None`` = no read log). Raises `AtcsError` only for unusable input (a
     ``base_ref`` whose parts disagree, an unreadable dump, a malformed ops or gain log).
-    A session is refused (``admissible: false``, ``refusals``) only for corrupt data (a tainted
-    or unclosed session, a log that does not explain the dumps) or an edit outside its admitted
-    domain; every quality finding is an advisory (``advisories``) and never refuses -- see the
-    block comments above for the codes and the shape.
+    A session is refused (``admissible: false``, ``refusals``) only when its design state is
+    unknown (a tainted or unclosed session). A log that does not explain the dumps
+    (``trace-mismatch``) and an edit outside its admitted domain (``out-of-scope``) are advisories
+    since #64 T06 (D-T06-7: replay is an aggregator), like every quality finding: they never
+    refuse -- see the block comments above for the codes and the shape.
 
     The seal is of one batch (#66 D4). The domain check reads the session's effective domain (its
     ``domain.json`` ``instances``, plus the plan's ``editDomain.instances`` and the instances the
@@ -1965,11 +1971,11 @@ def seal_session(base_ref, result_refs, ops_text, gain_text, reads_text=None):
         refuse("tainted", f"the XTop transcript says ATCS:taint:{transcript_taint}")
 
     if [line["seq"] for line in lines] != list(range(1, len(lines) + 1)):
-        refuse("trace-mismatch", f"ops.jsonl seqs {[line['seq'] for line in lines]} are not 1..{len(lines)}")
+        advise("trace-mismatch", f"ops.jsonl seqs {[line['seq'] for line in lines]} are not 1..{len(lines)}")
 
     kept_lines, undone, discarded, undo_problems = _net_log(lines)
     for problem in undo_problems:
-        refuse("trace-mismatch", problem)
+        advise("trace-mismatch", problem)
     commands = [_command_entry(line) for line in kept_lines]
 
     # Gain lines: every kept line has its own; the reading used as `predicted` is the latest state.
@@ -2018,13 +2024,13 @@ def seal_session(base_ref, result_refs, ops_text, gain_text, reads_text=None):
     for line, command in zip(kept_lines, commands):
         problem = _request_problem(line)
         if problem is not None:
-            refuse("trace-mismatch", f"seq {command['seq']}: {problem}")
+            advise("trace-mismatch", f"seq {command['seq']}: {problem}")
         for name in command["instances"]:
             if out_of_domain(name):
                 out_of_scope.add(name)
         for name, master in command["before"].items():
             if running.get(name) != master:
-                refuse("trace-mismatch", f"seq {command['seq']}: {name!r} logged as {master!r} before the "
+                advise("trace-mismatch", f"seq {command['seq']}: {name!r} logged as {master!r} before the "
                                          f"{command['cmd']}, the replayed state has {running.get(name)!r}")
         for name, master in command["after"].items():
             if master is None:
@@ -2053,11 +2059,11 @@ def seal_session(base_ref, result_refs, ops_text, gain_text, reads_text=None):
         else:
             untraced.append(name)
     if untraced:
-        refuse("trace-mismatch", "the net command log does not explain the dump delta for "
+        advise("trace-mismatch", "the net command log does not explain the dump delta for "
                                  f"{untraced}: logged {[(n, before.get(n), running.get(n)) for n in untraced]}, "
                                  f"dumped {[(n, before.get(n), after.get(n)) for n in untraced]}")
     if out_of_scope:
-        refuse("out-of-scope", f"changes outside the edit domain: {sorted(out_of_scope)}")
+        advise("out-of-scope", f"changes outside the edit domain: {sorted(out_of_scope)}")
 
     kind = "xtop-session" if commands else "no-fix"
     target_checks = _target_checks(work_package)

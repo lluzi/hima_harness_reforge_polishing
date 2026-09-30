@@ -204,7 +204,8 @@ class EffectiveDomainTest(unittest.TestCase):
     def test_without_domain_json_the_plan_domain_is_checked(self):
         log, after = self._derived_edit()
         contribution = _seal(log, after, domain=None)
-        self.assertEqual(_codes(contribution), ["out-of-scope"])
+        self.assertEqual(_codes(contribution), [])  # D-T06-7: an advisory since #64 T06
+        self.assertIn("out-of-scope", _advisories(contribution))
         self.assertEqual(contribution["outOfScope"], ["U7"])
         self.assertIsNone(contribution["effectiveDomain"])
         self.assertEqual(contribution["session"]["domainSource"], "plan")
@@ -214,7 +215,8 @@ class EffectiveDomainTest(unittest.TestCase):
         log = sf.SessionLog()
         log.size("X9", "BUFX1", "BUFX2", gain=(SETUP_FLAT, _hold((-0.060, -1.000))))
         contribution = _seal(log, {**BEFORE, "X9": "BUFX2"}, before={**BEFORE, "X9": "BUFX1"})
-        self.assertEqual(_codes(contribution), ["out-of-scope"])
+        self.assertEqual(_codes(contribution), [])  # D-T06-7: an advisory since #64 T06
+        self.assertIn("out-of-scope", _advisories(contribution))
         self.assertEqual(contribution["outOfScope"], ["X9"])
 
     def test_session_created_instances_stay_in_domain(self):
@@ -304,13 +306,13 @@ class BatchNetValueAdvisoryTest(unittest.TestCase):
         self.assertEqual(_advisories(contribution), ["breaks-target-check", "no-predicted-gain"])
 
     def test_corrupt_data_still_refuses(self):
-        """A log that does not explain the dumps (U2 changed with no command) is refused, and an
-        unparseable ops log is unusable input."""
+        """A log that does not explain the dumps (U2 changed with no command) is an advisory since #64 T06
+        (D-T06-7); an unparseable ops log is still unusable input."""
         log = sf.SessionLog()
         log.size("U1", "BUFX1", "BUFX2", gain=(SETUP_FLAT, _hold((-0.060, -1.000))))
         contribution = _seal(log, {**BEFORE, "U1": "BUFX2", "U2": "BUFX4"})
-        self.assertFalse(contribution["admissible"])
-        self.assertEqual(_codes(contribution), ["trace-mismatch"])
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertIn("trace-mismatch", _advisories(contribution))
         with self.assertRaises(core.AtcsError) as ctx:
             contributions.seal_session(sf.make_base_ref(targets=TARGETS), {}, "{not json\n", "")
         self.assertEqual(ctx.exception.code, "malformed-ops-log")
@@ -343,6 +345,50 @@ class T06DummySealTest(unittest.TestCase):
         self.assertTrue(contribution["admissible"], contribution["refusals"])
         self.assertEqual(contribution["kind"], "xtop-session")
         self.assertEqual([command["cmd"] for command in contribution["commands"]], ["insert_dummy_cell"])
+
+
+class T06TraceMismatchAdvisoryTest(unittest.TestCase):
+    """D-T06-7 (#64 T06): w01's ops said its `insert_dummy_cell` changed nothing (the D-T06-4(d) toolkit
+    bug) while its after-dump held swerv_dbg/atcs_w01_r1_dum0, so the seal refused it `trace-mismatch` and
+    composition excluded the Contribution whole, although the user's decision is that replay is an
+    aggregator. A log that does not explain its dumps, and an edit outside the domain, are now advisories:
+    the Contribution enters the recipe; only a tainted session (design state unknown) is refused."""
+
+    DUMMY = "swerv_dbg/atcs_w01_r1_dum0"
+
+    def _t06_w01_log(self):
+        log = sf.SessionLog()
+        log._line("insert_dummy_cell", "atcs_insert_dummy",
+                  {"pin": "swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_/CDN", "master": "DEL025D1BWP30P140HVT",
+                   "newInstance": "atcs_w01_r1_dum0"}, "no-change", {}, {}, 1, matchesRequest=False)
+        log.no_change("fix_hold_gba_violations", "atcs_fix_hold_pins")
+        return log
+
+    def test_the_t06_w01_log_is_sealed_admissible_with_a_trace_mismatch_advisory(self):
+        contribution = _seal(self._t06_w01_log(), {**BEFORE, self.DUMMY: "DEL025D1BWP30P140HVT"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(contribution["refusals"], [])
+        self.assertIn("trace-mismatch", _advisories(contribution))
+        self.assertEqual(contribution["kind"], "no-fix")
+
+    def test_composition_considers_it_instead_of_excluding_it(self):
+        from atcs import composition
+        contribution = _seal(self._t06_w01_log(), {**BEFORE, self.DUMMY: "DEL025D1BWP30P140HVT"})
+        facts = composition.analyze(sf.BASE_STATE_ID, [contribution], [])
+        self.assertIn(contribution["id"], facts["considered"])
+        self.assertEqual(facts["recipe"]["excluded"], [])
+
+    def test_an_out_of_domain_edit_is_an_advisory_and_a_tainted_session_still_refuses(self):
+        log = sf.SessionLog()
+        log.size("U9", "BUFX1", "BUFX2", gain=(SETUP_FLAT, _hold((-0.060, -1.000))))
+        contribution = _seal(log, {**BEFORE, "U9": "BUFX2"}, before={**BEFORE, "U9": "BUFX1"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertIn("out-of-scope", _advisories(contribution))
+        tainted = sf.SessionLog()
+        tainted.uncertain()
+        contribution = _seal(tainted, BEFORE)
+        self.assertFalse(contribution["admissible"])
+        self.assertEqual(_codes(contribution), ["tainted"])
 
 
 class ReadLogShapeTest(unittest.TestCase):
@@ -443,7 +489,8 @@ class CaptureBatchContributionTest(unittest.TestCase):
         log, after, _ = _batch()
         sf.write_session(root, log, BEFORE, after)
         contribution = self._capture()
-        self.assertFalse(contribution["admissible"])
+        self.assertTrue(contribution["admissible"], "D-T06-7: an out-of-scope edit is an advisory")
+        self.assertIn("out-of-scope", _advisories(contribution))
         self.assertEqual(contribution["outOfScope"], ["U7"])
         self.assertEqual(contribution["session"]["domainSource"], "plan")
 
