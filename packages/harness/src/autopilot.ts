@@ -65,6 +65,13 @@ export const WORKSHOP_ENTRY_SCHEMA = 'hima-workshop-entry/1';
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => { setTimeout(resolve, ms).unref?.(); });
 const refused = (why: string): Turn => ({ refused: why });
 const sha256Of = (text: string): string => createHash('sha256').update(Buffer.from(text, 'utf8')).digest('hex');
+/**
+ * A schema-repair follow-up's id, named by what it repairs: the result record (`r<seq>`), or the idle turn
+ * after the child's latest follow-up (`idle<seq>`). One child can be repaired several times (a Workshop author
+ * across its failed programs): #64 Q1 #362/#459 reused one id with other text and the Host refused it
+ * ("Follow-up id changed contents"). A restart that re-drives the same repair asks with the same id and text.
+ */
+const repairId = (delegationId: string, of: string): string => `${`ap-repair-${delegationId}`.slice(0, 140)}-${of}`;
 
 /** A Run the driver may take a turn on: running, owned, and not stopping. */
 function active(run: RunRecord | undefined): run is RunRecord {
@@ -494,7 +501,7 @@ export class Autopilot {
         if (repaired || repair === undefined) return { kind: 'invalid', why };
         repaired = true;
         const sent = await this.#delegate(runId, { action: 'followup', delegationId, text: `${repair} (${why})`.slice(0, 7_900),
-          requestId: `ap-repair-${delegationId}`.slice(0, 160) });
+          requestId: repairId(delegationId, `r${String(result.seq)}`) });
         if (sent.status !== 'accepted' && sent.status !== 'duplicate') return { kind: 'invalid', why: `${why}; its repair follow-up was refused: ${String(sent.reason ?? sent.status)}` };
         after = records().filter((record) => record.event === 'followup-intent').at(-1)?.seq ?? after;
         continue;
@@ -517,7 +524,7 @@ export class Autopilot {
           if (repaired || repair === undefined) return { kind: 'invalid', why };
           repaired = true;
           const sent = await this.#delegate(runId, { action: 'followup', delegationId, text: `${repair} (${why})`.slice(0, 7_900),
-            requestId: `ap-repair-${delegationId}`.slice(0, 160) });
+            requestId: repairId(delegationId, `idle${String(after)}`) });
           if (sent.status !== 'accepted' && sent.status !== 'duplicate') return { kind: 'invalid', why: `${why}; its repair follow-up was refused: ${String(sent.reason ?? sent.status)}` };
           after = records().filter((record) => record.event === 'followup-intent').at(-1)?.seq ?? after;
           asked = Date.now();

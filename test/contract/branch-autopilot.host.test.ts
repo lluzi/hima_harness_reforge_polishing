@@ -666,6 +666,35 @@ test('each revised failing program runs once, and the author\'s follow-up allowa
   });
 });
 
+test('a schema repair after a failed-program repair has its own follow-up id, never "Follow-up id changed contents" (#64 D-Q1-4)', async (t) => {
+  // Q1 #362/#459 (w04, w05): the author's reply failed its schema (repair `ap-repair-<id>`), its program then
+  // failed by its own exit (repair `ap-repair-<id>-<attempt>`), and its next reply failed the schema again.
+  // That second schema repair reused `ap-repair-<id>` with other text; the Host refused it ("Follow-up id
+  // changed contents") and the branch settled refused with follow-ups still allowed.
+  await campaign(t, { ...defaults, authorMs: 120_000 }, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    const author = await p.authorAsked(branches[0]);
+    const followups = () => p.delegationRecords(author).filter((r) => r.type === 'delegation' && r.event === 'followup-intent');
+    const settled = () => p.records().findLast((r) => r.type === 'node' && r.branchId === 'plan-a' && r.state === 'cancelled');
+    const codes = () => p.records().filter((r) => r.type === 'code' && r.nodeId === 'plan-a');
+    await p.answer(author, 'The first reply is prose, not the entry object.');
+    await waitUntil('the first schema repair', () => followups().length === 1 || settled() !== undefined, 30_000, 25);
+    await p.answer(author, JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA, entry: 'echo "failing on purpose" >&2\nexit 4\n' }));
+    await waitUntil('the failed-program repair', () => followups().length === 2 || settled() !== undefined, 30_000, 25);
+    await p.answer(author, 'The failure was the missing input; the entry follows.');
+    await waitUntil('the second schema repair, or the branch settles', () => followups().length === 3 || settled() !== undefined, 30_000, 25);
+    const refusal = settled();
+    assert.equal(refusal, undefined, `branch a settled refused: ${refusal?.type === 'node' ? refusal.reason : ''}`);
+    const ids = followups().map((r) => r.type === 'delegation' ? r.requestId : '');
+    assert.equal(new Set(ids).size, 3, `three distinct follow-up ids: ${JSON.stringify(ids)}`);
+    await p.answer(author, p.entry(branches[0]));
+    await waitUntil('the repaired entry runs', () => codes().length === 2, 30_000, 25);
+    await waitUntil('branch a reads its plan', () => p.records().some((r) => r.type === 'observation' && r.reader.id === 'plan-file'
+      && 'branchId' in r && r.branchId === 'plan-a'), 30_000, 25);
+  });
+});
+
 test('a Run the owner\'s own tool left on a self-driving segment node is picked up by the autopilot\'s periodic kick (#64 D-T04-1)', async (t) => {
   // D-T04-1 (every live Run): after the owner's accepted complete, the segment's first node never
   // began until a person pressed Continue. The owner's hima_execution tool calls the fabric
