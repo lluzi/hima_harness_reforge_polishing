@@ -28,7 +28,7 @@ export interface InProcessHost {
 }
 
 /** Boot dsh-base + the Hima bundle + the profile's privacy overlay in this process; rejects unless every entry activates. */
-export async function bootInProcess(h: HimaHome, { withWebApp = false } = {}): Promise<InProcessHost> {
+export async function bootInProcess(h: HimaHome, { withWebApp = false, webPort }: { withWebApp?: boolean; webPort?: number } = {}): Promise<InProcessHost> {
   recordTestBoot('host-in-process');
   // dsh resolves its home from the process environment (dshHomePath); an in-process host must see the isolated one.
   const saved = { DSH_HOME: process.env.DSH_HOME, DSH_AGENTS_HOME: process.env.DSH_AGENTS_HOME, DSH_TELEMETRY_DISABLED: process.env.DSH_TELEMETRY_DISABLED };
@@ -57,7 +57,17 @@ export async function bootInProcess(h: HimaHome, { withWebApp = false } = {}): P
   ]);
   let ctx: Context;
   try {
-    ctx = await boot(BIN_NAME, rootConfig, patches);
+    // The web-app layer is the App's composition: it moves every model-facing row, compaction
+    // included, from the host plane onto the agent presets. Its startup reads the launcher's command
+    // line, so this boot provides the three services dsh's `runProfile` provides (`provideCmdline`):
+    // the arguments `host-launch.ts` passes, an exit request, and a readiness signal.
+    const prepare = withWebApp ? (hostCtx: Context) => {
+      const args = Object.freeze(['--host', '127.0.0.1', '--port', String(webPort ?? 0), '--no-open']);
+      hostCtx.provide('cmdlineArgs' as never, { get: () => args } as never);
+      hostCtx.provide('appExit' as never, (() => undefined) as never);
+      hostCtx.provide('appReady' as never, { onReady: (listener: () => void) => { queueMicrotask(listener); return () => undefined; } } as never);
+    } : undefined;
+    ctx = await boot(BIN_NAME, rootConfig, patches, prepare);
     await assertEntriesActivated(ctx, BIN_NAME);
   } catch (err) { restoreEnv(); throw err; }
   return { ctx, dispose: async () => { try { await ctx.fiber.dispose(); } finally { restoreEnv(); } } };
@@ -69,6 +79,21 @@ export async function createRootAgent(ctx: Context, cwd: string): Promise<Agent>
   if (!defaultModel) throw new Error('agentDefaultModel service missing');
   const selection = defaultModel.currentSelection();
   return createTestAgentWithModel(ctx, cwd, { provider: selection.provider, model: selection.model });
+}
+
+/**
+ * Create one root session the way the App's web surface does: dsh's own session controller, with an
+ * agent preset, in a boot composed `withWebApp`. Its children join that preset (`composeFrom`), which
+ * is how a Run owner's Operator children end up `agentPreset: standard` in the App.
+ */
+export async function createPresetRootAgent(ctx: Context, cwd: string, agentPreset: string): Promise<Agent> {
+  const controller = ctx.get('sessionController' as never) as { create(request: { cwd: string; agentPreset: string }): Promise<{ sessionId: string; agentPreset?: string }> } | undefined;
+  if (!controller) throw new Error('sessionController service missing: boot with { withWebApp: true }');
+  const made = await controller.create({ cwd, agentPreset });
+  const agent = ctx.get('agents')?.get(made.sessionId as never);
+  if (!agent) throw new Error(`session controller returned ${made.sessionId} without a live Agent`);
+  await agent.whenIdle();
+  return agent;
 }
 
 /** Create one native test Agent with an explicit pinned request budget when a live check needs it. */

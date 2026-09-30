@@ -1,5 +1,6 @@
 {
   "local": [
+    "test/contract/delegation-followup-tools.host.test.ts",
     "test/contract/aes-analysis.test.ts",
     "test/contract/aes-domain-stages.test.ts",
     "test/contract/aes-full-graph.host.test.ts",
@@ -150,5 +151,8 @@
   ],
   "atcs-dry": [
     "test/contract/atcs-dry-path.host.test.ts"
+  ],
+  "live-model": [
+    "test/contract/child-compaction.live.test.ts"
   ]
 }
