@@ -612,9 +612,10 @@ export async function endJobProcessGroup(on: InteractiveChannel, target: JobProc
  * "" and a slot whose survivor had long ended stayed refused for the rest of the Run.
  *
  * Exit 0 is a group with a live process. A refusal to signal it ("not permitted") is a live process
- * too, one this login may not signal. Any other exit 1 — "no such process", or no text at all — is
- * the group gone. Every other exit (a missing `kill`, an ssh that could not connect) is a question
- * that was not answered, and throws: nothing is concluded from it.
+ * too, one this login may not signal. Exit 1 saying "no such process" is the group gone. Everything
+ * else — an exit 1 with other text or none (a login shell whose `kill` rejects `-s 0 --`, as tcsh
+ * does), a missing `kill`, an ssh that could not connect — is a question that was not answered, and
+ * throws: nothing is concluded from it, and above all no slot is admitted on it (review m2).
  */
 export async function jobProcessGroupAlive(on: InteractiveChannel, pid: number): Promise<boolean> {
   if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error(`invalid process group ${String(pid)}`);
@@ -622,7 +623,7 @@ export async function jobProcessGroupAlive(on: InteractiveChannel, pid: number):
   if (asked.code === 0) return true;
   const said = asked.stderr.trim();
   if (asked.code === 1 && /not permitted|permission denied/i.test(said)) return true;
-  if (asked.code === 1) return false;
+  if (asked.code === 1 && /no such process/i.test(said)) return false;
   throw new Error(`cannot tell whether process group ${String(pid)} still runs: kill exited ${String(asked.code)}${said ? `: ${said}` : ''}`);
 }
 

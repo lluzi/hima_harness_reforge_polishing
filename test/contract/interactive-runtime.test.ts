@@ -431,6 +431,55 @@ test('a deadline that has fired is not fired again when the deadlines are re-pro
   } finally { timer.dispose(); }
 });
 
+// Review C1 of attempt 3: an idle deadline moves later with every recorded activity. When each
+// command completed inside its own input call, the next re-projection still found an idle key, kept
+// the timer it already held and dropped the later deadline, so the first timer fired at open +
+// idleMaxMs — and with the Host's deadline stop now effective, closed a session being driven.
+test('an idle deadline moved later by completed commands is the one timer that fires, never the stale one (review C1)', async () => {
+  const runId = 'idle-moves', toolSessionId = 'idle-moves-session', idleMaxMs = 1_500;
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const address = { runId, toolSessionId, executionId: execution.id, nodeId: 'manual', actor: 'operator',
+    ownerEpoch: 1, controlRevision: 0, operationDigest: digest('a'), callerDigest: digest('b') };
+  const records: object[] = [];
+  const append = (data: Record<string, unknown>) => {
+    const at = new Date().toISOString();
+    records.push({ type: 'interactive', runId, toolSessionId, at, payload: parseInteractiveRecord({ ...address, requestId: 'r', at, ...data }) });
+  };
+  const ledger = { runs: () => [{ id: runId, siteId: 'local', status: 'running', control: { executions: { [execution.id]: { ...execution, phase: 'working' } } } }],
+    records: (query: { type?: string }) => records.filter((record) => query.type === undefined || (record as { type: string }).type === query.type) };
+  const fired: { kind: string; at: string; firedAt: number }[] = [];
+  const timer = createInteractiveTimerController({ fabric: { ledger } as never,
+    resolveOperation: async () => ({ binding: { ...binding, limits: { ...binding.limits, idleMaxMs } }, site: 'local', workspace: '/w',
+      argv: ['sh'], name: 'idle', licences: {}, commands: [] }),
+    verifyAdminBinding: async () => { throw new Error('unused'); }, encodeCommand: async () => { throw new Error('unused'); },
+    onDeadline: async (deadline) => { if (deadline.kind === 'idle') fired.push({ kind: deadline.kind, at: deadline.at, firedAt: Date.now() }); } });
+  try {
+    append({ event: 'open-intent', jobSession: toolSessionId, transcriptPath: '/fixture/transcript.log',
+      exitPath: '/fixture/session.exit', sessionDeadlineAt: new Date(Date.now() + 60_000).toISOString() });
+    append({ event: 'opened', jobSession: toolSessionId, readiness: 'ready', qualification: {
+      bindingDigest: digest('c'), adapter: binding.adapter, environment: binding.environment, mutation: 'qualified', testOnly: true } });
+    await timer.reconcile();
+    // For three idle windows the Operator's commands complete inside their own input calls.
+    const until = Date.now() + 3 * idleMaxMs;
+    let serial = 0;
+    while (Date.now() < until) {
+      await sleep(500);
+      const commandId = `c${++serial}`;
+      append({ event: 'input-intent', commandId, inputDigest: digest('d'), requestDigest: digest('b'), protocolToken: 'T'.repeat(32),
+        inputBytes: 1, submit: true, effect: 'read', cursorBefore: 0, commandDeadlineAt: new Date(Date.now() + 5_000).toISOString() });
+      append({ event: 'input-sent', commandId, inputDigest: digest('d') });
+      append({ event: 'command-completed', commandId, inputDigest: digest('d'), cursorAfter: serial });
+      await timer.reconcile();
+    }
+    assert.equal(fired.length, 0, `a session driven the whole time reached no idle deadline: ${JSON.stringify(fired)}`);
+    // Then it goes quiet: the idle deadline counted from its last activity fires, once.
+    await sleep(idleMaxMs + 500);
+    assert.equal(fired.length, 1, JSON.stringify(fired));
+    const lastActivity = Date.parse((records.at(-1) as { at: string }).at);
+    assert.equal(fired[0]!.at, new Date(lastActivity + idleMaxMs).toISOString(), 'the deadline is the one counted from the last activity');
+  } finally { timer.dispose(); }
+});
+
 // #64 D-T01-3: the Harness "closed" worker 02's interactive session, but the tool it had launched
 // kept running and kept its locks in the slot, so every retry in that slot was refused by the
 // wrapper's startup lock check. A close must end with the Job's process group observed gone, or
@@ -745,6 +794,74 @@ test('a close waits through the declared close grace: a tool that ends 30 s afte
     for (const session of sessions) spawnSync('tmux', ['kill-session', '-t', `=${session}`], { timeout: 15_000 });
     for (const group of groups) { try { process.kill(-group, 'SIGKILL'); } catch { /* already gone */ } }
   }
+});
+
+// Review I1 of attempt 3: an input without `waitMs` waited 0 ms and returned "sent", so a command's
+// completion was recorded only if its Operator then called `observe` with the right command id. w01
+// read DONE three times, never observed, and had every later input refused by a lease nobody could
+// settle; w02 observed a wrong id. An input or observe now waits up to the binding's call wait by
+// default, and the lease refusal names the command to observe.
+test('an input without waitMs records a completion printed within the call wait, and a held lease names the command to observe (review I1)', async (t) => {
+  const { writeFile } = await import('node:fs/promises');
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const site = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
+    allowedWrappers: ['sh'], parallelJobs: 1, licences: { fixture: 1 } });
+  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const parent = await createRootAgent(host.ctx, home.workspace);
+  const wrapper = path.join(home.workspace, 'plain-wrapper.sh');
+  await writeFile(wrapper, ['node=$1; repl=$2', '"$node" "$repl" fixture-repl 1', ''].join('\n'));
+  const run = await host.ctx.hima.ledger.createRun({
+    campaignId: 'default-wait', siteId: 'local', packId: 'fixture-pack', packDigest: digest('a'), status: 'running', currentNode: 'manual', generation: 1,
+    budget: { timeBoxMs: 120_000, closingReserveMs: 1_000, retryAllowance: 1, jobCap: 1, licences: { fixture: 1 }, generationLimit: 1 },
+    control: { mode: 'agent', owner: String(parent.id), epoch: 1, revision: 0, paused: [], requests: {}, executions: { [execution.id]: execution } },
+  });
+  const deps = {
+    fabric: { ledger: host.ctx.hima.ledger, sitesDir: site.sitesDir, notify: () => ({ status: 'queued' }) } as never,
+    resolveOperation: async () => ({ binding, site: 'local', workspace: home.workspace, argv: ['sh', wrapper, process.execPath, fixture],
+      name: 'default-wait', licences: { fixture: 1 },
+      commands: [{ name: 'set', effect: 'mutate' as const }, { name: 'slow', effect: 'mutate' as const }, { name: 'exit', effect: 'close' as const }] }),
+    verifyAdminBinding: async (effective: InteractiveBinding) => ({ bindingFileRealpath: '/trusted/test/binding',
+      bindingFileSha256: digest('0'), environmentDigest: effective.environment.digest, confinement: 'unqualified' as const }),
+    encodeCommand: async (_binding: InteractiveBinding, request: { commandId: string; protocolToken: string; name: string; args: unknown }) => ({
+      text: JSON.stringify({ id: request.commandId, _himaToken: request.protocolToken, op: request.name, ...(request.args as object) }),
+      submit: true, effect: request.name === 'exit' ? 'close' as const : 'mutation' as const }),
+    claimJobSlot: async (request: Parameters<NonNullable<InteractiveRuntimeDeps['claimJobSlot']>>[0]) => {
+      const claimed = await claimSlot({ ledger: host.ctx.hima.ledger as never, sitesDir: site.sitesDir }, {
+        site: { name: request.site, jobs: request.run.budget!.jobCap, licences: request.run.budget!.licences },
+        holds: request.licences, launch: request.launch });
+      return claimed.kind === 'claimed' ? { kind: 'claimed' as const, launched: claimed.launched } : { kind: 'at-cap' as const, reason: claimed.kind };
+    },
+    trustedTestQualification: { bindingId: 'fixture-binding' },
+    onDeadline: async () => {},
+  } as InteractiveRuntimeDeps;
+  const base = { runId: run.id, executionId: execution.id, nodeId: 'manual', actor: String(parent.id), ownerEpoch: 1, controlRevision: 0 };
+  const opened = await operateInteractive(deps, { ...base, action: 'open', requestId: 'open' });
+  assert.equal(opened.status, 'opened', JSON.stringify(opened)); if (opened.status !== 'opened') return;
+  const toolSessionId = opened.session.toolSessionId;
+  t.after(() => { spawnSync('tmux', ['kill-session', '-t', `=${toolSessionId}`]); });
+  const completions = (commandId: string) => host.ctx.hima.ledger.records({ runId: run.id, type: 'interactive' })
+    .filter((record) => record.type === 'interactive' && record.event === 'command-completed' && (record.payload as { commandId?: string }).commandId === commandId).length;
+
+  // A command that prints DONE 300 ms after it is sent, well within the 1 s call wait.
+  const quick = await operateInteractive(deps, { ...base, action: 'input', requestId: 'quick', toolSessionId, commandId: 'quick-1',
+    command: { name: 'slow', args: { ms: 300 } } });
+  assert.equal(quick.status, 'completed', `a DONE printed within the call wait is the input's own answer: ${JSON.stringify(quick)}`);
+  assert.equal(completions('quick-1'), 1, 'and it is recorded without any observe');
+
+  // A command longer than the call wait still answers "sent"; the lease then names what to observe.
+  const slow = await operateInteractive(deps, { ...base, action: 'input', requestId: 'slow', toolSessionId, commandId: 'slow-1',
+    command: { name: 'slow', args: { ms: 2_500 } } });
+  assert.equal(slow.status, 'sent', JSON.stringify(slow));
+  const refused = await operateInteractive(deps, { ...base, action: 'input', requestId: 'next', toolSessionId, commandId: 'next-1',
+    command: { name: 'set', args: { key: 'k', value: 2 } } });
+  assert.equal(refused.status, 'refused', JSON.stringify(refused));
+  assert.match((refused as { reason: string }).reason, /observe .*commandId "slow-1"/, 'the refusal names the command to observe');
+  let observed = await operateInteractive(deps, { ...base, action: 'observe', requestId: 'observe-1', toolSessionId, commandId: 'slow-1' });
+  for (let tries = 0; observed.status === 'sent' && tries < 5; tries += 1) {
+    observed = await operateInteractive(deps, { ...base, action: 'observe', requestId: `observe-${tries + 2}`, toolSessionId, commandId: 'slow-1' });
+  }
+  assert.equal(observed.status, 'completed', `observe without waitMs waits for the completion too: ${JSON.stringify(observed)}`);
+  assert.equal(completions('slow-1'), 1);
 });
 
 /** Every command the channel audit holds whose wire matches `pattern`. */
