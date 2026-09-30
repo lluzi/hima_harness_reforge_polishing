@@ -1,13 +1,14 @@
 # linglong-atcs28 Site administration
 
-Current candidate (Issue 64 / ATCS-09 spec #66, before treatment T05, Pack 0.2.0): `atcs-xtop-operator-v16.sh` under
-`operator-admin/atcs-v16/` (wrapper sha `7bd590dda9ecbcd3...`, installed 2026-09-30, mode 0555). v16 is v15 with the
-atcs-v16 paths and one pin changed: `flow_digest` `476ebdb793ba1a09...`, the Pack flow whose sessions derive their cluster's
-local-topology edit domain, read single endpoints (atcs_point), log their reads, seal batch Contributions, and whose
-replay enters the sealed effective domain (tickets #67–#75). Beside it are the same verifier (`014fcfa5...`) and slot step
-(`293b2a3f...`) bytes as v13–v15's, and bootstrap root `operator-admin/atcs-v16/bootstraps/`. The Pack's `xtop-operator`
-binding names v16 and the Permit reads `atcs-v16`. The template `atcs-xtop-operator-v16.sh` with its placeholders filled is
-byte-identical to the installed v16 (`derive-v16.py`, count-asserted hunks).
+Current candidate (Issue 64 / ATCS-09 spec #66, before treatment T05, Pack 0.2.0): `atcs-xtop-operator-v17.sh` under
+`operator-admin/atcs-v17/` (wrapper sha `d9c7414a53670c13...`, installed 2026-09-30, mode 0555). v17 is v16 with the atcs-v17
+paths and the `adapter_sha256` pin `98be15132d8c1444...` of the ATCS-09 `flow/atcs_cli.py` (v16, sha `7bd590dda9ecbcd3...`,
+pinned only the flow digest `476ebdb793ba1a09...`, the Pack flow whose sessions derive their cluster's local-topology
+edit domain, read single endpoints (atcs_point), log their reads, seal batch Contributions, and whose replay enters the
+sealed effective domain; tickets #67–#75). Beside it are the same verifier (`014fcfa5...`) and slot step (`293b2a3f...`)
+bytes as v13–v16's, and bootstrap root `operator-admin/atcs-v17/bootstraps/`. The Pack's `xtop-operator` binding names
+v17 and the Permit reads `atcs-v17`. The template `atcs-xtop-operator-v17.sh` with its placeholders filled is
+byte-identical to the installed v17 (`derive-v17.py` on `derive-v16.py`, count-asserted hunks).
 
 Previous candidate (before treatment attempt 4): `atcs-xtop-operator-v15.sh` under `operator-admin/atcs-v15/`
 (wrapper sha `60d951f3a95cdfa4...`, installed 2026-09-30, mode 0555), flow pin `31fbee294260...`.
