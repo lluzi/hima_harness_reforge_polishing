@@ -106,7 +106,8 @@ save_workspace -as ${design}_operator_baseline
 #   ATCS:taint:tainted:<reason> (else ATCS:taint:clean) to the transcript.
 ########################################################################
 foreach {atcs_name atcs_default} {EDIT_DOMAIN_INSTANCES {} EDIT_DOMAIN_NETS {} EDIT_DOMAIN_PINS {}
-        EDIT_DOMAIN_REGIONS {} ATCS_MAX_MUTATIONS 1 ATCS_OBSERVE fast XTOP_REMOVABLE_FILLERS {}} {
+        EDIT_DOMAIN_REGIONS {} ATCS_MAX_MUTATIONS 1 ATCS_OBSERVE fast XTOP_REMOVABLE_FILLERS {}
+        EDIT_DOMAIN_LOCAL 0 ATCS_LOCAL_FANOUT_MAX 12} {
     if {![info exists ::$atcs_name]} { set ::$atcs_name $atcs_default }
 }
 if {![regexp {^[1-9][0-9]*$} $::ATCS_MAX_MUTATIONS]} {
@@ -1160,6 +1161,90 @@ proc atcs_close {} {
     }
     puts "ATCS:taint:clean"
     return "closing after adapter receipt; session clean"
+}
+
+# ---- local-topology edit domain (#64 attempt 5) ------------------------------
+# A worker session (::EDIT_DOMAIN_LOCAL 1; the replay never sets it and confines each session to
+# the domain its Contribution recorded) widens its edit domain once, here, before the ready line,
+# to its blockers' local topology: the nets of every target pin and of every pin of the plan's own
+# instances, and the leaf cells on those nets (their drivers and loads). One hop only: the added
+# cells' other nets stay outside. A net with more than ::ATCS_LOCAL_FANOUT_MAX leaf pins is global
+# (clock, reset, scan enable) and stays out with its cells. The result is written to domain.json
+# beside ops.jsonl; capture seals it into the Contribution, the composition checks that no two
+# slots' kept edits reach into each other's domain, and the replay enters it. A derivation that
+# fails leaves the plan's domain as it was and records the error.
+proc atcs_domain_record_path {} { return [file join [file dirname $::env(OPS_LOG)] domain.json] }
+proc atcs_pin_names_of {object} {
+    set names {}
+    foreach_in_collection pin [get_pins -quiet -leaf -of_objects $object] {
+        lappend names [get_attribute $pin full_name]
+    }
+    return [lsort -unique $names]
+}
+proc atcs_derive_local_domain {} {
+    set plan_instances [lsort -unique $::EDIT_DOMAIN_INSTANCES]
+    set plan_nets [lsort -unique $::EDIT_DOMAIN_NETS]
+    set seeds [lsort -unique $::EDIT_DOMAIN_PINS]
+    set unresolved {}
+    foreach name $plan_instances {
+        set cell [get_cells -quiet -exact $name]
+        if {[sizeof_collection $cell] != 1} { lappend unresolved $name; continue }
+        set seeds [lsort -unique [concat $seeds [atcs_pin_names_of $cell]]]
+    }
+    set nets {}
+    foreach pin $seeds {
+        set object [get_pins -quiet -exact $pin]
+        if {[sizeof_collection $object] != 1} { lappend unresolved $pin; continue }
+        set net [get_nets -quiet -of_objects $object]
+        if {[sizeof_collection $net] == 1} { lappend nets [get_attribute $net full_name] }
+    }
+    set instances $plan_instances
+    set domain_nets $plan_nets
+    set global {}
+    foreach net [lsort -unique $nets] {
+        set pins [atcs_pin_names_of [get_nets -quiet -exact $net]]
+        if {[llength $pins] > $::ATCS_LOCAL_FANOUT_MAX} {
+            lappend global [atcs_jobj [list net [atcs_js $net] pins [llength $pins]]]
+            continue
+        }
+        lappend domain_nets $net
+        foreach pin $pins {
+            set owner [atcs_pin_owner $pin]
+            if {$owner ne ""} { lappend instances $owner }
+        }
+    }
+    set ::EDIT_DOMAIN_INSTANCES [lsort -unique $instances]
+    set ::EDIT_DOMAIN_NETS [lsort -unique $domain_nets]
+    return [list $global [lsort -unique $unresolved]]
+}
+proc atcs_write_domain_record {global unresolved error} {
+    set boxes {}
+    foreach {x1 y1 x2 y2} $::EDIT_DOMAIN_REGIONS { lappend boxes [atcs_jints [list $x1 $y1 $x2 $y2]] }
+    set fields [list schema [atcs_js atcs-local-domain/1] fanoutMax $::ATCS_LOCAL_FANOUT_MAX \
+        planInstances [atcs_jarr $::atcs_plan_instances] planNets [atcs_jarr $::atcs_plan_nets] \
+        targetPins [atcs_jarr [lsort -unique $::EDIT_DOMAIN_PINS]] \
+        instances [atcs_jarr $::EDIT_DOMAIN_INSTANCES] nets [atcs_jarr $::EDIT_DOMAIN_NETS] \
+        regions "\[[join $boxes ,]\]" globalNets "\[[join $global ,]\]" unresolved [atcs_jarr $unresolved]]
+    if {$error ne ""} { lappend fields error [atcs_js [atcs_clip $error 2000]] }
+    set fh [open [atcs_domain_record_path] w]
+    fconfigure $fh -encoding utf-8
+    puts $fh [atcs_jobj $fields]
+    close $fh
+}
+if {$::EDIT_DOMAIN_LOCAL} {
+    if {![regexp {^[1-9][0-9]*$} $::ATCS_LOCAL_FANOUT_MAX]} {
+        error "ATCS_LOCAL_FANOUT_MAX must be a positive integer, got '$::ATCS_LOCAL_FANOUT_MAX'"
+    }
+    set ::atcs_plan_instances [lsort -unique $::EDIT_DOMAIN_INSTANCES]
+    set ::atcs_plan_nets [lsort -unique $::EDIT_DOMAIN_NETS]
+    set atcs_saved [list $::EDIT_DOMAIN_INSTANCES $::EDIT_DOMAIN_NETS]
+    if {[catch {atcs_derive_local_domain} atcs_derived]} {
+        lassign $atcs_saved ::EDIT_DOMAIN_INSTANCES ::EDIT_DOMAIN_NETS
+        atcs_write_domain_record {} {} $atcs_derived
+    } else {
+        atcs_write_domain_record {*}$atcs_derived ""
+    }
+    puts "ATCS:domain:[llength $::EDIT_DOMAIN_INSTANCES] instances, [llength $::EDIT_DOMAIN_NETS] nets"
 }
 
 puts "ATCS:worker:$env(NAME_PREFIX)"

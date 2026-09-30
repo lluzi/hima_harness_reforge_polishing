@@ -220,10 +220,15 @@ proc get_pins {args} {
     stub_record get_pins {*}$args
     lassign [stub_opts {-of_objects -filter} $args] o pos
     if {[dict exists $o -of_objects]} {
-        set owner [stub_strip [stub_one $o -of_objects]]
+        set object [lindex [stub_one $o -of_objects] 0]
+        set owner [stub_strip $object]
         set r {}
         foreach p [lsort [array names ::pin_net]] {
-            if {[join [lrange [split $p /] 0 end-1] /] eq $owner} { lappend r "pin:$p" }
+            if {[string match "net:*" $object]} {
+                if {$::pin_net($p) eq $owner} { lappend r "pin:$p" }
+            } elseif {[join [lrange [split $p /] 0 end-1] /] eq $owner} {
+                lappend r "pin:$p"
+            }
         }
         return $r
     }
@@ -525,7 +530,7 @@ def _snake(name):
 class Session:
     """One rendered worker session under a stub XTop, run to completion by `tclsh`."""
 
-    def __init__(self, test, domain=None, target_pins=None, max_mutations=10, observe=None):
+    def __init__(self, test, domain=None, target_pins=None, max_mutations=10, observe=None, local=None):
         self.tmp = _tmp()
         test.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         for name in ("tech.lef", "cells.lef", "netlist.v", "design.def"):
@@ -541,7 +546,7 @@ class Session:
         self.analysis = adapters.compile_xtop_analysis_manual_task(
             manifest, DOMAIN if domain is None else domain, self.root / "operator.tcl", self.root / "ops.jsonl",
             target_pins=TARGET_PINS if target_pins is None else target_pins, max_mutations=max_mutations,
-            observe=observe,
+            observe=observe, **({} if local is None else {"local_topology": local}),
         )
         self.calls_path = self.tmp / "calls.txt"
 
@@ -732,6 +737,70 @@ class ToolkitProceduresTest(unittest.TestCase):
 
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class LocalTopologyDomainTest(unittest.TestCase):
+    """#64 attempt 5: a worker session derives its blockers' local topology once, in-session.
+
+    Attempt 4's plans gave instance-only domains (nets [], regions []), so every insert, split,
+    dummy and move rung was out of scope. The session now widens the plan's domain to the nets of
+    the target pins and of the plan instances' pins, and the leaf cells on those nets (drivers and
+    loads), one hop only; a net with more leaf pins than the cap (clock, reset, scan enable) stays
+    out. The derived domain is written to domain.json beside ops.jsonl.
+    """
+
+    def _domain_json(self, session):
+        return json.loads((session.root / "domain.json").read_text(encoding="utf-8"))
+
+    def test_a_target_pins_net_and_its_driver_and_loads_join_the_domain(self):
+        session = Session(self, domain={"instances": [], "nets": [], "regions": []}, target_pins=["U9/D"],
+                          local=True).run(
+            f"T size_driver {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            f"T second_hop {{atcs_size_cell U3 BUFX4 {PLAN}}}\n"
+            f"T insert_on_target_net {{atcs_insert_buffer N2 U9/D BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
+            f"T net_second_hop {{atcs_insert_buffer N1 U3/A BUFX2 {PREFIX}b2 {PREFIX}n2 {PLAN}}}\n"
+        )
+        self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+        self.assertEqual(session.outcome("size_driver")[0], "OK", session.stdout)
+        self.assertEqual(session.outcome("insert_on_target_net")[0], "OK", session.stdout)
+        self.assertIn("out-of-scope", session.outcome("second_hop")[1])
+        self.assertIn("out-of-scope", session.outcome("net_second_hop")[1])
+        record = self._domain_json(session)
+        self.assertEqual(record["schema"], "atcs-local-domain/1")
+        self.assertEqual(record["instances"], ["U1", "U2", "U9"])
+        self.assertEqual(record["nets"], ["N2"])
+        self.assertEqual(record["targetPins"], ["U9/D"])
+        self.assertEqual(record["globalNets"], [])
+
+    def test_plan_instances_contribute_every_pin_net_one_hop(self):
+        session = Session(self, domain={"instances": ["U9"], "nets": [], "regions": [[0, 0, 10, 10]]},
+                          target_pins=["U9/D"], local=True).run("")
+        self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+        record = self._domain_json(session)
+        self.assertEqual(record["instances"], ["U1", "U2", "U9", "UOUT"])
+        self.assertEqual(record["nets"], ["N2", "N9"])
+        self.assertEqual(record["planInstances"], ["U9"])
+        self.assertEqual(record["regions"], [[0, 0, 10, 10]])
+
+    def test_a_net_above_the_fanout_cap_is_global_and_stays_out(self):
+        session = Session(self, domain={"instances": ["U9"], "nets": [], "regions": []}, target_pins=["U9/D"],
+                          local=True)
+        session.analysis = adapters.compile_xtop_analysis_manual_task(
+            {"namePrefix": PREFIX}, {"instances": ["U9"], "nets": [], "regions": []}, session.root / "operator.tcl",
+            session.root / "ops.jsonl", target_pins=["U9/D"], max_mutations=10, local_topology=True, fanout_max=2)
+        session.run(f"T size_load {{atcs_size_cell U2 INVX2 {PLAN}}}\n")
+        self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+        record = self._domain_json(session)
+        self.assertEqual(record["nets"], ["N9"])
+        self.assertEqual(record["instances"], ["U9", "UOUT"])
+        self.assertEqual(record["globalNets"], [{"net": "N2", "pins": 3}])
+        self.assertIn("out-of-scope", session.outcome("size_load")[1])
+
+    def test_without_the_local_flag_the_domain_is_the_plans_own(self):
+        session = Session(self, domain={"instances": [], "nets": [], "regions": []}, target_pins=["U9/D"]).run(
+            f"T size_driver {{atcs_size_cell U1 BUFX2 {PLAN}}}\n")
+        self.assertIn("out-of-scope", session.outcome("size_driver")[1])
+        self.assertFalse((session.root / "domain.json").exists())
+
+
 class DomainConfinementTest(unittest.TestCase):
     """Each mutation refuses an out-of-domain object before any mutating XTop call."""
 

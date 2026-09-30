@@ -257,3 +257,84 @@ class ParkedBranchTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+_DEF_TEXT = """VERSION 5.8 ;
+DESIGN top ;
+UNITS DISTANCE MICRONS 2000 ;
+DIEAREA ( 0 0 ) ( 400000 400000 ) ;
+ROW core_row_0 core 0 0 N DO 1000 BY 1 STEP 280 0 ;
+ROW core_row_1 core 0 1152 FS DO 1000 BY 1 STEP 280 0 ;
+ROW core_row_2 core 0 2304 N DO 1000 BY 1 STEP 280 0 ;
+COMPONENTS 3 ;
+ - U1 SOME_CELL + PLACED ( 20000 40000 ) N ;
+ - u_a/reg\\[3\\] DFF
+   + PLACED ( 100000 60000 ) FS ;
+ - U9 SOME_CELL + FIXED ( 1000 1000 ) N ;
+END COMPONENTS
+END DESIGN
+"""
+
+
+class LocalTopologyPrepareTest(unittest.TestCase):
+    """#64 attempt 5: every active slot's session derives its blockers' local topology in-session,
+    and a plan that gives no region gets one box per plan instance from the base DEF (+- 4 rows)."""
+
+    def _prepare(self, packages_for):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        manifest = _make_baseline_manifest(workspace)
+        (workspace / "design.def").write_text(_DEF_TEXT, encoding="utf-8")
+        manifest["def"] = "design.def"
+        _write_json(workspace / "manifest.json", manifest)
+        result = _run("baseline", workspace, workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        state_path = workspace / "state" / "working-state.json"
+        working = json.loads(state_path.read_text())
+        xtop_site = _write_xtop_context(workspace, working["id"])
+        eda = workspace / "eda-profile.json"
+        _write_json(eda, {"design": "top", "techLef": "tech.lef", "cellLefGlob": "*.lef", **xtop_site})
+        caps = workspace / "site-caps.json"
+        _write_json(caps, {"pgVerification": False})
+        plan = workspace / "campaign-plan.json"
+        _write_json(plan, {"candidate": {"workPackages": packages_for(working["id"]), "reason": "r"},
+                           "baseState": working, "siteCapabilities": {"pgVerification": False}})
+        result = _run("prepare-workers", workspace, state_path, caps, eda, plan)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return workspace, json.loads((workspace / "state" / "workers.json").read_text())
+
+    def test_an_active_slot_derives_its_topology_and_gets_one_box_per_plan_instance(self):
+        def packages(base):
+            out = {slot: _parked(slot, base) for slot in workspaces.TASK_IDS}
+            out["w01"] = dict(_active("w01", base), editDomain={"instances": ["U1", "u_a/reg[3]"], "nets": [],
+                                                                 "regions": []})
+            return out
+        workspace, workers = self._prepare(packages)
+        entry = workers["workers"]["w01"]
+        tcl = (workspace / entry["root"] / "xtop-analysis-manual.tcl").read_text()
+        self.assertIn("set ::EDIT_DOMAIN_LOCAL {1}\n", tcl)
+        # Row pitch 1152 DBU = 0.576 um; 4 rows = 2.304 um around each instance's origin (um).
+        self.assertEqual(entry["derivedRegions"], [[7.696, 17.696, 12.304, 22.304],
+                                                   [47.696, 27.696, 52.304, 32.304]])
+        self.assertIn("set ::EDIT_DOMAIN_REGIONS {7.696 17.696 12.304 22.304 47.696 27.696 52.304 32.304}", tcl)
+        self.assertEqual(entry["workPackage"]["editDomain"]["regions"], [], "the admitted package is unchanged")
+
+    def test_a_plans_own_region_is_honoured(self):
+        def packages(base):
+            out = {slot: _parked(slot, base) for slot in workspaces.TASK_IDS}
+            out["w01"] = dict(_active("w01", base), editDomain={"instances": ["U1"], "nets": [],
+                                                                 "regions": [[0, 0, 5, 5]]})
+            return out
+        workspace, workers = self._prepare(packages)
+        entry = workers["workers"]["w01"]
+        self.assertEqual(entry["derivedRegions"], [])
+        tcl = (workspace / entry["root"] / "xtop-analysis-manual.tcl").read_text()
+        self.assertIn("set ::EDIT_DOMAIN_REGIONS {0 0 5 5}", tcl)
+
+    def test_an_instance_the_def_does_not_place_gets_no_box(self):
+        def packages(base):
+            out = {slot: _parked(slot, base) for slot in workspaces.TASK_IDS}
+            out["w01"] = dict(_active("w01", base), editDomain={"instances": ["U_GHOST"], "nets": [], "regions": []})
+            return out
+        _, workers = self._prepare(packages)
+        self.assertEqual(workers["workers"]["w01"]["derivedRegions"], [])

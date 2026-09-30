@@ -1254,10 +1254,18 @@ def _cmd_prepare_workers(workspace, args):
         operator_tcl_path.parent.mkdir(parents=True, exist_ok=True)
         operator_tcl_path.write_text(operator_task["tcl"], encoding="utf-8")
 
+        # #64 attempt 5: the session derives its blockers' local topology in-session (nets and
+        # their drivers and loads); a plan that gives no region gets one box per plan instance
+        # from the base DEF. The admitted package itself is unchanged (the worker request binds to it).
+        session_domain = dict(validated.get("editDomain") or {})
+        derived_regions = []
+        if not session_domain.get("regions") and def_path is not None and def_path.is_file():
+            derived_regions = adapters.def_instance_regions(def_path, list(session_domain.get("instances") or []))
+            session_domain["regions"] = derived_regions
         analysis_task = adapters.compile_xtop_analysis_manual_task(
-            manifest, validated.get("editDomain", {}), operator_tcl_path, ops_log_path,
+            manifest, session_domain, operator_tcl_path, ops_log_path,
             target_pins=validated.get("targetPins"), max_mutations=validated["scope"]["maxMutations"],
-            observe=validated.get("observe"),
+            observe=validated.get("observe"), local_topology=True,
         )
         analysis_tcl_path = session_dir / "xtop-analysis-manual.tcl"
         analysis_tcl_path.write_text(analysis_task["tcl"], encoding="utf-8")
@@ -1266,6 +1274,7 @@ def _cmd_prepare_workers(workspace, args):
             "workPackageId": validated["id"], "manifestId": manifest["id"], "root": manifest["root"],
             "namePrefix": manifest["namePrefix"], "sessionTcl": str(analysis_tcl_path), "opsLog": str(ops_log_path),
             "sessionTclSha256": core.file_sha256(analysis_tcl_path),
+            "derivedRegions": derived_regions, "localTopology": True,
             # G2: the full stamped artifacts, not just their ids -- `capture-contribution
             # <slot>` composes `base_ref` from these directly, so it needs no argv path
             # of its own beyond the slot name.
