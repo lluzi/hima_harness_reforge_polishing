@@ -150,9 +150,43 @@ proc fix_hold_gba_violations {args} { fixture_default fix_hold_gba_violations {*
         campaign = self.ws / "research/requests/campaign-plan.json"
         _, workers = cli._cmd_prepare_workers(self.ws, [str(self.ws / "state/working-state.json"),
             str(self.site_path), str(self.site_path), str(campaign)])
+        _write_json(self.ws / "state/workers.json", workers)
         for entry in workers["workers"].values():
             self.assertEqual(entry["workspaceManifest"]["xtopSeed"]["stateId"], common["stateId"])
             self.assertEqual(entry["workspaceManifest"]["revision"], 2)
+        # Live v27 w01 wrote before.dump only after its 14 edits. Execute the
+        # same ordering through the emitted Operator, then seal the real slot.
+        entry = workers["workers"]["w01"]
+        root = self.ws / entry["root"]
+        counter = root / "late-before-counter.tcl"
+        counter.write_text(Path(entry["sessionTcl"]).read_text() + f'''
+set baseline_at_ready [file exists [file join $::operator_root before.dump]]
+atcs_size_cell U1 BUFX2 {PLAN}
+atcs_dump_cells before.dump
+set baseline_path [file join $::operator_root before.dump]
+file copy $baseline_path [file join $::operator_root retained-before-fixture.dump]
+file delete $baseline_path
+set missing_refused [catch {{atcs_dump_cells before.dump}}]
+set missing_recreated [file exists $baseline_path]
+file rename [file join $::operator_root retained-before-fixture.dump] $baseline_path
+set proof [open [file join $::operator_root missing-before-proof.txt] w]
+puts $proof "$missing_refused $missing_recreated"
+close $proof
+atcs_dump_cells after.dump
+atcs_export_changes "late before.dump counter"
+atcs_close
+set fh [open [file join $::operator_root baseline-at-ready.txt] w]
+puts $fh $baseline_at_ready
+close $fh
+''')
+        self.stub_native_tool(self.site, ["fixture", str(counter)], root, root / "xtop_log_fixture.txt")
+        before = cli.contributions.parse_cell_dump((root / "before.dump").read_text())
+        after = cli.contributions.parse_cell_dump((root / "after.dump").read_text())
+        self.assertEqual(core.digest(before), common["cellStateDigest"])
+        self.assertEqual((before["U1"], after["U1"]), ("BUFX1", "BUFX2"))
+        self.assertEqual((root / "baseline-at-ready.txt").read_text().strip(), "1")
+        self.assertEqual((root / "missing-before-proof.txt").read_text().strip(), "1 0")
+        self.assertEqual(cli.main(["capture-contribution", str(self.ws), "w01"]), 0)
         seed_path = self.ws / common["seed"]["path"] / "design.data"
         seed_path.write_text("wrong R1")
         with self.assertRaisesRegex(core.AtcsError, "saved common R1 bytes changed"):

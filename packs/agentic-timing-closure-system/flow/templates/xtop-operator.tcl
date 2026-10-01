@@ -1589,7 +1589,16 @@ proc atcs_dump_cells {path} {
     if {$name ni {before.dump after.dump}} {
         error "atcs_dump_cells writes only before.dump or after.dump (in the slot root $::operator_root); capture seals exactly those two names, not $name"
     }
-    atcs_write_cell_dump [file join $::operator_root $name]
+    set output [file join $::operator_root $name]
+    if {$name eq "before.dump"} {
+        # The startup snapshot owns the baseline. A late/repeated Operator
+        # request must never replace R1 with the session's current edits.
+        if {[file exists $output]} { return $output }
+        if {$::atcs_seq != 0} {
+            error "before.dump is missing after mutations; cannot reconstruct the initial state from the current session"
+        }
+    }
+    atcs_write_cell_dump $output
     if {$name eq "after.dump"} { set ::atcs_after_dump_seq $::atcs_seq }
 }
 proc atcs_write_cell_dump {path} {
@@ -1839,5 +1848,7 @@ if {$::EDIT_DOMAIN_LOCAL} {
     puts "ATCS:domain:[llength $::EDIT_DOMAIN_INSTANCES] instances, [llength $::EDIT_DOMAIN_NETS] nets"
 }
 
+# Freeze the loaded private state before replay or model control is possible.
+atcs_dump_cells before.dump
 puts "ATCS:worker:$env(NAME_PREFIX)"
 puts "HIMA:hima-tcl-line-v1:1:READY"

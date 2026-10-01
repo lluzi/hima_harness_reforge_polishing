@@ -45,3 +45,20 @@ owned-process/zombie teardown; then one fresh matched C0/T6 with common R1/workl
 StarRC/PrimeTime/DRC/connectivity. Historical negative evidence cannot serve as fresh C0 or a new method verdict.
 
 Rollback: c7a1a7da and installed v23 remain intact; revert this sequence commit for the prior graph.
+
+## Worker baseline protection after the v27 trial
+
+The fresh v27 T6 w01 Operator wrote `before.dump` after its 14 mutations. Capture correctly refused the
+wrong R1 identity. The existing Operator startup now captures the loaded private state before READY;
+repeated/late `before.dump` requests reuse that snapshot, and a missing baseline after mutations cannot be
+reconstructed from the changed session. The capture identity check remains intact.
+
+The retained counter in the first of the same three cheap checks drives the actual emitted session Tcl,
+mutates before requesting the baseline, verifies the original R1 and changed after state, seals the current
+slot, and checks that deleting the baseline after mutation cannot manufacture a new one. The old template
+fails the baseline digest assertion; all three checks pass with the change (0.361 s). No additional suite,
+product model, GUI or commercial EDA was run. Development: GPT-6.1 Sol/High, single owner.
+
+This is a source repair, not a newly installed or field-qualified candidate. The closed v27 matched Runs
+and their negative candidate result remain immutable. Lead coverage/own ECO and the three new w04 DRC
+remain separate findings. Rollback for this slice is `cfca98e6`.
