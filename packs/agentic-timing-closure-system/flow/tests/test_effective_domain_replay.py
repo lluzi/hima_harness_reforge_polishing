@@ -513,9 +513,9 @@ class ManualValueTests(unittest.TestCase):
         self.assertEqual(state["manualValue"], "none")
         self.assertIn("applied no command", state["manualValueReason"])
 
-    def test_control_chosen_on_a_worse_merged_prediction_is_manual_value_worse(self):
+    def test_retained_merged_prediction_is_still_reported_as_worse(self):
         _, state = tir.reconcile_default(control_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.03, -0.03)}})
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertEqual(state["chosen"]["arm"], "merged")
         self.assertEqual(state["manualValue"], "worse")
 
     def test_without_a_comparison_the_manual_value_is_unknown(self):

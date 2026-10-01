@@ -1218,11 +1218,9 @@ def seal_batch(state, request, facts, contributions):
 # advisory warning, never a refusal. `reconcile_recipe` refuses an arm only for
 # corrupt evidence (incomplete run, tainted toolkit session, unattributable
 # receipts, no single ECO pair, or a `FORMATVERSION`/`dbNetFreeWires`/
-# `editDelete -net` line), and chooses by XTop's prediction, WNS first: control when merged is worse
-# on setup or hold WNS (1e-4); merged when it is better on one WNS; with both WNS
-# equal, merged only when it is no worse on setup and hold TNS (1e-3) and better
-# on one, or all four tie -- so the refreshed batch is never worse than plain
-# auto-fix by XTop's own estimate. PrimeTime after the refresh stays the only
+# `editDelete -net` line). A structurally usable merged batch continues to the
+# physical/timing referee; XTop's WNS/TNS comparison records predicted value
+# without substituting the control ECO. PrimeTime after the refresh stays the only
 # convergence judge. `arm-result.json` counts `appliedCommands`, `skippedCommands`
 # and `protectedCount`; the merged arm differs from control exactly when it applied
 # a command, and a tie is recorded as `manualValue: none` (overall and per session).
@@ -1795,9 +1793,9 @@ def _merged_sessions(request, evidence):
 def choose_arm(merged, control):
     """``(arm, reason, evidenced)`` -- see `reconcile_recipe`. Raises when neither arm is usable.
 
-    `evidenced` is whether XTop's own prediction shows the chosen batch is no worse than plain
-    auto-fix: true when the control arm itself is chosen, or when both predictions were
-    compared; false when merged is chosen only because the control arm is unusable.
+    Valid accepted replay proceeds to the physical/timing referee. XTop comparisons are
+    diagnostic; `evidenced` says a comparison was available, not that merged is no worse.
+    Structural evidence refusals retain their existing safety handling.
     """
     if not merged["safe"] and not control["safe"]:
         code = "missing-input" if merged["missingPair"] else "eco-refused"
@@ -1811,12 +1809,11 @@ def choose_arm(merged, control):
         return "control", f"merged arm refused ({'; '.join(merged['problems'])}); control arm is safe", True
     merged_prediction, control_prediction = merged["prediction"], control["prediction"]
     if "unknown" in merged_prediction:
-        return "control", f"merged prediction unknown ({merged_prediction['unknown']}); plain auto-fix kept", True
+        return "merged", f"merged prediction unknown ({merged_prediction['unknown']}); accepted replay retained for final referee", False
     if "unknown" in control_prediction:
-        return ("control", f"control prediction unknown ({control_prediction['unknown']}); both arms use the "
-                           "same summary command, so plain auto-fix is kept", True)
-    merged_chosen, detail = _compare_predictions(merged_prediction, control_prediction)
-    return ("merged" if merged_chosen else "control"), detail, True
+        return "merged", f"control prediction unknown ({control_prediction['unknown']}); accepted replay retained for final referee", False
+    _, detail = _compare_predictions(merged_prediction, control_prediction)
+    return "merged", f"accepted replay retained for final referee; XTop prediction: {detail}", True
 
 
 MANUAL_VALUES = ("better", "none", "worse", "unknown")
@@ -1834,7 +1831,7 @@ def _prediction_tie(merged, control):
 def _manual_value(views, chosen_arm, reason):
     """``(manualValue, reason)``: ``none`` when the recipe applied no command (the merged arm is
     the control arm) or XTop predicts a tie; ``unknown`` when the arms were not compared (an arm
-    unsafe, a prediction unknown); otherwise ``better`` (merged chosen) or ``worse`` (control)."""
+    unsafe, a prediction unknown); otherwise report the comparison independently of selection."""
     merged, control = views["merged"], views["control"]
     if merged["appliedCommands"] == 0:
         return "none", "the recipe applied no command; the merged arm is plain auto-fix"
@@ -1843,7 +1840,8 @@ def _manual_value(views, chosen_arm, reason):
         return "unknown", f"the arms were not compared: {reason}"
     if _prediction_tie(merged["prediction"], control["prediction"]):
         return "none", f"XTop predicts a tie: {reason}"
-    return ("better" if chosen_arm == "merged" else "worse"), reason
+    better, detail = _compare_predictions(merged["prediction"], control["prediction"])
+    return ("better" if better else "worse"), detail
 
 
 def _chosen_new_nets(chosen_arm, evidence, fillers):
@@ -1888,14 +1886,10 @@ def reconcile_recipe(request, arms):
     pair file is empty or holds a `FORMATVERSION` / `dbNetFreeWires` / `editDelete -net` line, or
     (merged) a receipt is unattributable, duplicated with other content, or missing for a
     sendable step.
-    Choice: a safe arm over an unsafe one; with both safe, XTop's predictions over the required
-    scenarios (`_compare_predictions`): control when merged is worse on worst setup or hold WNS
-    (`PREDICTION_TOLERANCE`); merged when it is better on one WNS; with both WNS equal, merged
-    only when it is no worse on setup and hold TNS (summed over scenarios, `TNS_TOLERANCE`) and
-    better on one, or all four tie; otherwise control. An unknown
-    prediction of either arm keeps control (both run the same summary command, so plain auto-fix
-    is the conservative pick).
-    Merged chosen only because control is unusable is sealed ``guarantee.evidenced: false`` with
+    Choice: structural evidence safety is unchanged; with both safe, keep the accepted replay
+    plus unchanged AutoFinish for the final physical/timing referee. XTop prediction comparisons
+    remain diagnostic and cannot discard the manual batch. An unavailable comparison is sealed
+    ``guarantee.evidenced: false`` with
     a ``guaranteeUnevidenced`` warning. ``newNets`` is the chosen arm's new nets when every added
     instance is accounted for, else ``None`` with ``newNetsUnknown``. Neither arm usable raises
     ``missing-input`` (the merged pair is missing) or ``eco-refused``.

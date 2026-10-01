@@ -2016,8 +2016,7 @@ def _read_evaluation(report, workspace, extra, mods):
     values = []
     for type_name, field, unit, mode in _EVALUATION_FIELDS:
         values.append(_emit(type_name, unit, obj.get(field, missing), mode=mode))
-    # A recipe batch's never-worse-than-auto-fix guarantee (`batchGuarantee`): 1 when the merged
-    # arm was chosen only because the control arm was unusable; 0 when compared, or no recipe batch.
+    # Availability of the XTop comparison, not a never-worse guarantee or an adoption gate.
     guarantee = obj.get("batchGuarantee")
     unevidenced = 1 if isinstance(guarantee, dict) and guarantee.get("evidenced") is False else 0
     values.append(_emit_count("tc_batch_guarantee_unevidenced", unevidenced))

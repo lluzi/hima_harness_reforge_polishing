@@ -1568,6 +1568,19 @@ def reconcile_default(merged_kw=None, control_kw=None, request=None):
 
 
 class ReconcileRecipeTests(unittest.TestCase):
+    def test_measured_manual_tradeoff_reaches_the_physical_referee(self):
+        """T6: an 8 ps setup loss must not erase the accepted 0.4103 ns hold gain."""
+        _, state = reconcile_default(
+            merged_kw={"setup": {"s1": (28, -0.046, -0.2461), "s2": (0, 0.0, 0.0)},
+                       "hold": {"s1": (0, 0.0, 0.0), "s2": (300, -0.1523, -9.5507)}},
+            control_kw={"setup": {"s1": (28, -0.038, -0.2306), "s2": (0, 0.0, 0.0)},
+                        "hold": {"s1": (0, 0.0, 0.0), "s2": (300, -0.1523, -9.961)}},
+        )
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertEqual(state["manualValue"], "worse")
+        self.assertEqual(state["chosen"]["eco"]["netlist"]["path"],
+                         "integrations/b1/merged/eco/atcs_batch_netlist_top.txt")
+
     def test_skipped_commands_are_recorded_and_the_replay_still_counts(self):
         request, state = reconcile_default()
         steps = request["steps"]
@@ -1635,12 +1648,13 @@ class ReconcileRecipeTests(unittest.TestCase):
         self.assertFalse(state["sessions"]["w02"]["deltaMatches"])
         self.assertEqual(state["chosen"]["arm"], "merged")
 
-    def test_control_is_chosen_when_it_predicts_better(self):
+    def test_control_prediction_is_diagnostic_not_a_batch_fallback(self):
         _, state = reconcile_default(control_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.03, -0.03)}})
-        self.assertEqual(state["chosen"]["arm"], "control")
-        self.assertIn("control", state["chosen"]["reason"])
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertIn("final referee", state["chosen"]["reason"])
+        self.assertEqual(state["manualValue"], "worse")
         self.assertEqual(state["chosen"]["eco"]["netlist"]["path"],
-                         "integrations/b1/control/eco-control/atcs_batch_netlist_top.txt")
+                         "integrations/b1/merged/eco/atcs_batch_netlist_top.txt")
 
     def test_merged_is_chosen_when_it_predicts_better(self):
         _, state = reconcile_default(merged_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.01, -0.01)}})
@@ -1651,18 +1665,17 @@ class ReconcileRecipeTests(unittest.TestCase):
         self.assertEqual(state["chosen"]["arm"], "merged")
         self.assertIn("tie", state["chosen"]["reason"])
 
-    def test_merged_with_better_hold_but_worse_setup_wns_is_not_chosen(self):
-        """Never worse than plain auto-fix: a merged arm that loses setup WNS is refused even
-        when its hold WNS gain makes its worst-of-both slack better."""
+    def test_setup_wns_loss_is_diagnostic_not_a_batch_fallback(self):
+        """Workers accepted this batch; only the final physical/timing referee decides value."""
         _, state = reconcile_default(merged_kw={"setup": {"s1": (1, -0.03, -0.03), "s2": (0, 0.0, 0.0)},
                                                 "hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.01, -0.01)}})
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertEqual(state["chosen"]["arm"], "merged")
         self.assertIn("setup WNS", state["chosen"]["reason"])
 
-    def test_merged_with_better_setup_but_worse_hold_wns_is_not_chosen(self):
+    def test_hold_wns_loss_is_diagnostic_not_a_batch_fallback(self):
         _, state = reconcile_default(merged_kw={"setup": {"s1": (0, 0.0, 0.0), "s2": (0, 0.0, 0.0)},
                                                 "hold": {"s1": (0, 0.0, 0.0), "s2": (2, -0.06, -0.06)}})
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertEqual(state["chosen"]["arm"], "merged")
         self.assertIn("hold WNS", state["chosen"]["reason"])
 
     def test_a_wns_loss_within_one_rounding_step_is_no_worse(self):
@@ -1670,15 +1683,15 @@ class ReconcileRecipeTests(unittest.TestCase):
                                                 "hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.04, -0.04)}})
         self.assertEqual(state["chosen"]["arm"], "merged")
 
-    def test_merged_no_worse_on_wns_and_worse_on_tns_only_is_not_chosen(self):
+    def test_tns_loss_is_diagnostic_not_a_batch_fallback(self):
         _, state = reconcile_default(merged_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (4, -0.05, -0.20)}})
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertEqual(state["chosen"]["arm"], "merged")
 
-    def test_equal_wns_with_one_tns_better_and_the_other_worse_is_not_chosen(self):
-        """No TNS trade-off when both WNS tie: a hold TNS gain does not buy a setup TNS loss."""
+    def test_tns_tradeoff_is_diagnostic_not_a_batch_fallback(self):
+        """Record the tradeoff; keep the accepted batch for the final referee."""
         _, state = reconcile_default(merged_kw={"setup": {"s1": (2, -0.02, -0.03), "s2": (0, 0.0, 0.0)},
                                                 "hold": {"s1": (0, 0.0, 0.0), "s2": (1, -0.05, -0.05)}})
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertEqual(state["chosen"]["arm"], "merged")
         self.assertIn("setup TNS", state["chosen"]["reason"])
 
     def test_a_better_wns_chooses_merged_even_with_a_worse_tns(self):
@@ -1716,11 +1729,11 @@ class ReconcileRecipeTests(unittest.TestCase):
         self.assertEqual(state["arms"]["merged"]["failReasons"], {"hold": {"no_hold_gain": 1}})
         self.assertEqual(state["arms"]["merged"]["failReasonsUnread"], ["setup"])
 
-    def test_equal_worst_slack_is_broken_by_tns(self):
+    def test_tns_comparison_is_recorded_without_discarding_the_batch(self):
         _, state = reconcile_default(control_kw={"setup": {"s1": (3, -0.02, -0.05), "s2": (0, 0.0, 0.0)}})
         self.assertEqual(state["chosen"]["arm"], "merged")
         _, state = reconcile_default(merged_kw={"setup": {"s1": (3, -0.02, -0.05), "s2": (0, 0.0, 0.0)}})
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertEqual(state["chosen"]["arm"], "merged")
 
     def test_only_required_scenarios_are_compared(self):
         control_hold = {"s1": (0, 0.0, 0.0), "s2": (2, -0.05, -0.08), "s_extra": (9, -0.5, -3.0)}
@@ -1728,7 +1741,7 @@ class ReconcileRecipeTests(unittest.TestCase):
         self.assertEqual(state["chosen"]["arm"], "merged")
         self.assertIn("tie", state["chosen"]["reason"])
 
-    def test_the_choice_reads_real_xtop_summaries_and_breaks_equal_wns_by_tns(self):
+    def test_real_xtop_comparison_is_diagnostic(self):
         request = integration.prepare_recipe_replay(
             recipe_plan(), BASE_STATE_ID, default_recipe(), recipe_sessions(), required_scenarios=REAL_SCENARIOS)
 
@@ -1743,7 +1756,7 @@ class ReconcileRecipeTests(unittest.TestCase):
         self.assertEqual(state["arms"]["control"]["prediction"]["holdTns"], -8.3322)
         _, state = reconcile_default(merged_kw={"predict_text": pre}, control_kw={"predict_text": post},
                                      request=request)
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertEqual(state["chosen"]["arm"], "merged")
 
     def test_predictions_of_both_arms_are_recorded_per_scenario(self):
         _, state = reconcile_default()
@@ -1753,11 +1766,11 @@ class ReconcileRecipeTests(unittest.TestCase):
         self.assertEqual(merged["worstHoldWns"], -0.05)
         self.assertEqual(state["arms"]["control"]["prediction"]["hold"]["s2"]["tns"], -0.08)
 
-    def test_a_safe_control_with_an_unknown_prediction_is_chosen(self):
+    def test_unknown_control_prediction_keeps_accepted_replay(self):
         _, state = reconcile_default(control_kw={"hold": "missing"})
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertEqual(state["chosen"]["arm"], "merged")
         self.assertIn("control prediction unknown", state["chosen"]["reason"])
-        self.assertTrue(state["guarantee"]["evidenced"])
+        self.assertFalse(state["guarantee"]["evidenced"])
 
     def test_a_compared_choice_is_an_evidenced_guarantee(self):
         _, state = reconcile_default()
@@ -1794,23 +1807,23 @@ class ReconcileRecipeTests(unittest.TestCase):
         self.assertIn("auto-fix", state["newNetsUnknown"])
         _, state = reconcile_default(control_kw={"hold": {"s1": (0, 0.0, 0.0), "s2": (0, 0.0, 0.0)},
                                                  "total_delta": total})
-        self.assertEqual(state["chosen"]["arm"], "control")
-        self.assertIsNone(state["newNets"])
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertEqual(state["newNets"], [])
 
     def test_filler_insertions_are_not_new_nets(self):
         total = {"mastersChanged": {}, "added": {"FILL_9": "FILL4"}, "removed": {}}
         _, state = reconcile_default(merged_kw={"total_delta": total})
         self.assertEqual(state["newNets"], [])
 
-    def test_an_unknown_merged_prediction_falls_back_to_control(self):
+    def test_unknown_merged_prediction_keeps_accepted_replay(self):
         _, state = reconcile_default(merged_kw={"hold": "missing"})
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertEqual(state["chosen"]["arm"], "merged")
         self.assertIn("unknown", state["chosen"]["reason"])
 
     def test_a_missing_required_scenario_makes_the_prediction_unknown(self):
         _, state = reconcile_default(merged_kw={"setup": {"s1": (0, 0.0, 0.0)}})
         self.assertIn("unknown", state["arms"]["merged"]["prediction"])
-        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertEqual(state["chosen"]["arm"], "merged")
 
     def test_a_failed_control_arm_does_not_fail_the_merged_arm(self):
         _, state = reconcile_default(control_kw={
