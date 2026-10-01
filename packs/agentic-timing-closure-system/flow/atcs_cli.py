@@ -391,6 +391,7 @@ import re
 import os
 import shutil
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -882,6 +883,8 @@ def _workspace_context_path(workspace, value, label):
 def _verified_xtop_context(workspace, design_state_id, site_profile):
     """Load and re-hash the timing/library context immediately before XTop starts."""
     workspace = Path(workspace)
+    if not (workspace / "state/method-clock.json").exists():
+        _canonical_write(workspace / "state/method-clock.json", {"startedAt": time.time()})
     context = _read_declared(_paths(workspace)["xtop_context"], "xtop-context")
     if context.get("designStateId") != design_state_id:
         raise core.AtcsError("stale-base", "XTop context is not bound to the current design state")
@@ -909,7 +912,19 @@ def _verified_xtop_context(workspace, design_state_id, site_profile):
             path = Path(ref.get("path", ""))
             if not path.is_file() or core.file_sha256(path) != ref.get("sha256"):
                 raise core.AtcsError("identity-mismatch", f"XTop library file is missing or changed: {path}")
+    common_path = workspace / "state/common-stage.json"
+    seed = None
+    if common_path.is_file():
+        common = _read_plain(common_path)
+        if common.get("parentStateId") != design_state_id:
+            raise core.AtcsError("stale-base", "common R1 belongs to another external state")
+        seed = common["seed"]
+        seed_path = _workspace_context_path(workspace, seed["path"], "seed.path")
+        if not seed_path.is_dir() or core.tree_digest(seed_path) != seed["digest"]:
+            raise core.AtcsError("identity-mismatch", "saved common R1 bytes changed")
     verified = dict(context)
+    if seed:
+        verified["seed"] = {**seed, "path": str(seed_path)}
     verified["libraryTcl"] = {**library_ref, "path": str(library_path)}
     verified["staData"] = {**timing_ref, "path": str(timing_path)}
     return verified
@@ -1215,6 +1230,11 @@ def _cmd_prepare_workers(workspace, args):
         def_path = workspace / base_state["def"]["path"]
     xtop_context = _verified_xtop_context(workspace, base_state["id"], eda_profile)
 
+    common_path = workspace / "state/common-stage.json"
+    if common_path.is_file():
+        common = _read_plain(common_path)
+        base_state = {**base_state, "xtopSeed": {"stateId": common["stateId"],
+            "worklistId": common["worklistId"], **common["seed"]}}
     index = {}
     for slot in workspaces.TASK_IDS:
         raw = work_packages.get(slot)
@@ -1390,6 +1410,11 @@ def _cmd_operate_parked(workspace, args):
     refused (`slot-active`, exit 3): this path never stands in for an expert session.
     """
     (slot,) = args
+    if slot == "lead":
+        brief = _read_plain(Path(workspace) / "state/lead-brief.json")
+        if brief.get("control") is not True:
+            raise core.AtcsError("interactive-required", "Timing Lead must use one retained Operator session")
+        return Path(workspace) / "state/lead-operated.json", {"control": True, "session": False}
     workspace = Path(workspace)
     entry, parked = _parked_entry(workspace, slot)
     if parked:
@@ -1602,7 +1627,7 @@ def _cmd_capture_contribution(workspace, args):
     itself set up for this exact slot and root.
     """
     (slot,) = args
-    if slot not in workspaces.TASK_IDS:
+    if slot not in workspaces.OPERATOR_SLOTS:
         raise InputError("invalid-input", f"slot must be one of {workspaces.TASK_IDS}, got {slot!r}")
     workspace = Path(workspace)
     workers_doc = _read_plain(_paths(workspace)["workers"])
@@ -1648,6 +1673,10 @@ def _cmd_capture_contribution(workspace, args):
             refusal = {"code": "inadmissible-request", "detail": reason}
         body = contributions.seal_parked(base_ref, reason, refusal=refusal)
         _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
+        if workspace_manifest.get("xtopSeed"):
+            body = core.stamp("contribution", {**{k: v for k, v in body.items() if k not in ("schema", "id")},
+                "xtopSeed": workspace_manifest["xtopSeed"]})
+            _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
         return _contribution_path(workspace, slot), body
     ops_log_path = Path(entry["opsLog"])
     if not ops_log_path.is_absolute():
@@ -1658,6 +1687,10 @@ def _cmd_capture_contribution(workspace, args):
         if not required_path.is_file():
             raise InputError("missing-input", f"Operator output not found for slot {slot!r}: {label} at {required_path}")
 
+    if workspace_manifest.get("xtopSeed"):
+        common = _read_plain(workspace / "state/common-stage.json")
+        if core.digest(contributions.parse_cell_dump(before_dump.read_text())) != common.get("cellStateDigest"):
+            raise core.AtcsError("identity-mismatch", "session before.dump is not the prepared common R1")
     ops_log_exists = ops_log_path.is_file()
     operation_trace = _read_text(str(ops_log_path)) if ops_log_exists else ""
     tainted_path = ops_log_path.parent / "tainted.json"
@@ -1665,6 +1698,10 @@ def _cmd_capture_contribution(workspace, args):
         body = _seal_xtop_session(workspace, root, base_ref, before_dump, after_dump, ops_log_path,
                                   operation_trace, tainted_path)
         _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
+        if workspace_manifest.get("xtopSeed"):
+            body = core.stamp("contribution", {**{k: v for k, v in body.items() if k not in ("schema", "id")},
+                "xtopSeed": workspace_manifest["xtopSeed"]})
+            _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
         return _contribution_path(workspace, slot), body
     ops_trace_empty = not operation_trace.strip()
     no_fix_evidence = (not ops_log_exists) or ops_trace_empty
@@ -1697,6 +1734,9 @@ def _cmd_capture_contribution(workspace, args):
         "cones": summary.get("cones", []), "dependencies": summary.get("dependencies", []),
     }
     body = contributions.seal(base_ref, result_refs, operation_trace)
+    if workspace_manifest.get("xtopSeed"):
+        body = core.stamp("contribution", {**{k: v for k, v in body.items() if k not in ("schema", "id")},
+            "xtopSeed": workspace_manifest["xtopSeed"]})
     _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
     return _contribution_path(workspace, slot), body
 
@@ -2325,12 +2365,18 @@ def _cmd_implement(workspace, args):
     workspace = Path(workspace)
     current_state = _read_declared(current_state_path, "design-state")
     site_profile = _read_plain(site_profile_path)
-    integration_state = _read_declared(_paths(workspace)["integration_state"], "integration-state")
-    request = _read_declared(_paths(workspace)["replay_request"], "replay-request")
-    facts = _read_declared(_paths(workspace)["composition_facts"], "composition-facts")
-    collected = _read_plain(_paths(workspace)["contributions_collected"])
+    if (workspace / "state/lead-final.json").is_file():
+        final = _read_plain(workspace / "state/lead-final.json")
+        merge_commit = _read_declared(_paths(workspace)["merge_commit"], "merge-commit")
+        if final.get("mergeCommitId") != merge_commit["id"]:
+            raise core.AtcsError("identity-mismatch", "lead final does not identify this merge commit")
+    else:
+        integration_state = _read_declared(_paths(workspace)["integration_state"], "integration-state")
+        request = _read_declared(_paths(workspace)["replay_request"], "replay-request")
+        facts = _read_declared(_paths(workspace)["composition_facts"], "composition-facts")
+        collected = _read_plain(_paths(workspace)["contributions_collected"])
 
-    merge_commit = integration.seal_batch(integration_state, request, facts, collected["contributions"])
+        merge_commit = integration.seal_batch(integration_state, request, facts, collected["contributions"])
 
     if merge_commit.get("parentStateId") != current_state.get("id"):
         raise core.AtcsError(
@@ -4200,7 +4246,284 @@ def flow_digest(flow_dir):
     return hashlib.sha256(core.canonical(_flow_digest_entries(flow_dir))).hexdigest()
 
 
+
+# Issue #66: common native R1, six private trials, then one owner-directed integration session.
+# The external physical design-state remains the parent of the exported cumulative ECO.
+def _native_task(workspace, base, site, root, context, body, prefix):
+    root.mkdir(parents=True, exist_ok=True)
+    task = adapters.compile_xtop_operator_task(
+        {"namePrefix": prefix}, site["design"], site["techLef"], site["cellLefGlob"],
+        str(workspace / base["netlist"]["path"]), str(workspace / base["def"]["path"]), root, context)
+    path = root / "native-stage.tcl"
+    path.write_text(task["tcl"] + "\n" + body, encoding="utf-8")
+    adapters.run_tool(site, ["xtop", "-f", str(path)], cwd=root, log_path=root / "native-stage.log")
+
+
+def _native_analysis_tcl(directory):
+    return f"""
+file mkdir "{adapters.tcl_quote(str(directory))}"
+foreach check {{setup hold}} {{
+    redirect -file [file join "{adapters.tcl_quote(str(directory))}" "$check.rpt"] [list summarize_gba_violations -exclude_path -$check -with_distribution -with_top_n 10000]
+    analyze_${{check}}_path_violations -top 1000 -detail_info -output_dir "{adapters.tcl_quote(str(directory))}" -prefix $check
+    set endpoints {{}}
+    foreach_in_collection pin [get_${{check}}_gba_violated_pins -exclude_path -endpoint_only] {{
+        lappend endpoints [get_attribute $pin full_name]
+    }}
+    set fh [open [file join "{adapters.tcl_quote(str(directory))}" "$check-endpoints.json"] w]
+    puts $fh [atcs_jarr [lsort -unique $endpoints]]
+    close $fh
+}}
+"""
+
+
+def _eco_pair(workspace, root, prefix):
+    pair = {}
+    for role in ("netlist", "physical"):
+        files = list(root.glob(f"{prefix}_{role}_*.txt"))
+        if len(files) != 1 or not files[0].is_file():
+            raise core.AtcsError("missing-input", f"final ECO needs exactly one {role} script in {root}")
+        pair[role] = {"path": _relpath(files[0], workspace), "sha256": core.file_sha256(files[0])}
+    return pair
+
+
+def _cmd_common_autofix(workspace, args):
+    (site_path,) = args
+    workspace = Path(workspace)
+    base = _read_declared(_paths(workspace)["working_state"], "design-state")
+    site = _read_plain(site_path)
+    output = workspace / "state/common-stage.json"
+    if output.exists():
+        _verified_xtop_context(workspace, base["id"], site)
+        return output, _read_plain(output)  # safe retry never runs the initial fix twice
+    root = workspace / "research/observe/common-r1"
+    if root.exists():
+        raise core.AtcsError("incomplete-common-stage", "common R1 started without its completion record; inspect its native log before retry")
+    context = _verified_xtop_context(workspace, base["id"], site)
+    clock_path = workspace / "state/method-clock.json"
+    clock = _read_json_or_default(clock_path, {"startedAt": time.time()})
+    # This Pack's default and matched experiment are 120 min; the Runtime's frozen budget remains
+    # the hard fence. Reserve the same 30 min for implementation/referee in both arms.
+    clock.setdefault("experimentDeadline", clock["startedAt"] + 90 * 60)
+    _canonical_write(clock_path, clock)
+    before, residual = root / "initial-analysis", root / "residual-analysis"
+    fixes = integration.auto_fix_tcl(integration.DEFAULT_SETUP_MARGIN, integration.DEFAULT_HOLD_MARGIN)
+    body = _native_analysis_tcl(before) + "\n".join(fixes) + "\n" + _native_analysis_tcl(residual)
+    body += f"""
+atcs_write_cell_dump "{adapters.tcl_quote(str(root / 'r1.dump'))}"
+file mkdir "{adapters.tcl_quote(str(root / 'eco'))}"
+write_design_changes -format INNOVUS -eco_file_prefix atcs_common -output_dir "{adapters.tcl_quote(str(root / 'eco'))}" -keep_route
+save_workspace -as "{adapters.tcl_quote(str(root / 'r1-workspace'))}"
+exit 0
+"""
+    _native_task(workspace, base, site, root, context, body, "atcs_common_auto_")
+    eco = _eco_pair(workspace, root / "eco", "atcs_common")
+    summaries = {check: (residual / f"{check}.rpt").read_text() for check in ("setup", "hold")}
+    endpoints = {check: _read_plain(residual / f"{check}-endpoints.json") for check in ("setup", "hold")}
+    prior_checks = _read_json_or_default(_paths(workspace)["observation"], {}).get("checks") or {}
+    native_checks = {}
+    for mode, text in summaries.items():
+        for scenario, endpoint, slack in contributions._top_n_rows(text).get(mode) or []:
+            key = core.check_key(scenario, mode, endpoint)
+            native_checks[key] = {"endpoint": endpoint, "slack": core.known(slack),
+                "startpoint": (prior_checks.get(key) or {}).get("startpoint"),
+                "startpointSource": "external R0 PrimeTime context; verify in native R1 before mutation"}
+
+    # Semantic identities compare independently-produced R1s. Raw saved-workspace hashes remain
+    # arm-specific: XTop metadata can contain paths/times. Include physical ECO, not only cell masters.
+    semantic_eco = {role: [line.strip() for line in (workspace / ref["path"]).read_text()
+        .replace(str(workspace), "${WORKSPACE}").splitlines() if line.strip() and not line.lstrip().startswith("#")]
+        for role, ref in eco.items()}
+    if any(endpoints.values()) and not native_checks:
+        raise core.AtcsError("native-residual-unreadable", "XTop reports violated endpoints but no native endpoint/slack rows could be parsed; retain residual-analysis/*.rpt")
+    state_id = core.digest({"parent": base["id"], "cells": contributions.parse_cell_dump((root / "r1.dump").read_text()), "eco": semantic_eco})
+    worklist_id = core.digest({"checks": {k: {"endpoint": v["endpoint"], "slack": v["slack"]} for k, v in native_checks.items()}, "endpoints": endpoints})
+    seed_path = root / "r1-workspace"
+    if not seed_path.is_dir():
+        raise core.AtcsError("missing-input", "XTop did not save the common R1 workspace")
+    return output, {"parentStateId": base["id"], "stateId": state_id, "worklistId": worklist_id,
+        "seed": {"path": _relpath(seed_path, workspace), "digest": core.tree_digest(seed_path)},
+        "summaries": summaries, "endpoints": endpoints, "nativeChecks": native_checks, "eco": eco,
+        "analysisBoard": _relpath(residual, workspace), "analysisTopPaths": 1000,
+        "cellStateDigest": core.digest(contributions.parse_cell_dump((root / "r1.dump").read_text())),
+        "autoFixCommands": fixes, "startedAt": clock["startedAt"], "completedAt": time.time(),
+        "experimentDeadline": clock["experimentDeadline"], "predictionOnly": True}
+
+
+def _cmd_prepare_lead(workspace, args):
+    (site_path,) = args
+    workspace = Path(workspace)
+    base = _read_declared(_paths(workspace)["working_state"], "design-state")
+    site = _read_plain(site_path)
+    context = _verified_xtop_context(workspace, base["id"], site)
+    common = _read_plain(workspace / "state/common-stage.json")
+    ready = workspace / "state/lead-brief.json"
+    if ready.is_file():
+        brief = _read_plain(ready)
+        if (brief.get("commonStateId"), brief.get("worklistId")) != (common["stateId"], common["worklistId"]):
+            raise core.AtcsError("stale-base", "prepared lead belongs to another R1")
+        return ready, brief
+    collected = _read_plain(_paths(workspace)["contributions_collected"])
+    plan = _read_admitted_plan(workspace / "research/requests/integration-plan.json")
+    if not isinstance(plan, dict) or plan.get("baseStateId") != base["id"]:
+        raise core.AtcsError("stale-base", "Timing Lead briefing belongs to another external state")
+    report = workspace / "research/fix-strategy-risk.md"
+    if not report.is_file() or not report.read_text().strip():
+        raise core.AtcsError("missing-input", "plan must write one concise research/fix-strategy-risk.md")
+    facts = composition.analyze(base["id"], collected["contributions"], resolutions=plan.get("resolutions") or [])
+    recipe = facts.get("recipe") or {"sessions": [], "excluded": []}
+    if isinstance(plan.get("select"), list):
+        order = {cid: index for index, cid in enumerate(plan["select"])}
+        recipe = {**recipe, "sessions": sorted(recipe["sessions"], key=lambda r: order.get(r["contribution"], len(order)))}
+    sessions = _recipe_sessions(workspace, recipe, collected, base["id"])
+    request = integration.prepare_recipe_replay({**plan, "autoFinish": False}, base["id"], recipe, sessions,
+        required_scenarios=context["requiredScenarios"], removable_fillers=context["removableFillers"])
+    _canonical_write(_paths(workspace)["composition_facts"], facts)
+    _canonical_write(_paths(workspace)["replay_request"], request)
+    slot_policy = _read_plain(_paths(workspace)["worker_slots"])
+    control = slot_policy["workerSlots"] == 0
+    brief = {"control": control, "commonStateId": common["stateId"], "worklistId": common["worklistId"],
+        "strategyRisk": {"path": _relpath(report, workspace), "sha256": core.file_sha256(report)},
+        "contributions": [c["id"] for c in collected["contributions"]], "replayRequestId": request["id"],
+        "experimentDeadline": common["experimentDeadline"], "finalAutoFinish": False}
+    if control:
+        root = workspace / "integrations" / adapters.validate_path_segment(plan["batchId"], "batchId") / "control"
+        if root.exists():
+            raise core.AtcsError("write-once", "strong control already started; inspect it rather than repeat effects")
+        commands = integration.auto_fix_tcl(integration.DEFAULT_SETUP_MARGIN, integration.DEFAULT_HOLD_MARGIN)
+        body = f"set deadline {int(common['experimentDeadline'])}\nset fixes [list " + " ".join('"' + adapters.tcl_quote(c) + '"' for c in commands) + "]\n"
+        body += adapters.load_template("xtop-repeat-control.tcl")
+        _native_task(workspace, base, site, root, context, body, "atcs_control_auto_")
+        brief["controlRoot"] = _relpath(root, workspace)
+        brief["eco"] = _eco_pair(workspace, root / "eco_output", "atcs_control_auto_eco")
+    else:
+        workers = _read_plain(_paths(workspace)["workers"])
+        active = [e["workPackage"] for e in workers["workers"].values() if not workspaces.is_parked(e["workPackage"])]
+        if not active:
+            raise core.AtcsError("missing-input", "treatment has no active work packages for lead scope")
+        package = {k: v for k, v in active[0].items() if k not in ("schema", "id")}
+        package.update(taskId="lead", problem="Owner-directed integration and additional residual ECO",
+            targets=sorted({t for p in active for t in p["targets"]}),
+            targetPins=sorted({t for p in active for t in p.get("targetPins") or []}),
+            scope={"commands": list(workspaces.MUTATE_COMMANDS), "maxMutations": workspaces.SCOPE_MAX_MUTATIONS})
+        domains = [p["editDomain"] for p in active] + [c.get("effectiveDomain") or {} for c in collected["contributions"]]
+        package["editDomain"] = {key: list(dict.fromkeys(value for d in domains for value in d.get(key) or []))
+                                  for key in ("instances", "nets")}
+        package["editDomain"]["regions"] = [list(box) for box in dict.fromkeys(tuple(box) for d in domains for box in d.get("regions") or [])]
+        package = workspaces.validate_work_package(package, base, site)
+        seeded_base = {**base, "xtopSeed": {"stateId": common["stateId"], "worklistId": common["worklistId"], **common["seed"]}}
+        manifest = workspaces.prepare(package, workspace, seeded_base)
+        root = workspace / manifest["root"]
+        task = adapters.compile_xtop_operator_task(manifest, site["design"], site["techLef"], site["cellLefGlob"],
+            str(workspace / base["netlist"]["path"]), str(workspace / base["def"]["path"]), root, context)
+        operator_path = root / "operator.tcl"
+        operator_path.write_text(task["tcl"])
+        analysis = adapters.compile_xtop_analysis_manual_task(manifest, package["editDomain"], operator_path,
+            root / "ops.jsonl", target_pins=package["targetPins"], max_mutations=package["scope"]["maxMutations"],
+            observe="fast", local_topology=True)
+        replay = adapters.load_template("xtop-replay.tcl").split('\natcs_write_cell_dump [file join $env(DUMP_DIR) 000.dump]')[0]
+        replay_env = {"RECIPE_TCL": str(root / "recipe.tcl"), "AUTO_FIX_TCL": str(root / "auto-fix.tcl"),
+            "AUTO_PREFIX": manifest["namePrefix"], "RECEIPTS_LOG": str(root / "receipts.jsonl"),
+            "DUMP_DIR": str(root / "dumps"), "PREDICT_DIR": str(root / "predict"),
+            "ARM_RESULT": str(root / "arm-result.json"), "FAIL_REASON_TOP_N": "20"}
+        (root / "recipe.tcl").write_text(adapters._recipe_tcl(request))
+        (root / "auto-fix.tcl").write_text("")
+        startup = analysis["tcl"] + '\natcs_dump_cells before.dump\n' + adapters.env_preamble(replay_env)
+        startup += '\nset ::ATCS_ARM merged\n' + replay
+        replay_budget = sum(1 for step in request["steps"] if step.get("skip") is None and step.get("tcl"))
+        startup += f"\nset ::ATCS_MAX_MUTATIONS {workspaces.SCOPE_MAX_MUTATIONS + replay_budget}\n"
+        # Retain the lead's union domain. Replay temporarily enters each Contribution's domain;
+        # restore it afterwards without opening another XTop process or running AutoFinish.
+        startup += """
+set lead_domain [list $::EDIT_DOMAIN_INSTANCES $::EDIT_DOMAIN_NETS $::EDIT_DOMAIN_PINS $::EDIT_DOMAIN_REGIONS]
+source $env(RECIPE_TCL)
+lassign $lead_domain ::EDIT_DOMAIN_INSTANCES ::EDIT_DOMAIN_NETS ::EDIT_DOMAIN_PINS ::EDIT_DOMAIN_REGIONS
+set ::EDIT_DOMAIN_LOCAL 1
+set ::env(NAME_PREFIX) $env(AUTO_PREFIX)
+set_parameter eco_new_object_prefix "$env(NAME_PREFIX)eco"
+set ::atcs_plan_sha256 ""
+# Bootstrap replay belongs to the sealed Contributions, not the lead child's own mutation allowance.
+# Sequence/undo stack and logs stay intact; Host independently counts the lead's interactive sends.
+set ::atcs_mutations 0
+set ::ATCS_MAX_MUTATIONS 600
+set ::atcs_session_instances [atcs_replay_protected]
+set ::atcs_session_nets {}
+foreach seq $::atcs_kept {
+    if {[dict exists $::atcs_op($seq) nets]} {
+        set ::atcs_session_nets [lsort -unique [concat $::atcs_session_nets [dict get $::atcs_op($seq) nets]]]
+    }
+}
+atcs_ref
+puts "ATCS:lead:replay-complete:$::atcs_replay_applied applied, $::atcs_replay_skipped skipped; owner-directed manual ECO next"
+"""
+        manual_path = root / "xtop-analysis-manual.tcl"
+        manual_path.write_text(startup)
+        workers["workers"]["lead"] = {"workPackageId": package["id"], "manifestId": manifest["id"],
+            "root": manifest["root"], "namePrefix": manifest["namePrefix"], "workPackage": package,
+            "workspaceManifest": manifest, "sessionTcl": str(manual_path), "opsLog": str(root / "ops.jsonl"),
+            "sessionTclSha256": core.file_sha256(manual_path),
+            "preparedReplay": {name: core.file_sha256(root / name) for name in ("recipe.tcl", "auto-fix.tcl")}}
+        _canonical_write(_paths(workspace)["workers"], workers)
+        brief["leadRoot"] = manifest["root"]
+    return workspace / "state/lead-brief.json", brief
+
+
+def _cmd_finalize_lead(workspace, args):
+    del args
+    workspace = Path(workspace)
+    brief = _read_plain(workspace / "state/lead-brief.json")
+    base = _read_declared(_paths(workspace)["working_state"], "design-state")
+    request = _read_declared(_paths(workspace)["replay_request"], "replay-request")
+    common = _read_plain(workspace / "state/common-stage.json")
+    collected = _read_plain(_paths(workspace)["contributions_collected"])
+    credited, replay_results, lead_contribution = [], [], None
+    if brief["control"]:
+        eco = brief["eco"]
+        root = workspace / brief["controlRoot"]
+        terminal = _read_plain(root / "control-result.json")
+        if terminal.get("complete") is not True:
+            raise core.AtcsError("incomplete-control", "strong control did not export a complete final result")
+    else:
+        root = workspace / brief["leadRoot"]
+        path, lead_contribution = _cmd_capture_contribution(workspace, ["lead"])
+        _canonical_write(path, lead_contribution)
+        if not lead_contribution.get("admissible"):
+            raise core.AtcsError("unsafe-lead", str(lead_contribution.get("refusals")))
+        eco = _eco_pair(workspace, root / "eco_output", _read_plain(_paths(workspace)["workers"])["workers"]["lead"]["namePrefix"] + "eco")
+        kept_commands = lead_contribution.get("commands") or []
+        kept = {command["seq"] for command in kept_commands}
+        receipts_path = root / "receipts.jsonl"
+        replay_results = [json.loads(line) for line in receipts_path.read_text().splitlines() if line.strip()] if receipts_path.is_file() else []
+        for receipt in replay_results:
+            command = next((c for c in kept_commands if c["seq"] == receipt.get("seq")), None)
+            overwritten = bool(command and any(set(command.get("instances") or []) & set(c.get("instances") or [])
+                for c in kept_commands if c["seq"] > command["seq"]))
+            receipt["survives"] = receipt.get("status") == "applied" and receipt.get("seq") in kept and not overwritten
+        credited_slots = {r["slot"] for r in replay_results if r["survives"]}
+        credited = [{"id": c["id"], "revision": c.get("revision")} for c in collected["contributions"] if c["taskId"] in credited_slots]
+        credited.append({"id": lead_contribution["id"], "revision": lead_contribution["revision"]})
+    for ref in eco.values():
+        if core.file_sha256(workspace / ref["path"]) != ref["sha256"]:
+            raise core.AtcsError("identity-mismatch", "final Timing Lead ECO changed before sealing")
+    body = {"parentStateId": base["id"], "batchId": request["batchId"], "contributions": credited,
+        "operations": [], "innovusEcoTcl": "", "sourceMap": {}, "newNets": None,
+        "newNetsUnknown": "cumulative native ECO; final Innovus connectivity is authoritative", "eco": eco,
+        "commonStateId": common["stateId"], "worklistId": common["worklistId"],
+        "choice": {"arm": "control" if brief["control"] else "merged", "reason": "Owner final candidate; direct physical referee"},
+        "autoFinish": False, "replayResults": replay_results,
+        "leadContributionId": lead_contribution["id"] if lead_contribution else None,
+        "integratorAuthoredCommands": [c["seq"] for c in (lead_contribution or {}).get("commands") or []
+            if c["seq"] not in {r.get("seq") for r in replay_results}],
+        "manualValue": "unmeasured", "manualValueReason": "compare fresh matched refreshed referees"}
+    merge = core.stamp("merge-commit", body)
+    _canonical_write(_paths(workspace)["merge_commit"], merge)
+    return workspace / "state/lead-final.json", {"mergeCommitId": merge["id"], "eco": eco,
+        "control": brief["control"], "finalAutoFinish": False, "finalizedAt": time.time()}
+
+
 SUBCOMMANDS = {
+    "common-autofix": _cmd_common_autofix,
+    "prepare-lead": _cmd_prepare_lead,
+    "finalize-lead": _cmd_finalize_lead,
     "bind-inputs": _cmd_bind_inputs,
     "baseline": _cmd_baseline,
     "observe": _cmd_observe,

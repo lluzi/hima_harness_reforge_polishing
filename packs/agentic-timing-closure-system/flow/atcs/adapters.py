@@ -1064,6 +1064,7 @@ def _xtop_task_context(xtop_context):
         "ECO_CELL_MATCH_ATTRIBUTE": eco["cellMatchAttribute"],
         "ECO_CELL_NOMINAL_SIZING_PATTERN": eco["cellNominalSizingPattern"],
         "ECO_GAIN_THRESHOLD": str(eco["gainThreshold"]),
+        "XTOP_SEED": (context.get("seed") or {}).get("path", ""),
     }
     globals_ = {
         "XTOP_SITE_MAP": site_map, "XTOP_REMOVABLE_FILLERS": fillers,

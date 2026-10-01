@@ -23,7 +23,7 @@ import os
 from pathlib import Path
 
 PREPARED = ("manifest.json", "operator.tcl", "xtop-analysis-manual.tcl")
-SLOTS = ("w01", "w02", "w03", "w04", "w05", "w06")
+SLOTS = ("w01", "w02", "w03", "w04", "w05", "w06", "lead")
 
 
 def plain(path, root=None):
@@ -51,7 +51,8 @@ def fresh_slot(workspace, slot):
         raise ValueError("invalid worker revision")
     slot_dir = plain(workspace / "workspaces" / slot, workspace)
     root = plain(slot_dir / ("r" + str(revision)), workspace)
-    leftovers = sorted(path.name for path in root.iterdir() if path.name not in PREPARED)
+    prepared = (*PREPARED, "recipe.tcl", "auto-fix.tcl") if slot == "lead" else PREPARED
+    leftovers = sorted(path.name for path in root.iterdir() if path.name not in prepared)
     if not leftovers:
         return {"slotRoot": str(root), "retired": None, "moved": []}
     attempt = 1

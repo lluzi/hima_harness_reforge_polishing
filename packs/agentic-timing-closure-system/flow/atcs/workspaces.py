@@ -145,6 +145,7 @@ from . import core
 ACTION_KINDS = ("size_cell", "insert_buffer", "delete_buffer", "pg_local_adjust")
 
 TASK_IDS = ("w01", "w02", "w03", "w04", "w05", "w06")
+OPERATOR_SLOTS = (*TASK_IDS, "lead")  # reserved integration slot; never a seventh fork branch
 
 MUTATE_COMMANDS = (
     "atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load",
@@ -321,7 +322,7 @@ def _base_state_problems(obj, base_state):
 def _parked_problems(obj, base_state):
     """Problems in a parked package: its identity, a stated reason and no work field."""
     problems = []
-    if obj.get("taskId") not in TASK_IDS:
+    if obj.get("taskId") not in OPERATOR_SLOTS:
         problems.append(f"taskId must be one of {TASK_IDS}, got {obj.get('taskId')!r}")
     problems.extend(_base_state_problems(obj, base_state))
     reason = obj.get("problem")
@@ -349,7 +350,7 @@ def _collect_problems(obj, base_state, site_capabilities):
             problems.append(f"missing field: {key}")
 
     task_id = obj.get("taskId")
-    if task_id not in TASK_IDS:
+    if task_id not in OPERATOR_SLOTS:
         problems.append(f"taskId must be one of {TASK_IDS}, got {task_id!r}")
 
     problems.extend(_base_state_problems(obj, base_state))
@@ -464,7 +465,7 @@ def prepare(work_package, campaign_root, base_state):
     work_package_id = core.require(work_package, "id", "work_package")
     base_state_id = core.require(work_package, "baseStateId", "work_package")
 
-    if task_id not in TASK_IDS:
+    if task_id not in OPERATOR_SLOTS:
         # TASK_IDS is checked before any path is built: this is what keeps a
         # hostile taskId (e.g. containing "..") from ever making the
         # computed root escape campaign_root below.
@@ -483,7 +484,7 @@ def prepare(work_package, campaign_root, base_state):
             candidate_root.mkdir()
         except FileExistsError:
             existing = _read_manifest_if_matching(candidate_root / "manifest.json", work_package_id)
-            if existing is not None:
+            if existing is not None and existing.get("xtopSeed") == base_state.get("xtopSeed"):
                 return existing
             revision += 1
             continue
@@ -499,6 +500,8 @@ def prepare(work_package, campaign_root, base_state):
         "recovery": {"checkpoint": None},
         "baseStateId": base_state_id,
     }
+    if base_state.get("xtopSeed"):
+        manifest_body["xtopSeed"] = base_state["xtopSeed"]
     manifest = core.stamp("workspace-manifest", manifest_body)
     core.write_artifact(candidate_root / "manifest.json", manifest)
     return manifest

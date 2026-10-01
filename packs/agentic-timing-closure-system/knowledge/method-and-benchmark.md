@@ -1,3 +1,29 @@
+# Current method (Issue #66, Pack 0.2.3)
+
+Use common native XTop analysis, one mandatory initial AutoFix, then post-auto residual analysis.
+The Owner writes one concise `research/fix-strategy-risk.md`. Six Operators trial unique clusters in
+private clones of that R1. The Campaign Owner then serves as active Timing Lead: it directs one retained
+qualified Operator child in one persistent integration XTop session. Replay compatible Contributions,
+measure and rebase, keep/undo, and add manual ECO under the Owner's direction. Return exact results per
+coherent batch; keep the same child/session open until the Owner chooses the final candidate.
+
+Export that cumulative final ECO directly to Innovus ECO route, StarRC, PrimeTime and DRC/connectivity.
+There is **no final global AutoFinish** after the Timing Lead. Do not add internal control/merged-arm
+arbitration, PreSTA or repeated compose/read/admit/judge gates. Existing dormant helpers and historical
+examples describe earlier frozen methods and do not override this sequence.
+
+Fresh strong C0 uses `workerSlots: 0`, the same external R0 and independently reproduced common R1,
+then repeated default setup/hold GBA with re-observation until goal, no-change or its bounded deadline.
+Both arms use the same 120-minute Run wall limit, 30-minute physical/closing reserve and one physical
+refresh. The Pack method clock starts with baseline; Runtime retains the actual Run deadline. Report
+actual Run wall time including preparation and the common stage. Never compare against historical C0.
+Require matching R1 semantic state/worklist identities before interpreting a fresh comparison; retain
+arm-specific raw workspace hashes and all tool identities. Native R1 timings are predictions. Only
+refreshed per-scenario PrimeTime WNS/TNS and physical checks decide effectiveness. A tie or zero retained
+manual benefit is NEGATIVE. Report additional seat/license hours separately.
+
+## Earlier rationale (retained context, superseded sequence)
+
 # 方法与对照基准
 
 ## Source

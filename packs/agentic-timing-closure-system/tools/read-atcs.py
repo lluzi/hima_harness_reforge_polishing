@@ -78,6 +78,7 @@ refused outright. It is the one file besides OUT this script writes.
 from __future__ import annotations
 
 import importlib
+import hashlib
 import json
 import math
 import os
@@ -1089,6 +1090,17 @@ def write_operator_brief(path):
     envelope = _load_json(target)
     if not isinstance(envelope, dict):
         raise SystemExit(f"{target}: must be one JSON object")
+    workspace = Path(path).parent.parent.parent
+    common_path = workspace / "state/common-stage.json"
+    report_path = workspace / "research/fix-strategy-risk.md"
+    if common_path.is_file():
+        common = _load_json(common_path)
+        if not report_path.is_file():
+            raise ValueError("common R1 request needs the shared research/fix-strategy-risk.md")
+        envelope["strategyRisk"] = {"path": "research/fix-strategy-risk.md",
+            "sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(), "text": report_path.read_text()}
+        envelope["commonResidual"] = {key: common[key] for key in
+            ("stateId", "worklistId", "summaries", "endpoints", "analysisBoard")}
     envelope["operatorBrief"] = operator_brief(envelope)
     target.write_text(json.dumps(envelope, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -2941,6 +2953,13 @@ def seat_clusters(workspace, slots=None):
     if isinstance(slots, bool) or not isinstance(slots, int) or not 0 <= slots <= len(workspaces_mod.TASK_IDS):
         raise ValueError(f"slots must be an integer 0..{len(workspaces_mod.TASK_IDS)}, got {slots!r}")
 
+    common_path = workspace / "state/common-stage.json"
+    if common_path.is_file():
+        common = _load_json(common_path)
+        if common.get("parentStateId") != working["id"]:
+            raise ValueError("native common R1 has another physical parent")
+        # This is a seating projection of native predicted residuals, never a final STA observation.
+        observation = {**observation, "id": common["worklistId"], "checks": common.get("nativeChecks") or {}}
     rows, unresolved = _seat_rows(workspace, working, observation, required)
     worst = set(composition_mod.worst_checks(observation))
     clusters = _clusters(rows, slots, worst)

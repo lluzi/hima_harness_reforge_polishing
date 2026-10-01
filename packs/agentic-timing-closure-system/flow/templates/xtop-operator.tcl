@@ -23,6 +23,14 @@ foreach file [concat [list $env(NETLIST) $env(DEF) $env(LIBRARY_TCL)] $lef_files
 if {![file isdirectory $env(STA_DATA)]} { error "PrimeTime timing-data directory is missing" }
 cd $operator_root
 set_parameter max_thread_number 8
+# A common R1 is copied inside this session's private writable root. Never open or lock
+# the shared saved workspace. Its ECO actions remain relative to the external R0.
+if {[info exists env(XTOP_SEED)] && $env(XTOP_SEED) ne ""} {
+    set private_seed [file join $operator_root r1-private]
+    if {[file exists $private_seed]} { error "private R1 already exists; retire this attempt first" }
+    file copy $env(XTOP_SEED) $private_seed
+    open_workspace $private_seed
+} else {
 create_workspace ${design}_operator -overwrite
 link_reference_library -format lef $lef_files
 create_design_definition -verilogs $env(NETLIST) -def $env(DEF)
@@ -34,6 +42,7 @@ source $env(LIBRARY_TCL)
 read_timing_data -data_dir $env(STA_DATA)
 check_inst_reference_library
 check_inst_timing_library
+}
 set_parameter eco_new_object_prefix "$env(NAME_PREFIX)eco"
 set_parameter eco_buffer_list_for_hold $::XTOP_ECO_BUFFER_LIST_FOR_HOLD
 set_parameter eco_buffer_list_for_setup $::XTOP_ECO_BUFFER_LIST_FOR_SETUP

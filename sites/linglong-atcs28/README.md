@@ -1,3 +1,28 @@
+# Issue #66 common-R1 / Owner Timing Lead candidate (v24)
+
+Source candidate: Pack 0.2.3, `atcs-xtop-operator-v24.sh` and
+`xtop-operator-environment-v24.template.json`. Install v24 additively beside v23 after filling
+flow/CLI/verifier/fresh-slot/source-template pins with the candidate bytes. Preserve the qualified
+image, library context, Site v5 batch reaper and confinement. Permit includes the v24 admin root.
+The reserved `lead` slot is accepted by the same wrapper/verifier; `TASK_IDS` and joins stay six.
+A lead retry retires only prior outputs and preserves its hash-bound recipe inputs. Worker/lead
+manifests carry the same R1 semantic state/worklist and raw seed digest; verifier checks them.
+
+The three cheap checks are `flow/tests/test_owner_timing_lead.py` in the ATCS Pack: common native
+R1 plus six manifests, one Tcl lead replay plus its own mutation whose final ECO hash reaches
+Innovus, and real Pack graph/contract loading plus repeated default control. These use synthetic
+XTop/Innovus and prove wiring only. Before any fresh matched C0/T6, freeze/install identities and
+perform one bounded real lead L4: common save/open with retained ECO actions, private clone,
+contribution replay, Owner-directed own mutation, close/export and normal teardown with exact
+zombie delta. That L4 and the fresh matched experiment are not yet performed for this source.
+
+The App/Harness surface is unchanged and its retained qualification may be reused. C0/T6 must
+use fresh external postroute_final R0s, matching common R1 state/worklist, 120 min including the
+common stage, one refresh and the same closing reserve. No historical control reuse and no
+final global AutoFinish after the active Owner Timing Lead.
+
+## Retained earlier wrapper records
+
 # linglong-atcs28 Site administration
 
 Development successor (Issue #66 export/close repair, Pack 0.2.2): `atcs-xtop-operator-v23.sh`

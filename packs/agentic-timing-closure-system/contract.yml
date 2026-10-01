@@ -1,5 +1,5 @@
 id: agentic-timing-closure-system
-version: "0.2.2"
+version: "0.2.3"
 title: Agentic timing closure system
 status: development
 minimumHarnessVersion: 0.2.1
@@ -13,7 +13,7 @@ ontology:
 # SPEC "Run contract" Budget: a finite Site default the user may override; the Pack never widens it.
 # The Run's budget ending is the Runtime's own (SPEC Endings); no converge block exists anywhere.
 budget:
-  timeBoxMs: 86400000
+  timeBoxMs: 7200000
   closingReserveMs: 1800000
   # #64 Track B (live class C28), reshaped 2026-09-29 (ADR-0016): every generation is one batch and
   # one refresh, generation 1 included (the baseline flows straight into the first plan). #66 D9: the
@@ -54,6 +54,18 @@ inputs:
     description: Campaign-private output root the Site Permit allows; every Campaign workspace lies under it.
 
 outputs:
+  - name: commonStage
+    path: state/common-stage.json
+    description: Common native R1 seed, semantic state/worklist identities, residual summaries/endpoints and analysisboard; XTop prediction only.
+  - name: fixStrategyRisk
+    path: research/fix-strategy-risk.md
+    description: One concise Owner strategy and risk report from post-auto native residuals, shared with six trial Operators and the Timing Lead.
+  - name: timingLeadBrief
+    path: state/lead-brief.json
+    description: Owner-directed lead session's R1, strategy and Contribution identities; control uses repeated default GBA.
+  - name: timingLeadFinal
+    path: state/lead-final.json
+    description: Final exported cumulative ECO and mergeCommit identity; direct Innovus input, no final global AutoFinish.
   - name: inputReadiness
     path: state/readiness.json
     reader: atcs-readiness
@@ -289,7 +301,7 @@ environment:
   wrappers:
     - python3
     - /usr/bin/python3
-    - /data/eda/project/hima_harness/operator-admin/atcs-v23/atcs-xtop-operator-v23.sh
+    - /data/eda/project/hima_harness/operator-admin/atcs-v24/atcs-xtop-operator-v24.sh
 
 workspace:
   source: pack
@@ -299,6 +311,23 @@ workspace:
     - templates
 
 tools:
+  - id: common-autofix
+    file: flow/atcs_cli.py
+    description: Analyze native XTop before and after the common initial AutoFix; save the common R1 once.
+    inputs: [WORKSPACE, SITE_CAPABILITIES]
+    licences: { xtop: 1 }
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', common-autofix, '${WORKSPACE}', '${SITE_CAPABILITIES}']
+  - id: prepare-lead
+    file: flow/atcs_cli.py
+    description: Prepare the existing qualified persistent lead slot and compatible Contribution replay; C0 repeats default GBA from common R1 until no change, goal or matched deadline.
+    inputs: [WORKSPACE, SITE_CAPABILITIES]
+    licences: { xtop: 1 }
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', prepare-lead, '${WORKSPACE}', '${SITE_CAPABILITIES}']
+  - id: finalize-lead
+    file: flow/atcs_cli.py
+    description: Seal clean lead trace and exact cumulative final ECO into mergeCommit for the existing Innovus route.
+    inputs: [WORKSPACE]
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', finalize-lead, '${WORKSPACE}']
   - id: bind-inputs
     file: flow/atcs_cli.py
     description: Bind and verify the declared inputs; decide full-flow or post-route-only (M1 input_readiness).
@@ -425,7 +454,7 @@ tools:
       mode: hybrid
       adapter: hima-tcl-line-v1
       licences: { xtop: 1 }
-      argv: [/data/eda/project/hima_harness/operator-admin/atcs-v23/atcs-xtop-operator-v23.sh, '${WORKSPACE}', '${SLOT}']
+      argv: [/data/eda/project/hima_harness/operator-admin/atcs-v24/atcs-xtop-operator-v24.sh, '${WORKSPACE}', '${SLOT}']
       commands:
         read: [atcs_ref, atcs_gain, atcs_paths, atcs_fail_reasons, atcs_candidates, atcs_point, atcs_gba]
         mutate: [atcs_size_cell, atcs_exchange_cell, atcs_insert_buffer, atcs_insert_dummy, atcs_split_load, atcs_split_net, atcs_move_cell, atcs_remove_buffer, atcs_fix_hold_pins, atcs_fix_setup_pins, atcs_undo]
@@ -678,7 +707,7 @@ strategy:
   # Team; slots above it are parked. Each active branch holds one Site Job at a time. #66 D8: 0 parks
   # every seat, the qualified full-auto control arm (the same Pack, the batch runs auto-finish alone).
   workerSlots: { type: number, unit: slots, min: 0, max: 6, default: 6 }
-  autoFinish: { type: number, unit: flag, min: 0, max: 1, default: 1, precision: 0 }
+  autoFinish: { type: number, unit: flag, min: 0, max: 0, default: 0, precision: 0 }
 
 words:
   target_setup_wns_ns: { label: target setup WNS, unit: ns }
@@ -686,7 +715,7 @@ words:
   max_physical_refreshes: { label: max full physical refreshes per Run, unit: count }
   maxPaths: { label: max paths per scenario query, unit: paths }
   workerSlots: { label: "parallel worker slots (0 parks every seat: full-auto control)", unit: slots }
-  autoFinish: { label: "auto-finish after the expert recipe (1 on, 0 off)", unit: flag }
+  autoFinish: { label: "final global AutoFinish disabled; initial common AutoFix is mandatory", unit: flag }
 
 knowledge:
   - file: method-and-benchmark.md
@@ -773,7 +802,7 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-01
-        taskTemplate: "You are slot w01's XTop timing-closure Operator. Your only job is to remove the assigned blocker cluster with a substantial, evidence-led setup/hold manual ECO batch in this private session. You are not HimaGuide, the Campaign owner, a source-code investigator or a report writer. Use only hima_delegation_input and the typed hima_interactive commands granted here; when a professional fact or tool observation is missing, record that limitation instead of searching product source.\n\nStart from operatorBrief and sessionPlan in the admitted workerRequest01. Page only fields needed for the next experiment; do not read every long list before opening XTop. Use hima_delegation_input (runId, recordId, path, offset, limit) and follow window.next for needed candidate.targets, targetPins, editDomain.instances/nets/regions, scope or sessionPlan. The Host binds the exact scope and planSha256 and reports the real remaining Run time and mutation allowance after every interactive call. Derived local nets are usable by pin even when editDomain.nets is empty.\n\nOpen the XTop session, write before.dump, capture atcs_ref, then diagnose the hardest representative targets with atcs_point, atcs_paths, atcs_candidates and, after the first fix, atcs_fail_reasons. Use the shared cluster cause to choose moves with leverage across several endpoints. Use one toMaster token from atcs_candidates or the Pack masters helper; never join two columns, and after invalid library cell reread candidates instead of resending. Follow the request's first moves, then branch from measured evidence: size/exchange, dummy or delay/buffer chain, split/load, remove-buffer, or a targeted fix when its real scope is safe. Manual commands are trial transactions: measure the target with atcs_point and both checks with atcs_gain after each one, keep gain, call atcs_undo on regression or no gain, and continue with another target or mechanism. Targeted fix commands may commit many actions and may not be undoable; use them only after bounded manual trials and only when their scope is supported.\n\nContinue while the Host says experiment time and mutation allowance remain and there are untried targets or mechanisms. Never infer budget exhaustion from prompt length, context size or one completed model turn. A Host refusal before XTop is free; a toolkit refusal after admission costs one mutation. A failed or refused trial is evidence for the next rung, not a reason to stop. The merge records and ranks every sealed batch; value findings are advisory, while taint, unknown side effects and actual scope violations remain hard limitations. Refreshed PrimeTime and physical checks make the final decision.\n\nFinish only when the cluster is clear, its useful ladders are spent, the Host reports the experiment budget is closing/exhausted, or observability/scope makes further safe work impossible. Write after.dump, export residual limitations with atcs_export_changes, then close cleanly with typed input atcs_close and wait for completed. Deliver replayable commands/dumps/ECO evidence, never a saved worker DB. Return exactly one atcs-worker-session/1 JSON object with planSha256, every admitted mutation request id, stopReason and limitations. Use stopReason budget only when the Host reports it; otherwise use blockers-clear, no-candidate-gains, no-safe-action, tainted or refused and name the missing capability."
+        taskTemplate: "You are slot w01's XTop timing-closure Operator. Your only job is to remove the assigned blocker cluster with a substantial, evidence-led setup/hold manual ECO batch in this private session. You are not HimaGuide, the Campaign owner, a source-code investigator or a report writer. Use only hima_delegation_input and the typed hima_interactive commands granted here; when a professional fact or tool observation is missing, record that limitation instead of searching product source.\n\nRead strategyRisk and commonResidual in your exact worker request; they carry the shared strategy report and post-auto native residuals. Your private session starts at the common post-auto R1. Start from operatorBrief and sessionPlan in the admitted workerRequest01. Page only fields needed for the next experiment; do not read every long list before opening XTop. Use hima_delegation_input (runId, recordId, path, offset, limit) and follow window.next for needed candidate.targets, targetPins, editDomain.instances/nets/regions, scope or sessionPlan. The Host binds the exact scope and planSha256 and reports the real remaining Run time and mutation allowance after every interactive call. Derived local nets are usable by pin even when editDomain.nets is empty.\n\nOpen the XTop session, write before.dump, capture atcs_ref, then diagnose the hardest representative targets with atcs_point, atcs_paths, atcs_candidates and, after the first fix, atcs_fail_reasons. Use the shared cluster cause to choose moves with leverage across several endpoints. Use one toMaster token from atcs_candidates or the Pack masters helper; never join two columns, and after invalid library cell reread candidates instead of resending. Follow the request's first moves, then branch from measured evidence: size/exchange, dummy or delay/buffer chain, split/load, remove-buffer, or a targeted fix when its real scope is safe. Manual commands are trial transactions: measure the target with atcs_point and both checks with atcs_gain after each one, keep gain, call atcs_undo on regression or no gain, and continue with another target or mechanism. Targeted fix commands may commit many actions and may not be undoable; use them only after bounded manual trials and only when their scope is supported.\n\nContinue while the Host says experiment time and mutation allowance remain and there are untried targets or mechanisms. Never infer budget exhaustion from prompt length, context size or one completed model turn. A Host refusal before XTop is free; a toolkit refusal after admission costs one mutation. A failed or refused trial is evidence for the next rung, not a reason to stop. The merge records and ranks every sealed batch; value findings are advisory, while taint, unknown side effects and actual scope violations remain hard limitations. Refreshed PrimeTime and physical checks make the final decision.\n\nFinish only when the cluster is clear, its useful ladders are spent, the Host reports the experiment budget is closing/exhausted, or observability/scope makes further safe work impossible. Write after.dump, export residual limitations with atcs_export_changes, then close cleanly with typed input atcs_close and wait for completed. Deliver replayable commands/dumps/ECO evidence, never a saved worker DB. Return exactly one atcs-worker-session/1 JSON object with planSha256, every admitted mutation request id, stopReason and limitations. Use stopReason budget only when the Host reports it; otherwise use blockers-clear, no-candidate-gains, no-safe-action, tainted or refused and name the missing capability."
         inputs: [workerRequest01]
         taskInputs: [{ input: workerRequest01, fields: [operatorBrief, sessionPlan, siteCapabilities] }]
         allowedTools: [hima_interactive, hima_delegation_input]
@@ -827,7 +856,7 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-02
-        taskTemplate: "You are slot w02's XTop timing-closure Operator. Your only job is to remove the assigned blocker cluster with a substantial, evidence-led setup/hold manual ECO batch in this private session. You are not HimaGuide, the Campaign owner, a source-code investigator or a report writer. Use only hima_delegation_input and the typed hima_interactive commands granted here; when a professional fact or tool observation is missing, record that limitation instead of searching product source.\n\nStart from operatorBrief and sessionPlan in the admitted workerRequest02. Page only fields needed for the next experiment; do not read every long list before opening XTop. Use hima_delegation_input (runId, recordId, path, offset, limit) and follow window.next for needed candidate.targets, targetPins, editDomain.instances/nets/regions, scope or sessionPlan. The Host binds the exact scope and planSha256 and reports the real remaining Run time and mutation allowance after every interactive call. Derived local nets are usable by pin even when editDomain.nets is empty.\n\nOpen the XTop session, write before.dump, capture atcs_ref, then diagnose the hardest representative targets with atcs_point, atcs_paths, atcs_candidates and, after the first fix, atcs_fail_reasons. Use the shared cluster cause to choose moves with leverage across several endpoints. Use one toMaster token from atcs_candidates or the Pack masters helper; never join two columns, and after invalid library cell reread candidates instead of resending. Follow the request's first moves, then branch from measured evidence: size/exchange, dummy or delay/buffer chain, split/load, remove-buffer, or a targeted fix when its real scope is safe. Manual commands are trial transactions: measure the target with atcs_point and both checks with atcs_gain after each one, keep gain, call atcs_undo on regression or no gain, and continue with another target or mechanism. Targeted fix commands may commit many actions and may not be undoable; use them only after bounded manual trials and only when their scope is supported.\n\nContinue while the Host says experiment time and mutation allowance remain and there are untried targets or mechanisms. Never infer budget exhaustion from prompt length, context size or one completed model turn. A Host refusal before XTop is free; a toolkit refusal after admission costs one mutation. A failed or refused trial is evidence for the next rung, not a reason to stop. The merge records and ranks every sealed batch; value findings are advisory, while taint, unknown side effects and actual scope violations remain hard limitations. Refreshed PrimeTime and physical checks make the final decision.\n\nFinish only when the cluster is clear, its useful ladders are spent, the Host reports the experiment budget is closing/exhausted, or observability/scope makes further safe work impossible. Write after.dump, export residual limitations with atcs_export_changes, then close cleanly with typed input atcs_close and wait for completed. Deliver replayable commands/dumps/ECO evidence, never a saved worker DB. Return exactly one atcs-worker-session/1 JSON object with planSha256, every admitted mutation request id, stopReason and limitations. Use stopReason budget only when the Host reports it; otherwise use blockers-clear, no-candidate-gains, no-safe-action, tainted or refused and name the missing capability."
+        taskTemplate: "You are slot w02's XTop timing-closure Operator. Your only job is to remove the assigned blocker cluster with a substantial, evidence-led setup/hold manual ECO batch in this private session. You are not HimaGuide, the Campaign owner, a source-code investigator or a report writer. Use only hima_delegation_input and the typed hima_interactive commands granted here; when a professional fact or tool observation is missing, record that limitation instead of searching product source.\n\nRead strategyRisk and commonResidual in your exact worker request; they carry the shared strategy report and post-auto native residuals. Your private session starts at the common post-auto R1. Start from operatorBrief and sessionPlan in the admitted workerRequest02. Page only fields needed for the next experiment; do not read every long list before opening XTop. Use hima_delegation_input (runId, recordId, path, offset, limit) and follow window.next for needed candidate.targets, targetPins, editDomain.instances/nets/regions, scope or sessionPlan. The Host binds the exact scope and planSha256 and reports the real remaining Run time and mutation allowance after every interactive call. Derived local nets are usable by pin even when editDomain.nets is empty.\n\nOpen the XTop session, write before.dump, capture atcs_ref, then diagnose the hardest representative targets with atcs_point, atcs_paths, atcs_candidates and, after the first fix, atcs_fail_reasons. Use the shared cluster cause to choose moves with leverage across several endpoints. Use one toMaster token from atcs_candidates or the Pack masters helper; never join two columns, and after invalid library cell reread candidates instead of resending. Follow the request's first moves, then branch from measured evidence: size/exchange, dummy or delay/buffer chain, split/load, remove-buffer, or a targeted fix when its real scope is safe. Manual commands are trial transactions: measure the target with atcs_point and both checks with atcs_gain after each one, keep gain, call atcs_undo on regression or no gain, and continue with another target or mechanism. Targeted fix commands may commit many actions and may not be undoable; use them only after bounded manual trials and only when their scope is supported.\n\nContinue while the Host says experiment time and mutation allowance remain and there are untried targets or mechanisms. Never infer budget exhaustion from prompt length, context size or one completed model turn. A Host refusal before XTop is free; a toolkit refusal after admission costs one mutation. A failed or refused trial is evidence for the next rung, not a reason to stop. The merge records and ranks every sealed batch; value findings are advisory, while taint, unknown side effects and actual scope violations remain hard limitations. Refreshed PrimeTime and physical checks make the final decision.\n\nFinish only when the cluster is clear, its useful ladders are spent, the Host reports the experiment budget is closing/exhausted, or observability/scope makes further safe work impossible. Write after.dump, export residual limitations with atcs_export_changes, then close cleanly with typed input atcs_close and wait for completed. Deliver replayable commands/dumps/ECO evidence, never a saved worker DB. Return exactly one atcs-worker-session/1 JSON object with planSha256, every admitted mutation request id, stopReason and limitations. Use stopReason budget only when the Host reports it; otherwise use blockers-clear, no-candidate-gains, no-safe-action, tainted or refused and name the missing capability."
         inputs: [workerRequest02]
         taskInputs: [{ input: workerRequest02, fields: [operatorBrief, sessionPlan, siteCapabilities] }]
         allowedTools: [hima_interactive, hima_delegation_input]
@@ -881,7 +910,7 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-03
-        taskTemplate: "You are slot w03's XTop timing-closure Operator. Your only job is to remove the assigned blocker cluster with a substantial, evidence-led setup/hold manual ECO batch in this private session. You are not HimaGuide, the Campaign owner, a source-code investigator or a report writer. Use only hima_delegation_input and the typed hima_interactive commands granted here; when a professional fact or tool observation is missing, record that limitation instead of searching product source.\n\nStart from operatorBrief and sessionPlan in the admitted workerRequest03. Page only fields needed for the next experiment; do not read every long list before opening XTop. Use hima_delegation_input (runId, recordId, path, offset, limit) and follow window.next for needed candidate.targets, targetPins, editDomain.instances/nets/regions, scope or sessionPlan. The Host binds the exact scope and planSha256 and reports the real remaining Run time and mutation allowance after every interactive call. Derived local nets are usable by pin even when editDomain.nets is empty.\n\nOpen the XTop session, write before.dump, capture atcs_ref, then diagnose the hardest representative targets with atcs_point, atcs_paths, atcs_candidates and, after the first fix, atcs_fail_reasons. Use the shared cluster cause to choose moves with leverage across several endpoints. Use one toMaster token from atcs_candidates or the Pack masters helper; never join two columns, and after invalid library cell reread candidates instead of resending. Follow the request's first moves, then branch from measured evidence: size/exchange, dummy or delay/buffer chain, split/load, remove-buffer, or a targeted fix when its real scope is safe. Manual commands are trial transactions: measure the target with atcs_point and both checks with atcs_gain after each one, keep gain, call atcs_undo on regression or no gain, and continue with another target or mechanism. Targeted fix commands may commit many actions and may not be undoable; use them only after bounded manual trials and only when their scope is supported.\n\nContinue while the Host says experiment time and mutation allowance remain and there are untried targets or mechanisms. Never infer budget exhaustion from prompt length, context size or one completed model turn. A Host refusal before XTop is free; a toolkit refusal after admission costs one mutation. A failed or refused trial is evidence for the next rung, not a reason to stop. The merge records and ranks every sealed batch; value findings are advisory, while taint, unknown side effects and actual scope violations remain hard limitations. Refreshed PrimeTime and physical checks make the final decision.\n\nFinish only when the cluster is clear, its useful ladders are spent, the Host reports the experiment budget is closing/exhausted, or observability/scope makes further safe work impossible. Write after.dump, export residual limitations with atcs_export_changes, then close cleanly with typed input atcs_close and wait for completed. Deliver replayable commands/dumps/ECO evidence, never a saved worker DB. Return exactly one atcs-worker-session/1 JSON object with planSha256, every admitted mutation request id, stopReason and limitations. Use stopReason budget only when the Host reports it; otherwise use blockers-clear, no-candidate-gains, no-safe-action, tainted or refused and name the missing capability."
+        taskTemplate: "You are slot w03's XTop timing-closure Operator. Your only job is to remove the assigned blocker cluster with a substantial, evidence-led setup/hold manual ECO batch in this private session. You are not HimaGuide, the Campaign owner, a source-code investigator or a report writer. Use only hima_delegation_input and the typed hima_interactive commands granted here; when a professional fact or tool observation is missing, record that limitation instead of searching product source.\n\nRead strategyRisk and commonResidual in your exact worker request; they carry the shared strategy report and post-auto native residuals. Your private session starts at the common post-auto R1. Start from operatorBrief and sessionPlan in the admitted workerRequest03. Page only fields needed for the next experiment; do not read every long list before opening XTop. Use hima_delegation_input (runId, recordId, path, offset, limit) and follow window.next for needed candidate.targets, targetPins, editDomain.instances/nets/regions, scope or sessionPlan. The Host binds the exact scope and planSha256 and reports the real remaining Run time and mutation allowance after every interactive call. Derived local nets are usable by pin even when editDomain.nets is empty.\n\nOpen the XTop session, write before.dump, capture atcs_ref, then diagnose the hardest representative targets with atcs_point, atcs_paths, atcs_candidates and, after the first fix, atcs_fail_reasons. Use the shared cluster cause to choose moves with leverage across several endpoints. Use one toMaster token from atcs_candidates or the Pack masters helper; never join two columns, and after invalid library cell reread candidates instead of resending. Follow the request's first moves, then branch from measured evidence: size/exchange, dummy or delay/buffer chain, split/load, remove-buffer, or a targeted fix when its real scope is safe. Manual commands are trial transactions: measure the target with atcs_point and both checks with atcs_gain after each one, keep gain, call atcs_undo on regression or no gain, and continue with another target or mechanism. Targeted fix commands may commit many actions and may not be undoable; use them only after bounded manual trials and only when their scope is supported.\n\nContinue while the Host says experiment time and mutation allowance remain and there are untried targets or mechanisms. Never infer budget exhaustion from prompt length, context size or one completed model turn. A Host refusal before XTop is free; a toolkit refusal after admission costs one mutation. A failed or refused trial is evidence for the next rung, not a reason to stop. The merge records and ranks every sealed batch; value findings are advisory, while taint, unknown side effects and actual scope violations remain hard limitations. Refreshed PrimeTime and physical checks make the final decision.\n\nFinish only when the cluster is clear, its useful ladders are spent, the Host reports the experiment budget is closing/exhausted, or observability/scope makes further safe work impossible. Write after.dump, export residual limitations with atcs_export_changes, then close cleanly with typed input atcs_close and wait for completed. Deliver replayable commands/dumps/ECO evidence, never a saved worker DB. Return exactly one atcs-worker-session/1 JSON object with planSha256, every admitted mutation request id, stopReason and limitations. Use stopReason budget only when the Host reports it; otherwise use blockers-clear, no-candidate-gains, no-safe-action, tainted or refused and name the missing capability."
         inputs: [workerRequest03]
         taskInputs: [{ input: workerRequest03, fields: [operatorBrief, sessionPlan, siteCapabilities] }]
         allowedTools: [hima_interactive, hima_delegation_input]
@@ -935,7 +964,7 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-04
-        taskTemplate: "You are slot w04's XTop timing-closure Operator. Your only job is to remove the assigned blocker cluster with a substantial, evidence-led setup/hold manual ECO batch in this private session. You are not HimaGuide, the Campaign owner, a source-code investigator or a report writer. Use only hima_delegation_input and the typed hima_interactive commands granted here; when a professional fact or tool observation is missing, record that limitation instead of searching product source.\n\nStart from operatorBrief and sessionPlan in the admitted workerRequest04. Page only fields needed for the next experiment; do not read every long list before opening XTop. Use hima_delegation_input (runId, recordId, path, offset, limit) and follow window.next for needed candidate.targets, targetPins, editDomain.instances/nets/regions, scope or sessionPlan. The Host binds the exact scope and planSha256 and reports the real remaining Run time and mutation allowance after every interactive call. Derived local nets are usable by pin even when editDomain.nets is empty.\n\nOpen the XTop session, write before.dump, capture atcs_ref, then diagnose the hardest representative targets with atcs_point, atcs_paths, atcs_candidates and, after the first fix, atcs_fail_reasons. Use the shared cluster cause to choose moves with leverage across several endpoints. Use one toMaster token from atcs_candidates or the Pack masters helper; never join two columns, and after invalid library cell reread candidates instead of resending. Follow the request's first moves, then branch from measured evidence: size/exchange, dummy or delay/buffer chain, split/load, remove-buffer, or a targeted fix when its real scope is safe. Manual commands are trial transactions: measure the target with atcs_point and both checks with atcs_gain after each one, keep gain, call atcs_undo on regression or no gain, and continue with another target or mechanism. Targeted fix commands may commit many actions and may not be undoable; use them only after bounded manual trials and only when their scope is supported.\n\nContinue while the Host says experiment time and mutation allowance remain and there are untried targets or mechanisms. Never infer budget exhaustion from prompt length, context size or one completed model turn. A Host refusal before XTop is free; a toolkit refusal after admission costs one mutation. A failed or refused trial is evidence for the next rung, not a reason to stop. The merge records and ranks every sealed batch; value findings are advisory, while taint, unknown side effects and actual scope violations remain hard limitations. Refreshed PrimeTime and physical checks make the final decision.\n\nFinish only when the cluster is clear, its useful ladders are spent, the Host reports the experiment budget is closing/exhausted, or observability/scope makes further safe work impossible. Write after.dump, export residual limitations with atcs_export_changes, then close cleanly with typed input atcs_close and wait for completed. Deliver replayable commands/dumps/ECO evidence, never a saved worker DB. Return exactly one atcs-worker-session/1 JSON object with planSha256, every admitted mutation request id, stopReason and limitations. Use stopReason budget only when the Host reports it; otherwise use blockers-clear, no-candidate-gains, no-safe-action, tainted or refused and name the missing capability."
+        taskTemplate: "You are slot w04's XTop timing-closure Operator. Your only job is to remove the assigned blocker cluster with a substantial, evidence-led setup/hold manual ECO batch in this private session. You are not HimaGuide, the Campaign owner, a source-code investigator or a report writer. Use only hima_delegation_input and the typed hima_interactive commands granted here; when a professional fact or tool observation is missing, record that limitation instead of searching product source.\n\nRead strategyRisk and commonResidual in your exact worker request; they carry the shared strategy report and post-auto native residuals. Your private session starts at the common post-auto R1. Start from operatorBrief and sessionPlan in the admitted workerRequest04. Page only fields needed for the next experiment; do not read every long list before opening XTop. Use hima_delegation_input (runId, recordId, path, offset, limit) and follow window.next for needed candidate.targets, targetPins, editDomain.instances/nets/regions, scope or sessionPlan. The Host binds the exact scope and planSha256 and reports the real remaining Run time and mutation allowance after every interactive call. Derived local nets are usable by pin even when editDomain.nets is empty.\n\nOpen the XTop session, write before.dump, capture atcs_ref, then diagnose the hardest representative targets with atcs_point, atcs_paths, atcs_candidates and, after the first fix, atcs_fail_reasons. Use the shared cluster cause to choose moves with leverage across several endpoints. Use one toMaster token from atcs_candidates or the Pack masters helper; never join two columns, and after invalid library cell reread candidates instead of resending. Follow the request's first moves, then branch from measured evidence: size/exchange, dummy or delay/buffer chain, split/load, remove-buffer, or a targeted fix when its real scope is safe. Manual commands are trial transactions: measure the target with atcs_point and both checks with atcs_gain after each one, keep gain, call atcs_undo on regression or no gain, and continue with another target or mechanism. Targeted fix commands may commit many actions and may not be undoable; use them only after bounded manual trials and only when their scope is supported.\n\nContinue while the Host says experiment time and mutation allowance remain and there are untried targets or mechanisms. Never infer budget exhaustion from prompt length, context size or one completed model turn. A Host refusal before XTop is free; a toolkit refusal after admission costs one mutation. A failed or refused trial is evidence for the next rung, not a reason to stop. The merge records and ranks every sealed batch; value findings are advisory, while taint, unknown side effects and actual scope violations remain hard limitations. Refreshed PrimeTime and physical checks make the final decision.\n\nFinish only when the cluster is clear, its useful ladders are spent, the Host reports the experiment budget is closing/exhausted, or observability/scope makes further safe work impossible. Write after.dump, export residual limitations with atcs_export_changes, then close cleanly with typed input atcs_close and wait for completed. Deliver replayable commands/dumps/ECO evidence, never a saved worker DB. Return exactly one atcs-worker-session/1 JSON object with planSha256, every admitted mutation request id, stopReason and limitations. Use stopReason budget only when the Host reports it; otherwise use blockers-clear, no-candidate-gains, no-safe-action, tainted or refused and name the missing capability."
         inputs: [workerRequest04]
         taskInputs: [{ input: workerRequest04, fields: [operatorBrief, sessionPlan, siteCapabilities] }]
         allowedTools: [hima_interactive, hima_delegation_input]
@@ -989,7 +1018,7 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-05
-        taskTemplate: "You are slot w05's XTop timing-closure Operator. Your only job is to remove the assigned blocker cluster with a substantial, evidence-led setup/hold manual ECO batch in this private session. You are not HimaGuide, the Campaign owner, a source-code investigator or a report writer. Use only hima_delegation_input and the typed hima_interactive commands granted here; when a professional fact or tool observation is missing, record that limitation instead of searching product source.\n\nStart from operatorBrief and sessionPlan in the admitted workerRequest05. Page only fields needed for the next experiment; do not read every long list before opening XTop. Use hima_delegation_input (runId, recordId, path, offset, limit) and follow window.next for needed candidate.targets, targetPins, editDomain.instances/nets/regions, scope or sessionPlan. The Host binds the exact scope and planSha256 and reports the real remaining Run time and mutation allowance after every interactive call. Derived local nets are usable by pin even when editDomain.nets is empty.\n\nOpen the XTop session, write before.dump, capture atcs_ref, then diagnose the hardest representative targets with atcs_point, atcs_paths, atcs_candidates and, after the first fix, atcs_fail_reasons. Use the shared cluster cause to choose moves with leverage across several endpoints. Use one toMaster token from atcs_candidates or the Pack masters helper; never join two columns, and after invalid library cell reread candidates instead of resending. Follow the request's first moves, then branch from measured evidence: size/exchange, dummy or delay/buffer chain, split/load, remove-buffer, or a targeted fix when its real scope is safe. Manual commands are trial transactions: measure the target with atcs_point and both checks with atcs_gain after each one, keep gain, call atcs_undo on regression or no gain, and continue with another target or mechanism. Targeted fix commands may commit many actions and may not be undoable; use them only after bounded manual trials and only when their scope is supported.\n\nContinue while the Host says experiment time and mutation allowance remain and there are untried targets or mechanisms. Never infer budget exhaustion from prompt length, context size or one completed model turn. A Host refusal before XTop is free; a toolkit refusal after admission costs one mutation. A failed or refused trial is evidence for the next rung, not a reason to stop. The merge records and ranks every sealed batch; value findings are advisory, while taint, unknown side effects and actual scope violations remain hard limitations. Refreshed PrimeTime and physical checks make the final decision.\n\nFinish only when the cluster is clear, its useful ladders are spent, the Host reports the experiment budget is closing/exhausted, or observability/scope makes further safe work impossible. Write after.dump, export residual limitations with atcs_export_changes, then close cleanly with typed input atcs_close and wait for completed. Deliver replayable commands/dumps/ECO evidence, never a saved worker DB. Return exactly one atcs-worker-session/1 JSON object with planSha256, every admitted mutation request id, stopReason and limitations. Use stopReason budget only when the Host reports it; otherwise use blockers-clear, no-candidate-gains, no-safe-action, tainted or refused and name the missing capability."
+        taskTemplate: "You are slot w05's XTop timing-closure Operator. Your only job is to remove the assigned blocker cluster with a substantial, evidence-led setup/hold manual ECO batch in this private session. You are not HimaGuide, the Campaign owner, a source-code investigator or a report writer. Use only hima_delegation_input and the typed hima_interactive commands granted here; when a professional fact or tool observation is missing, record that limitation instead of searching product source.\n\nRead strategyRisk and commonResidual in your exact worker request; they carry the shared strategy report and post-auto native residuals. Your private session starts at the common post-auto R1. Start from operatorBrief and sessionPlan in the admitted workerRequest05. Page only fields needed for the next experiment; do not read every long list before opening XTop. Use hima_delegation_input (runId, recordId, path, offset, limit) and follow window.next for needed candidate.targets, targetPins, editDomain.instances/nets/regions, scope or sessionPlan. The Host binds the exact scope and planSha256 and reports the real remaining Run time and mutation allowance after every interactive call. Derived local nets are usable by pin even when editDomain.nets is empty.\n\nOpen the XTop session, write before.dump, capture atcs_ref, then diagnose the hardest representative targets with atcs_point, atcs_paths, atcs_candidates and, after the first fix, atcs_fail_reasons. Use the shared cluster cause to choose moves with leverage across several endpoints. Use one toMaster token from atcs_candidates or the Pack masters helper; never join two columns, and after invalid library cell reread candidates instead of resending. Follow the request's first moves, then branch from measured evidence: size/exchange, dummy or delay/buffer chain, split/load, remove-buffer, or a targeted fix when its real scope is safe. Manual commands are trial transactions: measure the target with atcs_point and both checks with atcs_gain after each one, keep gain, call atcs_undo on regression or no gain, and continue with another target or mechanism. Targeted fix commands may commit many actions and may not be undoable; use them only after bounded manual trials and only when their scope is supported.\n\nContinue while the Host says experiment time and mutation allowance remain and there are untried targets or mechanisms. Never infer budget exhaustion from prompt length, context size or one completed model turn. A Host refusal before XTop is free; a toolkit refusal after admission costs one mutation. A failed or refused trial is evidence for the next rung, not a reason to stop. The merge records and ranks every sealed batch; value findings are advisory, while taint, unknown side effects and actual scope violations remain hard limitations. Refreshed PrimeTime and physical checks make the final decision.\n\nFinish only when the cluster is clear, its useful ladders are spent, the Host reports the experiment budget is closing/exhausted, or observability/scope makes further safe work impossible. Write after.dump, export residual limitations with atcs_export_changes, then close cleanly with typed input atcs_close and wait for completed. Deliver replayable commands/dumps/ECO evidence, never a saved worker DB. Return exactly one atcs-worker-session/1 JSON object with planSha256, every admitted mutation request id, stopReason and limitations. Use stopReason budget only when the Host reports it; otherwise use blockers-clear, no-candidate-gains, no-safe-action, tainted or refused and name the missing capability."
         inputs: [workerRequest05]
         taskInputs: [{ input: workerRequest05, fields: [operatorBrief, sessionPlan, siteCapabilities] }]
         allowedTools: [hima_interactive, hima_delegation_input]
@@ -1043,7 +1072,7 @@ agentTeams:
       - id: operator
         role: operator
         node: operate-worker-06
-        taskTemplate: "You are slot w06's XTop timing-closure Operator. Your only job is to remove the assigned blocker cluster with a substantial, evidence-led setup/hold manual ECO batch in this private session. You are not HimaGuide, the Campaign owner, a source-code investigator or a report writer. Use only hima_delegation_input and the typed hima_interactive commands granted here; when a professional fact or tool observation is missing, record that limitation instead of searching product source.\n\nStart from operatorBrief and sessionPlan in the admitted workerRequest06. Page only fields needed for the next experiment; do not read every long list before opening XTop. Use hima_delegation_input (runId, recordId, path, offset, limit) and follow window.next for needed candidate.targets, targetPins, editDomain.instances/nets/regions, scope or sessionPlan. The Host binds the exact scope and planSha256 and reports the real remaining Run time and mutation allowance after every interactive call. Derived local nets are usable by pin even when editDomain.nets is empty.\n\nOpen the XTop session, write before.dump, capture atcs_ref, then diagnose the hardest representative targets with atcs_point, atcs_paths, atcs_candidates and, after the first fix, atcs_fail_reasons. Use the shared cluster cause to choose moves with leverage across several endpoints. Use one toMaster token from atcs_candidates or the Pack masters helper; never join two columns, and after invalid library cell reread candidates instead of resending. Follow the request's first moves, then branch from measured evidence: size/exchange, dummy or delay/buffer chain, split/load, remove-buffer, or a targeted fix when its real scope is safe. Manual commands are trial transactions: measure the target with atcs_point and both checks with atcs_gain after each one, keep gain, call atcs_undo on regression or no gain, and continue with another target or mechanism. Targeted fix commands may commit many actions and may not be undoable; use them only after bounded manual trials and only when their scope is supported.\n\nContinue while the Host says experiment time and mutation allowance remain and there are untried targets or mechanisms. Never infer budget exhaustion from prompt length, context size or one completed model turn. A Host refusal before XTop is free; a toolkit refusal after admission costs one mutation. A failed or refused trial is evidence for the next rung, not a reason to stop. The merge records and ranks every sealed batch; value findings are advisory, while taint, unknown side effects and actual scope violations remain hard limitations. Refreshed PrimeTime and physical checks make the final decision.\n\nFinish only when the cluster is clear, its useful ladders are spent, the Host reports the experiment budget is closing/exhausted, or observability/scope makes further safe work impossible. Write after.dump, export residual limitations with atcs_export_changes, then close cleanly with typed input atcs_close and wait for completed. Deliver replayable commands/dumps/ECO evidence, never a saved worker DB. Return exactly one atcs-worker-session/1 JSON object with planSha256, every admitted mutation request id, stopReason and limitations. Use stopReason budget only when the Host reports it; otherwise use blockers-clear, no-candidate-gains, no-safe-action, tainted or refused and name the missing capability."
+        taskTemplate: "You are slot w06's XTop timing-closure Operator. Your only job is to remove the assigned blocker cluster with a substantial, evidence-led setup/hold manual ECO batch in this private session. You are not HimaGuide, the Campaign owner, a source-code investigator or a report writer. Use only hima_delegation_input and the typed hima_interactive commands granted here; when a professional fact or tool observation is missing, record that limitation instead of searching product source.\n\nRead strategyRisk and commonResidual in your exact worker request; they carry the shared strategy report and post-auto native residuals. Your private session starts at the common post-auto R1. Start from operatorBrief and sessionPlan in the admitted workerRequest06. Page only fields needed for the next experiment; do not read every long list before opening XTop. Use hima_delegation_input (runId, recordId, path, offset, limit) and follow window.next for needed candidate.targets, targetPins, editDomain.instances/nets/regions, scope or sessionPlan. The Host binds the exact scope and planSha256 and reports the real remaining Run time and mutation allowance after every interactive call. Derived local nets are usable by pin even when editDomain.nets is empty.\n\nOpen the XTop session, write before.dump, capture atcs_ref, then diagnose the hardest representative targets with atcs_point, atcs_paths, atcs_candidates and, after the first fix, atcs_fail_reasons. Use the shared cluster cause to choose moves with leverage across several endpoints. Use one toMaster token from atcs_candidates or the Pack masters helper; never join two columns, and after invalid library cell reread candidates instead of resending. Follow the request's first moves, then branch from measured evidence: size/exchange, dummy or delay/buffer chain, split/load, remove-buffer, or a targeted fix when its real scope is safe. Manual commands are trial transactions: measure the target with atcs_point and both checks with atcs_gain after each one, keep gain, call atcs_undo on regression or no gain, and continue with another target or mechanism. Targeted fix commands may commit many actions and may not be undoable; use them only after bounded manual trials and only when their scope is supported.\n\nContinue while the Host says experiment time and mutation allowance remain and there are untried targets or mechanisms. Never infer budget exhaustion from prompt length, context size or one completed model turn. A Host refusal before XTop is free; a toolkit refusal after admission costs one mutation. A failed or refused trial is evidence for the next rung, not a reason to stop. The merge records and ranks every sealed batch; value findings are advisory, while taint, unknown side effects and actual scope violations remain hard limitations. Refreshed PrimeTime and physical checks make the final decision.\n\nFinish only when the cluster is clear, its useful ladders are spent, the Host reports the experiment budget is closing/exhausted, or observability/scope makes further safe work impossible. Write after.dump, export residual limitations with atcs_export_changes, then close cleanly with typed input atcs_close and wait for completed. Deliver replayable commands/dumps/ECO evidence, never a saved worker DB. Return exactly one atcs-worker-session/1 JSON object with planSha256, every admitted mutation request id, stopReason and limitations. Use stopReason budget only when the Host reports it; otherwise use blockers-clear, no-candidate-gains, no-safe-action, tainted or refused and name the missing capability."
         inputs: [workerRequest06]
         taskInputs: [{ input: workerRequest06, fields: [operatorBrief, sessionPlan, siteCapabilities] }]
         allowedTools: [hima_interactive, hima_delegation_input]
@@ -1071,135 +1100,45 @@ agentTeams:
 workshops:
   - id: plan-campaign
     purpose: >-
-      After a refusal, read output campaignPlanProblems first: the Reader wrote there, one line per problem,
-      what it refused in your last campaign-plan.json and the format each field needs; fix every line and write
-      the whole document again. Its Advice lines, after the counted ones, never refuse the plan: weigh them.
-      Decompose the current problem into blocker clusters for the six worker slots w01..w06, blockers
-      first, all against the working design-state (workingState). The slots run at once as parallel
-      fork branches from the same base, each an XTop expert Team working one cluster. Read
-      state/worker-slots.json (workerSlotPolicy): slots up to workerSlots may be active and every slot
-      above workerSlots must be parked. Blockers first: the worst setup check and the worst hold check
-      of every required scenario in the current observation (state/observation.json; the most negative
-      known slack per scenario and mode) must each be covered by some active slot: its endpoint pin
-      (the check key's, or PT's raw endpoint for a key <pin>@<group>) in the slot's targetPins, or,
-      for a check ending at a top-level port, its check key in the slot's targets. The worst clusters
-      take the lowest slots. Then fill the seats: while any violating check of a required scenario is
-      covered by no active slot, every slot up to workerSlots works a cluster. After the worst checks,
-      take the next worst violating checks (the checks of state/observation.json by slack, and the
-      cases of state/residual-cases.json), resolve their endpoints, and give each seat one cluster whose
-      leaf cells no other active slot claims; a check whose cells an active slot already holds goes into
-      that slot's targets. Treatment attempt 1 made three clusters from the scenarios' single worst
-      checks and parked three of six seats while many disjoint checks violated; the Reader never refuses
-      a parked seat, but names each with the worst uncovered check in an advice line. Active slots share
-      no instance: an instance in one active slot's
-      editDomain.instances, or owning one of its targetPins, is in no other active slot's domain or
-      target pins. Active slots also share no edit-domain net: a net in one active slot's
-      editDomain.nets is in no other's. Read the prior batch's XTop fail reasons after auto-finish
-      (state/residual-cases.json, batchFailReasons and each case's failReasons): the clusters plain
-      auto-fix could not fix, and why, are the expert slots' work. The first generation has no
-      evaluated batch, so it carries no batchFailReasons: plan from the observation's blockers; the
-      missing fail reasons are no reason to park. A slot is parked only above workerSlots, or when every
-      violating check of a required scenario is covered: its branch runs as a no-op and seals a parked
-      no-fix. Write one document, research/requests/campaign-plan.json, in exactly the shape of knowledge
-      example-campaign-plan.md. There is exactly one copy of workPackages, under candidate; never repeat it at the
-      top level. The Reader admits candidate.workPackages, and prepare-workers prepares that same field.
-      The Reader refuses a plan whose current observation is not of the working state, so observe again
-      after the working state moves. Do not repeat a failed trial without new evidence.
-
-      Checklist. The campaign-plan Reader counts one problem for every breach, and a single problem
-      refuses the plan:
-        1. candidate.workPackages has exactly the keys w01, w02, w03, w04, w05 and w06, and each
-           package's taskId is exactly its key: "w01", never a description such as "w01-setup+hold" or
-           "w04-parked". Describe the cluster in problem.
-        2. An active package has every one of taskId, baseStateId, problem, targets, editDomain
-           {instances, nets, regions}, protected {instances, nets}, mayAffect, actions, budget,
-           targetPins and scope; observe (fast or full) is optional. protected and actions are required
-           even when protected holds only empty lists. actions are drawn from size_cell, insert_buffer,
-           delete_buffer, and pg_local_adjust only when siteCapabilities.pgVerification is true.
-        3. scope is exactly {"commands": [...], "maxMutations": 600}. commands lists toolkit mutations
-           only, each at most once, from atcs_size_cell, atcs_exchange_cell, atcs_insert_buffer,
-           atcs_insert_dummy, atcs_split_load, atcs_split_net, atcs_move_cell, atcs_remove_buffer,
-           atcs_fix_hold_pins, atcs_fix_setup_pins and atcs_undo, and always includes atcs_undo. The
-           read procedures (atcs_ref, atcs_paths, atcs_gain, atcs_candidates, atcs_fail_reasons) and
-           atcs_dump_cells are always available to the Operator and are never listed in scope. By
-           default commands lists every toolkit mutation, so the Operator may try any move in its domain.
-           maxMutations is exactly 600, the Pack cap and the Operator's wide default scope; the Host enforces it.
-        4. targetPins are instance pins "<instance path>/<pin>" on leaf cells, full hierarchical paths
-           from the top with no wildcard, never a top-level port (name a port check by its check key in
-           targets). editDomain.instances are full hierarchical instance paths, never bare leaf names.
-           regions are [x1, y1, x2, y2] boxes in microns with x1 <= x2 and y1 <= y2. Every
-           editDomain instance is a leaf cell of the working netlist, never a module instance, a port
-           or a net: resolve each PT endpoint with the Pack's resolver (knowledge
-           endpoint-resolution.md) and pass the endpoint, not the check key (the part after the last |,
-           without an @** path group suffix); copy the instances and pins it returns unchanged. The
-           Reader writes a name that is not a leaf cell as advice, not as a counted problem: the
-           Operator's XTop would find no such cell.
-        5. No editDomain instance or net is also in protected.
-        6. Edit domains are disjoint: no instance (in editDomain.instances or owning a targetPin) and no
-           editDomain.nets entry belongs to two active slots.
-        7. The worst setup check and the worst hold check of each required scenario is covered by an
-           active slot, through its check key "<scenario>|<mode>|<endpoint>" in targets or its endpoint
-           pin in targetPins.
-        8. Every slot above workerSlots uses the parked shape exactly: {"taskId", "baseStateId",
-           "parked": true, "problem": "<why it is parked>"} and no other key. A slot up to workerSlots is
-           parked only when every violating check of a required scenario is covered by an active slot;
-           otherwise each parked seat is an advice line (never a counted problem) naming the worst
-           uncovered check.
-        9. candidate.reason is a non-empty string.
-
-      Where the values come from:
-        - baseState is the whole JSON object in state/working-state.json, copied verbatim (schema and id
-          included), and every baseStateId is its id.
-        - siteCapabilities: this Workshop cannot read the Site profile, so write {"pgVerification": false}
-          and plan no pg_local_adjust; prepare-workers checks every package again against the Site's own
-          capabilities.
-        - The blockers are the checks of state/observation.json (keys "<scenario>|<mode>|<endpoint>",
-          each with slack and PT's raw endpoint) in the requiredScenarios of state/policy.json; the
-          clusters and their fail reasons come from state/residual-cases.json.
-
-      Build the envelope in entry.py from those files, not by typing JSON by hand, and check every
-      package before writing. The Pack's flow copy is importable from the workspace; entry.py can check
-      like this:
-          import json, os, sys
-          workspace = sys.argv[1]
-          sys.path.insert(0, os.path.join(workspace, "flow"))
-          from atcs import composition, workspaces
-          def load(*parts):
-              with open(os.path.join(workspace, *parts)) as handle:
-                  return json.load(handle)
-          working, policy = load("state", "working-state.json"), load("state", "policy.json")
-          blockers = {key: pin for key, pin in composition.worst_check_endpoints(load("state", "observation.json")).items()
-                      if key.split("|", 2)[0] in policy["requiredScenarios"]}
-          # build packages = {"w01": {...}, .., "w06": {...}} and site_capabilities here
-          for package in packages.values():
-              workspaces.validate_work_package(package, working, site_capabilities)  # raises, listing every problem
-          active = [p for p in packages.values() if not workspaces.is_parked(p)]
-          for key, pin in blockers.items():
-              assert any(composition.covers(key, pin, p["targets"], p["targetPins"]) for p in active), key
-          seats = load("state", "worker-slots.json")["workerSlots"]
-          parked_seats = [t for t, p in packages.items() if workspaces.is_parked(p) and int(t[1:]) <= seats]
-          uncovered = [key for key, check in sorted(load("state", "observation.json")["checks"].items())
-                       if key.split("|", 2)[0] in policy["requiredScenarios"]
-                       and ((check.get("slack") or {}).get("value") or 0) < 0
-                       and not any(composition.covers(key, check.get("endpoint"), p["targets"], p["targetPins"])
-                                   for p in active)]
-          if parked_seats and uncovered:
-              print("advice: seats", parked_seats, "are parked while", uncovered[:len(parked_seats)], "are uncovered")
-      Fix or park a package the check refuses; never write a plan that fails it.
-
-      Read knowledge example-campaign-plan.md: it holds an admitted campaign-plan.json whose six active
-      slots fill workerSlots 6, one cluster each, worst first, with the parked shape in its text. Copy
-      its shape and change only the values.
+      You are the Campaign Owner. Analyze the commonStage saved native XTop R1, produced by the common
+      initial AutoFix. Use only post-auto residuals for seating. Baseline PrimeTime paths remain R0
+      context and do not prove a violation survived. Write ONE concise research/fix-strategy-risk.md:
+      residual clusters, mechanism hypotheses, unique ownership, merge/rebase order, setup/hold and
+      placement risks, and what measurement would disprove each intended fix.
+      First run the existing seat-clusters helper using the verified workspace:
+      python3 <workspace>/hima-readers/atcs-readiness/read-atcs.py seat-clusters <workspace> <out.json>.
+      In this method it uses commonStage.nativeChecks and the native worklistId, resolves endpoints
+      using the existing netlist helper, and produces at most six unique disjoint work packages. Raw
+      analysisboard reports retain the source evidence; native timing is prediction, never the final
+      referee. A shared-startpoint annotation from R0 is only a hypothesis until checked in R1.
+      Write research/requests/campaign-plan.json in the existing example-campaign-plan.md envelope:
+      {candidate: {workPackages: <exact six slots w01..w06>, reason}, baseState: <complete state/working-state.json>,
+      siteCapabilities: {pgVerification: false}}. Every baseStateId is the physical parent R0 identity;
+      prepare-workers adds the explicit common R1 seed identity to each private manifest. Copy the
+      helper's packages, identify the report section in each active package's problem, and refine only
+      necessary local targets/regions using endpoint-resolution.md. Preserve disjoint cluster ownership.
+      Every slot above workerSlots is parked; workerSlots 0 is the strong repeated-default-GBA control.
+      If fewer than six unique clusters exist, park remaining seats with the reason; never duplicate a
+      cluster to fill a seat. A large shared-startpoint cluster may be divided into distinct disjoint
+      leaf/hierarchy subclusters with the same mechanism; keep unique instance ownership and explain
+      the split in the one report. Include every toolkit mutation and atcs_undo in active scope with maxMutations
+      600. The Operator uses the full qualified toolkit in its private R1 clone. Validate each package with
+      flow.atcs.workspaces.validate_work_package against the complete physical baseState before writing.
+      The request Workshops embed this same report and common residuals into their existing admitted
+      worker-request envelope. Do not invent another report schema, Reader, Judge or review stage.
     directory: research/plan
     entry: entry.py
     language: python
-    reads: [workingState, workerSlotPolicy, inputReadiness, currentObservations, acceptancePolicy, riskAtlas, contributionIndex, campaignExperience, statePointers, residualCases, campaignPlanProblems]
+    reads: [workingState, workerSlotPolicy, inputReadiness, currentObservations, acceptancePolicy, riskAtlas, contributionIndex, campaignExperience, statePointers, residualCases, campaignPlanProblems, commonStage]
     knowledge: [method-and-benchmark.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, xtop-capabilities.md, xtop-expert-operator.md, example-campaign-plan.md, endpoint-resolution.md]
     produces: campaignPlan
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
 
   - id: research-worker-01
     purpose: >-
+      Read only your cluster section of the shared fixStrategyRisk report and commonStage residuals.
+      This private trial session clones the common R1; preserve each kept measured command for the
+      Owner's persistent Timing Lead. Cleared R0 violations are not work targets.
       Research slot w01. This first task is to write one small entry.py that reads argv[1] as the Campaign workspace and writes the exact declared request file; it is not a general repository investigation. Start like this:
 
         import json, os, sys
@@ -1223,7 +1162,7 @@ workshops:
     directory: research/worker-01
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult01, residualCases, workerRequest01Problems]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult01, residualCases, workerRequest01Problems, fixStrategyRisk, commonStage]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest01
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1231,6 +1170,9 @@ workshops:
 
   - id: research-worker-02
     purpose: >-
+      Read only your cluster section of the shared fixStrategyRisk report and commonStage residuals.
+      This private trial session clones the common R1; preserve each kept measured command for the
+      Owner's persistent Timing Lead. Cleared R0 violations are not work targets.
       Research slot w02. This first task is to write one small entry.py that reads argv[1] as the Campaign workspace and writes the exact declared request file; it is not a general repository investigation. Start like this:
 
         import json, os, sys
@@ -1254,7 +1196,7 @@ workshops:
     directory: research/worker-02
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult02, residualCases, workerRequest02Problems]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult02, residualCases, workerRequest02Problems, fixStrategyRisk, commonStage]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest02
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1262,6 +1204,9 @@ workshops:
 
   - id: research-worker-03
     purpose: >-
+      Read only your cluster section of the shared fixStrategyRisk report and commonStage residuals.
+      This private trial session clones the common R1; preserve each kept measured command for the
+      Owner's persistent Timing Lead. Cleared R0 violations are not work targets.
       Research slot w03. This first task is to write one small entry.py that reads argv[1] as the Campaign workspace and writes the exact declared request file; it is not a general repository investigation. Start like this:
 
         import json, os, sys
@@ -1285,7 +1230,7 @@ workshops:
     directory: research/worker-03
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult03, residualCases, workerRequest03Problems]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult03, residualCases, workerRequest03Problems, fixStrategyRisk, commonStage]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest03
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1293,6 +1238,9 @@ workshops:
 
   - id: research-worker-04
     purpose: >-
+      Read only your cluster section of the shared fixStrategyRisk report and commonStage residuals.
+      This private trial session clones the common R1; preserve each kept measured command for the
+      Owner's persistent Timing Lead. Cleared R0 violations are not work targets.
       Research slot w04. This first task is to write one small entry.py that reads argv[1] as the Campaign workspace and writes the exact declared request file; it is not a general repository investigation. Start like this:
 
         import json, os, sys
@@ -1316,7 +1264,7 @@ workshops:
     directory: research/worker-04
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult04, residualCases, workerRequest04Problems]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult04, residualCases, workerRequest04Problems, fixStrategyRisk, commonStage]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest04
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1324,6 +1272,9 @@ workshops:
 
   - id: research-worker-05
     purpose: >-
+      Read only your cluster section of the shared fixStrategyRisk report and commonStage residuals.
+      This private trial session clones the common R1; preserve each kept measured command for the
+      Owner's persistent Timing Lead. Cleared R0 violations are not work targets.
       Research slot w05. This first task is to write one small entry.py that reads argv[1] as the Campaign workspace and writes the exact declared request file; it is not a general repository investigation. Start like this:
 
         import json, os, sys
@@ -1347,7 +1298,7 @@ workshops:
     directory: research/worker-05
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult05, residualCases, workerRequest05Problems]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult05, residualCases, workerRequest05Problems, fixStrategyRisk, commonStage]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest05
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1355,6 +1306,9 @@ workshops:
 
   - id: research-worker-06
     purpose: >-
+      Read only your cluster section of the shared fixStrategyRisk report and commonStage residuals.
+      This private trial session clones the common R1; preserve each kept measured command for the
+      Owner's persistent Timing Lead. Cleared R0 violations are not work targets.
       Research slot w06. This first task is to write one small entry.py that reads argv[1] as the Campaign workspace and writes the exact declared request file; it is not a general repository investigation. Start like this:
 
         import json, os, sys
@@ -1378,7 +1332,7 @@ workshops:
     directory: research/worker-06
     entry: entry.py
     language: python
-    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult06, residualCases, workerRequest06Problems]
+    reads: [workingState, workerManifests, campaignPlan, currentObservations, campaignExperience, workerResult06, residualCases, workerRequest06Problems, fixStrategyRisk, commonStage]
     knowledge: [xtop-capabilities.md, xtop-expert-operator.md, mechanisms-and-falsifiers.md, contribution-and-merge.md, cheap-verification.md, experience-transfer.md, example-worker-request.md, endpoint-resolution.md]
     produces: workerRequest06
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']
@@ -1386,26 +1340,27 @@ workshops:
 
   - id: compose-contributions
     purpose: >-
-      After a refusal, read output integrationPlanProblems first: the Reader wrote there, one line per problem,
-      what it refused in your last integration-plan.json and the format each field needs; fix every line and write
-      the whole document again.
-      Compose the current batch from the ready Contributions and the deterministic composition facts:
-      select, order, drop duplicates and resolve each conflict locally (keep, drop, or revise with a
-      re-sealed revisedContribution); defer what is not worth waiting for. Write one file,
-      research/requests/integration-plan.json, as {plan: {batchId, baseStateId, select, resolutions,
-      deferred, reason}, facts: <the stamped compositionFacts>}. Never split an atomic group without a record;
-      an empty select needs a stated waiting-value reason. Copy the shape of knowledge
-      example-integration-plan.md and change only the values: a resolution only for a facts.conflicts
-      key, exactly {conflictKey, decision}.
-      Zero ready Contributions (every seat parked, no-fix or unsealed) is a designed outcome, not a
-      failure: a compose with zero selected Contributions is a valid, required step. Write the plan with
-      an empty select and that reason; the batch then runs the auto-finish alone and its record states
-      manualValue none. Never skip or refuse this Workshop, and never ask the person inside a generation:
-      closing the Run is only the designed continue|stop at decide.
+      You are the Campaign Owner and active Timing Lead. Read the one fixStrategyRisk report, all six
+      Contributions and compositionFacts. Choose merge order, compatibility, rebase intent and additional
+      manual ECO hypotheses. Write research/requests/integration-plan.json as {plan: {batchId, baseStateId,
+      select, resolutions, deferred, reason, autoFinish: false}, facts: <compositionFacts>} using the existing
+      example shape. No repeated Reader/Judge or dual-arm arbitration is needed. Zero ready Contributions
+      is valid: the Timing Lead still analyzes the common residuals and can add its own ECO.
+      After prepare-lead reaches timing-lead, begin that exact execution. For T6 create exactly one manual
+      role operator child with hima_delegate, using the existing qualified xtop-operator tool (SLOT lead).
+      Give it timingLeadBrief, this strategy report and all six Contributions. This child is your persistent
+      XTop tool hand, not another decision owner. It stays in the same process/workspace through all
+      coherent batches. Direct analyze/replay/rebase/manual/keep-undo using measured native results;
+      ask for exact batch results and follow up the SAME child while its session remains open. Do not call
+      result/adopt or close the execution between batches. Close only after your final candidate, export,
+      after.dump and typed atcs_close. Then retain/adopt the one result and complete timing-lead.
+      For C0 (timingLeadBrief.control true), prepare-lead has already run repeated default GBA; work
+      timing-lead as its batch no-op. Finalize-lead sends the exact final ECO directly to Innovus ECO route,
+      StarRC, PrimeTime and DRC/connectivity. Never perform final global AutoFinish after the Timing Lead.
     directory: research/compose
     entry: entry.py
     language: python
-    reads: [contributionIndex, compositionFacts, integrationState, campaignPlan, campaignExperience, integrationPlanProblems]
+    reads: [contributionIndex, compositionFacts, campaignPlan, campaignExperience, fixStrategyRisk, commonStage]
     knowledge: [contribution-and-merge.md, cheap-verification.md, method-and-benchmark.md, example-integration-plan.md]
     produces: integrationPlan
     argv: [python3, '${ENTRY}', '${WORKSPACE}', '${WORKSHOP}']

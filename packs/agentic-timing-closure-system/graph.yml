@@ -1,30 +1,8 @@
-# Reference graph (SPEC "Run contract"). User decision 2026-09-29 (ADR-0016): one generation reads
-#
-#   plan -> six self-driving expert branches -> merge (compose, replay, reconcile, presta)
-#        -> one refresh -> evaluate -> automatic re-observation -> ONE owner decision
-#
-# and the decision has two outcomes: continue with the next generation from the working state (the
-# revisit to the refresh-cap gate), or stop, the honest ending. The owner acts at three points of a
-# generation and nowhere else: the plan Workshop, the merge Workshop (compose, at the join) and the
-# decision. Everything between them drives itself (`autopilot` below): the Harness takes the node
-# turns, adopts each schema-valid Team result, and tells the owner once when the Run reaches the
-# owner's next point.
-#
-# Harness facts this graph is shaped by (packages/harness/src/packs.ts):
-# - a Judge routes on its FIRST rule only; the in-loop Judges keep only identity and merge-integrity
-#   checks and the refresh-budget Goal cap, and every one of them labels all three outcomes, since an
-#   unlabelled UNDETERMINED would wait for a person inside a self-driving segment (refused at load);
-# - an Explore node weighs the last Judge of its Generation, which lists at least two rules whose
-#   verdicts cite the Generation's latest unbranched reading; after the join every way to `decide`
-#   passes a fresh reading and such a Judge (packs.ts `exploreAfter`), hence the two-rule integrity
-#   Judges and the re-read of the replay state before its scope Judge;
-# - `prepare-workers` forks into six branches joined at the judge `check-worker-results`; a branch is
-#   act nodes only;
-# - `wait-for-person` is the honest end and nothing else: the minimum inputs missing, or the Run's
-#   `max_physical_refreshes` spent at the start of a generation. It has no edge out: clearing it ends
-#   the Run. A person is never asked inside a generation.
+# Common native XTop analysis -> initial AutoFix -> residual strategy -> six private trials.
+# Campaign Owner directs one persistent integration Operator, then exports directly to the referee.
+# No dual-arm arbitration, PreSTA or final global AutoFinish in this route.
 id: agentic-timing-closure-system
-version: "0.2.2"
+version: "0.2.3"
 entry: bind-inputs
 autopilot:
   # Inputs and baseline, and every generation's refresh-cap gate and slot binding, up to the plan.
@@ -37,9 +15,9 @@ autopilot:
   - { fork: prepare-workers, revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 48000 } }
   # The join collects every slot and computes the composition facts for the merge Workshop.
   - { from: [check-worker-results], until: [compose] }
-  # The admitted merge replays, reconciles, pre-checks, refreshes once, evaluates, adopts and observes
-  # the working state again, up to the owner's one decision.
-  - { from: [read-integration-plan], until: [decide] }
+  # Stop at the Owner-directed persistent lead. Its final ECO then drives the existing full referee.
+  - { from: [prepare-lead], until: [timing-lead] }
+  - { from: [finalize-lead], until: [decide] }
 nodes:
   # 1. Bind and verify inputs; strict scope.
   - id: bind-inputs
@@ -244,8 +222,7 @@ nodes:
     kind: judge
     parameters: { rules: [worker-result-admissible] }
 
-  # 5. Merge: collect, the composition facts, the owner's integration plan, replay from the common
-  #    base, reconcile. Each integrity Judge refuses to the owner's decision.
+  # 5. Join once; the Owner briefs and directs the retained Timing Lead session.
   - id: collect
     kind: act
     parameters: { tool: collect }
@@ -261,59 +238,6 @@ nodes:
   - id: compose
     kind: act
     parameters: { workshop: compose-contributions }
-  - id: read-integration-plan
-    kind: act
-    parameters: { observes: integrationPlan }
-  - id: check-integration-plan
-    kind: judge
-    parameters: { rules: [request-admissible, request-checked] }
-  - id: compose-facts-admitted
-    kind: act
-    parameters: { tool: compose-facts-admitted }
-  - id: read-composition-facts-admitted
-    kind: act
-    parameters: { observes: compositionFacts }
-  - id: check-composition
-    kind: judge
-    parameters: { rules: [composition-ready, composition-checked] }
-  - id: replay-prepare
-    kind: act
-    parameters:
-      tool: replay-prepare
-      arguments:
-        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
-        AUTO_FINISH: { from: strategy, name: autoFinish }
-  - id: reconcile
-    kind: act
-    parameters: { tool: reconcile }
-  - id: read-integration-state
-    kind: act
-    parameters: { observes: integrationState }
-  - id: check-replay-mismatch
-    kind: judge
-    parameters: { rules: [replay-consistent-mismatch, replay-consistent-scope] }
-  - id: reread-integration-state
-    kind: act
-    parameters: { observes: integrationState }
-  - id: check-replay-scope
-    kind: judge
-    parameters: { rules: [replay-consistent-scope, replay-consistent-mismatch] }
-
-  # 6. The cheap pre-check is evidence, never a gate: its facts are read and recorded.
-  - id: presta
-    kind: act
-    parameters:
-      tool: presta
-      arguments:
-        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
-        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
-  - id: read-precheck
-    kind: act
-    parameters: { observes: precheckEvidence }
-
-  # 7. One joint implementation and full refresh, its evaluation and adoption (the adopt tool applies
-  #    the stamped policy itself and never refuses a candidate), then the working state observed again,
-  #    its risk and residual, and the experience entry: all facts the next plan and the decision read.
   - id: implement
     kind: act
     parameters:
@@ -402,6 +326,19 @@ nodes:
     kind: wait
     parameters: { blocker: scope-or-input-required }
 
+  - id: common-autofix
+    kind: act
+    parameters: { tool: common-autofix, arguments: { SITE_CAPABILITIES: { from: input, name: siteCapabilities } } }
+  - id: prepare-lead
+    kind: act
+    parameters: { tool: prepare-lead, arguments: { SITE_CAPABILITIES: { from: input, name: siteCapabilities } } }
+  - id: timing-lead
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: lead } }
+  - id: finalize-lead
+    kind: act
+    parameters: { tool: finalize-lead }
+
 edges:
   - { from: bind-inputs, to: read-readiness }
   - { from: read-readiness, to: check-inputs }
@@ -413,7 +350,8 @@ edges:
   - { from: policy, to: physical-baseline }
   - { from: physical-baseline, to: risk-baseline }
   - { from: risk-baseline, to: residual-baseline }
-  - { from: residual-baseline, to: read-refresh-budget }
+  - { from: residual-baseline, to: common-autofix }
+  - { from: common-autofix, to: read-refresh-budget }
 
   - { from: read-refresh-budget, to: check-refresh-budget }
   - { from: check-refresh-budget, to: bind-worker-slots, outcome: PASS }
@@ -470,29 +408,11 @@ edges:
   - { from: read-contribution-index, to: compose-facts }
   - { from: compose-facts, to: read-composition-facts }
   - { from: read-composition-facts, to: compose }
-  - { from: compose, to: read-integration-plan }
-  - { from: read-integration-plan, to: check-integration-plan }
-  - { from: check-integration-plan, to: compose-facts-admitted, outcome: PASS }
-  - { from: check-integration-plan, to: decide, outcome: FAIL }
-  - { from: check-integration-plan, to: decide, outcome: UNDETERMINED }
-  - { from: compose-facts-admitted, to: read-composition-facts-admitted }
-  - { from: read-composition-facts-admitted, to: check-composition }
-  - { from: check-composition, to: replay-prepare, outcome: PASS }
-  - { from: check-composition, to: decide, outcome: FAIL }
-  - { from: check-composition, to: decide, outcome: UNDETERMINED }
-  - { from: replay-prepare, to: reconcile }
-  - { from: reconcile, to: read-integration-state }
-  - { from: read-integration-state, to: check-replay-mismatch }
-  - { from: check-replay-mismatch, to: reread-integration-state, outcome: PASS }
-  - { from: check-replay-mismatch, to: decide, outcome: FAIL }
-  - { from: check-replay-mismatch, to: decide, outcome: UNDETERMINED }
-  - { from: reread-integration-state, to: check-replay-scope }
-  - { from: check-replay-scope, to: presta, outcome: PASS }
-  - { from: check-replay-scope, to: decide, outcome: FAIL }
-  - { from: check-replay-scope, to: decide, outcome: UNDETERMINED }
+  - { from: compose, to: prepare-lead }
+  - { from: prepare-lead, to: timing-lead }
+  - { from: timing-lead, to: finalize-lead }
+  - { from: finalize-lead, to: implement }
 
-  - { from: presta, to: read-precheck }
-  - { from: read-precheck, to: implement }
   - { from: implement, to: extract }
   - { from: extract, to: sta }
   - { from: sta, to: physical-candidate }

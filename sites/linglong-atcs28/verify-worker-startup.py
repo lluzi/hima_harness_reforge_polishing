@@ -51,7 +51,7 @@ def verify_database_tree(directory, workspace, write_root, read_roots):
 
 def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_root):
     workspace = plain(workspace)
-    if slot not in ("w01", "w02", "w03", "w04", "w05", "w06"):
+    if slot not in ("w01", "w02", "w03", "w04", "w05", "w06", "lead"):
         raise ValueError("unknown slot")
     profile_path = plain(profile_path)
     if profile_path.is_relative_to(workspace) or file_hash(profile_path) != profile_hash:
@@ -129,6 +129,19 @@ def verify(workspace, slot, expected_flow, profile_path, profile_hash, admin_roo
         for path in target.rglob("*") if target.is_dir() else [target]:
             plain(path, workspace / "research/observe")
     context = cli._verified_xtop_context(workspace, base["id"], profile)
+    if context.get("seed"):
+        common = json.loads(plain(workspace / "state/common-stage.json", workspace).read_text())
+        expected_seed = {"stateId": common["stateId"], "worklistId": common["worklistId"], **common["seed"]}
+        if manifest.get("xtopSeed") != expected_seed:
+            raise ValueError("worker manifest is not seeded from the qualified common R1")
+        seed_root = plain(workspace / common["seed"]["path"], workspace)
+        if seed_root.is_relative_to(root):
+            raise ValueError("common R1 lies in the writable slot")
+        verify_database_tree(seed_root, workspace, root, roots)
+    if slot == "lead":
+        for name in ("recipe.tcl", "auto-fix.tcl"):
+            if file_hash(plain(root / name, root)) != (entry.get("preparedReplay") or {}).get(name):
+                raise ValueError("lead replay input changed after preparation")
     for refs in context["libraryFiles"].values():
         for ref in refs:
             path = plain(ref["path"])
