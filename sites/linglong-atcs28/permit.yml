@@ -47,7 +47,7 @@ allowedWrappers:
   - /data/eda/project/hima_harness/operator-admin/atcs-v19/atcs-xtop-operator-v19.sh
   - /data/eda/project/hima_harness/operator-admin/atcs-v20/atcs-xtop-operator-v20.sh
   - /data/eda/project/hima_harness/operator-admin/atcs-v21/atcs-xtop-operator-v21.sh
-  - /data/eda/project/hima_harness/operator-admin/atcs-v23/atcs-xtop-operator-v22.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v23/atcs-xtop-operator-v23.sh
 forbidden:
   - services
   - licence-servers
