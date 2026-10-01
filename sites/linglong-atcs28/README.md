@@ -1,12 +1,49 @@
 # linglong-atcs28 Site administration
 
-Current candidate (Issue 64, before treatment attempt 4, Pack 0.2.0 at 9fd1331e): `atcs-xtop-operator-v15.sh` under
-`operator-admin/atcs-v15/` (wrapper sha `60d951f3a95cdfa4...`, installed 2026-09-30, mode 0555). v15 is v14 with the
-atcs-v15 paths and one pin changed: `flow_digest` `31fbee29426050...`, the Pack flow whose Operator template states the
-dump names `before.dump`/`after.dump` exactly (treatment attempt 3, D-T03-2). Beside it are the same verifier
-(`014fcfa5...`) and slot step (`293b2a3f...`) bytes as v13's and v14's, and bootstrap root
-`operator-admin/atcs-v15/bootstraps/`. The Pack's `xtop-operator` binding names v15 and the Permit reads `atcs-v15`.
-The template `atcs-xtop-operator-v15.sh` with its placeholders filled is byte-identical to the installed v15.
+Development successor (Issue #66 export/close repair, Pack 0.2.2): `atcs-xtop-operator-v23.sh`
+under `operator-admin/atcs-v23/`. It is **not installed or qualified**. Its flow removes unused worker
+saved-DB dependencies, refreshes ECO scripts after later admitted mutations and records export limitations.
+The Harness refuses agent transport close before a declared typed close-effect input completed; forced
+Host/recovery/budget/person closure remains. Worker commands/dumps are replayable without a private DB.
+`derive-v23.py` is the count-asserted v22→v23 identity transform. Confinement, verifier, slot hygiene and
+transport cleanup are unchanged; qualification placeholders must be filled from exact successor evidence.
+Flow digest: `f5c141f2aa6759bd333e51b4f09ebc6bd9ff53f52ead695f62af1b6693d91355`.
+
+v22 reached an honest single-seat model L4 **FAIL**: repeat export depended on an unused saved workspace,
+and generic close bypassed `atcs_close`, leaving the only active Contribution inadmissible. The complete
+six-seat effectiveness experiment has not run; the auto-only qualification result supports no method claim.
+
+Development candidate (Issue 64 prompt/context repair, Pack 0.2.1): `atcs-xtop-operator-v22.sh`
+under `operator-admin/atcs-v22/`. It is **not installed or qualified yet**. v22 carries v21's Q1
+repairs, confinement, verifier, slot hygiene and close behavior and changes candidate identity pins
+for the role/context-optimized Pack flow. That flow also returns the bounded XTop path-analysis report
+body through `atcs_paths`, so an Operator receives evidence rather than an unreadable filename notice.
+Candidate flow digest `86c37b9808d8577e...`, adapter `669acfb86175778a...`, template
+`3bece0da5ed11a75...`; verifier `c9dca81c73dd9585...` and slot step `293b2a3f...` are unchanged.
+`derive-v22.py` is the count-asserted v21→v22 transform; the environment template remains a
+placeholder until this changed flow receives its own bounded qualification.
+
+Current candidate (Issue 64 / ATCS-09, after Q1/T07, Pack 0.2.0): `atcs-xtop-operator-v21.sh` under `operator-admin/atcs-v21/`
+(wrapper sha `63d28b332b344611...`, installed 2026-09-30, mode 0555). v21 is v20 with the atcs-v21 paths and the flow pin
+`09781f2eaa78475a...` (adapter `669acfb86175778a...` unchanged): the flow whose `atcs_point` reads the summarize_gba_violations
+endpoint table (XTop has no report_timing), whose `atcs_ref` prints the Site hold-cell list for dummy and delay-chain
+forms, whose `atcs_close` writes a skipped after.dump/export so a kept edit survives a Host close, and whose replay reads
+only the last fix flow's check (Q1 repairs). The verifier (`c9dca81c73dd9585...`, static checks only) and the slot step
+(`293b2a3f...`) are v18's bytes; bootstrap root `operator-admin/atcs-v21/bootstraps/`. The Pack's `xtop-operator` binding
+names v21 and the Permit reads `atcs-v21`. The template `atcs-xtop-operator-v21.sh` with its placeholders filled is
+byte-identical to the installed v21 (`derive-v21.py`, count-asserted hunks).
+
+Previous candidate v20 (`3b447439e01296ce...`): flow `5ec10d9cfbd7...` (T06 repairs; Q1 PASS and T07 ran on it).
+
+Previous candidate v19 (`24fb0447c1803551...`): flow `3e8a24fbfc3c...` (in-session pin resolution, target pins always emitted).
+
+Previous candidate v18 (`67fb15e19cc8a3fe...`): static-only verifier, best-effort-replay flow `2835a2c3d4ce...`.
+
+Previous candidates: v17 (`d9c7414a53670c13...`, adapter pin `98be15132d8c...`, flow pin `476ebdb793ba...`, verifier
+`014fcfa5...` with the regeneration compare that blocked T05) and v16 (`7bd590dda9ecbcd3...`, flow pin only).
+
+Previous candidate (before treatment attempt 4): `atcs-xtop-operator-v15.sh` under `operator-admin/atcs-v15/`
+(wrapper sha `60d951f3a95cdfa4...`, installed 2026-09-30, mode 0555), flow pin `31fbee294260...`.
 
 Previous candidate (before treatment attempt 3): `atcs-xtop-operator-v14.sh` under `operator-admin/atcs-v14/`
 (wrapper sha `2f4ced1aa18d76d3...`, installed 2026-09-29, mode 0555), flow pin `a47368518262...`.
@@ -385,3 +422,26 @@ This wrapper has no batch path. Since Issue #64 Task 5 the `xtop-operator` tool 
 batch path is the Pack's own `python3 flow/atcs_cli.py operate-parked` no-op for a parked or skipped
 slot, which never calls this wrapper or XTop; the wrapper always launches one interactive XTop session
 per call and exits when that session closes.
+
+## Batch-job descendant cleanup (Issue #66)
+
+`site.yml` selects `inputs/siteCapabilities-v5.json`. Its `edaShell` runs
+`eda-job-reaper.py` inside the existing `edarun` container, before `bash -lc`.
+Install the script at
+`/data/eda/project/hima_harness/operator-admin/atcs-job-reaper-v1/eda-job-reaper.py`
+with mode 0555 and record its SHA-256 in the candidate evidence. This Linux subreaper
+waits only this job's adopted descendants; inherited stdio and the main command's exit
+status are preserved. HUP/INT/TERM are forwarded; descendants still alive two seconds
+after the main command exits are killed and reaped, with a further five-second bound.
+Forced SIGKILL of the reaper itself cannot guarantee cleanup.
+
+The shared `edarun`, persistent container and existing zombie processes are unchanged.
+The frozen v23 interactive wrapper still pins v4 for its identical library/XTop context;
+its isolated worker-container lifecycle already owns that cleanup. v5 changes only
+the batch launch prefix. Rollback selects v4 in the Site binding.
+
+No-licence regression on the Linux Site:
+`edarun python3 /path/to/test_eda_job_reaper.py` beside the script. The test uses an
+outer subreaper to contain the failing plain double-fork case. Actual EDA cleanup is
+validated by the next matched experiment's pre/post zombie identities, not by this
+fixture. Do not recreate the shared container to erase earlier evidence.

@@ -778,6 +778,27 @@ class XtopReplayEndToEndTest(unittest.TestCase):
         self.assertTrue((Path(task["dumpDir"]) / "000.dump").is_file())
         self.assertTrue((Path(task["dumpDir"]) / "001.dump").is_file())
 
+    def test_a_failing_step_is_recorded_and_the_replay_continues(self):
+        """Best effort (replay is an aggregator): the failing step gets an `error` receipt, the state
+        after it is dumped, and the next step still runs."""
+        steps = [{"stepId": "s1", "op": {"op": "size_cell", "instance": "U_BAD", "toMaster": "MOCKBUFX4"}},
+                 {"stepId": "s2", "op": {"op": "size_cell", "instance": "U_IN_DOMAIN", "toMaster": "MOCKBUFX4"}}]
+        task, script_path = self._compile_and_write(steps)
+        failing = ('proc size_cell {insts master} {\n'
+                   '    if {$insts eq "U_BAD"} { error "stub refused U_BAD" }\n'
+                   '    set ::ATCS_TEST_LAST_CALL [list size_cell $insts $master]\n}\n')
+        text = script_path.read_text(encoding="utf-8")
+        script_path.write_text(text.replace(_STUB_PROCS, _STUB_PROCS + failing, 1), encoding="utf-8")
+        result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        rows = [json.loads(line) for line in Path(task["receiptsLog"]).read_text().splitlines()]
+        self.assertEqual([(row["stepId"], row["status"]) for row in rows], [("s1", "error"), ("s2", "ok")])
+        self.assertIn("stub refused U_BAD", rows[0]["error"])
+        receipts = adapters.read_replay_receipts(task["receiptsLog"])
+        self.assertEqual([receipt["status"] for receipt in receipts], ["error", "ok"])
+        for index in (0, 1, 2):
+            self.assertTrue((Path(task["dumpDir"]) / f"{index:03d}.dump").is_file(), index)
+
     def test_a_missing_required_input_refuses_before_any_workspace_command(self):
         # DEF file does not exist -- must fail on the `file readable` check, never
         # silently proceed to `create_workspace`.
@@ -889,6 +910,11 @@ set ::stub_fail_reasons_hold "### hold top 7 endpoints ###\n  Slack    Scenario 
 proc summarize_gba_violations {args} {
     stub_record summarize_gba_violations {*}$args
     if {[lsearch -exact $args -with_fail_reason] >= 0} {
+        # Real XTop (Task 7, #64 Q1 both arms' xtop-replay.log): fail reasons belong to the last fix flow's check.
+        if {[lsearch -exact $args -$::stub_fix_ran] < 0} {
+            puts "Error: Last flow is '${::stub_fix_ran}_gba', mismatched with current summary."
+            error ""
+        }
         if {[lsearch -exact $args -setup] >= 0} { return $::stub_fail_reasons_setup }
         return $::stub_fail_reasons_hold
     }
@@ -1035,6 +1061,7 @@ class RecipeReplayTclshTest(unittest.TestCase):
         script.write_text(preamble + arm_task["tcl"], encoding="utf-8")
         result = subprocess.run([TCLSH, str(script)], capture_output=True, text=True, cwd=str(root))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.arm_output = {**getattr(self, "arm_output", {}), arm: result.stdout + result.stderr}
         words = [line.split("\x1f") for line in calls.read_text(encoding="utf-8").splitlines()]
         return words
 
@@ -1071,29 +1098,36 @@ class RecipeReplayTclshTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in dumps.iterdir()), ["000.dump", "001.dump", "002.dump", "auto.dump"])
 
     def test_both_arms_record_fail_reasons_after_auto_fix_and_the_chosen_arms_are_sealed(self):
-        """US10/US34: the reasons XTop could not fix what is left after auto-finish, per check,
-        read back from both arms, and the chosen arm's sealed with the batch."""
+        """US10/US34: the reasons XTop could not fix what is left after auto-finish, read back from both
+        arms, and the chosen arm's sealed with the batch. XTop keeps them for the last fix flow's check
+        only (auto-finish ends with a hold pass): D-Q1-6 (#64 Q1) reads that check alone, so the replay log
+        holds no "Error:" line, and the other check is recorded unread with why."""
         merged, control, arms = self._run_both(self.EVEN, self.EVEN)
         for words in (merged, control):
             commands = [" ".join(w) for w in words]
             last_fix = max(i for i, w in enumerate(words)
                            if w[0] in ("fix_hold_gba_violations", "fix_setup_gba_violations"))
+            self.assertEqual(words[last_fix][0], "fix_hold_gba_violations")
             export = next(i for i, w in enumerate(words) if w[0] == "write_design_changes")
-            for check in ("setup", "hold"):
-                line = f"summarize_gba_violations -exclude_path -with_top_n 20 -with_fail_reason -{check}"
-                self.assertIn(line, commands)
-                self.assertLess(last_fix, commands.index(line))
-                self.assertLess(commands.index(line), export)
-        expected = {"setup": {"no_setup_gain": 3, "legal_fail_no_space_on_row": 1},
-                    "hold": {"break_setup": 2, "no_hold_gain": 5}}
+            line = "summarize_gba_violations -exclude_path -with_top_n 20 -with_fail_reason -hold"
+            self.assertIn(line, commands)
+            self.assertLess(last_fix, commands.index(line))
+            self.assertLess(commands.index(line), export)
+            self.assertNotIn("summarize_gba_violations -exclude_path -with_top_n 20 -with_fail_reason -setup", commands)
+        expected = {"hold": {"break_setup": 2, "no_hold_gain": 5}}
+        for arm in ("merged", "control"):
+            self.assertEqual(arms[arm]["result"]["failReasons"]["hold"], 0)
+            self.assertIn("last fix flow's check only (hold_gba)", arms[arm]["result"]["failReasons"]["setup"])
+            self.assertNotIn("Error:", self.arm_output[arm], "the replay log a Site wrapper scans holds no error line")
         state = integration_module.reconcile_recipe(self.request, arms)
         for arm in ("merged", "control"):
             self.assertEqual(state["arms"][arm]["failReasons"], expected)
+            self.assertEqual(state["arms"][arm]["failReasonsUnread"], ["setup"])
         self.assertEqual(state["chosen"]["arm"], "merged")
-        self.assertEqual(state["failReasons"], {"arm": "merged", **expected})
+        self.assertEqual(state["failReasons"], {"arm": "merged", **expected, "unread": ["setup"]})
         merge = integration_module.seal_batch(state, self.request, {"baseStateId": "base-1"}, [
             {"id": "c1", "revision": 1}, {"id": "c2", "revision": 3}])
-        self.assertEqual(merge["failReasons"], {"arm": "merged", **expected})
+        self.assertEqual(merge["failReasons"], {"arm": "merged", **expected, "unread": ["setup"]})
 
     def test_skipped_commands_are_recorded_and_the_replay_continues(self):
         _, _, arms = self._run_both(self.EVEN, self.EVEN)

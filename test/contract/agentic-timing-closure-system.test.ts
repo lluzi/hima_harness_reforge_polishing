@@ -97,10 +97,8 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
   const host = await bootInProcess(h); let cleanupRunId: string | undefined;
   t.after(async () => { if (cleanupRunId) { try { await host.ctx.hima.cancelRun(cleanupRunId); } catch { /* ended */ } } await host.dispose(); await h.dispose(); });
   const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
-  // #64 Track B (C28), reshaped 2026-09-29: one generation cannot reach the default two refreshes; the
-  // Pack declares budget.minimumGenerations 2 and the Harness refuses such a Run at creation.
-  await assert.rejects(host.ctx.hima.startRun({ pack: packId, site: 'local', goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0, max_physical_refreshes: 2 },
-    ownerSessionId: actor, timeBoxMs: 300000, generationLimit: 1 }), /generation limit is 1, but Pack agentic-timing-closure-system declares it needs at least 2 generations/);
+  // #66 D9: the decisive experiment is one generation and one refresh, so the Pack declares
+  // budget.minimumGenerations 1 (asserted below) and a one-generation Run is no longer refused.
   // #64 Track B (from #63): the physical-refresh cap is a Goal value fixed when the Run is created.
   // 3, not the default 2, so the assertions below prove the creation value reached the Run's goal and
   // is what the refresh-budget Judge binds.
@@ -141,6 +139,9 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
   ].join('\n'), path.join(repoRoot, 'packs', packId, 'flow'),
     path.join(repoRoot, 'packs', packId, 'flow/tests'), workspace, capsPath], { encoding: 'utf8' });
   assert.equal(seeded.status, 0, seeded.stderr);
+  // The Reader script the Workshops call as hima-readers/atcs-readiness/read-atcs.py; this Run starts at
+  // prepare-workers, so no Reader has been shipped to the workspace yet and the stand-in authors use a copy.
+  await cp(path.join(repoRoot, 'packs', packId, 'tools/read-atcs.py'), path.join(workspace, 'seed/read-atcs.py'));
 
   const control = () => host.ctx.hima.ledger.run(runId)!.control!;
   const context = () => host.ctx.hima.executionContext(runId);
@@ -196,8 +197,13 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
     }, 60000, 25);
     return id;
   };
+  // The stand-in author copies its seed request and, for an active slot, runs the Reader's brief step
+  // its Workshop's purpose names (#64 T05 w03: the Operator's task embeds operatorBrief).
   const copyEntry = (slot: string, seed: string) => JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA,
-    entry: `import shutil, sys\nshutil.copyfile(sys.argv[1] + "/seed/${seed}.json", sys.argv[1] + "/research/requests/worker-request-${slot}.json")\n` });
+    entry: ['import json, shutil, subprocess, sys', 'w = sys.argv[1]', `target = w + "/research/requests/worker-request-${slot}.json"`,
+      `shutil.copyfile(w + "/seed/${seed}.json", target)`,
+      'if not json.load(open(target))["candidate"].get("parked"):',
+      '    subprocess.run([sys.executable, w + "/seed/read-atcs.py", "brief", target], check=True)', ''].join('\n') });
   await Promise.all(slots.map(async slot => {
     // #64 Track B: slot w02's first request is refused, as live02's were.
     await answer(await authorAsked(slot), copyEntry(slot, slot === 'w02' ? 'worker-request-w02-refused' : `worker-request-${slot}`));
@@ -233,9 +239,12 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
   const at = task.indexOf('Exact input workerRequest01 ');
   assert.ok(at >= 0, `the Operator's task embeds workerRequest01: ${task.slice(0, 400)}`);
   const embedded = JSON.parse(task.slice(task.indexOf('\n', at) + 1).split('\n')[0]!);
-  for (const field of ['taskId', 'editDomain', 'targetPins', 'problem', 'scope', 'actions']) {
-    assert.deepEqual(embedded.candidate[field], request.candidate[field], `the embedded request carries candidate.${field}`);
-  }
+  assert.equal(embedded.candidate, undefined, 'the task embeds the bounded brief, never the whole candidate');
+  assert.deepEqual(embedded.operatorBrief, request.operatorBrief, 'the embedded brief is the admitted request\'s own');
+  assert.equal(embedded.operatorBrief.taskId, request.candidate.taskId);
+  assert.deepEqual(embedded.operatorBrief.scope, { commands: request.candidate.scope.commands, maxMutations: request.candidate.scope.maxMutations });
+  assert.equal(embedded.operatorBrief.targets.count, request.candidate.targets.length);
+  assert.deepEqual(operator!.effective.tools, ['hima_interactive', 'hima_delegation_input'], `the Operator reads its exact request in bounded windows: ${JSON.stringify((operator!.effective as any).unavailable)}`);
   assert.match(task, new RegExp(planHash), 'and its plan hash');
   assert.match(task, /before\.dump/); assert.match(task, /after\.dump/);
   assert.deepEqual((operator!.effective.recipe!.inlinePayload as any).scope, { commands: ['atcs_size_cell', 'atcs_undo'], maxMutations: 2 });
@@ -265,7 +274,7 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
     command: { name: 'atcs_size_cell', args: { instance: 'U1', toMaster: 'BUF2', planSha256: planHash } }, waitMs: 0 });
   assert.equal(duplicate.status, 'duplicate');
   await send('atcs_dump_cells', { path: path.join(slotRoot, 'after.dump') }, 'after');
-  await send('atcs_export_changes', {}, 'export');
+  await send('atcs_export_changes', { limitations: '' }, 'export');
   await send('atcs_close', {}, 'exit');
   await waitUntil('ATCS synthetic Operator is ready', () => control().executions[executionId]?.phase === 'ready', 5000, 25);
   await answer(operator!.delegationId, JSON.stringify({ schema: 'atcs-worker-session/1', planSha256: planHash, mutationReceipts: ['mutation'],
@@ -321,7 +330,7 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
   assert.equal((await readFile(path.join(slotRoot, 'ops.jsonl'), 'utf8')).trim().split('\n').length, 1);
   assert.equal((await readFile(path.join(slotRoot, 'gain.jsonl'), 'utf8')).trim().split('\n').length, 2, 'the session reference and one mutation reading');
 });
-const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v15/atcs-xtop-operator-v15.sh';
+const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v22/atcs-xtop-operator-v22.sh';
 
 test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the local Site, and passes its Python contract tests', async (t) => {
   const h = await createHimaHome();
@@ -381,8 +390,9 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.equal(request.path, `research/requests/worker-request-${slot}.json`, 'each slot reads its own request path');
     assert.equal(result.path, `state/contribution-${slot}.json`, 'each slot reads its own result path');
   }
-  // The `workerSlots` knob (1..6, default 6) is bound for the plan Reader on every way into `plan`.
-  assert.deepEqual(pack.contract.strategy.workerSlots, { type: 'number', unit: 'slots', min: 1, max: 6, default: 6 });
+  // The `workerSlots` knob (0..6, default 6) is bound for the plan Reader on every way into `plan`;
+  // #66 D8: 0 parks every seat, the qualified full-auto control arm.
+  assert.deepEqual(pack.contract.strategy.workerSlots, { type: 'number', unit: 'slots', min: 0, max: 6, default: 6 });
   assert.deepEqual(operatorNode('bind-worker-slots').parameters,
     { tool: 'worker-slots', arguments: { WORKER_SLOTS: { from: 'strategy', name: 'workerSlots' } } });
   assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.to === 'plan').map(edge => edge.from), ['bind-worker-slots']);
@@ -455,15 +465,15 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.equal(slotless(team, slot), slotless(team01, '01'), `${team.id} is Team 01 for slot w${slot}`);
   }
   const team = team01;
-  assert.equal(team.version, '5');
+  assert.equal(team.version, '6', '#66 D7: the Operator works its cluster as one batch');
   assert.deepEqual(team.members.map(item => item.id), ['reviewer', 'operator'], 'the Researcher is the branch\'s own author; no approval member');
   const reviewer = team.members.find(item => item.id === 'reviewer')!;
   const operatorMember = team.members.find(item => item.id === 'operator')!;
   assert.equal(reviewer.optional, true, 'the Reviewer is optional advice whose absence never blocks');
   assert.deepEqual(reviewer.resultSchema, { id: 'atcs-worker-review/3', required: ['schema', 'planSha256', 'evidenceRefs', 'limitations'] });
   assert.match(reviewer.taskTemplate, /Advisory only: nothing waits for you/);
-  assert.equal(operatorMember.budgetShare.maxTokensPerTurn, 5000);
-  assert.equal(operatorMember.budgetShare.maxFollowups, 1, 'one repair follow-up for a result failing its schema');
+  // #66 D7 (Harness H2a honours it): 40 minutes, four follow-ups and 12000 tokens a turn hold a batch.
+  assert.deepEqual(operatorMember.budgetShare, { maxElapsedMs: 2400000, maxFollowups: 4, maxTokensPerTurn: 12000 });
   assert.equal(operatorMember.followup, 'reuse-same-child');
   assert.deepEqual(team.batchWhen, [{ input: 'workerRequest01', value: 'tc_slot_parked', equals: 1 },
     { input: 'workerRequest01', value: 'tc_request_invalid_count', above: 0 }], 'a parked or refused slot runs the batch no-op');
@@ -473,11 +483,14 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     commands: mutations, maxMutations: recipeCap, hostPlanHashArgument: 'planSha256' });
   // #64 M-T03-1: the Operator's task embeds its request; its template names the fields it works from
   // and the exact dump names the capture seals (#64 D-T03-2).
-  assert.deepEqual(operatorMember.taskInputs, [{ input: 'workerRequest01', fields: ['candidate', 'sessionPlan', 'noSafeAction', 'siteCapabilities'] }]);
-  for (const words of [/editDomain\.instances/, /editDomain\.nets/, /targetPins/, /Exact input workerRequest01/, /exactly this file name/]) {
+  assert.deepEqual(operatorMember.taskInputs, [{ input: 'workerRequest01', fields: ['operatorBrief', 'sessionPlan', 'siteCapabilities'] }]);
+  // #64 T05 w03: the task holds a bounded brief; the Operator reads its exact request in bounded windows.
+  assert.deepEqual(operatorMember.allowedTools, ['hima_interactive', 'hima_delegation_input']);
+  assert.match(operatorMember.taskTemplate, /hima_delegation_input \(runId, recordId, path, offset, limit\)[^.]*window\.next/);
+  for (const words of [/editDomain\.instances/, /editDomain\.nets/, /targetPins/, /admitted workerRequest01/, /write before\.dump/]) {
     assert.match(operatorMember.taskTemplate, words, `the Operator template states ${words}`);
   }
-  assert.equal(recipeCap, 120, 'the recipe cap leaves room for dozens of trials and their undos, below the Harness 200');
+  assert.equal(recipeCap, 600, '#66 D7: a batch of tens to hundreds of trials and their undos, at the Harness ceiling (H1)');
   assert.deepEqual(operatorMember.resultSchema, { id: 'atcs-worker-session/1',
     required: ['schema', 'planSha256', 'mutationReceipts', 'stopReason', 'limitations'] });
   // The Operator template is the knowledge file's expert loop, in order.
@@ -499,7 +512,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual((pack.graph as any).autopilot, [
     { from: ['bind-inputs'], until: ['plan', 'wait-for-person'] },
     { from: ['read-campaign-plan'], until: ['decide'] },
-    { fork: 'prepare-workers', revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 16000 } },
+    { fork: 'prepare-workers', revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 48000 } },
     { from: ['check-worker-results'], until: ['compose'] },
     { from: ['read-integration-plan'], until: ['decide'] },
   ], 'the owner acts at plan, compose and decide only');
@@ -540,9 +553,9 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual(edgesTo('extract'), ['implement->']);
   assert.equal(nodeOf('apr-run'), undefined, 'no earlier-APR detour');
   assert.ok(pack.contract.rules.includes('refresh-budget'));
-  // #64 Track B (C28), reshaped: every generation refreshes once, so the two refreshes of the default
-  // cap need two generations; a Run created with fewer is refused at creation.
-  assert.equal((pack.contract.budget as any).minimumGenerations, 2);
+  // #64 Track B (C28), reshaped: every generation refreshes once. #66 D9: one generation is the floor
+  // (the decisive experiment is one generation, one refresh).
+  assert.equal((pack.contract.budget as any).minimumGenerations, 1);
   assert.equal((pack.contract.goal as any).max_physical_refreshes.default, 2);
 
   // #64 Track B (from #63 slice 3 gap 1): every request output has an itemized `<output>Problems`
@@ -554,7 +567,9 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.equal(problems.path, request.path.replace(/\.json$/, '.problems.txt'));
     assert.equal(problems.reader, undefined);
     assert.ok(workshop.reads.includes(problems.name), `${workshop.id} reads ${problems.name}`);
-    assert.match(workshop.purpose, new RegExp(`read output ${problems.name} first`));
+    assert.match(workshop.purpose, new RegExp(
+      `(?:read output ${problems.name} first|On a revision only, read the granted ${problems.name} record)`,
+    ));
   }
 
   // Issue 63 (fresh03 `sta` blocked: "references ${MAX_PATHS}, which nothing bound"): every
@@ -598,7 +613,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   // Issue #64 Task 3: the XTop expert toolkit. Reads never carry the plan hash; every mutation takes
   // it last, so a reviewed scope can name any of them.
   assert.deepEqual(interactiveTool.interactive.commands.read,
-    ['atcs_ref', 'atcs_gain', 'atcs_paths', 'atcs_fail_reasons', 'atcs_candidates']);
+    ['atcs_ref', 'atcs_gain', 'atcs_paths', 'atcs_fail_reasons', 'atcs_candidates', 'atcs_point']);
   assert.deepEqual(interactiveTool.interactive.commands.mutate, [
     'atcs_size_cell', 'atcs_exchange_cell', 'atcs_insert_buffer', 'atcs_insert_dummy', 'atcs_split_load',
     'atcs_split_net', 'atcs_move_cell', 'atcs_remove_buffer', 'atcs_fix_hold_pins', 'atcs_fix_setup_pins', 'atcs_undo']);
@@ -651,7 +666,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /agentic-timing-closure-system@0\.2\.0.*fit/s);
+    assert.match(throughHost.text, /agentic-timing-closure-system@0\.2\.1.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {

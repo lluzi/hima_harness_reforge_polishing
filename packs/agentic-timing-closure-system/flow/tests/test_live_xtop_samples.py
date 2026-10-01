@@ -133,7 +133,8 @@ class LiveSessionValueTest(unittest.TestCase):
         self.assertTrue(_seal_live_w03(required=["func_ssg_rcworst_m40"])["admissible"])
         # ffg scenarios are not violating on setup: nothing to improve there.
         contribution = _seal_live_w03(required=["func_ffg_cbest_m40", "func_ffg_cbest_125"])
-        self.assertIn("no-predicted-gain", {r["code"] for r in contribution["refusals"]})
+        self.assertIn("no-predicted-gain", {a["code"] for a in contribution["advisories"]})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
 
     def test_a_target_scenario_worsening_breaks_the_target_check(self):
         # Re-review (fix round 2): ssg_125 setup improves but ssg_m40's target-check (setup) WNS gets
@@ -145,10 +146,11 @@ class LiveSessionValueTest(unittest.TestCase):
         self.assertIn(good, lines[last_mutation])
         lines[last_mutation] = lines[last_mutation].replace(good, worse, 1)
         contribution = _seal_live_w03(gain_text="\n".join(lines) + "\n")
-        refusals = {r["code"]: r["detail"] for r in contribution["refusals"]}
-        self.assertIn("breaks-target-check", refusals)
-        self.assertIn("func_ssg_rcworst_m40", refusals["breaks-target-check"])
-        self.assertNotIn("no-predicted-gain", refusals)
+        advisories = {a["code"]: a["detail"] for a in contribution["advisories"]}
+        self.assertIn("breaks-target-check", advisories)
+        self.assertIn("func_ssg_rcworst_m40", advisories["breaks-target-check"])
+        self.assertNotIn("no-predicted-gain", advisories)
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
 
     def test_an_opposite_scenario_worsening_breaks_the_opposite_check(self):
         text = live.LIVE_GAIN_JSONL_W03
@@ -159,8 +161,9 @@ class LiveSessionValueTest(unittest.TestCase):
             "  func_ssg_rcworst_125     4587      4587         +0    |    -0.1799    -0.1799    +0.0000", worse)
         self.assertNotEqual(lines[last_mutation], live.LIVE_GAIN_JSONL_W03.splitlines()[last_mutation])
         contribution = _seal_live_w03(gain_text="\n".join(lines) + "\n")
-        codes = {r["code"] for r in contribution["refusals"]}
+        codes = {a["code"] for a in contribution["advisories"]}
         self.assertIn("breaks-opposite-check", codes)
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
 
 
 def _seal_run3(slot, instances, before, after, targets):

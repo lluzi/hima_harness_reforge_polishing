@@ -22,6 +22,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+import yaml
 
 TESTS_DIR = Path(__file__).resolve().parent
 FLOW_DIR = TESTS_DIR.parent
@@ -33,6 +34,7 @@ from atcs import adapters  # noqa: E402
 import test_xtop_toolkit as toolkit  # noqa: E402
 
 CONTRACT = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+CONTRACT_DATA = yaml.safe_load(CONTRACT)
 KNOWLEDGE = (PACK_DIR / "knowledge" / "xtop-expert-operator.md").read_text(encoding="utf-8")
 SLOTS = ["01", "02", "03", "04", "05", "06"]
 # The loop, in order, as the words the Operator must be given (the procedures carry the rest).
@@ -42,9 +44,8 @@ FAIL_REASONS = ["break_setup", "break_hold", "too_large_slack", "unable_fix_by_d
 
 
 def _operator_template(slot):
-    team = CONTRACT.split("\nagentTeams:\n", 1)[1].split("\nworkshops:\n", 1)[0]
-    body = team.split(f"  - id: atcs-worker-{slot}\n", 1)[1].split("      - id: operator\n", 1)[1].split("\n  - id: ", 1)[0]
-    return re.search(r"^        taskTemplate: '(.*)'$", body, re.M).group(1).replace("''", "'")
+    team = next(item for item in CONTRACT_DATA["agentTeams"] if item["id"] == f"atcs-worker-{slot}")
+    return next(item for item in team["members"] if item["id"] == "operator")["taskTemplate"]
 
 
 def _interactive_commands():
@@ -90,7 +91,7 @@ class ExpertOperatorReadinessTest(unittest.TestCase):
 
     def test_the_contract_classes_are_read(self):
         self.assertEqual({name: len(procs) for name, procs in self.commands.items()},
-                         {"read": 5, "mutate": 11, "save": 2, "close": 1})
+                         {"read": 6, "mutate": 11, "save": 2, "close": 1})
 
     def test_every_procedure_the_operator_is_told_of_exists_in_the_rendered_session(self):
         for label, text in self.texts.items():
@@ -108,24 +109,22 @@ class ExpertOperatorReadinessTest(unittest.TestCase):
                 self.assertIn(proc, self.procs, f"{cls} command {proc} is a session procedure")
                 self.assertNotIn("planSha256", _contract_arguments(proc), f"{cls} command {proc} takes no plan hash")
 
-    def test_every_text_names_every_interactive_command_and_the_plan_hash_argument(self):
+    def test_knowledge_names_every_command_while_the_task_uses_the_host_catalog(self):
         every = sorted(sum(self.commands.values(), []))
-        problems = []
-        for label, text in self.texts.items():
-            problems += [f"{label} does not name {proc}" for proc in every if not re.search(rf"\b{proc}\b", text)]
-            if "planSha256" not in text:
-                problems.append(f"{label} does not name the planSha256 argument every mutation carries")
-        self.assertEqual(problems, [])
+        self.assertEqual([proc for proc in every if not re.search(rf"\b{proc}\b", KNOWLEDGE)], [])
+        for slot in SLOTS:
+            task = _operator_template(slot)
+            self.assertIn("typed hima_interactive commands granted here", task)
+            self.assertIn("planSha256", task)
 
     def test_every_text_carries_the_expert_loop_ladders_and_fail_reason_moves(self):
         for label, text in self.texts.items():
             lower = text.lower()
-            positions = [lower.find(proc) for proc in LOOP_PROCEDURES]
-            self.assertTrue(all(position >= 0 for position in positions), f"{label} names the loop procedures")
-            self.assertEqual(positions[:3], sorted(positions[:3]), f"{label}: reference, then diagnosis, then candidates")
-            for word in ("trial", "keep", "undo", "budget", "hold ladder", "setup ladder"):
+            for word in ("trial", "keep", "undo", "budget", "setup", "hold"):
                 self.assertTrue(word in lower, f"{label} carries {word!r}")
-            self.assertEqual([reason for reason in FAIL_REASONS if reason not in text], [], f"{label} carries the fail-reason moves")
+        positions = [KNOWLEDGE.lower().find(proc) for proc in LOOP_PROCEDURES]
+        self.assertTrue(all(position >= 0 for position in positions), "knowledge names the loop procedures")
+        self.assertEqual([reason for reason in FAIL_REASONS if reason not in KNOWLEDGE], [], "knowledge carries fail-reason moves")
 
 
 

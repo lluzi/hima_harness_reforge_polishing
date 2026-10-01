@@ -153,15 +153,28 @@ MUTATE_COMMANDS = (
 )
 """The Task 3 toolkit's mutation procedures, in `contract.yml` order."""
 
-SCOPE_MAX_MUTATIONS = 120
+SCOPE_MAX_MUTATIONS = 600
 """The worker Teams' recipe cap (`reviewedAction.maxMutations`) and every session's Tcl-side budget.
 
-An expert loop needs dozens of trials and each `atcs_undo` counts, so 120
-leaves room for about 60 trials each followed by its undo; it stays below
-the Harness ceiling of 200 so a runaway loop still stops.
+A seat works a blocker cluster point to point and hands over one batch of
+tens to hundreds of measured edits (#66 D7), and each `atcs_undo` counts, so
+600 leaves room for about 300 trials each followed by its undo. It equals the
+Harness ceiling (`REVIEWED_SCOPE_MAX_MUTATIONS` 600 since #66 H1), which still
+stops a runaway loop.
 """
 
 OBSERVE_MODES = ("fast", "full")
+
+LOCAL_FANOUT_MAX = 12
+"""Every active worker session's local-topology cap (#66 D2), baked as `ATCS_LOCAL_FANOUT_MAX`.
+
+`prepare-workers` bakes each active slot's session with `EDIT_DOMAIN_LOCAL 1` and this cap: before
+its ready line the session widens the plan's edit domain to the nets of its target pins and of its
+plan instances' pins, and the leaf cells on them, one hop; a net with more leaf pins than this is
+global (clock, reset, scan enable) and stays out, and `atcs_remove_buffer` never admits one as a
+buffer's input net. The replay never derives (its sessions enter their sealed domains). Lower it
+when the per-mutation observation of a cluster-scale domain is too slow on real XTop.
+"""
 
 PARKED_FIELDS = ("taskId", "baseStateId", "parked", "problem")
 """The whole of a parked package: its identity and why the plan parked the slot."""

@@ -44,7 +44,7 @@ proc atcs_dump_cells {target} {
     close $fh
     return DUMPED
 }
-proc atcs_export_changes {} {
+proc atcs_export_changes {{limitations ""}} {
     file mkdir eco_output
     set fh [open [file join eco_output synthetic_eco.tcl] w]
     puts $fh "# synthetic route-preserving ECO receipt"

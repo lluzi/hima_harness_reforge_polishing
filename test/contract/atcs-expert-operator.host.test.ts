@@ -125,6 +125,10 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
   ].join('\n'), path.join(repoRoot, 'packs', packId, 'flow'), path.join(repoRoot, 'packs', packId, 'flow/tests'), workspace, capsPath,
   path.join(dry, 'design/top.v')], { encoding: 'utf8' });
   assert.equal(seeded.status, 0, seeded.stderr);
+  // The Reader script the Workshops call as hima-readers/atcs-readiness/read-atcs.py; this Run starts at
+  // prepare-workers, so no Reader has been shipped yet and the stand-in authors use a copy.
+  await mkdir(path.join(workspace, 'stand-in'), { recursive: true });
+  await cp(path.join(repoRoot, 'packs', packId, 'tools/read-atcs.py'), path.join(workspace, 'stand-in/read-atcs.py'));
 
   const control = () => host.ctx.hima.ledger.run(runId!)!.control!;
   const records = () => host.ctx.hima.ledger.records({ runId: runId! });
@@ -157,7 +161,9 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
     'workers = json.loads((w / "state/workers.json").read_text())',
     `package = {k: v for k, v in workers["workers"]["${slot}"]["workPackage"].items() if k not in ("schema", "id")}`,
     'request = {"candidate": package, "baseState": json.loads((w / "state/working-state.json").read_text()), "siteCapabilities": {"pgVerification": False}}',
-    `(w / "research/requests/worker-request-${slot}.json").write_text(json.dumps(request))`, ''].join('\n');
+    `path = w / "research/requests/worker-request-${slot}.json"`, 'path.write_text(json.dumps(request))',
+    'if not package.get("parked"):',
+    '    import subprocess; subprocess.run([sys.executable, str(w / "stand-in/read-atcs.py"), "brief", str(path)], check=True)', ''].join('\n');
   await Promise.all(SLOTS.map(async slot => {
     let id = '';
     await waitUntil(`research-worker-${slot.slice(1)}'s author is asked`, () => {
@@ -220,7 +226,7 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
   assert.equal(outside.status, 'refused'); assert.match(outside.reason, /outside the immutable/);
   await ok('w01', 'atcs_gain', { check: 'setup', topN: 5 }, 'w01-gain');
   await ok('w01', 'atcs_dump_cells', { path: path.join(w01.root, 'after.dump') }, 'w01-after');
-  await ok('w01', 'atcs_export_changes', {}, 'w01-export');
+  await ok('w01', 'atcs_export_changes', { limitations: '' }, 'w01-export');
   await ok('w01', 'atcs_close', {}, 'w01-close');
 
   // w02: an object outside its edit domain (w01's instance) is refused by the toolkit and changes nothing.
@@ -231,7 +237,7 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
   assert.match(JSON.stringify(foreign), /out-of-scope instance: u_a\/reg0/, 'the toolkit names the out-of-domain object');
   await ok('w02', 'atcs_size_cell', { instance: 'u_b/reg0', toMaster: 'BUFFD2BWP', planSha256: w02.planHash }, 'w02-size');
   await ok('w02', 'atcs_dump_cells', { path: path.join(w02.root, 'after.dump') }, 'w02-after');
-  await ok('w02', 'atcs_export_changes', {}, 'w02-export');
+  await ok('w02', 'atcs_export_changes', { limitations: '' }, 'w02-export');
   await ok('w02', 'atcs_close', {}, 'w02-close');
 
   for (const slot of ACTIVE) {

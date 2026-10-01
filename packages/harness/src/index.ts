@@ -33,11 +33,13 @@ import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs, ownedW
 import { controlling, identityOf, drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, settleStrandedTeamExecutions, unreservedDelegationMs, type RunDelegationRequest } from './delegation-runtime.js';
-import { registerDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem } from './delegation.js';
+import { registerDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem, delegationInputSelected, selectDelegationInput, type DelegationInputSelection } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
 import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
 import { executionPack, interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
 import { Autopilot } from './autopilot.js';
+/** How often the Host re-kicks a Run standing idle on a self-driving node (#64 D-T04-1). */
+const autopilotSweepMs = 15_000;
 import { autopilotDrives } from './packs.js';
 import { claimSlot } from './job-cap.js';
 import { recordExitFence, releaseExitFence, readHostExitStatus, type HostExitRequest, type HostExitStatus } from './host-exit.js';
@@ -365,24 +367,17 @@ export interface Config {
   interactiveBindingsFile?: string;
 }
 
-/** Stable product knowledge for ordinary HimaGuide conversations.
+/** Stable, role-neutral product knowledge shared by Guide, owner and bounded children.
  *
- * This is intentionally short. It gives the root DSH Agent enough product vocabulary to answer a
- * first-use question without searching the checkout; live installation facts are contributed by
- * {@link himaRuntimeContext} separately so this text never becomes a second inventory.
+ * Role-specific duties come from the dynamic inventory and the retained delegation contract. Keeping
+ * this section neutral prevents a child Operator from inheriting HimaGuide or Campaign-owner identity.
  */
 export const HIMA_PRODUCT_CONTEXT = [
-  'You are HimaGuide inside HimaHarness. HimaHarness keeps DeepSeek Harness\' general-purpose chat and coding abilities, and adds governed chip-design Campaigns.',
-  'A Campaign is the business task the user wants completed. One persistent Run records its execution. A HimaPack is a transparent, installable method capability: it declares purpose, required inputs and outputs, tools, knowledge, reference graph, limits and evidence rules; it must not be treated as one fixed design replay.',
-  'A Site describes a reachable execution environment and its permit. HimaGuide helps inspect a Pack, discover a Site and prepare the required inputs before asking for one concrete Campaign confirmation.',
-  'The visible Campaign Agent owns execution decisions. HimaFabric constrains the allowed graph, budget, dependencies, jobs, evidence and recovery; it does not replace the Agent with a hidden automatic executor.',
-  'HimaGuide is the independent human-facing entry point: collect the problem and inputs, arrange a separate execution conversation, and explain its sourced results. Starting a task never turns Guide into its owner. Keep execution, Guide and child contexts separate; selecting or reading an object grants no execution permission.',
-  'Campaign and Data Insight are peer workspace modes. Use Data Insight for library/data questions and existing reports; browsing and filtering do not create a Campaign. Explain missing data honestly. A long computation needs the existing controlled task and budget.',
-  'Lead with the engineering result, its conditions, what is missing, and the next useful action. Match the user language; use clear Chinese for Chinese requests. Preserve units, setup/hold, timing conditions and evidence precision. Internal ids and protocol names belong in expandable evidence, not default explanations.',
-  'A saved summary is a reading aid, never authority to continue. On recovery re-read current Run, Job, human pauses and budget. Never lift a human hold from an old summary or a model instruction. Use the same persistent Run; uncertainty is not permission to repeat a tool effect.',
-  'When current Hima context offers independent branch nodes, admit their licence-free Jobs up to the Site job cap before waiting; licence seats still bound commercial EDA. Never duplicate a node already working.',
-  'When the retained Pack declares an Agent Team recipe, materialize each member explicitly with hima_delegate recipe identity; never invent its tools, inputs, budget or task. At a production-qualified interactive node, adopt the exact required Reviewer result before materializing the one Operator child for that execution. The child alone uses typed hima_interactive; inspect and adopt its retained candidate before completing the node. The Run owner cannot open the production interactive session directly.',
-  'Answer product identity and installed-inventory questions from this context and the current Hima inventory below. Do not search source code, the filesystem or the web for those answers. Never claim readiness, a measured result or an installed item that the current inventory does not state.',
+  'HimaHarness adds governed chip-design Campaigns and Data Insight to DeepSeek Harness. A HimaPack declares one transparent method; a Site supplies the permitted execution environment; one persistent Run records facts, work and evidence.',
+  'Your current role, task, inputs, tools, budget and recipient are stated separately. Follow that exact role: a Guide serves the person, a Campaign owner coordinates the Run, and a bounded child performs only its delegated work.',
+  'Use only granted inputs and tools. Do not search product source code to rediscover a Pack or tool contract; report a missing professional fact or capability to the recipient instead.',
+  'Tool receipts and refreshed engineering evidence are authoritative. Preserve setup/hold units and conditions, distinguish unknown from failure, and never repeat an effect whose outcome is uncertain.',
+  'Keep default replies focused on the engineering result, missing evidence and next useful action; internal protocol detail belongs in retained evidence.',
 ].join('\n');
 
 /** The small, current snapshot that accompanies ordinary root-Agent turns. No local path, YAML,
@@ -539,10 +534,15 @@ export default class Hima extends Service {
         const childPolicy=delegationRuntimePolicy(this.deps(),id);
         if(childPolicy)return JSON.stringify({role:childPolicy.effective.role,delegation:childPolicy,source:'Ledger delegation admission',note:'You are a bounded child, not the Campaign owner or Guide. Return candidate evidence; do not adopt results or change authority.'});
         const linked = this.ledger.runs().filter(run => run.control?.owner === id || run.control?.guideSessionId === id);
+        const role=linked.some(run => run.control?.owner === id)?'execution-owner':'guide';
+        const roleInstruction=role==='execution-owner'
+          ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion.'
+          : 'Role: HimaGuide. Help the person understand capabilities, prepare Pack/Site/inputs, arrange a separate execution conversation, and explain sourced results. Do not become a Run owner.';
         return [himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir, linked),
+          roleInstruction,
           'This task inventory includes only this conversation\'s recorded assignments. Other selected targets must be inspected explicitly.',
           JSON.stringify({ asOf: new Date().toISOString(), sessionId: id,
-            role: linked.some(run => run.control?.owner === id) ? 'execution-owner' : 'guide',
+            role,
             assignments: linked.slice(-5).map(run => ({ runId: run.id, source: 'Ledger RunControl', owner: run.control?.owner,
               epoch: run.control?.epoch, revision: run.control?.revision, paused: run.control?.paused, status: run.status })) })].join('\n');
       },
@@ -562,7 +562,11 @@ export default class Hima extends Service {
       log: line => { this.ctx.logger.info(line); if (process.env.HIMA_AUTOPILOT_DEBUG === '1') process.stderr.write(`${line}\n`); },
       stopped: () => this.autopilotStopped || this.factStop.signal.aborted,
       pollMs: 100,
+      closeUndrivable: runId => this.closeUndrivableInteractiveSessions(runId),
     });
+    // #64 D-T04-1: the existing kick, scheduled — a Run a non-kicking path left on a self-driving node
+    // is picked up within one period (`Autopilot.sweep`).
+    this.ctx.effect(() => { const timer = setInterval(() => this.autopilot?.sweep(), autopilotSweepMs); timer.unref?.(); return () => clearInterval(timer); });
     this.ctx.effect(() => async () => {
       this.notificationsActive = false;
       this.pendingProgressNotifications.clear();
@@ -986,14 +990,33 @@ export default class Hima extends Service {
     const result=await operateInteractive(this.interactiveDeps(),request);
     await reconcileInteractiveExecution(this.deps(),request.runId,request.executionId);
     await this.interactiveTimers!.reconcile();
-    return {...result,context:this.executionContext(request.runId)};
+    const context=this.executionContext(request.runId);
+    const execution=context.executions.find((entry)=>entry.id===request.executionId);
+    const delegation=runDelegations(this.deps(),request.runId).find((entry)=>entry.childSessionId===sessionId);
+    const taskDeadline=delegation?.reservation.deadlineAt;
+    const taskRemainingMs=taskDeadline===undefined?undefined:Math.max(0,Date.parse(taskDeadline)-Date.now());
+    const mutationLimit=request.reviewedScope?.maxMutations;
+    const mutationsUsed=this.ledger.records({runId:request.runId,type:'interactive'}).filter((record)=>record.type==='interactive'
+      && (record.payload as {event?:string;executionId?:string;actor?:string;scopeMutation?:boolean}).event==='input-intent'
+      && (record.payload as {executionId?:string}).executionId===request.executionId
+      && (record.payload as {actor?:string}).actor===sessionId
+      && (record.payload as {scopeMutation?:boolean}).scopeMutation===true).length;
+    return {...result,context:{
+      run:{id:context.run.id,status:context.run.status,currentNode:context.run.currentNode,generation:context.run.generation},
+      execution:execution===undefined?undefined:{id:execution.id,nodeId:execution.nodeId,phase:execution.phase,attempt:execution.attempt},
+      budget:context.budget,
+      operator:{mutationsUsed,...(mutationLimit===undefined?{}:{mutationLimit,mutationsRemaining:Math.max(0,mutationLimit-mutationsUsed)}),
+        ...(taskDeadline===undefined?{}:{taskDeadline,taskRemainingMs,taskState:delegation?.state})},
+      ...(context.reason===undefined?{}:{reason:context.reason}),
+      asOf:new Date().toISOString(),
+    }};
   }
   async interactiveSessions(sessionId:string,runId:string):Promise<object> {
     await authorizeProjectRun(this.guideDeps(),sessionId,runId);
     return {sessions:listInteractiveSessions(this.ledger,runId).map(({activeCommand,...entry})=>({...entry,...(activeCommand?{activeCommand:{commandId:activeCommand.commandId,state:activeCommand.state,commandDeadlineAt:activeCommand.commandDeadlineAt}}:{})})),asOf:new Date().toISOString()};
   }
 
-  async delegationInput(sessionId:string,request:{runId:string;recordId:string}):Promise<object> {
+  async delegationInput(sessionId:string,request:{runId:string;recordId:string}&DelegationInputSelection):Promise<object> {
     const policy=delegationRuntimePolicy(this.deps(),sessionId);
     const entry=runDelegations(this.deps(),request.runId).find(item=>item.childSessionId===sessionId);
     if(!policy||!('toolsAllowed' in policy)||policy.toolsAllowed!==true||!entry||entry.effective.runRef?.runId!==request.runId||!entry.contract.inputRefs.includes(request.recordId))throw new BadRequest('This child has no current grant for that exact input reference.');
@@ -1009,7 +1032,19 @@ export default class Hima extends Service {
       ...(handoffSource===undefined?{}:{...handoffSource,source:'durable-ledger-child-handoff',identityEncoding:'sha256-native-assistant-output'}),
       ...(record.type==='observation'?{contentSha256:record.contentSha256,bytes:record.bytes}
         :record.type==='code'||record.type==='knowledge'?{sha256:record.sha256,bytes:record.bytes}:{}),
-      reason:'The typed input exceeds the bounded native child view; delegate smaller verified material.'};
+      reason:'The typed input exceeds the bounded native child view; read it in bounded parts with path, offset and limit, or delegate smaller verified material.'};
+    // #64 T05 w03: a selection reads one window of the input's retained material, under this same grant,
+    // record identity and content hash, inside the same bounded view.
+    if(delegationInputSelected(request)) {
+      if(!['observation','code','knowledge'].includes(record.type))throw new BadRequest(`A bounded selection reads the retained material of an observation, code or knowledge input; this record is ${record.type}.`);
+      const hash=record.type==='observation'?{contentSha256:record.contentSha256}:{sha256:(record as {sha256:string}).sha256};
+      const material=await readReportMaterial(this.deps(),request.runId,record.id);
+      if(material.kind!=='read')return {...base,kind:'unavailable',...hash,reason:`Recorded material is unavailable; nothing of it is delivered: ${material.why}`};
+      const answer=(value:unknown,window:object)=>({...base,kind:'selection',...hash,bytes:(record as {bytes:number}).bytes,path:request.path??'',window,value});
+      const selected=selectDelegationInput(material.text,request,(value,window)=>viewBytes(answer(value,window))<=viewLimitBytes);
+      if(!selected.ok)throw new BadRequest(`${selected.reason} Record ${record.id}; select a dotted field path or JSON pointer that exists in it, with offset and limit.`);
+      return answer(selected.value,selected.window);
+    }
     if(record.type==='code'||record.type==='knowledge') {
       if(record.bytes>1024*1024)return {...base,kind:'unavailable',reason:'This material exceeds the bounded child input view; delegate a smaller verified source.'};
       const material=await readMaterial(this.deps(),request.runId,record.id);
@@ -1061,7 +1096,7 @@ export default class Hima extends Service {
         &&viewBytes({...base,kind:'record-fact',payload,identity:'0'.repeat(64),identityEncoding:'canonical-ledger-projection'})>viewLimitBytes) {
       payload={reader:record.reader,contentSha256:record.contentSha256,bytes:record.bytes,values:record.values,
         material:{encoding:observationJson===undefined?'text':'json',truncated:true,returnedBytes:0,
-          reason:'Complete material exceeds the bounded native view limit; only typed reader values are delivered.'}};
+          reason:`Complete material exceeds the bounded native view limit (${viewLimitBytes} bytes); only typed reader values are delivered. Read it in bounded parts: path (a dotted field path or JSON pointer, such as candidate.targets), offset and limit.`}};
     }
     return bounded({...base,kind:'record-fact',payload,identity:identityOf(payload),identityEncoding:'canonical-ledger-projection'});
   }
@@ -1280,11 +1315,19 @@ export default class Hima extends Service {
         const totalAvailableMs=unreservedMs===undefined?20*60_000:Math.max(0,unreservedMs);
         const remainingMs=timeBoxRemainingMs(run,ownedWaitedMs(run))??20*60_000;
         // Leave admission-time clock drift outside the child share; authority re-reads the deadline.
-        budgetCeiling=Math.min(20*60_000,totalAvailableMs,Math.max(0,remainingMs-1_000));
+        // #66 H2a: a recipe Operator's share is the Pack's Team member share, held only to the lane and
+        // the time box; the 20-minute, one-follow-up, 5000-token ceiling is the Host's manual default.
+        budgetCeiling=Math.min(materializedFromRecipe?Number.POSITIVE_INFINITY:20*60_000,totalAvailableMs,Math.max(0,remainingMs-1_000));
         if(budgetCeiling<1)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation has no remaining Run time budget.'};
-        budgetDefault={maxElapsedMs:budgetCeiling,maxFollowups:1,maxTokensPerTurn:5_000};
+        budgetDefault=materializedFromRecipe
+          ?{maxElapsedMs:budgetCeiling,maxFollowups:(suppliedBudget.maxFollowups as number|undefined)??1,maxTokensPerTurn:(suppliedBudget.maxTokensPerTurn as number|undefined)??5_000}
+          :{maxElapsedMs:budgetCeiling,maxFollowups:1,maxTokensPerTurn:5_000};
       }
-      const normalizedContract={delegationId,role:'operator' as const,task,inputRefs,nodeRef,allowedTools:['hima_interactive'],
+      // #64 T05 w03: a Pack recipe Operator may also read its exact recorded inputs in bounded windows
+      // (packs.ts admits only these two tools for it); a manual Operator contract stays interactive-only.
+      const operatorTools=materializedFromRecipe&&Array.isArray(raw.allowedTools)&&raw.allowedTools.includes('hima_delegation_input')
+        ?['hima_interactive','hima_delegation_input']:['hima_interactive'];
+      const normalizedContract={delegationId,role:'operator' as const,task,inputRefs,nodeRef,allowedTools:operatorTools,
         ...(workspaceRef===undefined?{}:{workspaceRef}),
         budgetShare:{maxElapsedMs:suppliedBudget.maxElapsedMs===undefined?budgetDefault.maxElapsedMs:Math.min(suppliedBudget.maxElapsedMs as number,budgetCeiling),
           maxFollowups:suppliedBudget.maxFollowups===undefined?budgetDefault.maxFollowups:Math.min(suppliedBudget.maxFollowups as number,budgetDefault.maxFollowups),

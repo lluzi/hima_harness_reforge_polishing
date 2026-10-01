@@ -64,6 +64,16 @@ history. The graph now has 81 nodes and 103 edges (from 136/178): the in-loop ow
 and `revisit-*` Explores, the earlier-APR detour and the observation-request Workshop) are gone with
 their readers, rules, outputs and the chooser `atcs-revisit`; `rules/composition-checked.yml` is new.
 
+2026-10-01 Pack 0.2.1 prompt/context repair: the six Operator tasks share one short role contract
+(about 3.3k characters instead of about 8k), state explicitly that they are neither Guide nor owner,
+and use the Host's real remaining-time/mutation receipt rather than guessing a budget from context
+size. Worker-author purposes now fit wholly inside the existing 3,200-character projection and put
+the proven argv/output skeleton before optional research detail. `atcs_point` keeps v21's real-XTop
+summary-table implementation, `atcs_paths` returns the bounded report body, and the matching Harness fixes are only
+the existing generic seams exposed by Q1/T07: role-neutral product context, compact interactive
+turn context, and deterministic handling of exit-0 Workshop programs that omit their declared output.
+No new Agent loop, memory store, verifier or control plane was added.
+
 How the reference graph expresses SPEC behaviour 1–9 (current):
 
 - Inputs and baseline (autopilot segment `bind-inputs` .. `plan`): `bind-inputs` → `inputs-ready`
@@ -332,11 +342,8 @@ Schema limits and how the graph expresses them:
   composition keeps every session with its predicted value and marks a shared-instance command
   skipped, naming its holder; `reconcile` records the session that did not reproduce (the skipped
   command, `deltaMatches: false`, a `replayMismatch` warning) and chooses the arm on XTop's prediction.
-  Known limit, flow code (the wrapper-pinned digest): `capture-contribution`'s value gates
-  (`contributions._session_value`: `no-predicted-gain`, `breaks-target-check`,
-  `breaks-opposite-check`) still refuse a session whose kept commands XTop measured as no gain or as
-  harmful in some required scenario; lifting them to advice needs a flow change and a wrapper
-  requalification. Proving tests: `ComposeFactsSecondPassTest.test_a_refused_plan_with_malformed_resolutions_is_not_applied`
+  The value findings (`no-predicted-gain`, `breaks-target-check`, `breaks-opposite-check`) are
+  advisories since the 2026-09-30 replay-aggregator decision (see Reviews, ATCS-09). Proving tests: `ComposeFactsSecondPassTest.test_a_refused_plan_with_malformed_resolutions_is_not_applied`
   (RED: exit 3), `IntegrationPlanExampleTest.test_a_resolution_for_a_no_fix_contribution_is_counted`,
   `test_wild_contribution_flow.py` (green on arrival).
 - G49 (Issue #64 treatment attempt 1, retry slot hygiene; Site side, no flow change) Every Operator
@@ -692,3 +699,36 @@ Known gaps carried from earlier tasks:
   task, an Operator-requested close settles its node done, and capture reads exactly the dump names
   the Operator template states (`before.dump`, `after.dump`). No re-review loop by direction; the gate
   is the green Pack suite, the contract tests and the dry path's measured wall time.
+- 2026-09-30 ATCS-09 (#66, parent #64; tickets #67-#75): six-seat batch manual ECO plus the complete
+  Global Auto-Finish, against the complete Global Auto-Finish alone. D1 cluster seating
+  (`read-atcs.py seat-clusters`, cluster shape as Reader advice; #68), D2 in-session local-topology edit
+  domain and D3 `atcs_point` with the `reads.jsonl` read log and `atcs_export_changes limitations`
+  (#67), D4 batch Contribution seal (`effectiveDomain`, per-command gain and blockers, `aggregateGain`;
+  #71), D5 composition by blocker coverage then aggregate gain (#72), D6 replay and reconcile on the
+  effective domain with `appliedCommands`, `skippedCommands`, `protectedCount` and the `manualValue`
+  tie record (#73). Superseding user decision (2026-09-30, #64, branch `atcs09/R`): replay is an
+  aggregator, not a second methodology judge. Every sealed Contribution of a completed private
+  session enters ranked replay; the seal refuses only a tainted session (`tainted`; T06 repairs,
+  branch `atcs09/P`), and records `trace-mismatch`, `out-of-scope`, `no-predicted-gain`,
+  `breaks-target-check`, `breaks-opposite-check`, `missing-gain-line` and `missing-export` as
+  batch-net `advisories`; composition keeps the ranking, has no `domain-collision` exclusion (an
+  overlapping command is skipped by itself, `shared-instance`/`depends-on-skipped`) and still
+  excludes `base-dump-mismatch`; replay attempts every command in rank order under its own catch and
+  records each skipped one with its reason (the legacy step replay continues past a failing step
+  too); reconcile makes an arm unsafe only for corrupt evidence and records a replay delta mismatch,
+  a missing session dump and an out-of-domain replay change as `warnings`
+  (`replayMismatch`, `replayDeltaMissing`, `outOfDomain`). Applied instances are `set_dont_touch`
+  protected, then the four-pass Global Auto-Finish runs byte-for-byte unchanged. The typed command
+  surface and the Site Permit bound what executes; the refreshed Innovus/StarRC/PrimeTime result plus
+  DRC/connectivity judges quality. The dry path proves it on a planted overlap (both batches ranked,
+  the later sizing of the shared buffer skipped with its reason). D7 the Operator prompt and budgets (#74: `atcs-worker-NN`
+  version 6 risk-assesses every target, works the cluster point to point hardest first, keeps every
+  measured gain, undoes every regression at once and hands over one batch; share 40 min, 4
+  follow-ups, 12000 tokens a turn; `SCOPE_MAX_MUTATIONS` and `reviewedAction.maxMutations` 600; the
+  author's turn 48000 tokens and reads only its package, residual cases and the worker-request
+  example), D8 the `workerSlots 0` control arm (#69), D9 `budget.minimumGenerations` 1 for the
+  one-generation, one-refresh experiment (#74; kits and brief outside the Pack). The Harness seams
+  H1 (reviewed-scope cap 600) and H2 (recipe Operator share honoured; output-less turn follow-up) are
+  #70 and are required by D7's bounds. The gate is the green Pack suite and the ATCS contract test at
+  the merged head; the dry-path derived-domain fixture (#75), the wrapper v16 re-pin and the live
+  T05 / C-full record follow on #64.

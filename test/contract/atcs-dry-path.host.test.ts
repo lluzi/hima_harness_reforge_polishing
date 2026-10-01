@@ -84,6 +84,29 @@ const SURVIVOR_GRACE_MS = 4_000;
 const SURVIVOR_LINGER_S = 12;
 // The Operator's own nodes' turns are the Harness's: the owner acts only at these three.
 const OWNER_NODES = ['plan', 'compose', 'decide'];
+// #66 T4, the derived-domain fixture (design/top.v): a boundary buffer x_<left><right> joins each pair
+// of neighbouring blocks, so a slot's session derives its block's two cells plus the boundary buffers
+// one hop out, and two neighbours' derived domains share exactly the buffer between them.
+const BOUNDARY = ['x_ab', 'x_bc', 'x_cd', 'x_de', 'x_ef'] as const;
+const derivedDomain = (slot: Slot) => {
+  const index = SLOTS.indexOf(slot);
+  return [`${blockOf(slot)}/reg0`, `${blockOf(slot)}/reg1`, ...BOUNDARY.slice(Math.max(0, index - 1), index + 1)].sort();
+};
+// Generation 1's planted overlap: NEIGHBOUR and COLLIDER both size the boundary buffer they share,
+// inside both derived domains. NEIGHBOUR keeps a two-step batch, so its aggregate gain ranks it above
+// COLLIDER. Replay is an aggregator: both batches enter the recipe, and only COLLIDER's later sizing of
+// SHARED is skipped (`shared-instance`), recorded with its reason, while its own block's sizing replays.
+const NEIGHBOUR: Slot = 'w03';
+const COLLIDER: Slot = 'w04';
+const SHARED = 'x_cd';
+// The four auto-finish commands as the attempt-4 seal (a5ded4fc) rendered them at the default margins
+// (the Pack's flow/tests/test_effective_domain_replay.py ATTEMPT4_AUTO_FINISH), byte for byte.
+const ATTEMPT4_AUTO_FINISH = [
+  'fix_setup_gba_violations -methods size_cell -effort high -setup_target 0.0 -hold_margin 0.02',
+  'fix_setup_gba_violations -methods insert_buffer -effort high -setup_target 0.0 -hold_margin 0.02',
+  'fix_hold_gba_violations -size_cell_only -size_rule nominal_keywords -hold_target 0.0 -setup_margin 0.02',
+  'fix_hold_gba_violations -effort high -hold_target 0.0 -setup_margin 0.02',
+];
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
@@ -242,6 +265,10 @@ interface Batch {
   /** When the fork opened and when the Run reached the join's owner point (compose). */
   forkOpenedAt?: number;
   joinedAt?: number;
+  /** What the owner's merge read at the join, and the replay request the merge produced (#66 T4). */
+  collected?: any;
+  facts?: any;
+  replayRequest?: any;
 }
 
 interface Drive {
@@ -377,7 +404,12 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
   };
   const rootOf = async (slot: Slot) => path.join(workspace, JSON.parse(await readFile(path.join(workspace, 'state/workers.json'), 'utf8')).workers[slot].root);
   const operatorTasks: Drive['operatorTasks'] = [];
-  /** One active slot's expert loop on its block: reference, (w01: a trial without gain, undone), the kept sizing, close. */
+  /**
+   * One active slot's expert loop on its block: reference, a point read of its target, (w01: a trial
+   * without gain, undone), the kept sizing, (generation 1: NEIGHBOUR a second step and a sizing of the
+   * boundary buffer SHARED, COLLIDER a sizing of SHARED too, each inside its derived domain), a point
+   * read again, close.
+   */
   const expertLoop = async (slot: Slot, operator: Operator, toolSessionId: string, generation: number) => {
     const root = await rootOf(slot);
     const block = blockOf(slot);
@@ -386,6 +418,8 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
     const receipts: string[] = [];
     await send(operator, toolSessionId, 'atcs_dump_cells', { path: path.join(root, 'before.dump') }, `before-${tag}`);
     await send(operator, toolSessionId, 'atcs_ref', {}, `ref-${tag}`);
+    const target = `${block}/reg0/I`;
+    await send(operator, toolSessionId, 'atcs_point', { check: 'setup', endPoints: target }, `point-${tag}`);
     const master = /(\w+)\s+reg0\s*\(/.exec((await readFile(path.join(root, 'before.dump'), 'utf8')).split('\n')
       .filter(line => line.startsWith(`${block}/reg0 `)).map(line => `${line.split(' ')[1]} reg0 (`)[0]!)![1]!;
     if (slot === 'w01' && generation === 1) {
@@ -396,9 +430,18 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
     }
     const toMaster = ({ BUFFD1BWP: 'BUFFD2BWP', BUFFD2BWP: 'BUFFD4BWP', BUFFD4BWP: 'BUFFD8BWP' } as Record<string, string>)[master]!;
     await send(operator, toolSessionId, 'atcs_size_cell', { instance: `${block}/reg0`, toMaster, planSha256 }, `size-${tag}`, receipts);
+    if (generation === 1 && slot === NEIGHBOUR) {
+      await send(operator, toolSessionId, 'atcs_point', { check: 'setup', endPoints: target }, `point-step-${tag}`);
+      await send(operator, toolSessionId, 'atcs_size_cell', { instance: `${block}/reg0`, toMaster: ({ BUFFD2BWP: 'BUFFD4BWP' } as Record<string, string>)[toMaster]!, planSha256 }, `size-again-${tag}`, receipts);
+      await send(operator, toolSessionId, 'atcs_size_cell', { instance: SHARED, toMaster: 'BUFFD4BWP', planSha256 }, `size-shared-${tag}`, receipts);
+    }
+    if (generation === 1 && slot === COLLIDER) {
+      await send(operator, toolSessionId, 'atcs_size_cell', { instance: SHARED, toMaster: 'BUFFD2BWP', planSha256 }, `size-shared-${tag}`, receipts);
+    }
+    await send(operator, toolSessionId, 'atcs_point', { check: 'setup', endPoints: target }, `point-after-${tag}`);
     await send(operator, toolSessionId, 'atcs_gain', { check: 'setup', topN: 5 }, `gain-${tag}`);
     await send(operator, toolSessionId, 'atcs_dump_cells', { path: path.join(root, 'after.dump') }, `after-${tag}`);
-    await send(operator, toolSessionId, 'atcs_export_changes', {}, `export-${tag}`);
+    await send(operator, toolSessionId, 'atcs_export_changes', { limitations: '' }, `export-${tag}`);
     await send(operator, toolSessionId, 'atcs_close', {}, `close-${tag}`);
     await waitUntil(`${slot}'s Operator session is ready`, () => control().executions[operator.effective.recipe!.executionId]?.phase === 'ready', 30_000, 25);
     return { planSha256, receipts };
@@ -488,7 +531,11 @@ async function drive(host: InProcessHost, home: Home, generationLimit: number, l
     await reach('compose');
     current.joinedAt = Date.now();
     log.push(`generation ${generation}: fork to the owner's merge in ${Math.round((current.joinedAt - current.forkOpenedAt!) / 1000)} s`);
+    current.collected = JSON.parse(await readFile(path.join(workspace, 'state/contributions-collected.json'), 'utf8'));
+    current.facts = JSON.parse(await readFile(path.join(workspace, 'state/composition-facts.json'), 'utf8'));
     await step('compose', code.compose);
+    await reach('decide');
+    current.replayRequest = JSON.parse(await readFile(path.join(workspace, 'state/replay-request.json'), 'utf8'));
     await decide();
   };
   for (const parked of PARKED_BY_BATCH.slice(0, generationLimit)) {
@@ -619,7 +666,7 @@ test('ATCS 0.2.0 dry path: the owner acts at plan, merge and decision only; six 
     const at = task.indexOf(`Exact input workerRequest${nn(slot)} `);
     assert.ok(at >= 0, `${row}: ${slot}'s Operator task embeds its request`);
     const embedded = JSON.parse(task.slice(task.indexOf('\n', at) + 1).split('\n')[0]!);
-    assert.deepEqual(embedded.candidate, request.candidate, `${row}: ${slot}'s task carries every field of the request's candidate`);
+    assert.deepEqual(embedded.operatorBrief, request.operatorBrief, `${row}: ${slot}'s task carries the request's bounded brief, not its whole candidate`);
     assert.deepEqual(embedded.sessionPlan, request.sessionPlan, `${row}: ${slot}'s task carries the session plan`);
     for (const word of [...request.candidate.targetPins, ...request.candidate.editDomain.instances, 'before.dump', 'after.dump', planSha256,
       'atcs_size_cell', 'atcs_undo', 'atcs_dump_cells', 'atcs_close']) {
@@ -669,25 +716,95 @@ test('ATCS 0.2.0 dry path: the owner acts at plan, merge and decision only; six 
   // The working state was observed again after each refresh, inside the refresh chain.
   assert.equal(jobsOf('observe-working').length, 2, `${row}: the working state is re-observed after each refresh`);
 
-  // 5. The replay: every generation's recipe replays every kept command -- w01's undone trial is not
-  //    in it -- and then the auto-finish step, in the merged arm, from the common base.
+  // 5a. #66 T4, batch Contributions over derived domains. Each of generation 1's six sessions derived
+  //     its local topology in session (domain.json: its block's two cells and the boundary buffers
+  //     one hop out) and logged its point reads (reads.jsonl), and each sealed batch carries that
+  //     record as its effectiveDomain, with its target read. NEIGHBOUR and COLLIDER both sized SHARED,
+  //     inside both derived domains: the planted overlap. Composition ranks NEIGHBOUR's two-step batch
+  //     above COLLIDER's by aggregate gain and, replay being an aggregator, excludes neither: every
+  //     batch enters the recipe, and only COLLIDER's later sizing of SHARED is marked skipped
+  //     (`shared-instance`, naming NEIGHBOUR); the replay enters each batch's sealed effective domain.
+  const sealedFirst = (first.collected.contributions as any[]).filter((item) => item.kind === 'xtop-session');
+  assert.deepEqual(sealedFirst.map((item) => item.taskId).sort(), [...SLOTS], `${row}: generation 1 sealed six batches`);
+  const sealedOf = (slot: Slot) => sealedFirst.find((item) => item.taskId === slot);
+  for (const slot of SLOTS) {
+    const sealed = sealedOf(slot); const target = `func_ssg_rcworst|setup|${blockOf(slot)}/reg0/I`;
+    assert.equal(sealed.admissible, true, `${row}: ${slot}'s batch is admissible: ${JSON.stringify(sealed.refusals)}`);
+    assert.equal(sealed.session.domainSource, 'domain.json', `${row}: ${slot}'s seal checked its session's domain.json`);
+    assert.equal(sealed.effectiveDomain?.schema, 'atcs-local-domain/1', `${row}: ${slot}'s batch carries its effectiveDomain`);
+    assert.deepEqual(sealed.effectiveDomain.planInstances, [`${blockOf(slot)}/reg0`, `${blockOf(slot)}/reg1`]);
+    assert.deepEqual(sealed.effectiveDomain.instances, derivedDomain(slot), `${row}: ${slot}'s domain is derived one hop out`);
+    assert.deepEqual([sealed.effectiveDomain.globalNets, sealed.effectiveDomain.unresolved, sealed.effectiveDomain.error], [[], [], undefined]);
+    assert.equal(sealed.reads?.present, true, `${row}: ${slot}'s session logged its reads`);
+    assert.ok(sealed.reads.byProc.atcs_point >= 2, `${row}: ${slot} read its target point to point before and after: ${JSON.stringify(sealed.reads.byProc)}`);
+    assert.deepEqual(sealed.attempted, [target], `${row}: ${slot}'s target was read`);
+    assert.deepEqual(sealed.limitations.filter((item: string) => item.startsWith('seal:')), [], `${row}: ${slot}'s seal records no gap`);
+  }
+  for (const slot of [NEIGHBOUR, COLLIDER]) {
+    assert.ok(sealedOf(slot).commands.some((command: any) => command.args.instance === SHARED),
+      `${row}: ${slot} kept a sizing of ${SHARED}, inside its derived domain`);
+  }
+  const recipeFirst = first.facts.recipe;
+  assert.deepEqual(recipeFirst.excluded, [], `${row}: replay is an aggregator: no batch is excluded`);
+  assert.deepEqual(recipeFirst.sessions.map((item: any) => item.taskId).sort(), [...SLOTS],
+    `${row}: every batch, both overlapping ones included, is ranked for replay`);
+  assert.ok(first.facts.considered.includes(sealedOf(COLLIDER).id), `${row}: the overlapping batch stays considered`);
+  const neighbourRank = recipeFirst.sessions.find((item: any) => item.taskId === NEIGHBOUR);
+  const colliderRank = recipeFirst.sessions.find((item: any) => item.taskId === COLLIDER);
+  assert.ok(neighbourRank.rank < colliderRank.rank && neighbourRank.aggregateRankGain > colliderRank.aggregateRankGain,
+    `${row}: ${NEIGHBOUR}'s two-step batch outranks ${COLLIDER}'s by aggregate gain: ${JSON.stringify([neighbourRank, colliderRank])}`);
+  assert.deepEqual(colliderRank.commands.map((command: any) => [command.args.instance, command.skip,
+    command.sharedWith?.map((other: any) => [other.instance, other.contribution])]),
+  [[`${blockOf(COLLIDER)}/reg0`, null, undefined], [SHARED, 'shared-instance', [[SHARED, neighbourRank.contribution]]]],
+  `${row}: only ${COLLIDER}'s later sizing of ${SHARED} is skipped, naming ${NEIGHBOUR}`);
+  assert.equal(recipeFirst.skipCount, 1, `${row}: the planted overlap skips one command, never a batch`);
+
+  // 5. The replay: every generation's recipe replays every kept command of every batch -- w01's undone
+  //    trial is not in it, and COLLIDER's later sizing of SHARED is recorded skipped with its reason --
+  //    inside each batch's sealed effective domain, protects what it applied, and then runs the
+  //    attempt-4 auto-finish in both arms.
   const batchDirs = (await readdir(path.join(workspace, 'integrations'))).sort();
   assert.equal(batchDirs.length, 2, `${row}: one replay batch per generation`);
   for (const [index, batchId] of batchDirs.entries()) {
-    const active: readonly Slot[] = result.batches[index]!.active;
+    const batch: Batch = result.batches[index]!;
+    const kept: readonly Slot[] = batch.active;
+    const expected: string[] = [...kept.flatMap((slot: Slot) => Array(batch.generation === 1 && slot === NEIGHBOUR ? 2 : 1).fill(`${blockOf(slot)}/reg0`)),
+      ...(batch.generation === 1 ? [SHARED] : [])].sort();
     const merged = path.join(workspace, 'integrations', batchId, 'merged');
     const recipe = await readFile(path.join(merged, 'recipe.tcl'), 'utf8');
     const replayed = [...recipe.matchAll(/atcs_replay_step \{[^}]+\} 0 \{atcs_size_cell \{(\S+)\} \{(\S+)\}/g)].map(m => m[1]!);
-    assert.deepEqual(replayed.sort(), active.map(slot => `${blockOf(slot)}/reg0`).sort(),
-      `${row}: ${batchId} replays each active session's one kept sizing, and no undone trial`);
+    assert.deepEqual(replayed.sort(), expected, `${row}: ${batchId} replays each kept batch's kept sizings, and no undone trial`);
     const receipts = await jsonLines(path.join(merged, 'receipts.jsonl'));
-    assert.deepEqual(receipts.map(r => r.status), active.map(() => 'applied'), `${row}: ${batchId}: every kept command applied`);
+    const skippedSteps = batch.replayRequest.steps.filter((step: any) => step.skip !== null);
+    assert.deepEqual(skippedSteps.map((step: any) => [step.slot, step.args.instance, step.skip]),
+      batch.generation === 1 ? [[COLLIDER, SHARED, 'shared-instance']] : [], `${row}: ${batchId}'s request skips only the overlapping command`);
+    assert.deepEqual(receipts.filter(r => r.status === 'applied').length, expected.length, `${row}: ${batchId}: every other kept command applied`);
+    assert.deepEqual(receipts.filter(r => r.status !== 'applied').map(r => [r.stepId, r.slot, r.status, r.attempted, r.reason]),
+      skippedSteps.map((step: any) => [step.stepId, step.slot, 'skipped', false, 'recipe']),
+      `${row}: ${batchId}: the overlapping command is recorded skipped with its reason and the replay continued`);
+    // replay-prepare entered each kept batch's sealed effective domain, never the plan's package.
+    assert.deepEqual(batch.replayRequest.sessions.map((item: any) => [item.slot, item.domainSource, item.domain.instances])
+      .sort((a: any, b: any) => a[0].localeCompare(b[0])), kept.map((slot) => [slot, 'effectiveDomain', derivedDomain(slot)]),
+    `${row}: ${batchId}'s replay request takes every session's domain from its sealed effectiveDomain`);
+    const transcript = await readFile(path.join(merged, 'xtop_log_1.txt'), 'utf8');
+    for (const slot of kept) {
+      assert.ok(recipe.includes(`atcs_replay_session {${slot}} `) && recipe.includes(`{${derivedDomain(slot).join(' ')}}`),
+        `${row}: ${batchId}'s recipe enters ${slot}'s derived domain`);
+      assert.ok(transcript.includes(`ATCS:replay-domain:${slot}:${derivedDomain(slot).length} instances`), `${row}: ${batchId}'s replay entered ${slot}'s domain`);
+    }
     const armResult = JSON.parse(await readFile(path.join(merged, 'arm-result.json'), 'utf8'));
+    const control = JSON.parse(await readFile(path.join(workspace, 'integrations', batchId, 'control', 'arm-result.json'), 'utf8'));
     const autoFix = await readFile(path.join(merged, 'auto-fix.tcl'), 'utf8');
-    assert.ok(autoFix.trim().split('\n').length >= 1, `${row}: ${batchId} carries auto-finish lines`);
-    assert.deepEqual(armResult.autoFix.map((entry: any) => [entry.command, entry.code]),
-      autoFix.trim().split('\n').map(line => [line, 0]), `${row}: ${batchId}: every auto-finish line ran after the recipe`);
-    assert.equal(armResult.complete, true);
+    assert.deepEqual(autoFix.trim().split('\n'), ATTEMPT4_AUTO_FINISH, `${row}: ${batchId}'s auto-finish is attempt 4's four commands, byte for byte`);
+    for (const arm of [armResult, control]) {
+      assert.deepEqual(arm.autoFix.map((entry: any) => [entry.command, entry.code]), ATTEMPT4_AUTO_FINISH.map(line => [line, 0]),
+        `${row}: ${batchId}: each arm ran attempt 4's four auto-finish commands`);
+      assert.equal(arm.complete, true);
+    }
+    assert.equal(armResult.appliedCommands, expected.length, `${row}: ${batchId}'s merged arm counts its applied commands`);
+    assert.equal(armResult.skippedCommands, skippedSteps.length, `${row}: ${batchId}'s merged arm counts its skipped commands`);
+    assert.ok(armResult.protectedCount >= 1, `${row}: ${batchId}'s merged arm protected the manual batch before auto-finish: ${armResult.protectedCount}`);
+    assert.deepEqual([control.appliedCommands, control.protectedCount], [0, 0], `${row}: ${batchId}'s control arm ran auto-finish alone`);
   }
   const lastState = JSON.parse(await readFile(path.join(workspace, 'state/integration-state.json'), 'utf8'));
   assert.deepEqual(Object.keys(lastState.autoDelta?.mastersChanged ?? {}).sort(),

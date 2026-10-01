@@ -1,11 +1,18 @@
 # Example: worker request
 
 The `worker-request` Reader of each slot (`tools/read-atcs.py`) admits these documents with zero
-problems once each `"<...>"` string is replaced. They are written for slot `w01`; for slot `wNN` the
+problems once each `"<...>"` string is replaced and, for an active slot, once
+`python3 <workspace>/hima-readers/atcs-readiness/read-atcs.py brief <the written request>` (exactly one argument
+after `brief`: `brief REQUEST_JSON`, the request's path, never the workspace too) has added
+`operatorBrief` in place: the bounded summary the Host embeds in the Operator's task with `sessionPlan`
+(run it again after any change; a stale one is counted, and so is a `sessionPlan` above 16000
+characters as JSON). They are written for slot `w01`; for slot `wNN` the
 only change is `taskId`, exactly `wNN`. `candidate` is the slot's prepared package,
 `state/workers.json` `workers.<slot>.workPackage` with only its `schema` and `id` removed, never edited,
 narrowed or widened; `baseState` is `state/working-state.json` verbatim; `siteCapabilities` is copied
-from the campaign plan. The Reader's refusal, one line per problem, is `workerRequestNNProblems`.
+from the campaign plan. The candidate carries the plan's `cluster` unchanged: the seat's blocker
+cluster, its `targets` hardest first. The Reader's refusal, one line per problem, is
+`workerRequestNNProblems`.
 
 ## Active slot
 
@@ -16,7 +23,12 @@ object's cell function, the name up to the drive digits of `ecoParameters.cellNo
 up); the drive or the VT may change, the function may not. The cells are the `cell (NAME)` groups of the
 Liberty files that file lists in `libraryFiles` (it holds no cell table itself);
 `hima-readers/atcs-readiness/read-atcs.py masters` lists them for each instance; the Reader writes any other
-`toMaster` as advice, never as a refusal.
+`toMaster` as advice, never as a refusal. An entry's `object` may be a cell the plan does not list, such as
+the driver or a load of a target pin's net: the session derives its local domain around the target pins
+and plan instances, and the toolkit refuses a cell outside it. The Reader writes such an object as advice. An `atcs_insert_dummy` entry names its `toMaster` too: the dummy load's
+master, one cell of `ecoParameters.bufferListForHold` in `state/xtop-context.json` (the session's hold buffer
+list, which the Operator's `atcs_ref` prints; a delay cell is a dummy load XTop accepts). The tool never picks
+the load: XTop refuses a dummy with no master (`invalid library cell ''`, #64 Q1).
 
 ```json
 {
@@ -24,6 +36,14 @@ Liberty files that file lists in `libraryFiles` (it holds no cell table itself);
     "taskId": "w01",
     "baseStateId": "<id of state/working-state.json>",
     "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
+    "cluster": {
+      "cause": "scenario-worst",
+      "key": "func_ssg_rcworst_m40",
+      "checks": [
+        "func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D",
+        "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"
+      ]
+    },
     "targets": [
       "func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D",
       "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"
@@ -67,7 +87,7 @@ Liberty files that file lists in `libraryFiles` (it holds no cell table itself);
     ],
     "scope": {
       "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo"],
-      "maxMutations": 120
+      "maxMutations": 600
     },
     "observe": "fast"
   },
@@ -86,6 +106,7 @@ Liberty files that file lists in `libraryFiles` (it holds no cell table itself);
     {
       "command": "atcs_insert_dummy",
       "object": "u_core/u_lsu/addr_reg_0_/D",
+      "toMaster": "DEL050MD1BWP35P140",
       "hypothesis": "a dummy load on the short hold path closes hold",
       "falsifier": "no hold gain on the target, or setup breaks; then atcs_undo"
     }
@@ -107,6 +128,14 @@ honest no-fix.
     "taskId": "w01",
     "baseStateId": "<id of state/working-state.json>",
     "problem": "func_ssg_rcworst_m40 worst setup check at u_core/u_lsu/data_reg_3_/D and worst hold check at u_core/u_lsu/addr_reg_0_/D; auto-finish left both unfixed",
+    "cluster": {
+      "cause": "scenario-worst",
+      "key": "func_ssg_rcworst_m40",
+      "checks": [
+        "func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D",
+        "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"
+      ]
+    },
     "targets": [
       "func_ssg_rcworst_m40|setup|u_core/u_lsu/data_reg_3_/D",
       "func_ssg_rcworst_m40|hold|u_core/u_lsu/addr_reg_0_/D"
@@ -150,7 +179,7 @@ honest no-fix.
     ],
     "scope": {
       "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo"],
-      "maxMutations": 120
+      "maxMutations": 600
     },
     "observe": "fast"
   },

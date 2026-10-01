@@ -1,3 +1,4 @@
+// @hima-seam llm-replay direct
 // ADR-0016 (user decision 2026-09-29): fork branches drive themselves. A Pack declares `autopilot`
 // on a fork (or on a plain path segment) and inside it the Harness takes the node turns the owner
 // would take: a branch Workshop is authored by the branch's own child Agent (revised from the
@@ -18,14 +19,15 @@ import { appendFile, cp, mkdir, readFile, realpath, writeFile } from 'node:fs/pr
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
 import {
-  BUILTIN_TCL_ADAPTER_DIGEST, WORKSHOP_ENTRY_SCHEMA, interactiveCommandsDigest, loadPack, packDigestExcludes, runDelegations,
+  BUILTIN_TCL_ADAPTER_DIGEST, WORKSHOP_ENTRY_SCHEMA, executionAction, interactiveCommandsDigest, loadPack, packDigestExcludes, runDelegations,
   type ExecutionActionRequest, type ExecutionActionResult, type LedgerRecord,
 } from '@hima/harness';
 import { homePatchFile, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
 import { repoRoot } from './support/dsh-home.ts';
 import { killSessions, localHome, sessionsOf, waitUntil } from './support/fabric.ts';
-import { writeMomentScenario } from './support/moments.ts';
+import { appendReplaySession, writeMomentScenario } from './support/moments.ts';
+import type { ReplayEntry } from '@deepseek-ai/dsh-llm-replay';
 import { writeLocalSite } from './support/site.ts';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
@@ -47,6 +49,15 @@ interface Fixture {
   readonly operatorFollowups: number;
   /** An extra graph edit, for the load-refusal cases. */
   readonly graphEdit?: (graph: Record<string, any>) => void;
+  /**
+   * Native children (#66 H2b): the autopilot reads each child's own completed turn, and every live
+   * model session replays this script. Absent, children are played through the Ledger.
+   */
+  readonly native?: readonly ReplayEntry[];
+  /** The Operator member's declared share (60 s when absent). */
+  readonly operatorMs?: number;
+  /** The Site's job lanes (2 when absent); a Run's delegation time is its time box on each lane. */
+  readonly lanes?: number;
 }
 const defaults: Fixture = { authorMs: 30_000, operatorFollowups: 1 };
 
@@ -60,7 +71,7 @@ const teamOf = (branch: Branch, fixture: Fixture) => ({ id: branch.team, version
     terminal: ['completed', 'cancelled', 'expired', 'uncertain', 'refused'], refusalConditions: ['missing-evidence'] },
   { id: 'operator', role: 'operator', node: branch.operate, taskTemplate: `Operate branch ${branch.id}'s session inside the plan's scope.`,
     inputs: [branch.output], allowedTools: ['hima_interactive'], scopePolicy: 'site-qualified-interactive-only',
-    budgetShare: { maxElapsedMs: 60_000, maxFollowups: fixture.operatorFollowups }, dependencyRoles: [],
+    budgetShare: { maxElapsedMs: fixture.operatorMs ?? 60_000, maxFollowups: fixture.operatorFollowups }, dependencyRoles: [],
     resultSchema: { id: 'fixture-operator/1', required: ['schema', 'planSha256'] }, recipient: 'run-owner', ownerAdoption: 'required',
     identity: 'one-child-per-role-per-execution', followup: fixture.operatorFollowups === 0 ? 'forbidden' : 'reuse-same-child',
     cancellation: 'request-stop-preserve-unknown', terminal: ['completed', 'cancelled', 'expired', 'uncertain', 'refused'],
@@ -205,6 +216,10 @@ async function campaign(t: TestContext, fixture: Fixture, timeBoxMs: number, che
   const prior = process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
   process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = 'branch-autopilot-local';
   t.after(() => { if (prior === undefined) delete process.env.HIMA_TEST_INTERACTIVE_BINDING_ID; else process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = prior; });
+  if (fixture.native !== undefined) {
+    process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS = 'native';
+    t.after(() => { process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS = 'ledger'; });
+  }
   const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local, 'the local stand-in home must be available');
   const { h, flow } = local;
   const workspaceRoot = await realpath(h.workspace);
@@ -213,8 +228,15 @@ async function campaign(t: TestContext, fixture: Fixture, timeBoxMs: number, che
   await writePack(packsDir, tclsh, fixture);
   const bindingsFile = await writeBinding(h.home, packsDir, tclsh, workspaceRoot);
   const site = await writeLocalSite(h, { allowedReadRoots: [workspaceRoot, flow.root, path.dirname(tclsh)], allowedWriteRoots: [workspaceRoot],
-    allowedWrappers: ['sh', tclsh], bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot }, licences: { xtop: 2 }, parallelJobs: 2 });
-  const scenario = await writeMomentScenario(h, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
+    allowedWrappers: ['sh', tclsh], bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot }, licences: { xtop: 2 }, parallelJobs: fixture.lanes ?? 2 });
+  let scenario = await writeMomentScenario(h, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
+  if (fixture.native !== undefined) {
+    // Replay binds live sessions to scripts by first-call order; every one gets the same script.
+    await writeFile(scenario.file, `${JSON.stringify({ version: 0, type: 'session', id: 'native-first', createdAt: 0, cwd: '{{cwd}}' })}\n`);
+    await writeFile(scenario.override, `${JSON.stringify(fixture.native)}\n`);
+    scenario = { ...scenario, children: [] };
+    for (let n = 1; n <= 8; n++) scenario = await appendReplaySession(scenario, `native-${n}`, fixture.native);
+  }
   await writeReplayOverlay(h.home, { file: scenario.file, overrideFile: scenario.override, childFiles: scenario.children });
   await appendFile(homePatchFile(h.home), `\n- id: hima\n  config:\n    sitesDir: ${JSON.stringify(site.sitesDir)}\n    packsDir: ${JSON.stringify(packsDir)}\n    knowledgeDir: ${JSON.stringify(path.join(h.home, 'hima/knowledge/current'))}\n    interactiveBindingsFile: ${JSON.stringify(bindingsFile)}\n`);
   const host = await bootInProcess(h);
@@ -333,7 +355,26 @@ function players({ host, runId, owner, workspace }: Driven) {
     && nodes.includes(control().executions[request.receipt.executionId ?? '']?.nodeId ?? ''));
   const autopilotTurns = (nodes: readonly string[]) => Object.values(control().requests).filter((request) =>
     request.origin === 'autopilot' && nodes.includes(control().executions[request.receipt.executionId ?? '']?.nodeId ?? ''));
-  return { control, run, records, act, human, ownerNode, answer, authorAsked, entry, operatorOf, operate, ownerTurns, autopilotTurns, delegationRecords };
+  /** #64 D-Q1-1: an Operator that opens, dumps and keeps one scoped mutation, then stops, leaving its session open. */
+  const operateLeavingOpen = async (branch: Branch, operator: ReturnType<typeof runDelegations>[number]) => {
+    const opened = await interactive(operator, { action: 'open', requestId: `open-${branch.id}-${++serial}` });
+    assert.equal(opened.status, 'opened', JSON.stringify(opened));
+    const toolSessionId = opened.session.toolSessionId as string;
+    const planSha256 = operator.effective.recipe!.inlinePayload!.planSha256;
+    const slot = path.join(workspace, `research/branch-${branch.id}`);
+    for (const [name, args] of [['atcs_dump_cells', { path: path.join(slot, 'before.dump') }],
+      ['atcs_size_cell', { instance: 'U1', toMaster: branch.toMaster, planSha256 }]] as const) {
+      const id = `${name}-${branch.id}-${++serial}`;
+      const sent = await interactive(operator, { action: 'input', requestId: id, commandId: id, toolSessionId, command: { name, args }, waitMs: 5_000 });
+      assert.equal(sent.status, 'completed', `${name} in branch ${branch.id}: ${JSON.stringify(sent)}`);
+    }
+    const close = async () => {
+      const id = `atcs_close-${branch.id}-${++serial}`;
+      return interactive(operator, { action: 'input', requestId: id, commandId: id, toolSessionId, command: { name: 'atcs_close', args: {} }, waitMs: 5_000 });
+    };
+    return { planSha256, toolSessionId, close };
+  };
+  return { control, run, records, act, human, ownerNode, answer, authorAsked, entry, operatorOf, operate, operateLeavingOpen, ownerTurns, autopilotTurns, delegationRecords };
 }
 
 const atJoin = (driven: Driven) => () => { const run = driven.host.ctx.hima.ledger.run(driven.runId)!; return run.fork === undefined && run.currentNode === 'judge'; };
@@ -495,6 +536,295 @@ test('a person pausing one branch holds only that branch; continuing it lets the
     await p.answer(operator.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256 }));
     await waitUntil('the continued branch reaches the join', atJoin(driven), 60_000, 25);
     assert.deepEqual(p.ownerTurns(branchNodes), []);
+  });
+});
+
+test('a native child whose turn ends at max-tokens with no output gets one repair follow-up at once, not a wait to expiry (#66 H2b)', async (t) => {
+  // D-T04-2: the author's only turn ended `max-tokens` inside its reasoning, with no text. Its answer
+  // to the one repair follow-up is a branch-agnostic entry that writes the plan into its Workshop.
+  const plan = JSON.stringify({ actions: [{ instance: 'U1', toMaster: 'BUF2' }], scope: { commands: ['atcs_size_cell'], maxMutations: 3 } });
+  const entry = JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA, entry: `printf '%s\\n' '${plan}' > "$1/plan.json"\n` });
+  const outOfTokens: ReplayEntry = { kind: 'chunks', chunks: [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'I should first decide which of the recorded inputs to read, and' } },
+    { type: 'finish', reason: { kind: 'max-tokens' } },
+  ] };
+  const say = (text: string): ReplayEntry => ({ kind: 'chunks', chunks: [
+    { type: 'block-start', index: 0, blockType: 'text' },
+    { type: 'block-end', index: 0, block: { type: 'text', text } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ] });
+  const authorMs = 90_000;
+  await campaign(t, { ...defaults, authorMs, native: [outOfTokens, say(entry), say(entry), say(entry)] }, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    const deps = () => (driven.host.ctx.hima as any).deps();
+    const author = () => runDelegations(deps(), driven.runId).find((row) => row.delegationId.startsWith('autopilot-author-plan-a-'));
+    await waitUntil('branch a\'s author is created', () => author() !== undefined, 30_000, 25);
+    const created = Date.now();
+    // The precondition, read from the child's own native Session: its first turn ended max-tokens with no text.
+    const query = (driven.host.ctx as any).get('sessionQuery') as { readSession(id: string): Promise<{ events: { type: string; data?: any }[] }> };
+    let firstEnd: { type: string; data?: any } | undefined; let texts: string[] = [];
+    await waitUntil('the author\'s first turn ends', async () => {
+      const log = await query.readSession(author()!.childSessionId).catch(() => undefined);
+      if (log === undefined) return false;
+      firstEnd = log.events.find((event) => event.type === 'turn/end');
+      texts = log.events.filter((event) => event.type === 'assistant/message' && event.data?.turn === firstEnd?.data?.turn)
+        .flatMap((event) => (event.data?.message?.content ?? []).filter((block: any) => block.type === 'text').map((block: any) => block.text));
+      return firstEnd !== undefined;
+    }, 20_000, 25);
+    assert.equal(firstEnd!.data?.reason?.kind, 'max-tokens', JSON.stringify(firstEnd));
+    assert.deepEqual(texts, [], 'the turn produced no text');
+    const events = () => p.delegationRecords(author()!.delegationId).map((r) => r.type === 'delegation' ? r.event : '');
+    // Well inside the author's 90 s share: the output-less turn is followed up, never waited out.
+    await waitUntil('the output-less author turn gets its repair follow-up', () => events().includes('followup-intent'), 20_000, 25);
+    const waited = Date.now() - created;
+    assert.equal(author()!.state === 'expired', false, 'the author did not expire first');
+    assert.ok(waited < authorMs, `followed up after ${waited} ms`);
+    // The follow-up reached the child's own Session and says why.
+    await waitUntil('the child reads the repair', async () => JSON.stringify((await query.readSession(author()!.childSessionId)).events
+      .filter((event) => event.type !== 'assistant/message')).includes('your turn ended without output'), 10_000, 25);
+    assert.equal(events().filter((event) => event === 'followup-intent').length, 1, 'exactly one repair follow-up');
+    // The repaired turn is the author's result: the seat is not lost.
+    await waitUntil('the repaired author answer is observed', () => events().includes('result-observed'), 30_000, 25);
+    t.diagnostic(`H2b: follow-up ${waited} ms after the author was created (share ${authorMs} ms)`);
+  });
+});
+
+test('an Operator whose branch is done frees its share: a later branch\'s recipe Operator still gets its member share (#66 H2a, ATCS-09 dry w04)', async (t) => {
+  // One lane and a 300 s time box: 300 s of delegation time. The two authors hold 30 s each (a
+  // completed author keeps its reservation while a follow-up is still allowed), which leaves 240 s,
+  // and each Operator member declares exactly that. Branch b's Operator takes it all, finishes, and
+  // its result is adopted; its execution is settled, so it can never work again. Branch a, held until
+  // then, must still get an Operator: the dry path's generation 2 starved exactly here.
+  const operatorMs = 240_000;
+  await campaign(t, { ...defaults, operatorMs, lanes: 1 }, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    const paused = await p.human('pause', { nodeId: 'read-plan-a' });
+    assert.equal(paused.kind, 'accepted', paused.reason);
+    await Promise.all(branches.map(async (branch) => p.answer(await p.authorAsked(branch), p.entry(branch))));
+    const b = await p.operatorOf(branches[1]);
+    assert.equal(b.effective.budgetShare.maxElapsedMs, operatorMs, 'branch b\'s Operator gets its member share');
+    await p.answer(b.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: await p.operate(branches[1], b) }));
+    await waitUntil('branch b reaches the join', () => p.run().fork?.branches['plan-b']?.state === 'done', 60_000, 25);
+    const continued = await p.human('continue', { nodeId: 'read-plan-a' });
+    assert.equal(continued.kind, 'accepted', continued.reason);
+    // Branch a's Operator, or the refusal that settles its branch instead.
+    const refusedA = () => p.records().find((r) => r.type === 'node' && r.branchId === 'plan-a' && r.state === 'cancelled');
+    await waitUntil('branch a\'s Operator is materialized or its branch settles', () => refusedA() !== undefined
+      || runDelegations((driven.host.ctx.hima as any).deps(), driven.runId).some((row) => row.effective.recipe?.teamId === 'team-a'), 60_000, 25);
+    const settled = refusedA();
+    assert.equal(settled, undefined, `branch a was starved: ${settled?.type === 'node' ? settled.reason : ''}`);
+    const a = await p.operatorOf(branches[0]);
+    t.diagnostic(`Operator shares: b ${b.effective.budgetShare.maxElapsedMs} ms, a ${a.effective.budgetShare.maxElapsedMs} ms`);
+    assert.ok(a.effective.budgetShare.maxElapsedMs > 200_000, `branch a's Operator gets (nearly) its member share: ${a.effective.budgetShare.maxElapsedMs}`);
+    await p.answer(a.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: await p.operate(branches[0], a) }));
+    await waitUntil('both branches reach the join', atJoin(driven), 60_000, 25);
+  });
+});
+
+test('an identical rewrite after an identical failure is never re-run: the author gets one repair follow-up carrying the failure, then the branch settles refused (#64 D-T06-2)', async (t) => {
+  // T06: the w02 author's program exited 4; the autopilot re-wrote and re-ran the same retained code
+  // (same sha, same exit) about 200 times until the Run-wide research-write budget was gone. Here the
+  // author always answers the same failing program.
+  const failing = JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA, entry: 'echo "operatorBrief not written: exit 1" >&2\nexit 4\n' });
+  await campaign(t, defaults, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    const author = await p.authorAsked(branches[0]);
+    await p.answer(author, failing);
+    const codes = () => p.records().filter((r) => r.type === 'code' && r.nodeId === 'plan-a');
+    const followups = () => p.delegationRecords(author).filter((r) => r.type === 'delegation' && r.event === 'followup-intent');
+    await waitUntil('a repair follow-up, or a re-run of the failed program', () => followups().length > 0 || codes().length > 1, 30_000, 25);
+    assert.equal(codes().length, 1, `the failed program is not re-run as it stands: ${codes().length} code records of ${new Set(codes().map((r) => r.type === 'code' ? r.sha256 : '')).size} distinct sha`);
+    assert.equal(followups().length, 1, 'the author is asked to repair once');
+    const asked = await p.authorAsked(branches[0]);
+    assert.equal(asked, author, 'the same author, followed up');
+    const sent = p.delegationRecords(author).findLast((r) => r.type === 'delegation' && r.event === 'followup-sent');
+    assert.match(JSON.stringify(sent), /exited 4/, 'the follow-up carries the failure');
+    assert.match(JSON.stringify(sent), /operatorBrief not written/, 'and the tail of the program\'s own log');
+    // The author answers the identical program: it is not run again, and the branch settles refused.
+    await p.answer(author, failing);
+    const settled = () => p.records().findLast((r) => r.type === 'node' && r.branchId === 'plan-a' && r.state === 'cancelled');
+    await waitUntil('branch a settles refused', () => settled() !== undefined || codes().length > 1, 30_000, 25);
+    assert.equal(codes().length, 1, 'the identical rewrite is never run');
+    const refusal = settled();
+    assert.ok(refusal?.type === 'node', 'branch a settled');
+    assert.match(refusal.reason ?? '', /settled refused/);
+    assert.match(refusal.reason ?? '', /exited 4|identical/);
+    assert.equal(p.records().filter((r) => r.type === 'research-write' && r.nodeId === 'plan-a').length, 1, 'one research write for one authored program');
+    assert.equal(followups().length, 1, 'one repair follow-up in all');
+    assert.equal(Object.values(p.control().requests).filter((request) => request.origin === 'human').length, 0, 'no person was asked');
+  });
+});
+
+test('exit 0 with a missing declared output is the same failed program and is never re-run (#64 D-T07-1)', async (t) => {
+  const missing = JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA, entry: 'echo "finished without the declared output"\nexit 0\n' });
+  await campaign(t, defaults, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    const author = await p.authorAsked(branches[0]);
+    await p.answer(author, missing);
+    const codes = () => p.records().filter((r) => r.type === 'code' && r.nodeId === 'plan-a');
+    const followups = () => p.delegationRecords(author).filter((r) => r.type === 'delegation' && r.event === 'followup-intent');
+    await waitUntil('the missing-output program gets one repair follow-up', () => followups().length > 0 || codes().length > 1, 30_000, 25);
+    assert.equal(codes().length, 1, 'the exit-0 program with no declared output runs only once');
+    assert.equal(followups().length, 1, 'the existing author is asked to repair the missing output');
+    await waitUntil('the repair follow-up is delivered', () => p.delegationRecords(author)
+      .some((r) => r.type === 'delegation' && r.event === 'followup-sent'), 10_000, 25);
+    const sent = p.delegationRecords(author).findLast((r) => r.type === 'delegation' && r.event === 'followup-sent');
+    assert.match(JSON.stringify(sent), /declared output|was not written/i);
+    await p.answer(author, missing);
+    const settled = () => p.records().findLast((r) => r.type === 'node' && r.branchId === 'plan-a' && r.state === 'cancelled');
+    await waitUntil('the identical exit-0 rewrite settles the branch', () => settled() !== undefined || codes().length > 1, 30_000, 25);
+    assert.equal(codes().length, 1, 'the identical exit-0 rewrite is never run');
+    const refusal = settled();
+    assert.ok(refusal?.type === 'node', 'the branch records one settled refusal');
+    assert.match(refusal.type === 'node' ? refusal.reason ?? '' : '', /settled refused|identical/i);
+    assert.equal(p.records().filter((r) => r.type === 'research-write' && r.nodeId === 'plan-a').length, 1);
+  });
+});
+
+test('each revised failing program runs once, and the author\'s follow-up allowance bounds the branch before it settles refused (#64 D-T06-2)', async (t) => {
+  await campaign(t, defaults, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    const codes = () => p.records().filter((r) => r.type === 'code' && r.nodeId === 'plan-a');
+    const settled = () => p.records().findLast((r) => r.type === 'node' && r.branchId === 'plan-a' && r.state === 'cancelled');
+    let answers = 0;
+    while (settled() === undefined && answers < 8) {
+      const author = await Promise.race([p.authorAsked(branches[0]),
+        waitUntil('branch a settles', () => settled() !== undefined, 60_000, 25).then(() => '')]);
+      if (author === '') break;
+      answers += 1;
+      await p.answer(author, JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA, entry: `# revision ${String(answers)}\nexit 4\n` }));
+      await waitUntil(`revision ${String(answers)} runs or the branch settles`, () => codes().length >= answers || settled() !== undefined, 30_000, 25);
+    }
+    const refusal = settled();
+    assert.ok(refusal?.type === 'node', 'branch a settled refused');
+    assert.match(refusal.reason ?? '', /follow-up allowance is exhausted/);
+    const author = runDelegations((driven.host.ctx.hima as any).deps(), driven.runId).find((row) => row.delegationId.startsWith('autopilot-author-plan-a-'))!;
+    assert.equal(author.followups, 3, 'the author\'s declared allowance, and no more');
+    assert.equal(answers, 4, 'the first entry and one revision per follow-up');
+    assert.equal(codes().length, answers, 'each authored program ran exactly once');
+    assert.equal(new Set(codes().map((r) => r.type === 'code' ? r.sha256 : '')).size, answers);
+  });
+});
+
+test('an Operator that answers with its session open is asked once to close it; its close keeps the edit and the branch seals it (#64 D-Q1-1)', async (t) => {
+  // Q1 attempt 1: the Operator kept a size and answered its schema-valid result without closing its session.
+  // Its result ended its authority, nobody could close the session cleanly, and it stood 9.9 min until its idle
+  // deadline killed it: the edit was lost and the node retried.
+  await campaign(t, defaults, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    await Promise.all(branches.map(async (branch) => {
+      await p.answer(await p.authorAsked(branch), p.entry(branch));
+      const operator = await p.operatorOf(branch);
+      if (branch.id === 'b') {
+        await p.answer(operator.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: await p.operate(branch, operator) }));
+        return;
+      }
+      const left = await p.operateLeavingOpen(branch, operator);
+      await p.answer(operator.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: left.planSha256 }));
+      const asked = () => p.delegationRecords(operator.delegationId).find((r) => r.type === 'delegation' && r.event === 'followup-sent'
+        && r.requestId.startsWith('ap-close-'));
+      await waitUntil('the Operator is asked to close its open session', () => asked() !== undefined, 20_000, 25);
+      assert.match(JSON.stringify(p.delegationRecords(operator.delegationId).find((r) => r.type === 'delegation' && r.event === 'followup-intent'
+        && r.requestId.startsWith('ap-close-'))), /ap-close-/);
+      const closed = await left.close();
+      assert.equal(closed.status, 'completed', `the asked Operator may close its session again: ${JSON.stringify(closed)}`);
+      await p.answer(operator.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: left.planSha256 }));
+    }));
+    await waitUntil('both branches reach the join', atJoin(driven), 60_000, 25);
+    const records = p.records();
+    assert.equal(Object.values(p.control().executions).filter((e) => e.nodeId === 'operate-a').length, 1, 'one attempt: the edit was never lost');
+    assert.ok(records.some((r) => r.type === 'node' && r.nodeId === 'capture-a' && r.state === 'done'), 'the branch sealed it');
+    const captured = (await readFile(path.join(driven.workspace, 'research/branch-a/captured.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+    assert.deepEqual(captured.map((line) => [line.cmd, line.status]), [['size_cell', 'kept']], 'the kept edit is in the sealed log');
+    const a = runDelegations((driven.host.ctx.hima as any).deps(), driven.runId).find((row) => row.effective.recipe?.teamId === 'team-a' && row.effective.recipe.memberId === 'operator')!;
+    assert.ok(a.adoptedRecordId !== undefined, 'its latest result was adopted');
+    assert.equal(p.delegationRecords(a.delegationId).filter((r) => r.type === 'delegation' && r.event === 'followup-intent').length, 1, 'one follow-up');
+  });
+});
+
+test('an Operator that answers again with its session still open has it closed by the Host at once, not at its idle deadline (#64 D-Q1-1)', async (t) => {
+  await campaign(t, defaults, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    await p.answer(await p.authorAsked(branches[0]), p.entry(branches[0]));
+    const operator = await p.operatorOf(branches[0]);
+    const left = await p.operateLeavingOpen(branches[0], operator);
+    await p.answer(operator.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: left.planSha256 }));
+    await waitUntil('the close follow-up', () => p.delegationRecords(operator.delegationId).some((r) => r.type === 'delegation'
+      && r.event === 'followup-sent' && r.requestId.startsWith('ap-close-')), 20_000, 25);
+    const answered = Date.now();
+    await p.answer(operator.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: left.planSha256 }));
+    const hostClose = () => p.records().find((r) => r.type === 'interactive' && r.requestId === `operator-ended-close-${left.toolSessionId}`.slice(0, 160));
+    await waitUntil('the Host closes the session', () => hostClose() !== undefined, 20_000, 25);
+    t.diagnostic(`D-Q1-1: Host close ${String(Date.now() - answered)} ms after the second answer`);
+  });
+});
+
+test('a schema repair after a failed-program repair has its own follow-up id, never "Follow-up id changed contents" (#64 D-Q1-4)', async (t) => {
+  // Q1 #362/#459 (w04, w05): the author's reply failed its schema (repair `ap-repair-<id>`), its program then
+  // failed by its own exit (repair `ap-repair-<id>-<attempt>`), and its next reply failed the schema again.
+  // That second schema repair reused `ap-repair-<id>` with other text; the Host refused it ("Follow-up id
+  // changed contents") and the branch settled refused with follow-ups still allowed.
+  await campaign(t, { ...defaults, authorMs: 120_000 }, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    const author = await p.authorAsked(branches[0]);
+    const followups = () => p.delegationRecords(author).filter((r) => r.type === 'delegation' && r.event === 'followup-intent');
+    const settled = () => p.records().findLast((r) => r.type === 'node' && r.branchId === 'plan-a' && r.state === 'cancelled');
+    const codes = () => p.records().filter((r) => r.type === 'code' && r.nodeId === 'plan-a');
+    await p.answer(author, 'The first reply is prose, not the entry object.');
+    await waitUntil('the first schema repair', () => followups().length === 1 || settled() !== undefined, 30_000, 25);
+    await p.answer(author, JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA, entry: 'echo "failing on purpose" >&2\nexit 4\n' }));
+    await waitUntil('the failed-program repair', () => followups().length === 2 || settled() !== undefined, 30_000, 25);
+    await p.answer(author, 'The failure was the missing input; the entry follows.');
+    await waitUntil('the second schema repair, or the branch settles', () => followups().length === 3 || settled() !== undefined, 30_000, 25);
+    const refusal = settled();
+    assert.equal(refusal, undefined, `branch a settled refused: ${refusal?.type === 'node' ? refusal.reason : ''}`);
+    const ids = followups().map((r) => r.type === 'delegation' ? r.requestId : '');
+    assert.equal(new Set(ids).size, 3, `three distinct follow-up ids: ${JSON.stringify(ids)}`);
+    await p.answer(author, p.entry(branches[0]));
+    await waitUntil('the repaired entry runs', () => codes().length === 2, 30_000, 25);
+    await waitUntil('branch a reads its plan', () => p.records().some((r) => r.type === 'observation' && r.reader.id === 'plan-file'
+      && 'branchId' in r && r.branchId === 'plan-a'), 30_000, 25);
+  });
+});
+
+test('a Run the owner\'s own tool left on a self-driving segment node is picked up by the autopilot\'s periodic kick (#64 D-T04-1)', async (t) => {
+  // D-T04-1 (every live Run): after the owner's accepted complete, the segment's first node never
+  // began until a person pressed Continue. The owner's hima_execution tool calls the fabric
+  // operation directly (tools.ts), which kicks nothing; the Host's own executionAction kicks.
+  const graphEdit = (graph: Record<string, any>) => {
+    graph.entry = 'pre';
+    graph.nodes.unshift({ id: 'pre', kind: 'act', parameters: { observes: 'seed' } }, { id: 'mid', kind: 'act', parameters: { observes: 'seed' } });
+    graph.edges.unshift({ from: 'pre', to: 'mid' }, { from: 'mid', to: 'start' });
+    graph.autopilot.push({ from: ['mid'], until: ['start'] });
+  };
+  await campaign(t, { ...defaults, graphEdit }, 300_000, async (driven) => {
+    const p = players(driven);
+    const deps = () => (driven.host.ctx.hima as any).deps();
+    let serial = 0;
+    const tool = (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}) => executionAction(deps(), {
+      runId: driven.runId, actor: driven.owner, origin: 'agent', expectedEpoch: p.control().epoch, expectedRevision: p.control().revision,
+      requestId: `tool-${++serial}`, action, ...fields });
+    assert.equal(p.run().currentNode, 'pre');
+    const begun = await tool('begin', { nodeId: 'pre' }); assert.equal(begun.kind, 'accepted', begun.reason);
+    const executionId = begun.receipt!.executionId!;
+    assert.notEqual((await tool('work', { executionId })).kind, 'refused');
+    await waitUntil('pre settles', () => p.control().executions[executionId]?.phase === 'ready', 30_000, 25);
+    const done = await tool('complete', { executionId }); assert.equal(done.kind, 'accepted', done.reason);
+    const at = Date.now();
+    await waitUntil('the Run stands on the segment node', () => p.run().currentNode === 'mid', 10_000, 25);
+    await waitUntil('the autopilot begins the segment node', () => p.autopilotTurns(['mid']).some((request) => request.receipt.action === 'begin'), 25_000, 50);
+    t.diagnostic(`D-T04-1: the autopilot began mid ${String(Date.now() - at)} ms after the owner's tool complete`);
+    await waitUntil('the segment drives to where it stops', () => p.run().currentNode === 'start', 30_000, 25);
+    assert.equal(Object.values(p.control().requests).filter((request) => request.origin === 'human').length, 0, 'no person pressed Continue');
   });
 });
 

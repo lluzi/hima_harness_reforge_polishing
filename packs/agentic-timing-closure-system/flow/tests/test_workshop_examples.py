@@ -18,11 +18,13 @@ from __future__ import annotations
 import copy
 import json
 import re
+import subprocess
 import sys
 import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+import yaml
 
 TESTS_DIR = Path(__file__).resolve().parent
 FLOW_DIR = TESTS_DIR.parent
@@ -36,7 +38,9 @@ import atcs_cli  # noqa: E402
 from test_readers import _build_design_state, _make_workspace, _write, read_atcs  # noqa: E402
 
 CONTRACT = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+CONTRACT_DATA = yaml.safe_load(CONTRACT)
 SLOTS = [task_id[1:] for task_id in workspaces.TASK_IDS]
+READER = Path(__file__).resolve().parents[2] / "tools" / "read-atcs.py"
 
 STATE_ID = "<id of state/working-state.json>"
 STATE_OBJECT = "<the whole JSON object in state/working-state.json, verbatim>"
@@ -133,6 +137,8 @@ def _snippet(workshop_id, marker):
     """The Python lines that follow `marker` in the Workshop's purpose, dedented."""
     block = _workshop_block(workshop_id)
     lines = block.split(marker, 1)[1].split("\n")[1:]
+    while lines and not lines[0].strip():
+        lines.pop(0)
     indent = len(lines[0]) - len(lines[0].lstrip())
     code = []
     for line in lines:
@@ -259,6 +265,37 @@ class PlanCampaignExampleTest(ExampleWorkspace):
         _run_snippet(code, self.workspace, {"packages": plan["candidate"]["workPackages"],
                                             "site_capabilities": plan["siteCapabilities"]})
 
+    def test_every_active_example_package_names_its_cluster_hardest_first(self):
+        """#66 D1: a seat owns one blocker cluster; its targets are the cluster's checks, hardest first."""
+        observation = json.loads((self.workspace / "state" / "observation.json").read_text())["checks"]
+        for slot, package in self.plan()["candidate"]["workPackages"].items():
+            with self.subTest(slot=slot):
+                cluster = package["cluster"]
+                self.assertEqual(set(cluster), {"cause", "key", "checks"})
+                self.assertIn(cluster["cause"], read_atcs.CLUSTER_CAUSES)
+                self.assertTrue(cluster["key"])
+                self.assertEqual(package["targets"], cluster["checks"])
+                slacks = [observation[key]["slack"]["value"] for key in cluster["checks"]]
+                self.assertEqual(slacks, sorted(slacks))
+
+    def test_a_cluster_of_the_wrong_shape_is_advice_never_counted(self):
+        """#66 D1: the plan Reader counts identity and merge integrity only; the cluster's shape is advice."""
+        plan = self.plan()
+        packages = plan["candidate"]["workPackages"]
+        packages["w01"]["targets"].reverse()
+        packages["w01"]["cluster"]["checks"].reverse()                        # not hardest first
+        packages["w02"]["cluster"]["cause"] = "vibes"                         # not a cause
+        packages["w03"]["cluster"]["checks"] = packages["w03"]["targets"] + [f"{SCENARIO}|hold|u_core/u_dec/ins_reg_7_/D"]
+        packages["w04"]["cluster"] = "u_core/u_exu"                           # not an object
+        report = _write(self.workspace / "research" / "requests" / "campaign-plan.json", json.dumps(plan))
+        self.assertEqual(read_atcs.problems("campaign-plan", report, self.workspace), [])
+        advice = read_atcs.advice("campaign-plan", report, self.workspace)
+        self.assertEqual([line.split(":", 1)[0] for line in advice], [
+            "candidate.workPackages.w01.cluster.checks", "candidate.workPackages.w02.cluster.cause",
+            "candidate.workPackages.w03.targets", "candidate.workPackages.w04.cluster"], advice)
+        self.assertIn("hardest first", advice[0])
+        self.assertIn("seat-clusters", advice[3])
+
     def test_the_active_example_shows_every_required_field(self):
         active = self.plan()["candidate"]["workPackages"]["w01"]
         for field in ("taskId", "baseStateId", *workspaces._REQUIRED_WORK_PACKAGE_FIELDS, "observe"):
@@ -343,6 +380,27 @@ class RetainedBadPlanTest(ExampleWorkspace):
         self.assertEqual(self.read_plan(self.plan()), 0, "the example, fixed, is admitted")
 
 
+class ComposeZeroContributionGuidanceTest(unittest.TestCase):
+    """#64 T05 D-T05-3: after the join with zero sealed Contributions the owner refused its own compose
+    Workshop as a "hollow ceremony" and asked the person two questions. The designed path (#66 D8; attempt
+    4's generation 2 took it) is an empty compose, then the batch runs the auto-finish alone."""
+
+    def purpose(self):
+        return " ".join(_workshop_block("compose-contributions").split("purpose: >-", 1)[1]
+                        .split("    directory:", 1)[0].split())
+
+    def test_an_empty_compose_is_a_valid_required_step(self):
+        text = self.purpose()
+        for words in ("a compose with zero selected Contributions is a valid, required step",
+                      "the batch then runs the auto-finish alone", "manualValue none"):
+            self.assertIn(words, text)
+
+    def test_the_owner_never_asks_the_person_inside_a_generation(self):
+        text = self.purpose()
+        self.assertIn("never ask the person inside a generation", text)
+        self.assertIn("closing the Run is only the designed continue|stop at decide", text)
+
+
 class WorkerRequestExampleTest(ExampleWorkspace):
     ACTIVE = "Active slot"
     NO_SAFE_MOVE = "Active slot with no safe move"
@@ -355,7 +413,9 @@ class WorkerRequestExampleTest(ExampleWorkspace):
         example["candidate"]["taskId"] = f"w{slot}"
         return example
 
-    def read_request(self, slot, envelope):
+    def read_request(self, slot, envelope, brief=True):
+        if brief:  # the Workshop's `read-atcs.py brief` step, which its purpose names
+            envelope = dict(envelope, operatorBrief=read_atcs.operator_brief(envelope))
         report = _write(self.workspace / "research" / "requests" / f"worker-request-w{slot}.json", json.dumps(envelope))
         value = next(item for item in read_atcs.read("worker-request", report, self.workspace, [f"w{slot}"])
                      if item["type"] == "tc_request_invalid_count")
@@ -371,6 +431,102 @@ class WorkerRequestExampleTest(ExampleWorkspace):
         plan["candidate"]["workPackages"] = {
             task_id: active if task_id == f"w{slot}" else dict(parked, taskId=task_id) for task_id in workspaces.TASK_IDS}
         return plan
+
+    def brief_problems(self, slot, envelope):
+        self.read_request(slot, envelope, brief=False)
+        report = self.workspace / "research" / "requests" / f"worker-request-w{slot}.json"
+        return [line for line in read_atcs.problems("worker-request", report, self.workspace, f"w{slot}")
+                if line.startswith(("operatorBrief", "sessionPlan"))]
+
+    def test_an_active_request_without_its_operator_brief_is_counted(self):
+        # #64 T05 w03: the Operator's task embeds operatorBrief, never the whole request.
+        self.prepare(self.plan_with_active_slot("03"))
+        (line,) = self.brief_problems("03", self.worker_example("03", self.ACTIVE))
+        self.assertTrue(line.startswith("operatorBrief (slot w03): missing"), line)
+        self.assertIn("read-atcs.py brief <workspace>/research/requests/worker-request-w03.json", line)
+
+    def test_a_stale_operator_brief_is_counted(self):
+        self.prepare(self.plan_with_active_slot("03"))
+        example = self.worker_example("03", self.ACTIVE)
+        example["operatorBrief"] = read_atcs.operator_brief(example)
+        example["sessionPlan"] = example["sessionPlan"][:1]
+        (line,) = self.brief_problems("03", example)
+        self.assertTrue(line.startswith("operatorBrief (slot w03): differs from the Pack's summary"), line)
+
+    def test_a_session_plan_above_the_task_share_is_counted(self):
+        self.prepare(self.plan_with_active_slot("03"))
+        example = self.worker_example("03", self.ACTIVE)
+        step = dict(example["sessionPlan"][0], hypothesis="h" * 2000)
+        example["sessionPlan"] = [step] * 9
+        example["operatorBrief"] = read_atcs.operator_brief(example)
+        (line,) = self.brief_problems("03", example)
+        self.assertTrue(line.startswith(f"sessionPlan (slot w03): "), line)
+        self.assertIn(f"above the {read_atcs.SESSION_PLAN_MAX_CHARS}", line)
+
+    def test_a_parked_request_needs_no_operator_brief(self):
+        self.prepare(self.plan_with_active_slot("01"))
+        self.assertEqual(self.brief_problems("02", self.worker_example("02", self.PARKED)), [])
+
+    def test_the_brief_step_writes_the_summary_the_reader_admits(self):
+        self.prepare(self.plan_with_active_slot("03"))
+        self.read_request("03", self.worker_example("03", self.ACTIVE), brief=False)
+        report = self.workspace / "research" / "requests" / "worker-request-w03.json"
+        result = subprocess.run([sys.executable, str(READER), "brief", str(report)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        written = json.loads(report.read_text())
+        self.assertEqual(written["operatorBrief"]["schema"], "atcs-operator-brief/1")
+        self.assertEqual(written["operatorBrief"]["targets"]["count"], len(written["candidate"]["targets"]))
+        self.assertEqual(read_atcs.problems("worker-request", report, self.workspace, "w03"), [])
+
+    def test_t06_the_brief_step_takes_the_request_among_extra_arguments(self):
+        """D-T06-1(b) (#64 T06 w02): the author ran `read-atcs.py brief <request> <workspace>` and the tool
+        answered `usage: read-atcs.py brief REQUEST_JSON` (exit 1); its entry then failed closed 200 times.
+        The one argument naming an existing JSON file is the request; two such files stay a usage error."""
+        self.prepare(self.plan_with_active_slot("03"))
+        self.read_request("03", self.worker_example("03", self.ACTIVE), brief=False)
+        report = self.workspace / "research" / "requests" / "worker-request-w03.json"
+        for form in ([str(report), str(self.workspace)], [str(self.workspace), str(report)]):
+            result = subprocess.run([sys.executable, str(READER), "brief", *form], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(read_atcs.problems("worker-request", report, self.workspace, "w03"), [])
+        other = self.workspace / "other.json"
+        other.write_text("{}", encoding="utf-8")
+        result = subprocess.run([sys.executable, str(READER), "brief", str(report), str(other)],
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("usage: read-atcs.py brief REQUEST_JSON", result.stderr)
+        for slot in SLOTS:
+            purpose = next(item for item in CONTRACT_DATA["workshops"] if item["id"] == f"research-worker-{slot}")["purpose"]
+            self.assertIn("read-atcs.py brief <absolute-request-path>", purpose)
+            self.assertIn("with that one argument after `brief`", purpose)
+        example = (PACK_DIR / "knowledge" / "example-worker-request.md").read_text(encoding="utf-8")
+        self.assertIn("`brief REQUEST_JSON`", example)
+
+    def test_t06_the_brief_points_the_operator_at_the_derived_domain_nets(self):
+        """D-T06-4(e): every T06 request had editDomain.nets 0 and its Operator read that as no net to insert
+        on; the brief now says the session derives the sink nets (domain.json) and how to name them by pin."""
+        brief = read_atcs.operator_brief(self.worker_example("03", self.ACTIVE))
+        self.assertIn("domain.json", brief["editDomain"]["sessionNets"])
+        self.assertIn('atcs_insert_buffer with net ""', brief["editDomain"]["sessionNets"])
+        contract = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+        self.assertEqual(contract.count('Derived local nets are usable by pin even when editDomain.nets is empty.'), 6,
+                         "every slot Operator's task says so too")
+
+    def test_q1_the_brief_and_the_example_name_where_dummy_and_delay_cells_come_from(self):
+        """D-Q1-3 (#64 Q1 w01): the request's sessionPlan proposed atcs_insert_dummy with no master ("the tool
+        must pick the load"), the brief named no cell, and XTop refused `invalid library cell ''`. The brief
+        now says where the cells come from (the session's hold buffer list, printed by atcs_ref), and the
+        example's dummy entry names its master from state/xtop-context.json."""
+        brief = read_atcs.operator_brief(self.worker_example("03", self.ACTIVE))
+        self.assertIn("atcs_ref", brief["holdCells"])
+        self.assertIn("bufferListForHold", brief["holdCells"])
+        self.assertIn("atcs_insert_dummy", brief["holdCells"])
+        self.assertIn("delayCellList", brief["holdCells"])
+        dummy = next(entry for entry in self.worker_example("03", self.ACTIVE)["sessionPlan"]
+                     if entry["command"] == "atcs_insert_dummy")
+        self.assertTrue(dummy.get("toMaster"), "the example's dummy entry names its master")
+        example = (PACK_DIR / "knowledge" / "example-worker-request.md").read_text(encoding="utf-8")
+        self.assertIn("An `atcs_insert_dummy` entry names its `toMaster` too", example)
 
     def test_the_six_worker_workshops_are_identical_modulo_slot(self):
         def slotless(slot):
@@ -483,16 +639,18 @@ class NoSafeMoveExampleTest(WorkerRequestExampleTest):
     def test_the_team_reviews_no_move_for_a_no_safe_move_request(self):
         # ADR-0016: the Operator works from the request itself (no Researcher or Reviewer in between),
         # so its own template carries the no-safe-move path: mutate nothing and say so.
-        team = CONTRACT.split("\nagentTeams:\n", 1)[1].split("\nworkshops:\n", 1)[0]
-        self.assertEqual(team.count("When the request states noSafeAction, mutate nothing"), 6)
-        self.assertEqual(team.count("with stopReason no-safe-action"), 6)
-        self.assertEqual(team.count("stopReason (budget, no-candidate-gains, blockers-clear, no-safe-action, tainted or refused)"), 6)
+        templates = [next(member for member in team["members"] if member["id"] == "operator")["taskTemplate"]
+                     for team in CONTRACT_DATA["agentTeams"]]
+        for template in templates:
+            self.assertIn("no-safe-action", template)
+            self.assertIn("observability/scope makes further safe work impossible", template)
 
 
 def _reviewer_template(slot="01"):
     team = CONTRACT.split("\nagentTeams:\n", 1)[1].split("\nworkshops:\n", 1)[0]
     body = team.split(f"  - id: atcs-worker-{slot}\n", 1)[1].split("      - id: reviewer\n", 1)[1].split("\n      - id: ", 1)[0]
-    template = re.search(r"^        taskTemplate: '(.*)'$", body, re.M).group(1).replace("''", "'")
+    declared = next(team for team in CONTRACT_DATA["agentTeams"] if team["id"] == f"atcs-worker-{slot}")
+    template = next(item for item in declared["members"] if item["id"] == "reviewer")["taskTemplate"]
     required = [f.strip() for f in re.search(r"^          required: \[(.*)\]$", body, re.M).group(1).split(",")]
     return template, required
 
@@ -652,8 +810,11 @@ class Live02ToExampleShapeTest(unittest.TestCase):
         # The four uncovered blockers (the async_default hold group) become w04's cluster.
         blockers = [key for key in _live02_blockers(self.workspace) if "@**async_default**" in key]
         self.assertEqual(len(blockers), 4)
+        observed = json.loads((self.workspace / "state" / "observation.json").read_text())["checks"]
+        blockers.sort(key=lambda key: (observed[key]["slack"]["value"], key))  # hardest first (#66 D1)
         w04 = copy.deepcopy(example["w01"])
         w04.update(taskId="w04", baseStateId=w01["baseStateId"], targets=blockers, targetPins=[],
+                   cluster={"cause": "scenario-worst", "key": "hold", "checks": list(blockers)},
                    problem="the four required scenarios' worst hold check, in the async_default group",
                    editDomain={"instances": ["swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_"], "nets": [], "regions": []},
                    mayAffect=[])

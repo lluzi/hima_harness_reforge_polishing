@@ -7,8 +7,9 @@
 #
 #   ::ATCS_ARM merged   000.dump; per ranked session (RECIPE_TCL): its kept
 #                       commands through the toolkit procedures, confined to
-#                       that session's own edit domain, name prefix and plan
-#                       hash, as its worker session was, then NNN.dump;
+#                       the domain its Contribution sealed (effectiveDomain,
+#                       #66 D6; its admitted package when it sealed none), its
+#                       name prefix and plan hash, then NNN.dump;
 #                       set_dont_touch on every instance the applied commands
 #                       changed; auto-finish (AUTO_FIX_TCL: the control arm's
 #                       plain auto-fix; empty when autoFinish is off);
@@ -18,11 +19,12 @@
 #                       (AUTO_FIX_TCL); auto.dump; the final summaries and fail
 #                       reasons; one Innovus ECO pair into eco-control/.
 #
-# Best effort: a recipe command the composition
-# marked skip is never sent; a command that errors or that the toolkit refuses
-# is recorded as skipped with its reason, and the replay continues. Each
-# auto-fix line is attempted once and its code recorded. The Pack chooses the
-# arm afterwards (`atcs.integration.reconcile_recipe`); this file never judges.
+# Best effort (replay is an aggregator): a recipe command the composition
+# marked skip is never sent; every other command is attempted under its own
+# catch, and one that errors or that the toolkit refuses is recorded as skipped
+# with its reason while the replay continues with the next. Each auto-fix line
+# is attempted once and its code recorded. The Pack chooses the arm afterwards
+# (`atcs.integration.reconcile_recipe`); this file never judges.
 #
 # Outputs (cwd is RUN_ROOT, set by xtop-operator.tcl):
 #   RECEIPTS_LOG  one JSON line per recipe command:
@@ -30,10 +32,11 @@
 #                  ["reason"],["seq"]} (seq = this run's ops.jsonl line)
 #   DUMP_DIR      000.dump, 001.dump .. (one per session), auto.dump
 #   PREDICT_DIR   setup.rpt, hold.rpt: summarize_gba_violations -exclude_path;
-#                 setup-fail-reasons.rpt, hold-fail-reasons.rpt: the same with
-#                 -with_top_n FAIL_REASON_TOP_N -with_fail_reason, after auto-fix
-#   ARM_RESULT    {"arm","complete":true,"tainted","protected","protectMissing","protectCode",
-#                  "protectResult","autoFix":[{command,code,result}],
+#                 <check>-fail-reasons.rpt: the same with -with_top_n
+#                 FAIL_REASON_TOP_N -with_fail_reason, after auto-fix, for the
+#                 last fix flow's check only (XTop keeps no other)
+#   ARM_RESULT    {"arm","complete":true,"tainted","appliedCommands","skippedCommands","protected","protectedCount",
+#                  "protectMissing","protectCode","protectResult","autoFix":[{command,code,result}],
 #                  "predict":{"setup","hold"},"failReasons":{"setup","hold"},
 #                  "exportCode","exportResult"},
 #                 written last: its absence means the run never finished.
@@ -54,20 +57,26 @@ foreach file [list $env(RECIPE_TCL) $env(AUTO_FIX_TCL)] {
 file mkdir $env(DUMP_DIR)
 file mkdir $env(PREDICT_DIR)
 set ::atcs_replay_slot ""
+set ::atcs_replay_applied 0
+set ::atcs_replay_skipped 0
 
 proc atcs_replay_receipt {fields} {
     atcs_append $::env(RECEIPTS_LOG) [atcs_jobj $fields]
 }
-# Enter one ranked session: its own edit domain, new-object prefix and plan
-# hash, as its worker session had them. The toolkit pins one plan hash per
-# session and treats objects a session created as its own domain, so both are
-# reset: a session never edits another session's objects.
+# Enter one ranked session: the domain its Contribution sealed (the worker
+# session's domain.json, #66 D6), its new-object prefix and plan hash. The
+# sealed domain is entered as recorded, never derived or widened here: a
+# remove_buffer whose input net the record lacks is refused, not admitted. The
+# toolkit pins one plan hash per session and treats objects a session created
+# as its own domain, so both are reset: a session never edits another
+# session's objects.
 proc atcs_replay_session {slot prefix instances nets pins regions} {
     if {[llength $regions] % 4 != 0} { error "session $slot regions must hold x1 y1 x2 y2 boxes" }
     foreach value $regions {
         if {![string is double -strict $value]} { error "session $slot regions hold a non-number '$value'" }
     }
     set ::atcs_replay_slot $slot
+    set ::EDIT_DOMAIN_LOCAL 0
     set ::EDIT_DOMAIN_INSTANCES $instances
     set ::EDIT_DOMAIN_NETS $nets
     set ::EDIT_DOMAIN_PINS $pins
@@ -77,18 +86,22 @@ proc atcs_replay_session {slot prefix instances nets pins regions} {
     set ::env(NAME_PREFIX) $prefix
     set ::atcs_plan_sha256 ""
     set_parameter eco_new_object_prefix "${prefix}eco"
+    puts "ATCS:replay-domain:$slot:[llength $instances] instances, [llength $nets] nets"
 }
 proc atcs_replay_step {step_id skip call} {
     set fields [list stepId [atcs_js $step_id] slot [atcs_js $::atcs_replay_slot]]
     if {$skip} {
+        incr ::atcs_replay_skipped
         atcs_replay_receipt [concat $fields [list status [atcs_js skipped] attempted false reason [atcs_js recipe]]]
         return
     }
     set kept [llength $::atcs_kept]
     set code [catch {uplevel #0 $call} message]
     if {$code == 0 && [llength $::atcs_kept] > $kept} {
+        incr ::atcs_replay_applied
         atcs_replay_receipt [concat $fields [list status [atcs_js applied] attempted true seq [lindex $::atcs_kept end]]]
     } else {
+        incr ::atcs_replay_skipped
         set reason [expr {$code == 0 ? "no-change" : [atcs_clip $message 2000]}]
         atcs_replay_receipt [concat $fields [list status [atcs_js skipped] attempted true reason [atcs_js $reason]]]
     }
@@ -153,8 +166,25 @@ atcs_write_cell_dump [file join $env(DUMP_DIR) auto.dump]
 set predict_setup [catch {redirect -file [file join $env(PREDICT_DIR) setup.rpt] {summarize_gba_violations -exclude_path -setup}}]
 set predict_hold [catch {redirect -file [file join $env(PREDICT_DIR) hold.rpt] {summarize_gba_violations -exclude_path -hold}}]
 # What auto-fix left unfixed, and why (the atcs_gain probe's fail-reason reading, without a reference).
+# D-Q1-6 (#64 Q1, both arms' xtop-replay.log): XTop keeps fail reasons for the last fix flow's check only;
+# reading the other one printed "Error: Last flow is 'hold_gba', mismatched with current summary." and
+# "Error: Errors detected during redirection.", which marked each arm's run `tool log reports an error`
+# while it was only that check's reasons going unread. The other check is not read; its code says why
+# (a code that is not 0, so the arm's failReasonsUnread names it, as before).
+set last_flow $::atcs_fix_ran
+foreach line [atcs_replay_read_lines $env(AUTO_FIX_TCL)] {
+    switch -- [lindex [split [string trim $line]] 0] {
+        fix_hold_gba_violations { set last_flow hold }
+        fix_setup_gba_violations { set last_flow setup }
+    }
+}
 set fail_reason_codes {}
 foreach check {setup hold} {
+    if {$check ne $last_flow} {
+        set why [expr {$last_flow eq "" ? "no fix flow ran" : "${last_flow}_gba"}]
+        lappend fail_reason_codes $check [atcs_js "not read: XTop keeps fail reasons for the last fix flow's check only ($why)"]
+        continue
+    }
     lappend fail_reason_codes $check [catch {redirect -file [file join $env(PREDICT_DIR) $check-fail-reasons.rpt] \
         [list summarize_gba_violations -exclude_path -with_top_n $env(FAIL_REASON_TOP_N) -with_fail_reason -$check]}]
 }
@@ -170,7 +200,8 @@ if {$::ATCS_ARM eq "merged"} {
 set fh [open $env(ARM_RESULT) w]
 fconfigure $fh -encoding utf-8
 puts $fh [atcs_jobj [list arm [atcs_js $::ATCS_ARM] complete true tainted [atcs_js $::atcs_tainted] \
-    protected [atcs_jarr $protected] protectMissing [atcs_jarr $protect_missing] protectCode $protect_code protectResult [atcs_js [atcs_clip $protect_result 2000]] \
+    appliedCommands $::atcs_replay_applied skippedCommands $::atcs_replay_skipped protected [atcs_jarr $protected] protectedCount [llength $protected] \
+    protectMissing [atcs_jarr $protect_missing] protectCode $protect_code protectResult [atcs_js [atcs_clip $protect_result 2000]] \
     autoFix "\[[join $auto_fix ,]\]" predict [atcs_jobj [list setup $predict_setup hold $predict_hold]] \
     failReasons [atcs_jobj $fail_reason_codes] \
     exportCode $export_code exportResult [atcs_js [atcs_clip $export_result 2000]]]]

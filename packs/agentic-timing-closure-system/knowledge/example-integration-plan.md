@@ -11,6 +11,17 @@ for a `facts.conflicts` key and has exactly `{conflictKey, decision}`: a no-fix 
 conflict, so it gets no resolution (leave it out of `select`, or list it in `deferred`). The Reader's
 refusal, one line per problem, is `integrationPlanProblems`.
 
+Expert-seat batches (`kind: xtop-session`) never appear in `facts.conflicts`: composition has already
+ranked them in `facts.recipe.sessions` (`rankedBy`: blocker coverage, then `aggregateRankGain`, then
+`value`, then id). Replay is an aggregator: overlapping batches all stay ranked, and a lower batch's
+command on an instance a higher batch changed is marked `skip: shared-instance` on its own; at replay
+any command that no longer applies, errors or is refused is recorded as skipped with its reason and
+the replay continues. A session's `advisories` (for example `breaks-opposite-check`) are for reading
+only, never a reason to leave it out. Only corrupt data is in `facts.recipe.excluded` (a refused seal's
+codes, or `base-dump-mismatch`); such a batch is not in `facts.considered`, so it cannot be selected
+and needs no resolution. Select the ranked batches by their `contribution` ids (normally all of them);
+replay follows `rank`, whatever order `select` lists them in.
+
 ```json
 {
   "plan": {

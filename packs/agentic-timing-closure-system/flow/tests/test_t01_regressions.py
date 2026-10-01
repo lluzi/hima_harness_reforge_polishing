@@ -113,6 +113,7 @@ class T01Workspace(unittest.TestCase):
         return document
 
     def problems(self, slot, document):
+        document = dict(document, operatorBrief=read_atcs.operator_brief(document))  # the Workshop's `brief` step
         report = _write(self.workspace / "research" / "requests" / f"worker-request-w{slot}.json", json.dumps(document))
         found = read_atcs.problems("worker-request", report, self.workspace, f"w{slot}")
         value = next(item for item in read_atcs.read("worker-request", report, self.workspace, [f"w{slot}"])
@@ -196,12 +197,16 @@ class SizeMoveMasterTest(T01Workspace):
         (line,) = self.advised("03", document)
         self.assertIn("is already the master of", line)
 
-    def test_a_size_entry_outside_the_edit_domain_is_counted(self):
+    def test_a_size_entry_outside_the_plan_edit_domain_is_advice(self):
+        """#66 D1: the session derives its local domain in XTop (a driver or load cell of a target net is in
+        it), so the toolkit is the gate; a size entry outside the plan's instances is advice, never counted."""
         document = self.request("03")
         index, entry = size_entry(document)
         entry.update(object=W02_REG, toMaster="SDFCNQARD2BWP35P140")
-        (line,) = self.problems("03", document)
+        lines = [line for line in self.advised("03", document) if line.startswith(f"sessionPlan[{index}].object")]
+        (line,) = lines
         self.assertTrue(line.startswith(f"sessionPlan[{index}].object (slot w03): "), line)
+        self.assertIn("toolkit", line)
 
     def test_a_context_for_another_state_is_one_advice(self):
         path = self.workspace / "state" / "xtop-context.json"
@@ -422,13 +427,13 @@ class OperatorLoopTest(unittest.TestCase):
     def test_each_team_carries_the_next_rung_and_the_wide_default_scope(self):
         """ADR-0016: the Operator works from the request itself; the branch child that authored the
         request is its Researcher, the Reviewer is advisory only, and the wide default scope is the
-        request's own candidate.scope (the plan states every toolkit mutation and the 120 cap)."""
+        request's own candidate.scope (the plan states every toolkit mutation and the 600 cap)."""
         for slot in SLOTS:
             members = team_members(slot)
             with self.subTest(slot=slot):
-                self.assertIn("then try the next rung of the ladder", members["operator"])
-                self.assertIn("an undo is never the end of the session", members["operator"])
-                self.assertIn("no wrong attempt, only an unmeasured one", members["operator"])
+                self.assertIn("evidence for the next rung, not a reason to stop", members["operator"])
+                self.assertIn("atcs_undo on regression or no gain, and continue", members["operator"])
+                self.assertIn("untried targets or mechanisms", members["operator"])
                 self.assertNotIn("researcher", members)
                 self.assertIn("Advisory only: nothing waits for you and nothing is gated on you", members["reviewer"])
                 self.assertIn("optional: true", members["reviewer"])

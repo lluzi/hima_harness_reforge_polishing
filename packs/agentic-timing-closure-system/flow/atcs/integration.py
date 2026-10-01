@@ -1199,8 +1199,9 @@ def seal_batch(state, request, facts, contributions):
 # together from the same base (`templates/xtop-replay.tcl`, one run per arm):
 #
 # - **merged**: `000.dump`; per ranked session, in rank order, its commands through
-#   the worker toolkit's own `atcs_*` procedures, each session confined to its own
-#   edit domain, `namePrefix` and plan hash as its worker session had them, then
+#   the worker toolkit's own `atcs_*` procedures, each session confined to the
+#   domain its Contribution sealed (`effectiveDomain`, #66 D6; the admitted work
+#   package for a Contribution without one), its `namePrefix` and plan hash, then
 #   `NNN.dump`; `set_dont_touch` on every
 #   instance the applied commands changed; if `autoFinish`, the plain auto-fix
 #   sequence (`auto_fix_tcl`); `auto.dump`; final `summarize_gba_violations` per check;
@@ -1209,17 +1210,22 @@ def seal_batch(state, request, facts, contributions):
 #   `auto.dump`; the same summaries; `write_design_changes ... -output_dir
 #   eco-control -keep_route`.
 #
-# Replay is best effort: a command the recipe marks
-# `skip`, or one that errors or that the toolkit refuses, is recorded as skipped
-# with its reason and the replay continues. `reconcile_recipe` then refuses an
-# unsafe arm (incomplete run, tainted toolkit session, out-of-domain replay change,
-# no single ECO pair, or a `FORMATVERSION`/`dbNetFreeWires`/`editDelete -net`
-# line), and chooses by XTop's prediction, WNS first: control when merged is worse
+# Replay is an aggregator, never a second methodology judge: every admitted
+# batch is attempted in rank order; a command the recipe marks `skip`, or one
+# that errors or that the toolkit refuses, is recorded as skipped with its
+# reason and the replay continues. A replay delta that differs from the
+# Contribution's own, or a replay change outside a session's domain, is an
+# advisory warning, never a refusal. `reconcile_recipe` refuses an arm only for
+# corrupt evidence (incomplete run, tainted toolkit session, unattributable
+# receipts, no single ECO pair, or a `FORMATVERSION`/`dbNetFreeWires`/
+# `editDelete -net` line), and chooses by XTop's prediction, WNS first: control when merged is worse
 # on setup or hold WNS (1e-4); merged when it is better on one WNS; with both WNS
 # equal, merged only when it is no worse on setup and hold TNS (1e-3) and better
 # on one, or all four tie -- so the refreshed batch is never worse than plain
 # auto-fix by XTop's own estimate. PrimeTime after the refresh stays the only
-# convergence judge.
+# convergence judge. `arm-result.json` counts `appliedCommands`, `skippedCommands`
+# and `protectedCount`; the merged arm differs from control exactly when it applied
+# a command, and a tie is recorded as `manualValue: none` (overall and per session).
 
 RECIPE_PROCS = {
     "atcs_size_cell": ("instance", "toMaster", "planSha256"),
@@ -1327,12 +1333,36 @@ def _safe_names(values, label):
     return list(values)
 
 
+DOMAIN_SOURCES = ("effectiveDomain", "workPackage")
+"""Where a recipe session's replay domain came from (#66 D6): the Contribution's sealed
+``effectiveDomain`` (the worker session's ``domain.json``), or, for a Contribution without one,
+the slot's admitted work package."""
+
+
+def _derived_names(values, label):
+    """``(safe, dropped)``: a derived domain's names split into those that are one literal Tcl word
+    and those that are not. XTop derived them, no Reader admitted them, so one unusual name must not
+    refuse the batch: it stays out of the replay domain, and a command on it is refused there."""
+    if not isinstance(values, list):
+        raise core.AtcsError("invalid-recipe", f"{label} must be a list")
+    safe, dropped = [], []
+    for value in values:
+        try:
+            safe.append(_validate_tcl_value(value, f"{label} entry", allow_brackets=True))
+        except core.AtcsError:
+            dropped.append(value)
+    return safe, dropped
+
+
 def _session_identity(slot, session):
     if not isinstance(session, dict):
         raise core.AtcsError("invalid-recipe", f"recipe session {slot!r} has no identity (namePrefix, editDomain)")
     prefix = session.get("namePrefix")
     if not isinstance(prefix, str) or not prefix or not set(prefix) <= _NAME_CHARS or prefix[0].isdigit():
         raise core.AtcsError("invalid-recipe", f"session {slot!r} namePrefix must be [A-Za-z_][A-Za-z0-9_]*")
+    source = session.get("domainSource", "workPackage")
+    if source not in DOMAIN_SOURCES:
+        raise core.AtcsError("invalid-recipe", f"session {slot!r} domainSource must be one of {list(DOMAIN_SOURCES)}")
     domain = session.get("editDomain") or {}
     if not isinstance(domain, dict):
         raise core.AtcsError("invalid-recipe", f"session {slot!r} editDomain must be an object")
@@ -1342,13 +1372,18 @@ def _session_identity(slot, session):
             raise core.AtcsError("invalid-recipe", f"session {slot!r} region must be [x1, y1, x2, y2] with x1<=x2, "
                                                    "y1<=y2")
         regions.append(list(region))
-    return {
-        "prefix": prefix,
-        "instances": _safe_names(list(domain.get("instances") or []), f"{slot} editDomain.instances"),
-        "nets": _safe_names(list(domain.get("nets") or []), f"{slot} editDomain.nets"),
-        "pins": _safe_names(list(session.get("targetPins") or []), f"{slot} targetPins"),
-        "regions": regions,
-    }
+    lists = {"instances": (domain.get("instances"), f"{slot} editDomain.instances"),
+             "nets": (domain.get("nets"), f"{slot} editDomain.nets"),
+             "pins": (session.get("targetPins"), f"{slot} targetPins")}
+    identity = {"prefix": prefix, "source": source, "regions": regions, "dropped": None}
+    if source == "effectiveDomain":
+        identity["dropped"] = {}
+        for key, (values, label) in lists.items():
+            identity[key], identity["dropped"][key] = _derived_names(list(values or []), label)
+    else:
+        for key, (values, label) in lists.items():
+            identity[key] = _safe_names(list(values or []), label)
+    return identity
 
 
 def prepare_recipe_replay(plan, base_state_id, recipe, sessions, required_scenarios=(), removable_fillers=()):
@@ -1361,7 +1396,12 @@ def prepare_recipe_replay(plan, base_state_id, recipe, sessions, required_scenar
       ``excluded`` with code ``not-selected``), each ``{rank,
       contribution, taskId, commands: [{seq, proc, args, instances, skip}]}``.
     - `sessions`: ``{taskId: {contributionId, revision, namePrefix, editDomain, targetPins,
-      delta}}`` -- each worker slot's admitted work package and sealed Contribution.
+      domainSource, delta}}`` -- each worker slot's sealed Contribution and the domain its replay
+      enters (#66 D6): ``domainSource`` ``effectiveDomain`` (the Contribution's sealed
+      ``domain.json``) or ``workPackage`` (the admitted package, default, for a Contribution
+      without one). The request session records ``domainSource``; a derived name that cannot be
+      one literal Tcl word is left out of its replay domain and listed in ``domainDropped``
+      (a name in an admitted work package still refuses, as before).
 
     A command whose procedure or arguments cannot be rendered safely is kept in the request as
     skipped (``invalid-entry: ...``) and is never sent to XTop -- replay is best effort, so one
@@ -1417,12 +1457,16 @@ def prepare_recipe_replay(plan, base_state_id, recipe, sessions, required_scenar
                 f"recipe session {slot!r} names contribution {contribution_id!r}, the slot sealed "
                 f"{identity.get('contributionId')!r}",
             )
-        request_sessions.append({
+        request_session = {
             "slot": slot, "rank": ranked.get("rank"), "contributionId": contribution_id,
             "revision": identity.get("revision"), "namePrefix": bound["prefix"], "dumpIndex": index,
             "domain": {key: bound[key] for key in ("instances", "nets", "pins", "regions")},
+            "domainSource": bound["source"],
             "delta": _normalize_delta(identity.get("delta")),
-        })
+        }
+        if bound["dropped"] and any(bound["dropped"].values()):
+            request_session["domainDropped"] = bound["dropped"]
+        request_sessions.append(request_session)
         for command in ranked["commands"]:
             command = command if isinstance(command, dict) else {}
             proc, args, skip = command.get("proc"), command.get("args"), command.get("skip")
@@ -1639,11 +1683,40 @@ def _arm_view(arm, evidence, request, session_accounts):
     if arm == "merged":
         view["protected"] = list((result or {}).get("protected") or [])
         view["protectCode"] = (result or {}).get("protectCode")
+    view["appliedCommands"], view["skippedCommands"], view["protectedCount"] = _arm_counts(
+        arm, result, session_accounts)
     return view
 
 
+def _arm_counts(arm, result, session_accounts):
+    """``(appliedCommands, skippedCommands, protectedCount)`` of one arm, as its `arm-result.json`
+    records them (#66 D6).
+
+    An arm-result written before those fields existed (attempt 4) is counted from the same evidence
+    the template counts: the merged arm's applied and skipped receipts and its protected list; the
+    control arm attempts no recipe command.
+    """
+    result = result if isinstance(result, dict) else {}
+
+    def count(key, fallback):
+        value = result.get(key)
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else fallback
+
+    accounts = session_accounts["accounts"].values() if arm == "merged" else ()
+    applied = sum(len(account["applied"]) for account in accounts)
+    skipped = sum(len(account["skipped"]) for account in accounts)
+    return (count("appliedCommands", applied), count("skippedCommands", skipped),
+            count("protectedCount", len(result.get("protected") or [])))
+
+
 def _merged_sessions(request, evidence):
-    """Per-session applied/skipped lists, replay deltas and their warnings (merged arm)."""
+    """Per-session applied/skipped lists, replay deltas and their warnings (merged arm).
+
+    ``problems`` (which make the merged arm unsafe) are corrupt evidence only: a receipt for an
+    unknown step, two different receipts for one step, a sendable step without a receipt. A
+    missing session dump, a replay delta that differs from the Contribution's own and a replay
+    change outside the session's domain are ``warnings`` (advisory, never blocking).
+    """
     evidence = evidence if isinstance(evidence, dict) else {}
     steps = request.get("steps") or []
     steps_by_id = {step["stepId"]: step for step in steps}
@@ -1688,7 +1761,9 @@ def _merged_sessions(request, evidence):
                    "contributionDelta": session.get("delta")}
         if replay_delta is None:
             account["deltaMatches"] = False
-            problems.append(f"session {slot}: no {session['dumpIndex']:03d}.dump delta")
+            warnings.append({"kind": "replayDeltaMissing", "slot": slot, "contributionId": session["contributionId"],
+                             "detail": f"no {session['dumpIndex']:03d}.dump delta: the session's replay effect "
+                                       "was not compared"})
         else:
             replay_view = _delta_without_fillers(replay_delta, fillers)
             account["deltaMatches"] = replay_view == _delta_without_fillers(session.get("delta"), fillers)
@@ -1698,15 +1773,21 @@ def _merged_sessions(request, evidence):
                                            "Contribution's own dump delta"})
             prefix = session.get("namePrefix") or ""
             domain_instances = set((session.get("domain") or {}).get("instances") or [])
-            # Confinement: an existing instance outside this session's own edit domain, or a new
-            # one without its prefix. Filler masters are exempt (the Site's removable fillers).
+            source = session.get("domainSource") or "workPackage"
+            # Confinement: an existing instance outside the domain this session's replay entered
+            # (its sealed effective domain, #66 D6, else its admitted work package), or a new one
+            # without its prefix. Filler masters are exempt (the Site's removable fillers).
             stray = sorted(
                 name for name in _delta_instances(replay_view)
                 if name not in domain_instances
                 and not (name in replay_view["added"] and contributions.leaf_name(name).startswith(prefix))
             )
             if stray:
-                problems.append(f"session {slot}: out-of-domain replay change(s) {stray}")
+                account["outOfDomain"] = stray
+                warnings.append({"kind": "outOfDomain", "slot": slot, "contributionId": session["contributionId"],
+                                 "instances": stray,
+                                 "detail": f"session {slot}: out-of-domain replay change(s) {stray} "
+                                           f"(outside its {source})"})
         accounts[slot] = account
     return {"accounts": accounts, "problems": problems, "warnings": warnings}
 
@@ -1736,6 +1817,33 @@ def choose_arm(merged, control):
                            "same summary command, so plain auto-fix is kept", True)
     merged_chosen, detail = _compare_predictions(merged_prediction, control_prediction)
     return ("merged" if merged_chosen else "control"), detail, True
+
+
+MANUAL_VALUES = ("better", "none", "worse", "unknown")
+"""What the manual batch added over plain auto-fix by XTop's own prediction (#66 D5/D6, D9 claim rule)."""
+
+
+def _prediction_tie(merged, control):
+    """Whether both predictions are equal within `_compare_predictions`' own tolerances."""
+    wns = ("worstSetupWns", "worstHoldWns")
+    tns = ("setupTns", "holdTns")
+    return (all(abs(merged[key] - control[key]) <= PREDICTION_TOLERANCE for key in wns)
+            and all(abs(merged[key] - control[key]) <= TNS_TOLERANCE for key in tns))
+
+
+def _manual_value(views, chosen_arm, reason):
+    """``(manualValue, reason)``: ``none`` when the recipe applied no command (the merged arm is
+    the control arm) or XTop predicts a tie; ``unknown`` when the arms were not compared (an arm
+    unsafe, a prediction unknown); otherwise ``better`` (merged chosen) or ``worse`` (control)."""
+    merged, control = views["merged"], views["control"]
+    if merged["appliedCommands"] == 0:
+        return "none", "the recipe applied no command; the merged arm is plain auto-fix"
+    if (not merged["safe"] or not control["safe"] or "unknown" in merged["prediction"]
+            or "unknown" in control["prediction"]):
+        return "unknown", f"the arms were not compared: {reason}"
+    if _prediction_tie(merged["prediction"], control["prediction"]):
+        return "none", f"XTop predicts a tie: {reason}"
+    return ("better" if chosen_arm == "merged" else "worse"), reason
 
 
 def _chosen_new_nets(chosen_arm, evidence, fillers):
@@ -1775,10 +1883,11 @@ def reconcile_recipe(request, arms):
     ``totalDelta``, ``predictText``, ``eco`` = the `write_design_changes` files with their
     text, ``toolFailure``).
 
-    An arm is unsafe when its run is incomplete, its toolkit session was tainted, its export
-    failed, it has no single netlist+physical pair, a pair file is empty or holds a
-    `FORMATVERSION` / `dbNetFreeWires` / `editDelete -net` line, or (merged) a receipt is
-    unattributable or a session's replay changed an instance outside its own edit domain.
+    Replay is an aggregator: an arm is unsafe only for corrupt evidence -- its run is incomplete,
+    its toolkit session was tainted, its export failed, it has no single netlist+physical pair, a
+    pair file is empty or holds a `FORMATVERSION` / `dbNetFreeWires` / `editDelete -net` line, or
+    (merged) a receipt is unattributable, duplicated with other content, or missing for a
+    sendable step.
     Choice: a safe arm over an unsafe one; with both safe, XTop's predictions over the required
     scenarios (`_compare_predictions`): control when merged is worse on worst setup or hold WNS
     (`PREDICTION_TOLERANCE`); merged when it is better on one WNS; with both WNS equal, merged
@@ -1797,9 +1906,19 @@ def reconcile_recipe(request, arms):
     in ``unread``); ``arms.*.failReasons`` / ``failReasonsUnread`` hold both arms'. They are what plain
     auto-fix left unfixed and why, for the residual and the next generation's research.
 
-    Recorded, never blocking: skipped commands (per session), a session replay delta that
-    differs from its Contribution's own delta (``warnings`` kind ``replayMismatch``), and an
-    auto-finish change to a `set_dont_touch`-protected instance (``protectedChanged``). The
+    Each arm view carries ``appliedCommands``, ``skippedCommands`` and ``protectedCount`` (from
+    `arm-result.json`, #66 D6).
+    ``manualValue`` (`MANUAL_VALUES`, with ``manualValueReason``) records what the manual batch
+    added by XTop's prediction: ``none`` on a tie (merged is still kept) or when no recipe command
+    applied, ``unknown`` without a comparison, else ``better``/``worse``. Each session carries its
+    own ``manualValue``: the batch's value when it applied a command, else ``none``.
+
+    Recorded, never blocking: skipped commands with their reasons (per session: ``applied``
+    step ids, ``skipped`` ``[{stepId, attempted, reason}]``), a session replay delta that
+    differs from its Contribution's own delta (``warnings`` kind ``replayMismatch``), a missing
+    session dump (``replayDeltaMissing``), a replay change outside a session's domain (kind
+    ``outOfDomain``, also the session's ``outOfDomain`` list), and an auto-finish change to a
+    `set_dont_touch`-protected instance (``protectedChanged``). The
     Reader-facing lists (``pending``, ``failed``, ``replayMismatch``, ``outOfScope``,
     ``unknownReceipts``) stay empty: an unsafe arm is never the chosen one.
     """
@@ -1831,6 +1950,10 @@ def reconcile_recipe(request, arms):
     if not evidenced:
         warnings.append({"kind": "guaranteeUnevidenced", "reason": reason})
 
+    manual_value, manual_reason = _manual_value(views, chosen_arm, reason)
+    for account in sessions["accounts"].values():
+        account["manualValue"] = manual_value if account["applied"] else "none"
+
     chosen_evidence = arms.get(chosen_arm) if isinstance(arms.get(chosen_arm), dict) else {}
     new_nets, new_nets_unknown = _chosen_new_nets(chosen_arm, chosen_evidence, request.get("removableFillers") or [])
     applied = {step_id: slot for slot, account in sessions["accounts"].items() for step_id in account["applied"]}
@@ -1854,6 +1977,8 @@ def reconcile_recipe(request, arms):
                         **({"unread": views[chosen_arm]["failReasonsUnread"]}
                            if views[chosen_arm]["failReasonsUnread"] else {})},
         "guarantee": {"evidenced": evidenced, "arm": chosen_arm, "reason": reason},
+        "manualValue": manual_value,
+        "manualValueReason": manual_reason,
         "newNets": new_nets,
     }
     if new_nets_unknown is not None:
@@ -1910,13 +2035,18 @@ def _seal_recipe_batch(state, request, facts, contributions):
         "failReasons": state.get("failReasons") or {"arm": chosen["arm"]},
         "arms": {arm: {"eco": (arms.get(arm) or {}).get("eco"), "safe": (arms.get(arm) or {}).get("safe"),
                        "problems": (arms.get(arm) or {}).get("problems"),
-                       "prediction": (arms.get(arm) or {}).get("prediction")} for arm in ARMS},
+                       "prediction": (arms.get(arm) or {}).get("prediction"),
+                       "appliedCommands": (arms.get(arm) or {}).get("appliedCommands"),
+                       "skippedCommands": (arms.get(arm) or {}).get("skippedCommands"),
+                       "protectedCount": (arms.get(arm) or {}).get("protectedCount")} for arm in ARMS},
         "sessions": sessions,
         "autoDelta": state.get("autoDelta"),
         "protected": state.get("protected") or [],
         "protectedChanged": state.get("protectedChanged") or [],
         "warnings": state.get("warnings") or [],
         "guarantee": state.get("guarantee"),
+        "manualValue": state.get("manualValue"),
+        "manualValueReason": state.get("manualValueReason"),
         "autoFinish": request.get("autoFinish"),
         "setupMargin": request.get("setupMargin"),
         "holdMargin": request.get("holdMargin"),

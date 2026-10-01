@@ -68,8 +68,11 @@ export interface TeamRecipeBinding {
   readonly inlinePayload?: ReviewedActionPayload | ReviewedScopePayload;
 }
 
-/** The Host's ceiling on a Pack recipe's reviewed-scope mutation cap (`reviewedAction.maxMutations`). */
-export const REVIEWED_SCOPE_MAX_MUTATIONS = 200;
+/**
+ * The Host's ceiling on a Pack recipe's reviewed-scope mutation cap (`reviewedAction.maxMutations`).
+ * 600 since #66 H1: a manual-ECO batch is tens to hundreds of coordinated, measured edits.
+ */
+export const REVIEWED_SCOPE_MAX_MUTATIONS = 600;
 
 /**
  * Why a Reviewer's `scope` value is not one the Pack recipe allows, or undefined when it is: one
@@ -246,6 +249,77 @@ const roleTools: Readonly<Record<DelegationRole, ReadonlySet<string>>> = {
   operator: new Set(['hima_interactive', delegationInputTool]),
 };
 
+/** A bounded selection of one delegated input (`hima_delegation_input` `path`/`offset`/`limit`, #64 T05 w03). */
+export interface DelegationInputSelection { readonly path?: string; readonly offset?: number; readonly limit?: number }
+export interface DelegationInputWindow {
+  readonly unit: 'items' | 'entries' | 'chars' | 'value'; readonly offset: number; readonly limit: number | null;
+  readonly returned: number; readonly total: number; readonly next: number | null;
+}
+export const delegationInputSelected = (request: DelegationInputSelection): boolean =>
+  request.path !== undefined || request.offset !== undefined || request.limit !== undefined;
+
+const pathSegments = (named: string): string[] | undefined => {
+  if (named === '' || named === '/') return [];
+  if (named.startsWith('/')) return named.slice(1).split('/').map((part) => part.replaceAll('~1', '/').replaceAll('~0', '~'));
+  const parts = named.split('.');
+  return parts.some((part) => part === '') ? undefined : parts;
+};
+
+/**
+ * One window of the node `path` names in an input's text (its JSON document; a text that is not JSON
+ * has only the empty path): the items of an array, the entries of an object, the characters of a
+ * string, or a scalar. `fits` says whether an answer carrying a candidate value and window stays inside
+ * the reader's bounded view; the window returned is the longest from `offset`, up to `limit`, that
+ * fits. A path that names nothing in the document, or a malformed window, is a refusal.
+ */
+export function selectDelegationInput(text: string, request: DelegationInputSelection,
+  fits: (value: unknown, window: DelegationInputWindow) => boolean): { ok: true; value: unknown; window: DelegationInputWindow } | { ok: false; reason: string } {
+  const named = request.path ?? '';
+  if (typeof named !== 'string' || named.length > 1024) return { ok: false, reason: 'path must be a dotted field path or a JSON pointer of at most 1024 characters.' };
+  const offset = request.offset ?? 0;
+  if (!Number.isSafeInteger(offset) || offset < 0) return { ok: false, reason: 'offset must be a non-negative integer.' };
+  if (request.limit !== undefined && (!Number.isSafeInteger(request.limit) || request.limit < 1)) return { ok: false, reason: 'limit must be a positive integer.' };
+  const segments = pathSegments(named);
+  if (segments === undefined) return { ok: false, reason: `path ${JSON.stringify(named)} is not a dotted field path or a JSON pointer.` };
+  let node: unknown;
+  try { node = JSON.parse(text); } catch { node = text; if (segments.length > 0) return { ok: false, reason: 'This input is not JSON: only its text, at the empty path, can be selected.' }; }
+  for (const [index, segment] of segments.entries()) {
+    const at = segments.slice(0, index + 1).join('.');
+    if (Array.isArray(node)) {
+      if (!/^(0|[1-9][0-9]*)$/.test(segment) || Number(segment) >= node.length) return { ok: false, reason: `path ${JSON.stringify(named)} does not exist in this input (no item ${at}).` };
+      node = node[Number(segment)];
+    } else if (node !== null && typeof node === 'object' && Object.hasOwn(node, segment)) {
+      node = (node as Record<string, unknown>)[segment];
+    } else return { ok: false, reason: `path ${JSON.stringify(named)} does not exist in this input (no field ${at}).` };
+  }
+  const limit = request.limit ?? null;
+  const windowOf = (unit: DelegationInputWindow['unit'], returned: number, total: number): DelegationInputWindow =>
+    ({ unit, offset, limit, returned, total, next: offset + returned < total ? offset + returned : null });
+  const longest = (total: number, unit: DelegationInputWindow['unit'], slice: (count: number) => unknown) => {
+    if (offset > total) return { ok: false as const, reason: `offset ${offset} is beyond the ${total} ${unit} at this path.` };
+    let low = 0; let high = Math.min(limit ?? total - offset, total - offset);
+    while (low < high) { const mid = Math.ceil((low + high) / 2); if (fits(slice(mid), windowOf(unit, mid, total))) low = mid; else high = mid - 1; }
+    return { ok: true as const, value: slice(low), window: windowOf(unit, low, total) };
+  };
+  if (Array.isArray(node)) { const items = node; return longest(items.length, 'items', (count) => items.slice(offset, offset + count)); }
+  if (typeof node === 'string') {
+    const chars = node;
+    const found = longest(chars.length, 'chars', (count) => chars.slice(offset, offset + count));
+    // Never end a window inside a surrogate pair: the next window starts at its high half.
+    if (found.ok && found.window.returned > 1 && /[\uD800-\uDBFF]/.test(chars[offset + found.window.returned - 1] ?? '')) {
+      const returned = found.window.returned - 1;
+      return { ok: true, value: chars.slice(offset, offset + returned), window: windowOf('chars', returned, chars.length) };
+    }
+    return found;
+  }
+  if (node !== null && typeof node === 'object') {
+    const entries = Object.entries(node);
+    return longest(entries.length, 'entries', (count) => Object.fromEntries(entries.slice(offset, offset + count)));
+  }
+  if (offset !== 0) return { ok: false, reason: 'A scalar has no window: omit offset.' };
+  return { ok: true, value: node, window: windowOf('value', 1, 1) };
+}
+
 export class DelegationError extends Error {
   readonly code: 'hima/delegation-invalid' | 'hima/delegation-unavailable' | 'hima/delegation-refused';
   constructor(code: 'hima/delegation-invalid' | 'hima/delegation-unavailable' | 'hima/delegation-refused', message: string) {
@@ -393,38 +467,39 @@ async function verifyChild(ctx: Context, parent: Agent, childId: string, workspa
   return entry?.kind === 'child' && entry.mode === 'continuable' && (expectedLabel === undefined || entry.label === expectedLabel);
 }
 
-export const delegationTaskPrompt = (contract: DelegationContract, effective: EffectiveDelegationContract): string => [
-  `Role: ${effective.role}.`,
-  `Task: ${contract.task.trim()}`,
-  `Inputs: ${contract.inputRefs.length === 0 ? '(none)' : contract.inputRefs.join(', ')}`,
-  contract.inputRefs.length === 0 ? 'Recorded input reader: unavailable; no Run facts were granted.'
-    : effective.tools.includes(delegationInputTool)
-      ? `Recorded input reader: use ${delegationInputTool} with Run ${effective.runRef?.runId ?? '(unavailable)'} and only one of the exact input identities above.`
-      : 'Recorded input reader: unavailable in this effective tool grant; ask the owner to coordinate rather than reading the parent workspace.',
-  `Recipient: ${effective.recipient.kind} session ${effective.recipient.sessionId}.`,
-  effective.readScope === undefined ? 'Generic file reads: unavailable; use only exact recorded inputs when granted.'
-    : `Generic file reads: only the guarded private directory ${effective.readScope.root}.`,
-  effective.writeScope === undefined ? 'Write capability: unavailable; return proposed changes and verification needs as candidate results.'
-    : `Write capability: only the guarded private directory ${effective.writeScope.root}; owner verification is still required.`,
-  effective.operator === undefined ? 'Interactive Operator capability: unavailable.'
-    : `Interactive Operator capability: only ${effective.operator.runId}/${effective.operator.nodeId}/${effective.operator.executionId} through hima_interactive; binding ${effective.operator.bindingDigest}.`,
-  effective.operator === undefined ? 'Interactive typed commands: unavailable.'
-    : `Interactive typed commands: ${effective.operator.commands.map((command) =>
-      `${command.effect} ${command.name}(${command.arguments?.map((argument) => `${argument.name}: ${argument.type}${argument.choices === undefined ? '' : ` {${argument.choices.join('|')}}`}${argument.minimum === undefined && argument.maximum === undefined ? '' : ` [${argument.minimum ?? '-inf'}..${argument.maximum ?? '+inf'}]`}`).join(', ') ?? 'legacy positional arguments'})`).join('; ')}. Supply declared names inside command.args; the Host validates exact keys before dispatch.`,
-  effective.recipe === undefined ? 'Pack Agent Team recipe: unavailable; this is a manually declared delegation.'
-    : `Pack Agent Team recipe: ${effective.recipe.teamId}@${effective.recipe.version}/${effective.recipe.memberId}, execution ${effective.recipe.executionId}, result schema ${effective.recipe.resultSchema.id}.`,
-  effective.recipe === undefined ? 'Agent Team result format: unavailable for this manually declared delegation.'
-    : `Agent Team result format: return exactly one JSON object and no prose or Markdown. Set schema to ${JSON.stringify(effective.recipe.resultSchema.id)} and include these top-level fields: ${effective.recipe.resultSchema.required.join(', ')}.`,
-  effective.recipe?.reviewOutput === undefined ? 'Reviewed action output contract: unavailable for this member.'
-    : effective.recipe.reviewOutput.mode === 'scope'
-      ? `Reviewed scope output contract: set ${effective.recipe.reviewOutput.scopeField} to one object with exactly the fields commands and maxMutations and no others. commands is a non-empty list of distinct names chosen from: ${effective.recipe.reviewOutput.commands.join(', ')}. maxMutations is an integer from 1 to ${effective.recipe.reviewOutput.maxMutations}; every accepted mutation counts, including undo.`
-      : `Reviewed action output contract: set command to ${JSON.stringify(effective.recipe.reviewOutput.command)}. Set arguments to one object with exactly these fields and no others: ${effective.recipe.reviewOutput.arguments.join(', ')}. Copy their values from one exact action in the reader-backed plan.`,
-  effective.recipe?.inlinePayload === undefined ? 'Immutable reviewed action: none.'
-    : effective.recipe.inlinePayload.mode === 'scope'
-      ? `Immutable reviewed scope: ${JSON.stringify(effective.recipe.inlinePayload)}. Each mutation must be one of scope.commands and carry ${effective.recipe.inlinePayload.planHashArgument} = ${effective.recipe.inlinePayload.planSha256}; the Host admits at most ${effective.recipe.inlinePayload.scope.maxMutations} mutations in this approved execution, across tool sessions, and refuses the rest. Read commands are unaffected.`
-      : `Immutable reviewed action: ${JSON.stringify(effective.recipe.inlinePayload)}. Use exactly this plan hash, command and typed arguments; do not substitute another action.`,
-  'Do not claim a Campaign action, verdict, tool result, or file change that the corresponding tool/session transcript does not record.',
-].join('\n');
+export function delegationTaskPrompt(contract: DelegationContract, effective: EffectiveDelegationContract): string {
+  const lines = [
+    `Role: ${effective.role}. This is the only active Hima role for this child.`,
+    `Task: ${contract.task.trim()}`,
+    `Recipient: ${effective.recipient.kind} session ${effective.recipient.sessionId}.`,
+    `Granted tools: ${effective.tools.join(', ')}. Task budget: ${effective.budgetShare.maxElapsedMs} ms, ${effective.budgetShare.maxFollowups} follow-ups${effective.budgetShare.maxTokensPerTurn === undefined ? '' : `, ${effective.budgetShare.maxTokensPerTurn} output tokens per turn`}.`,
+    `Inputs: ${contract.inputRefs.length === 0 ? '(none)' : contract.inputRefs.join(', ')}`,
+  ];
+  if (contract.inputRefs.length > 0) {
+    lines.push(effective.tools.includes(delegationInputTool)
+      ? `Read only those recorded inputs with ${delegationInputTool} for Run ${effective.runRef?.runId ?? '(unavailable)'}.`
+      : 'Those inputs are identities only; ask the recipient for a supported projection instead of reading its workspace.');
+  }
+  if (effective.readScope !== undefined) lines.push(`Generic file reads are confined to ${effective.readScope.root}.`);
+  if (effective.writeScope !== undefined) lines.push(`Writes are confined to ${effective.writeScope.root} and remain owner-reviewed.`);
+  if (effective.operator !== undefined) {
+    lines.push(`Interactive scope: ${effective.operator.runId}/${effective.operator.nodeId}/${effective.operator.executionId} through hima_interactive; binding ${effective.operator.bindingDigest}.`);
+    lines.push(`Typed commands: ${effective.operator.commands.map((command) =>
+      `${command.effect} ${command.name}(${command.arguments?.map((argument) => `${argument.name}: ${argument.type}${argument.choices === undefined ? '' : ` {${argument.choices.join('|')}}`}${argument.minimum === undefined && argument.maximum === undefined ? '' : ` [${argument.minimum ?? '-inf'}..${argument.maximum ?? '+inf'}]`}`).join(', ') ?? 'legacy positional arguments'})`).join('; ')}. Use exact argument names; the Host validates them.`);
+  }
+  if (effective.recipe !== undefined) {
+    lines.push(`Pack recipe: ${effective.recipe.teamId}@${effective.recipe.version}/${effective.recipe.memberId}, execution ${effective.recipe.executionId}.`);
+    lines.push(`Return exactly one JSON object and no prose or Markdown. Set schema to ${JSON.stringify(effective.recipe.resultSchema.id)} and include: ${effective.recipe.resultSchema.required.join(', ')}.`);
+    if (effective.recipe.reviewOutput !== undefined) lines.push(effective.recipe.reviewOutput.mode === 'scope'
+      ? `Set ${effective.recipe.reviewOutput.scopeField} to {commands,maxMutations}: distinct commands chosen from ${effective.recipe.reviewOutput.commands.join(', ')}, and maxMutations from 1 to ${effective.recipe.reviewOutput.maxMutations}. Every accepted mutation, including undo, counts.`
+      : `Set command to ${JSON.stringify(effective.recipe.reviewOutput.command)} and arguments to exactly: ${effective.recipe.reviewOutput.arguments.join(', ')}. Copy one exact reader-backed action.`);
+    if (effective.recipe.inlinePayload !== undefined) lines.push(effective.recipe.inlinePayload.mode === 'scope'
+      ? `Immutable scope: ${JSON.stringify(effective.recipe.inlinePayload)}. Each mutation carries ${effective.recipe.inlinePayload.planHashArgument} = ${effective.recipe.inlinePayload.planSha256}; at most ${effective.recipe.inlinePayload.scope.maxMutations} are admitted. Reads are unaffected.`
+      : `Immutable action: ${JSON.stringify(effective.recipe.inlinePayload)}. Do not substitute another action.`);
+  }
+  lines.push('Do not claim an action, result or file change absent from the retained tool/session evidence.');
+  return lines.join('\n');
+}
 
 export async function createDelegation(ctx: Context, contract: DelegationContract, authority: DelegationAuthority, signal: AbortSignal,
   operatorGrant?: OperatorDelegationGrant): Promise<DelegationResult> {
@@ -787,6 +862,10 @@ export async function readDelegationResult(ctx: Context, address: { readonly eff
       || !sameWorkspace) return unavailable('The retained native Session lineage or workspace differs from the effective delegation.');
   const lastEnd = log.events.findLast(event => event.type === 'turn/end');
   const ended = lastEnd?.data as { turn?: unknown; reason?: { kind?: unknown } } | undefined;
+  if (lastEnd && Number.isSafeInteger(ended?.turn) && typeof ended?.reason?.kind === 'string' && ended.reason.kind !== 'completed') {
+    // #66 H2b: an ended turn that did not complete (for example `max-tokens` inside its reasoning) holds no result.
+    return unavailable(`The latest native child turn ended ${ended.reason.kind}, not completed, so it holds no result.`);
+  }
   if (!lastEnd || !Number.isSafeInteger(ended?.turn) || ended?.reason?.kind !== 'completed') {
     return unavailable('The latest native child turn has no explicit completed boundary; candidate completion remains unknown.');
   }
@@ -835,7 +914,7 @@ export function delegationToolDenial(lookup: DelegationPolicyLookup, execution: 
   if (policy === undefined) return undefined;
   if (!policy.toolsAllowed) return policy.reason ?? `delegated child ${childId} has no current tool grant`;
   if (execution.agent?.options.provider !== policy.effective.model.provider || execution.agent.options.model !== policy.effective.model.model) return `delegated child ${childId} changed its effective model route`;
-  if (policy.effective.model.maxTokensPerTurn !== undefined && execution.agent.options.maxTokens !== policy.effective.model.maxTokensPerTurn) return `delegated child ${childId} changed its token limit`;
+  if (policy.effective.model.maxTokensPerTurn !== undefined && effectiveTokenLimit(execution.agent) !== policy.effective.model.maxTokensPerTurn) return `delegated child ${childId} changed its token limit`;
   if (!policy.effective.tools.includes(execution.name)) return `delegated child ${childId} was not granted tool ${execution.name}`;
   if (terminalTools.has(execution.name) || recursiveTools.has(execution.name)) return `delegated child ${childId} may not open a shell, terminal, or recursive delegation`;
   if (execution.name === delegationInputTool) {
@@ -860,6 +939,28 @@ export function delegationToolDenial(lookup: DelegationPolicyLookup, execution: 
   return undefined;
 }
 
+/**
+ * The per-request token limit a child actually runs under: its live option, or, when a cold resume
+ * rebuilt the Agent without one (dsh's continuable descriptor deliberately does not persist
+ * `maxTokens`), the limit on its latest logged request header — which the re-apply below puts there.
+ */
+function effectiveTokenLimit(agent: Readonly<ToolExecution>['agent']): number | undefined {
+  if (agent?.options.maxTokens !== undefined) return agent.options.maxTokens;
+  const header = (agent?.session as { requestHeader?: () => { config?: { maxTokens?: number } } | undefined } | undefined)?.requestHeader?.();
+  return header?.config?.maxTokens;
+}
+
 export function registerDelegationGuard(ctx: Context, lookup: DelegationPolicyLookup): () => void {
-  return ctx.tools.guard((execution) => delegationToolDenial(lookup, execution));
+  const disposeGuard = ctx.tools.guard((execution) => delegationToolDenial(lookup, execution));
+  // Re-apply the Harness-recorded per-turn limit to a delegated child whose request carries none: a
+  // settled continuable child is cold-resumed for its follow-up without `maxTokens` (#64). A limit the
+  // request does carry is left alone, so a genuinely changed limit still meets the guard above.
+  const disposeRequest = (ctx as unknown as { on(name: 'agent/request', listener: (payload: { agent: Agent }, next: () => Promise<{ maxTokens?: number }>) => Promise<{ maxTokens?: number }>): () => void })
+    .on('agent/request', async ({ agent }, next) => {
+      const config = await next();
+      if (config.maxTokens !== undefined || agent.session.header.origin !== 'subagent') return config;
+      const limit = lookup(String(agent.id))?.effective.model.maxTokensPerTurn;
+      return limit === undefined ? config : { ...config, maxTokens: limit };
+    });
+  return () => { disposeRequest(); disposeGuard(); };
 }

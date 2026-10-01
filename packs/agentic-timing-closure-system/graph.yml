@@ -24,7 +24,7 @@
 #   `max_physical_refreshes` spent at the start of a generation. It has no edge out: clearing it ends
 #   the Run. A person is never asked inside a generation.
 id: agentic-timing-closure-system
-version: "0.2.0"
+version: "0.2.2"
 entry: bind-inputs
 autopilot:
   # Inputs and baseline, and every generation's refresh-cap gate and slot binding, up to the plan.
@@ -33,7 +33,8 @@ autopilot:
   - { from: [read-campaign-plan], until: [decide] }
   # Six self-driving expert branches: each branch's child Agent authors its research Workshop (revised
   # from the Reader's itemized problems when it refuses), the Operator works from the request itself.
-  - { fork: prepare-workers, revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 16000 } }
+  # #66 D7: an author turn is a reasoning model's thinking plus one Workshop entry, so 48000 tokens.
+  - { fork: prepare-workers, revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 48000 } }
   # The join collects every slot and computes the composition facts for the merge Workshop.
   - { from: [check-worker-results], until: [compose] }
   # The admitted merge replays, reconciles, pre-checks, refreshes once, evaluates, adopts and observes

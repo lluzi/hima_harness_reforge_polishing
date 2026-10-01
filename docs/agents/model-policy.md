@@ -1,32 +1,29 @@
 # 开发模型与 Effort 分配
 
-用户于 2026-09-14 更新。适用于 polishing 的 Codex 开发、派工与复核；
-产品内的 DeepSeek 调用另按 `docs/testing-strategy.md` 分级验证。
+用户于 2026-09-30 更新。适用于 polishing 的 Codex、Claude Code 与产品内 HimaHarness
+Agent。各梯队使用固定模型，不因成本、等待或普通失败自行降级。
 
 本仓库默认进行已有架构上的持续升级。任务必须按
-`docs/agents/polishing-discipline.md` 写到第二梯队模型无需重新定义产品即可执行；
-更强模型用于证据已经定位的复杂判断，不用于弥补含糊任务。
+`docs/agents/polishing-discipline.md` 写到 fresh session 无需重建历史即可执行；模型能力不用于
+弥补含糊任务或混乱交接。
 
 ## 选择与派工
 
-每个切片开始时，用一句话说明采用的模型、Effort、分工及最低必要测试层级。
-按实际风险选择下表角色；小改动直接用工具完成，无需额外派工。
+每个切片开始时，用一句话说明梯队、分工及最低必要测试层级。
 
-| 工作 | 模型 | Effort | 使用边界 |
+| 梯队 | 固定模型 | Effort | 职责 |
 | --- | --- | --- | --- |
-| 常规主任务与集成 | `gpt-5.6-terra` | `medium` | 现有模块上的切片准入、实现、集成和验收；默认选择 |
-| 常规实现 | `gpt-5.6-terra` | `medium` | 明确接口下的代码、文件操作、测试与普通修复 |
-| 复杂实现或关键复核 | `gpt-5.6-sol` | `high` | 运行图、状态恢复、权限、资产隔离、证据真实性，以及已定位的复杂集成问题 |
-| 常规独立复核 | `gpt-5.6-terra` | `medium` | 稳定切片的普通变更；关键边界转交上一行 |
-| 机械性整理 | `gpt-5.6-luna` | `low` | 确有派工收益的清单、状态统计、文档整理；可确定执行的工作优先用脚本 |
-| 产品重定义或架构扩张 | `gpt-6-astra` | `high` | 仅限用户明确授权，或现有模块无法承载且已有复现、选项与风险证据 |
+| Codex 主协调者、实现与复核 Agent | 最新 `gpt-6.1-sol` | `high` | frontier、规格、实现、集成、最低 seam 验证、Claude handoff 消费 |
+| Claude Code 主 Agent | `Opus 5.5` | Claude Code 对应高质量档 | 独立操作、拟人测试、商业 EDA、tester checkpoint/handoff |
+| Claude Code Sub-agent | `Opus 5.5` | 与主 Agent 一致 | fresh context 下的明确工作包；不得换用低阶模型代替领域判断 |
+| HimaHarness 产品 Agent | `DeepSeek 4.1 Flash` | 产品配置 | Pack 声明的业务角色、Agent Team 与 Campaign 执行 |
 
-派工显式传入 `model`、`reasoning_effort` 和 `fork_turns: "none"`，避免继承主任务配置。
-复用 worker 前核对实际配置；普通 follow-up 不当作模型切换，无法变更配置时另建匹配角色的 worker。
+Codex 派工显式传入 `model: gpt-6.1-sol`、`reasoning_effort: high` 和 `fork_turns: "none"`，
+避免继承旧会话配置。Claude 每次启动主/子 Agent 时核对显示模型为 Opus 5.5；无法满足时停止，
+不静默替换。普通 follow-up 不当作模型切换，配置不符时另建 fresh session。
 输入只给目标、规格指针、拥有的文件、接口、验收标准与必要失败摘要。
 返回变更、证据路径、风险和 commit/远端 SHA；大日志及 Run JSON 留在文件中按需读取。
-模型不可用或执行器不能应用覆盖时，报告实际配置，不把继承的高成本模型称为已降级。
-`xhigh` 及更高 Effort 仅在用户明确指定时使用。
+模型不可用或执行器不能应用覆盖时，报告实际配置并停止依赖该模型的工作。
 
 ## 并发与升级
 
@@ -34,9 +31,8 @@
 允许主任务加最多三个 worker 并行；共享接线文件保持单一所有者。主任务先说明接口、文件范围、
 验收与最低测试，子 agent 不自行继续派生 agent。
 
-先区分任务不清、环境/输入问题和模型能力不足，再决定升级。规格不完整时先补任务；已有明确
-失败证据且确需更强判断时，从 Terra 升到 Sol。只有用户明确要求产品重定义，或证据证明必须
-扩大架构时，才使用 Astra。
+先区分任务不清、环境/输入问题和模型能力不足。规格不完整时先补任务；不得用更长上下文、
+更多 Agent 或换模型掩盖缺少目标、身份、工具或验收标准的问题。产品重定义仍需用户明确授权。
 交接保留最小复现、失败命令、预期/实际差异及已排除原因，不固定按重试次数升级。
 
 切片稳定后集中做一次独立审查；后续只复核原发现涉及的增量。
@@ -45,8 +41,9 @@
 
 ## 上下文与等待
 
-以一个可验收的 PLS 切片维护短交接，记录目标、当前提交、已通过检查和剩余问题。
-上下文较长时优先让实现 worker 从这份交接和必要文件开始；新建用户任务仍需用户明确要求。
+以一个可验收切片维护 `docs/agents/codex-claude-coordination.md` 定义的短 baton，记录目标、
+当前提交、候选身份、已通过检查和唯一下一步。上下文出现陈旧注意力时写完 baton 后更换 session；
+compact 不代替交接。
 搜索和日志读取限定到相关符号、失败段或结构化字段，避免反复加载整份历史和原始证据。
 长命令使用工具等待或脚本收集状态；按现有进度更新要求回传变化和简短摘要。
 
@@ -62,11 +59,10 @@ L5 留给完整 pilot；具体要求以 `docs/testing-strategy.md` 为准。
 在原验收记录补充实际开发模型/Effort、并发与升级原因；可得的请求数、token 和时间如实记录，
 不可得时标为未测量。账号额度快照为全账号值，不能直接归因到一个任务或某个 agent。
 Hima 测试中的“零模型”仅指被测产品未调用模型，不代表开发助手没有使用 Codex quota。
-DeepSeek V4 Flash 保持产品真实模型基线；L0/L2、审计和机械封板优先零产品模型调用。
+DeepSeek 4.1 Flash 保持产品真实模型基线；L0/L2、审计和机械封板优先零产品模型调用。
 
 ## 当前前沿的应用
 
-当前工作是基于现有 HimaHarness 模块持续打磨产品。产品上下文、Pack 入口、Site 导入、
-现有运行图投影、UI 信息层级和普通测试由 Terra/Medium 完成。Site 权限、Host 控制通知、
-知识隔离和资产真实性在实现稳定后由 Sol/High 做一次关键复核。外部知识组件先做隔离 POC，
-不因 POC 需要而升级整个开发任务的模型。
+当前工作由 GPT-6.1 Sol/High 的 Codex fresh session 协调，Opus 5.5 的 Claude fresh session
+独立操作与测试，DeepSeek 4.1 Flash 执行真实 HimaHarness Agent/Campaign。三者通过 baton、
+checkpoint、handoff 和不可变证据协作，不共享完整聊天历史。

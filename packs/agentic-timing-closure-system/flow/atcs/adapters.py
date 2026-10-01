@@ -1112,8 +1112,91 @@ def _operator_regions(edit_domain):
     return regions
 
 
+REGION_MARGIN_ROWS = 4
+"""A derived edit region reaches this many placement rows around a plan instance's origin (#64 attempt 5)."""
+
+_REGION_FALLBACK_MARGIN_UM = 2.5
+
+
+def _def_statements(handle):
+    """Yield each `;`-terminated DEF statement's tokens, from the start up to `END COMPONENTS`."""
+    tokens = []
+    for line in handle:
+        stripped = line.strip()
+        if stripped.startswith("END COMPONENTS"):
+            return
+        if not stripped or stripped.startswith("#"):
+            continue
+        for token in stripped.split():
+            if token == ";":
+                yield tokens
+                tokens = []
+            elif token.endswith(";"):
+                tokens.append(token[:-1])
+                yield tokens
+                tokens = []
+            else:
+                tokens.append(token)
+
+
+def def_instance_regions(def_path, instances, margin_rows=REGION_MARGIN_ROWS):
+    """One ``[x1, y1, x2, y2]`` box (microns) per placed instance of `instances`, in their order.
+
+    #64 attempt 5: a plan that gives an active slot no `editDomain.regions` gets one box around each
+    of its plan instances' origins in the base DEF, `margin_rows` placement rows (the smallest
+    distance between two ROW origins) on every side, so `atcs_move_cell` and `atcs_insert_dummy` can
+    act locally. Names compare with DEF escapes removed (``reg\\[3\\]`` is ``reg[3]``). An instance
+    the DEF does not place gets no box. Reads the DEF once and stops at ``END COMPONENTS``.
+    """
+    wanted = {name.replace("\\", ""): name for name in instances if isinstance(name, str)}
+    units, rows, placed = None, set(), {}
+    in_components = False
+    with open(def_path, "r", encoding="utf-8", errors="replace") as handle:
+        for tokens in _def_statements(handle):
+            if not tokens:
+                continue
+            head = tokens[0]
+            if head == "UNITS" and len(tokens) >= 4 and tokens[1] == "DISTANCE":
+                units = float(tokens[3])
+            elif head == "ROW" and len(tokens) >= 6:
+                try:
+                    rows.add(float(tokens[4]))
+                except ValueError:
+                    pass
+            elif head == "COMPONENTS":
+                in_components = True
+            elif in_components and head == "-" and len(tokens) >= 2:
+                name = tokens[1].replace("\\", "")
+                if name not in wanted:
+                    continue
+                for index, token in enumerate(tokens):
+                    if token in ("PLACED", "FIXED", "COVER") and index + 4 < len(tokens) and tokens[index + 1] == "(":
+                        try:
+                            placed[name] = (float(tokens[index + 2]), float(tokens[index + 3]))
+                        except ValueError:
+                            pass
+                        break
+    if not units or units <= 0:
+        return []
+    ys = sorted(rows)
+    pitches = [b - a for a, b in zip(ys, ys[1:]) if b > a]
+    margin = (min(pitches) / units) * margin_rows if pitches else _REGION_FALLBACK_MARGIN_UM
+    boxes = []
+    for name in wanted:
+        if name in placed:
+            x, y = placed[name][0] / units, placed[name][1] / units
+            boxes.append([round(x - margin, 4), round(y - margin, 4), round(x + margin, 4), round(y + margin, 4)])
+    return boxes
+
+
+LOCAL_FANOUT_MAX = workspaces_module.LOCAL_FANOUT_MAX
+"""A net with more leaf pins than this is global (clock, reset, scan enable): the local-topology
+domain (#66 D2) never takes it, nor the cells on it (`workspaces.LOCAL_FANOUT_MAX`)."""
+
+
 def compile_xtop_analysis_manual_task(workspace_manifest, edit_domain, operator_tcl_path, ops_log_path,
-                                      target_pins=None, *, max_mutations, observe=None):
+                                      target_pins=None, *, max_mutations, observe=None, local_topology=False,
+                                      fanout_max=LOCAL_FANOUT_MAX):
     """One `xtop-analysis-manual.tcl` task binding one worker's edit domain and budget for its whole session.
 
     `edit_domain`: ``{"instances", "nets", "regions"}`` (a work package's own
@@ -1127,6 +1210,12 @@ def compile_xtop_analysis_manual_task(workspace_manifest, edit_domain, operator_
     are baked as Tcl list literals (`::EDIT_DOMAIN_*`, `::ATCS_MAX_MUTATIONS`,
     `::ATCS_OBSERVE`) above the template text and are never re-read or widened
     mid-session.
+
+    `local_topology` (#64 attempt 5; `prepare-workers` sets it for every active slot): the session
+    widens the domain once, before its ready line, to its blockers' local topology -- the nets of
+    the target pins and of every pin of the plan's instances, and the leaf cells on those nets, one
+    hop, leaving out a net with more than `fanout_max` leaf pins -- and writes it to `domain.json`
+    beside the ops log (`xtop-operator.tcl`, `atcs_derive_local_domain`).
     """
     name_prefix = workspace_manifest.get("namePrefix")
     if not name_prefix:
@@ -1148,11 +1237,15 @@ def compile_xtop_analysis_manual_task(workspace_manifest, edit_domain, operator_
         "EDIT_DOMAIN_REGIONS": [repr(v) if isinstance(v, float) else str(v) for region in regions for v in region],
         "ATCS_MAX_MUTATIONS": [str(max_mutations)], "ATCS_OBSERVE": [observe],
     }
+    if local_topology:
+        if isinstance(fanout_max, bool) or not isinstance(fanout_max, int) or fanout_max < 2:
+            raise core.AtcsError("invalid-input", f"fanout_max must be an integer >= 2, got {fanout_max!r}")
+        globals_.update({"EDIT_DOMAIN_LOCAL": ["1"], "ATCS_LOCAL_FANOUT_MAX": [str(fanout_max)]})
     env = {"OPERATOR_TCL": str(operator_tcl_path), "OPS_LOG": str(ops_log_path), "NAME_PREFIX": name_prefix}
     tcl = compile_task("xtop-analysis-manual.tcl", env=env, globals_=globals_)
     return {
         "tcl": tcl, "env": env, "editDomain": {"instances": instances, "nets": nets, "regions": regions},
-        "targetPins": pins, "maxMutations": max_mutations, "observe": observe,
+        "targetPins": pins, "maxMutations": max_mutations, "observe": observe, "localTopology": bool(local_topology),
     }
 
 
@@ -1173,9 +1266,10 @@ def compile_xtop_replay_task(design, tech_lef, cell_lef_glob, netlist, def_path,
     cell/master names, never a timing query.
 
     Each step's Tcl is `atcs.integration.xtop_tcl(op)` -- this function
-    never re-derives XTop command text itself. Stops at the first failing
-    step (later steps stay receipt-less, i.e. pending -- architecture
-    Sec.8.4's recovery rule); `read_replay_receipts` turns the resulting
+    never re-derives XTop command text itself. Best effort: a failing step
+    is recorded as an `error` receipt and the replay continues with the next
+    (a step without any receipt is one the run never reached, i.e. pending --
+    architecture Sec.8.4's recovery rule); `read_replay_receipts` turns the resulting
     `receipts.jsonl` + cell dumps into the `[{"stepId","status",
     "observedDelta"}]` shape `atcs.integration.reconcile` expects.
     """

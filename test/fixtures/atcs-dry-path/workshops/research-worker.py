@@ -38,3 +38,7 @@ if not package.get("parked"):
 out = workspace / "research" / "requests" / f"worker-request-{SLOT}.json"
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(json.dumps(request, indent=2) + "\n", encoding="utf-8")
+if not package.get("parked"):
+    # The Reader's brief step the Workshop's purpose names (#64 T05 w03): the Operator's task embeds it.
+    import subprocess
+    subprocess.run([sys.executable, str(workspace / "hima-readers" / "atcs-readiness" / "read-atcs.py"), "brief", str(out)], check=True)

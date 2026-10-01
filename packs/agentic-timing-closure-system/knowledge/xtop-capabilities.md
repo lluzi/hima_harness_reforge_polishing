@@ -49,7 +49,9 @@ still treat their real-world effect as unverified until a `contribution`'s
 
 | Need | Command (documented) | Flags relevant to this Pack |
 |---|---|---|
-| Path query | `get_paths` | `-start_points`, `-end_points`, `-through_points`, `-scenario`, `-group`, `-delay_type {all\|min\|max}`, `-path_type`, `-lower_bound`, `-upper_bound`, `-filter` |
+| Path query | `get_paths`; `analyze_setup_path_violations` / `analyze_hold_path_violations` | `get_paths` accepts `-start_points`, `-end_points`, `-through_points`, `-scenario`, `-group`, `-delay_type {all\|min\|max}`, `-path_type`, `-lower_bound`, `-upper_bound`, `-filter`; `atcs_paths` returns the bounded fixed session report body rather than only XTop's filename notice. |
+| Single-endpoint slack (`atcs_point`, #66 D3) | `summarize_gba_violations` | `-with_delta -with_reference -exclude_path -with_top_n 10000 -setup\|-hold`, captured by `redirect -variable` (the `atcs_gain` probe's own command, qualified in Task 7, T06 and Q1): its `### <check> top N endpoints ###` table, rows `<slack> <scenario> <endpoint>`, filtered to the named pins. Real XTop has **no** `report_timing` (#64 Q1: `invalid command name "report_timing"`, 151 of 151 rows null); do not use it. An endpoint the table does not name reads `slack: null` with an `unknown` reason: no violation of the check when the table lists every violating endpoint the summary counts, else a slack above the last listed row. That `-with_top_n 10000` lists every violator on a real design (7430 hold in Q1) is the one unqualified part (largest value run on real XTop: 20); the reason text stays exact either way, since it compares the listed endpoints with the summary's own count |
+| Pin direction (`atcs_remove_buffer` input-net admission, #66 D2) | `get_attribute <pin> direction` | `in`/`input` marks the buffer's input pin. **Not yet cross-checked** against a man page; if real XTop lacks the attribute, no net is admitted and the removal stays refused as before |
 | Per-instance attribute query | `get_attribute` | `object_spec attr_name [-class {design\|pin\|cell\|port\|net\|lib_cell\|lib_pin\|lib\|timing_path}] [-scenario sce]` |
 | Whole-design cell enumeration (`atcs_dump_cells`) | `get_cells` | `[-hierarchical] [-quiet] [-regex \| -exact] [-nocase] [patterns \| -of_objects objects] [-filter expression]`; `command_surface.tsv` row 123, `documentation_status = man+completion` |
 | Iterate a collection (`atcs_dump_cells`) | `foreach_in_collection` | `iter_var collection body`; `command_surface.tsv` row 120, `documentation_status = man-only`. `get_attribute.1`'s own worked example re-wraps the loop variable (`foreach_in_collection i [get_dont_touch_cells] {set_dont_touch [get_cells $i] 0}`) rather than treating it as an already-typed cell object — `atcs_dump_cells` follows the identical `[get_cells $i]` re-wrap before every `get_attribute` call on it. |
@@ -94,6 +96,13 @@ Boundaries a compiler must respect, each confirmed directly in the man page text
   `placement_legalization_obligated(1)` turns a legalization failure into a hard
   error. A compiled action that requires legalized placement must set that parameter
   explicitly rather than assume the default behavior fails closed.
+- **A local-topology session (#66 D2) derives its edit domain once, before its ready line.**
+  The target pins' and plan instances' pins' nets, and the leaf cells on them (drivers and loads), one hop,
+  from `get_pins -leaf -of_objects <net>` and `get_nets -of_objects <pin>` (`get_pins -leaf` on a net
+  collection is unverified on real XTop); a net with more leaf pins than `ATCS_LOCAL_FANOUT_MAX` (12) is
+  global (clock, reset, scan enable), stays out and is listed in `domain.json` `globalNets`. Names that do
+  not resolve are listed in `unresolved`; a derivation that errors keeps the plan's domain and records
+  `error`. The replay never derives: it enters each session's sealed domain.
 - **`remove_buffer` refuses to leave a pass-through net or an already-cascaded pair
   broken.** Its man page lists these as explicit error conditions; a buffer-deletion
   request compiled without checking that the target is a genuinely cascaded

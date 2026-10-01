@@ -42,13 +42,13 @@ set_parameter eco_cell_match_attribute $env(ECO_CELL_MATCH_ATTRIBUTE)
 set_parameter eco_cell_nominal_swap_keywords $::XTOP_ECO_CELL_NOMINAL_SWAP_KEYWORDS
 set_parameter eco_cell_nominal_sizing_pattern $env(ECO_CELL_NOMINAL_SIZING_PATTERN)
 set_parameter eco_gain_threshold $env(ECO_GAIN_THRESHOLD)
-save_workspace -as ${design}_operator_baseline
 
 ########################################################################
 # XTop expert toolkit (Issue #64 Task 3). The typed procedures an Operator
 # agent drives, classified in contract.yml `interactive.commands`:
 #
 #   read    atcs_ref atcs_gain atcs_paths atcs_fail_reasons atcs_candidates
+#           atcs_point
 #   mutate  atcs_size_cell atcs_exchange_cell atcs_insert_buffer
 #           atcs_insert_dummy atcs_split_load atcs_split_net atcs_move_cell
 #           atcs_remove_buffer atcs_fix_hold_pins atcs_fix_setup_pins atcs_undo
@@ -104,9 +104,21 @@ save_workspace -as ${design}_operator_baseline
 # tainted.json (beside ops.jsonl) exists once the session is tainted:
 #   {"reason","seq"}; atcs_export_changes then refuses, and atcs_close prints
 #   ATCS:taint:tainted:<reason> (else ATCS:taint:clean) to the transcript.
+# reads.jsonl (beside ops.jsonl, #66 D3), one line per atcs_paths,
+#   atcs_fail_reasons and atcs_point call that returned: {"seq","proc","args",
+#   "rowsDigest","rows"}. seq is the ops.jsonl line it follows (0 = before any
+#   mutation); args as the Host sent them; rows the read's rows (atcs_point:
+#   {"endpoint","scenario","slack"[,"unknown"]} objects; the others: the non-empty lines
+#   of the text XTop gave, then any failed pins), at most ::ATCS_READ_ROWS_MAX,
+#   each text row clipped to ::ATCS_READ_ROW_CHARS; rowsDigest the sha256 of
+#   every row's compact JSON array before clipping (json.dumps(rows,
+#   ensure_ascii=False, separators=(",", ":")) in Python). Reads use no budget.
+# domain.json (beside ops.jsonl, #66 D2) in a local-topology session: see
+#   atcs_derive_local_domain at the end of this file.
 ########################################################################
 foreach {atcs_name atcs_default} {EDIT_DOMAIN_INSTANCES {} EDIT_DOMAIN_NETS {} EDIT_DOMAIN_PINS {}
-        EDIT_DOMAIN_REGIONS {} ATCS_MAX_MUTATIONS 1 ATCS_OBSERVE fast XTOP_REMOVABLE_FILLERS {}} {
+        EDIT_DOMAIN_REGIONS {} ATCS_MAX_MUTATIONS 1 ATCS_OBSERVE fast XTOP_REMOVABLE_FILLERS {}
+        EDIT_DOMAIN_LOCAL 0 ATCS_LOCAL_FANOUT_MAX 12} {
     if {![info exists ::$atcs_name]} { set ::$atcs_name $atcs_default }
 }
 if {![regexp {^[1-9][0-9]*$} $::ATCS_MAX_MUTATIONS]} {
@@ -133,6 +145,10 @@ set ::ATCS_HOLD_EFFORTS {omit low medium high ultra_high extreme_high}
 set ::ATCS_SETUP_EFFORTS {medium high}
 set ::ATCS_FIX_SETUP_METHODS {size_cell insert_buffer split_net}
 set ::ATCS_FAIL_REASON_METHODS {insert_buffer size_cell split_net remove_buffer move_cell}
+set ::ATCS_POINT_MAX 100
+set ::ATCS_READ_ROWS_MAX 200
+set ::ATCS_READ_ROW_CHARS 500
+array set ::atcs_reference_text {}
 
 # ---- JSON ------------------------------------------------------------------
 set ::atcs_json_map [list "\\" "\\\\" "\"" "\\\"" "\n" "\\n" "\r" "\\r" "\t" "\\t" "\b" "\\b" "\f" "\\f"]
@@ -164,7 +180,95 @@ proc atcs_append {path line} {
     puts $fh $line
     close $fh
 }
+# ---- sha256 (reads.jsonl rowsDigest; plain Tcl 8.5, no package) -----------------
+set ::atcs_sha256_k {
+    0x428a2f98 0x71374491 0xb5c0fbcf 0xe9b5dba5 0x3956c25b 0x59f111f1 0x923f82a4 0xab1c5ed5
+    0xd807aa98 0x12835b01 0x243185be 0x550c7dc3 0x72be5d74 0x80deb1fe 0x9bdc06a7 0xc19bf174
+    0xe49b69c1 0xefbe4786 0x0fc19dc6 0x240ca1cc 0x2de92c6f 0x4a7484aa 0x5cb0a9dc 0x76f988da
+    0x983e5152 0xa831c66d 0xb00327c8 0xbf597fc7 0xc6e00bf3 0xd5a79147 0x06ca6351 0x14292967
+    0x27b70a85 0x2e1b2138 0x4d2c6dfc 0x53380d13 0x650a7354 0x766a0abb 0x81c2c92e 0x92722c85
+    0xa2bfe8a1 0xa81a664b 0xc24b8b70 0xc76c51a3 0xd192e819 0xd6990624 0xf40e3585 0x106aa070
+    0x19a4c116 0x1e376c08 0x2748774c 0x34b0bcb5 0x391c0cb3 0x4ed8aa4a 0x5b9cca4f 0x682e6ff3
+    0x748f82ee 0x78a5636f 0x84c87814 0x8cc70208 0x90befffa 0xa4506ceb 0xbef9a3f7 0xc67178f2
+}
+# Hex sha256 of a string's UTF-8 bytes.
+proc atcs_sha256 {text} {
+    set data [encoding convertto utf-8 $text]
+    set bits [expr {[string length $data] * 8}]
+    append data \x80
+    append data [string repeat \x00 [expr {(56 - [string length $data] % 64 + 64) % 64}]]
+    append data [binary format II [expr {($bits >> 32) & 0xffffffff}] [expr {$bits & 0xffffffff}]]
+    set h [list 0x6a09e667 0xbb67ae85 0x3c6ef372 0xa54ff53a 0x510e527f 0x9b05688c 0x1f83d9ab 0x5be0cd19]
+    set k $::atcs_sha256_k
+    set n [string length $data]
+    for {set off 0} {$off < $n} {incr off 64} {
+        binary scan $data @${off}Iu16 w
+        for {set t 16} {$t < 64} {incr t} {
+            set x [lindex $w [expr {$t - 15}]]
+            set y [lindex $w [expr {$t - 2}]]
+            set s0 [expr {((($x >> 7) | ($x << 25)) ^ (($x >> 18) | ($x << 14)) ^ ($x >> 3)) & 0xffffffff}]
+            set s1 [expr {((($y >> 17) | ($y << 15)) ^ (($y >> 19) | ($y << 13)) ^ ($y >> 10)) & 0xffffffff}]
+            lappend w [expr {([lindex $w [expr {$t - 16}]] + $s0 + [lindex $w [expr {$t - 7}]] + $s1) & 0xffffffff}]
+        }
+        lassign $h a b c d e f g hh
+        for {set t 0} {$t < 64} {incr t} {
+            set s1 [expr {((($e >> 6) | ($e << 26)) ^ (($e >> 11) | ($e << 21)) ^ (($e >> 25) | ($e << 7)))
+                & 0xffffffff}]
+            set t1 [expr {($hh + $s1 + (($e & $f) ^ (~$e & $g)) + [lindex $k $t] + [lindex $w $t]) & 0xffffffff}]
+            set s0 [expr {((($a >> 2) | ($a << 30)) ^ (($a >> 13) | ($a << 19)) ^ (($a >> 22) | ($a << 10)))
+                & 0xffffffff}]
+            set t2 [expr {($s0 + (($a & $b) ^ ($a & $c) ^ ($b & $c))) & 0xffffffff}]
+            set hh $g
+            set g $f
+            set f $e
+            set e [expr {($d + $t1) & 0xffffffff}]
+            set d $c
+            set c $b
+            set b $a
+            set a [expr {($t1 + $t2) & 0xffffffff}]
+        }
+        set next {}
+        foreach old $h new [list $a $b $c $d $e $f $g $hh] { lappend next [expr {($old + $new) & 0xffffffff}] }
+        set h $next
+    }
+    return [format %08x%08x%08x%08x%08x%08x%08x%08x {*}$h]
+}
+
+# ---- read log (#66 D3) -------------------------------------------------------
+# One reads.jsonl line per read that returned. `full` and `shown` are the rows as JSON values,
+# before and after clipping; the digest covers `full`.
+proc atcs_log_read {proc args_json full shown} {
+    set digest [atcs_sha256 "\[[join $full ,]\]"]
+    set shown [lrange $shown 0 [expr {$::ATCS_READ_ROWS_MAX - 1}]]
+    atcs_append [atcs_reads_path] [atcs_jobj [list seq $::atcs_seq proc [atcs_js $proc] args $args_json \
+        rowsDigest [atcs_js $digest] rows "\[[join $shown ,]\]"]]
+}
+# The non-empty lines of `text` then `extra`, as JSON strings: {full shown}.
+proc atcs_text_rows {text {extra {}}} {
+    set full {}
+    set shown {}
+    foreach line [concat [split $text "\n"] $extra] {
+        if {[string trim $line] eq ""} { continue }
+        lappend full [atcs_js $line]
+        if {[llength $shown] < $::ATCS_READ_ROWS_MAX} { lappend shown [atcs_js [atcs_clip $line $::ATCS_READ_ROW_CHARS]] }
+    }
+    return [list $full $shown]
+}
+# L4 run 4 (#64): a read that is refused is logged too, with no rows and its reason, so the read
+# evidence of a session is never silently empty. `args_json` holds the arguments as the Host sent them.
+proc atcs_log_refused {proc args_json reason} {
+    atcs_append [atcs_reads_path] [atcs_jobj [list seq $::atcs_seq proc [atcs_js $proc] args $args_json \
+        rowsDigest [atcs_js [atcs_sha256 {[]}]] rows {[]} refused [atcs_js [atcs_clip $reason $::ATCS_READ_ROW_CHARS]]]]
+}
+proc atcs_logged_read {proc args_json body} {
+    if {[catch {uplevel 1 $body} result options]} {
+        atcs_log_refused $proc $args_json $result
+        return -options [dict incr options -level] $result
+    }
+    return $result
+}
 proc atcs_gain_path {} { return [file join [file dirname $::env(OPS_LOG)] gain.jsonl] }
+proc atcs_reads_path {} { return [file join [file dirname $::env(OPS_LOG)] reads.jsonl] }
 proc atcs_taint_path {} { return [file join [file dirname $::env(OPS_LOG)] tainted.json] }
 
 # ---- argument validation ---------------------------------------------------
@@ -343,6 +447,13 @@ proc atcs_require_domain_pin {pin} {
     if {[atcs_member $::EDIT_DOMAIN_PINS $pin]} { return }
     set owner [atcs_pin_owner $pin]
     if {$owner ne "" && [atcs_instance_in_domain $owner]} { return }
+    # D-Q1-5 (#64 Q1 opreq-9): an instance named where a pin belongs is said to be one, with its pins.
+    set cell [get_cells -quiet -exact $pin]
+    if {$owner eq "" && [sizeof_collection $cell] == 1} {
+        set names {}
+        foreach_in_collection each [get_pins -quiet -of_objects $cell] { lappend names [get_attribute $each full_name] }
+        error "out-of-scope pin: $pin is an instance, not a pin; name its pins as $pin/<pin>: [join [lsort $names] {, }]"
+    }
     error "out-of-scope pin: $pin"
 }
 # Removing an instance merges its nets: every one of them must be in the domain.
@@ -401,7 +512,7 @@ proc atcs_observe_before {} {
 # in-domain changes and created instances (fillers excluded); outOfDomain holds
 # out-of-domain instances, and instance@net for a created instance on a
 # pre-existing out-of-domain net or a removed instance with an out-of-domain net.
-proc atcs_observe_after {pre} {
+proc atcs_observe_after {pre {probe {}}} {
     set c0 [dict get $pre count]
     set c1 [atcs_eco_count]
     set d0 [dict get $pre domain]
@@ -437,6 +548,14 @@ proc atcs_observe_after {pre} {
             } else {
                 lappend bad $name
             }
+        }
+        # D-T06-4(d) (#64 T06 w01 seq1): `get_eco_cells -last_n` does not list a cell insert_dummy_cell
+        # created (in its pin's module), so a requested new instance absent before the call is read directly.
+        foreach name $probe {
+            if {[dict exists $delta $name] || [lsearch -exact $bad $name] >= 0} { continue }
+            set m1 [atcs_cell_master $name]
+            if {$m1 eq ""} { continue }
+            if {[atcs_leaf_prefixed $name]} { dict set delta $name [list "" $m1] } else { lappend bad $name }
         }
     }
     # The cells every ECO action touched, moves, reconnects and swaps included: one outside
@@ -536,6 +655,7 @@ proc atcs_capture_reference {} {
     foreach check {setup hold} {
         set entry [atcs_summarize $check {-as_reference -exclude_path}]
         if {[lindex $entry 1] != 0} { error "session reference capture failed for $check: [lindex $entry 2]" }
+        set ::atcs_reference_text($check) [expr {[lindex $entry 3] ne "" ? [lindex $entry 3] : [lindex $entry 2]}]
         lappend pairs $check [atcs_summary_json $entry]
     }
     set ::atcs_reference_captured 1
@@ -662,12 +782,23 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
                   {load_modules {}}} {
     atcs_ensure_reference
     set pre [atcs_observe_before]
+    # A requested new instance may appear under its own name or in a load pin's module; the ones absent now.
+    set probe {}
+    if {$kind eq "request"} {
+        dict for {name master} $expected {
+            if {$master eq ""} { continue }
+            foreach module [concat [list ""] $load_modules] {
+                set full [expr {$module eq "" ? $name : "$module/$name"}]
+                if {[lsearch -exact $probe $full] < 0 && [atcs_cell_master $full] eq ""} { lappend probe $full }
+            }
+        }
+    }
     atcs_commit_mutation $plan_sha256
     if {[catch {
         lassign [atcs_call $command] code result
         if {$code == 0 && $cmd eq "fix_hold_gba_violations"} { set ::atcs_fix_ran hold }
         if {$code == 0 && $cmd eq "fix_setup_gba_violations"} { set ::atcs_fix_ran setup }
-        set post [atcs_observe_after $pre]
+        set post [atcs_observe_after $pre $probe]
         set c0 [dict get $pre count]
         set c1 [dict get $post count]
         set delta [dict get $post delta]
@@ -766,9 +897,19 @@ proc atcs_mutate {proc cmd args_json plan_sha256 command kind {expected {}} {nam
 }
 
 # ---- read procedures -------------------------------------------------------
+# D-Q1-3 (#64 Q1 w01 cmd-11): the request and the brief named no dummy master or delay cell, and the
+# Operator sent `atcs_insert_dummy` with master "". The session's hold buffer list (the Site's
+# bufferListForHold, XTop's eco_buffer_list_for_hold) is that source: atcs_ref names it after the reference.
+proc atcs_hold_cells_line {} {
+    return "ATCS:holdCells [atcs_jobj [list holdBufferList [atcs_jarr $::XTOP_ECO_BUFFER_LIST_FOR_HOLD] \
+        use [atcs_js {atcs_insert_dummy master: one cell of holdBufferList (a delay cell is a dummy load XTop accepts, #64 T06); delayCellList: cells of holdBufferList, leaving at least one out as the normal cell}]]]"
+}
+proc atcs_hold_cells_named {} {
+    return "the session's hold buffer list (eco_buffer_list_for_hold, the Site's bufferListForHold): [expr {[llength $::XTOP_ECO_BUFFER_LIST_FOR_HOLD] > 0 ? $::XTOP_ECO_BUFFER_LIST_FOR_HOLD : {none}}]"
+}
 proc atcs_ref {} {
-    if {$::atcs_reference_captured} { return "session reference already captured; it is never moved" }
-    return [atcs_capture_reference]
+    if {$::atcs_reference_captured} { return "session reference already captured; it is never moved\n[atcs_hold_cells_line]" }
+    return "[atcs_capture_reference]\n[atcs_hold_cells_line]"
 }
 # XTop keeps fail reasons only for the check of the last fix flow in the session: before any fix,
 # `-with_fail_reason` fails ("No fail reason since no fix or optimize flow have run yet."), and
@@ -788,19 +929,43 @@ proc atcs_gain {check top_n} {
     return [expr {$text ne "" ? $text : $result}]
 }
 proc atcs_paths {check top_n end_points} {
+    atcs_logged_read atcs_paths [atcs_jobj [list check [atcs_js $check] topN [atcs_js $top_n] endPoints [atcs_js $end_points]]] {
     atcs_choice check $check {setup hold}
     atcs_int topN $top_n 1 100
     set end_points [atcs_list endPoints $end_points]
-    foreach pin $end_points { atcs_check_name pin $pin }
+    set pins {}
+    foreach name $end_points {
+        foreach target [atcs_read_targets $name] { lappend pins [lindex $target 0] }
+    }
     set command [list analyze_${check}_path_violations]
-    if {[llength $end_points] > 0} {
+    if {[llength $pins] > 0} {
         set delay_type [expr {$check eq "setup" ? "max" : "min"}]
-        lappend command [get_paths -delay_type $delay_type -end_points $end_points]
+        lappend command [get_paths -delay_type $delay_type -end_points $pins]
     }
     lappend command -top $top_n -detail_info
-    return [uplevel #0 $command]
+    set result [uplevel #0 $command]
+    # Real XTop writes the detailed analysis beside the session and returns only a short file notice.
+    # Return that fixed, session-owned report through the typed read; the Operator has no raw file tool.
+    set report [file join $::operator_root "analyze_${check}_path_violations.txt"]
+    if {[file readable $report]} {
+        set fh [open $report r]
+        fconfigure $fh -encoding utf-8
+        set text [read $fh 60000]
+        close $fh
+    } else {
+        set text $result
+    }
+    lassign [atcs_text_rows $text] full shown
+    atcs_log_read atcs_paths [atcs_jobj [list check [atcs_js $check] topN $top_n endPoints [atcs_jarr $end_points]]] \
+        $full $shown
+    set text
+    }
 }
 proc atcs_fail_reasons {pins reasons methods} {
+    atcs_logged_read atcs_fail_reasons [atcs_jobj [list pins [atcs_js $pins] reasons [atcs_js $reasons] \
+        methods [atcs_js $methods]]] [list atcs_fail_reasons_read $pins $reasons $methods]
+}
+proc atcs_fail_reasons_read {pins reasons methods} {
     set pins [atcs_list pins $pins]
     set reasons [atcs_list reasons $reasons]
     set methods [atcs_list methods $methods]
@@ -813,26 +978,176 @@ proc atcs_fail_reasons {pins reasons methods} {
     set method_option {}
     if {[llength $methods] > 0} { set method_option [list -methods $methods] }
     set pairs {}
+    set report ""
+    set names {}
     if {[llength $pins] > 0} {
         # report_fail_reasons prints its report and returns "" (real XTop, Issue #64 Task 7): capture it.
         # Before any fix or optimize flow it prints an empty table (XTop keeps no fail reasons yet).
         set command [concat [list report_fail_reasons] $method_option [list -stats -verbose -pins $pins]]
         set ::atcs_capture ""
         set result [uplevel #0 [list redirect -variable ::atcs_capture $command]]
-        lappend pairs report [atcs_js [expr {$::atcs_capture ne "" ? $::atcs_capture : $result}]]
+        set report [expr {$::atcs_capture ne "" ? $::atcs_capture : $result}]
+        lappend pairs report [atcs_js $report]
     }
     if {[llength $reasons] > 0} {
         set failed [uplevel #0 [concat [list get_failed_pins] $method_option [list -reasons $reasons]]]
-        set names {}
         foreach_in_collection pin $failed { lappend names [get_attribute [get_pins $pin] full_name] }
         lappend pairs failedPins [atcs_jarr $names]
     }
+    lassign [atcs_text_rows $report $names] full shown
+    atcs_log_read atcs_fail_reasons [atcs_jobj [list pins [atcs_jarr $pins] reasons [atcs_jarr $reasons] \
+        methods [atcs_jarr $methods]]] $full $shown
     return [atcs_jobj $pairs]
 }
 proc atcs_candidates {kind object} {
     atcs_choice kind $kind {size_cell insert_buffer exchange_cell}
     atcs_check_name [expr {$kind eq "insert_buffer" ? "pin" : "instance"}] $object
     return [uplevel #0 [list list_${kind}_candidates $object]]
+}
+# #66 D3: each named endpoint's slack for one check in the session's GBA mode (no PBA option).
+# D-Q1-2 (#64 Q1, w01 cmd-3, opreq-4/5): real XTop has no `report_timing` ("invalid command name
+# "report_timing"", 151 of 151 rows null). The one per-endpoint listing XTop is proven to print is the
+# top-N endpoint table of the atcs_gain probe's own command (`summarize_gba_violations -with_delta
+# -with_reference -exclude_path -with_top_n N -<check>`, Task 7, T06, Q1: `### <check> top N endpoints ###`
+# then rows `<slack> <scenario> <endpoint>`). atcs_point reads that table once per call, with
+# N = ::ATCS_POINT_TOP_N, and returns each named endpoint's rows {"endpoint","scenario","slack"}. An
+# endpoint the table does not name reads {"endpoint","scenario":null,"slack":null,"unknown":<why>}: no
+# violation of the check in any scenario when the table lists every violating endpoint the same summary
+# counts, else a slack above the last listed one; a failed summary names XTop's own text. Never mutates;
+# returns the rows as a JSON array.
+set ::ATCS_POINT_TOP_N 10000
+# The rows `{slack scenario name}` of every `### <check> top N endpoints ###` table in `text`.
+proc atcs_top_n_rows {text check} {
+    set rows {}
+    set inside 0
+    foreach line [split $text "\n"] {
+        set trimmed [string trim $line]
+        if {[regexp "^### $check top \[0-9\]+ endpoints ###\$" $trimmed]} { set inside 1; continue }
+        if {!$inside} { continue }
+        if {$trimmed eq "" || [string match "###*" $trimmed]} { set inside 0; continue }
+        set tokens [regexp -all -inline {\S+} $trimmed]
+        if {[llength $tokens] < 3} { continue }
+        lassign $tokens slack scenario name
+        if {![regexp {^-?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][-+]?[0-9]+)?$} $slack]} { continue }
+        lappend rows [list $slack $scenario $name]
+    }
+    return $rows
+}
+# The `total` row's Count of the `### <check> summary ###` table in `text`, or "" when it prints none.
+proc atcs_summary_total {text check} {
+    set inside 0
+    foreach line [split $text "\n"] {
+        set trimmed [string trim $line]
+        if {$trimmed eq "### $check summary ###"} { set inside 1; continue }
+        if {$inside && [regexp {^total\s+([0-9]+)(\s|$)} $trimmed -> count]} { return $count }
+        if {[string match "###*" $trimmed]} { set inside 0 }
+    }
+    return ""
+}
+# L4 run 4 (#64): the Operator names a target as the Site reports it: a check key
+# `<scenario>|<mode>|<endpoint>`, an endpoint with a PrimeTime path group `<endpoint>@**<group>**`
+# (`**async_default**`: reset recovery/removal), a bare endpoint instance, or a pin. The key's prefix
+# and the suffix are stripped. A pin reads as itself; a cell reads through its input pins (at most
+# ATCS_TARGET_PINS_MAX), its asynchronous pins first for an async path group and last otherwise; any
+# other name (a port) is passed as given. Returns {pinName object} pairs; `object` is what `-to` takes.
+set ::ATCS_ASYNC_PINS {CDN SDN CD SD RN SN RB SB R S CLR CLRN PRE PREN RST RSTN RESET RESETN SET SETN}
+set ::ATCS_TARGET_PINS_MAX 8
+proc atcs_target_base {name} {
+    set name [lindex [split $name |] end]
+    if {[regexp {^(.+)@\*\*([A-Za-z0-9_]+)\*\*$} $name -> base group]} {
+        return [list $base [string match -nocase *async* $group]]
+    }
+    return [list $name 0]
+}
+proc atcs_read_targets {name} {
+    lassign [atcs_target_base $name] name async
+    atcs_check_name pin $name
+    set pin [get_pins -quiet -exact $name]
+    if {[sizeof_collection $pin] == 1} { return [list [list $name $pin]] }
+    set cell [get_cells -quiet -exact $name]
+    if {[sizeof_collection $cell] != 1} { return [list [list $name $name]] }
+    set asyncs {}
+    set others {}
+    foreach_in_collection each [get_pins -quiet -of_objects $cell] {
+        set direction ""
+        catch { set direction [get_attribute $each direction] }
+        if {$direction ni {in input inout}} { continue }
+        set full [get_attribute $each full_name]
+        if {[lsearch -exact $::ATCS_ASYNC_PINS [lindex [split $full /] end]] >= 0} {
+            lappend asyncs [list $full $each]
+        } else {
+            lappend others [list $full $each]
+        }
+    }
+    set found [expr {$async ? [concat $asyncs $others] : [concat $others $asyncs]}]
+    if {[llength $found] == 0} { error "instance $name has no input pin to read" }
+    return [lrange $found 0 [expr {$::ATCS_TARGET_PINS_MAX - 1}]]
+}
+proc atcs_point {check end_points} {
+    atcs_logged_read atcs_point [atcs_jobj [list check [atcs_js $check] endPoints [atcs_js $end_points]]] {
+    atcs_choice check $check {setup hold}
+    set end_points [atcs_list endPoints $end_points 1]
+    if {[llength $end_points] > $::ATCS_POINT_MAX} { error "endPoints names at most $::ATCS_POINT_MAX end points" }
+    set targets {}
+    foreach name $end_points { lappend targets [list $name [atcs_read_targets $name]] }
+    atcs_ensure_reference
+    lassign [atcs_summarize $check [list -with_delta -with_reference -exclude_path -with_top_n $::ATCS_POINT_TOP_N]] \
+        command code result text
+    set listed {}
+    set by_name [dict create]
+    if {$code != 0} {
+        # XTop's own words, as it printed or returned them (it prints "Error: ..." and returns "").
+        set said [string trim [expr {$result ne "" ? $result : $text}]]
+        set failed "$command failed: [expr {$said ne "" ? [atcs_clip $said 300] : "XTop gave no message"}]"
+    } else {
+        set failed ""
+        foreach row [atcs_top_n_rows $text $check] {
+            set name [string map {\\ ""} [lindex $row 2]]
+            dict lappend by_name $name $row
+            if {[lsearch -exact $listed $name] < 0} { lappend listed $name }
+        }
+        set total [atcs_summary_total $text $check]
+        set shown [llength $listed]
+        if {$shown == 0 && $total eq ""} {
+            set absent "$command printed no $check summary and no top-N endpoint table"
+        } elseif {$total ne "" && $shown >= $total} {
+            set absent "not among the $shown violating $check endpoints $command lists (its summary counts $total): no $check violation in any scenario"
+        } else {
+            set last [expr {$shown > 0 ? [lindex [lindex [dict get $by_name [lindex $listed end]] end] 0] : "none"}]
+            set absent "not among the $shown worst $check endpoints $command lists[expr {$total ne "" ? " of the $total it counts" : ""}]: its slack is above the last listed, $last"
+        }
+    }
+    set rows {}
+    foreach target $targets {
+        lassign $target name pins
+        set base [lindex [atcs_target_base $name] 0]
+        set expanded [expr {[llength $pins] != 1 || [lindex $pins 0 0] ne $base}]
+        foreach pair $pins {
+            set pin [lindex $pair 0]
+            set found {}
+            set key [string map {\\ ""} $pin]
+            if {$failed eq "" && [dict exists $by_name $key]} {
+                foreach row [dict get $by_name $key] {
+                    lassign $row slack scenario
+                    lappend found [atcs_jobj [list endpoint [atcs_js $pin] scenario [atcs_js $scenario] slack [scan $slack %g]]]
+                }
+            }
+            if {[llength $found] == 0} {
+                set why [expr {$failed ne "" ? $failed : $absent}]
+                set found [list [atcs_jobj [list endpoint [atcs_js $pin] scenario null slack null \
+                    unknown [atcs_js [atcs_clip $why 500]]]]]
+            }
+            if {$expanded} {
+                set tagged {}
+                foreach row $found { lappend tagged "[string range $row 0 end-1],\"target\":[atcs_js $base]\}" }
+                set found $tagged
+            }
+            set rows [concat $rows $found]
+        }
+    }
+    atcs_log_read atcs_point [atcs_jobj [list check [atcs_js $check] endPoints [atcs_jarr $end_points]]] $rows $rows
+    set result "\[[join $rows ,]\]"
+    }
 }
 
 # ---- mutation procedures ---------------------------------------------------
@@ -863,10 +1178,23 @@ proc atcs_exchange_cell {instance cells plan_sha256} {
     return [atcs_mutate atcs_exchange_cell exchange_cell $args_json $plan_sha256 \
         [list exchange_cell [get_cells -exact $instance] [get_cells -exact $cells]] fix]
 }
+# `net` "" (#64 T06 D-T06-4e): the load pins' one net, which must be in the (derived) edit domain, so a
+# sink-net trial needs no net name the Operator cannot read.
 proc atcs_insert_buffer {net load_pins masters new_instances new_nets plan_sha256} {
     atcs_begin_mutation $plan_sha256
-    atcs_require_net $net
+    set sent_net $net
     set load_pins [atcs_list loadPins $load_pins 1]
+    if {$net eq ""} {
+        set nets {}
+        foreach pin $load_pins {
+            atcs_check_name pin $pin
+            set on [atcs_pin_net $pin]
+            if {[lsearch -exact $nets $on] < 0} { lappend nets $on }
+        }
+        if {[llength $nets] != 1} { error "net \"\" takes the load pins' one net, but they are on [llength $nets] nets: [join $nets {, }]" }
+        set net [lindex $nets 0]
+    }
+    atcs_require_net $net
     foreach pin $load_pins { atcs_require_pin_on_net $pin $net }
     set masters [atcs_list masters $masters 1 0]
     foreach master $masters { atcs_check_master $master }
@@ -880,7 +1208,7 @@ proc atcs_insert_buffer {net load_pins masters new_instances new_nets plan_sha25
     atcs_require_new_names net $new_nets
     set expected [dict create]
     foreach name $new_instances master $masters { dict set expected $name $master }
-    set args_json [atcs_jobj [list net [atcs_js $net] loadPins [atcs_jarr $load_pins] masters [atcs_jarr $masters] \
+    set args_json [atcs_jobj [list net [atcs_js $sent_net] loadPins [atcs_jarr $load_pins] masters [atcs_jarr $masters] \
         newInstances [atcs_jarr $new_instances] newNets [atcs_jarr $new_nets] planSha256 [atcs_js $plan_sha256]]]
     return [atcs_mutate atcs_insert_buffer insert_buffer $args_json $plan_sha256 \
         [list insert_buffer -new_cell_names $new_instances -new_net_names $new_nets \
@@ -889,6 +1217,10 @@ proc atcs_insert_buffer {net load_pins masters new_instances new_nets plan_sha25
 proc atcs_insert_dummy {pin master new_instance plan_sha256} {
     atcs_begin_mutation $plan_sha256
     atcs_check_name pin $pin
+    if {$master eq ""} { error "master is required: one library cell for the dummy load, such as a cell of [atcs_hold_cells_named]" }
+    if {$new_instance eq ""} {
+        error "newInstance is required: a new instance name $::env(NAME_PREFIX)<letters, digits or underscores>, such as $::env(NAME_PREFIX)dum0"
+    }
     set net [atcs_pin_net $pin]
     if {![atcs_net_in_domain $net]} { error "out-of-scope pin: $pin is on net $net outside the edit domain" }
     atcs_check_master $master
@@ -954,13 +1286,58 @@ proc atcs_move_cell {instance x y plan_sha256} {
     return [atcs_mutate atcs_move_cell move_cell $args_json $plan_sha256 \
         [list move_cell -to "($x,$y)" [get_cells -exact $instance]] move {} {} $instance]
 }
+# In a local-topology session (#66 D2), removing a domain buffer whose input net lies outside the
+# domain admits that one net: the reconnect puts the buffer's loads on it. A net with more leaf pins
+# than ::ATCS_LOCAL_FANOUT_MAX is global and never admitted. The admission holds only when the
+# removal is kept; domain.json then records the net, so the replay enters it with the session.
 proc atcs_remove_buffer {instance plan_sha256} {
     atcs_begin_mutation $plan_sha256
     atcs_require_instance $instance
-    atcs_require_instance_nets $instance
+    set admitted [atcs_admit_buffer_input_net $instance]
     set args_json [atcs_jobj [list instance [atcs_js $instance] planSha256 [atcs_js $plan_sha256]]]
-    return [atcs_mutate atcs_remove_buffer remove_buffer $args_json $plan_sha256 \
-        [list remove_buffer [get_cells -exact $instance]] request [dict create $instance ""]]
+    if {[catch {
+        atcs_require_instance_nets $instance
+        atcs_mutate atcs_remove_buffer remove_buffer $args_json $plan_sha256 \
+            [list remove_buffer [get_cells -exact $instance]] request [dict create $instance ""]
+    } result options]} {
+        atcs_withdraw_net $admitted
+        return -options $options $result
+    }
+    if {$admitted ne "" && [catch {
+        atcs_write_domain_record $::atcs_domain_global $::atcs_domain_unresolved $::atcs_domain_error
+    } message]} {
+        atcs_taint "domain.json write failed after the kept removal of $instance admitted net $admitted: $message"
+    }
+    return $result
+}
+# D-T06-4(a) (#64 T06 w04/w05 seq1, w01 seq2): a size-only hold pass on sink pins alone committed 0
+# solutions with `not_only_pin 100%`: it sizes the cells that drive a violating pin, and -only_pins held
+# none of them. The collection form itself is accepted (run 3: a hold fix on `{"a/CDN"}` inserted and was
+# kept; a setup fix on `{"b/Z", "c/ZN"}` sized those drivers). So each named input pin's net driver joins
+# -only_pins when that driver's cell is in the edit domain; `direction` and `get_pins -leaf -of_objects`
+# are the ones the domain derivation and atcs_point already use on real XTop.
+proc atcs_size_only_pins {pins} {
+    set out $pins
+    foreach pin $pins {
+        set object [get_pins -quiet -exact $pin]
+        if {[sizeof_collection $object] != 1} { continue }
+        set direction ""
+        catch { set direction [get_attribute $object direction] }
+        if {$direction ni {in input}} { continue }
+        set net [get_nets -quiet -of_objects $object]
+        if {[sizeof_collection $net] != 1} { continue }
+        foreach_in_collection each [get_pins -quiet -leaf -of_objects $net] {
+            set direction ""
+            catch { set direction [get_attribute $each direction] }
+            if {$direction ni {out output}} { continue }
+            set name [get_attribute $each full_name]
+            set owner [atcs_pin_owner $name]
+            if {$owner ne "" && [atcs_instance_in_domain $owner] && [lsearch -exact $out $name] < 0} {
+                lappend out $name
+            }
+        }
+    }
+    return $out
 }
 proc atcs_fix_hold_pins {pins effort hold_target setup_margin size_cell_only use_dummy_cell fix_timing_window
                          max_cluster_loader_count max_delay_cell_length delay_cell_list plan_sha256} {
@@ -978,7 +1355,30 @@ proc atcs_fix_hold_pins {pins effort hold_target setup_margin size_cell_only use
     set delay_cell_list [atcs_list delayCellList $delay_cell_list]
     foreach cell $delay_cell_list { atcs_check_master $cell }
     if {($max_delay_cell_length >= 0) != ([llength $delay_cell_list] > 0)} {
-        error "maxDelayCellLength and delayCellList go together: give both, or -1 and an empty list"
+        error "maxDelayCellLength and delayCellList go together: give both, or -1 and an empty list; delayCellList takes cells of [atcs_hold_cells_named], leaving at least one out"
+    }
+    # D-T06-4(b) (#64 T06 w04/w05 seq2): XTop refuses -use_dummy_cell with "No dummy cell specified.", and
+    # the documented surface names no dummy-cell list for this session to give it.
+    if {$use_dummy_cell} {
+        error "useDummyCell: XTop refuses -use_dummy_cell with \"No dummy cell specified.\" and this session knows no dummy-cell list; insert a dummy load with atcs_insert_dummy <pin> <master> <newInstance> instead, its master a cell of [atcs_hold_cells_named]"
+    }
+    # D-T06-4(c) (#64 T06 w01 seq3/4): XTop's hold buffer list (eco_buffer_list_for_hold, the Site's
+    # bufferListForHold) must hold every delayCellList cell and at least one normal cell besides them.
+    if {[llength $delay_cell_list] > 0} {
+        set hold_list $::XTOP_ECO_BUFFER_LIST_FOR_HOLD
+        if {[llength $hold_list] == 0} {
+            error "delayCellList: this session knows no hold buffer list (eco_buffer_list_for_hold), so XTop would refuse the chain"
+        }
+        foreach cell $delay_cell_list {
+            if {[lsearch -exact $hold_list $cell] < 0} {
+                error "delayCellList: $cell is not in the session's hold buffer list (eco_buffer_list_for_hold: $hold_list); XTop needs every delay cell there (\"Buffer list should contain at least 1 normal cell and 1 delay cell which is defined by delay_cell_list.\"): choose delay cells from that list"
+            }
+        }
+        set normal {}
+        foreach cell $hold_list { if {[lsearch -exact $delay_cell_list $cell] < 0} { lappend normal $cell } }
+        if {[llength $normal] == 0} {
+            error "delayCellList names every cell of the hold buffer list ($hold_list); XTop needs at least one normal cell besides the delay cells: leave one out"
+        }
     }
     if {$effort eq "omit" && !$size_cell_only} { error "effort may be omitted only with sizeCellOnly" }
     if {$fix_timing_window && $size_cell_only} { error "fix_timing_window cannot be combined with size_cell_only" }
@@ -995,7 +1395,8 @@ proc atcs_fix_hold_pins {pins effort hold_target setup_margin size_cell_only use
     if {$max_delay_cell_length >= 0} {
         lappend command -max_delay_cell_length $max_delay_cell_length -delay_cell_list $delay_cell_list
     }
-    lappend command -only_pins [get_pins -exact $pins]
+    set only_pins [expr {$size_cell_only && !$use_dummy_cell ? [atcs_size_only_pins $pins] : $pins}]
+    lappend command -only_pins [get_pins -exact $only_pins]
     set args_json [atcs_jobj [list pins [atcs_jarr $pins] effort [atcs_js $effort] holdTarget $hold_target \
         setupMargin $setup_margin sizeCellOnly [atcs_jbool $size_cell_only] useDummyCell [atcs_jbool $use_dummy_cell] \
         fixTimingWindow [atcs_jbool $fix_timing_window] maxClusterLoaderCount $max_cluster_loader_count \
@@ -1121,12 +1522,16 @@ proc atcs_undo {plan_sha256} {
 # root, so those are the only two names this writes, always in the slot root; any other name is
 # refused before anything is written, naming the two. The replay's own dumps go through
 # atcs_write_cell_dump, which no typed command reaches.
+set ::atcs_after_dump_seq -1
+set ::atcs_exported_seq -1
+set ::atcs_export_limitations ""
 proc atcs_dump_cells {path} {
     set name [file tail $path]
     if {$name ni {before.dump after.dump}} {
         error "atcs_dump_cells writes only before.dump or after.dump (in the slot root $::operator_root); capture seals exactly those two names, not $name"
     }
     atcs_write_cell_dump [file join $::operator_root $name]
+    if {$name eq "after.dump"} { set ::atcs_after_dump_seq $::atcs_seq }
 }
 proc atcs_write_cell_dump {path} {
     # `get_cells -hierarchical` (documented, get_cells.1) plus
@@ -1144,22 +1549,191 @@ proc atcs_write_cell_dump {path} {
     close $fh
 }
 # A tainted session's changes are untrusted: no ECO export (tainted.json records why).
-proc atcs_export_changes {} {
+# `limitations` (#67 after #71): the Operator's own limitations, one or more sentences, clipped to 2000
+# characters, one entry per non-empty line, written first (a tainted session's too) to summary.json in
+# the slot root as {"limitations": [...]}, where capture-contribution reads them for the seal.
+proc atcs_export_changes {{limitations ""}} {
+    set ::atcs_export_limitations [string range $limitations 0 1999]
+    set items {}
+    foreach line [split [string range $limitations 0 1999] "\n"] {
+        set line [string trim $line]
+        if {$line ne ""} { lappend items $line }
+    }
+    set fh [open [file join $::operator_root summary.json] w]
+    fconfigure $fh -encoding utf-8
+    puts $fh [atcs_jobj [list limitations [atcs_jarr $items]]]
+    close $fh
     if {$::atcs_tainted ne ""} { error "session tainted, export refused: $::atcs_tainted" }
-    file mkdir $::eco_output_dir
-    write_design_changes -format INNOVUS -eco_file_prefix $::env(ECO_PREFIX) \
-        -output_dir $::eco_output_dir -keep_route
-    save_workspace -as ${::design}_operator_candidate
+    if {[catch {
+        file mkdir $::eco_output_dir
+        # XTop writes no files for a net-zero session; old exports are not current evidence.
+        # Remove only this worker's two generated destinations before regenerating them.
+        foreach kind {netlist physical} {
+            file delete -force [file join $::eco_output_dir "$::env(ECO_PREFIX)_${kind}_${::design}.txt"]
+        }
+        write_design_changes -format INNOVUS -eco_file_prefix $::env(ECO_PREFIX) \
+            -output_dir $::eco_output_dir -keep_route
+    } message options]} {
+        lappend items "ECO export unavailable; capture validates replayability from retained commands and dumps: [string range $message 0 1499]"
+        set fh [open [file join $::operator_root summary.json] w]
+        fconfigure $fh -encoding utf-8
+        puts $fh [atcs_jobj [list limitations [atcs_jarr $items]]]
+        close $fh
+        return -options $options $message
+    }
+    set ::atcs_exported_seq $::atcs_seq
     return $::eco_output_dir
 }
 # The transcript always states the taint state the capture must honour.
+# D-Q1-1 (#64 Q1 attempt 1): the Operator kept a size, then answered without after.dump, the export or the
+# close, and the kept edit was lost with the session. The seal needs after.dump and this ATCS:taint line (a
+# missing export is only an advisory), so the close, the one command a clean end needs, completes what was
+# skipped first: after.dump when none was written since the last mutation, and the export when none ran in
+# an untainted session, or when later admitted mutations made the scripts stale. The worker's
+# deliverable is its replayable command/dump evidence and ECO scripts, not a saved XTop database.
+# What it completed, or failed to, is in its reply.
 proc atcs_close {} {
+    set completed {}
+    set failed {}
+    if {$::atcs_after_dump_seq != $::atcs_seq} {
+        if {[catch {atcs_dump_cells after.dump} message]} { lappend failed "after.dump: $message" } else { lappend completed after.dump }
+    }
+    if {$::atcs_tainted eq "" && $::atcs_exported_seq != $::atcs_seq} {
+        set limitations $::atcs_export_limitations
+        if {$::atcs_exported_seq < 0 && $limitations eq ""} {
+            set limitations "atcs_close exported this session: the Operator closed without atcs_export_changes"
+        }
+        if {[catch {atcs_export_changes $limitations} message]} {
+            lappend failed "atcs_export_changes: $message"
+        } else {
+            lappend completed atcs_export_changes
+        }
+    }
+    set note [expr {[llength $completed] > 0 ? "; completed [join $completed { and }]" : ""}]
+    if {[llength $failed] > 0} { append note "; could not complete [join $failed {; }]" }
     if {$::atcs_tainted ne ""} {
         puts "ATCS:taint:tainted:$::atcs_tainted"
-        return "closing after adapter receipt; session tainted: $::atcs_tainted"
+        return "closing after adapter receipt; session tainted: $::atcs_tainted$note"
     }
     puts "ATCS:taint:clean"
-    return "closing after adapter receipt; session clean"
+    return "closing after adapter receipt; session clean$note"
+}
+
+# ---- local-topology edit domain (#64 attempt 5) ------------------------------
+# A worker session (::EDIT_DOMAIN_LOCAL 1; the replay never sets it and confines each session to
+# the domain its Contribution recorded) widens its edit domain once, here, before the ready line,
+# to its blockers' local topology: the nets of every target pin and of every pin of the plan's own
+# instances, and the leaf cells on those nets (their drivers and loads). One hop only: the added
+# cells' other nets stay outside. A net with more than ::ATCS_LOCAL_FANOUT_MAX leaf pins is global
+# (clock, reset, scan enable) and stays out with its cells. The result is written to domain.json
+# beside ops.jsonl; capture seals it into the Contribution, the composition checks that no two
+# slots' kept edits reach into each other's domain, and the replay enters it. A derivation that
+# fails leaves the plan's domain as it was and records the error.
+proc atcs_domain_record_path {} { return [file join [file dirname $::env(OPS_LOG)] domain.json] }
+# The net on `instance`'s single input pin that the domain lacks, now admitted to ::EDIT_DOMAIN_NETS;
+# "" when the session is not local, the instance was created by this session, XTop names no single
+# input pin (`direction` in or input), or its input net is already in the domain. Refuses a global one.
+proc atcs_admit_buffer_input_net {instance} {
+    if {!$::EDIT_DOMAIN_LOCAL || [atcs_member $::atcs_session_instances $instance]} { return "" }
+    set cell [get_cells -quiet -exact $instance]
+    if {[sizeof_collection $cell] != 1} { return "" }
+    set inputs {}
+    foreach_in_collection pin [get_pins -quiet -of_objects $cell] {
+        if {[catch {get_attribute $pin direction} direction] || [lsearch -exact {in input} $direction] < 0} { continue }
+        set net [get_nets -quiet -of_objects $pin]
+        if {[sizeof_collection $net] == 1} { lappend inputs [get_attribute $net full_name] }
+    }
+    set inputs [lsort -unique $inputs]
+    if {[llength $inputs] != 1} { return "" }
+    set net [lindex $inputs 0]
+    if {[atcs_net_in_domain $net]} { return "" }
+    set count [llength [atcs_pin_names_of [get_nets -quiet -exact $net]]]
+    if {$count > $::ATCS_LOCAL_FANOUT_MAX} {
+        error "out-of-scope net: $net (on $instance) has $count leaf pins, above the local fanout max $::ATCS_LOCAL_FANOUT_MAX; it is global"
+    }
+    lappend ::EDIT_DOMAIN_NETS $net
+    return $net
+}
+proc atcs_withdraw_net {net} {
+    if {$net eq ""} { return }
+    set at [lsearch -exact $::EDIT_DOMAIN_NETS $net]
+    if {$at >= 0} { set ::EDIT_DOMAIN_NETS [lreplace $::EDIT_DOMAIN_NETS $at $at] }
+}
+proc atcs_pin_names_of {object} {
+    set names {}
+    foreach_in_collection pin [get_pins -quiet -leaf -of_objects $object] {
+        lappend names [get_attribute $pin full_name]
+    }
+    return [lsort -unique $names]
+}
+proc atcs_derive_local_domain {} {
+    set plan_instances [lsort -unique $::EDIT_DOMAIN_INSTANCES]
+    set plan_nets [lsort -unique $::EDIT_DOMAIN_NETS]
+    set seeds [lsort -unique $::EDIT_DOMAIN_PINS]
+    set unresolved {}
+    foreach name $plan_instances {
+        set cell [get_cells -quiet -exact $name]
+        if {[sizeof_collection $cell] != 1} { lappend unresolved $name; continue }
+        set seeds [lsort -unique [concat $seeds [atcs_pin_names_of $cell]]]
+    }
+    set nets {}
+    foreach pin $seeds {
+        set object [get_pins -quiet -exact $pin]
+        if {[sizeof_collection $object] != 1} { lappend unresolved $pin; continue }
+        set net [get_nets -quiet -of_objects $object]
+        if {[sizeof_collection $net] == 1} { lappend nets [get_attribute $net full_name] }
+    }
+    set instances $plan_instances
+    set domain_nets $plan_nets
+    set global {}
+    foreach net [lsort -unique $nets] {
+        set pins [atcs_pin_names_of [get_nets -quiet -exact $net]]
+        if {[llength $pins] > $::ATCS_LOCAL_FANOUT_MAX} {
+            lappend global [atcs_jobj [list net [atcs_js $net] pins [llength $pins]]]
+            continue
+        }
+        lappend domain_nets $net
+        foreach pin $pins {
+            set owner [atcs_pin_owner $pin]
+            if {$owner ne ""} { lappend instances $owner }
+        }
+    }
+    set ::EDIT_DOMAIN_INSTANCES [lsort -unique $instances]
+    set ::EDIT_DOMAIN_NETS [lsort -unique $domain_nets]
+    return [list $global [lsort -unique $unresolved]]
+}
+proc atcs_write_domain_record {global unresolved error} {
+    set boxes {}
+    foreach {x1 y1 x2 y2} $::EDIT_DOMAIN_REGIONS { lappend boxes [atcs_jints [list $x1 $y1 $x2 $y2]] }
+    set fields [list schema [atcs_js atcs-local-domain/1] fanoutMax $::ATCS_LOCAL_FANOUT_MAX \
+        planInstances [atcs_jarr $::atcs_plan_instances] planNets [atcs_jarr $::atcs_plan_nets] \
+        targetPins [atcs_jarr [lsort -unique $::EDIT_DOMAIN_PINS]] \
+        instances [atcs_jarr $::EDIT_DOMAIN_INSTANCES] nets [atcs_jarr [lsort -unique $::EDIT_DOMAIN_NETS]] \
+        regions "\[[join $boxes ,]\]" globalNets "\[[join $global ,]\]" unresolved [atcs_jarr $unresolved]]
+    if {$error ne ""} { lappend fields error [atcs_js [atcs_clip $error 2000]] }
+    set fh [open [atcs_domain_record_path] w]
+    fconfigure $fh -encoding utf-8
+    puts $fh [atcs_jobj $fields]
+    close $fh
+}
+if {$::EDIT_DOMAIN_LOCAL} {
+    if {![regexp {^[1-9][0-9]*$} $::ATCS_LOCAL_FANOUT_MAX]} {
+        error "ATCS_LOCAL_FANOUT_MAX must be a positive integer, got '$::ATCS_LOCAL_FANOUT_MAX'"
+    }
+    set ::atcs_plan_instances [lsort -unique $::EDIT_DOMAIN_INSTANCES]
+    set ::atcs_plan_nets [lsort -unique $::EDIT_DOMAIN_NETS]
+    set atcs_saved [list $::EDIT_DOMAIN_INSTANCES $::EDIT_DOMAIN_NETS]
+    if {[catch {atcs_derive_local_domain} atcs_derived]} {
+        lassign $atcs_saved ::EDIT_DOMAIN_INSTANCES ::EDIT_DOMAIN_NETS
+        set ::atcs_domain_global {}
+        set ::atcs_domain_unresolved {}
+        set ::atcs_domain_error $atcs_derived
+    } else {
+        lassign $atcs_derived ::atcs_domain_global ::atcs_domain_unresolved
+        set ::atcs_domain_error ""
+    }
+    atcs_write_domain_record $::atcs_domain_global $::atcs_domain_unresolved $::atcs_domain_error
+    puts "ATCS:domain:[llength $::EDIT_DOMAIN_INSTANCES] instances, [llength $::EDIT_DOMAIN_NETS] nets"
 }
 
 puts "ATCS:worker:$env(NAME_PREFIX)"

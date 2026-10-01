@@ -94,6 +94,28 @@ class SessionCaptureTest(unittest.TestCase):
         self.assertAlmostEqual(core.value_of(contribution["predicted"]["xtopHoldWns"]), -0.050)
         self.assertTrue((self.workspace / "contributions" / f"{contribution['id']}.json").is_file())
 
+    def test_clean_replayable_commands_join_without_worker_saved_databases_or_export(self):
+        root = self._seed("w01")
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=GAIN)
+        sf.write_session(root, log, BEFORE, {**BEFORE, "U1": "BUFX2"}, eco_output=False)
+        self.assertFalse((root / "top_operator_baseline").exists())
+        self.assertFalse((root / "top_operator_candidate").exists())
+        contribution = self._capture("w01")
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertIn("missing-export", [item["code"] for item in contribution["advisories"]])
+        _write_json(self.workspace / "state" / "working-state.json", self.base_state)
+        _write_json(self.workspace / "state" / "contributions-collected.json",
+                    {"contributions": [contribution], "pending": []})
+        _write_json(self.workspace / "state" / "observation.json", {"checks": {
+            "func_ss|hold|U1/D": {"slack": core.known(-0.07)}}})
+        composed = _run("compose-facts", self.workspace, self.workspace / "no-plan-yet.json")
+        self.assertEqual(composed.returncode, 0, composed.stdout + composed.stderr)
+        recipe = json.loads((self.workspace / "state" / "composition-facts.json").read_text())["recipe"]
+        (session,) = recipe["sessions"]
+        self.assertEqual(session["contribution"], contribution["id"])
+        self.assertEqual([item["proc"] for item in session["commands"]], ["atcs_size_cell"])
+
     def test_a_slot_with_tainted_json_is_refused(self):
         root = self._seed("w01")
         log = sf.SessionLog()

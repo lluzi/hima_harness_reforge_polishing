@@ -10,6 +10,11 @@
 #   the setup endpoint of block X is u_X/reg0/I in func_ssg_rcworst, with a slack fixed by the
 #   master of u_X/reg0: BUFFD1BWP -0.0500, BUFFD2BWP -0.0300, BUFFD4BWP -0.0100, BUFFD8BWP -0.0050. Nothing else
 #   violates: no hold check, no func_ffg_cbest check. The same model is eda-standin.py's PrimeTime.
+#   Like real XTop (#64 Q1) it has no `report_timing`: `atcs_point` reads the failing endpoints from the
+#   `summarize_gba_violations -with_top_n` table, as `atcs_gain` does.
+#
+# Collections as XTop answers them: `get_pins -of_objects` of a cell gives its pins, of a net the pins
+# on that net -- what a session's in-session domain derivation (#66 D2) walks one hop out.
 #
 # ECO bookkeeping as the Pack's stub: every edit pushes one action (the design before it and the
 # cells it touched); `count_eco_actions`, `get_eco_cells -last_n` and `undo` read that stack.
@@ -150,10 +155,11 @@ proc get_pins {args} {
     stub_record get_pins {*}$args
     lassign [stub_opts {-of_objects -filter} $args] o pos
     if {[dict exists $o -of_objects]} {
-        set owner [stub_strip [stub_one $o -of_objects]]
+        set object [lindex [stub_one $o -of_objects] 0]
+        set owner [stub_strip $object]
         set r {}
         foreach p [lsort [array names ::pin_net]] {
-            if {[stub_owner $p] eq $owner} { lappend r "pin:$p" }
+            if {[string match net:* $object] ? $::pin_net($p) eq $owner : [stub_owner $p] eq $owner} { lappend r "pin:$p" }
         }
         return $r
     }

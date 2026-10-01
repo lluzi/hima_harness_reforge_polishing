@@ -810,7 +810,7 @@ export const packKnowledgeManifest = z.strictObject({
 export type PackKnowledgeManifest = z.infer<typeof packKnowledgeManifest>;
 
 /** The Harness version against which Pack minimum versions are compared. */
-export const harnessVersion = '0.2.0';
+export const harnessVersion = '0.2.1';
 
 export type PackAuthorStatus = 'development' | 'trial' | 'released' | 'deprecated' | 'other';
 
@@ -2175,9 +2175,13 @@ function validateAgentTeams(pack: Pack, declaredIn: ReadonlyMap<string, string>,
         broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" depends on unknown member "${dependency}"`);
       }
       if (member.role === 'operator') {
-        if (member.scopePolicy !== 'site-qualified-interactive-only' || member.allowedTools.length !== 1
-            || member.allowedTools[0] !== 'hima_interactive') {
-          broken(packFiles.contract, `Agent Team "${team.id}" Operator "${member.id}" must request only hima_interactive with site-qualified-interactive-only scope`);
+        // #64 T05 w03: besides its interactive session, an Operator may read its exact recorded inputs
+        // (hima_delegation_input, in bounded windows), and nothing else.
+        const operatorTools = new Set(member.allowedTools);
+        if (member.scopePolicy !== 'site-qualified-interactive-only' || !operatorTools.has('hima_interactive')
+            || operatorTools.size !== member.allowedTools.length
+            || [...operatorTools].some((tool) => tool !== 'hima_interactive' && tool !== 'hima_delegation_input')) {
+          broken(packFiles.contract, `Agent Team "${team.id}" Operator "${member.id}" must request hima_interactive, and optionally hima_delegation_input for its exact recorded inputs, with site-qualified-interactive-only scope`);
         }
         const node = nodes.get(member.node);
         const tool = node?.kind === 'act' && node.parameters.tool !== undefined

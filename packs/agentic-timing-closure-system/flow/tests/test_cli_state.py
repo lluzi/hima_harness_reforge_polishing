@@ -1842,7 +1842,7 @@ class PrepareWorkersByteIdentityTest(unittest.TestCase):
         # cap; the Reviewer's smaller budget is the Host's) and its observation mode.
         self.assertEqual(sorted(workers["workers"]), ["w01", "w02", "w03", "w04", "w05", "w06"])
         session_tcl = Path(workers["workers"]["w06"]["sessionTcl"]).read_text(encoding="utf-8")
-        self.assertIn("set ::ATCS_MAX_MUTATIONS {120}", session_tcl)
+        self.assertIn(f"set ::ATCS_MAX_MUTATIONS {{{workspaces.SCOPE_MAX_MUTATIONS}}}", session_tcl)
         self.assertIn("set ::ATCS_OBSERVE {fast}", session_tcl)
 
     def test_missing_xtop_context_refuses_before_any_worker_session_is_compiled(self):
