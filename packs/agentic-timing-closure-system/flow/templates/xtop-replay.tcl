@@ -32,8 +32,9 @@
 #                  ["reason"],["seq"]} (seq = this run's ops.jsonl line)
 #   DUMP_DIR      000.dump, 001.dump .. (one per session), auto.dump
 #   PREDICT_DIR   setup.rpt, hold.rpt: summarize_gba_violations -exclude_path;
-#                 setup-fail-reasons.rpt, hold-fail-reasons.rpt: the same with
-#                 -with_top_n FAIL_REASON_TOP_N -with_fail_reason, after auto-fix
+#                 <check>-fail-reasons.rpt: the same with -with_top_n
+#                 FAIL_REASON_TOP_N -with_fail_reason, after auto-fix, for the
+#                 last fix flow's check only (XTop keeps no other)
 #   ARM_RESULT    {"arm","complete":true,"tainted","appliedCommands","skippedCommands","protected","protectedCount",
 #                  "protectMissing","protectCode","protectResult","autoFix":[{command,code,result}],
 #                  "predict":{"setup","hold"},"failReasons":{"setup","hold"},
@@ -165,8 +166,25 @@ atcs_write_cell_dump [file join $env(DUMP_DIR) auto.dump]
 set predict_setup [catch {redirect -file [file join $env(PREDICT_DIR) setup.rpt] {summarize_gba_violations -exclude_path -setup}}]
 set predict_hold [catch {redirect -file [file join $env(PREDICT_DIR) hold.rpt] {summarize_gba_violations -exclude_path -hold}}]
 # What auto-fix left unfixed, and why (the atcs_gain probe's fail-reason reading, without a reference).
+# D-Q1-6 (#64 Q1, both arms' xtop-replay.log): XTop keeps fail reasons for the last fix flow's check only;
+# reading the other one printed "Error: Last flow is 'hold_gba', mismatched with current summary." and
+# "Error: Errors detected during redirection.", which marked each arm's run `tool log reports an error`
+# while it was only that check's reasons going unread. The other check is not read; its code says why
+# (a code that is not 0, so the arm's failReasonsUnread names it, as before).
+set last_flow $::atcs_fix_ran
+foreach line [atcs_replay_read_lines $env(AUTO_FIX_TCL)] {
+    switch -- [lindex [split [string trim $line]] 0] {
+        fix_hold_gba_violations { set last_flow hold }
+        fix_setup_gba_violations { set last_flow setup }
+    }
+}
 set fail_reason_codes {}
 foreach check {setup hold} {
+    if {$check ne $last_flow} {
+        set why [expr {$last_flow eq "" ? "no fix flow ran" : "${last_flow}_gba"}]
+        lappend fail_reason_codes $check [atcs_js "not read: XTop keeps fail reasons for the last fix flow's check only ($why)"]
+        continue
+    }
     lappend fail_reason_codes $check [catch {redirect -file [file join $env(PREDICT_DIR) $check-fail-reasons.rpt] \
         [list summarize_gba_violations -exclude_path -with_top_n $env(FAIL_REASON_TOP_N) -with_fail_reason -$check]}]
 }
