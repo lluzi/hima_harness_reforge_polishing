@@ -236,7 +236,7 @@ proc write_design_changes {args} {
 import assert from 'node:assert/strict';
 import { loadPack } from '@hima/harness';
 const pack = loadPack('packs', 'agentic-timing-closure-system');
-assert.equal(pack.contract.version, '0.2.3');
+assert.equal(pack.contract.version, '0.2.4');
 const edges=pack.graph.edges;
 const to=id=>edges.filter(e=>e.from===id).map(e=>e.to);
 assert.deepEqual(to('common-autofix'), ['read-refresh-budget']);
@@ -253,6 +253,16 @@ console.log('graph/contract PASS: six fork branches, owner lead, direct physical
 """
         ran = subprocess.run([node, "--input-type=module", "-e", script], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+        import datetime, re
+        from zoneinfo import ZoneInfo
+        wrapper = (ROOT / "sites/linglong-atcs28/atcs-xtop-operator-v25.sh").read_text()
+        zone = re.search(r"(?m)^\s+-e TZ=([A-Za-z_/]+)\s+\\$", wrapper)
+        self.assertIsNotNone(zone, "private saved R1 must recover in the batch Site's timezone")
+        # Source: current v24 lead L4 library-identity.json, tech LEF unchanged mtime epoch.
+        epoch, saved = 1736302054, "2025-01-07T18:07:34"
+        observed = datetime.datetime.fromtimestamp(epoch, ZoneInfo(zone.group(1))).strftime("%Y-%m-%dT%H:%M:%S")
+        self.assertEqual(observed, saved)
+        self.assertNotEqual(datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"), saved)
         _write_json(self.ws / "state/worker-slots.json", {"workerSlots": 0})
         _write_json(self.ws / "state/contributions-collected.json", {"contributions": []})
         _write_json(self.ws / "research/requests/integration-plan.json", {"plan": {

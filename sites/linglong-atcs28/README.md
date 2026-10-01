@@ -1,3 +1,20 @@
+# Common R1 recovery timezone repair (v25 / Pack0.2.4)
+
+Current v24 lead L4 proved the batch runner saves library mtimes in America/Los_Angeles while the
+isolated interactive image defaults to UTC. All21 saved library times match the former; file hashes,
+stat/mount identity and image are unchanged. Private copies fail native open under UTC and succeed
+under America/Los_Angeles. v25 adds only `-e TZ=America/Los_Angeles` to the existing interactive
+container invocation and changes additive wrapper/pin paths. Flow, toolkit, confinement and batch
+Sitev5 remain unchanged; no recovery-check bypass or shared-container mutation. Pack0.2.4 names v25.
+The current graph/contract cheap check also compares the wrapper's environment timezone with the
+retained real saved library timestamp. v24 source/installed wrapper and failure remain immutable.
+
+Reuse the freshly produced current-L4 R1 for this source-identical-flow continuation; do not regenerate
+rough state or reuse an unrelated historical Run. Requalify the changed wrapper/lead behavior from
+native results before generating any passed environment or production binding.
+
+## Previous candidate
+
 # Issue #66 common-R1 / Owner Timing Lead candidate (v24)
 
 Source candidate: Pack 0.2.3, `atcs-xtop-operator-v24.sh` and
