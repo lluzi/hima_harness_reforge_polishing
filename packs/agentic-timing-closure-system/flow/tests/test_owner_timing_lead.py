@@ -50,6 +50,7 @@ class OwnerTimingLeadChecks(unittest.TestCase):
             "worklistId": "r1-residual", "seed": {"path": str(seed.relative_to(self.ws)), "digest": core.tree_digest(seed)},
             "cellStateDigest": core.digest({"U1": "BUFX1", "U2": "INVX1", "U3": "BUFX2", "UOUT": "BUFX1", "U9": "DFFX1"}),
             "summaries": {"setup": "native setup", "hold": "native hold"}, "endpoints": {"setup": [], "hold": ["U9/D"]},
+            "nativeChecks": ["synthetic|hold|U9/D"],
             "analysisBoard": "research/observe/common-r1/residual-analysis", "experimentDeadline": 9999999999}
         _write_json(self.ws / "state/common-stage.json", self.common)
         self.packages = {slot: _active(slot, self.base["id"]) for slot in workspaces.TASK_IDS}
@@ -65,7 +66,7 @@ class OwnerTimingLeadChecks(unittest.TestCase):
         _write_json(out, workers)
         _write_json(self.ws / "state/worker-slots.json", {"workerSlots": 6})
         report = self.ws / "research/fix-strategy-risk.md"
-        report.write_text("# Residual hold cluster\nTrial size U1; preserve setup. Lead rebase then size U3.\n")
+        report.write_text("# Residual hold cluster\nTrial size U1; preserve setup. Lead rebase then size common residual U9.\n")
 
     def stub_native_tool(self, site, command, cwd, log_path, **kwargs):
         # Execute the emitted production Tcl, replacing only the vendor's native commands.
@@ -209,13 +210,18 @@ close $fh
                                 "targetPins": ["U1/A"], "regions": [[0, 0, 100, 100]]}})
         _write_json(self.ws / "state/contributions-collected.json", {"contributions": [contribution]})
         plan = {"batchId": "owner-lead-test", "baseStateId": self.base["id"], "select": [contribution["id"]],
-                "resolutions": [], "deferred": [], "reason": "Merge and add measured U3 trial", "autoFinish": False}
+                "resolutions": [], "deferred": [], "reason": "Merge and add measured common U9 trial", "autoFinish": False}
         _write_json(self.ws / "research/requests/integration-plan.json", {"plan": plan})
         out, brief = cli._cmd_prepare_lead(self.ws, [str(self.site_path)])
         _write_json(out, brief)
         self.assertEqual(brief["planSha256"], core.file_sha256(self.ws / "research/requests/integration-plan.json"))
         self.assertEqual(brief["namePrefix"], "atcs_lead_r1_")
         self.assertEqual(brief["scope"]["maxMutations"], workspaces.SCOPE_MAX_MUTATIONS)
+        lead_package = cli._read_plain(self.ws / "state/workers.json")["workers"]["lead"]["workPackage"]
+        # This native R1 residual was not allocated to any of the six trial seats.
+        self.assertIn("synthetic|hold|U9/D", lead_package["targets"])
+        self.assertIn("U9/D", lead_package["targetPins"])
+        self.assertIn("U9/D", brief["targetPins"])
         self.assertIn("{swerv_dma_ctrl/dma_axi_wstrb[1]}", brief["derivedDomainDropped"]["nets"])
         root = self.ws / brief["leadRoot"]
         self.assertEqual(workers["requiredSlots"], list(workspaces.TASK_IDS))
@@ -236,13 +242,13 @@ proc write_design_changes {args} {
 }
 """
         text += (root / "xtop-analysis-manual.tcl").read_text()
-        text += f'\natcs_size_cell U3 BUFX4 {PLAN}\natcs_gain hold 10\natcs_export_changes "synthetic lead final"\natcs_close\n'
+        text += f'\natcs_size_cell U9 DFFX2 {PLAN}\natcs_gain hold 10\natcs_export_changes "synthetic lead final"\natcs_close\n'
         script.write_text(text)
         ran = subprocess.run([TCLSH, str(script)], capture_output=True, text=True)
         (root / "xtop_log_fixture.txt").write_text(ran.stdout + ran.stderr)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
         ops = [json.loads(l) for l in (root / "ops.jsonl").read_text().splitlines()]
-        self.assertEqual([op["args"].get("instance") for op in ops if op["status"] == "kept"], ["U1", "U3"])
+        self.assertEqual([op["args"].get("instance") for op in ops if op["status"] == "kept"], ["U1", "U9"])
         self.assertEqual(sum('open_workspace' in l for l in (self.ws / "calls.txt").read_text().splitlines()), 1)
         out, final = cli._cmd_finalize_lead(self.ws, [])
         _write_json(out, final)
@@ -266,7 +272,7 @@ proc write_design_changes {args} {
             self.assertIn(ref["sha256"], [core.file_sha256(file) for file in captured])
         source = self.ws / final["eco"]["netlist"]["path"]
         self.assertIn("U1 BUFX2", source.read_text())
-        self.assertIn("U3 BUFX4", source.read_text())
+        self.assertIn("U9 DFFX2", source.read_text())
         source.write_text(source.read_text() + "changed")
         # Remove the simulated prior marker so this tests the changed source, not write-once.
         (self.ws / "implementations" / merge["id"] / "merge-commit.json").unlink()

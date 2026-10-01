@@ -4401,10 +4401,14 @@ def _cmd_prepare_lead(workspace, args):
         active = [e["workPackage"] for e in workers["workers"].values() if not workspaces.is_parked(e["workPackage"])]
         if not active:
             raise core.AtcsError("missing-input", "treatment has no active work packages for lead scope")
+        # The retained lead fixes the common residual, including paths no trial
+        # seat covered. These are native R1 checks, not model-supplied scope.
+        native_targets = set(common.get("nativeChecks") or [])
+        native_pins = {target.split("|", 2)[2] for target in native_targets}
         package = {k: v for k, v in active[0].items() if k not in ("schema", "id")}
         package.update(taskId="lead", problem="Owner-directed integration and additional residual ECO",
-            targets=sorted({t for p in active for t in p["targets"]}),
-            targetPins=sorted({t for p in active for t in p.get("targetPins") or []}),
+            targets=sorted(native_targets | {t for p in active for t in p["targets"]}),
+            targetPins=sorted(native_pins | {t for p in active for t in p.get("targetPins") or []}),
             scope={"commands": list(workspaces.MUTATE_COMMANDS), "maxMutations": workspaces.SCOPE_MAX_MUTATIONS})
         domains = [p["editDomain"] for p in active]
         dropped = {"instances": [], "nets": []}
@@ -4480,6 +4484,7 @@ puts "ATCS:lead:replay-complete:$::atcs_replay_applied applied, $::atcs_replay_s
         brief["leadRoot"] = manifest["root"]
         brief["namePrefix"] = manifest["namePrefix"]
         brief["scope"] = package["scope"]
+        brief["targetPins"] = package["targetPins"]
     return workspace / "state/lead-brief.json", brief
 
 

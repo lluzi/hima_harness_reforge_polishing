@@ -1348,8 +1348,13 @@ workshops:
       is valid: the Timing Lead still analyzes the common residuals and can add its own ECO.
       After prepare-lead reaches timing-lead, begin that exact execution. For T6 create exactly one manual
       role operator child with hima_delegate, using the existing qualified xtop-operator tool (SLOT lead).
-      Give it the COMPLETE timingLeadBrief, this strategy report and all six Contributions. Explicitly
-      include timingLeadBrief.planSha256 (the actual integration-plan content SHA-256), namePrefix and
+      Give it the COMPLETE timingLeadBrief, this strategy report and all six Contributions, including
+      timingLeadBrief.targetPins: these include the common native R1 residuals no trial seat
+      covered. Use the existing local-domain resolver; never claim authority over unrelated branches.
+      Check replayed trials for native legalization failures; undo/remove an unlegalized trial before
+      final export, then direct additional measured manual ECO on the common residuals. A no-space or
+      out-of-domain refusal needs the exact native object/reason, not a blanket limit to the trial seats.
+      Explicitly include timingLeadBrief.planSha256 (the actual integration-plan content SHA-256), namePrefix and
       scope in its task: every mutation and undo passes that exact 64-hex planSha256; every new object
       starts with the prepared namePrefix. Never leave the hash blank or invent a lead prefix. Create
       the child with budgetShare inside the actual remaining Run budget, maxElapsedMs at most1200000,

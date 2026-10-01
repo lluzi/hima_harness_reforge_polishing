@@ -62,3 +62,20 @@ product model, GUI or commercial EDA was run. Development: GPT-6.1 Sol/High, sin
 This is a source repair, not a newly installed or field-qualified candidate. The closed v27 matched Runs
 and their negative candidate result remain immutable. Lead coverage/own ECO and the three new w04 DRC
 remain separate findings. Rollback for this slice is `cfca98e6`.
+
+## Lead coverage of unseated native residuals
+
+The retained v27 R1 contains 137 native checks while the lead's union of all active seats contains only
+84; 53 common residuals, including `ifu_axi_araddr[4]`, are absent. This is not an exclusion of failed
+Contributions: the old code already includes every active seat. The reserved lead now also declares the
+common native checks and their pins through the existing work-package/local-domain resolver, and puts
+the pins in the existing brief. Commands, local branch confinement, placement regions, budget, Permit
+and the direct final physical flow are unchanged. Owner guidance explicitly covers these pins and
+review/undo of unlegalized trial edits before additional measured manual ECO.
+
+The second cheap check has a common native U9 residual assigned to no trial seat. The old lead package
+fails that target assertion. The new package permits its own U9 sizing after replay in the same Tcl
+process, and the final exported pair reaches the existing Innovus adapter; all three checks pass
+(0.343 s), including the immutable baseline counter. This is wiring evidence only; actual model
+decisions, native legality and refreshed QoR await the one bounded lead L4 and fresh matched experiment.
+No source repair changes the closed v27 candidate result or qualifies a new installed version.
