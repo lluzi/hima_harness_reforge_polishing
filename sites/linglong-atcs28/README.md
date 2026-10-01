@@ -1,14 +1,16 @@
 # linglong-atcs28 Site administration
 
-Current candidate (Issue 64 / ATCS-09, before Q1/T07, Pack 0.2.0): `atcs-xtop-operator-v20.sh` under `operator-admin/atcs-v20/`
-(wrapper sha `3b447439e01296ce...`, installed 2026-09-30, mode 0555). v20 is v19 with the atcs-v20 paths and the flow pin
-`5ec10d9cfbd76463...` / adapter `669acfb86175778a...`: the flow whose XTop adapter builds the report_timing pin collection inside the
-redirected script, names each target pin's in-domain driver for a size-only hold pass, refuses dummy/delay-chain forms it
-cannot state from the Site lists, keeps a real insertion, settles an unadmitted active slot as a no-fix, and whose seal
-refuses only a tainted session (T06 repairs). The verifier (`c9dca81c73dd9585...`, static checks only) and the slot step
-(`293b2a3f...`) are v18's bytes; bootstrap root `operator-admin/atcs-v20/bootstraps/`. The Pack's `xtop-operator` binding
-names v20 and the Permit reads `atcs-v20`. The template `atcs-xtop-operator-v20.sh` with its placeholders filled is
-byte-identical to the installed v20 (`derive-v20.py`, count-asserted hunks).
+Current candidate (Issue 64 / ATCS-09, after Q1/T07, Pack 0.2.0): `atcs-xtop-operator-v21.sh` under `operator-admin/atcs-v21/`
+(wrapper sha `63d28b332b344611...`, installed 2026-09-30, mode 0555). v21 is v20 with the atcs-v21 paths and the flow pin
+`09781f2eaa78475a...` (adapter `669acfb86175778a...` unchanged): the flow whose `atcs_point` reads the summarize_gba_violations
+endpoint table (XTop has no report_timing), whose `atcs_ref` prints the Site hold-cell list for dummy and delay-chain
+forms, whose `atcs_close` writes a skipped after.dump/export so a kept edit survives a Host close, and whose replay reads
+only the last fix flow's check (Q1 repairs). The verifier (`c9dca81c73dd9585...`, static checks only) and the slot step
+(`293b2a3f...`) are v18's bytes; bootstrap root `operator-admin/atcs-v21/bootstraps/`. The Pack's `xtop-operator` binding
+names v21 and the Permit reads `atcs-v21`. The template `atcs-xtop-operator-v21.sh` with its placeholders filled is
+byte-identical to the installed v21 (`derive-v21.py`, count-asserted hunks).
+
+Previous candidate v20 (`3b447439e01296ce...`): flow `5ec10d9cfbd7...` (T06 repairs; Q1 PASS and T07 ran on it).
 
 Previous candidate v19 (`24fb0447c1803551...`): flow `3e8a24fbfc3c...` (in-session pin resolution, target pins always emitted).
 
