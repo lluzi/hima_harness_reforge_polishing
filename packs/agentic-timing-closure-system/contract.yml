@@ -427,7 +427,7 @@ tools:
       licences: { xtop: 1 }
       argv: [/data/eda/project/hima_harness/operator-admin/atcs-v23/atcs-xtop-operator-v23.sh, '${WORKSPACE}', '${SLOT}']
       commands:
-        read: [atcs_ref, atcs_gain, atcs_paths, atcs_fail_reasons, atcs_candidates, atcs_point]
+        read: [atcs_ref, atcs_gain, atcs_paths, atcs_fail_reasons, atcs_candidates, atcs_point, atcs_gba]
         mutate: [atcs_size_cell, atcs_exchange_cell, atcs_insert_buffer, atcs_insert_dummy, atcs_split_load, atcs_split_net, atcs_move_cell, atcs_remove_buffer, atcs_fix_hold_pins, atcs_fix_setup_pins, atcs_undo]
         save: [atcs_dump_cells, atcs_export_changes]
         close: [atcs_close]
@@ -438,6 +438,7 @@ tools:
         atcs_fail_reasons: [{ name: pins, type: string }, { name: reasons, type: string }, { name: methods, type: string }]
         atcs_candidates: [{ name: kind, type: string, choices: [size_cell, insert_buffer, exchange_cell] }, { name: object, type: string }]
         atcs_point: [{ name: check, type: string, choices: [setup, hold] }, { name: endPoints, type: string }]
+        atcs_gba: [{ name: check, type: string, choices: [setup, hold] }, { name: topN, type: number, minimum: 1, maximum: 100 }, { name: pin, type: string }, { name: scenario, type: string }]
         atcs_size_cell: [{ name: instance, type: string }, { name: toMaster, type: string }, { name: planSha256, type: string }]
         atcs_exchange_cell: [{ name: instance, type: string }, { name: cells, type: string }, { name: planSha256, type: string }]
         atcs_insert_buffer: [{ name: net, type: string }, { name: loadPins, type: string }, { name: masters, type: string }, { name: newInstances, type: string }, { name: newNets, type: string }, { name: planSha256, type: string }]

@@ -45,7 +45,7 @@ PREFIX = "atcs_w01_r1_"
 PLAN = "a" * 64
 OTHER_PLAN = "b" * 64
 
-READ_PROCS = ["atcs_ref", "atcs_gain", "atcs_paths", "atcs_fail_reasons", "atcs_candidates", "atcs_point"]
+READ_PROCS = ["atcs_ref", "atcs_gain", "atcs_paths", "atcs_fail_reasons", "atcs_candidates", "atcs_point", "atcs_gba"]
 MUTATE_PROCS = [
     "atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load",
     "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins",
@@ -57,6 +57,9 @@ CLOSE_PROCS = ["atcs_close"]
 # Options per command, copied from the knowledge pack's `evidence/command_surface.tsv`
 # (column `options`, XTop 2025.09.tmp15). A command absent here must never be emitted.
 XTOP_SURFACE = {
+    "get_setup_gba_violated_pins": {"exclude_path", "endpoint_only"},
+    "get_hold_gba_violated_pins": {"exclude_path", "endpoint_only"},
+    "get_critical_gba_path": {"delay_type", "from", "through", "to", "scenario"},
     "summarize_gba_violations": {"as_reference", "exclude_dont_touch", "exclude_path", "hold", "io_only",
                                  "r2r_only", "setup", "with_delta", "with_distribution", "with_fail_reason",
                                  "with_reference", "with_top_n"},
@@ -833,6 +836,53 @@ class LocalTopologyDomainTest(unittest.TestCase):
     def _domain_json(self, session):
         return json.loads((session.root / "domain.json").read_text(encoding="utf-8"))
 
+    def test_declared_residual_targets_resolve_without_opening_the_whole_global_net(self):
+        """Bare/generated endpoints and an output port name resolve to legal scoped objects."""
+        domain = {"instances": ["U9"], "nets": [], "regions": []}
+        targets = ["U9", "hier/gen_ff[3]", "N4"]
+        session = Session(self, domain=domain, target_pins=targets, local=True)
+        session.analysis = adapters.compile_xtop_analysis_manual_task(
+            {"namePrefix": PREFIX}, domain, session.root / "operator.tcl", session.root / "ops.jsonl",
+            target_pins=targets, max_mutations=10, local_topology=True, fanout_max=2)
+        session.run(
+            f"T generated {{atcs_insert_buffer {{}} {{hier/gen_ff[3]/D}} BUFX2 {PREFIX}b1 {PREFIX}n1 {PLAN}}}\n"
+            f"T port_driver {{atcs_size_cell U2 INVX2 {PLAN}}}\n"
+            f"T unclaimed_branch {{atcs_insert_buffer {{}} U2/A BUFX2 {PREFIX}b2 {PREFIX}n2 {PLAN}}}\n"
+            f"T whole_global {{atcs_split_net N2 BUFX2 cap 2 {PLAN}}}\n"
+            f"T unrelated {{atcs_size_cell U3 BUFX4 {PLAN}}}\n",
+            before="array set ::cells {hier/gen_ff[3] DFFX1}\n"
+                   "array set ::pin_net {hier/gen_ff[3]/D N2 hier/gen_ff[3]/Q N9}\n",
+        )
+        self.assertEqual(session.outcome("generated")[0], "OK", session.stdout + session.stderr)
+        self.assertEqual(session.outcome("port_driver")[0], "OK", session.stdout + session.stderr)
+        self.assertIn("out-of-scope", session.outcome("unrelated")[1])
+        self.assertIn("not a declared branch", session.outcome("unclaimed_branch")[1])
+        self.assertIn("whole-net split", session.outcome("whole_global")[1])
+
+    def test_native_gba_read_is_bounded_and_does_not_mutate(self):
+        before = r'''
+proc get_hold_gba_violated_pins {args} {
+    stub_record get_hold_gba_violated_pins {*}$args
+    return {pin:U1/Y pin:U9/D}
+}
+proc get_critical_gba_path {args} {
+    stub_record get_critical_gba_path {*}$args
+    return {pin:U1/Y pin:U9/D}
+}
+'''
+        session = Session(self).run("T gba {atcs_gba hold 1 U9/D s1}\n", before=before)
+        status, text = session.outcome("gba")
+        self.assertEqual(status, "OK", session.stdout + session.stderr)
+        result = json.loads(text)
+        self.assertEqual(result["violatedPinCount"], 2)
+        self.assertEqual(result["violatedPins"], ["U1/Y"])
+        self.assertEqual(result["criticalGbaPins"], ["U1/Y", "U9/D"])
+        self.assertEqual(session.calls_to("get_hold_gba_violated_pins"),
+                         [["get_hold_gba_violated_pins", "-exclude_path", "-endpoint_only"]])
+        self.assertEqual(session.calls_to("get_critical_gba_path"),
+                         [["get_critical_gba_path", "-delay_type", "min", "-to", "pin:U9/D", "-scenario", "s1"]])
+        self.assertEqual(session.ops, [])
+
     def test_a_target_pins_net_and_its_driver_and_loads_join_the_domain(self):
         session = Session(self, domain={"instances": [], "nets": [], "regions": []}, target_pins=["U9/D"],
                           local=True).run(
@@ -883,7 +933,7 @@ class LocalTopologyDomainTest(unittest.TestCase):
         self.assertEqual(record["planInstances"], ["U9"])
         self.assertEqual(record["regions"], [[0, 0, 10, 10]])
 
-    def test_a_net_above_the_fanout_cap_is_global_and_stays_out(self):
+    def test_high_fanout_admits_only_the_declared_branch_and_driver(self):
         session = Session(self, domain={"instances": ["U9"], "nets": [], "regions": []}, target_pins=["U9/D"],
                           local=True)
         session.analysis = adapters.compile_xtop_analysis_manual_task(
@@ -892,8 +942,8 @@ class LocalTopologyDomainTest(unittest.TestCase):
         session.run(f"T size_load {{atcs_size_cell U2 INVX2 {PLAN}}}\n")
         self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
         record = self._domain_json(session)
-        self.assertEqual(record["nets"], ["N9"])
-        self.assertEqual(record["instances"], ["U9", "UOUT"])
+        self.assertEqual(record["nets"], ["N2", "N9"])
+        self.assertEqual(record["instances"], ["U1", "U9", "UOUT"])
         self.assertEqual(record["globalNets"], [{"net": "N2", "pins": 3}])
         self.assertIn("out-of-scope", session.outcome("size_load")[1])
 

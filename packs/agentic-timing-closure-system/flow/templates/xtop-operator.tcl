@@ -440,6 +440,13 @@ proc atcs_require_pin_on_net {pin net} {
     atcs_check_name pin $pin
     set actual [atcs_pin_net $pin]
     if {$actual ne $net} { error "out-of-scope pin: $pin is on net $actual, not $net" }
+    atcs_require_residual_branch $pin $net
+}
+proc atcs_require_residual_branch {pin net} {
+    if {[llength [atcs_pin_names_of [get_nets -quiet -exact $net]]] > $::ATCS_LOCAL_FANOUT_MAX
+            && ![atcs_member $::EDIT_DOMAIN_PINS $pin]} {
+        error "out-of-scope pin: $pin is not a declared branch of high-fanout net $net"
+    }
 }
 # A pin a targeted fix may name: a work-package target pin, or a pin of a domain instance.
 proc atcs_require_domain_pin {pin} {
@@ -470,6 +477,7 @@ proc atcs_require_pin_nets {pins} {
         if {![atcs_net_in_domain $net]} {
             error "out-of-scope pin: $pin is on net $net outside the edit domain; a fix that may insert cells there cannot be undone"
         }
+        atcs_require_residual_branch $pin $net
     }
 }
 proc atcs_require_instance_nets {name} {
@@ -1083,6 +1091,44 @@ proc atcs_read_targets {name} {
     if {[llength $found] == 0} { error "instance $name has no input pin to read" }
     return [lrange $found 0 [expr {$::ATCS_TARGET_PINS_MAX - 1}]]
 }
+proc atcs_gba {check top_n pin scenario} {
+    atcs_logged_read atcs_gba [atcs_jobj [list check [atcs_js $check] topN [atcs_js $top_n] \
+        pin [atcs_js $pin] scenario [atcs_js $scenario]]] {
+        atcs_choice check $check {setup hold}
+        atcs_int topN $top_n 1 100
+        lassign [atcs_summarize $check [list -exclude_path -with_top_n $top_n -with_distribution]] \
+            command code result text
+        if {$code != 0} { error "$command failed: $result" }
+        set violated [get_${check}_gba_violated_pins -exclude_path -endpoint_only]
+        set names {}
+        foreach_in_collection each $violated {
+            if {[llength $names] >= $top_n} { break }
+            lappend names [get_attribute $each full_name]
+        }
+        set path_names {}
+        set path_count 0
+        if {$pin ne ""} {
+            atcs_check_name pin $pin
+            set delay_type [expr {$check eq "setup" ? "max" : "min"}]
+            set command [list get_critical_gba_path -delay_type $delay_type -to [atcs_pin_object $pin]]
+            if {$scenario ne ""} {
+                atcs_check_name scenario $scenario
+                lappend command -scenario $scenario
+            }
+            set path [uplevel #0 $command]
+            set path_count [sizeof_collection $path]
+            foreach_in_collection each $path {
+                if {[llength $path_names] >= $::ATCS_READ_ROWS_MAX} { break }
+                lappend path_names [get_attribute $each full_name]
+            }
+        }
+        return [atcs_jobj [list check [atcs_js $check] \
+            summary [atcs_js [atcs_clip $text 60000]] \
+            violatedPinCount [sizeof_collection $violated] violatedPins [atcs_jarr $names] \
+            criticalGbaPinCount $path_count criticalGbaPins [atcs_jarr $path_names] \
+            pathKind [atcs_js {GBA-imitated pin chain, not propagated Path Analysis}]]]
+    }
+}
 proc atcs_point {check end_points} {
     atcs_logged_read atcs_point [atcs_jobj [list check [atcs_js $check] endPoints [atcs_js $end_points]]] {
     atcs_choice check $check {setup hold}
@@ -1223,6 +1269,7 @@ proc atcs_insert_dummy {pin master new_instance plan_sha256} {
     }
     set net [atcs_pin_net $pin]
     if {![atcs_net_in_domain $net]} { error "out-of-scope pin: $pin is on net $net outside the edit domain" }
+    atcs_require_residual_branch $pin $net
     atcs_check_master $master
     atcs_require_new_names instance [list $new_instance]
     set args_json [atcs_jobj [list pin [atcs_js $pin] master [atcs_js $master] newInstance [atcs_js $new_instance] \
@@ -1264,6 +1311,9 @@ proc atcs_split_load {net pin_groups master new_instances new_nets plan_sha256} 
 proc atcs_split_net {net master rule segments plan_sha256} {
     atcs_begin_mutation $plan_sha256
     atcs_require_net $net
+    if {[llength [atcs_pin_names_of [get_nets -quiet -exact $net]]] > $::ATCS_LOCAL_FANOUT_MAX} {
+        error "out-of-scope whole-net split: $net is high fanout; use split_load on declared branches"
+    }
     atcs_check_master $master
     atcs_choice rule $rule {wire_length cap}
     atcs_int segments $segments 2 16
@@ -1666,11 +1716,43 @@ proc atcs_pin_names_of {object} {
     }
     return [lsort -unique $names]
 }
+proc atcs_residual_seed_pins {name} {
+    set names {}
+    foreach target [atcs_read_targets $name] {
+        set pin [lindex $target 0]
+        set object [get_pins -quiet -exact $pin]
+        if {[sizeof_collection $object] == 1} {
+            lappend names [get_attribute $object full_name]
+            continue
+        }
+        # Output-port names have a real net but no cell pin of their own. Admit its
+        # legal leaf driver, not every load on an arbitrary high-fanout net.
+        set net [get_nets -quiet -exact $pin]
+        if {[sizeof_collection $net] != 1} { continue }
+        foreach each [atcs_pin_names_of $net] {
+            set object [get_pins -quiet -exact $each]
+            set direction ""
+            catch { set direction [get_attribute $object direction] }
+            if {$direction in {out output} && [atcs_pin_owner $each] ne ""} { lappend names $each }
+        }
+    }
+    return [lsort -unique $names]
+}
 proc atcs_derive_local_domain {} {
     set plan_instances [lsort -unique $::EDIT_DOMAIN_INSTANCES]
     set plan_nets [lsort -unique $::EDIT_DOMAIN_NETS]
-    set seeds [lsort -unique $::EDIT_DOMAIN_PINS]
     set unresolved {}
+    set explicit_pins {}
+    foreach name $::EDIT_DOMAIN_PINS {
+        if {[catch {atcs_residual_seed_pins $name} resolved] || [llength $resolved] == 0} {
+            lappend unresolved $name
+        } else {
+            set explicit_pins [concat $explicit_pins $resolved]
+        }
+    }
+    set explicit_pins [lsort -unique $explicit_pins]
+    set ::EDIT_DOMAIN_PINS $explicit_pins
+    set seeds $explicit_pins
     foreach name $plan_instances {
         set cell [get_cells -quiet -exact $name]
         if {[sizeof_collection $cell] != 1} { lappend unresolved $name; continue }
@@ -1690,7 +1772,19 @@ proc atcs_derive_local_domain {} {
         set pins [atcs_pin_names_of [get_nets -quiet -exact $net]]
         if {[llength $pins] > $::ATCS_LOCAL_FANOUT_MAX} {
             lappend global [atcs_jobj [list net [atcs_js $net] pins [llength $pins]]]
-            continue
+            set scoped {}
+            foreach pin $pins {
+                if {[atcs_member $explicit_pins $pin]} { lappend scoped $pin }
+            }
+            if {[llength $scoped] == 0} { continue }
+            # Declared residual branches may use this net. Other sink cells stay
+            # outside the domain; only the actual leaf driver joins these targets.
+            foreach pin $pins {
+                set direction ""
+                catch { set direction [get_attribute [get_pins -quiet -exact $pin] direction] }
+                if {$direction in {out output}} { lappend scoped $pin }
+            }
+            set pins [lsort -unique $scoped]
         }
         lappend domain_nets $net
         foreach pin $pins {
