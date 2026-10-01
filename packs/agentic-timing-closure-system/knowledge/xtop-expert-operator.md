@@ -16,7 +16,7 @@
 | --- | --- | --- |
 | `atcs_ref` | `summarize_gba_violations -as_reference -exclude_path`, captured by `redirect -variable` | `summarize_gba_violations.1` (314), `redirect.1` (221) |
 | `atcs_gain` | `summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n`, plus `-with_fail_reason` for the check of the last fix flow (XTop keeps none for the other check or before a fix) | `summarize_gba_violations.1` (314) |
-| `atcs_paths` | `get_paths`; `analyze_setup_path_violations` / `analyze_hold_path_violations -detail_info` | `get_paths.1` (149), `analyze_setup_path_violations.1` (16), `analyze_hold_path_violations.1` (12) |
+| `atcs_paths` | `get_paths`; `analyze_setup_path_violations` / `analyze_hold_path_violations -detail_info`; returns the bounded fixed session report, not only its filename | `get_paths.1` (149), `analyze_setup_path_violations.1` (16), `analyze_hold_path_violations.1` (12) |
 | `atcs_fail_reasons` | `report_fail_reasons -stats -verbose -pins`; `get_failed_pins -reasons` | `report_fail_reasons.1` (245), `get_failed_pins.1` (132) |
 | `atcs_candidates` | `list_size_cell_candidates`, `list_insert_buffer_candidates`, `list_exchange_cell_candidates` | `list_size_cell_candidates.1` (188), `list_insert_buffer_candidates.1` (185), `list_exchange_cell_candidates.1` (183) |
 | `atcs_point` | `summarize_gba_violations -with_delta -with_reference -exclude_path -with_top_n 10000 -setup\|-hold` once per call, its top-N endpoint table filtered to the named pins (real XTop has no `report_timing`, #64 Q1); rows `{endpoint, scenario, slack}`, an unlisted one with `unknown` (no violation, or above the last listed slack) | `summarize_gba_violations.1` (314) |
@@ -42,9 +42,8 @@
   name the moves the cluster may need. `editDomain.nets` are XTop's names: a pin inside a module sits on
   its local net (`swerv_dbg/rst_l`), not PrimeTime's flattened one (`FE_OCPN9798_rst_l`; Task 7). The session
   widens it once to the targets' local topology, one hop; nets above 12 leaf pins stay out (`domain.json`, #66 D2).
-- A research Workshop writes a slot's worker request, and the worker Team runs: the Researcher proposes
-  ladder moves with falsifiers, the Reviewer sharpens the plan and sets the scope, the Operator runs the
-  loop below in its `xtop-operator` session (its template condenses it; it cannot read this file).
+- A research Workshop writes a slot's worker request and the Operator runs the loop below in its `xtop-operator`
+  session. The optional Reviewer never gates it; the Host binds the request scope and the task carries the run-time contract.
 - Not for clock ECO, useful skew, pin-rank commits, PBA path fixes or slack adjustment: outside Issue #64 and the toolkit.
 
 ## Changes this decision
@@ -89,8 +88,9 @@ the Site's `cellNominalSizingPattern` (#64 attempt 1: w01 twice sent `SDGCNQOPTM
 was rightly undone). A tainted session (an `uncertain` line) refuses every further mutation: dump, close and
 report it.
 
-The Reviewer sharpens the plan and records concerns; by default its scope is every candidate command and a
-budget of 50 mutations: room for trials, one undo each, the next rungs and toolkit refusals.
+The request normally grants every domain-safe mutation and up to 600 admitted mutations; the Host receipt reports
+the real remaining allowance. The budget covers trials, undo calls and toolkit refusals; it is room to investigate
+a cluster, not a quota to spend. Do not stop after one success while other targets or mechanisms remain.
 
 ### Hold ladder
 

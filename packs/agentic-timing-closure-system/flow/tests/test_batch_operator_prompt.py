@@ -14,6 +14,7 @@ import re
 import sys
 import unittest
 from pathlib import Path
+import yaml
 
 TESTS_DIR = Path(__file__).resolve().parent
 PACK_DIR = TESTS_DIR.parents[1]
@@ -22,6 +23,7 @@ sys.path.insert(0, str(TESTS_DIR.parent))
 from atcs import workspaces  # noqa: E402
 
 CONTRACT = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+CONTRACT_DATA = yaml.safe_load(CONTRACT)
 GRAPH = (PACK_DIR / "graph.yml").read_text(encoding="utf-8")
 SLOTS = ["01", "02", "03", "04", "05", "06"]
 
@@ -30,7 +32,8 @@ def _operator(slot):
     team = CONTRACT.split("\nagentTeams:\n", 1)[1].split("\nworkshops:\n", 1)[0]
     body = team.split(f"  - id: atcs-worker-{slot}\n", 1)[1].split("\n  - id: ", 1)[0]
     member = body.split("      - id: operator\n", 1)[1]
-    template = re.search(r"^        taskTemplate: '(.*)'$", member, re.M).group(1).replace("''", "'")
+    declared = next(team for team in CONTRACT_DATA["agentTeams"] if team["id"] == f"atcs-worker-{slot}")
+    template = next(item for item in declared["members"] if item["id"] == "operator")["taskTemplate"]
     return body, member, template
 
 
@@ -40,11 +43,12 @@ class BatchOperatorPromptTest(unittest.TestCase):
         `taskTemplate: z.string().trim().min(1).max(8000)`); a template above it makes the whole Pack
         unloadable. The #64 T06 repairs nearly crossed it: this is the cheap falsifier."""
         team = CONTRACT.split("\nagentTeams:\n", 1)[1].split("\nworkshops:\n", 1)[0]
-        templates = [match.group(1).replace("''", "'")
-                     for match in re.finditer(r"^        taskTemplate: '(.*)'$", team, re.M)]
+        templates = [member["taskTemplate"] for team in CONTRACT_DATA["agentTeams"] for member in team["members"]]
         self.assertGreaterEqual(len(templates), 12)
         for template in templates:
             self.assertLessEqual(len(template.strip()), 8000, template[:80])
+        for slot in SLOTS:
+            self.assertLess(len(_operator(slot)[2]), 3500, "the Operator contract stays readable in one view")
 
     def test_the_contradicting_sentences_are_gone(self):
         for slot in SLOTS:
@@ -53,43 +57,32 @@ class BatchOperatorPromptTest(unittest.TestCase):
                 self.assertNotIn("short, clean kept log", template)
                 self.assertNotIn("bulk belongs to auto-finish", template)
 
-    def test_the_seat_risk_assesses_every_target_before_its_first_trial(self):
+    def test_the_seat_has_one_identity_and_an_evidence_led_goal(self):
         for slot in SLOTS:
             with self.subTest(slot=slot):
                 template = _operator(slot)[2]
-                self.assertIn(f"Exact input workerRequest{slot}", template)
-                for words in ("cluster.checks, hardest first", "Risk-assess before any change",
-                              "atcs_point on every target pin", "on the hardest targets first",
-                              "read atcs_fail_reasons on the target pins after your first fix"):
+                for words in (f"slot w{slot}'s XTop timing-closure Operator", "Your only job",
+                              f"workerRequest{slot}", "not HimaGuide", "instead of searching product source"):
                     self.assertIn(words, template)
-                order = [template.index(words) for words in
-                         ("atcs_dump_cells before.dump", "atcs_ref once", "atcs_point on every target pin", "atcs_paths (",
-                          "Then point to point, hardest target first")]
-                self.assertEqual(order, sorted(order), "reference, then every point, then paths, then the trials")
 
     def test_each_trial_is_measured_kept_or_undone_at_once(self):
         for slot in SLOTS:
             with self.subTest(slot=slot):
                 template = _operator(slot)[2]
-                for words in ("one bounded move per trial",
-                              "atcs_point on the target pins, and atcs_gain for the target check and the opposite check",
-                              "Keep it only if the target slack improved and the opposite check did not break; "
-                              "otherwise atcs_undo at once",
-                              "refused whole"):
+                for words in ("measure the target with atcs_point and both checks with atcs_gain after each one", "keep gain",
+                              "atcs_undo on regression or no gain", "continue with another target or mechanism",
+                              "value findings are advisory"):
                     self.assertIn(words, template)
+                self.assertNotIn("refused whole", template)
 
     def test_the_seat_continues_through_the_cluster_and_hands_over_one_batch(self):
         for slot in SLOTS:
             with self.subTest(slot=slot):
                 template = _operator(slot)[2]
-                for words in ("keep every measured gain", "Continue hardest first through the cluster",
-                              "Every kept edit is part of your one batch", "never stop early to keep the log short",
-                              "Stop only when the list is done", "the budget is spent", "the time is nearly spent",
-                              "atcs_export_changes with limitations"):
+                for words in ("substantial, evidence-led setup/hold manual ECO batch", "untried targets or mechanisms",
+                              "Never infer budget exhaustion", "A failed or refused trial is evidence for the next rung",
+                              "Write after.dump", "atcs_export_changes", "close cleanly"):
                     self.assertIn(words, template)
-                close = [template.index(words) for words in
-                         ("atcs_dump_cells after.dump", "atcs_export_changes with limitations", "and atcs_close")]
-                self.assertEqual(close, sorted(close))
 
     def test_the_template_names_every_scope_command(self):
         for slot in SLOTS:
@@ -97,7 +90,9 @@ class BatchOperatorPromptTest(unittest.TestCase):
                 body, member, template = _operator(slot)
                 commands = re.search(r"^          commands: \[(.*)\]$", member, re.M).group(1).split(", ")
                 self.assertEqual(sorted(commands), sorted(workspaces.MUTATE_COMMANDS))
-                self.assertEqual([c for c in commands if not re.search(rf"\b{c}\b", template)], [])
+                self.assertIn("typed hima_interactive commands granted here", template)
+                self.assertLess(sum(template.count(c) for c in commands), len(commands),
+                                "the task does not duplicate the Host's exact typed-command catalog")
 
     def test_the_operator_share_and_cap_hold_a_batch(self):
         self.assertEqual(workspaces.SCOPE_MAX_MUTATIONS, 600)
@@ -113,6 +108,16 @@ class BatchOperatorPromptTest(unittest.TestCase):
                          r"maxTokensPerTurn: (\d+) \} \}", GRAPH)
         self.assertEqual(fork.groups(), ("900000", "4", "48000"))
         self.assertRegex(CONTRACT, r"\nbudget:\n(?:  [^\n]*\n)*?  minimumGenerations: 1\n")
+
+    def test_worker_author_purposes_fit_the_host_projection_and_front_load_the_runnable_contract(self):
+        for slot in SLOTS:
+            workshop = next(item for item in CONTRACT_DATA["workshops"] if item["id"] == f"research-worker-{slot}")
+            purpose = workshop["purpose"]
+            self.assertLessEqual(len(purpose), 3200, "the Host projects the complete purpose without truncation")
+            self.assertLess(purpose.index("sys.argv[1]"), purpose.index("On a revision only"))
+            self.assertIn(f'research/requests/worker-request-w{slot}.json', purpose)
+            self.assertIn("On the first attempt there is no Problems file", purpose)
+            self.assertIn("Never guess source paths", purpose)
 
 
 if __name__ == "__main__":

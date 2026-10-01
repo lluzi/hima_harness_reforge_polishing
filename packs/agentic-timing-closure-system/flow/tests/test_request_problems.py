@@ -253,7 +253,8 @@ class ProblemsWiringTest(unittest.TestCase):
                 self.assertIn(f"    produces: {name}\n", workshop)
                 reads = re.search(r"^    reads: \[(.*)\]$", workshop, re.M).group(1).split(", ")
                 self.assertIn(f"{name}Problems", reads)
-                self.assertIn(f"read output {name}Problems first", workshop)
+                self.assertTrue(f"read the granted {name}Problems record" in workshop
+                                or f"read output {name}Problems first" in workshop)
 
     def test_a_refused_worker_request_is_revised_never_parked(self):
         """A branch holds act nodes only, so no Judge or Explore can retry inside it; the retry is the
@@ -263,10 +264,10 @@ class ProblemsWiringTest(unittest.TestCase):
             with self.subTest(slot):
                 purpose = self._workshop(f"research-worker-{slot[1:]}").split("    directory:")[0]
                 flat = " ".join(purpose.split())
-                self.assertIn(f"After a refusal (read-worker-request-{slot[1:]} counts a problem)", flat)
-                self.assertIn("Fix every counted line by revising this Workshop's code: the revision reruns this branch "
-                              "from here, in the same generation", flat)
-                self.assertIn("Never park an active slot because its request was refused", flat)
+                self.assertIn("On the first attempt there is no Problems file", flat)
+                self.assertIn(f"On a revision only, read the granted workerRequest{slot[1:]}Problems record", flat)
+                self.assertIn("repair every counted problem", flat)
+                self.assertIn("without changing the prepared candidate or parking an active slot", flat)
         operator = self.CONTRACT.split("  - id: xtop-operator\n", 1)[1].split("\n  - id: ", 1)[0]
         self.assertIn("A refused active request is revised, not parked", " ".join(operator.split()))
 

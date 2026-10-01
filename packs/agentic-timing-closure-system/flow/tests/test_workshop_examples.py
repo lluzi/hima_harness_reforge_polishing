@@ -24,6 +24,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+import yaml
 
 TESTS_DIR = Path(__file__).resolve().parent
 FLOW_DIR = TESTS_DIR.parent
@@ -37,6 +38,7 @@ import atcs_cli  # noqa: E402
 from test_readers import _build_design_state, _make_workspace, _write, read_atcs  # noqa: E402
 
 CONTRACT = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+CONTRACT_DATA = yaml.safe_load(CONTRACT)
 SLOTS = [task_id[1:] for task_id in workspaces.TASK_IDS]
 READER = Path(__file__).resolve().parents[2] / "tools" / "read-atcs.py"
 
@@ -135,6 +137,8 @@ def _snippet(workshop_id, marker):
     """The Python lines that follow `marker` in the Workshop's purpose, dedented."""
     block = _workshop_block(workshop_id)
     lines = block.split(marker, 1)[1].split("\n")[1:]
+    while lines and not lines[0].strip():
+        lines.pop(0)
     indent = len(lines[0]) - len(lines[0].lstrip())
     code = []
     for line in lines:
@@ -491,8 +495,10 @@ class WorkerRequestExampleTest(ExampleWorkspace):
                                 capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("usage: read-atcs.py brief REQUEST_JSON", result.stderr)
-        contract = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
-        self.assertEqual(contract.count("with exactly that one argument after brief, the request's absolute path"), 6)
+        for slot in SLOTS:
+            purpose = next(item for item in CONTRACT_DATA["workshops"] if item["id"] == f"research-worker-{slot}")["purpose"]
+            self.assertIn("read-atcs.py brief <absolute-request-path>", purpose)
+            self.assertIn("with that one argument after `brief`", purpose)
         example = (PACK_DIR / "knowledge" / "example-worker-request.md").read_text(encoding="utf-8")
         self.assertIn("`brief REQUEST_JSON`", example)
 
@@ -503,7 +509,7 @@ class WorkerRequestExampleTest(ExampleWorkspace):
         self.assertIn("domain.json", brief["editDomain"]["sessionNets"])
         self.assertIn('atcs_insert_buffer with net ""', brief["editDomain"]["sessionNets"])
         contract = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
-        self.assertEqual(contract.count('are yours even when the brief counts editDomain.nets 0'), 6,
+        self.assertEqual(contract.count('Derived local nets are usable by pin even when editDomain.nets is empty.'), 6,
                          "every slot Operator's task says so too")
 
     def test_q1_the_brief_and_the_example_name_where_dummy_and_delay_cells_come_from(self):
@@ -633,16 +639,18 @@ class NoSafeMoveExampleTest(WorkerRequestExampleTest):
     def test_the_team_reviews_no_move_for_a_no_safe_move_request(self):
         # ADR-0016: the Operator works from the request itself (no Researcher or Reviewer in between),
         # so its own template carries the no-safe-move path: mutate nothing and say so.
-        team = CONTRACT.split("\nagentTeams:\n", 1)[1].split("\nworkshops:\n", 1)[0]
-        self.assertEqual(team.count("When the request states noSafeAction, mutate nothing"), 6)
-        self.assertEqual(team.count("with stopReason no-safe-action"), 6)
-        self.assertEqual(team.count("stopReason (budget, no-candidate-gains, blockers-clear, no-safe-action, tainted or refused)"), 6)
+        templates = [next(member for member in team["members"] if member["id"] == "operator")["taskTemplate"]
+                     for team in CONTRACT_DATA["agentTeams"]]
+        for template in templates:
+            self.assertIn("no-safe-action", template)
+            self.assertIn("observability/scope makes further safe work impossible", template)
 
 
 def _reviewer_template(slot="01"):
     team = CONTRACT.split("\nagentTeams:\n", 1)[1].split("\nworkshops:\n", 1)[0]
     body = team.split(f"  - id: atcs-worker-{slot}\n", 1)[1].split("      - id: reviewer\n", 1)[1].split("\n      - id: ", 1)[0]
-    template = re.search(r"^        taskTemplate: '(.*)'$", body, re.M).group(1).replace("''", "'")
+    declared = next(team for team in CONTRACT_DATA["agentTeams"] if team["id"] == f"atcs-worker-{slot}")
+    template = next(item for item in declared["members"] if item["id"] == "reviewer")["taskTemplate"]
     required = [f.strip() for f in re.search(r"^          required: \[(.*)\]$", body, re.M).group(1).split(",")]
     return template, required
 

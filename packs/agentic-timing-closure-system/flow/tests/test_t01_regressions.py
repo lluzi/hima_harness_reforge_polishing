@@ -431,9 +431,9 @@ class OperatorLoopTest(unittest.TestCase):
         for slot in SLOTS:
             members = team_members(slot)
             with self.subTest(slot=slot):
-                self.assertIn("then try the next rung of the ladder", members["operator"])
-                self.assertIn("an undo is never the end of the session", members["operator"])
-                self.assertIn("no wrong attempt, only an unmeasured one", members["operator"])
+                self.assertIn("evidence for the next rung, not a reason to stop", members["operator"])
+                self.assertIn("atcs_undo on regression or no gain, and continue", members["operator"])
+                self.assertIn("untried targets or mechanisms", members["operator"])
                 self.assertNotIn("researcher", members)
                 self.assertIn("Advisory only: nothing waits for you and nothing is gated on you", members["reviewer"])
                 self.assertIn("optional: true", members["reviewer"])

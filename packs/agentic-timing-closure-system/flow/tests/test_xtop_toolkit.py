@@ -1904,6 +1904,25 @@ class PbaEndPointPathsKnownLimitationTest(unittest.TestCase):
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class ReadProceduresTest(unittest.TestCase):
+    def test_paths_returns_the_fixed_session_report_instead_of_only_its_filename(self):
+        session = Session(self).run(
+            "rename analyze_setup_path_violations stub_analyze_setup_path_violations\n"
+            "proc analyze_setup_path_violations {args} {\n"
+            "  stub_record analyze_setup_path_violations {*}$args\n"
+            "  set fh [open analyze_setup_path_violations.txt w]\n"
+            "  puts $fh {root cause: input transition on U9/D}\n"
+            "  puts $fh {root cause: net delay on N2}\n"
+            "  close $fh\n"
+            "  return {Result has been written to ./analyze_setup_path_violations.txt}\n"
+            "}\n"
+            "T paths {atcs_paths setup 5 {U9/D}}\n"
+        )
+        status, reply = session.outcome("paths")
+        self.assertEqual((status, reply.strip()),
+                         ("OK", "root cause: input transition on U9/D root cause: net delay on N2"), session.stdout)
+        self.assertEqual(session.reads[0]["rows"],
+                         ["root cause: input transition on U9/D", "root cause: net delay on N2"])
+
     def test_reads_call_the_documented_commands(self):
         session = Session(self).run(
             "T gain {atcs_gain hold 7}\n"

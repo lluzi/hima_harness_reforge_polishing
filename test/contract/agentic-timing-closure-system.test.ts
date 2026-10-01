@@ -330,7 +330,7 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
   assert.equal((await readFile(path.join(slotRoot, 'ops.jsonl'), 'utf8')).trim().split('\n').length, 1);
   assert.equal((await readFile(path.join(slotRoot, 'gain.jsonl'), 'utf8')).trim().split('\n').length, 2, 'the session reference and one mutation reading');
 });
-const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v21/atcs-xtop-operator-v21.sh';
+const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v22/atcs-xtop-operator-v22.sh';
 
 test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the local Site, and passes its Python contract tests', async (t) => {
   const h = await createHimaHome();
@@ -487,7 +487,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   // #64 T05 w03: the task holds a bounded brief; the Operator reads its exact request in bounded windows.
   assert.deepEqual(operatorMember.allowedTools, ['hima_interactive', 'hima_delegation_input']);
   assert.match(operatorMember.taskTemplate, /hima_delegation_input \(runId, recordId, path, offset, limit\)[^.]*window\.next/);
-  for (const words of [/editDomain\.instances/, /editDomain\.nets/, /targetPins/, /Exact input workerRequest01/, /exactly this file name/]) {
+  for (const words of [/editDomain\.instances/, /editDomain\.nets/, /targetPins/, /admitted workerRequest01/, /write before\.dump/]) {
     assert.match(operatorMember.taskTemplate, words, `the Operator template states ${words}`);
   }
   assert.equal(recipeCap, 600, '#66 D7: a batch of tens to hundreds of trials and their undos, at the Harness ceiling (H1)');
@@ -567,7 +567,9 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.equal(problems.path, request.path.replace(/\.json$/, '.problems.txt'));
     assert.equal(problems.reader, undefined);
     assert.ok(workshop.reads.includes(problems.name), `${workshop.id} reads ${problems.name}`);
-    assert.match(workshop.purpose, new RegExp(`read output ${problems.name} first`));
+    assert.match(workshop.purpose, new RegExp(
+      `(?:read output ${problems.name} first|On a revision only, read the granted ${problems.name} record)`,
+    ));
   }
 
   // Issue 63 (fresh03 `sta` blocked: "references ${MAX_PATHS}, which nothing bound"): every
@@ -664,7 +666,7 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /agentic-timing-closure-system@0\.2\.0.*fit/s);
+    assert.match(throughHost.text, /agentic-timing-closure-system@0\.2\.1.*fit/s);
   } finally { await host.dispose(); }
 
   const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {

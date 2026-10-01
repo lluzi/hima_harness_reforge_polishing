@@ -660,7 +660,11 @@ export class Autopilot {
       const session = record.jobSession;
       const exit = records.findLast((item) => item.type === 'job' && item.event === 'finished' && item.job.session === session);
       const code = records.findLast((item) => item.type === 'code' && item.nodeId === nodeId && item.attempt === record.attempt && item.seq < record.seq);
-      if (exit?.type !== 'job' || exit.exitCode === undefined || exit.exitCode === 0 || code?.type !== 'code') continue;
+      // A Workshop's declared output is part of its result. `retrying` after an exit 0 therefore
+      // still means the program failed (normally: the output is missing or stale). Treat that exact
+      // byte sequence like every other deterministic program failure so it is repaired once rather
+      // than re-written until the Run-wide research budget is gone (#64 D-T07-1).
+      if (exit?.type !== 'job' || exit.exitCode === undefined || code?.type !== 'code') continue;
       const reason = record.reason ?? `the program exited ${String(exit.exitCode)}`;
       failures.set(code.sha256, reason);
       last = { sha256: code.sha256, attempt: record.attempt, session, reason };

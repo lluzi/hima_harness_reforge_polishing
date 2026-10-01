@@ -24,7 +24,7 @@
 #   `max_physical_refreshes` spent at the start of a generation. It has no edge out: clearing it ends
 #   the Run. A person is never asked inside a generation.
 id: agentic-timing-closure-system
-version: "0.2.0"
+version: "0.2.1"
 entry: bind-inputs
 autopilot:
   # Inputs and baseline, and every generation's refresh-cap gate and slot binding, up to the plan.
