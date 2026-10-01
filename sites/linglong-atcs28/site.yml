@@ -5,7 +5,7 @@ permit: ./permit.yml
 bindings:
   designStateManifest: /data/eda/project/hima_harness/atcs-inputs/designStateManifest-postroute-final.json
   analysisContract: /data/eda/project/hima_harness/atcs-inputs/analysisContract
-  siteCapabilities: /data/eda/project/hima_harness/atcs-inputs/siteCapabilities-v4.json
+  siteCapabilities: /data/eda/project/hima_harness/atcs-inputs/siteCapabilities-v5.json
   workspaceRoot: /data/eda/project/hima_harness/atcs-runs
 ssh:
   destination: luzi@192.168.50.41

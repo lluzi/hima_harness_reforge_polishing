@@ -422,3 +422,26 @@ This wrapper has no batch path. Since Issue #64 Task 5 the `xtop-operator` tool 
 batch path is the Pack's own `python3 flow/atcs_cli.py operate-parked` no-op for a parked or skipped
 slot, which never calls this wrapper or XTop; the wrapper always launches one interactive XTop session
 per call and exits when that session closes.
+
+## Batch-job descendant cleanup (Issue #66)
+
+`site.yml` selects `inputs/siteCapabilities-v5.json`. Its `edaShell` runs
+`eda-job-reaper.py` inside the existing `edarun` container, before `bash -lc`.
+Install the script at
+`/data/eda/project/hima_harness/operator-admin/atcs-job-reaper-v1/eda-job-reaper.py`
+with mode 0555 and record its SHA-256 in the candidate evidence. This Linux subreaper
+waits only this job's adopted descendants; inherited stdio and the main command's exit
+status are preserved. HUP/INT/TERM are forwarded; descendants still alive two seconds
+after the main command exits are killed and reaped, with a further five-second bound.
+Forced SIGKILL of the reaper itself cannot guarantee cleanup.
+
+The shared `edarun`, persistent container and existing zombie processes are unchanged.
+The frozen v23 interactive wrapper still pins v4 for its identical library/XTop context;
+its isolated worker-container lifecycle already owns that cleanup. v5 changes only
+the batch launch prefix. Rollback selects v4 in the Site binding.
+
+No-licence regression on the Linux Site:
+`edarun python3 /path/to/test_eda_job_reaper.py` beside the script. The test uses an
+outer subreaper to contain the failing plain double-fork case. Actual EDA cleanup is
+validated by the next matched experiment's pre/post zombie identities, not by this
+fixture. Do not recreate the shared container to erase earlier evidence.
