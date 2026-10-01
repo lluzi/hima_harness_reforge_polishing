@@ -1,4 +1,5 @@
 allowedReadRoots:
+  - /data/eda/project/hima_harness/operator-admin/atcs-v26
   - /data/eda/project/hima_harness/operator-admin/atcs-v25
   - /data/eda/project/hima_harness/operator-admin/atcs-v24
   - /data/eda/project/hima_harness/operator-admin/atcs-v14
@@ -26,6 +27,7 @@ allowedReadRoots:
 allowedWriteRoots:
   - /data/eda/project/hima_harness/atcs-runs
 allowedWrappers:
+  - /data/eda/project/hima_harness/operator-admin/atcs-v26/atcs-xtop-operator-v26.sh
   - /data/eda/project/hima_harness/operator-admin/atcs-v25/atcs-xtop-operator-v25.sh
   - /data/eda/project/hima_harness/operator-admin/atcs-v24/atcs-xtop-operator-v24.sh
   - python3

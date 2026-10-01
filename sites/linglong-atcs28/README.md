@@ -1,3 +1,16 @@
+# Derived lead domain repair (v26 / Pack0.2.5)
+
+Real v25 R1 recovery and cumulative ECO qualification passed. prepare-lead then refused brace-quoted
+native bus nets from a sealed Contribution's effectiveDomain. v26 keeps the proven TZ parity and
+repins only the changed CLI/flow. Pack0.2.5's existing prepare-lead now uses recipe replay's own
+literal-name filter on derived instance/net entries before the union. Raw Contributions are unchanged;
+unsupported derived targets are recorded in derivedDomainDropped for the active Timing Lead. Strict
+validation still applies to declared work packages and every supported target. No authority broadening,
+name guessing, topology or Toolkit change. The real counter is in the existing lead replay/own-mutation
+cheap check (RED invalid-work-package -> GREEN plus preserved final ECO hash into Innovus).
+
+## Previous candidate
+
 # Common R1 recovery timezone repair (v25 / Pack0.2.4)
 
 Current v24 lead L4 proved the batch runner saves library mtimes in America/Los_Angeles while the

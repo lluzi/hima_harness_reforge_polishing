@@ -168,12 +168,18 @@ proc fix_hold_gba_violations {args} { fixture_default fix_hold_gba_violations {*
         log.size("U1", "BUFX1", "BUFX2", gain=(((-.02,-.1),(-.02,-.1)), ((-.07,-1.2),(-.06,-1.0))))
         contribution = _seal(log, {**initial, "U1": "BUFX2"}, before=initial, domain=None, base_ref=ref, required=())
         self.assertTrue(contribution["admissible"], contribution["refusals"])
+        # Real v25 L4: derived get_attribute bus-net names carry Tcl brace quoting. They
+        # remain in the sealed evidence, but cannot become a strictly validated lead target.
+        contribution = core.stamp("contribution", {**{k: v for k, v in contribution.items() if k not in ("schema", "id")},
+            "effectiveDomain": {"instances": ["U1"], "nets": ["N1", "{swerv_dma_ctrl/dma_axi_wstrb[1]}"],
+                                "targetPins": ["U1/A"], "regions": [[0, 0, 100, 100]]}})
         _write_json(self.ws / "state/contributions-collected.json", {"contributions": [contribution]})
         plan = {"batchId": "owner-lead-test", "baseStateId": self.base["id"], "select": [contribution["id"]],
                 "resolutions": [], "deferred": [], "reason": "Merge and add measured U3 trial", "autoFinish": False}
         _write_json(self.ws / "research/requests/integration-plan.json", {"plan": plan})
         out, brief = cli._cmd_prepare_lead(self.ws, [str(self.site_path)])
         _write_json(out, brief)
+        self.assertIn("{swerv_dma_ctrl/dma_axi_wstrb[1]}", brief["derivedDomainDropped"]["nets"])
         root = self.ws / brief["leadRoot"]
         self.assertEqual(workers["requiredSlots"], list(workspaces.TASK_IDS))
         # Same Tcl process performs R1 clone, worker replay, then one integrator mutation and close.
@@ -236,7 +242,7 @@ proc write_design_changes {args} {
 import assert from 'node:assert/strict';
 import { loadPack } from '@hima/harness';
 const pack = loadPack('packs', 'agentic-timing-closure-system');
-assert.equal(pack.contract.version, '0.2.4');
+assert.equal(pack.contract.version, '0.2.5');
 const edges=pack.graph.edges;
 const to=id=>edges.filter(e=>e.from===id).map(e=>e.to);
 assert.deepEqual(to('common-autofix'), ['read-refresh-budget']);
@@ -255,7 +261,7 @@ console.log('graph/contract PASS: six fork branches, owner lead, direct physical
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
         import datetime, re
         from zoneinfo import ZoneInfo
-        wrapper = (ROOT / "sites/linglong-atcs28/atcs-xtop-operator-v25.sh").read_text()
+        wrapper = (ROOT / "sites/linglong-atcs28/atcs-xtop-operator-v26.sh").read_text()
         zone = re.search(r"(?m)^\s+-e TZ=([A-Za-z_/]+)\s+\\$", wrapper)
         self.assertIsNotNone(zone, "private saved R1 must recover in the batch Site's timezone")
         # Source: current v24 lead L4 library-identity.json, tech LEF unchanged mtime epoch.

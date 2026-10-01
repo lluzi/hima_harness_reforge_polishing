@@ -4405,7 +4405,20 @@ def _cmd_prepare_lead(workspace, args):
             targets=sorted({t for p in active for t in p["targets"]}),
             targetPins=sorted({t for p in active for t in p.get("targetPins") or []}),
             scope={"commands": list(workspaces.MUTATE_COMMANDS), "maxMutations": workspaces.SCOPE_MAX_MUTATIONS})
-        domains = [p["editDomain"] for p in active] + [c.get("effectiveDomain") or {} for c in collected["contributions"]]
+        domains = [p["editDomain"] for p in active]
+        dropped = {"instances": [], "nets": []}
+        for contribution in collected["contributions"]:
+            effective = contribution.get("effectiveDomain")
+            if not isinstance(effective, dict):
+                continue
+            domain = {"regions": effective.get("regions") or []}
+            for key in ("instances", "nets"):
+                # Same literal-name boundary as recipe replay. Keep the raw sealed native
+                # evidence intact; omit unsupported derived targets, never broaden authority.
+                domain[key], omitted = integration._derived_names(effective.get(key) or [], f"lead effectiveDomain.{key}")
+                dropped[key].extend(omitted)
+            domains.append(domain)
+        brief["derivedDomainDropped"] = {key: sorted(set(names)) for key, names in dropped.items()}
         package["editDomain"] = {key: list(dict.fromkeys(value for d in domains for value in d.get(key) or []))
                                   for key in ("instances", "nets")}
         package["editDomain"]["regions"] = [list(box) for box in dict.fromkeys(tuple(box) for d in domains for box in d.get("regions") or [])]
