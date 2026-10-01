@@ -2246,6 +2246,77 @@ class Q1CloseCompletesTheSessionTest(unittest.TestCase):
     clean end needs, completes what was skipped: after.dump when none was written since the last mutation,
     and the export (with a limitation saying so) when none ran in an untainted session."""
 
+    def test_worker_completion_does_not_require_saved_workspace_databases(self):
+        session = Session(self).run(
+            "T before {atcs_dump_cells before.dump}\n"
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            "T after {atcs_dump_cells after.dump}\n"
+            "T export {atcs_export_changes}\n"
+            "T close {atcs_close}\n",
+            before='proc save_workspace {args} { error "worker DB persistence is unavailable" }\n',
+        )
+        self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+        self.assertEqual(session.outcome("export")[0], "OK", session.stdout + session.stderr)
+        self.assertEqual(session.outcome("close")[0], "OK", session.stdout + session.stderr)
+        self.assertIn("ATCS:taint:clean", session.stdout)
+        self.assertIn("U1 BUFX2", (session.root / "after.dump").read_text(encoding="utf-8"))
+        self.assertTrue((session.root / "summary.json").is_file())
+
+    def test_repeated_export_preserves_current_evidence_and_updates_limitations(self):
+        session = Session(self).run(
+            "T before {atcs_dump_cells before.dump}\n"
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            'T first {atcs_export_changes "first note"}\n'
+            'T second {atcs_export_changes "final note"}\n'
+            "T close {atcs_close}\n",
+            before='proc save_workspace {args} { error "worker DB persistence is unavailable" }\n',
+        )
+        self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+        for tag in ("first", "second", "close"):
+            self.assertEqual(session.outcome(tag)[0], "OK", session.stdout + session.stderr)
+        self.assertIn("U1 BUFX2", (session.root / "after.dump").read_text(encoding="utf-8"))
+        self.assertEqual(json.loads((session.root / "summary.json").read_text())["limitations"], ["final note"])
+
+    def test_export_failure_is_retained_as_a_limitation_of_a_clean_replayable_session(self):
+        session = Session(self).run(
+            "T before {atcs_dump_cells before.dump}\n"
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            'T export {atcs_export_changes "only the tried sample was measured"}\n'
+            "T close {atcs_close}\n",
+            before='proc write_design_changes {args} { error "ECO artifact writer unavailable" }\n',
+        )
+        self.assertEqual(session.outcome("export")[0], "ERR")
+        self.assertEqual(session.outcome("close")[0], "OK")
+        self.assertIn("ATCS:taint:clean", session.stdout)
+        self.assertIn("U1 BUFX2", (session.root / "after.dump").read_text())
+        limitations = json.loads((session.root / "summary.json").read_text())["limitations"]
+        self.assertIn("only the tried sample was measured", limitations)
+        self.assertTrue(any("ECO artifact writer unavailable" in item for item in limitations), limitations)
+
+    def test_undo_after_export_does_not_leave_old_eco_scripts_as_current_evidence(self):
+        session = Session(self).run(
+            "T before {atcs_dump_cells before.dump}\n"
+            f"T size {{atcs_size_cell U1 BUFX2 {PLAN}}}\n"
+            "T export {atcs_export_changes}\n"
+            f"T undo {{atcs_undo {PLAN}}}\n"
+            "T close {atcs_close}\n",
+            before='''
+proc write_design_changes {args} {
+    if {$::cells(U1) eq "BUFX1"} { return "" }
+    set directory [lindex $args [expr {[lsearch -exact $args -output_dir] + 1}]]
+    set prefix [lindex $args [expr {[lsearch -exact $args -eco_file_prefix] + 1}]]
+    foreach kind {netlist physical} {
+        set out [open [file join $directory ${prefix}_${kind}_${::design}.txt] w]
+        puts $out "old size U1 BUFX2"
+        close $out
+    }
+}
+''')
+        self.assertEqual(session.outcome("close")[0], "OK", session.stdout + session.stderr)
+        self.assertIn("U1 BUFX1", (session.root / "after.dump").read_text())
+        self.assertEqual(list((session.root / "eco_output").glob("*.txt")), [],
+                         "XTop emits no ECO when undo restores the common base")
+
     def test_q1_a_close_after_a_bare_kept_edit_leaves_a_sealable_slot(self):
         session = Session(self).run(
             "T before {atcs_dump_cells before.dump}\n"
@@ -2284,12 +2355,27 @@ class Q1CloseCompletesTheSessionTest(unittest.TestCase):
             "T after {atcs_dump_cells after.dump}\n"
             "T export {atcs_export_changes}\n"
             f"T size {{atcs_size_cell U1 BUFX4 {PLAN}}}\n"
-            "T close {atcs_close}\n")
+            "T close {atcs_close}\n",
+            before='''
+proc write_design_changes {args} {
+    stub_record write_design_changes {*}$args
+    set directory [lindex $args [expr {[lsearch -exact $args -output_dir] + 1}]]
+    set prefix [lindex $args [expr {[lsearch -exact $args -eco_file_prefix] + 1}]]
+    foreach kind {netlist physical} {
+        set out [open [file join $directory ${prefix}_${kind}_${::design}.txt] w]
+        puts $out [array get ::cells]
+        close $out
+    }
+}
+''')
         status, text = session.outcome("close")
         self.assertEqual(status, "OK", session.stdout + session.stderr)
         self.assertIn("completed after.dump", text)
         self.assertIn("U1 BUFX4", (session.root / "after.dump").read_text(encoding="utf-8"))
-        self.assertEqual(len(session.calls_to("write_design_changes")), 1, "the Operator's own export stands")
+        for kind in ("netlist", "physical"):
+            artifact = session.root / "eco_output" / f"{PREFIX}eco_{kind}_top.txt"
+            self.assertIn("U1 BUFX4", artifact.read_text(encoding="utf-8"),
+                          "close must export the current state after a later admitted mutation")
 
     def test_a_tainted_session_is_dumped_but_never_exported_at_close(self):
         session = Session(self).run('catch {atcs_taint "test taint"}\nT close {atcs_close}\n')

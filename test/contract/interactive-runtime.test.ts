@@ -64,6 +64,103 @@ test('interactive session projection recognizes a finished Job without inventing
   assert.equal(interrupted.activeCommand?.state, 'sent', 'process exit does not manufacture a command completion receipt');
 });
 
+const closeCases: readonly {
+  label: string;
+  arguments?: DerivedInteractiveOperation['commands'][number]['arguments'];
+  hostStop?: 'deadline' | 'recovery';
+  pending?: boolean;
+  failed?: boolean;
+  anotherSession?: boolean;
+}[] = [
+  { label: 'zero-argument', arguments: [] },
+  { label: 'named-argument', arguments: [{ name: 'reason', type: 'string' }] },
+  { label: 'legacy positional' },
+  { label: 'host deadline', arguments: [], hostStop: 'deadline' },
+  { label: 'host recovery', arguments: [], hostStop: 'recovery' },
+  { label: 'pending close receipt', arguments: [], pending: true },
+  { label: 'failed close receipt', arguments: [], failed: true },
+  { label: 'other session receipt', arguments: [], anotherSession: true },
+];
+
+for (const scenario of closeCases) test(`agent transport close honors the ${scenario.label} contract`, async (t) => {
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const site = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
+    allowedWrappers: ['sh'], parallelJobs: 1, licences: { fixture: 1 } });
+  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const parent = await createRootAgent(host.ctx, home.workspace);
+  const run = await host.ctx.hima.ledger.createRun({ campaignId: 'typed-close', siteId: 'local',
+    packId: 'fixture-pack', packDigest: digest('a'), status: 'running', currentNode: 'manual', generation: 1,
+    budget: { timeBoxMs: 60_000, closingReserveMs: 1_000, retryAllowance: 1, jobCap: 1,
+      licences: { fixture: 1 }, generationLimit: 1 },
+    control: { mode: 'agent', owner: String(parent.id), epoch: 1, revision: 0, paused: [], requests: {},
+      executions: { [execution.id]: execution } } });
+  const deps: InteractiveRuntimeDeps = {
+    fabric: { ledger: host.ctx.hima.ledger, sitesDir: site.sitesDir } as never,
+    resolveOperation: async () => ({ binding, site: 'local', workspace: home.workspace,
+      argv: ['sh', '-c', `exec ${shellQuote(process.execPath)} ${shellQuote(fixture)} fixture-repl 1`],
+      name: 'typed-close-repl', licences: { fixture: 1 },
+      commands: [{ name: 'finish', effect: 'close', ...(scenario.arguments === undefined ? {} : { arguments: scenario.arguments }) }] }),
+    verifyAdminBinding: async (effective) => ({ bindingFileRealpath: '/trusted/test/binding',
+      bindingFileSha256: digest('0'), environmentDigest: effective.environment.digest, confinement: 'unqualified' }),
+    encodeCommand: async (_binding, request) => ({ text: JSON.stringify({ id: request.commandId,
+      _himaToken: request.protocolToken, op: scenario.failed ? 'invalid-op' : scenario.pending ? 'slow' : 'exit',
+      ...(scenario.pending ? { ms: 200 } : {}) }), submit: true, effect: 'close' }),
+    claimJobSlot: async (request) => {
+      const claimed = await claimSlot({ ledger: host.ctx.hima.ledger as never, sitesDir: site.sitesDir }, {
+        site: { name: request.site, jobs: request.run.budget!.jobCap, licences: request.run.budget!.licences },
+        holds: request.licences, launch: request.launch });
+      if (claimed.kind === 'claimed') return { kind: 'claimed', launched: claimed.launched };
+      return { kind: claimed.kind === 'at-cap' ? 'at-cap' : claimed.kind === 'unreadable' ? 'unreadable' : 'stopped',
+        reason: 'fixture slot unavailable' };
+    },
+    trustedTestQualification: { bindingId: 'fixture-binding' }, onDeadline: async () => {},
+  };
+  const base = { runId: run.id, executionId: execution.id, nodeId: 'manual', actor: String(parent.id),
+    ownerEpoch: 1, controlRevision: 0 };
+  const opened = await operateInteractive(deps, { ...base, action: 'open', requestId: 'typed-open' });
+  assert.equal(opened.status, 'opened', 'reason' in opened ? opened.reason : undefined);
+  if (opened.status !== 'opened') return;
+  const toolSessionId = opened.session.toolSessionId;
+  t.after(() => { spawnSync('tmux', ['kill-session', '-t', `=${toolSessionId}`], { timeout: 15_000 }); });
+  const before = await operateInteractive(deps, { ...base, action: 'close', requestId: 'typed-close-before', toolSessionId,
+    ...(scenario.hostStop === undefined ? {} : { hostStop: scenario.hostStop }) });
+  if (scenario.arguments === undefined || scenario.hostStop !== undefined) {
+    assert.equal(before.status, 'closed', 'legacy and Host forced cleanup retain their transport behavior');
+    return;
+  }
+  assert.equal(before.status, 'refused', 'transport termination must not replace the Pack finalizer');
+  assert.match(before.reason!, /finish/);
+  for (const argument of scenario.arguments) assert.ok(before.reason!.includes(argument.name));
+  assert.equal(listInteractiveSessions(host.ctx.hima.ledger, run.id)[0]!.status, 'ready');
+  const finished = await operateInteractive(deps, { ...base, action: 'input', requestId: 'typed-finish',
+    toolSessionId, commandId: 'typed-finish', command: { name: 'finish', args: scenario.arguments.length === 0 ? {} : { reason: 'done' } }, waitMs: scenario.pending ? 0 : 1_000 });
+  if (scenario.failed || scenario.pending) {
+    assert.equal(finished.status, scenario.failed ? 'failed' : 'sent');
+    const premature = await operateInteractive(deps, { ...base, action: 'close', requestId: 'typed-close-premature', toolSessionId });
+    assert.equal(premature.status, 'refused', 'a failed or pending finalizer is not a completed close effect');
+    if (scenario.failed) {
+      const cleanup = await operateInteractive(deps, { ...base, action: 'close', requestId: 'typed-forced-cleanup', toolSessionId, hostStop: 'recovery' });
+      assert.equal(cleanup.status, 'closed');
+      return;
+    }
+    const observed = await operateInteractive(deps, { ...base, action: 'observe', requestId: 'typed-observe', toolSessionId, commandId: 'typed-finish', waitMs: 1_000 });
+    assert.equal(observed.status, 'completed');
+  } else assert.equal(finished.status, 'completed');
+  const after = await operateInteractive(deps, { ...base, action: 'close', requestId: 'typed-close-after', toolSessionId });
+  assert.equal(after.status, 'closed');
+  if (scenario.anotherSession) {
+    const second = await operateInteractive(deps, { ...base, action: 'open', requestId: 'typed-open-second' });
+    assert.equal(second.status, 'opened', 'reason' in second ? second.reason : undefined);
+    if (second.status !== 'opened') return;
+    const secondId = second.session.toolSessionId;
+    t.after(() => { spawnSync('tmux', ['kill-session', '-t', `=${secondId}`], { timeout: 15_000 }); });
+    const wrongSession = await operateInteractive(deps, { ...base, action: 'close', requestId: 'typed-close-second', toolSessionId: secondId });
+    assert.equal(wrongSession.status, 'refused', 'another session completed its finalizer, not this session');
+    const cleanup = await operateInteractive(deps, { ...base, action: 'close', requestId: 'typed-cleanup-second', toolSessionId: secondId, hostStop: 'recovery' });
+    assert.equal(cleanup.status, 'closed');
+  }
+});
+
 test('interactive runtime derives authority from Run/Ledger, preserves single-writer and refuses spoofed completion', async (t) => {
   assert.deepEqual(parseInteractiveRequest({ action: 'open', runId: 'run-1', executionId: 'execution-1', nodeId: 'manual',
     requestId: 'open-1', ownerEpoch: 1, controlRevision: 0 }, 'actual-host-agent').actor, 'actual-host-agent');

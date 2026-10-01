@@ -49,8 +49,13 @@
   旧提交的读取前提、对象关系和影响范围是否改变，在 B' 上重新重放/验证生成 ΔA'；
   只有已核验不受影响的部分才能复用旧分析依据（ARCHITECTURE §8.3）。
 - **`undo` 不能作为回退机制的唯一依赖。** manual ECO checkpoint 在关闭重开 workspace 后
-  即消失（XTop `undo.1`/`save_workspace.1` 已核实）；系统恢复必须依赖保存的 checkpoint
-  和已确认操作清单重放，不能假定任意自动修复都有可用的逆操作（ARCHITECTURE §8.4）。
+  即消失（XTop `undo.1`/`save_workspace.1` 已核实）；系统恢复依赖公共基线的身份和已确认的
+  操作/证据清单重放，不能依赖 worker 私有 saved workspace，也不能假定任意自动修复都有
+  可用的逆操作。worker 交付的是可重放的 Contribution：typed commands、before/after dumps、
+  ops/gain/read logs、clean close 与 ECO scripts/limitations；私有 DB 不是交付物或验收门。
+  每个 downstream session 从该代的公共基线新建，再重放已接纳命令；不重开 worker DB。
+  缺失或失败的 ECO export 在 commands/dumps 可重放时是显式 advisory/limitation，不能挡住
+  Contribution、join 或 successor（ARCHITECTURE §8.4）。
 - **post-route 网表是层级化的：action 和 editDomain 的 instance 必须是从设计 top 出发、
   `/` 分隔的完整层级路径（例如 `<inst>/<inst>/g96219`），绝不能是裸叶名。** 一个端点 pin
   的 owning cell 只给出叶名，它上面的路径来自实例化它的各级 module，要通过沿层级走

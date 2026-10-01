@@ -1,5 +1,18 @@
 # linglong-atcs28 Site administration
 
+Development successor (Issue #66 export/close repair, Pack 0.2.2): `atcs-xtop-operator-v23.sh`
+under `operator-admin/atcs-v23/`. It is **not installed or qualified**. Its flow removes unused worker
+saved-DB dependencies, refreshes ECO scripts after later admitted mutations and records export limitations.
+The Harness refuses agent transport close before a declared typed close-effect input completed; forced
+Host/recovery/budget/person closure remains. Worker commands/dumps are replayable without a private DB.
+`derive-v23.py` is the count-asserted v22→v23 identity transform. Confinement, verifier, slot hygiene and
+transport cleanup are unchanged; qualification placeholders must be filled from exact successor evidence.
+Flow digest: `f5c141f2aa6759bd333e51b4f09ebc6bd9ff53f52ead695f62af1b6693d91355`.
+
+v22 reached an honest single-seat model L4 **FAIL**: repeat export depended on an unused saved workspace,
+and generic close bypassed `atcs_close`, leaving the only active Contribution inadmissible. The complete
+six-seat effectiveness experiment has not run; the auto-only qualification result supports no method claim.
+
 Development candidate (Issue 64 prompt/context repair, Pack 0.2.1): `atcs-xtop-operator-v22.sh`
 under `operator-admin/atcs-v22/`. It is **not installed or qualified yet**. v22 carries v21's Q1
 repairs, confinement, verifier, slot hygiene and close behavior and changes candidate identity pins

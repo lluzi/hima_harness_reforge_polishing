@@ -658,6 +658,20 @@ function sessionFor(ledger: Ledger, request: InteractiveAddress & { readonly too
     .find((session) => session.toolSessionId === request.toolSessionId && session.nodeId === request.nodeId);
 }
 
+function completedCloseEffect(ledger: Ledger, runId: string, toolSessionId: string): boolean {
+  const closingInputs = new Set<string>();
+  for (const { payload } of protocolRecords(ledger, runId)) {
+    if (payload.toolSessionId !== toolSessionId) continue;
+    if (payload.event === 'input-intent' && payload.effect === 'close') {
+      closingInputs.add(`${payload.requestId}\0${payload.commandId}\0${payload.inputDigest}`);
+    } else if (payload.event === 'command-completed'
+        && closingInputs.has(`${payload.requestId}\0${payload.commandId}\0${payload.inputDigest}`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function operateInteractive(deps: InteractiveRuntimeDeps, request: InteractiveOperateRequest): Promise<InteractiveOperateResult> {
   if (!idPattern.test(request.requestId)) return { status: 'refused', reason: 'interactive requestId is invalid' };
   const callerDigest = interactiveCallerDigest(request);
@@ -715,6 +729,13 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
   const hostStop = request.hostStop !== undefined && (request.action === 'close' || request.action === 'signal');
   if (!facts.qualification.testOnly && view.operatorSessionId !== request.actor && !hostStop) {
     return { status: 'refused', reason: 'This production interactive session belongs to its recorded Operator child; the Run owner may inspect and adopt the child result but cannot take over typed operations.' };
+  }
+  if (request.action === 'close' && !hostStop && view.status !== 'closed') {
+    const finalizers = facts.derived.commands.filter((command) => command.effect === 'close' && command.arguments !== undefined);
+    if (finalizers.length > 0 && !completedCloseEffect(deps.fabric.ledger, request.runId, request.toolSessionId)) {
+      const names = finalizers.map((command) => `${command.name}(${command.arguments!.map((argument) => argument.name).join(', ')})`);
+      return { status: 'refused', reason: `close-command-required: complete one declared close-effect command through input first: ${names.join(' or ')}; then close transport.` };
+    }
   }
   const on: InteractiveChannel = channelFor(loadSite(deps.fabric.sitesDir, facts.run.siteId));
   if (request.action === 'read') {

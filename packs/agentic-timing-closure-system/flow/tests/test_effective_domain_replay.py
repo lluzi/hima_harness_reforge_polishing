@@ -367,6 +367,20 @@ class ReplayTclshTest(unittest.TestCase):
         self.assertIn("ATCS:replay-domain:w01:2 instances, 1 nets", stdout)
         self.assertEqual(result["protected"], ["U3"])
 
+    def test_replay_applies_commands_from_the_common_base_without_worker_saved_databases(self):
+        self.stub += '''
+proc save_workspace {args} {
+    if {[regexp {_operator_(baseline|candidate)$} [lindex $args end]]} {
+        error "worker saved databases are unavailable"
+    }
+    stub_record save_workspace {*}$args
+}
+'''
+        task = self._compile(self._derived_request())
+        result, receipts, _ = self._run_arm(task, "merged")
+        self.assertEqual([item["status"] for item in receipts], ["applied"], receipts)
+        self.assertEqual(result["protected"], ["U3"])
+
     def test_the_replay_never_widens_the_sealed_domain(self):
         """Even with EDIT_DOMAIN_LOCAL set, a session entered from its sealed record never admits a
         buffer's input net the record lacks: remove_buffer on U1 (input N1, not sealed; output N2

@@ -42,7 +42,6 @@ set_parameter eco_cell_match_attribute $env(ECO_CELL_MATCH_ATTRIBUTE)
 set_parameter eco_cell_nominal_swap_keywords $::XTOP_ECO_CELL_NOMINAL_SWAP_KEYWORDS
 set_parameter eco_cell_nominal_sizing_pattern $env(ECO_CELL_NOMINAL_SIZING_PATTERN)
 set_parameter eco_gain_threshold $env(ECO_GAIN_THRESHOLD)
-save_workspace -as ${design}_operator_baseline
 
 ########################################################################
 # XTop expert toolkit (Issue #64 Task 3). The typed procedures an Operator
@@ -1524,7 +1523,8 @@ proc atcs_undo {plan_sha256} {
 # refused before anything is written, naming the two. The replay's own dumps go through
 # atcs_write_cell_dump, which no typed command reaches.
 set ::atcs_after_dump_seq -1
-set ::atcs_exported 0
+set ::atcs_exported_seq -1
+set ::atcs_export_limitations ""
 proc atcs_dump_cells {path} {
     set name [file tail $path]
     if {$name ni {before.dump after.dump}} {
@@ -1553,6 +1553,7 @@ proc atcs_write_cell_dump {path} {
 # characters, one entry per non-empty line, written first (a tainted session's too) to summary.json in
 # the slot root as {"limitations": [...]}, where capture-contribution reads them for the seal.
 proc atcs_export_changes {{limitations ""}} {
+    set ::atcs_export_limitations [string range $limitations 0 1999]
     set items {}
     foreach line [split [string range $limitations 0 1999] "\n"] {
         set line [string trim $line]
@@ -1563,11 +1564,24 @@ proc atcs_export_changes {{limitations ""}} {
     puts $fh [atcs_jobj [list limitations [atcs_jarr $items]]]
     close $fh
     if {$::atcs_tainted ne ""} { error "session tainted, export refused: $::atcs_tainted" }
-    file mkdir $::eco_output_dir
-    write_design_changes -format INNOVUS -eco_file_prefix $::env(ECO_PREFIX) \
-        -output_dir $::eco_output_dir -keep_route
-    save_workspace -as ${::design}_operator_candidate
-    set ::atcs_exported 1
+    if {[catch {
+        file mkdir $::eco_output_dir
+        # XTop writes no files for a net-zero session; old exports are not current evidence.
+        # Remove only this worker's two generated destinations before regenerating them.
+        foreach kind {netlist physical} {
+            file delete -force [file join $::eco_output_dir "$::env(ECO_PREFIX)_${kind}_${::design}.txt"]
+        }
+        write_design_changes -format INNOVUS -eco_file_prefix $::env(ECO_PREFIX) \
+            -output_dir $::eco_output_dir -keep_route
+    } message options]} {
+        lappend items "ECO export unavailable; capture validates replayability from retained commands and dumps: [string range $message 0 1499]"
+        set fh [open [file join $::operator_root summary.json] w]
+        fconfigure $fh -encoding utf-8
+        puts $fh [atcs_jobj [list limitations [atcs_jarr $items]]]
+        close $fh
+        return -options $options $message
+    }
+    set ::atcs_exported_seq $::atcs_seq
     return $::eco_output_dir
 }
 # The transcript always states the taint state the capture must honour.
@@ -1575,15 +1589,21 @@ proc atcs_export_changes {{limitations ""}} {
 # close, and the kept edit was lost with the session. The seal needs after.dump and this ATCS:taint line (a
 # missing export is only an advisory), so the close, the one command a clean end needs, completes what was
 # skipped first: after.dump when none was written since the last mutation, and the export when none ran in
-# an untainted session. What it completed, or failed to, is in its reply.
+# an untainted session, or when later admitted mutations made the scripts stale. The worker's
+# deliverable is its replayable command/dump evidence and ECO scripts, not a saved XTop database.
+# What it completed, or failed to, is in its reply.
 proc atcs_close {} {
     set completed {}
     set failed {}
     if {$::atcs_after_dump_seq != $::atcs_seq} {
         if {[catch {atcs_dump_cells after.dump} message]} { lappend failed "after.dump: $message" } else { lappend completed after.dump }
     }
-    if {$::atcs_tainted eq "" && !$::atcs_exported} {
-        if {[catch {atcs_export_changes "atcs_close exported this session: the Operator closed without atcs_export_changes"} message]} {
+    if {$::atcs_tainted eq "" && $::atcs_exported_seq != $::atcs_seq} {
+        set limitations $::atcs_export_limitations
+        if {$::atcs_exported_seq < 0 && $limitations eq ""} {
+            set limitations "atcs_close exported this session: the Operator closed without atcs_export_changes"
+        }
+        if {[catch {atcs_export_changes $limitations} message]} {
             lappend failed "atcs_export_changes: $message"
         } else {
             lappend completed atcs_export_changes
