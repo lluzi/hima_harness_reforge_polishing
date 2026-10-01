@@ -68,8 +68,8 @@ their readers, rules, outputs and the chooser `atcs-revisit`; `rules/composition
 (about 3.3k characters instead of about 8k), state explicitly that they are neither Guide nor owner,
 and use the Host's real remaining-time/mutation receipt rather than guessing a budget from context
 size. Worker-author purposes now fit wholly inside the existing 3,200-character projection and put
-the proven argv/output skeleton before optional research detail. `atcs_point` uses documented GBA
-pin attributes, `atcs_paths` returns the bounded report body, and the matching Harness fixes are only
+the proven argv/output skeleton before optional research detail. `atcs_point` keeps v21's real-XTop
+summary-table implementation, `atcs_paths` returns the bounded report body, and the matching Harness fixes are only
 the existing generic seams exposed by Q1/T07: role-neutral product context, compact interactive
 turn context, and deterministic handling of exit-0 Workshop programs that omit their declared output.
 No new Agent loop, memory store, verifier or control plane was added.

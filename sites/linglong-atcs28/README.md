@@ -1,5 +1,15 @@
 # linglong-atcs28 Site administration
 
+Development candidate (Issue 64 prompt/context repair, Pack 0.2.1): `atcs-xtop-operator-v22.sh`
+under `operator-admin/atcs-v22/`. It is **not installed or qualified yet**. v22 carries v21's Q1
+repairs, confinement, verifier, slot hygiene and close behavior and changes candidate identity pins
+for the role/context-optimized Pack flow. That flow also returns the bounded XTop path-analysis report
+body through `atcs_paths`, so an Operator receives evidence rather than an unreadable filename notice.
+Candidate flow digest `86c37b9808d8577e...`, adapter `669acfb86175778a...`, template
+`3bece0da5ed11a75...`; verifier `c9dca81c73dd9585...` and slot step `293b2a3f...` are unchanged.
+`derive-v22.py` is the count-asserted v21→v22 transform; the environment template remains a
+placeholder until this changed flow receives its own bounded qualification.
+
 Current candidate (Issue 64 / ATCS-09, after Q1/T07, Pack 0.2.0): `atcs-xtop-operator-v21.sh` under `operator-admin/atcs-v21/`
 (wrapper sha `63d28b332b344611...`, installed 2026-09-30, mode 0555). v21 is v20 with the atcs-v21 paths and the flow pin
 `09781f2eaa78475a...` (adapter `669acfb86175778a...` unchanged): the flow whose `atcs_point` reads the summarize_gba_violations
