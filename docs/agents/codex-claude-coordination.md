@@ -78,6 +78,27 @@ Write checkpoint/report evidence before its marker. Duplicate markers are harmle
 revision and identities are checked again. Ordinary healthy progress stays in files; status chatter does not
 grow either agent's context.
 
+## Controlled development phases
+
+Use the Matt Pocock skills as phase boundaries, not as permanent prompt payload:
+
+1. `grill-with-docs` when a proposed capability or acceptance rule is still ambiguous; write decisions back
+   to the named backlog/spec document.
+2. `to-spec` after product choices are settled; produce code ownership, interfaces, dependencies, staged tests
+   and parallel slices against the current architecture.
+3. `implement` only from the accepted spec; move the next dependency frontier, commit/push evidence, and stop
+   at the spec's honest terminal boundary.
+
+Start each phase from the baton and the named document. Do not carry the full grilling or implementation chat
+into the next phase.
+
+For long-horizon self-improvement, repeat one bounded learning loop:
+
+`retained failure → lowest-seam reproduction → Pack/Site/generic-Harness ownership → cheap regression → smallest fix → frozen qualification → baton update`.
+
+Promote every expensive failure into a cheaper regression. Learned facts enter versioned Pack knowledge or
+tests only after evidence; a live Agent never rewrites its own authority, acceptance rule or architecture.
+
 ## Completion
 
 A coordination turn ends only with one of: a pushed integration SHA, a qualified frozen candidate, a retained
