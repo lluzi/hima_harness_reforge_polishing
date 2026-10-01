@@ -29,6 +29,7 @@ import { runDelegations, type RunDelegationRequest, type RunDelegationView } fro
 import { parseDelegationResultObservedPayload } from './delegation.js';
 import type { FabricDeps } from './node-turns.js';
 import { jobTail } from './jobs.js';
+import { listInteractiveSessions } from './interactive-runtime.js';
 
 /** What the driver needs of its Host: the owner's own operations, and nothing that decides. */
 export interface AutopilotHost {
@@ -51,10 +52,19 @@ export interface AutopilotHost {
   readonly stopped: () => boolean;
   /** How often a wait re-reads the Ledger. */
   readonly pollMs: number;
+  /**
+   * The Host's own close of this Run's interactive sessions that no Operator may drive any more (the
+   * close a Host start or a delegation deadline takes). Absent, such a session waits for its deadline.
+   */
+  readonly closeUndrivable?: (runId: string) => Promise<void>;
 }
 
 /** A self-driving fork as the plan resolved it: its declaration, its branches and its join. */
 type ForkPlan = ForkAutopilot & { readonly branches: readonly ForkBranch[]; readonly join: string };
+
+/** What waiting for one child's result came to. */
+type ChildResult = { readonly kind: 'ok'; readonly recordId: string; readonly text: string } | { readonly kind: 'invalid' | 'ended'; readonly why: string }
+  | { readonly kind: 'stopped' } | { readonly kind: 'execution-failed' };
 
 /** What one node turn of the driver came to. */
 type Turn = 'moved' | 'held' | 'stopped' | { readonly refused: string };
@@ -429,15 +439,19 @@ export class Autopilot {
           return refused(`Team ${team.id} member ${member.id} could not be materialized: ${String(created.reason ?? created.status)}`);
         }
       }
-      const got = await this.#result(runId, row, (text) => {
+      const validate = (text: string | undefined): string | undefined => {
         const parsed = jsonObject(text);
         if (!parsed.ok) return parsed.why;
         if (parsed.value.schema !== member.resultSchema.id) return `the result's schema is ${JSON.stringify(parsed.value.schema)}, not ${member.resultSchema.id}`;
         const missing = member.resultSchema.required.filter((field) => !(field in parsed.value));
         return missing.length === 0 ? undefined : `the result lacks ${missing.join(', ')}`;
-      }, member.budgetShare.maxFollowups > 0 && member.followup !== 'forbidden'
+      };
+      const followable = member.budgetShare.maxFollowups > 0 && member.followup !== 'forbidden';
+      const repair = followable
         ? `Your reply does not satisfy ${member.resultSchema.id}. Answer with the corrected single JSON object only: schema ${JSON.stringify(member.resultSchema.id)} and the fields ${member.resultSchema.required.join(', ')}.`
-        : undefined, member.role === 'operator' ? execution.id : undefined);
+        : undefined;
+      let got = await this.#result(runId, row, validate, repair, member.role === 'operator' ? execution.id : undefined);
+      if (got.kind === 'ok' && member.role === 'operator') got = await this.#closeLeftOpen(runId, team, row, execution, got, followable, validate, repair);
       if (got.kind === 'stopped') return 'stopped';
       if (got.kind === 'execution-failed') {
         // The attempt this member worked for failed (its session did): it can finish nothing now, so it
@@ -473,14 +487,66 @@ export class Autopilot {
   }
 
   /**
+   * #64 D-Q1-1: an Operator's schema-valid result arrived while its interactive session is still open (never
+   * closed, and no close asked of it). Its result ends its authority over the session, so nobody may close it
+   * cleanly, and the session stood until its idle deadline killed it (Q1: 9.9 min, the kept edit lost, the node
+   * retried). The Operator is asked once, as a follow-up of its own allowance, to close the session through its
+   * tool's declared close command and answer again; the Pack's close command finishes what its session needs.
+   * A session still open after that (no follow-up allowed, or the answer came without the close) is closed by
+   * the Host at once instead of at its deadline. Answers the result to adopt.
+   */
+  async #closeLeftOpen(runId: string, team: PackAgentTeam, row: RunDelegationView, execution: NodeExecution,
+    got: Extract<ChildResult, { readonly kind: 'ok' }>, followable: boolean,
+    validate: (text: string | undefined) => string | undefined, repair: string | undefined): Promise<ChildResult> {
+    const open = this.#openSession(runId, execution.id);
+    if (open === undefined) return got;
+    let latest: ChildResult = got;
+    if (followable) {
+      const close = this.#closeCommand(runId, team);
+      const seq = this.#deps().ledger.record(got.recordId)?.seq ?? 0;
+      const sent = await this.#delegate(runId, { action: 'followup', delegationId: row.delegationId,
+        text: `Your result arrived while your interactive session ${open} is still open. A session left open is stopped at its idle deadline and its work is lost. `
+          + `Close it now: hima_interactive input ${close === undefined ? 'its tool\'s close command' : `${close} (no arguments)`} on session ${open}; that close finishes what the session needs. `
+          + 'Then answer with your result again, as one JSON object.',
+        requestId: `${`ap-close-${row.delegationId}`.slice(0, 140)}-r${String(seq)}` });
+      if (sent.status === 'accepted' || sent.status === 'duplicate') latest = await this.#result(runId, row, validate, repair, execution.id);
+      else this.#host.log(`hima autopilot: Run ${runId} could not ask ${row.delegationId} to close session ${open}: ${String(sent.reason ?? sent.status)}`);
+    }
+    if (this.#openSession(runId, execution.id) !== undefined && this.#host.closeUndrivable !== undefined) {
+      this.#host.log(`hima autopilot: Run ${runId}: ${row.delegationId} answered with session ${open} open; the Host closes it now`);
+      await this.#host.closeUndrivable(runId).catch((error: unknown) => this.#host.log(`hima autopilot: closing ${open} failed: ${String(error)}`));
+    }
+    return latest;
+  }
+
+  /** The execution's interactive session that is open and was never asked to close (by its tool's close command or a close). */
+  #openSession(runId: string, executionId: string): string | undefined {
+    const closing = new Set(this.#deps().ledger.records({ runId, type: 'interactive' }).flatMap((record) => {
+      const payload = (record.type === 'interactive' ? record.payload : undefined) as { event?: unknown; effect?: unknown; toolSessionId?: unknown } | undefined;
+      return payload !== undefined && typeof payload.toolSessionId === 'string'
+        && (payload.event === 'close-intent' || payload.event === 'input-intent' && payload.effect === 'close') ? [payload.toolSessionId] : [];
+    }));
+    return listInteractiveSessions(this.#deps().ledger, runId, executionId)
+      .find((session) => (session.status === 'ready' || session.status === 'starting') && !closing.has(session.toolSessionId))?.toolSessionId;
+  }
+
+  /** The declared close command of the Team's trigger node tool, when it takes no arguments. */
+  #closeCommand(runId: string, team: PackAgentTeam): string | undefined {
+    const pack = executionPack(this.#deps(), this.#run(runId)!);
+    const node = positionOf(pack, team.triggerNode)?.node;
+    const toolId = node?.kind === 'act' ? node.parameters.tool : undefined;
+    const interactive = pack.contract.tools.find((tool) => tool.id === toolId)?.interactive;
+    return interactive?.commands.close.find((name) => (interactive.arguments[name] ?? []).length === 0);
+  }
+
+  /**
    * Wait for one child's next result (after anything already recorded for it), validate it, and give
    * it one repair follow-up when it fails, or when its turn ended without output, and the member
    * allows one. In `native` mode the driver reads the child's completed turn itself; in `ledger` mode
    * it waits for the recorded result.
    */
   async #result(runId: string, row: RunDelegationView, validate: (text: string | undefined) => string | undefined, repair: string | undefined,
-    executionId?: string): Promise<{ readonly kind: 'ok'; readonly recordId: string; readonly text: string } | { readonly kind: 'invalid' | 'ended'; readonly why: string }
-      | { readonly kind: 'stopped' } | { readonly kind: 'execution-failed' }> {
+    executionId?: string): Promise<ChildResult> {
     const delegationId = row.delegationId;
     const records = (): DelegationRecord[] => this.#deps().ledger.records({ runId, type: 'delegation' })
       .filter((record): record is DelegationRecord => record.type === 'delegation' && record.delegationId === delegationId);

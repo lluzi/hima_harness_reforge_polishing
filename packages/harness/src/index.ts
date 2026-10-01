@@ -564,6 +564,7 @@ export default class Hima extends Service {
       log: line => { this.ctx.logger.info(line); if (process.env.HIMA_AUTOPILOT_DEBUG === '1') process.stderr.write(`${line}\n`); },
       stopped: () => this.autopilotStopped || this.factStop.signal.aborted,
       pollMs: 100,
+      closeUndrivable: runId => this.closeUndrivableInteractiveSessions(runId),
     });
     // #64 D-T04-1: the existing kick, scheduled — a Run a non-kicking path left on a self-driving node
     // is picked up within one period (`Autopilot.sweep`).

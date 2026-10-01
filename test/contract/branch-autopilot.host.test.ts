@@ -355,7 +355,26 @@ function players({ host, runId, owner, workspace }: Driven) {
     && nodes.includes(control().executions[request.receipt.executionId ?? '']?.nodeId ?? ''));
   const autopilotTurns = (nodes: readonly string[]) => Object.values(control().requests).filter((request) =>
     request.origin === 'autopilot' && nodes.includes(control().executions[request.receipt.executionId ?? '']?.nodeId ?? ''));
-  return { control, run, records, act, human, ownerNode, answer, authorAsked, entry, operatorOf, operate, ownerTurns, autopilotTurns, delegationRecords };
+  /** #64 D-Q1-1: an Operator that opens, dumps and keeps one scoped mutation, then stops, leaving its session open. */
+  const operateLeavingOpen = async (branch: Branch, operator: ReturnType<typeof runDelegations>[number]) => {
+    const opened = await interactive(operator, { action: 'open', requestId: `open-${branch.id}-${++serial}` });
+    assert.equal(opened.status, 'opened', JSON.stringify(opened));
+    const toolSessionId = opened.session.toolSessionId as string;
+    const planSha256 = operator.effective.recipe!.inlinePayload!.planSha256;
+    const slot = path.join(workspace, `research/branch-${branch.id}`);
+    for (const [name, args] of [['atcs_dump_cells', { path: path.join(slot, 'before.dump') }],
+      ['atcs_size_cell', { instance: 'U1', toMaster: branch.toMaster, planSha256 }]] as const) {
+      const id = `${name}-${branch.id}-${++serial}`;
+      const sent = await interactive(operator, { action: 'input', requestId: id, commandId: id, toolSessionId, command: { name, args }, waitMs: 5_000 });
+      assert.equal(sent.status, 'completed', `${name} in branch ${branch.id}: ${JSON.stringify(sent)}`);
+    }
+    const close = async () => {
+      const id = `atcs_close-${branch.id}-${++serial}`;
+      return interactive(operator, { action: 'input', requestId: id, commandId: id, toolSessionId, command: { name: 'atcs_close', args: {} }, waitMs: 5_000 });
+    };
+    return { planSha256, toolSessionId, close };
+  };
+  return { control, run, records, act, human, ownerNode, answer, authorAsked, entry, operatorOf, operate, operateLeavingOpen, ownerTurns, autopilotTurns, delegationRecords };
 }
 
 const atJoin = (driven: Driven) => () => { const run = driven.host.ctx.hima.ledger.run(driven.runId)!; return run.fork === undefined && run.currentNode === 'judge'; };
@@ -663,6 +682,61 @@ test('each revised failing program runs once, and the author\'s follow-up allowa
     assert.equal(answers, 4, 'the first entry and one revision per follow-up');
     assert.equal(codes().length, answers, 'each authored program ran exactly once');
     assert.equal(new Set(codes().map((r) => r.type === 'code' ? r.sha256 : '')).size, answers);
+  });
+});
+
+test('an Operator that answers with its session open is asked once to close it; its close keeps the edit and the branch seals it (#64 D-Q1-1)', async (t) => {
+  // Q1 attempt 1: the Operator kept a size and answered its schema-valid result without closing its session.
+  // Its result ended its authority, nobody could close the session cleanly, and it stood 9.9 min until its idle
+  // deadline killed it: the edit was lost and the node retried.
+  await campaign(t, defaults, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    await Promise.all(branches.map(async (branch) => {
+      await p.answer(await p.authorAsked(branch), p.entry(branch));
+      const operator = await p.operatorOf(branch);
+      if (branch.id === 'b') {
+        await p.answer(operator.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: await p.operate(branch, operator) }));
+        return;
+      }
+      const left = await p.operateLeavingOpen(branch, operator);
+      await p.answer(operator.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: left.planSha256 }));
+      const asked = () => p.delegationRecords(operator.delegationId).find((r) => r.type === 'delegation' && r.event === 'followup-sent'
+        && r.requestId.startsWith('ap-close-'));
+      await waitUntil('the Operator is asked to close its open session', () => asked() !== undefined, 20_000, 25);
+      assert.match(JSON.stringify(p.delegationRecords(operator.delegationId).find((r) => r.type === 'delegation' && r.event === 'followup-intent'
+        && r.requestId.startsWith('ap-close-'))), /ap-close-/);
+      const closed = await left.close();
+      assert.equal(closed.status, 'completed', `the asked Operator may close its session again: ${JSON.stringify(closed)}`);
+      await p.answer(operator.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: left.planSha256 }));
+    }));
+    await waitUntil('both branches reach the join', atJoin(driven), 60_000, 25);
+    const records = p.records();
+    assert.equal(Object.values(p.control().executions).filter((e) => e.nodeId === 'operate-a').length, 1, 'one attempt: the edit was never lost');
+    assert.ok(records.some((r) => r.type === 'node' && r.nodeId === 'capture-a' && r.state === 'done'), 'the branch sealed it');
+    const captured = (await readFile(path.join(driven.workspace, 'research/branch-a/captured.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+    assert.deepEqual(captured.map((line) => [line.cmd, line.status]), [['size_cell', 'kept']], 'the kept edit is in the sealed log');
+    const a = runDelegations((driven.host.ctx.hima as any).deps(), driven.runId).find((row) => row.effective.recipe?.teamId === 'team-a' && row.effective.recipe.memberId === 'operator')!;
+    assert.ok(a.adoptedRecordId !== undefined, 'its latest result was adopted');
+    assert.equal(p.delegationRecords(a.delegationId).filter((r) => r.type === 'delegation' && r.event === 'followup-intent').length, 1, 'one follow-up');
+  });
+});
+
+test('an Operator that answers again with its session still open has it closed by the Host at once, not at its idle deadline (#64 D-Q1-1)', async (t) => {
+  await campaign(t, defaults, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    await p.answer(await p.authorAsked(branches[0]), p.entry(branches[0]));
+    const operator = await p.operatorOf(branches[0]);
+    const left = await p.operateLeavingOpen(branches[0], operator);
+    await p.answer(operator.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: left.planSha256 }));
+    await waitUntil('the close follow-up', () => p.delegationRecords(operator.delegationId).some((r) => r.type === 'delegation'
+      && r.event === 'followup-sent' && r.requestId.startsWith('ap-close-')), 20_000, 25);
+    const answered = Date.now();
+    await p.answer(operator.delegationId, JSON.stringify({ schema: 'fixture-operator/1', planSha256: left.planSha256 }));
+    const hostClose = () => p.records().find((r) => r.type === 'interactive' && r.requestId === `operator-ended-close-${left.toolSessionId}`.slice(0, 160));
+    await waitUntil('the Host closes the session', () => hostClose() !== undefined, 20_000, 25);
+    t.diagnostic(`D-Q1-1: Host close ${String(Date.now() - answered)} ms after the second answer`);
   });
 });
 
