@@ -42,9 +42,8 @@
   name the moves the cluster may need. `editDomain.nets` are XTop's names: a pin inside a module sits on
   its local net (`swerv_dbg/rst_l`), not PrimeTime's flattened one (`FE_OCPN9798_rst_l`; Task 7). The session
   widens it once to the targets' local topology, one hop; nets above 12 leaf pins stay out (`domain.json`, #66 D2).
-- A research Workshop writes a slot's worker request and the Operator runs the loop below in its
-  `xtop-operator` session. The optional Reviewer is advisory and never gates the Operator; the Host binds
-  the prepared request's scope directly. The Operator template carries the short run-time contract.
+- A research Workshop writes a slot's worker request and the Operator runs the loop below in its `xtop-operator`
+  session. The optional Reviewer never gates it; the Host binds the request scope and the task carries the run-time contract.
 - Not for clock ECO, useful skew, pin-rank commits, PBA path fixes or slack adjustment: outside Issue #64 and the toolkit.
 
 ## Changes this decision
@@ -89,10 +88,9 @@ the Site's `cellNominalSizingPattern` (#64 attempt 1: w01 twice sent `SDGCNQOPTM
 was rightly undone). A tainted session (an `uncertain` line) refuses every further mutation: dump, close and
 report it.
 
-The request's prepared scope normally grants every domain-safe mutation and up to 600 admitted mutations.
-The Host's compact interactive receipt reports the real remaining allowance. The budget covers trials, undo
-calls and toolkit refusals; it is room to investigate a cluster, not a quota to spend. Do not stop after one
-success while other targets or mechanisms remain.
+The request normally grants every domain-safe mutation and up to 600 admitted mutations; the Host receipt reports
+the real remaining allowance. The budget covers trials, undo calls and toolkit refusals; it is room to investigate
+a cluster, not a quota to spend. Do not stop after one success while other targets or mechanisms remain.
 
 ### Hold ladder
 
