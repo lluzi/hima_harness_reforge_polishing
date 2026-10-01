@@ -659,6 +659,33 @@ test('an identical rewrite after an identical failure is never re-run: the autho
   });
 });
 
+test('exit 0 with a missing declared output is the same failed program and is never re-run (#64 D-T07-1)', async (t) => {
+  const missing = JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA, entry: 'echo "finished without the declared output"\nexit 0\n' });
+  await campaign(t, defaults, 300_000, async (driven) => {
+    const p = players(driven);
+    await p.ownerNode('start');
+    const author = await p.authorAsked(branches[0]);
+    await p.answer(author, missing);
+    const codes = () => p.records().filter((r) => r.type === 'code' && r.nodeId === 'plan-a');
+    const followups = () => p.delegationRecords(author).filter((r) => r.type === 'delegation' && r.event === 'followup-intent');
+    await waitUntil('the missing-output program gets one repair follow-up', () => followups().length > 0 || codes().length > 1, 30_000, 25);
+    assert.equal(codes().length, 1, 'the exit-0 program with no declared output runs only once');
+    assert.equal(followups().length, 1, 'the existing author is asked to repair the missing output');
+    await waitUntil('the repair follow-up is delivered', () => p.delegationRecords(author)
+      .some((r) => r.type === 'delegation' && r.event === 'followup-sent'), 10_000, 25);
+    const sent = p.delegationRecords(author).findLast((r) => r.type === 'delegation' && r.event === 'followup-sent');
+    assert.match(JSON.stringify(sent), /declared output|was not written/i);
+    await p.answer(author, missing);
+    const settled = () => p.records().findLast((r) => r.type === 'node' && r.branchId === 'plan-a' && r.state === 'cancelled');
+    await waitUntil('the identical exit-0 rewrite settles the branch', () => settled() !== undefined || codes().length > 1, 30_000, 25);
+    assert.equal(codes().length, 1, 'the identical exit-0 rewrite is never run');
+    const refusal = settled();
+    assert.ok(refusal?.type === 'node', 'the branch records one settled refusal');
+    assert.match(refusal.type === 'node' ? refusal.reason ?? '' : '', /settled refused|identical/i);
+    assert.equal(p.records().filter((r) => r.type === 'research-write' && r.nodeId === 'plan-a').length, 1);
+  });
+});
+
 test('each revised failing program runs once, and the author\'s follow-up allowance bounds the branch before it settles refused (#64 D-T06-2)', async (t) => {
   await campaign(t, defaults, 300_000, async (driven) => {
     const p = players(driven);

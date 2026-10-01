@@ -64,6 +64,16 @@ history. The graph now has 81 nodes and 103 edges (from 136/178): the in-loop ow
 and `revisit-*` Explores, the earlier-APR detour and the observation-request Workshop) are gone with
 their readers, rules, outputs and the chooser `atcs-revisit`; `rules/composition-checked.yml` is new.
 
+2026-10-01 Pack 0.2.1 prompt/context repair: the six Operator tasks share one short role contract
+(about 3.3k characters instead of about 8k), state explicitly that they are neither Guide nor owner,
+and use the Host's real remaining-time/mutation receipt rather than guessing a budget from context
+size. Worker-author purposes now fit wholly inside the existing 3,200-character projection and put
+the proven argv/output skeleton before optional research detail. `atcs_point` uses documented GBA
+pin attributes, `atcs_paths` returns the bounded report body, and the matching Harness fixes are only
+the existing generic seams exposed by Q1/T07: role-neutral product context, compact interactive
+turn context, and deterministic handling of exit-0 Workshop programs that omit their declared output.
+No new Agent loop, memory store, verifier or control plane was added.
+
 How the reference graph expresses SPEC behaviour 1–9 (current):
 
 - Inputs and baseline (autopilot segment `bind-inputs` .. `plan`): `bind-inputs` → `inputs-ready`

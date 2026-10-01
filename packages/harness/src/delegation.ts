@@ -467,38 +467,39 @@ async function verifyChild(ctx: Context, parent: Agent, childId: string, workspa
   return entry?.kind === 'child' && entry.mode === 'continuable' && (expectedLabel === undefined || entry.label === expectedLabel);
 }
 
-export const delegationTaskPrompt = (contract: DelegationContract, effective: EffectiveDelegationContract): string => [
-  `Role: ${effective.role}.`,
-  `Task: ${contract.task.trim()}`,
-  `Inputs: ${contract.inputRefs.length === 0 ? '(none)' : contract.inputRefs.join(', ')}`,
-  contract.inputRefs.length === 0 ? 'Recorded input reader: unavailable; no Run facts were granted.'
-    : effective.tools.includes(delegationInputTool)
-      ? `Recorded input reader: use ${delegationInputTool} with Run ${effective.runRef?.runId ?? '(unavailable)'} and only one of the exact input identities above.`
-      : 'Recorded input reader: unavailable in this effective tool grant; ask the owner to coordinate rather than reading the parent workspace.',
-  `Recipient: ${effective.recipient.kind} session ${effective.recipient.sessionId}.`,
-  effective.readScope === undefined ? 'Generic file reads: unavailable; use only exact recorded inputs when granted.'
-    : `Generic file reads: only the guarded private directory ${effective.readScope.root}.`,
-  effective.writeScope === undefined ? 'Write capability: unavailable; return proposed changes and verification needs as candidate results.'
-    : `Write capability: only the guarded private directory ${effective.writeScope.root}; owner verification is still required.`,
-  effective.operator === undefined ? 'Interactive Operator capability: unavailable.'
-    : `Interactive Operator capability: only ${effective.operator.runId}/${effective.operator.nodeId}/${effective.operator.executionId} through hima_interactive; binding ${effective.operator.bindingDigest}.`,
-  effective.operator === undefined ? 'Interactive typed commands: unavailable.'
-    : `Interactive typed commands: ${effective.operator.commands.map((command) =>
-      `${command.effect} ${command.name}(${command.arguments?.map((argument) => `${argument.name}: ${argument.type}${argument.choices === undefined ? '' : ` {${argument.choices.join('|')}}`}${argument.minimum === undefined && argument.maximum === undefined ? '' : ` [${argument.minimum ?? '-inf'}..${argument.maximum ?? '+inf'}]`}`).join(', ') ?? 'legacy positional arguments'})`).join('; ')}. Supply declared names inside command.args; the Host validates exact keys before dispatch.`,
-  effective.recipe === undefined ? 'Pack Agent Team recipe: unavailable; this is a manually declared delegation.'
-    : `Pack Agent Team recipe: ${effective.recipe.teamId}@${effective.recipe.version}/${effective.recipe.memberId}, execution ${effective.recipe.executionId}, result schema ${effective.recipe.resultSchema.id}.`,
-  effective.recipe === undefined ? 'Agent Team result format: unavailable for this manually declared delegation.'
-    : `Agent Team result format: return exactly one JSON object and no prose or Markdown. Set schema to ${JSON.stringify(effective.recipe.resultSchema.id)} and include these top-level fields: ${effective.recipe.resultSchema.required.join(', ')}.`,
-  effective.recipe?.reviewOutput === undefined ? 'Reviewed action output contract: unavailable for this member.'
-    : effective.recipe.reviewOutput.mode === 'scope'
-      ? `Reviewed scope output contract: set ${effective.recipe.reviewOutput.scopeField} to one object with exactly the fields commands and maxMutations and no others. commands is a non-empty list of distinct names chosen from: ${effective.recipe.reviewOutput.commands.join(', ')}. maxMutations is an integer from 1 to ${effective.recipe.reviewOutput.maxMutations}; every accepted mutation counts, including undo.`
-      : `Reviewed action output contract: set command to ${JSON.stringify(effective.recipe.reviewOutput.command)}. Set arguments to one object with exactly these fields and no others: ${effective.recipe.reviewOutput.arguments.join(', ')}. Copy their values from one exact action in the reader-backed plan.`,
-  effective.recipe?.inlinePayload === undefined ? 'Immutable reviewed action: none.'
-    : effective.recipe.inlinePayload.mode === 'scope'
-      ? `Immutable reviewed scope: ${JSON.stringify(effective.recipe.inlinePayload)}. Each mutation must be one of scope.commands and carry ${effective.recipe.inlinePayload.planHashArgument} = ${effective.recipe.inlinePayload.planSha256}; the Host admits at most ${effective.recipe.inlinePayload.scope.maxMutations} mutations in this approved execution, across tool sessions, and refuses the rest. Read commands are unaffected.`
-      : `Immutable reviewed action: ${JSON.stringify(effective.recipe.inlinePayload)}. Use exactly this plan hash, command and typed arguments; do not substitute another action.`,
-  'Do not claim a Campaign action, verdict, tool result, or file change that the corresponding tool/session transcript does not record.',
-].join('\n');
+export function delegationTaskPrompt(contract: DelegationContract, effective: EffectiveDelegationContract): string {
+  const lines = [
+    `Role: ${effective.role}. This is the only active Hima role for this child.`,
+    `Task: ${contract.task.trim()}`,
+    `Recipient: ${effective.recipient.kind} session ${effective.recipient.sessionId}.`,
+    `Granted tools: ${effective.tools.join(', ')}. Task budget: ${effective.budgetShare.maxElapsedMs} ms, ${effective.budgetShare.maxFollowups} follow-ups${effective.budgetShare.maxTokensPerTurn === undefined ? '' : `, ${effective.budgetShare.maxTokensPerTurn} output tokens per turn`}.`,
+    `Inputs: ${contract.inputRefs.length === 0 ? '(none)' : contract.inputRefs.join(', ')}`,
+  ];
+  if (contract.inputRefs.length > 0) {
+    lines.push(effective.tools.includes(delegationInputTool)
+      ? `Read only those recorded inputs with ${delegationInputTool} for Run ${effective.runRef?.runId ?? '(unavailable)'}.`
+      : 'Those inputs are identities only; ask the recipient for a supported projection instead of reading its workspace.');
+  }
+  if (effective.readScope !== undefined) lines.push(`Generic file reads are confined to ${effective.readScope.root}.`);
+  if (effective.writeScope !== undefined) lines.push(`Writes are confined to ${effective.writeScope.root} and remain owner-reviewed.`);
+  if (effective.operator !== undefined) {
+    lines.push(`Interactive scope: ${effective.operator.runId}/${effective.operator.nodeId}/${effective.operator.executionId} through hima_interactive; binding ${effective.operator.bindingDigest}.`);
+    lines.push(`Typed commands: ${effective.operator.commands.map((command) =>
+      `${command.effect} ${command.name}(${command.arguments?.map((argument) => `${argument.name}: ${argument.type}${argument.choices === undefined ? '' : ` {${argument.choices.join('|')}}`}${argument.minimum === undefined && argument.maximum === undefined ? '' : ` [${argument.minimum ?? '-inf'}..${argument.maximum ?? '+inf'}]`}`).join(', ') ?? 'legacy positional arguments'})`).join('; ')}. Use exact argument names; the Host validates them.`);
+  }
+  if (effective.recipe !== undefined) {
+    lines.push(`Pack recipe: ${effective.recipe.teamId}@${effective.recipe.version}/${effective.recipe.memberId}, execution ${effective.recipe.executionId}.`);
+    lines.push(`Return exactly one JSON object and no prose or Markdown. Set schema to ${JSON.stringify(effective.recipe.resultSchema.id)} and include: ${effective.recipe.resultSchema.required.join(', ')}.`);
+    if (effective.recipe.reviewOutput !== undefined) lines.push(effective.recipe.reviewOutput.mode === 'scope'
+      ? `Set ${effective.recipe.reviewOutput.scopeField} to {commands,maxMutations}: distinct commands chosen from ${effective.recipe.reviewOutput.commands.join(', ')}, and maxMutations from 1 to ${effective.recipe.reviewOutput.maxMutations}. Every accepted mutation, including undo, counts.`
+      : `Set command to ${JSON.stringify(effective.recipe.reviewOutput.command)} and arguments to exactly: ${effective.recipe.reviewOutput.arguments.join(', ')}. Copy one exact reader-backed action.`);
+    if (effective.recipe.inlinePayload !== undefined) lines.push(effective.recipe.inlinePayload.mode === 'scope'
+      ? `Immutable scope: ${JSON.stringify(effective.recipe.inlinePayload)}. Each mutation carries ${effective.recipe.inlinePayload.planHashArgument} = ${effective.recipe.inlinePayload.planSha256}; at most ${effective.recipe.inlinePayload.scope.maxMutations} are admitted. Reads are unaffected.`
+      : `Immutable action: ${JSON.stringify(effective.recipe.inlinePayload)}. Do not substitute another action.`);
+  }
+  lines.push('Do not claim an action, result or file change absent from the retained tool/session evidence.');
+  return lines.join('\n');
+}
 
 export async function createDelegation(ctx: Context, contract: DelegationContract, authority: DelegationAuthority, signal: AbortSignal,
   operatorGrant?: OperatorDelegationGrant): Promise<DelegationResult> {

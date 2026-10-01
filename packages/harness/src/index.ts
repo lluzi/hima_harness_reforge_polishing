@@ -367,24 +367,17 @@ export interface Config {
   interactiveBindingsFile?: string;
 }
 
-/** Stable product knowledge for ordinary HimaGuide conversations.
+/** Stable, role-neutral product knowledge shared by Guide, owner and bounded children.
  *
- * This is intentionally short. It gives the root DSH Agent enough product vocabulary to answer a
- * first-use question without searching the checkout; live installation facts are contributed by
- * {@link himaRuntimeContext} separately so this text never becomes a second inventory.
+ * Role-specific duties come from the dynamic inventory and the retained delegation contract. Keeping
+ * this section neutral prevents a child Operator from inheriting HimaGuide or Campaign-owner identity.
  */
 export const HIMA_PRODUCT_CONTEXT = [
-  'You are HimaGuide inside HimaHarness. HimaHarness keeps DeepSeek Harness\' general-purpose chat and coding abilities, and adds governed chip-design Campaigns.',
-  'A Campaign is the business task the user wants completed. One persistent Run records its execution. A HimaPack is a transparent, installable method capability: it declares purpose, required inputs and outputs, tools, knowledge, reference graph, limits and evidence rules; it must not be treated as one fixed design replay.',
-  'A Site describes a reachable execution environment and its permit. HimaGuide helps inspect a Pack, discover a Site and prepare the required inputs before asking for one concrete Campaign confirmation.',
-  'The visible Campaign Agent owns execution decisions. HimaFabric constrains the allowed graph, budget, dependencies, jobs, evidence and recovery; it does not replace the Agent with a hidden automatic executor.',
-  'HimaGuide is the independent human-facing entry point: collect the problem and inputs, arrange a separate execution conversation, and explain its sourced results. Starting a task never turns Guide into its owner. Keep execution, Guide and child contexts separate; selecting or reading an object grants no execution permission.',
-  'Campaign and Data Insight are peer workspace modes. Use Data Insight for library/data questions and existing reports; browsing and filtering do not create a Campaign. Explain missing data honestly. A long computation needs the existing controlled task and budget.',
-  'Lead with the engineering result, its conditions, what is missing, and the next useful action. Match the user language; use clear Chinese for Chinese requests. Preserve units, setup/hold, timing conditions and evidence precision. Internal ids and protocol names belong in expandable evidence, not default explanations.',
-  'A saved summary is a reading aid, never authority to continue. On recovery re-read current Run, Job, human pauses and budget. Never lift a human hold from an old summary or a model instruction. Use the same persistent Run; uncertainty is not permission to repeat a tool effect.',
-  'When current Hima context offers independent branch nodes, admit their licence-free Jobs up to the Site job cap before waiting; licence seats still bound commercial EDA. Never duplicate a node already working.',
-  'When the retained Pack declares an Agent Team recipe, materialize each member explicitly with hima_delegate recipe identity; never invent its tools, inputs, budget or task. At a production-qualified interactive node, adopt the exact required Reviewer result before materializing the one Operator child for that execution. The child alone uses typed hima_interactive; inspect and adopt its retained candidate before completing the node. The Run owner cannot open the production interactive session directly.',
-  'Answer product identity and installed-inventory questions from this context and the current Hima inventory below. Do not search source code, the filesystem or the web for those answers. Never claim readiness, a measured result or an installed item that the current inventory does not state.',
+  'HimaHarness adds governed chip-design Campaigns and Data Insight to DeepSeek Harness. A HimaPack declares one transparent method; a Site supplies the permitted execution environment; one persistent Run records facts, work and evidence.',
+  'Your current role, task, inputs, tools, budget and recipient are stated separately. Follow that exact role: a Guide serves the person, a Campaign owner coordinates the Run, and a bounded child performs only its delegated work.',
+  'Use only granted inputs and tools. Do not search product source code to rediscover a Pack or tool contract; report a missing professional fact or capability to the recipient instead.',
+  'Tool receipts and refreshed engineering evidence are authoritative. Preserve setup/hold units and conditions, distinguish unknown from failure, and never repeat an effect whose outcome is uncertain.',
+  'Keep default replies focused on the engineering result, missing evidence and next useful action; internal protocol detail belongs in retained evidence.',
 ].join('\n');
 
 /** The small, current snapshot that accompanies ordinary root-Agent turns. No local path, YAML,
@@ -541,10 +534,15 @@ export default class Hima extends Service {
         const childPolicy=delegationRuntimePolicy(this.deps(),id);
         if(childPolicy)return JSON.stringify({role:childPolicy.effective.role,delegation:childPolicy,source:'Ledger delegation admission',note:'You are a bounded child, not the Campaign owner or Guide. Return candidate evidence; do not adopt results or change authority.'});
         const linked = this.ledger.runs().filter(run => run.control?.owner === id || run.control?.guideSessionId === id);
+        const role=linked.some(run => run.control?.owner === id)?'execution-owner':'guide';
+        const roleInstruction=role==='execution-owner'
+          ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion.'
+          : 'Role: HimaGuide. Help the person understand capabilities, prepare Pack/Site/inputs, arrange a separate execution conversation, and explain sourced results. Do not become a Run owner.';
         return [himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir, linked),
+          roleInstruction,
           'This task inventory includes only this conversation\'s recorded assignments. Other selected targets must be inspected explicitly.',
           JSON.stringify({ asOf: new Date().toISOString(), sessionId: id,
-            role: linked.some(run => run.control?.owner === id) ? 'execution-owner' : 'guide',
+            role,
             assignments: linked.slice(-5).map(run => ({ runId: run.id, source: 'Ledger RunControl', owner: run.control?.owner,
               epoch: run.control?.epoch, revision: run.control?.revision, paused: run.control?.paused, status: run.status })) })].join('\n');
       },
@@ -992,7 +990,26 @@ export default class Hima extends Service {
     const result=await operateInteractive(this.interactiveDeps(),request);
     await reconcileInteractiveExecution(this.deps(),request.runId,request.executionId);
     await this.interactiveTimers!.reconcile();
-    return {...result,context:this.executionContext(request.runId)};
+    const context=this.executionContext(request.runId);
+    const execution=context.executions.find((entry)=>entry.id===request.executionId);
+    const delegation=runDelegations(this.deps(),request.runId).find((entry)=>entry.childSessionId===sessionId);
+    const taskDeadline=delegation?.reservation.deadlineAt;
+    const taskRemainingMs=taskDeadline===undefined?undefined:Math.max(0,Date.parse(taskDeadline)-Date.now());
+    const mutationLimit=request.reviewedScope?.maxMutations;
+    const mutationsUsed=this.ledger.records({runId:request.runId,type:'interactive'}).filter((record)=>record.type==='interactive'
+      && (record.payload as {event?:string;executionId?:string;actor?:string;scopeMutation?:boolean}).event==='input-intent'
+      && (record.payload as {executionId?:string}).executionId===request.executionId
+      && (record.payload as {actor?:string}).actor===sessionId
+      && (record.payload as {scopeMutation?:boolean}).scopeMutation===true).length;
+    return {...result,context:{
+      run:{id:context.run.id,status:context.run.status,currentNode:context.run.currentNode,generation:context.run.generation},
+      execution:execution===undefined?undefined:{id:execution.id,nodeId:execution.nodeId,phase:execution.phase,attempt:execution.attempt},
+      budget:context.budget,
+      operator:{mutationsUsed,...(mutationLimit===undefined?{}:{mutationLimit,mutationsRemaining:Math.max(0,mutationLimit-mutationsUsed)}),
+        ...(taskDeadline===undefined?{}:{taskDeadline,taskRemainingMs,taskState:delegation?.state})},
+      ...(context.reason===undefined?{}:{reason:context.reason}),
+      asOf:new Date().toISOString(),
+    }};
   }
   async interactiveSessions(sessionId:string,runId:string):Promise<object> {
     await authorizeProjectRun(this.guideDeps(),sessionId,runId);

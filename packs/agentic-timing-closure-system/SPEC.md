@@ -44,7 +44,7 @@ Goal 另含 `max_physical_refreshes`（count，1–4，默认 2）：本 Run 允
 
 检查按成本与价值分层。XTop/估算 RC/局部 PT 未能证明收益，不自动拒绝一个机制清楚、有范围、预算和恢复点的真实物理试验。也不要求每条查询存完整 DB、每个分支独立做全链验证或每次重算未变化输入。
 
-Harness 源码保持不变。业务判断、工具适配和状态含义放在 Pack，运行身份、权限、预算、Jobs、恢复和证据沿用 Harness；Site 更新工具与资格绑定不等于升级 Harness。未验证的执行形状须在开发测试中证明，不靠额外后台控制器补齐。
+业务判断、工具适配和状态含义优先放在 Pack，运行身份、权限、预算、Jobs、恢复和证据沿用 Harness；Site 更新工具与资格绑定不等于升级 Harness。只有真实运行证明 Pack/Site 无法修复的通用契约缺陷才修改 Harness 的既有 seam，例如角色投影、交互回执范围或确定性失败重试；不增加后台控制器。未验证的执行形状须在开发测试中证明。
 
 知识依据：`assert-the-checker-options.md` 要求必要验证有明确版本与条件；`attribute-by-database-relation.md` 要求采用事实来自原生对象关系；`one-checker-per-session.md` 用于保持不同验证工具结果独立，不把它扩成每条诊断命令都重新打开 session 的额外负担。
 

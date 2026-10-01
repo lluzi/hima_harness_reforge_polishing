@@ -945,10 +945,21 @@ proc atcs_paths {check top_n end_points} {
     }
     lappend command -top $top_n -detail_info
     set result [uplevel #0 $command]
-    lassign [atcs_text_rows $result] full shown
+    # Real XTop writes the detailed analysis beside the session and returns only a short file notice.
+    # Return that fixed, session-owned report through the typed read; the Operator has no raw file tool.
+    set report [file join $::operator_root "analyze_${check}_path_violations.txt"]
+    if {[file readable $report]} {
+        set fh [open $report r]
+        fconfigure $fh -encoding utf-8
+        set text [read $fh 60000]
+        close $fh
+    } else {
+        set text $result
+    }
+    lassign [atcs_text_rows $text] full shown
     atcs_log_read atcs_paths [atcs_jobj [list check [atcs_js $check] topN $top_n endPoints [atcs_jarr $end_points]]] \
         $full $shown
-    set result
+    set text
     }
 }
 proc atcs_fail_reasons {pins reasons methods} {

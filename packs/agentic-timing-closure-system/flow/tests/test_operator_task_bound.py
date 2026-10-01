@@ -24,11 +24,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+import yaml
 
 TESTS_DIR = Path(__file__).resolve().parent
 PACK_DIR = TESTS_DIR.parents[1]
 READER = PACK_DIR / "tools" / "read-atcs.py"
 CONTRACT = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+CONTRACT_DATA = yaml.safe_load(CONTRACT)
 W03 = TESTS_DIR / "live_fixtures" / "t05-worker-request-w03.json"
 TASK_LIMIT = 64_000
 # T05's w03 request observation and its content hash (the fixture's sha256).
@@ -40,7 +42,8 @@ def _operator(slot):
     team = CONTRACT.split("\nagentTeams:\n", 1)[1].split("\nworkshops:\n", 1)[0]
     body = team.split(f"  - id: atcs-worker-{slot}\n", 1)[1].split("\n  - id: ", 1)[0]
     member = body.split("      - id: operator\n", 1)[1]
-    template = re.search(r"^        taskTemplate: '(.*)'$", member, re.M).group(1).replace("''", "'")
+    declared = next(team for team in CONTRACT_DATA["agentTeams"] if team["id"] == f"atcs-worker-{slot}")
+    template = next(item for item in declared["members"] if item["id"] == "operator")["taskTemplate"]
     fields = re.search(r"^        taskInputs: \[\{ input: workerRequest\d\d, fields: \[(.*)\] \}\]$", member, re.M)
     commands = re.search(r"^          commands: \[(.*)\]$", member, re.M).group(1).split(", ")
     return template, fields.group(1).split(", "), commands
