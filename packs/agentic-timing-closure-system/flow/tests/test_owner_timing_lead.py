@@ -179,6 +179,9 @@ proc fix_hold_gba_violations {args} { fixture_default fix_hold_gba_violations {*
         _write_json(self.ws / "research/requests/integration-plan.json", {"plan": plan})
         out, brief = cli._cmd_prepare_lead(self.ws, [str(self.site_path)])
         _write_json(out, brief)
+        self.assertEqual(brief["planSha256"], core.file_sha256(self.ws / "research/requests/integration-plan.json"))
+        self.assertEqual(brief["namePrefix"], "atcs_lead_r1_")
+        self.assertEqual(brief["scope"]["maxMutations"], workspaces.SCOPE_MAX_MUTATIONS)
         self.assertIn("{swerv_dma_ctrl/dma_axi_wstrb[1]}", brief["derivedDomainDropped"]["nets"])
         root = self.ws / brief["leadRoot"]
         self.assertEqual(workers["requiredSlots"], list(workspaces.TASK_IDS))
@@ -242,7 +245,7 @@ proc write_design_changes {args} {
 import assert from 'node:assert/strict';
 import { loadPack } from '@hima/harness';
 const pack = loadPack('packs', 'agentic-timing-closure-system');
-assert.equal(pack.contract.version, '0.2.5');
+assert.equal(pack.contract.version, '0.2.6');
 const edges=pack.graph.edges;
 const to=id=>edges.filter(e=>e.from===id).map(e=>e.to);
 assert.deepEqual(to('common-autofix'), ['read-refresh-budget']);

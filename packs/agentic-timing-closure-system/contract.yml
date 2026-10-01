@@ -1,5 +1,5 @@
 id: agentic-timing-closure-system
-version: "0.2.5"
+version: "0.2.6"
 title: Agentic timing closure system
 status: development
 minimumHarnessVersion: 0.2.1
@@ -301,7 +301,7 @@ environment:
   wrappers:
     - python3
     - /usr/bin/python3
-    - /data/eda/project/hima_harness/operator-admin/atcs-v26/atcs-xtop-operator-v26.sh
+    - /data/eda/project/hima_harness/operator-admin/atcs-v27/atcs-xtop-operator-v27.sh
 
 workspace:
   source: pack
@@ -454,7 +454,7 @@ tools:
       mode: hybrid
       adapter: hima-tcl-line-v1
       licences: { xtop: 1 }
-      argv: [/data/eda/project/hima_harness/operator-admin/atcs-v26/atcs-xtop-operator-v26.sh, '${WORKSPACE}', '${SLOT}']
+      argv: [/data/eda/project/hima_harness/operator-admin/atcs-v27/atcs-xtop-operator-v27.sh, '${WORKSPACE}', '${SLOT}']
       commands:
         read: [atcs_ref, atcs_gain, atcs_paths, atcs_fail_reasons, atcs_candidates, atcs_point, atcs_gba]
         mutate: [atcs_size_cell, atcs_exchange_cell, atcs_insert_buffer, atcs_insert_dummy, atcs_split_load, atcs_split_net, atcs_move_cell, atcs_remove_buffer, atcs_fix_hold_pins, atcs_fix_setup_pins, atcs_undo]
@@ -1348,7 +1348,12 @@ workshops:
       is valid: the Timing Lead still analyzes the common residuals and can add its own ECO.
       After prepare-lead reaches timing-lead, begin that exact execution. For T6 create exactly one manual
       role operator child with hima_delegate, using the existing qualified xtop-operator tool (SLOT lead).
-      Give it timingLeadBrief, this strategy report and all six Contributions. This child is your persistent
+      Give it the COMPLETE timingLeadBrief, this strategy report and all six Contributions. Explicitly
+      include timingLeadBrief.planSha256 (the actual integration-plan content SHA-256), namePrefix and
+      scope in its task: every mutation and undo passes that exact 64-hex planSha256; every new object
+      starts with the prepared namePrefix. Never leave the hash blank or invent a lead prefix. Create
+      the child with budgetShare inside the actual remaining Run budget, maxElapsedMs at most1200000,
+      maxFollowups4 and maxTokensPerTurn12000, honoring the Host's returned effective limits. This child is your persistent
       XTop tool hand, not another decision owner. It stays in the same process/workspace through all
       coherent batches. Direct analyze/replay/rebase/manual/keep-undo using measured native results;
       ask for exact batch results and follow up the SAME child while its session remains open. Do not call

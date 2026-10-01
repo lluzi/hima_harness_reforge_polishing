@@ -4383,6 +4383,7 @@ def _cmd_prepare_lead(workspace, args):
     control = slot_policy["workerSlots"] == 0
     brief = {"control": control, "commonStateId": common["stateId"], "worklistId": common["worklistId"],
         "strategyRisk": {"path": _relpath(report, workspace), "sha256": core.file_sha256(report)},
+        "planSha256": core.file_sha256(workspace / "research/requests/integration-plan.json"),
         "contributions": [c["id"] for c in collected["contributions"]], "replayRequestId": request["id"],
         "experimentDeadline": common["experimentDeadline"], "finalAutoFinish": False}
     if control:
@@ -4477,6 +4478,8 @@ puts "ATCS:lead:replay-complete:$::atcs_replay_applied applied, $::atcs_replay_s
             "preparedReplay": {name: core.file_sha256(root / name) for name in ("recipe.tcl", "auto-fix.tcl")}}
         _canonical_write(_paths(workspace)["workers"], workers)
         brief["leadRoot"] = manifest["root"]
+        brief["namePrefix"] = manifest["namePrefix"]
+        brief["scope"] = package["scope"]
     return workspace / "state/lead-brief.json", brief
 
 

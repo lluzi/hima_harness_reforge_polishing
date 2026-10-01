@@ -2,7 +2,7 @@
 # Campaign Owner directs one persistent integration Operator, then exports directly to the referee.
 # No dual-arm arbitration, PreSTA or final global AutoFinish in this route.
 id: agentic-timing-closure-system
-version: "0.2.5"
+version: "0.2.6"
 entry: bind-inputs
 autopilot:
   # Inputs and baseline, and every generation's refresh-cap gate and slot binding, up to the plan.
