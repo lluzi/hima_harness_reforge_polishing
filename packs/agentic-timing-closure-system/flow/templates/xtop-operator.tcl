@@ -448,6 +448,13 @@ proc atcs_require_domain_pin {pin} {
     if {[atcs_member $::EDIT_DOMAIN_PINS $pin]} { return }
     set owner [atcs_pin_owner $pin]
     if {$owner ne "" && [atcs_instance_in_domain $owner]} { return }
+    # D-Q1-5 (#64 Q1 opreq-9): an instance named where a pin belongs is said to be one, with its pins.
+    set cell [get_cells -quiet -exact $pin]
+    if {$owner eq "" && [sizeof_collection $cell] == 1} {
+        set names {}
+        foreach_in_collection each [get_pins -quiet -of_objects $cell] { lappend names [get_attribute $each full_name] }
+        error "out-of-scope pin: $pin is an instance, not a pin; name its pins as $pin/<pin>: [join [lsort $names] {, }]"
+    }
     error "out-of-scope pin: $pin"
 }
 # Removing an instance merges its nets: every one of them must be in the domain.

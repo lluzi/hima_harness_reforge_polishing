@@ -2197,6 +2197,28 @@ class ExportLimitationsTest(unittest.TestCase):
 
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class Q1ArgumentSurfaceTest(unittest.TestCase):
+    """D-Q1-5 (#64 Q1 opreq-9): `atcs_fix_hold_pins` named the flop instance
+    `swerv_dbg/dmcontrol_dmactive_ff_dffs_dout_reg_0_` where a pin belongs, and the toolkit answered only
+    `out-of-scope pin: <instance>`, which cost a round trip and one approved mutation. A name that is an
+    instance, not a pin, is now refused saying so and naming its pins in the form the call takes."""
+
+    def test_q1_an_instance_named_as_a_pin_is_refused_naming_its_pins(self):
+        session = Session(self).run(
+            f"T hold {{{HOLD} U1 low 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n"
+            f"T setup {{{SETUP} U2 {{size_cell}} 0 0 high 0.0 0.02 {PLAN}}}\n"
+            f"T other {{{HOLD} ZZ/A low 0.0 0.02 0 0 0 0 -1 {{}} {PLAN}}}\n")
+        status, text = session.outcome("hold")
+        self.assertEqual(status, "ERR")
+        self.assertEqual(text, "out-of-scope pin: U1 is an instance, not a pin; name its pins as U1/<pin>: U1/A, U1/Y")
+        status, text = session.outcome("setup")
+        self.assertEqual(status, "ERR")
+        self.assertIn("U2 is an instance, not a pin; name its pins as U2/<pin>: U2/A, U2/Y", text)
+        self.assertEqual(session.outcome("other"), ("ERR", "out-of-scope pin: ZZ/A"), "any other name keeps its refusal")
+        self.assertEqual([call[0] for call in session.calls if call[0] in MUTATING_XTOP], [])
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
 class Q1CloseCompletesTheSessionTest(unittest.TestCase):
     """D-Q1-1 (#64 Q1 attempt 1): the Operator kept a size (w01-cmd-9), then returned its result without
     `atcs_dump_cells after.dump`, `atcs_export_changes` or `atcs_close`; the session was killed at its idle
