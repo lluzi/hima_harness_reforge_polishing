@@ -8,7 +8,8 @@ repository, Runtime/Ledger and retained evidence.
 
 - **Human:** owns product goals, business trade-offs and authority expansion.
 - **Codex coordinator/integrator:** owns the current frontier, lowest-seam diagnosis, shared-branch
-  integration, candidate identities, regression tests and consumption of Claude handoffs.
+  integration, implementation review, candidate identities/freeze, test admission, regression tests and
+  consumption of Claude handoffs.
 - **Claude operator/tester:** owns human-like product use, one admitted Campaign/Run, real EDA interaction,
   exact checkpoints and the smallest authorized Pack/Site fix. It does not redesign Harness architecture.
 - **HimaHarness agents:** execute only the role, inputs, tools, budget and recipient declared by their Pack
@@ -60,10 +61,18 @@ newer Ledger/Git/tool state.
 Do not paste the previous chat or ask a new session to reconstruct it. Keep the old session read-only as
 historical evidence.
 
-Roll over to a fresh session when compact still leaves a large historical-message body, the conversation
-contains more than one retired candidate/Run, the agent repeats stale conclusions, rereads broad history, or
-confuses its role. Token percentage alone is not the trigger; stale attention is. Write the baton first, then
-stop the old session.
+Keep each complete coherent task in one main session: environment qualification, one single-seat model L4,
+or the full matched effectiveness experiment through referee. Large evidence stays in files; independent
+subtasks receive fresh bounded packages with the fixed model verified before use. Session boundaries follow
+completed tasks, not token thresholds.
+
+If the main session shows stale-role or candidate reasoning, retain a checkpoint and try one compact. Only
+if corruption remains, write the baton and roll to a fresh same-model session at the nearest safe boundary;
+resume the same current Run without duplicate effects. Historical unrelated Runs remain evidence only.
+
+A named product-goal DRI provides minimal direction. Notify it only for drift from the fair method objective,
+Pack-first architecture, complete-task continuity, honest evidence/verdict, or a material scope/success change.
+Routine fixes, reviews, publication and test progression stay with the development/testing team.
 
 ## Handshake
 

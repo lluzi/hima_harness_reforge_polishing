@@ -483,8 +483,8 @@ test('two fork branches each hold an interactive Job driven by their own Team at
       nodeId: 'operate-main', ownerEpoch: control().epoch, controlRevision: control().revision, ...body }) as Promise<Record<string, any>>;
     const mainOpen = await atMain({ action: 'open', requestId: 'open-main' });
     assert.equal(mainOpen.status, 'opened', JSON.stringify(mainOpen));
-    const mainStop = await atMain({ action: 'close', requestId: 'close-main', toolSessionId: mainOpen.session.toolSessionId });
-    assert.equal(mainStop.status, 'closed', JSON.stringify(mainStop));
+    await driven.host.ctx.hima.cancelRun(driven.runId);
+    await waitUntil('person cancellation force-closes the main Job', () => interactiveJobs('killed').some((record) => record.nodeId === 'operate-main'), 10_000, 25);
     const mainJobs = interactiveJobs().filter((record) => record.nodeId === 'operate-main');
     assert.deepEqual(mainJobs.map((record) => [record.event, 'branchId' in record]), [['launched', false], ['killed', false]],
       'a main-cursor interactive Job and its stop carry no branchId key');
@@ -499,12 +499,17 @@ test('an Operator that asks the Harness to close its own session settles the nod
     const opened = await interactive(branch, { action: 'open', requestId: 'open-close-race' });
     assert.equal(opened.status, 'opened', JSON.stringify(opened));
     const toolSessionId = opened.session.toolSessionId as string;
-    // The whole reviewed session except the toolkit's own close: the Operator then asks the Harness
-    // to close it, as the live Operators of attempt 3 did, and the REPL ends by hangup with no exit status.
+    // The Operator first attempts transport close without the typed finalizer; the refusal is
+    // recoverable in the same child/session and must not settle the execution as failed.
     for (const [step, [name, args]] of reviewedSteps(owner, planHashOf).slice(0, -1).entries()) {
       const sent = await send(branch, toolSessionId, name, args(branch), `close-race-${step}`);
       assert.equal(sent.status, 'completed', `${name}: ${JSON.stringify(sent)}`);
     }
+    const premature = await interactive(branch, { action: 'close', requestId: 'close-race-premature', toolSessionId });
+    assert.equal(premature.status, 'refused', JSON.stringify(premature));
+    assert.match(premature.reason, /atcs_close/);
+    const finalized = await send(branch, toolSessionId, 'atcs_close', {}, 'close-race-finalize');
+    assert.equal(finalized.status, 'completed', JSON.stringify(finalized));
     const closed = await interactive(branch, { action: 'close', requestId: 'close-race-close', toolSessionId });
     assert.equal(closed.status, 'closed', JSON.stringify(closed));
     await settleOperate(branch);
@@ -534,9 +539,9 @@ test('under a Site cap of one, the second branch\'s interactive open is refused 
     assert.equal(retried.status, 'opened', `the freed slot admits the waiting branch: ${JSON.stringify(retried)}`);
     assert.equal(mostOpenAtOnce(records()), 1, 'never more than the one declared slot');
 
-    // A branch's open interactive Job force-closed by its Operator: the stop names the branch it was launched in.
-    const stopped = await interactive(second, { action: 'close', requestId: `close-${second.id}`, toolSessionId: retried.session.toolSessionId });
-    assert.equal(stopped.status, 'closed', JSON.stringify(stopped));
+    // Person cancellation remains a forced close and records the branch of the open Job.
+    await driven.host.ctx.hima.cancelRun(driven.runId);
+    await waitUntil('person cancellation stops the second branch', () => interactiveJobs('killed').some((record) => record.nodeId === second.operate), 10_000, 25);
     assert.deepEqual(interactiveJobs('killed').map((record) => [record.nodeId, record.branchId]), [[second.operate, second.workshop]],
       'the killed record of a branch\'s interactive Job carries that branch');
   });
@@ -690,7 +695,7 @@ test('an Operator open waiting for its tool\'s ready line and the owner\'s batch
   await forkedCampaign(t, 2, async (driven) => {
     const owner = ownerCalls(driven);
     const [a, b] = branches;
-    const { interactive } = await teamsReady(driven, owner, [a]);
+    const { interactive, send } = await teamsReady(driven, owner, [a]);
     // Branch b's Workshop is written but not worked: its `work` claims a Site slot for a batch Job.
     const planB = await writePlan(owner, b);
     // Operator a's tool takes three seconds to print its ready line, as a real session's startup does.
@@ -705,6 +710,8 @@ test('an Operator open waiting for its tool\'s ready line and the owner\'s batch
     // And the Host still answers afterwards: the Run's queue and the Site's claim were both released.
     await within(10_000, 'a read of the Run after both', Promise.resolve(owner.context()));
     await waitUntil('plan-b settles its own work', () => owner.phase(planB) === 'ready', 30_000, 25);
+    const finalized = await send(a, opened.session.toolSessionId, 'atcs_close', {}, 'finish-slow-a');
+    assert.equal(finalized.status, 'completed', JSON.stringify(finalized));
     const closed = await within(30_000, 'the Operator close', interactive(a, { action: 'close', requestId: 'close-slow-a', toolSessionId: opened.session.toolSessionId }));
     assert.equal(closed.status, 'closed', JSON.stringify(closed));
   });
@@ -734,6 +741,8 @@ test('an Operator\'s open still in flight is not marked cut off by a Host restar
     assert.deepEqual(restarted.map((record) => record.type === 'interactive' ? `${record.event} ${record.toolSessionId}` : ''), [],
       'no record says the Host restarted: it never did');
     for (const [branch, opened] of [[a, openedA], [b, openedB]] as const) {
+      const finalized = await send(branch, opened.session.toolSessionId, 'atcs_close', {}, `finish-${branch.id}`);
+      assert.equal(finalized.status, 'completed', JSON.stringify(finalized));
       const closed = await within(30_000, `close ${branch.id}`, interactive(branch, { action: 'close', requestId: `close-${branch.id}`, toolSessionId: opened.session.toolSessionId }));
       assert.equal(closed.status, 'closed', JSON.stringify(closed));
     }

@@ -1,7 +1,6 @@
 # XTop expert Operator
 
 ## Source
-
 - The user's XTop knowledge pack, `XTOP_ADVANCED_TIMING_CLOSURE_SKILL_AND_STRATEGY_MAP.md` (research version
   2026-09-24, installed ICExplorer-XTop `2025.09.tmp15`, read-only; server copy
   `/data/eda/project/design_zoo/docs/xtop_advanced_timing_closure/`): Level 2 diagnosis, Level 3 manual ECO,
@@ -31,7 +30,6 @@
 | `atcs_fix_hold_pins` | `fix_hold_gba_violations ... -only_pins`; a size-only pass adds each named input pin's in-domain driver pin (it sizes drivers: sink pins alone gave `not_only_pin 100%`, #64 T06) | `fix_hold_gba_violations.1` (112) |
 | `atcs_fix_setup_pins` | `fix_setup_gba_violations ... -only_pins` | `fix_setup_gba_violations.1` (114) |
 | `atcs_undo` | `undo` until `count_eco_actions` is back at the edit's start | `undo.1` (327, man-only), `count_eco_actions.1` (38) |
-
 - Issue #64 (2026-09-28): the agreed spec, its Further Notes on the serial rounds, and the user's
   amendment of 2026-09-28 (the merge is a ranked recipe, never worse than plain auto-fix).
 
@@ -76,6 +74,8 @@ kept edit carries its measured gain: keep what measured, undo the rest. XTop's g
 7. Stop when the budget is spent (every mutation and every undo counts), when every rung the scope allows
    has been tried on the targets without gain, or when the blockers are clear. Then
    `atcs_dump_cells after.dump`, `atcs_export_changes` (its `limitations`, "" if none, one per line, reach the seal) and `atcs_close`.
+
+Deliver replayable commands/dumps/ECO evidence, not saved worker DBs; downstream starts fresh from the common base. Exports repeat; typed `atcs_close` refreshes stale scripts, preserves limitations and completes before transport close. Export failure is advisory for replayable evidence. A no-gain sample does not falsify untried mechanisms across the cluster.
 
 What a refusal costs. A Host refusal (a command outside the scope, another plan hash, the budget spent) is
 free. A mutation the Host admits but the toolkit refuses (a pin or instance outside the domain, a point outside
