@@ -48,7 +48,7 @@ def make_base_state(state_id_seed="base-state"):
 EXPERT_COMMANDS = (
     "atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load",
     "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins",
-    "atcs_undo",
+    "atcs_undo", "atcs_path_pin_rank", "atcs_legalization_range",
 )
 
 

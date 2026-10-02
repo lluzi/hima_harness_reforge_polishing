@@ -121,3 +121,7 @@ therefore be computed from an object-level diff against the declared base state,
 from the `-last_n` boundary of a single export call — otherwise a later `seal()` would
 silently attribute a stray physical move to the wrong contribution, and reversing a
 different contribution would corrupt this one's recorded scope.
+
+## Expert session settings
+
+The existing Operator exposes only two added bounded surfaces: atcs_path_pin_rank and atcs_legalization_range. See xtop-expert-operator.md for the generic manual ladder and vendor-backed argument examples. Rank marking changes analysis/fix priority and must be refreshed after ECO; it is not a pure read. Legalization range enables strict placement, caps ECO displacement at1000tracks, fixes automatic original-cell displacement at0 and keeps hard readiness. Both require the current reviewed plan and are counted; neither is itself a physical ECO gain. Their settings/reports remain in the existing reads evidence and exact handoff script.

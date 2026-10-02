@@ -61,6 +61,7 @@ set_parameter eco_gain_threshold $env(ECO_GAIN_THRESHOLD)
 #   mutate  atcs_size_cell atcs_exchange_cell atcs_insert_buffer
 #           atcs_insert_dummy atcs_split_load atcs_split_net atcs_move_cell
 #           atcs_remove_buffer atcs_fix_hold_pins atcs_fix_setup_pins atcs_undo
+#           atcs_path_pin_rank atcs_legalization_range (analysis/configuration)
 #
 # Every mutation, in this order: refuses a tainted session; checks the plan
 # hash (64 hex, pinned to the first mutation that reaches XTop); refuses once
@@ -121,7 +122,9 @@ set_parameter eco_gain_threshold $env(ECO_GAIN_THRESHOLD)
 #   of the text XTop gave, then any failed pins), at most ::ATCS_READ_ROWS_MAX,
 #   each text row clipped to ::ATCS_READ_ROW_CHARS; rowsDigest the sha256 of
 #   every row's compact JSON array before clipping (json.dumps(rows,
-#   ensure_ascii=False, separators=(",", ":")) in Python). Reads use no budget.
+#   ensure_ascii=False, separators=(",", ":")) in Python). Pure reads use no budget.
+#   Rank/legalization configuration uses this same evidence shape but spends
+#   the reviewed allowance; it creates no physical-ECO ops line.
 # domain.json (beside ops.jsonl, #66 D2) in a local-topology session: see
 #   atcs_derive_local_domain at the end of this file.
 ########################################################################
@@ -976,6 +979,65 @@ proc atcs_paths {check top_n end_points} {
     atcs_log_read atcs_paths [atcs_jobj [list check [atcs_js $check] topN $top_n endPoints [atcs_jarr $end_points]]] \
         $full $shown
     set text
+    }
+}
+## Session analysis/configuration, not physical ECO. These calls require the
+## reviewed plan and spend its mutation allowance because they change XTop
+## ranking/placement state. Bounded reports use the existing reads log.
+proc atcs_path_pin_rank {check direction endpoint top_n plan_sha256} {
+    set args_json [atcs_jobj [list check [atcs_js $check] direction [atcs_js $direction] \
+        endpoint [atcs_js $endpoint] topN [atcs_js $top_n] planSha256 [atcs_js $plan_sha256]]]
+    atcs_logged_read atcs_path_pin_rank $args_json {
+        atcs_begin_mutation $plan_sha256
+        atcs_choice check $check {setup hold}
+        atcs_choice direction $direction {input output}
+        atcs_int topN $top_n 1 30
+        atcs_require_domain_pin $endpoint
+        set delay_type [expr {$check eq "hold" ? "min" : "max"}]
+        set paths [get_paths -delay_type $delay_type -end_points [atcs_pin_object $endpoint]]
+        set count [sizeof_collection $paths]
+        if {$count < 1 || $count > 1000} { error "path rank needs 1..1000 native paths for this endpoint; got $count" }
+        atcs_commit_mutation $plan_sha256
+        if {[catch {
+            set mark [expr {$direction eq "input" ? "mark_hold_path_pin_rank" : "mark_setup_path_pin_rank"}]
+            uplevel #0 [list $mark -type margin $paths]
+            set ::atcs_rank_report ""
+            redirect -variable ::atcs_rank_report [list summarize_pin_rank -with_top_n $top_n]
+            set metric [expr {$direction eq "input" ? "setup margin" : "hold margin"}]
+            set text "Selected $check paths: $count; $direction pin rank = $metric. Ranking state/priority changed; re-rank after ECO.\n$::atcs_rank_report"
+            lassign [atcs_text_rows $text] full shown
+            atcs_log_read atcs_path_pin_rank $args_json $full $shown
+            atcs_clip $text 12000
+        } result options]} {
+            atcs_taint "uncertain atcs_path_pin_rank state after native setting: $result"
+            error "$result; session tainted because setting/report may be partially applied"
+        }
+        set result
+    }
+}
+proc atcs_legalization_range {eco_tracks plan_sha256} {
+    set args_json [atcs_jobj [list ecoTracks [atcs_js $eco_tracks] planSha256 [atcs_js $plan_sha256]]]
+    atcs_logged_read atcs_legalization_range $args_json {
+        atcs_begin_mutation $plan_sha256
+        atcs_int ecoTracks $eco_tracks 100 1000
+        atcs_commit_mutation $plan_sha256
+        if {[catch {
+            # Search farther for new ECO cells, never move original cells implicitly.
+            # Explicit domain/region-checked moves remain available.
+            set_parameter placement_legalization_mode true
+            set_parameter placement_legalization_obligated true
+            set_placement_constraint -design $::design -max_displacement [list "${eco_tracks}t" 0] -readiness_check_level hard
+            set ::atcs_constraint_report ""
+            redirect -variable ::atcs_constraint_report [list report_placement_constraint -design $::design]
+            set text "Strict legalization enabled; ECO range ${eco_tracks}t; original-cell range 0; readiness hard. Session setting persists through physical undo; reapply in a fresh session.\n$::atcs_constraint_report"
+            lassign [atcs_text_rows $text] full shown
+            atcs_log_read atcs_legalization_range $args_json $full $shown
+            atcs_clip $text 8000
+        } result options]} {
+            atcs_taint "uncertain atcs_legalization_range state after native setting: $result"
+            error "$result; session tainted because setting/report may be partially applied"
+        }
+        set result
     }
 }
 proc atcs_fail_reasons {pins reasons methods} {

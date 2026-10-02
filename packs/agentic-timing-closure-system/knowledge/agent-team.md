@@ -38,26 +38,11 @@ Workshop starts from `read-atcs.py seat-clusters`, which partitions the violatin
 the cluster, worked hardest first, not one endpoint. `workerSlots` 0 parks every seat: the full-auto
 control arm, whose branches all run the batch no-op.
 
-Operator: for an active slot whose request reading is `tc_request_invalid_count` 0 and
-`tc_slot_parked` 0, the Harness materializes the slot's Operator directly from the admitted request:
-the request's operatorBrief (a bounded summary of its candidate and noSafeAction, written by
-`read-atcs.py brief` and held by the Reader to the request), sessionPlan and siteCapabilities are
-embedded in its task, never the whole request (the Harness refuses a task above 64 000 characters); the
-Operator reads the request's own fields with `hima_delegation_input` in bounded windows (`path`,
-`offset`, `limit`) before it opens the session, and the request's own `candidate.scope` (`commands` from the recipe list, `maxMutations` 1..600) is the
-immutable scope the Host binds with the request's plan hash. The Operator owns the seat's cluster and
-runs the expert loop of `xtop-expert-operator.md` as one batch in its interactive session: dump
-before.dump and reference; risk-assess first (`atcs_point` on every target, `atcs_paths` on the hardest
-first, `atcs_fail_reasons` after the first fix); then point to point, hardest target first, one bounded
-move per trial, `atcs_point` on the target and `atcs_gain` on the opposite check, keep when the target
-improved and the opposite did not break, else `atcs_undo` at once; continue through the cluster until
-the list, the budget or the time is spent; dump after.dump, `atcs_export_changes` with its limitations,
-close. Every kept edit is part of the one batch the merge ranks. Its share is 40 minutes, four
-follow-ups and 12000 tokens a turn (Harness #66 H2a honours it). The Host admits only scope commands
-carrying the plan hash and at most `maxMutations` mutations per execution (undo included), across tool
-sessions. Its schema-valid result is adopted as it arrives and the node completes; a result failing its
-schema, or a turn that ends without output, gets a repair follow-up. An Operator that asks the Harness
-to close its session settles its node done, never a failed attempt.
+Operator: for a Reader-admitted active request, the existing recipe materializes its expert tool hand. The task carries the bounded operatorBrief/sessionPlan; use granted input windows rather than read the whole request. All six receive the same concise topology/placement/margin playbook in xtop-expert-operator.md and one expertise prior, while their actual disjoint clusters come from the current residuals.
+
+The planner supplies CURRENT analysis-derived fixpoints, resolved drivers and physical regions in the existing WorkPackage; no design object is hard-coded in prompts or helpers. Each Operator works the common R1 and cycles native Path/GBA/rank -> root-cause hypothesis -> coherent insert/split/move/detour batch -> holdWNS-first measurement plusTNS/setup/transition/legality -> keep/undo -> next useful mechanism/range. Standalone sizing is not expert evidence; size/exchange only enables a paired margin/transition repair. One operation is not task completion. Stop on cluster clear/material improvement, evidence of useful-ladder exhaustion, or actual Host closing budget.
+
+Scope, plan hash, 600-mutation cap and existing recipe budget remain authoritative (40min,4followups,12000tokens per turn, subject to actual Host returns). The two rank/legalization setting commands change session state, require the same reviewed scope/hash and spend allowance; their reports use existing reads evidence rather than fake physical ECO. Carry settings in the exact script; the Lead rechecks them in its fresh integration session and continues manual collateral repair. Never use unaccounted direct-child messages to evade an exhausted follow-up share. Output exact script, metrics, legal state, failed mechanisms and recommendation; then current export, typed close, adopted result and completed node. No native prediction is refreshed PrimeTime/physical signoff.
 
 Reviewer: optional and advisory. Nothing waits for it and nothing is gated on it; its absence never
 blocks a branch.

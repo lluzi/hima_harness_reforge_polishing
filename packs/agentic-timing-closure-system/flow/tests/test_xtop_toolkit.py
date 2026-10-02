@@ -49,7 +49,7 @@ READ_PROCS = ["atcs_ref", "atcs_gain", "atcs_paths", "atcs_fail_reasons", "atcs_
 MUTATE_PROCS = [
     "atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load",
     "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins",
-    "atcs_undo",
+    "atcs_undo", "atcs_path_pin_rank", "atcs_legalization_range",
 ]
 SAVE_PROCS = ["atcs_dump_cells", "atcs_export_changes"]
 CLOSE_PROCS = ["atcs_close"]
@@ -57,6 +57,11 @@ CLOSE_PROCS = ["atcs_close"]
 # Options per command, copied from the knowledge pack's `evidence/command_surface.tsv`
 # (column `options`, XTop 2025.09.tmp15). A command absent here must never be emitted.
 XTOP_SURFACE = {
+    "mark_hold_path_pin_rank": {"type"},
+    "mark_setup_path_pin_rank": {"type"},
+    "summarize_pin_rank": {"with_top_n"},
+    "set_placement_constraint": {"design", "max_displacement", "readiness_check_level"},
+    "report_placement_constraint": {"design"},
     "get_setup_gba_violated_pins": {"exclude_path", "endpoint_only"},
     "get_hold_gba_violated_pins": {"exclude_path", "endpoint_only"},
     "get_critical_gba_path": {"delay_type", "from", "through", "to", "scenario"},
@@ -820,6 +825,80 @@ class ToolkitProceduresTest(unittest.TestCase):
             self.assertIn(proc, defined)
         for retired in ("atcs_query_paths", "atcs_query_cells", "atcs_delete_buffer"):
             self.assertNotIn(retired, defined)
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class ExpertSettingsTest(unittest.TestCase):
+    """State-changing analysis/settings remain bounded and never pretend to be physical ECO."""
+    NATIVE = r"""
+proc mark_hold_path_pin_rank {args} { stub_record mark_hold_path_pin_rank {*}$args; set ::fixture_direction input }
+proc mark_setup_path_pin_rank {args} { stub_record mark_setup_path_pin_rank {*}$args; set ::fixture_direction output }
+proc summarize_pin_rank {args} { stub_record summarize_pin_rank {*}$args; append ::stub_out [expr {$::fixture_direction eq "input" ? "Index Name Rank\n1 U1/A 0.7\n" : "Index Name Rank\n1 U1/Y 0.3\n"}] }
+proc set_placement_constraint {args} { stub_record set_placement_constraint {*}$args; set ::fixture_constraint $args }
+proc report_placement_constraint {args} { stub_record report_placement_constraint {*}$args; append ::stub_out $::fixture_constraint }
+"""
+
+    def test_settings_are_bounded_counted_evidence_without_physical_edits(self):
+        session = Session(self, max_mutations=6)
+        commands = "".join(f"T range{n} {{atcs_legalization_range {n} {PLAN}}}\n" for n in (150, 300, 600, 1000))
+        commands += f"T rank {{atcs_path_pin_rank hold input U9/D 3 {PLAN}}}\nT output {{atcs_path_pin_rank hold output U9/D 3 {PLAN}}}\n"
+        commands += f"T exhausted {{atcs_legalization_range 150 {PLAN}}}\nputs \"COUNT:$::atcs_mutations\"\n"
+        session.run(commands, before=self.NATIVE)
+        self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+        self.assertEqual(session.outcome("rank")[0], "OK")
+        self.assertIn("setup margin", session.outcome("rank")[1])
+        self.assertIn("U1/A 0.7", session.outcome("rank")[1])
+        self.assertIn("output pin rank = hold margin", session.outcome("output")[1])
+        self.assertIn("U1/Y 0.3", session.outcome("output")[1])
+        self.assertIn("mutation budget exhausted", session.outcome("exhausted")[1])
+        self.assertIn("COUNT:6", session.stdout)
+        self.assertEqual(session.ops, [], "settings must not invent physical ECO")
+        self.assertEqual(len(session.calls_to("set_placement_constraint")), 4)
+        for call in session.calls_to("set_placement_constraint"):
+            self.assertIn("-readiness_check_level", call)
+            self.assertIn("hard", call)
+            self.assertRegex(call[call.index("-max_displacement") + 1], r"^(150|300|600|1000)t 0$")
+        from atcs import contributions
+        rows, malformed = contributions.parse_read_log("\n".join(json.dumps(row) for row in session.reads))
+        self.assertEqual(malformed, [])
+        self.assertEqual(len(rows), 7)
+        self.assertIn("Session setting persists", session.outcome("range150")[1])
+
+    def test_post_setting_report_failure_taints_and_blocks_adoption(self):
+        for kind in ("rank", "range"):
+            with self.subTest(kind=kind):
+                session = Session(self)
+                command = (f"atcs_path_pin_rank hold input U9/D 3 {PLAN}" if kind == "rank"
+                           else f"atcs_legalization_range 150 {PLAN}")
+                report = "summarize_pin_rank" if kind == "rank" else "report_placement_constraint"
+                before = self.NATIVE + f"\nproc {report} {{args}} {{ error {{report unavailable after setting}} }}\n"
+                session.run(f"T partial {{{command}}}\nT next {{atcs_legalization_range 300 {PLAN}}}\n"
+                            "T export {atcs_export_changes {partial configuration}}\n", before=before)
+                self.assertEqual(session.outcome("partial")[0], "ERR")
+                self.assertIn("session tainted", session.outcome("partial")[1])
+                self.assertIn("session tainted", session.outcome("next")[1])
+                self.assertEqual(session.outcome("export")[0], "ERR")
+                called = "mark_hold_path_pin_rank" if kind == "rank" else "set_placement_constraint"
+                self.assertEqual(len(session.calls_to(called)), 1, "setter succeeded before failed report")
+                self.assertTrue((session.root / "tainted.json").exists())
+                self.assertEqual(session.ops, [])
+
+    def test_bad_bounds_hash_scope_and_missing_paths_never_change_settings(self):
+        session = Session(self)
+        commands = f"T low {{atcs_legalization_range 99 {PLAN}}}\nT high {{atcs_legalization_range 1001 {PLAN}}}\n"
+        commands += f"T valid {{atcs_legalization_range 100 {PLAN}}}\nT hash {{atcs_legalization_range 300 {OTHER_PLAN}}}\n"
+        commands += f"T scope {{atcs_path_pin_rank hold input UOUT/Y 3 {PLAN}}}\n"
+        commands += "rename get_paths fixture_get_paths\nproc get_paths {args} { return {} }\n"
+        commands += f"T missing {{atcs_path_pin_rank hold input U9/D 3 {PLAN}}}\nputs \"COUNT:$::atcs_mutations\"\n"
+        session.run(commands, before=self.NATIVE)
+        self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+        for tag in ("low", "high", "hash", "scope", "missing"):
+            self.assertEqual(session.outcome(tag)[0], "ERR", tag)
+        self.assertIn("1..1000 native paths", session.outcome("missing")[1])
+        self.assertEqual(len(session.calls_to("set_placement_constraint")), 1)
+        self.assertEqual(session.calls_to("mark_hold_path_pin_rank"), [])
+        self.assertEqual(session.ops, [])
+        self.assertIn("COUNT:1", session.stdout)
 
 
 @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")

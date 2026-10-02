@@ -1668,7 +1668,7 @@ def _latest_fail_reasons(gain_lines, last_kept_seq):
 
 DOMAIN_SCHEMA = "atcs-local-domain/1"
 _DOMAIN_NAME_LISTS = ("planInstances", "planNets", "targetPins", "instances", "nets", "unresolved")
-READ_PROCS = ("atcs_paths", "atcs_fail_reasons", "atcs_point")
+READ_PROCS = ("atcs_paths", "atcs_fail_reasons", "atcs_point", "atcs_path_pin_rank", "atcs_legalization_range")
 _LIMITATION_CHARS = 500
 _OPERATOR_LIMITATIONS_MAX = 20
 _NEVER_READ_SHOWN = 10

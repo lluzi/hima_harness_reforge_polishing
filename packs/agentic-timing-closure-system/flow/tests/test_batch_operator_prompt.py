@@ -61,17 +61,15 @@ class BatchOperatorPromptTest(unittest.TestCase):
         for slot in SLOTS:
             with self.subTest(slot=slot):
                 template = _operator(slot)[2]
-                for words in (f"slot w{slot}'s XTop timing-closure Operator", "Your only job",
-                              f"workerRequest{slot}", "not HimaGuide", "instead of searching product source"):
+                for words in (f"w{slot}'s DeepSeek timing specialist", "Owner's tool hand", "actual unique cluster",
+                              "no raw shell or source search", "root-cause hypothesis"):
                     self.assertIn(words, template)
 
     def test_each_trial_is_measured_kept_or_undone_at_once(self):
         for slot in SLOTS:
             with self.subTest(slot=slot):
                 template = _operator(slot)[2]
-                for words in ("measure the target with atcs_point and both checks with atcs_gain after each one", "keep gain",
-                              "atcs_undo on regression or no gain", "continue with another target or mechanism",
-                              "value findings are advisory"):
+                for words in ("HOLD WNS first", "coherent", "keep or undo", "next distinct mechanism/range", "standalone expert evidence"):
                     self.assertIn(words, template)
                 self.assertNotIn("refused whole", template)
 
@@ -79,9 +77,8 @@ class BatchOperatorPromptTest(unittest.TestCase):
         for slot in SLOTS:
             with self.subTest(slot=slot):
                 template = _operator(slot)[2]
-                for words in ("substantial, evidence-led setup/hold manual ECO batch", "untried targets or mechanisms",
-                              "Never infer budget exhaustion", "A failed or refused trial is evidence for the next rung",
-                              "Write after.dump", "atcs_export_changes", "close cleanly"):
+                for words in ("One operation or undo is not completion", "actual Host budget remains",
+                              "evidenced exhaustion", "after.dump", "current export", "typed atcs_close"):
                     self.assertIn(words, template)
 
     def test_the_template_names_every_scope_command(self):
@@ -90,7 +87,7 @@ class BatchOperatorPromptTest(unittest.TestCase):
                 body, member, template = _operator(slot)
                 commands = re.search(r"^          commands: \[(.*)\]$", member, re.M).group(1).split(", ")
                 self.assertEqual(sorted(commands), sorted(workspaces.MUTATE_COMMANDS))
-                self.assertIn("typed hima_interactive commands granted here", template)
+                self.assertIn("typed interactive commands", template)
                 self.assertLess(sum(template.count(c) for c in commands), len(commands),
                                 "the task does not duplicate the Host's exact typed-command catalog")
 

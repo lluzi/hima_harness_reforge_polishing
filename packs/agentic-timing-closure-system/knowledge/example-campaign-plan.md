@@ -86,7 +86,7 @@ is advice too. `workerSlots` 0 is the full-auto control arm: every slot is parke
         },
         "targetPins": ["u_core/u_lsu/data_reg_3_/D", "u_core/u_lsu/addr_reg_0_/D"],
         "scope": {
-          "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo"],
+          "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo", "atcs_path_pin_rank", "atcs_legalization_range"],
           "maxMutations": 600
         },
         "observe": "fast"
@@ -118,7 +118,7 @@ is advice too. `workerSlots` 0 is the full-auto control arm: every slot is parke
         },
         "targetPins": ["u_core/u_ifu/pc_reg_1_/D"],
         "scope": {
-          "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo"],
+          "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo", "atcs_path_pin_rank", "atcs_legalization_range"],
           "maxMutations": 600
         },
         "observe": "fast"
@@ -150,7 +150,7 @@ is advice too. `workerSlots` 0 is the full-auto control arm: every slot is parke
         },
         "targetPins": ["u_core/u_dec/ins_reg_7_/D"],
         "scope": {
-          "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo"],
+          "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo", "atcs_path_pin_rank", "atcs_legalization_range"],
           "maxMutations": 600
         },
         "observe": "fast"
@@ -182,7 +182,7 @@ is advice too. `workerSlots` 0 is the full-auto control arm: every slot is parke
         },
         "targetPins": ["u_core/u_exu/mul_reg_2_/D"],
         "scope": {
-          "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo"],
+          "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo", "atcs_path_pin_rank", "atcs_legalization_range"],
           "maxMutations": 600
         },
         "observe": "fast"
@@ -214,7 +214,7 @@ is advice too. `workerSlots` 0 is the full-auto control arm: every slot is parke
         },
         "targetPins": ["u_dma/fifo_reg_0_/D"],
         "scope": {
-          "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo"],
+          "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo", "atcs_path_pin_rank", "atcs_legalization_range"],
           "maxMutations": 600
         },
         "observe": "fast"
@@ -246,7 +246,7 @@ is advice too. `workerSlots` 0 is the full-auto control arm: every slot is parke
         },
         "targetPins": ["u_dbg/dmactive_reg_0_/D"],
         "scope": {
-          "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo"],
+          "commands": ["atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load", "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins", "atcs_undo", "atcs_path_pin_rank", "atcs_legalization_range"],
           "maxMutations": 600
         },
         "observe": "fast"

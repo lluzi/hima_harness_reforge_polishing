@@ -213,6 +213,8 @@ TOOLKIT_MAN_PAGES = {
 
 EXPERT_SUBSECTIONS = [
     "The expert loop",
+    "Six expertise priors",
+    "Bounded rank and legalization settings",
     "Hold ladder",
     "Setup ladder",
     "Target/margin pairing",
@@ -271,7 +273,7 @@ class ExpertOperatorKnowledgeTest(unittest.TestCase):
 
     def test_a_targeted_fix_is_kept_not_trialled(self):
         # Task 7, real XTop: "The committed actions cannot be undone." after a fix flow.
-        loop = self.subsections["The expert loop"]
+        loop = self.subsections["Setup ladder"]
         self.assertIn("cannot be undone", loop)
         for word in ("atcs_fix_hold_pins", "atcs_fix_setup_pins", "sizeCellOnly", "insert_buffer", "split_net"):
             self.assertIn(word, loop)
@@ -280,13 +282,13 @@ class ExpertOperatorKnowledgeTest(unittest.TestCase):
         # Task 7, real XTop: the pin's net was the module's local net, not PrimeTime's flattened name.
         applies = " ".join(self.sections["Applies when"].split())
         self.assertIn("`editDomain.nets` are XTop's names", applies)
-        self.assertIn("swerv_dbg/rst_l", applies)
+        self.assertIn("block/local_net", applies)
 
     def test_the_ladders_run_in_expert_order(self):
         _in_order(self, self.subsections["Hold ladder"].lower(),
-                  ["size down", "dummy", "chain", "loader clustering", "timing window"], "the hold ladder")
+                  ["high-margin", "insertion", "create setup margin", "legalization", "transition", "atcs_split_load"], "the hold ladder")
         _in_order(self, self.subsections["Setup ladder"].lower(),
-                  ["remove buffer", "size", "buffer", "split net", "size down off-path"], "the setup ladder")
+                  ["removing a redundant buffer", "topology", "split net", "paired repair", "hold insertion"], "the setup ladder")
 
     def test_every_pairing_names_a_target_and_its_opposite_margin(self):
         pairing = self.subsections["Target/margin pairing"]

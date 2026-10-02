@@ -29,6 +29,8 @@
 | `atcs_remove_buffer` | `remove_buffer`, every net of the buffer in the domain | `remove_buffer.1` (225) |
 | `atcs_fix_hold_pins` | `fix_hold_gba_violations ... -only_pins`; a size-only pass adds each named input pin's in-domain driver pin (it sizes drivers: sink pins alone gave `not_only_pin 100%`, #64 T06) | `fix_hold_gba_violations.1` (112) |
 | `atcs_fix_setup_pins` | `fix_setup_gba_violations ... -only_pins` | `fix_setup_gba_violations.1` (114) |
+| `atcs_path_pin_rank` | Bounded selected-path margin ranking; input = setup margin, output = hold margin; changes fix priority | `get_paths.1`, `mark_hold_path_pin_rank.1`, `mark_setup_path_pin_rank.1`, `summarize_pin_rank.1` |
+| `atcs_legalization_range` | Strict placement, ECO tracks100..1000, original range0, hard readiness, reported settings | `set_placement_constraint.1`, `placement_legalization_obligated.1`, `report_placement_constraint.1` |
 | `atcs_undo` | `undo` until `count_eco_actions` is back at the edit's start | `undo.1` (327, man-only), `count_eco_actions.1` (38) |
 - Issue #64 (2026-09-28): the agreed spec, its Further Notes on the serial rounds, and the user's
   amendment of 2026-09-28 (the merge is a ranked recipe, never worse than plain auto-fix).
@@ -38,44 +40,55 @@
 - The plan Workshop clusters the blockers into slot work packages: `targetPins` (instance pins,
   `<instance path>/<pin>`, not primary ports), a disjoint `editDomain`, and a `scope` whose commands
   name the moves the cluster may need. `editDomain.nets` are XTop's names: a pin inside a module sits on
-  its local net (`swerv_dbg/rst_l`), not PrimeTime's flattened one (`FE_OCPN9798_rst_l`; Task 7). The session
+  its module-local net (`block/local_net`), not a timing report's flattened spelling. The session
   widens it once to the targets' local topology, one hop; nets above 12 leaf pins stay out (`domain.json`, #66 D2).
 - A research Workshop writes a slot's worker request and the Operator runs the loop below in its `xtop-operator`
   session. The optional Reviewer never gates it; the Host binds the request scope and the task carries the run-time contract.
-- Not for clock ECO, useful skew, pin-rank commits, PBA path fixes or slack adjustment: outside Issue #64 and the toolkit.
+- Clock ECO/useful skew require explicit permission; never infer it from a clock-enable data path. Path rank is now a bounded session-analysis command; it changes fix priority, not physical ECO.
 
 ## Changes this decision
 
-The Operator is a trial-and-measure expert, not the executor of one pinned action; each trial is probabilistic.
-Try freely inside your domain (manual ECO and targeted fixes), measure the gain, keep what helps, undo what
-does not: there is no wrong attempt, only an unmeasured one (FABRIC G45, 2026-09-29). The merge ranks
-sessions by value (blocker coverage, then XTop's best per-scenario gain on a violating target check) and
-replays them before auto-finish; a plain auto-fix control arm guards the batch. XTop's prediction decides,
-WNS first: control when merged is worse on setup or hold WNS (> 1e-4); merged when better on one WNS; with
-both equal, merged only when no worse on setup and hold TNS (1e-3) and better on one, or all four tie. So every
-kept edit carries its measured gain: keep what measured, undo the rest. XTop's gain screens trials; PrimeTime judges.
+AutoFix handles ordinary sizing. Expert work changes topology, placement or usable margin that AutoFix cannot safely search. A standalone size/exchange is not expert capability; use it only as setup-margin or transition compensation within a coherent insertion/split/move batch. The Lead integrates safe evidence and continues manual ECO, including collateral repair, rather than stopping at mechanical replay.
 
 ### The expert loop
 
-1. `atcs_dump_cells before.dump`, then `atcs_ref` once: the setup and hold reference of every gain.
-2. Diagnose first: `atcs_point` reads each target pin's slack; `atcs_paths` (check, topN; end points fail in PBA, G50)
-   gives the paths and XTop's analysis; the request's evidence says why auto-fix left them; `atcs_candidates` the path
-   cells' masters. XTop keeps no fail reasons before the first fix: read `atcs_fail_reasons` on the targets after it.
-3. Choose one move from the failing check's ladder, steered by the fail-reason table. Change one
-   principal variable per trial (method, master, margin or pin set), or the gain cannot be attributed.
-4. Trial it; every mutation, `atcs_undo` too, ends in `planSha256`, the plan hash the Host checks. XTop
-   commits a targeted fix ("The committed actions cannot be undone", Task 7): try `atcs_fix_hold_pins` or
-   `atcs_fix_setup_pins` after the manual moves you can undo, and measure it the same way. One that may insert
-   (hold unless `sizeCellOnly` without `useDummyCell`, setup `insert_buffer`/`split_net`) needs its pins' nets in the domain.
-5. `atcs_point` on the targets, `atcs_gain` on the opposite check; `reads.jsonl` keeps every path, reason and point read.
-6. Keep the trial only if the target slack improved and the opposite check did not break. Otherwise
-   `atcs_undo` at once, then try the next rung (another master, method, margin or pin set): an undo is never
-   a stop (#64 attempt 1: w03 undid its one size, rightly, then stopped with 13 of 15 mutations left).
-7. Stop when the budget is spent (every mutation and every undo counts), when every rung the scope allows
-   has been tried on the targets without gain, or when the blockers are clear. Then
-   `atcs_dump_cells after.dump`, `atcs_export_changes` (its `limitations`, "" if none, one per line, reach the seal) and `atcs_close`.
+1. Start from the actual common R1. Verify the automatic immutable before.dump and capture both setup/hold references with atcs_ref. Use atcs_paths/atcs_gba, atcs_fail_reasons and native pin ranks for the selected residual; state one root-cause hypothesis.
+2. Choose a CURRENT high-setup-margin input or output insertion point. The planner resolves its current pin/driver and physical region through existing helpers into workPackage targetPins/editDomain before mutation. Never guess a design object or widen an open session's scope. A missing declared upstream fixpoint requires the existing preparation/revision seam.
+3. Insert a suitable delay/buffer or split the branch/load/net. If break_setup or break_setup_of_driver blocks it, first CREATE setup margin with a bounded paired action, then perform the hold insertion.
+4. Enable strict legalization; if no legal site, try ECO displacement 150t, 300t, 600t, 1000t, or explicit scoped neighbor moves/far placement for detour delay. Automatic original-cell displacement stays zero. If detour hurts transition/drive, compensate using an appropriate stronger buffer or inverter pair/chain. Use only actual qualified library candidates.
+5. After each coherent batch use atcs_gain for HOLD WNS first, hold TNS and setup, and verify transition and legal state. Keep useful net gain with acceptable collateral; otherwise atcs_undo the batch's physical actions. Re-rank after ECO. Never call TNS-only progress a material WNS movement, or native legality physical signoff.
+6. Try the next distinct useful mechanism/range while the actual Host budget remains. One operation, one undo or one model turn is not completion. Stop only on cluster clear/material improvement, evidenced ladder exhaustion, or actual Host budget closing; report exact missing capability/scope if safe work is impossible.
+7. Export the CURRENT cumulative ECO, after.dump and physical-risk limitations, then typed close and wait for completed. Deliver the exact script (including settings), before/after metrics, legal state, failed mechanisms and next recommendation. The Lead rechecks/reapplies session settings when integrating in a fresh process; session settings are not physical ECO commands credited by the Contribution recipe.
 
-Deliver replayable commands/dumps/ECO evidence, not saved worker DBs; downstream starts fresh from the common base. Exports repeat; typed `atcs_close` refreshes stale scripts, preserves limitations and completes before transport close. Export failure is advisory for replayable evidence. A no-gain sample does not falsify untried mechanisms across the cluster.
+A Host refusal before admission is free. A toolkit refusal after admission costs one approved mutation. The budget counts trials, undo and refusals; an undo is never a stop—try the next distinct useful rung.
+
+### Six expertise priors
+
+Actual disjoint clusters come from the CURRENT residuals; these priors do not force design names or endpoint counts.
+
+| Seat | Focus |
+|---|---|
+| W1 | High-margin input insertion |
+| W2 | Output/branch split insertion |
+| W3 | Detour and legalization range |
+| W4 | Setup-margin creation followed by hold repair |
+| W5 | Hierarchy/unannotated-net adjacent annotated topology |
+| W6 | Transition/drive and inverter-chain physical completion |
+
+### Bounded rank and legalization settings
+
+Both commands change XTop session state, require the current plan hash and spend the reviewed mutation allowance. They produce bounded analysis/settings evidence in reads.jsonl, not a fictitious physical edit in ops.jsonl. Physical undo does not reset these settings. Substitute CURRENT declared values for the placeholders:
+
+```tcl
+atcs_path_pin_rank hold input <endpointPin> 10 <planSha256>
+atcs_legalization_range 150 <planSha256>
+```
+
+`atcs_path_pin_rank` accepts selected setup/hold paths and input/output direction, one declared endpoint, topN 1..30. It uses native get_paths and the vendor's margin rank. Input rank (`mark_hold_path_pin_rank`) is **setup margin**; output rank (`mark_setup_path_pin_rank`) is **hold margin**, so an output rank alone does not establish setup headroom. Confirm setup evidence before using an output pin for hold insertion. Marking clears old rank and changes priority; ECO makes rank dirty, so re-mark after each trial. Sources: get_paths.1, mark_hold_path_pin_rank.1, mark_setup_path_pin_rank.1, summarize_pin_rank.1, report_pin_rank.1.
+
+`atcs_legalization_range` accepts 100..1000 ECO tracks and fixes original-instance range at zero for the CURRENT private design. It enables placement_legalization_mode/placement_legalization_obligated and hard readiness, then reports the actual placement constraint. Vendor set_placement_constraint.1 specifies ECO/original displacement separately in tracks or microns, default {100t 0}, internal maxima {1000t 50t}; this surface does not admit automatic original-cell moves. placement_legalization_obligated.1 says failed legalized placement errors without committing the ECO. Strict rejection is evidence for the next bounded range/topology trial, not permission to keep an unplaced cell.
+
+No design-specific endpoint, margin or cell is part of this method. Current examples belong in the per-Run strategy-risk report, analysis artifact and declared work package.
 
 What a refusal costs. A Host refusal (a command outside the scope, another plan hash, the budget spent) is
 free. A mutation the Host admits but the toolkit refuses (a pin or instance outside the domain, a point outside
@@ -94,32 +107,15 @@ a cluster, not a quota to spend. Do not stop after one success while other targe
 
 ### Hold ladder
 
-1. Size down the driver or a path cell (a slower master or VT swap; it may release area):
-   `atcs_size_cell` to a master from `atcs_candidates`, or `atcs_fix_hold_pins` with `sizeCellOnly 1`
-   and effort `omit` (the serial flow's qualified `-size_cell_only -size_rule nominal_keywords`).
-2. Dummy load for a very small violation: `atcs_insert_dummy <pin> <master> <newInstance>`, master a cell of the hold buffer list `atcs_ref` prints (XTop never picks it, #64 Q1); `useDummyCell 1` is refused ("No dummy cell specified.").
-3. Delay or buffer chain at the sink: `atcs_insert_buffer` with several masters, or `maxDelayCellLength` 1..5 with a
-   `delayCellList` from the hold buffer list (Site `bufferListForHold`) leaving one normal cell out (#64 T06 w01).
-4. Loader clustering when close loaders fail together: `maxClusterLoaderCount` 1..6 (the User Guide: try 4).
-5. Timing window when `break_setup` dominates: `fixTimingWindow 1` at effort `low` only, never with
-   `sizeCellOnly` (XTop documents both incompatibilities; the toolkit refuses them).
-
-A residual after step 5 is a density or clock problem. Both are outside this upgrade: record it.
+1. Choose a high-margin current input/output insertion point from native rank and setup evidence; atcs_insert_buffer can form a delay or inverter chain.
+2. If setup/driver margin blocks insertion, create setup margin with a bounded paired action, then insert. Standalone sizing is not expert evidence.
+3. Enable strict legalization; widen bounded displacement or move declared neighbors/use farther placement for detour delay.
+4. Repair transition/drive with a stronger buffer or inverter chain, then measure hold WNS and both checks.
+5. Try atcs_split_load, atcs_split_net or atcs_move_cell where topology supports. Keep or undo each coherent batch; record exact exhausted mechanisms, not a blanket density verdict.
 
 ### Setup ladder
 
-1. Remove buffer from a redundant chain: `atcs_remove_buffer` (its nets in the domain; a local session admits a
-   buffer's input net, never a global one), or `atcs_fix_setup_pins` with `removeBufferOnly 1`, as its own pass.
-2. Size up or VT-swap the weak stage: `atcs_size_cell`, `atcs_exchange_cell` (partner instances in
-   the domain), or `methods size_cell`.
-3. Buffer to raise drive or isolate a load: `atcs_insert_buffer`, `atcs_split_load`, or
-   `methods insert_buffer`.
-4. Split net for a long or multi-branch net: `atcs_split_net` (rule `wire_length` or `cap`,
-   2..16 segments), or `methods split_net`.
-5. Size down off-path cells that do not violate, to cut the load on the path: `sizeDownOnly 1`.
-
-Setup fixes run at effort `medium` or `high`, on the slot's own pins only. Use `atcs_move_cell` inside
-a region only when the analysis blames distance (net delay) and a region was planned.
+Create margin for the intended hold insertion by removing a redundant buffer, isolating a load with buffer/branch topology, or split net. Size/exchange may enable this paired repair, never count as standalone expert work. Compensate transition/drive and re-measure before performing the hold insertion. Keep the final batch only with acceptable setup and physical collateral. Targeted atcs_fix_hold_pins/atcs_fix_setup_pins may commit actions that cannot be undone; they are not primary trial moves. Their sizeCellOnly/insert_buffer/split_net options remain bounded by the existing contract.
 
 ### Target/margin pairing
 
@@ -154,18 +150,7 @@ a region only when the analysis blames distance (net delay) and a region was pla
 
 ### Blockers vs bulk
 
-- A blocker is an endpoint that XTop's auto-fix leaves violating, with a fail reason (`atcs_fail_reasons`,
-  `summarize_gba_violations -with_fail_reason`): its reason is not "no violation left". The worst check of
-  every required scenario is a blocker until it is repaired.
-- The bulk is everything auto-fix clears by itself. It is not worker work. The batch's auto-finish runs the
-  control arm's exact qualified plain auto-fix sequence (setup size, setup buffer, hold size-only, hold;
-  `packs/xtop-timing-closure/flow/closure.py`) after the expert repairs, which are locked with
-  `set_dont_touch` first, so the two arms differ only by the recipe. Both arms then read
-  `summarize_gba_violations -exclude_path -with_top_n N -with_fail_reason` per check; the chosen arm's
-  reasons reach the next plan through the residual cases. Auto-finish ends with a hold flow, so its setup
-  reasons are unread: a setup worker reads them in its own session after its setup fix.
-- Workers spend their budget on blockers only: fixing bulk endpoints takes area and routing from
-  auto-finish and blurs a worker's own gain. Disjoint edit domains: no instance or net in two active slots.
+Initial common AutoFix handles bulk before this stage. Workers specialize in persistent blockers and their fail reasons, with disjoint current task claims. The Lead integrates and continues manual topology/placement/margin repair; final global auto-finish is absent from the current route. Native trials are probabilistic evidence, not a guaranteed remedy or refreshed signoff.
 
 ## Counterexample
 

@@ -420,8 +420,8 @@ class OperatorLoopTest(unittest.TestCase):
 
     def test_the_knowledge_says_an_undo_is_never_a_stop_and_to_try_freely(self):
         text = " ".join((PACK_DIR / "knowledge" / "xtop-expert-operator.md").read_text().split())
-        for words in ("then try the next rung", "an undo is never a stop", "Try freely inside your domain",
-                      "no wrong attempt, only an unmeasured one", "every rung the scope allows"):
+        for words in ("an undo is never a stop", "next distinct useful", "actual Host budget",
+                      "Standalone sizing is not expert evidence", "coherent batch"):
             self.assertIn(words, text)
 
     def test_each_team_carries_the_next_rung_and_the_wide_default_scope(self):
@@ -431,9 +431,9 @@ class OperatorLoopTest(unittest.TestCase):
         for slot in SLOTS:
             members = team_members(slot)
             with self.subTest(slot=slot):
-                self.assertIn("evidence for the next rung, not a reason to stop", members["operator"])
-                self.assertIn("atcs_undo on regression or no gain, and continue", members["operator"])
-                self.assertIn("untried targets or mechanisms", members["operator"])
+                self.assertIn("next distinct mechanism/range", members["operator"])
+                self.assertIn("keep or undo", members["operator"])
+                self.assertIn("actual Host budget remains", members["operator"])
                 self.assertNotIn("researcher", members)
                 self.assertIn("Advisory only: nothing waits for you and nothing is gated on you", members["reviewer"])
                 self.assertIn("optional: true", members["reviewer"])
