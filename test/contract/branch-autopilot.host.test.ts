@@ -328,7 +328,7 @@ function players({ host, runId, owner, workspace }: Driven) {
     host.ctx.hima.interactive(operator.childSessionId, { runId, executionId: operator.effective.recipe!.executionId,
       nodeId: operator.effective.recipe && operator.contract.nodeRef, ownerEpoch: control().epoch, controlRevision: control().revision, ...body }) as Promise<Record<string, any>>;
   /** The Operator's whole session: open, dump, the one scoped mutation, dump, export, close — by the
-   *  toolkit's own close, or (`harnessClose`) by asking the Harness to close the session. */
+   *  toolkit's own close, or (`harnessClose`) by recovering from a premature transport close. */
   const operate = async (branch: Branch, operator: ReturnType<typeof runDelegations>[number], harnessClose = false) => {
     const opened = await interactive(operator, { action: 'open', requestId: `open-${branch.id}-${++serial}` });
     assert.equal(opened.status, 'opened', JSON.stringify(opened));
@@ -343,7 +343,14 @@ function players({ host, runId, owner, workspace }: Driven) {
       assert.equal(sent.status, 'completed', `${name} in branch ${branch.id}: ${JSON.stringify(sent)}`);
     }
     if (harnessClose) {
-      const closed = await interactive(operator, { action: 'close', requestId: `close-${branch.id}-${++serial}`, toolSessionId });
+      const premature = await interactive(operator, { action: 'close', requestId: `close-premature-${branch.id}-${++serial}`, toolSessionId });
+      assert.equal(premature.status, 'refused', JSON.stringify(premature));
+      assert.match(premature.reason, /atcs_close/);
+      const id = `atcs_close-${branch.id}-${++serial}`;
+      const finalized = await interactive(operator, { action: 'input', requestId: id, commandId: id,
+        toolSessionId, command: { name: 'atcs_close', args: {} }, waitMs: 5_000 });
+      assert.equal(finalized.status, 'completed', JSON.stringify(finalized));
+      const closed = await interactive(operator, { action: 'close', requestId: `close-final-${branch.id}-${++serial}`, toolSessionId });
       assert.equal(closed.status, 'closed', JSON.stringify(closed));
     }
     await waitUntil(`${branch.operate} is ready`, () => control().executions[operator.effective.recipe!.executionId]?.phase === 'ready', 30_000, 25);
@@ -503,7 +510,6 @@ test('an Operator that asks the Harness to close its session settles its node do
       'the requested close is no failed attempt');
     const done = records.findLast((r) => r.type === 'node' && r.nodeId === 'operate-a' && r.state === 'done');
     assert.ok(done?.type === 'node', 'operate-a settled done');
-    assert.match(done.reason ?? '', /its Operator closed tmux session/);
     assert.equal(Object.values(p.control().executions).filter((e) => e.nodeId === 'operate-a').length, 1, 'one attempt, no second Team');
     assert.ok(records.some((r) => r.type === 'node' && r.nodeId === 'capture-a' && r.state === 'done'), 'its capture sealed the dumps');
   });

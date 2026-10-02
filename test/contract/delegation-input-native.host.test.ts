@@ -4,7 +4,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { retainRunMaterial } from '@hima/harness';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
-import { localHome } from './support/fabric.ts';
+import { localHome, waitUntil } from './support/fabric.ts';
 import { timingProbePackId } from './support/pack.ts';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
@@ -85,7 +85,10 @@ test('native delegated input rendering never labels omitted structured evidence 
       },
     }) as any;
     assert.equal(child.status, 'created', JSON.stringify(child));
-    const childAgent = host.ctx.get('agents')?.get(child.receipt.childSessionId as never);
+    const childSessionId = child.receipt.childSessionId as string;
+    await waitUntil('the continuable child is published in the native Agent registry',
+      () => host.ctx.get('agents')?.get(childSessionId as never) !== undefined, 4_000, 25);
+    const childAgent = host.ctx.get('agents')?.get(childSessionId as never);
     assert.ok(childAgent, 'the recorded delegation owns a real native child Agent');
 
     const result = await host.ctx.tools.execute({
@@ -172,7 +175,10 @@ test('native delegated input rendering never labels omitted structured evidence 
       },
     }) as any;
     assert.equal(smallChild.status, 'created', JSON.stringify(smallChild));
-    const smallChildAgent = host.ctx.get('agents')?.get(smallChild.receipt.childSessionId as never);
+    const smallChildSessionId = smallChild.receipt.childSessionId as string;
+    await waitUntil('the small continuable child is published in the native Agent registry',
+      () => host.ctx.get('agents')?.get(smallChildSessionId as never) !== undefined, 4_000, 25);
+    const smallChildAgent = host.ctx.get('agents')?.get(smallChildSessionId as never);
     assert.ok(smallChildAgent);
     const smallResult = await host.ctx.tools.execute({
       callId: 'call-native-small-delegation-input' as never,

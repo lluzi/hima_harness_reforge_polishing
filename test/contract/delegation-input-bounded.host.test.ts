@@ -15,7 +15,7 @@ import { test } from 'node:test';
 import { retainRunMaterial } from '@hima/harness';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { repoRoot } from './support/dsh-home.ts';
-import { localHome } from './support/fabric.ts';
+import { localHome, waitUntil } from './support/fabric.ts';
 import { timingProbePackId } from './support/pack.ts';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
@@ -54,7 +54,10 @@ test('a large exact input is read through bounded path/offset/limit selections; 
         inputRefs: [observation.id], allowedTools: ['hima_delegation_input'], budgetShare: { maxElapsedMs: 300_000, maxFollowups: 0 },
         dependencyIds: [], recipient: { kind: 'run-owner', sessionId: actor } } }) as any;
     assert.equal(child.status, 'created', JSON.stringify(child));
-    const agent = host.ctx.get('agents')?.get(child.receipt.childSessionId as never);
+    const childSessionId = child.receipt.childSessionId as string;
+    await waitUntil('the continuable child is published in the native Agent registry',
+      () => host.ctx.get('agents')?.get(childSessionId as never) !== undefined, 30_000, 25);
+    const agent = host.ctx.get('agents')?.get(childSessionId as never);
     assert.ok(agent);
     let call = 0;
     // The registered native tool takes the new arguments (its first call, below); the child's session
@@ -69,7 +72,7 @@ test('a large exact input is read through bounded path/offset/limit selections; 
       if (call === 0) answer = await viaTool(args);
       else {
         call++;
-        try { answer = { isError: false, text: JSON.stringify(await host.ctx.hima.delegationInput(child.receipt.childSessionId, { runId: runId!, recordId: observation.id, ...args } as never)) }; }
+        try { answer = { isError: false, text: JSON.stringify(await host.ctx.hima.delegationInput(childSessionId, { runId: runId!, recordId: observation.id, ...args } as never)) }; }
         catch (error) { answer = { isError: true, text: String((error as Error).message) }; }
       }
       if (!answer.isError) assert.ok(Buffer.byteLength(answer.text) <= VIEW_LIMIT, `one bounded envelope: ${Buffer.byteLength(answer.text)} bytes`);
