@@ -248,6 +248,24 @@ const interactiveCommandClasses = z.strictObject({
   if (seen.size === 0) ctx.addIssue({ code: 'custom', message: 'an interactive tool must classify at least one command as read, mutate or save' });
 });
 
+/**
+ * One ordinary Pack tool may be handed to the Site's generic engineering executor instead of being
+ * launched as the tool's batch argv.  The declaration deliberately points only at things the Pack
+ * already owns: outputs, knowledge and the Reader-backed output that comes back.  The goal and the
+ * actual task text stay on the controlled execution request, while the Site chooses the executor.
+ */
+export const engineeringOutsourcing = z.strictObject({
+  role: z.literal('resident-engineering-agent'),
+  reads: z.array(declaredName).min(1).max(128).refine((items) => new Set(items).size === items.length, {
+    error: 'outsourcing reads must be unique',
+  }),
+  knowledge: z.array(knowledgeFileName).min(1).max(128).refine((items) => new Set(items).size === items.length, {
+    error: 'outsourcing knowledge files must be unique',
+  }),
+  produces: declaredName,
+});
+export type EngineeringOutsourcing = z.infer<typeof engineeringOutsourcing>;
+
 export const packTool = z.strictObject({
   id: packId,
   /** The executable a Pack author recommends for this tool. It is advice for review, not a lock. */
@@ -267,6 +285,8 @@ export const packTool = z.strictObject({
    */
   licences: z.record(licenceName, z.number().int().positive()).default({}),
   argv: z.array(z.string().min(1)).min(1),
+  /** Optional complete engineering-task handoff. Omission preserves the ordinary batch tool. */
+  outsourcing: engineeringOutsourcing.optional(),
   /** Optional typed line-oriented interactive adapter. Omission preserves the batch tool. */
   interactive: z.strictObject({
     mode: z.enum(['interactive-only', 'hybrid']),
@@ -810,7 +830,7 @@ export const packKnowledgeManifest = z.strictObject({
 export type PackKnowledgeManifest = z.infer<typeof packKnowledgeManifest>;
 
 /** The Harness version against which Pack minimum versions are compared. */
-export const harnessVersion = '0.2.1';
+export const harnessVersion = '0.2.2';
 
 export type PackAuthorStatus = 'development' | 'trial' | 'released' | 'deprecated' | 'other';
 
@@ -2019,6 +2039,20 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
       }
     }
     wrappers.add(tool.argv[0]!);
+    if (tool.outsourcing !== undefined) {
+      if (tool.interactive !== undefined) broken(packFiles.contract, `tool "${tool.id}" declares both outsourcing and interactive protocols`);
+      const outputs = new Map(contract.outputs.map((output) => [output.name, output]));
+      for (const name of tool.outsourcing.reads) {
+        if (!outputs.has(name)) broken(packFiles.contract, `tool "${tool.id}" outsourcing reads unknown output "${name}"`);
+      }
+      const knowledge = new Set(contract.knowledge.map((item) => item.file));
+      for (const file of tool.outsourcing.knowledge) {
+        if (!knowledge.has(file)) broken(packFiles.contract, `tool "${tool.id}" outsourcing references undeclared knowledge file "${file}"`);
+      }
+      const produced = outputs.get(tool.outsourcing.produces)
+        ?? broken(packFiles.contract, `tool "${tool.id}" outsourcing produces unknown output "${tool.outsourcing.produces}"`);
+      if (produced.reader === undefined) broken(packFiles.contract, `tool "${tool.id}" outsourcing produces "${produced.name}", which declares no reader`);
+    }
     const interactiveArgv = tool.interactive?.argv;
     if (interactiveArgv !== undefined) {
       try { literalArgument(interactiveArgv[0]!, `interactive tool "${tool.id}" wrapper`); } catch (error) { broken(packFiles.contract, (error as Error).message); }
@@ -3091,6 +3125,10 @@ export function checkPack(pack: Pack, site: Site): PackCheck {
     const interactiveWrapper = tool.interactive?.argv?.[0];
     if (interactiveWrapper !== undefined && !permitsWrapper(site, interactiveWrapper)) {
       const reason = `interactive tool "${tool.id}": ${refusedWrapper(site, interactiveWrapper)}`;
+      return fail({ ...head, error: reason }, reason);
+    }
+    if (tool.outsourcing !== undefined && site.bindings.engineeringCapabilities === undefined) {
+      const reason = `tool "${tool.id}" delegates to a resident engineering agent, but site ${site.name} has no engineeringCapabilities binding`;
       return fail({ ...head, error: reason }, reason);
     }
     return { ...head, error: undefined };
