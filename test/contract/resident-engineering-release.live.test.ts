@@ -121,7 +121,7 @@ test('Issue #82 release qualification: native OpenCode repackages retained real 
 
     const seed = ssh(`set -eu; new=${pquote(workspace)}; old=${pquote(OLD_WORKSPACE)}; src=${pquote(OLD_ARTIFACT_ROOT)}; `
       + `mkdir -p -- "$new/state" "$new/retained-source"; `
-      + `cp -- "$old/state/baseline.json" "$old/state/common-stage.json" "$old/state/xtop-context.json" "$old/state/autofix-reference.json" "$new/state/"; `
+      + `cp -- "$old/state/readiness.json" "$old/state/baseline.json" "$old/state/common-stage.json" "$old/state/xtop-context.json" "$old/state/autofix-reference.json" "$new/state/"; `
       + `(cd "$old" && cp --parents -- research/observe/common-r1/residual-analysis/hold.rpt research/observe/common-r1/residual-analysis/setup.rpt research/control/autofix-reference/best/hold.rpt research/control/autofix-reference/best/setup.rpt "$new"); `
       + `cp -a -- "$src/." "$new/retained-source/"; `
       + `test "$(find "$new/retained-source/engineering/checkpoints/final-workspace" -type f | wc -l)" -eq 60; `
