@@ -68,13 +68,51 @@ ordinary AutoFix comparison. A valid best-effort delivery may finish with Goal f
 unknown effects remain honest. Model prose, CLI presence and protocol fixtures are not engineering
 value. Release preserves engineering materials and confirms owned process/container quiescence.
 
-Native authentication is a same-uid client trust boundary: the exact read-only auth mount avoids
-copying credentials into task materials but is not proof against a hostile shell reading that mount.
+The independent review reproduced a credential exposure through the same-uid read-only auth mount.
+That mount was removed: real account authentication is wrapper-host-only; a task-lifetime in-process
+broker provides the native container a sanitized profile and ephemeral route token restricted to
+`deepseek-flash` chat completions. It is not a registered Harness service or new business owner.
+The task token is transient client capability, not the account key; the broker closes with the task.
 The sandbox protects original inputs/shared libraries/foreign workspaces from writes and narrows Run
-material reads to the exact Campaign. Retain this limitation in actual field evidence.
+material reads to the exact Campaign. Installed OpenCode 1.18.34 `acp --pure` initialized/closed with
+this sanitized profile and network disabled; real provider/model use remains pending.
 
 ## Rollback
 
 Stop and reconcile the new owned task first, retaining partial/unknown evidence. Restore the previous
 Harness and explicitly installed ATCS 0.2.10 method for new tasks; do not reset a user checkout, replace
 an active Run's saved method, remove existing manual sessions, or delete delivered engineering files.
+
+## Scoped independent review and corrections
+
+The initial Standards axis reported 2 documented-standard findings; the Spec axis reported 1 P0
+and 3 P1 findings. The shared crash-recovery issue appears in both axes. Reports are retained at
+`.hima-tmp/coordination/opencode-design/review-standards.md` and `review-spec.md` in the primary
+polishing workspace, independently of the worktree. Only the findings' changed surfaces are reviewed
+again; unchanged source and historical methods are not requalified.
+
+- `0ba20af1`: raw XTop fail-reason parsing yields bounded positive blocker evidence, never global zero.
+  Model counts/regression lists cannot authorize a Goal. Ordinary AutoFix uses the same Goal/residual
+  comparison, retains its best actual state, handles regressions/oscillation/stagnation, allows positive
+  satisfied setup margin to fund hold repair, and avoids a round when the initial state meets the Goal.
+  Legacy expert/canvas tests load the explicit 0.2.10 snapshot. Focused Reader 11/11, comparator 10/10,
+  expert Host 1/1, canvas 43/43 and new Pack public dry path 1/1 pass.
+- `fef461fd`: public Host status/cancel/release and Run cancellation use the fixed wrapper reconciliation
+  Job to collect actual owned PID-start/PGID/CID/descendant quiescence, without replay. Missing/partial
+  identity remains unknown and fenced; recovery avoids ordinary tool settlement. Host 12/12 and
+  affected recovery/control/Job/conversation 34/34 pass; no new typecheck errors.
+- `06dadceb`: directory-FD/no-follow artifact traversal blocks parent symlink and linked-file escape;
+  host-only account credentials and the task broker protect native model material; stopped facts are
+  serialized across normal signal/reconcile; recovery has no CLI/version/provider preflight. Site
+  tests 22/22, Python compile/diff checks and installed-client zero-model profile probe pass.
+
+Global transition/capacitance/fanout/legality all-clear is not proven by timing-fix fail-reason tables.
+The Reader explicitly keeps that scope unknown. This can make the whole Goal/effect comparison
+unknown despite measured setup/hold progress; best-effort engineering delivery remains valid.
+There is no fabricated global collateral PASS or physical-signoff claim.
+
+The first broad local validation was interrupted after reproducing six legacy ATCS fixture-loading
+failures (651 seconds, 0 SSH, 0 Electron); its original output remains
+`.hima-tmp/issue82-full-local.log`. It is not a completed or passed full suite. Final full validation
+will run after the scoped fixes and final candidate freeze. No live model, EDA or remote deployment
+has started.
