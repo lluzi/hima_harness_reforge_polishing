@@ -25,6 +25,14 @@ claim to hide it from OpenCode shell tools and only keeps literal credentials ou
 frames, ACP traces and deliveries. This simpler adapter has local deterministic validation only and
 must receive a new candidate identity before any future deployment.
 
+The subsequent release candidate deployed wrapper
+`5c24d5d5651bfe0e0645111f254df9e51d46fefc055c62afc61f89ac2bf3d7b7` and capability
+`82d30597daf315170c4190fe5dd3c276ee53665269b3b9195036054e1d9a7000`, retaining the prior bytes under
+the versioned operator-admin archive. Run `run-76c3cb7c-b790-4e9c-85a5-0d5d943734d3` then proved real
+OpenCode 1.18.34 native auth, normal tool/private-directory access, same-session follow-up, Host
+materialization, original Reader acceptance and release/quiescence. It repackaged only retained actual
+artifacts, started no XTop/QuaLib and did not create a second timing result.
+
 ## Native and protocol identity
 
 - Site kernel: `Linux 7.0.0-31-generic`; account: `luzi`.

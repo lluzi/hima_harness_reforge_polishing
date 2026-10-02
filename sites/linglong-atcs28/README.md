@@ -1,3 +1,26 @@
+# Issue #82 current resident release (Pack 0.3.1)
+
+Current deployed resident identities:
+
+- wrapper `/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/resident-engineering-wrapper.py`,
+  SHA-256 `5c24d5d5651bfe0e0645111f254df9e51d46fefc055c62afc61f89ac2bf3d7b7`, mode 0555;
+- capability `/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-v1.json`,
+  SHA-256 `82d30597daf315170c4190fe5dd3c276ee53665269b3b9195036054e1d9a7000`, mode 0444;
+- unchanged native context SHA-256
+  `ff620f4d7aa64482a91f65a5f49bc78a6b1ab5ebbedf5f9eb04a851980e09a0c`.
+
+Rollback bytes are under
+`operator-admin/resident-engineering-v1/archive/20261002T171900Z-2d2e9dc5/`. Pack 0.3.1 digest is
+`4bc248ff1aa8a2a636c1cfbc42ce5dc03d73d9f50d6a5c5f9356b4ac8a833e73`; its resident playbook adds
+evidence-led persistent-session, branch-margin, reset/IO regeneration and coupled Hold/Setup methods.
+
+Release qualification Run `run-76c3cb7c-b790-4e9c-85a5-0d5d943734d3` passed real native-auth OpenCode,
+same-task follow-up, current Host staging, original ATCS Reader and release/quiescence using the retained
+actual checkpoint/ECO/reports. It ran no XTop/QuaLib and leaves the original Setup 18 / Hold 0
+best-effort result unchanged. Evidence entry:
+`.hima-tmp/issue82-release-evidence/issue82-release-20261002T174344Z/evidence.json` in the Issue #82
+polishing worktree.
+
 # Path Rank compatibility repair (v31 / Pack 0.2.10)
 
 Development candidate, not yet native-qualified. The existing typed rank command now admits

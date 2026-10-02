@@ -1,4 +1,4 @@
-# ATCS 0.3 run contract
+# ATCS 0.3.1 run contract
 
 ## Goal template
 
@@ -81,7 +81,10 @@ authorized XTop technique, measure candidates, undo regressions and return the b
 
 ## Knowledge
 
-resident-timing-playbook.md defines whole-task autonomy, experiment loop, best-state selection and
-the admitted result shape. xtop-capabilities.md describes native mechanics without prescribing a
+resident-timing-playbook.md defines whole-task autonomy, one persistent XTop session, input-branch
+margin analysis, buffer-versus-delay selection, reset/IO port-net regeneration, legalization,
+coupled Hold-clean/setup compensation, best-state selection and the admitted result shape. These
+methods carry source hashes and retained-case scope; they do not prescribe historical objects or an
+ECO answer. xtop-capabilities.md describes native mechanics without prescribing a
 design answer. state-and-evidence.md keeps actual, predicted, unknown and final-signoff meanings
 separate. Version 0.2.10's contract, graph, semantics and method records remain under legacy/0.2.10.

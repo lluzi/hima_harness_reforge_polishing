@@ -40,6 +40,36 @@ ACP session. This means the trusted OpenCode process/tools can read native auth;
 copying literal credentials into prompts, request frames, traces and results. The simplified candidate
 has local deterministic coverage but has not been deployed or live-qualified.
 
+## Current 0.3.1 release qualification
+
+Release source `dcc4e906` deployed only the changed wrapper and capability bytes. The prior deployed
+files are recoverable under
+`/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/archive/20261002T171900Z-2d2e9dc5`.
+Current identities are:
+
+- Pack `agentic-timing-closure-system@0.3.1`, digest
+  `4bc248ff1aa8a2a636c1cfbc42ce5dc03d73d9f50d6a5c5f9356b4ac8a833e73`;
+- resident playbook SHA-256
+  `8bf20932b00ea820d5c01c9ff204b5105c449c6afac6d55e8106680648b1a250`;
+- wrapper SHA-256 `5c24d5d5651bfe0e0645111f254df9e51d46fefc055c62afc61f89ac2bf3d7b7`;
+- capability SHA-256 `82d30597daf315170c4190fe5dd3c276ee53665269b3b9195036054e1d9a7000`.
+
+Opt-in release qualification Run `run-76c3cb7c-b790-4e9c-85a5-0d5d943734d3` used real OpenCode
+1.18.34 native config/auth and `deepseek/deepseek-flash`, normal shell/Python reads and private writes,
+one same-session follow-up, current Host artifact materialization, the original
+`atcs-engineering-result` Reader, and release with `owned.quiescent=true`. It started no XTop or
+QuaLib. The qualification overlay changed only the temporary installed graph entry/autopilot so it
+could enter `fix-timing` without rerunning common R1/AutoFix.
+
+The task repackaged the old Run's actual 60-file checkpoint, ECOs, scripts, raw timing reports and two
+legality reports retained in the original private workspace. The current Reader emitted error count 0,
+effect-versus-AutoFix 1, Setup WNS -0.0237 ns and Hold WNS 0. This is proof that current native auth,
+same-task lifecycle, Host staging and Reader integration accept the retained result. It is not a new
+timing experiment; the engineering result remains Setup 18 / Hold 0, best-effort, with unchanged
+unknown/global/signoff limits. Evidence is
+`.hima-tmp/issue82-release-evidence/issue82-release-20261002T174344Z/evidence.json` (SHA-256
+`d5e7e51903cf63ddf2d49825551807455ace374b180be18166608be65db62e42`).
+
 The user's 2026-10-02 `/implement #82` instruction overrides the default development model policy
 for this task: implementation and independent review workers use GPT-5.6 Sol/high, fresh bounded
 contexts and no recursive delegation. The existing primary session coordinates integration.
