@@ -150,6 +150,7 @@ test('Issue #82 release qualification: native OpenCode repackages retained real 
     const context = 'The next message will ask you to copy the retained real engineering tree, rebind only the result task identity, recompute its canonical id with flow/atcs/core.py, and produce the normal delivery candidate. This is packaging/integration, not new timing work.';
     const startedTask = await execute('qualify-start', 'engineering', { executionId,
       engineering: { operation: 'start', goal, context } });
+    assert.ok(startedTask.data, `resident start returned no data: ${JSON.stringify(startedTask)}`);
     assert.equal(startedTask.data.status, 'started', JSON.stringify(startedTask));
     const taskId = startedTask.data.taskId as string;
     const taskDir = path.posix.join(workspace, '.hima-engineering', taskId);
