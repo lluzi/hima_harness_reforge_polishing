@@ -318,6 +318,25 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         auth_path = wrapper.capability["environment"]["credentialReadPaths"][0]
         self.assertNotIn(auth_path, "\n".join(wrapper.native_argv()))
 
+    def test_production_shell_keeps_eda_init_banner_off_acp_stdout(self):
+        self.use_production_scope_fixture()
+        module = load_wrapper_module()
+        wrapper = module.Wrapper(self.task, self.capability)
+        argv = wrapper.native_argv()
+        shell_at = argv.index("/bin/bash")
+        shell = argv[shell_at:shell_at + 5]
+        init = self.root / "eda-init.sh"
+        init.write_text('printf "EDA environment loaded\\n"\n')
+        native = 'printf \'{"jsonrpc":"2.0","id":1,"result":{}}\\n\''
+        completed = subprocess.run(
+            [*shell, "hima-native", "/bin/sh", "-c", native],
+            env={"EDA_INIT": str(init), "EMPYREAN_LICENSE_MODE": "old", "PATH": "/usr/bin:/bin"},
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, '{"jsonrpc":"2.0","id":1,"result":{}}\n')
+        self.assertEqual(completed.stderr, "EDA environment loaded\n")
+
     def test_production_namespace_masks_sibling_task_home_and_rebinds_only_own_task(self):
         self.use_production_scope_fixture()
         business_output = self.task.parent.parent / "flow/results/current-output.json"

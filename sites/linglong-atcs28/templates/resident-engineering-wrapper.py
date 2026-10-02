@@ -734,7 +734,7 @@ class Wrapper:
         argv.extend([
             "--env", "HOME=/home/luzi", sandbox["image"],
             "/bin/bash", "--noprofile", "--norc", "-c",
-            'if [ -n "${EDA_INIT:-}" ] && [ -r "$EDA_INIT" ]; then . "$EDA_INIT"; fi; '
+            'if [ -n "${EDA_INIT:-}" ] && [ -r "$EDA_INIT" ]; then . "$EDA_INIT" >&2; fi; '
             'test "${EMPYREAN_LICENSE_MODE:-}" = old; exec "$@"',
             "hima-native", native["executable"], *native["argv"],
         ])

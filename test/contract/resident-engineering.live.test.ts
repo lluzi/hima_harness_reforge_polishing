@@ -100,6 +100,12 @@ const engineeringCalls = (owner: any): EngineeringCall[] => toolCalls(owner)
   .filter((call) => call.name === 'hima_execute' && call.args.action === 'engineering')
   .map((call) => call.args as EngineeringCall);
 
+function assertNoBusyStatus(calls: readonly EngineeringCall[], turn: string): void {
+  const statuses = calls.filter((call) => call.engineering?.operation === 'status');
+  assert.ok(statuses.length <= 1,
+    `${turn} busy-polled ${statuses.length} resident status snapshots instead of yielding: ${JSON.stringify(calls)}`);
+}
+
 function engineeringReceipts(host: any, runId: string): any[] {
   const run = host.ctx.hima.ledger.run(runId);
   return Object.values(run?.control?.requests ?? {}).map((request: any) => request.receipt)
@@ -243,9 +249,11 @@ test('Issue #82 field acceptance: one standard Hima owner delegates complete XTo
     await sayAsUser(owner, initialPrompt);
 
     let calls = engineeringCalls(owner);
+    assertNoBusyStatus(calls, 'the initial owner turn');
     const starts = calls.filter((call) => call.engineering?.operation === 'start');
-    assert.equal(starts.length, 1, `the real owner must start exactly one resident task: ${JSON.stringify(calls)}`);
-    const ownerStart = starts[0]!;
+    const boundStarts = starts.filter((call) => typeof call.executionId === 'string');
+    assert.equal(boundStarts.length, 1, `the real owner must effect exactly one execution-bound resident start: ${JSON.stringify(calls)}`);
+    const ownerStart = boundStarts[0]!;
     assert.equal(ownerStart.run, runId);
     assert.equal(typeof ownerStart.executionId, 'string');
     assert.equal(typeof ownerStart.engineering?.goal, 'string');
@@ -258,7 +266,8 @@ test('Issue #82 field acceptance: one standard Hima owner delegates complete XTo
     const executionId = String(ownerStart.executionId);
     liveTaskId = taskId;
     liveExecutionId = executionId;
-    evidence.residentTask = { taskId, executionId, start: startReceipt, ownerStart };
+    evidence.residentTask = { taskId, executionId, start: startReceipt, ownerStart,
+      unboundStartAttempts: starts.filter((call) => typeof call.executionId !== 'string') };
 
     const taskDir = path.posix.join(workspace, '.hima-engineering', taskId);
     liveTaskDir = taskDir;
@@ -276,8 +285,10 @@ test('Issue #82 field acceptance: one standard Hima owner delegates complete XTo
       'One priority clarification for the same engineering task: pursue any reasonable supported XTop technique that the actual evidence motivates, compare candidates on actual timing effect, and retain the best measured state even if the final Goal stays false.',
       'Please convey this as a normal follow-up in the existing task and continue owning that same Run. Do not start a replacement task and do not treat elapsed time, call count or cost as the result.',
     ].join('\n');
+    const beforeClarification = calls.length;
     await sayAsUser(owner, clarification);
     calls = engineeringCalls(owner);
+    assertNoBusyStatus(calls.slice(beforeClarification), 'the clarification owner turn');
     const messages = calls.filter((call) => call.engineering?.operation === 'message');
     assert.ok(messages.length >= 1, `the owner did not continue the same task by message: ${JSON.stringify(calls)}`);
     assert.ok(messages.every((call) => call.run === runId && call.executionId === executionId));
@@ -301,10 +312,12 @@ test('Issue #82 field acceptance: one standard Hima owner delegates complete XTo
         assert.fail(`the Run controller has an uncertain stop and continuation is forbidden: ${JSON.stringify(current.control.stop)}`);
       }
       await delay(POLL_INTERVAL_MS);
+      const beforeFollowup = engineeringCalls(owner).length;
       await sayAsUser(owner, [
         `Continue owning the same Hima Run ${runId} and its existing resident engineering task.`,
         'First inspect the durable Run and native task feedback. If work remains in progress, report that fact without starting replacement work. If a complete delivery is available, collect and verify it, release that same task, complete its node, and let the Pack reach its honest bounded result. If an operation is unknown, preserve it and report the uncertainty rather than replaying it.',
       ].join('\n'));
+      assertNoBusyStatus(engineeringCalls(owner).slice(beforeFollowup), `owner follow-up ${poll + 1}`);
     }
 
     const finalRun = host.ctx.hima.ledger.run(runId)!;
@@ -315,9 +328,18 @@ test('Issue #82 field acceptance: one standard Hima owner delegates complete XTo
     for (const operation of ['start', 'message', 'status', 'delivery', 'release']) {
       assert.ok(operations.includes(operation), `the normal owner lifecycle never invoked engineering ${operation}: ${JSON.stringify(operations)}`);
     }
-    assert.equal(calls.filter((call) => call.engineering?.operation === 'start').length, 1);
-    assert.ok(calls.every((call) => call.run === runId && call.executionId === executionId),
-      `every resident operation must retain one Run/execution identity: ${JSON.stringify(calls)}`);
+    const effectBoundCalls = calls.filter((call) => typeof call.executionId === 'string');
+    assert.equal(effectBoundCalls.filter((call) => call.engineering?.operation === 'start').length, 1);
+    const unboundNonStartCalls = calls.filter((call) => typeof call.executionId !== 'string'
+      && call.engineering?.operation !== 'start');
+    assert.deepEqual(unboundNonStartCalls, [],
+      `only a malformed start may be unbound to an execution: ${JSON.stringify(unboundNonStartCalls)}`);
+    assert.ok(effectBoundCalls.every((call) => call.run === runId && call.executionId === executionId),
+      `every execution-bound resident operation must retain one Run/execution identity: ${JSON.stringify(calls)}`);
+    const startEffects = receipts.filter((receipt) => receipt.data?.operation === 'start'
+      && ['admitted', 'started', 'unknown'].includes(receipt.data?.status));
+    assert.equal(startEffects.length, 1,
+      `one and only one resident start effect may be admitted: ${JSON.stringify(receipts)}`);
     const delivery = operationStatus(host, runId, 'delivery');
     const release = operationStatus(host, runId, 'release');
     const acceptedMessageReceipts = receipts.filter((receipt) => receipt.data?.operation === 'message' && receipt.data?.status === 'accepted');
