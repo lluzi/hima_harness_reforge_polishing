@@ -61,9 +61,9 @@ R3/Q14 确认：Guide 入口统一，各工程工作区保留独立的 Guide 历
 
 ## 驻场工程 Agent（2026-10-02 方向确认，未实现）
 
-用户在 Issue #82 的设计访谈中确认引入由 OpenCode 支撑的通用驻场工程 Agent，承接完整工程任务，自主研究、Coding、操作获准工具并组织内部协作者。Hima 的工程对接 Agent 提供用户目标、工程材料和工作边界，与其持续沟通、传达用户介入并接收验收成果；不再重复组织同一任务的内部修复团队。首个业务是 Fix Timing：修复目标违例、输出脚本和完整工程交付，并超过一般 AutoFix 迭代。
+用户在 Issue #82 的设计访谈中确认引入由 OpenCode 支撑的通用驻场工程 Agent，承接完整工程任务，自主研究、Coding、操作获准工具并组织内部协作者。Hima 的工程对接 Agent 提供用户目标、工程材料和工作边界，与其持续沟通、传达用户介入并接收验收成果；不再重复组织同一任务的内部修复团队。首个业务是 Fix Timing：在 XTop 内运用各种合理手段充分修复目标违例，输出脚本和完整工程材料，修复效果超过一般 AutoFix 迭代。本次判断仅看修复效果，不将速度、成本或调用次数作为胜负指标，也不把后续实现/提取/PrimeTime作为本升级前置条件；XTop结果仍不代表最终物理签核。
 
-这是已确认的产品方向，不是已实现能力或已证明时序收益。违例范围、业务胜负判据、驻场与任务上下文、权限审批、持久会话及现有 Run 的具体衔接继续通过设计访谈确定。原生 DSH / OpenCode AB 和小程序连通检查不作为工程价值准入；用户要求的 AutoFix 效果比较独立保留。责任取舍见 [ADR-0017](adr/0017-resident-engineering-agent-owns-engineering-execution.md)，任务与访谈见 [Issue #82](https://github.com/lluzi/hima_harness_reforge_polishing/issues/82)。
+这是已确认的产品方向，不是已实现能力或已证明时序收益。“驻场”是按任务外包的能力称呼：需要时启用，同一任务内持续协作，用完释放，保留工程产物与证据；不增加常驻服务或长期项目记忆架构。实际权限/工具、任务结束语义与既有执行接口的简单衔接继续收敛。原生 DSH / OpenCode AB 和小程序连通检查不作为工程价值准入；用户要求的 AutoFix 效果比较独立保留。责任取舍见 [ADR-0017](adr/0017-resident-engineering-agent-owns-engineering-execution.md)，任务与访谈见 [Issue #82](https://github.com/lluzi/hima_harness_reforge_polishing/issues/82)。
 
 ## Pack 与探索行为
 
