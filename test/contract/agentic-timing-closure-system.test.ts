@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, readFile, writeFile, appendFile, realpath } from 'node:fs/promises';
+import { cp, mkdir, readFile, writeFile, appendFile, realpath, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
 import { loadPack, checkPack, loadSite, packStage, installPackMethod, strategyFrom } from '@hima/harness';
@@ -16,6 +16,79 @@ import { himaCommand } from './support/command.ts';
 import { writeLocalSite } from './support/site.ts';
 
 const packId = 'agentic-timing-closure-system';
+
+async function copyLegacyAtcsPack(packsDir: string): Promise<string> {
+  const variant = path.join(packsDir, packId);
+  await cp(path.join(repoRoot, 'packs', packId), variant, { recursive: true });
+  const snapshot = path.join(variant, 'legacy/0.2.10');
+  await cp(path.join(snapshot, 'contract.yml'), path.join(variant, 'contract.yml'));
+  await cp(path.join(snapshot, 'graph.yml'), path.join(variant, 'graph.yml'));
+  await cp(path.join(snapshot, 'semantics.yml'), path.join(variant, 'semantics.yml'));
+  for (const file of ['INTENT.md', 'SPEC.md', 'FABRIC.md']) {
+    await cp(path.join(snapshot, file), path.join(variant, file));
+  }
+  await rm(path.join(variant, 'TEST.md'), { force: true });
+  return variant;
+}
+
+test('ATCS 0.3 outsources one whole fix-timing node and keeps XTop engineering evidence separate from final signoff', async () => {
+  const pack = loadPack(path.join(repoRoot, 'packs'), packId);
+  assert.equal(pack.contract.version, '0.3.0');
+
+  const tool = pack.contract.tools.find(item => item.id === 'fix-timing') as any;
+  assert.ok(tool, 'the Pack declares one fix-timing tool');
+  assert.deepEqual(tool.outsourcing, {
+    role: 'resident-engineering-agent',
+    reads: ['inputReadiness', 'baselineState', 'nativeContext', 'commonStage', 'autoFixReference'],
+    knowledge: ['resident-timing-playbook.md', 'xtop-capabilities.md', 'state-and-evidence.md'],
+    produces: 'engineeringResult',
+  });
+  assert.equal(tool.interactive, undefined, 'outsourced work is not a second interactive protocol');
+  assert.deepEqual(tool.licences, { xtop: 1 });
+
+  const nodes = (pack.graph.nodes as any[]).map(node => node.id);
+  assert.deepEqual(nodes, [
+    'bind-inputs', 'read-readiness', 'check-inputs', 'baseline', 'prepare-native-context',
+    'common-autofix', 'auto-fix-reference', 'fix-timing', 'read-engineering-result', 'check-engineering-delivery',
+    'check-engineering-goal', 'wait-for-person',
+  ]);
+  assert.equal((pack.graph.nodes as any[]).find(node => node.id === 'fix-timing').kind, 'act');
+  assert.deepEqual((pack.graph as any).autopilot, [
+    { from: ['bind-inputs'], until: ['fix-timing', 'wait-for-person'] },
+    { from: ['read-engineering-result'], until: ['check-engineering-goal', 'wait-for-person'] },
+  ]);
+  assert.deepEqual(pack.contract.agentTeams ?? [], [], 'the new method declares no fixed internal repair team');
+  assert.deepEqual(pack.contract.workshops ?? [], [], 'the new method does not make Hima author six work packages');
+  assert.deepEqual(pack.contract.strategy, {
+    nativeReportPaths: { type: 'number', unit: 'paths', min: 1000, max: 100000, default: 10000, precision: 0 },
+  }, 'the only strategy controls raw evidence breadth, not seats, mutations or methods');
+
+  const reachableTools = new Set((pack.graph.nodes as any[]).map(node => node.parameters?.tool).filter(Boolean));
+  assert.deepEqual([...reachableTools], ['bind-inputs', 'baseline', 'prepare-native-context', 'common-autofix', 'auto-fix-reference', 'fix-timing']);
+  for (const id of ['observe-baseline', 'physical-baseline', 'implement', 'extract', 'sta', 'physical-candidate']) {
+    assert.equal(reachableTools.has(id), false, `${id} is not a producer or mandatory tail on the new route`);
+  }
+
+  const result = pack.contract.outputs.find(item => item.name === 'engineeringResult');
+  assert.deepEqual(result && { path: result.path, reader: result.reader }, {
+    path: 'state/engineering-result.json', reader: 'atcs-engineering-result',
+  });
+  const semanticValues = (parse(await readFile(path.join(repoRoot, 'packs', packId, 'semantics.yml'), 'utf8')) as any).values;
+  for (const type of ['tc_engineering_result_error_count', 'tc_engineering_setup_wns_ns',
+    'tc_engineering_hold_wns_ns', 'tc_engineering_setup_tns_ns', 'tc_engineering_hold_tns_ns',
+    'tc_engineering_remaining_violation_count', 'tc_engineering_regression_count',
+    'tc_engineering_collateral_unknown_count', 'tc_engineering_effect_vs_autofix']) {
+    assert.ok(semanticValues[type], `${type} is Pack-local`);
+  }
+  assert.equal(semanticValues.tc_final_setup_wns_ns, undefined,
+    'the XTop-only Pack cannot emit or reinterpret legacy final physical-signoff facts');
+  assert.equal(semanticValues.tc_final_hold_wns_ns, undefined);
+  const legacySemantics = (parse(await readFile(
+    path.join(repoRoot, 'packs', packId, 'legacy/0.2.10/semantics.yml'), 'utf8')) as any).values;
+  assert.ok(legacySemantics.tc_final_setup_wns_ns && legacySemantics.tc_final_hold_wns_ns,
+    'the retained 0.2.10 method keeps its original final physical-signoff meanings');
+});
+
 test('ATCS forks six self-driving worker branches: each branch\'s child authors its request, a refused request is revised in its own branch, slot w01\'s Operator works from its embedded request, parked slots pass as no-ops, and the join collects every slot with no owner turn inside the fork', async t => {
   process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
   process.env.HIMA_TEST_SILENT_AGENT = '1';
@@ -30,8 +103,7 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
   const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local);
   const h = { ...local.h, workspace: await realpath(local.h.workspace) };
   const packsDir = path.join(h.home, 'hima/packs');
-  const variant = path.join(packsDir, packId);
-  await cp(path.join(repoRoot, 'packs', packId), variant, { recursive: true });
+  const variant = await copyLegacyAtcsPack(packsDir);
   const contract = parse(await readFile(path.join(variant, 'contract.yml'), 'utf8')) as any;
   const wrapper = await realpath('/usr/bin/tclsh');
   contract.environment.wrappers = [wrapper, 'python3', '/usr/bin/python3'];
@@ -330,9 +402,9 @@ test('ATCS forks six self-driving worker branches: each branch\'s child authors 
   assert.equal((await readFile(path.join(slotRoot, 'ops.jsonl'), 'utf8')).trim().split('\n').length, 1);
   assert.equal((await readFile(path.join(slotRoot, 'gain.jsonl'), 'utf8')).trim().split('\n').length, 2, 'the session reference and one mutation reading');
 });
-const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v22/atcs-xtop-operator-v22.sh';
+const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v31/atcs-xtop-operator-v31.sh';
 
-test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the local Site, and passes its Python contract tests', async (t) => {
+test('the retained ATCS 0.2.10 snapshot loads, fits its Sites, and passes the focused native/Reader regressions', async (t) => {
   const h = await createHimaHome();
   t.after(() => h.dispose());
   const local = await writeLocalSite(h, {
@@ -346,8 +418,9 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     licences: { innovus: 1, primetime: 1, starrc: 1, xtop: 2 },
   });
 
-  const packDir = path.join(repoRoot, 'packs', packId);
-  const pack = loadPack(path.join(repoRoot, 'packs'), packId);
+  const legacyPacksDir = path.join(h.home, 'legacy-packs');
+  const packDir = await copyLegacyAtcsPack(legacyPacksDir);
+  const pack = loadPack(legacyPacksDir, packId);
   // Issue #64, reshaped 2026-09-29 (ADR-0016): every worker slot's Team is v5. The Operator works in
   // its admitted request's own `candidate.scope` within the recipe; the Reviewer is optional advice.
   const operatorTool = pack.contract.tools.find(item => item.id === 'xtop-operator')!;
@@ -396,15 +469,18 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual(operatorNode('bind-worker-slots').parameters,
     { tool: 'worker-slots', arguments: { WORKER_SLOTS: { from: 'strategy', name: 'workerSlots' } } });
   assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.to === 'plan').map(edge => edge.from), ['bind-worker-slots']);
-  // Issue #64 Task 6: the `autoFinish` knob (0/1, default 1) reaches `replay-prepare` as its 4th argument.
-  assert.deepEqual(operatorNode('replay-prepare').parameters.arguments.AUTO_FINISH, { from: 'strategy', name: 'autoFinish' });
+  // The frozen 0.2.10 owner-lead route retained the replay helper but did not put it on the graph:
+  // compose went directly to the persistent lead, and final AutoFinish stayed disabled.
+  assert.equal(operatorNode('replay-prepare'), undefined);
   const replayPrepare = pack.contract.tools.find(item => item.id === 'replay-prepare')!;
   assert.ok(replayPrepare.inputs.includes('AUTO_FINISH'));
   assert.equal(replayPrepare.argv[replayPrepare.argv.length - 1], '${AUTO_FINISH}');
   assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.to === 'bind-worker-slots').map(edge => [edge.from, edge.outcome]),
     [['check-refresh-budget', 'PASS']], 'every generation plans only past the refresh-budget gate');
   const planner = pack.contract.workshops.find(item => item.id === 'plan-campaign')!;
-  for (const words of [/parked/, /workerSlots/, /worst setup check and the worst hold check/, /targetPins/, /share no instance/, /check key in the slot.s targets/, /share no edit-domain net/, /fail reasons/]) {
+  for (const words of [/post-auto residuals/, /commonStage\.nativeChecks/, /at most six unique disjoint work packages/,
+    /Preserve disjoint cluster ownership/, /workerSlots 0 is the strong repeated-default-GBA control/,
+    /maxMutations 600/, /full qualified toolkit/, /validate_work_package/]) {
     assert.match(planner.purpose, words, `plan-campaign purpose states ${words}`);
   }
   assert.doesNotMatch(planner.purpose, /may share edit-domain nets/, 'US8: active slots are disjoint in nets as well as instances');
@@ -420,7 +496,8 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.ok(file, `${workshop.id} has an example`);
     assert.ok(pack.contract.knowledge.some(item => item.file === file), `${file} is declared knowledge`);
     assert.ok(workshop.knowledge.includes(file), `${workshop.id} lists ${file}`);
-    assert.ok(workshop.purpose.includes(`knowledge ${file.replace(/\.md$/, '')}`), `${workshop.id}'s purpose names ${file}`);
+    assert.ok(workshop.id === 'compose-contributions' ? /existing example/.test(workshop.purpose)
+      : workshop.purpose.includes(file), `${workshop.id}'s purpose names its admitted example`);
   }
   const knowledgeExample = async (file: string, section?: string): Promise<any> => {
     let text = await readFile(path.join(packDir, 'knowledge', file), 'utf8');
@@ -437,9 +514,15 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.ok(activeExample.scope.commands.includes('atcs_undo') && activeExample.scope.commands.every((c: string) => mutations.includes(c)));
   assert.equal(activeExample.scope.maxMutations, recipeCap);
   const active = await knowledgeExample('example-worker-request.md', 'Active slot');
-  assert.deepEqual(active.candidate, activeExample, 'the example request is the prepared package');
+  const { scope: activeScope, ...activeCore } = activeExample;
+  const { scope: requestScope, ...requestCore } = active.candidate;
+  assert.deepEqual(requestCore, activeCore, 'the example request preserves the prepared package identity and domain');
+  assert.equal(requestScope.maxMutations, activeScope.maxMutations);
+  assert.ok(requestScope.commands.includes('atcs_undo')
+    && requestScope.commands.every((command: string) => activeScope.commands.includes(command)),
+  'the request may use an admitted subset of the prepared toolkit scope');
   const noSafeMove = await knowledgeExample('example-worker-request.md', 'Active slot with no safe move');
-  assert.deepEqual([noSafeMove.candidate, noSafeMove.sessionPlan], [activeExample, []]);
+  assert.deepEqual([noSafeMove.candidate, noSafeMove.sessionPlan], [active.candidate, []]);
   assert.ok(noSafeMove.noSafeAction.trim());
   const parked = await knowledgeExample('example-worker-request.md', 'Parked slot');
   assert.deepEqual(Object.keys(parked.candidate).sort(), ['baseStateId', 'parked', 'problem', 'taskId']);
@@ -459,10 +542,17 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   const team01 = workerTeams.find(item => item.id === 'atcs-worker-01')!;
   const slotless = (value: unknown, slot: string) => JSON.stringify(value).replaceAll(`-${slot}`, '-NN')
     .replaceAll(`Request${slot}`, 'RequestNN').replaceAll(`w${slot}`, 'wNN');
+  const structurallySlotless = (team: any, slot: string) => {
+    const copy = structuredClone(team);
+    const operator = copy.members.find((member: any) => member.id === 'operator');
+    operator.taskTemplate = operator.taskTemplate.replace(/Expertise prior: [^;]+;/, 'Expertise prior: SLOT-SPECIFIC;');
+    return slotless(copy, slot);
+  };
   for (const team of workerTeams) {
     const slot = team.id.slice(-2);
     assert.equal(team.triggerNode, `operate-worker-${slot}`);
-    assert.equal(slotless(team, slot), slotless(team01, '01'), `${team.id} is Team 01 for slot w${slot}`);
+    assert.equal(structurallySlotless(team, slot), structurallySlotless(team01, '01'),
+      `${team.id} preserves the shared Team structure while its expertise prior remains slot-specific`);
   }
   const team = team01;
   assert.equal(team.version, '6', '#66 D7: the Operator works its cluster as one batch');
@@ -477,8 +567,9 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.equal(operatorMember.followup, 'reuse-same-child');
   assert.deepEqual(team.batchWhen, [{ input: 'workerRequest01', value: 'tc_slot_parked', equals: 1 },
     { input: 'workerRequest01', value: 'tc_request_invalid_count', above: 0 }], 'a parked or refused slot runs the batch no-op');
-  assert.match(operatorMember.taskTemplate, /Host refus[^.]*free/);
-  assert.match(operatorMember.taskTemplate, /toolkit refus[^.]*costs one/);
+  assert.match(operatorMember.taskTemplate, /One operation or undo is not completion/);
+  assert.match(operatorMember.taskTemplate, /actual Host budget remains/);
+  assert.match(operatorMember.taskTemplate, /report missing capability precisely/);
   assert.deepEqual(operatorMember.reviewedAction, { mode: 'request-scope', planInput: 'workerRequest01', scopePath: ['candidate', 'scope'],
     commands: mutations, maxMutations: recipeCap, hostPlanHashArgument: 'planSha256' });
   // #64 M-T03-1: the Operator's task embeds its request; its template names the fields it works from
@@ -486,8 +577,9 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual(operatorMember.taskInputs, [{ input: 'workerRequest01', fields: ['operatorBrief', 'sessionPlan', 'siteCapabilities'] }]);
   // #64 T05 w03: the task holds a bounded brief; the Operator reads its exact request in bounded windows.
   assert.deepEqual(operatorMember.allowedTools, ['hima_interactive', 'hima_delegation_input']);
-  assert.match(operatorMember.taskTemplate, /hima_delegation_input \(runId, recordId, path, offset, limit\)[^.]*window\.next/);
-  for (const words of [/editDomain\.instances/, /editDomain\.nets/, /targetPins/, /admitted workerRequest01/, /write before\.dump/]) {
+  assert.match(operatorMember.taskTemplate, /Use only granted input windows and typed interactive commands/);
+  for (const words of [/Preserve exact planSha256, namePrefix, scope and regions/, /outside the declared domain/,
+    /verify automatic before\.dump/, /Use native library candidates/, /current export with physical-risk limitations/]) {
     assert.match(operatorMember.taskTemplate, words, `the Operator template states ${words}`);
   }
   assert.equal(recipeCap, 600, '#66 D7: a batch of tens to hundreds of trials and their undos, at the Harness ceiling (H1)');
@@ -495,8 +587,8 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     required: ['schema', 'planSha256', 'mutationReceipts', 'stopReason', 'limitations'] });
   // The Operator template is the knowledge file's expert loop, in order.
   let step = 0;
-  for (const word of ['before.dump', 'atcs_ref', 'atcs_paths', 'atcs_fail_reasons', 'atcs_gain', 'atcs_undo', 'after.dump',
-    'atcs_export_changes', 'atcs_close']) {
+  for (const word of ['before.dump', 'atcs_ref', 'root-cause hypothesis', 'Try one coherent',
+    'Measure HOLD WNS', 'keep or undo', 'after.dump', 'current export', 'atcs_close']) {
     const found = operatorMember.taskTemplate.indexOf(word, step);
     assert.ok(found >= 0, `the Operator template runs the expert loop in order; ${word} is missing after offset ${step}`);
     step = found + word.length;
@@ -505,8 +597,8 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.equal(packStage(packDir).stage, 'compiled');
   // The 2026-09-29 reshape (ADR-0016): plan -> six self-driving branches -> merge -> one refresh ->
   // evaluate -> automatic re-observation -> one owner decision. 136 nodes and 178 edges before.
-  assert.equal(pack.graph.nodes.length, 81);
-  assert.equal(pack.graph.edges.length, 103);
+  assert.equal(pack.graph.nodes.length, 72);
+  assert.equal(pack.graph.edges.length, 86);
   assert.deepEqual((pack.graph.nodes as any[]).filter(node => node.kind === 'explore').map(node => node.id), ['decide'], 'one owner decision per generation');
   assert.deepEqual((pack.graph.nodes as any[]).filter(node => node.kind === 'wait').map(node => node.id), ['wait-for-person'], 'a person only as the honest end');
   assert.deepEqual((pack.graph as any).autopilot, [
@@ -514,7 +606,8 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     { from: ['read-campaign-plan'], until: ['decide'] },
     { fork: 'prepare-workers', revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 48000 } },
     { from: ['check-worker-results'], until: ['compose'] },
-    { from: ['read-integration-plan'], until: ['decide'] },
+    { from: ['prepare-lead'], until: ['timing-lead'] },
+    { from: ['finalize-lead'], until: ['decide'] },
   ], 'the owner acts at plan, compose and decide only');
   // Every in-loop Judge labels all three outcomes: an UNDETERMINED never falls through to a person.
   for (const node of (pack.graph.nodes as any[]).filter(item => item.kind === 'judge' && item.id !== 'check-inputs' && item.id !== 'check-refresh-budget')) {
@@ -547,9 +640,9 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   assert.deepEqual(nodeOf('check-refresh-budget').parameters.bind, { max_physical_refreshes: { from: 'goal', name: 'max_physical_refreshes' } });
   assert.deepEqual(edgesFrom('read-refresh-budget'), ['->check-refresh-budget']);
   assert.deepEqual(edgesFrom('check-refresh-budget'), ['FAIL->wait-for-person', 'PASS->bind-worker-slots', 'UNDETERMINED->wait-for-person']);
-  assert.deepEqual(edgesTo('read-refresh-budget'), ['decide->revisit', 'residual-baseline->']);
+  assert.deepEqual(edgesTo('read-refresh-budget'), ['common-autofix->', 'decide->revisit']);
   assert.deepEqual(edgesFrom('decide'), ['revisit->read-refresh-budget'], 'continue is the next generation from the working state');
-  assert.deepEqual(edgesTo('implement'), ['read-precheck->']);
+  assert.deepEqual(edgesTo('implement'), ['finalize-lead->']);
   assert.deepEqual(edgesTo('extract'), ['implement->']);
   assert.equal(nodeOf('apr-run'), undefined, 'no earlier-APR detour');
   assert.ok(pack.contract.rules.includes('refresh-budget'));
@@ -566,10 +659,11 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     assert.ok(problems, `${workshop.produces} has its Problems output`);
     assert.equal(problems.path, request.path.replace(/\.json$/, '.problems.txt'));
     assert.equal(problems.reader, undefined);
-    assert.ok(workshop.reads.includes(problems.name), `${workshop.id} reads ${problems.name}`);
-    assert.match(workshop.purpose, new RegExp(
-      `(?:read output ${problems.name} first|On a revision only, read the granted ${problems.name} record)`,
-    ));
+    if (workshop.id === 'compose-contributions') {
+      assert.equal((workshop as any).revision, undefined, 'the owner composes once; no self-revision loop reads its own problems');
+    } else {
+      assert.ok(workshop.reads.includes(problems.name), `${workshop.id} reads ${problems.name}`);
+    }
   }
 
   // Issue 63 (fresh03 `sta` blocked: "references ${MAX_PATHS}, which nothing bound"): every
@@ -613,10 +707,11 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   // Issue #64 Task 3: the XTop expert toolkit. Reads never carry the plan hash; every mutation takes
   // it last, so a reviewed scope can name any of them.
   assert.deepEqual(interactiveTool.interactive.commands.read,
-    ['atcs_ref', 'atcs_gain', 'atcs_paths', 'atcs_fail_reasons', 'atcs_candidates', 'atcs_point']);
+    ['atcs_ref', 'atcs_gain', 'atcs_paths', 'atcs_fail_reasons', 'atcs_candidates', 'atcs_point', 'atcs_gba']);
   assert.deepEqual(interactiveTool.interactive.commands.mutate, [
     'atcs_size_cell', 'atcs_exchange_cell', 'atcs_insert_buffer', 'atcs_insert_dummy', 'atcs_split_load',
-    'atcs_split_net', 'atcs_move_cell', 'atcs_remove_buffer', 'atcs_fix_hold_pins', 'atcs_fix_setup_pins', 'atcs_undo']);
+    'atcs_split_net', 'atcs_move_cell', 'atcs_remove_buffer', 'atcs_fix_hold_pins', 'atcs_fix_setup_pins', 'atcs_undo',
+    'atcs_path_pin_rank', 'atcs_legalization_range']);
   for (const command of interactiveTool.interactive.commands.mutate) {
     assert.deepEqual(interactiveTool.interactive.arguments[command]?.at(-1), { name: 'planSha256', type: 'string' },
       `${command} takes planSha256 last`);
@@ -666,20 +761,24 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /agentic-timing-closure-system@0\.2\.1.*fit/s);
+    assert.match(throughHost.text, /agentic-timing-closure-system@0\.2\.10.*fit/s);
   } finally { await host.dispose(); }
 
-  const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {
-    cwd: repoRoot,
+  const tests = spawnSync('python3', ['-m', 'unittest',
+    'test_owner_timing_lead.py', 'test_engineering_result.py', 'test_resident_native_context.py', '-v'], {
+    cwd: path.join(packDir, 'flow/tests'),
+    env: { ...process.env, HIMA_TEST_REPO_ROOT: repoRoot },
     encoding: 'utf8',
   });
   assert.equal(tests.status, 0, `${tests.stdout}\n${tests.stderr}`);
 });
 
-test('the admin generator labels the ATCS binding with the installed wrapper version, not a fixed one', async (t) => {
+test('the retained interactive binding generator refuses to qualify the new outsourced Pack as an old Operator startup', async (t) => {
   // Issue #64 Task 7 fix round 1: the atcs-v10 binding came out as `linglong-atcs28:xtop-operator-v5`.
   const h = await createHimaHome(); t.after(() => h.dispose());
-  const pack = loadPack(path.join(repoRoot, 'packs'), 'agentic-timing-closure-system');
+  const legacyPacksDir = path.join(h.home, 'legacy-packs');
+  await copyLegacyAtcsPack(legacyPacksDir);
+  const pack = loadPack(legacyPacksDir, 'agentic-timing-closure-system');
   const tool = pack.contract.tools.find((candidate) => candidate.id === 'xtop-operator')!;
   const wrapper = tool.interactive?.argv?.[0] ?? '';
   const version = /atcs-v(\d+)\/atcs-xtop-operator-v\1\.sh$/.exec(wrapper)?.[1];
@@ -698,8 +797,6 @@ test('the admin generator labels the ATCS binding with the installed wrapper ver
   await writeFile(environment, evidence);
   const generated = spawnSync(process.execPath, [path.join(repoRoot, 'scripts/generate-xtop-operator-binding.mjs'),
     '--environment', environment, '--output', output], { cwd: repoRoot, encoding: 'utf8' });
-  assert.equal(generated.status, 0, generated.stderr);
-  const document = JSON.parse(await readFile(output, 'utf8'));
-  assert.equal(document.bindings[0].environment.id, `linglong-atcs28:xtop-operator-v${version}`);
-  assert.match(document.bindings[0].id, new RegExp(`^linglong-atcs28:xtop-operator-v${version}:`));
+  assert.equal(generated.status, 1);
+  assert.match(generated.stderr, /current retained XTop Pack has no matching production Operator startup/);
 });

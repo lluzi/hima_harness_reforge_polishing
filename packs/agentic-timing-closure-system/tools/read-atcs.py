@@ -2035,6 +2035,240 @@ def _read_evaluation(report, workspace, extra, mods):
     return values
 
 
+_ENGINEERING_MODES = ("setup", "hold")
+
+
+def _engineering_metrics(value, label):
+    if not isinstance(value, dict) or set(value) != set(_ENGINEERING_MODES):
+        raise ValueError(f"{label} must have exactly setup and hold")
+    normalized = {}
+    for mode in _ENGINEERING_MODES:
+        row = value[mode]
+        if not isinstance(row, dict) or set(row) != {"wnsNs", "tnsNs", "violations", "report"}:
+            raise ValueError(f"{label}.{mode} must have wnsNs, tnsNs, violations and report")
+        wns, tns, violations = row["wnsNs"], row["tnsNs"], row["violations"]
+        for name, number in (("wnsNs", wns), ("tnsNs", tns)):
+            if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number):
+                raise ValueError(f"{label}.{mode}.{name} must be a finite number")
+        if isinstance(violations, bool) or not isinstance(violations, int) or violations < 0:
+            raise ValueError(f"{label}.{mode}.violations must be a non-negative int")
+        normalized[mode] = {"wnsNs": float(wns), "tnsNs": float(tns), "violations": violations}
+    return normalized
+
+
+def _engineering_file_ref(value, workspace, core, label):
+    if not isinstance(value, dict) or set(value) != {"path", "sha256"}:
+        raise ValueError(f"{label} must be exactly {{path, sha256}}")
+    _require_file(workspace, value["path"], value["sha256"], core, label)
+
+
+def _verify_engineering_metric_reports(raw_metrics, normalized, workspace, core, contributions, label):
+    for mode in _ENGINEERING_MODES:
+        report_ref = raw_metrics[mode]["report"]
+        report_label = f"{label}.{mode}.report"
+        _engineering_file_ref(report_ref, workspace, core, report_label)
+        raw = _safe_join(workspace, report_ref["path"], report_label).read_text(encoding="utf-8")
+        parsed = (contributions.parse_gain_summary(raw).get(mode) or {}).get("total") or {}
+        declared = normalized[mode]
+        if (parsed.get("worst"), parsed.get("tns"), parsed.get("count")) != (
+                declared["wnsNs"], declared["tnsNs"], declared["violations"]):
+            raise ValueError(f"{report_label} native WNS/TNS/count disagree with declared measurements")
+
+
+def _engineering_tree_ref(value, workspace, core, label):
+    if not isinstance(value, dict) or set(value) != {"path", "digest"}:
+        raise ValueError(f"{label} must be exactly {{path, digest}}")
+    _require_tree(workspace, value["path"], value["digest"], core, label)
+
+
+def _engineering_effect(candidate, reference, core):
+    """Dominance-only native effect: 1 better, 0 tie, -1 worse, unknown for mixed effects."""
+    higher = []
+    for mode in _ENGINEERING_MODES:
+        higher.extend([
+            candidate[mode]["wnsNs"] - reference[mode]["wnsNs"],
+            candidate[mode]["tnsNs"] - reference[mode]["tnsNs"],
+            reference[mode]["violations"] - candidate[mode]["violations"],
+        ])
+    epsilon = 1e-9
+    signs = {1 if delta > epsilon else -1 if delta < -epsilon else 0 for delta in higher}
+    if signs <= {0}:
+        return core.known(0)
+    if signs <= {0, 1}:
+        return core.known(1)
+    if signs <= {-1, 0}:
+        return core.known(-1)
+    return core.unknown("resident and ordinary AutoFix effects are mixed; neither dominates")
+
+
+def _engineering_collateral(value, workspace, core, label):
+    required = {"transition", "capacitance", "fanout", "legality"}
+    if not isinstance(value, dict) or set(value) != required:
+        raise ValueError(f"{label} must have exactly {sorted(required)}")
+    known, unknown = {}, {}
+    for check in sorted(required):
+        row = value[check]
+        if not isinstance(row, dict):
+            raise ValueError(f"{label}.{check} must be an object")
+        if set(row) == {"unknown"} and isinstance(row["unknown"], str) and row["unknown"].strip():
+            unknown[check] = row["unknown"]
+            continue
+        if set(row) != {"violations", "report"}:
+            raise ValueError(f"{label}.{check} must be {{violations,report}} or {{unknown}}")
+        count = row["violations"]
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError(f"{label}.{check}.violations must be a non-negative int")
+        _engineering_file_ref(row["report"], workspace, core, f"{label}.{check}.report")
+        known[check] = count
+    return known, unknown
+
+
+def _read_engineering_result(report, workspace, extra, mods):
+    """Read one Host-delivered resident result and independently verify its engineering evidence.
+
+    Host delivery already binds the file to the current task/execution. This Reader binds its
+    business content to this Campaign's baseline, native context, common R1 and matched AutoFix,
+    then re-hashes the raw reports, scripts, ECOs, selected checkpoint and reproduction material.
+    """
+    del extra
+    core = mods["core"]
+    obj = _load_json(report)
+    _verify_identity(obj, "engineering-result", core)
+    if obj.get("kind") != "result":
+        raise ValueError("engineering-result.kind must be 'result'")
+
+    task = obj.get("task")
+    task_keys = {"taskId", "runId", "executionId", "nodeId"}
+    if (not isinstance(task, dict) or set(task) != task_keys
+            or not all(isinstance(task[key], str) and task[key] for key in task_keys)):
+        raise ValueError("engineering-result.task must carry non-empty taskId/runId/executionId/nodeId")
+    if task["nodeId"] != "fix-timing":
+        raise ValueError("engineering-result.task.nodeId must be 'fix-timing'")
+    result_sha256 = core.file_sha256(Path(report))
+    deliveries = []
+    for manifest_path in Path(workspace).glob(".hima-engineering/*/delivery/manifest.json"):
+        manifest = _load_json(manifest_path)
+        if manifest.get("schema") != "hima-resident-engineering-delivery/1":
+            continue
+        stored_sha = manifest.get("sha256")
+        body = dict(manifest)
+        body.pop("sha256", None)
+        if stored_sha != hashlib.sha256(core.canonical(body)).hexdigest():
+            raise ValueError(f"resident delivery manifest digest mismatch: {manifest_path}")
+        artifacts = manifest.get("artifacts")
+        if isinstance(artifacts, list) and any(
+                isinstance(item, dict) and item.get("kind") == "result" and item.get("sha256") == result_sha256
+                for item in artifacts):
+            deliveries.append(manifest)
+    if len(deliveries) != 1:
+        raise ValueError("engineering result must match exactly one verified Host delivery manifest")
+    delivery = deliveries[0]
+    if task != {key: delivery.get(key) for key in task_keys}:
+        raise ValueError("engineering-result.task does not match the verified Host delivery identity")
+
+    baseline = _load_json(Path(workspace) / "state" / "baseline.json")
+    _verify_identity(baseline, "design-state", core)
+    common = _load_json(Path(workspace) / "state" / "common-stage.json")
+    _verify_identity(common, "common-stage", core)
+    native = _load_json(Path(workspace) / "state" / "xtop-context.json")
+    _verify_identity(native, "xtop-context", core)
+    control = _load_json(Path(workspace) / "state" / "autofix-reference.json")
+    _verify_identity(control, "autofix-reference", core)
+
+    identity = obj.get("inputIdentity")
+    expected_identity = {
+        "baselineStateId": baseline["id"],
+        "nativeContextId": native["id"],
+        "commonStateId": common.get("stateId"),
+        "worklistId": common.get("worklistId"),
+    }
+    if identity != expected_identity:
+        raise ValueError("engineering-result.inputIdentity does not match baseline/native/common R1")
+    if control.get("inputIdentity") != expected_identity:
+        raise ValueError("matched AutoFix reference does not use the engineering result's exact inputs")
+
+    selected = obj.get("selected")
+    if (not isinstance(selected, dict) or set(selected) != {"stateId", "checkpoint"}
+            or not isinstance(selected.get("stateId"), str) or not selected["stateId"]):
+        raise ValueError("engineering-result.selected must have stateId and checkpoint")
+    _engineering_tree_ref(selected["checkpoint"], workspace, core, "engineering-result.selected.checkpoint")
+
+    measurements = obj.get("measurements")
+    if not isinstance(measurements, dict) or set(measurements) != {"before", "after"}:
+        raise ValueError("engineering-result.measurements must have exactly before and after")
+    before = _engineering_metrics(measurements["before"], "engineering-result.measurements.before")
+    after = _engineering_metrics(measurements["after"], "engineering-result.measurements.after")
+    common_after = _engineering_metrics(common.get("measurements", {}).get("after"),
+                                        "common-stage.measurements.after")
+    if before != common_after:
+        raise ValueError("engineering result did not start from the verified common R1 measurements")
+    reference = _engineering_metrics(control.get("measurements", {}).get("after"),
+                                     "autofix-reference.measurements.after")
+    collateral, collateral_unknown = _engineering_collateral(
+        obj.get("collateral"), workspace, core, "engineering-result.collateral")
+
+    _verify_engineering_metric_reports(
+        common["measurements"]["after"], common_after, workspace, core, mods["contributions"],
+        "common-stage.measurements.after")
+    _verify_engineering_metric_reports(
+        control["measurements"]["after"], reference, workspace, core, mods["contributions"],
+        "autofix-reference.measurements.after")
+    for phase in ("before", "after"):
+        _verify_engineering_metric_reports(
+            measurements[phase], before if phase == "before" else after,
+            workspace, core, mods["contributions"], f"engineering-result.measurements.{phase}")
+
+    artifacts = obj.get("artifacts")
+    required_artifacts = {"scripts", "logicalEco", "physicalEco", "reproduction", "nativeTrace"}
+    if not isinstance(artifacts, dict) or set(artifacts) != required_artifacts:
+        raise ValueError(f"engineering-result.artifacts must have exactly {sorted(required_artifacts)}")
+    scripts, trace = artifacts["scripts"], artifacts["nativeTrace"]
+    if not isinstance(scripts, list) or not scripts:
+        raise ValueError("engineering-result.artifacts.scripts must be a non-empty list")
+    if not isinstance(trace, list) or not trace:
+        raise ValueError("engineering-result.artifacts.nativeTrace must be a non-empty list")
+    for key in ("logicalEco", "physicalEco", "reproduction"):
+        _engineering_file_ref(artifacts[key], workspace, core, f"engineering-result.artifacts.{key}")
+    for index, ref in enumerate(scripts):
+        _engineering_file_ref(ref, workspace, core, f"engineering-result.artifacts.scripts[{index}]")
+    for index, ref in enumerate(trace):
+        _engineering_file_ref(ref, workspace, core, f"engineering-result.artifacts.nativeTrace[{index}]")
+
+    for key in ("remaining", "regressed", "blocked", "unknown"):
+        value = obj.get(key)
+        if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+            raise ValueError(f"engineering-result.{key} must be a list of facts")
+    timing_remaining = sum(after[mode]["violations"] for mode in _ENGINEERING_MODES)
+    known_remaining = timing_remaining + sum(collateral.values())
+    if len(obj["remaining"]) != known_remaining:
+        raise ValueError("engineering-result.remaining length disagrees with actual after violation counts")
+    unknown_checks = {item.get("check") for item in obj["unknown"] if isinstance(item.get("check"), str)}
+    if not set(collateral_unknown) <= unknown_checks:
+        raise ValueError("engineering-result.unknown must name every unknown required collateral check")
+    if not isinstance(obj.get("stopReason"), str) or not obj["stopReason"].strip():
+        raise ValueError("engineering-result.stopReason must be a non-empty string")
+    if not isinstance(obj.get("bestEffort"), bool) or not isinstance(obj.get("noOp"), bool):
+        raise ValueError("engineering-result.bestEffort and noOp must be booleans")
+    if obj["noOp"] and before != after:
+        raise ValueError("engineering-result.noOp is true but before and after measurements differ")
+
+    effect = _engineering_effect(after, reference, core)
+    remaining_measure = (core.unknown(
+        "required collateral checks unknown: " + ", ".join(sorted(collateral_unknown)))
+        if collateral_unknown else core.known(known_remaining))
+    return [
+        _emit_count("tc_engineering_result_error_count", 0),
+        _emit("tc_engineering_setup_wns_ns", "ns", core.known(after["setup"]["wnsNs"]), mode="setup"),
+        _emit("tc_engineering_hold_wns_ns", "ns", core.known(after["hold"]["wnsNs"]), mode="hold"),
+        _emit("tc_engineering_setup_tns_ns", "ns", core.known(after["setup"]["tnsNs"]), mode="setup"),
+        _emit("tc_engineering_hold_tns_ns", "ns", core.known(after["hold"]["tnsNs"]), mode="hold"),
+        _emit("tc_engineering_remaining_violation_count", "count", remaining_measure),
+        _emit_count("tc_engineering_regression_count", len(obj["regressed"])),
+        _emit_count("tc_engineering_collateral_unknown_count", len(collateral_unknown)),
+        _emit("tc_engineering_effect_vs_autofix", "count", effect),
+    ]
+
+
 def _read_acceptance_record(report, workspace, extra, mods):
     """Envelope: `{"acceptanceRecord": "<workspace-relative path>",
     "refreshLedger": "<workspace-relative path>"}` (controller decision,
@@ -2393,6 +2627,7 @@ _HANDLERS = {
     "evaluation": lambda report, workspace, extra, mods: _read_evaluation(report, workspace, extra, mods),
     "acceptance-record": lambda report, workspace, extra, mods: _read_acceptance_record(report, workspace, extra, mods),
     "refresh-budget": lambda report, workspace, extra, mods: _read_refresh_budget(report, workspace, extra, mods),
+    "engineering-result": lambda report, workspace, extra, mods: _read_engineering_result(report, workspace, extra, mods),
 }
 
 # Request kinds: each returns `(values, problems)`, its count being `len(problems)`.

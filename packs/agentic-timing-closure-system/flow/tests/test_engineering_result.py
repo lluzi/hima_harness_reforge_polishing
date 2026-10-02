@@ -1,0 +1,176 @@
+"""Resident engineering result Reader: complete, no-op, mixed and tampered evidence."""
+from __future__ import annotations
+
+import importlib.util
+import hashlib
+import json
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+TESTS_DIR = Path(__file__).resolve().parent
+FLOW_DIR = TESTS_DIR.parent
+PACK_DIR = FLOW_DIR.parent
+sys.path.insert(0, str(FLOW_DIR))
+
+from atcs import core  # noqa: E402
+
+spec = importlib.util.spec_from_file_location("read_atcs_engineering", PACK_DIR / "tools" / "read-atcs.py")
+reader = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(reader)
+
+
+class EngineeringResultReaderTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.w = Path(self.tmp.name) / "workspace"
+        (self.w / "flow").mkdir(parents=True)
+        os.symlink(FLOW_DIR / "atcs", self.w / "flow" / "atcs")
+        (self.w / "state").mkdir()
+        self._write_state("baseline.json", core.stamp("design-state", {"top": "top"}))
+        self._write_state("xtop-context.json", core.stamp("xtop-context", {"requiredScenarios": ["s1"]}))
+        self.before = self._metrics("before", -0.10, -0.20, 1, 0.0, 0.0, 0)
+        common = core.stamp("common-stage", {
+            "stateId": "common-state", "worklistId": "common-worklist",
+            "measurements": {"before": self.before, "after": self.before},
+        })
+        self._write_state("common-stage.json", common)
+        identity = {
+            "baselineStateId": json.loads((self.w / "state/baseline.json").read_text())["id"],
+            "nativeContextId": json.loads((self.w / "state/xtop-context.json").read_text())["id"],
+            "commonStateId": "common-state", "worklistId": "common-worklist",
+        }
+        self.identity = identity
+        self.reference = self._metrics("reference", -0.02, -0.02, 1, 0.0, 0.0, 0)
+        self._write_state("autofix-reference.json", core.stamp("autofix-reference", {
+            "inputIdentity": identity, "measurements": {"before": self.before, "after": self.reference},
+        }))
+
+    def _write_state(self, name, obj):
+        core.write_artifact(self.w / "state" / name, obj)
+
+    def _file(self, rel, text):
+        path = self.w / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return {"path": rel, "sha256": core.file_sha256(path)}
+
+    def _metrics(self, prefix, setup_wns, setup_tns, setup_count, hold_wns, hold_tns, hold_count):
+        def report(mode, wns, tns, count):
+            text = (f"### {mode} summary ###\n"
+                    "Scenario Count Worst TNS\n"
+                    "--------------------------------\n"
+                    f"total {count} {wns} {tns}\n")
+            return self._file(f"raw/{prefix}-{mode}.rpt", text)
+        return {
+            "setup": {"wnsNs": setup_wns, "tnsNs": setup_tns, "violations": setup_count,
+                      "report": report("setup", setup_wns, setup_tns, setup_count)},
+            "hold": {"wnsNs": hold_wns, "tnsNs": hold_tns, "violations": hold_count,
+                     "report": report("hold", hold_wns, hold_tns, hold_count)},
+        }
+
+    def _result(self, after=None, no_op=False):
+        after = after or self._metrics("after", 0.0, 0.0, 0, 0.0, 0.0, 0)
+        checkpoint = self.w / "engineering/best-workspace"
+        checkpoint.mkdir(parents=True, exist_ok=True)
+        (checkpoint / "state").write_text("native checkpoint", encoding="utf-8")
+        remaining = [{"mode": "setup", "endpoint": f"U{i}/D"} for i in range(
+            after["setup"]["violations"] + after["hold"]["violations"])]
+        collateral = {
+            check: {"violations": 0, "report": self._file(f"raw/after-{check}.rpt", f"{check}: 0 violations\n")}
+            for check in ("transition", "capacitance", "fanout", "legality")
+        }
+        body = {
+            "kind": "result",
+            "task": {"taskId": "task-1", "runId": "run-1", "executionId": "execution-1", "nodeId": "fix-timing"},
+            "inputIdentity": dict(self.identity),
+            "selected": {"stateId": "selected-state",
+                         "checkpoint": {"path": "engineering/best-workspace", "digest": core.tree_digest(checkpoint)}},
+            "measurements": {"before": self.before, "after": after},
+            "collateral": collateral,
+            "artifacts": {
+                "scripts": [self._file("engineering/fix.tcl", "# actual engineering script\n")],
+                "logicalEco": self._file("engineering/final_netlist_eco.txt", ""),
+                "physicalEco": self._file("engineering/final_physical_eco.txt", ""),
+                "reproduction": self._file("engineering/REPRODUCE.md", "source fix.tcl\n"),
+                "nativeTrace": [self._file("engineering/native.log", "XTop native trace\n")],
+            },
+            "remaining": remaining, "regressed": [], "blocked": [], "unknown": [],
+            "stopReason": "best measured state delivered", "bestEffort": bool(remaining), "noOp": no_op,
+        }
+        return core.stamp("engineering-result", body)
+
+    def _deliver(self, result):
+        report = self.w / "state/engineering-result.json"
+        core.write_artifact(report, result)
+        body = {
+            "schema": "hima-resident-engineering-delivery/1",
+            "taskId": result["task"]["taskId"], "runId": result["task"]["runId"],
+            "executionId": result["task"]["executionId"], "nodeId": result["task"]["nodeId"],
+            "sessionId": "native-session", "outcome": "best-effort", "summary": "fixture",
+            "stopReason": result["stopReason"], "candidate": {"path": "resident-delivery.json", "sha256": "0" * 64},
+            "artifactRoot": "workspace", "artifacts": [{
+                "path": "result.json", "sha256": core.file_sha256(report), "kind": "result",
+            }], "createdAt": "2026-10-02T00:00:00.000Z",
+        }
+        body["sha256"] = hashlib.sha256(core.canonical(body)).hexdigest()
+        manifest = self.w / ".hima-engineering/task-1/delivery/manifest.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(json.dumps(body), encoding="utf-8")
+        return report
+
+    def test_complete_result_emits_native_goal_and_beats_matched_autofix(self):
+        report = self._deliver(self._result())
+        values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
+        self.assertEqual(values["tc_engineering_result_error_count"]["value"], 0)
+        self.assertEqual(values["tc_engineering_setup_wns_ns"]["value"], 0.0)
+        self.assertEqual(values["tc_engineering_remaining_violation_count"]["value"], 0)
+        self.assertEqual(values["tc_engineering_collateral_unknown_count"]["value"], 0)
+        self.assertEqual(values["tc_engineering_effect_vs_autofix"]["value"], 1)
+
+    def test_complete_best_effort_mixed_effect_is_unknown_and_goal_can_remain_false(self):
+        after = self._metrics("mixed", 0.0, 0.0, 0, -0.01, -0.01, 1)
+        report = self._deliver(self._result(after=after))
+        values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
+        self.assertEqual(values["tc_engineering_result_error_count"]["value"], 0)
+        self.assertEqual(values["tc_engineering_remaining_violation_count"]["value"], 1)
+        self.assertIsNone(values["tc_engineering_effect_vs_autofix"]["value"])
+        self.assertIn("mixed", values["tc_engineering_effect_vs_autofix"]["unknownReason"])
+
+    def test_legitimate_no_op_requires_real_exports_and_equal_measurements(self):
+        report = self._deliver(self._result(after=self.before, no_op=True))
+        values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
+        self.assertEqual(values["tc_engineering_result_error_count"]["value"], 0)
+        self.assertEqual(values["tc_engineering_effect_vs_autofix"]["value"], -1)
+
+    def test_unknown_required_collateral_keeps_all_violations_goal_unknown(self):
+        result = self._result()
+        result["collateral"]["legality"] = {"unknown": "native legality report command was unavailable"}
+        result["unknown"] = [{"check": "legality", "reason": "native legality report command was unavailable"}]
+        result = core.stamp("engineering-result", {key: value for key, value in result.items() if key not in ("schema", "id")})
+        report = self._deliver(result)
+        values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
+        self.assertIsNone(values["tc_engineering_remaining_violation_count"]["value"])
+        self.assertEqual(values["tc_engineering_collateral_unknown_count"]["value"], 1)
+
+    def test_tampered_raw_report_is_refused_instead_of_becoming_unknown_or_zero(self):
+        result = self._result()
+        report = self._deliver(result)
+        (self.w / result["measurements"]["after"]["setup"]["report"]["path"]).write_text("tampered", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "sha256 mismatch"):
+            reader.read("engineering-result", report, self.w)
+
+    def test_missing_script_is_an_incomplete_delivery(self):
+        result = self._result()
+        result["artifacts"]["scripts"] = []
+        result = core.stamp("engineering-result", {key: value for key, value in result.items() if key not in ("schema", "id")})
+        report = self._deliver(result)
+        with self.assertRaisesRegex(ValueError, "scripts must be a non-empty list"):
+            reader.read("engineering-result", report, self.w)
+
+
+if __name__ == "__main__":
+    unittest.main()

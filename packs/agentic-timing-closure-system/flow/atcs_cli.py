@@ -591,6 +591,116 @@ def _cmd_bind_inputs(workspace, args):
     return _paths(workspace)["readiness"], body
 
 
+def _native_timing_input(path, manifest_path=None):
+    """Validate the Site-bound retained native timing input before it is copied or consumed."""
+    obj = _read_plain(path)
+    if not isinstance(obj, dict) or obj.get("schema") != "atcs.native-timing-context/1":
+        raise InputError("invalid-input", "nativeTimingContext must have schema atcs.native-timing-context/1")
+    required = {"schema", "designStateManifestSha256", "requiredScenarios", "staData",
+                "sourceReports", "constraints", "producer"}
+    if set(obj) != required:
+        raise InputError("invalid-input", f"nativeTimingContext must have exactly {sorted(required)}")
+    if manifest_path is not None and obj["designStateManifestSha256"] != core.file_sha256(Path(manifest_path)):
+        raise core.AtcsError("identity-mismatch", "native timing data belongs to another designStateManifest")
+    scenarios = obj["requiredScenarios"]
+    if (not isinstance(scenarios, list) or not scenarios
+            or not all(isinstance(item, str) and item for item in scenarios)
+            or len(set(scenarios)) != len(scenarios)):
+        raise InputError("invalid-input", "nativeTimingContext.requiredScenarios must be unique non-empty names")
+    sta_data = obj["staData"]
+    if not isinstance(sta_data, dict) or set(sta_data) != {"path", "digest"}:
+        raise InputError("invalid-input", "nativeTimingContext.staData must be {path,digest}")
+    sta_path = Path(sta_data["path"])
+    if sta_path.is_symlink() or not sta_path.is_dir() or core.tree_digest(sta_path) != sta_data["digest"]:
+        raise core.AtcsError("identity-mismatch", "retained native STA data is missing, linked or changed")
+    for field in ("sourceReports", "constraints"):
+        refs = obj[field]
+        if not isinstance(refs, list) or not refs:
+            raise InputError("invalid-input", f"nativeTimingContext.{field} must be a non-empty list")
+        for index, ref in enumerate(refs):
+            if not isinstance(ref, dict) or set(ref) != {"path", "sha256"}:
+                raise InputError("invalid-input", f"nativeTimingContext.{field}[{index}] must be {{path,sha256}}")
+            target = Path(ref["path"])
+            if target.is_symlink() or not target.is_file() or core.file_sha256(target) != ref["sha256"]:
+                raise core.AtcsError("identity-mismatch", f"nativeTimingContext.{field}[{index}] is missing, linked or changed")
+    producer = obj["producer"]
+    if (not isinstance(producer, dict) or set(producer) != {"tool", "version", "command"}
+            or not all(isinstance(producer[key], str) and producer[key] for key in producer)):
+        raise InputError("invalid-input", "nativeTimingContext.producer needs non-empty tool/version/command")
+    return obj
+
+
+def _cmd_bind_resident_inputs(workspace, args):
+    manifest_path, site_caps_path, native_context_path = args
+    native = _native_timing_input(native_context_path, manifest_path)
+    manifest = _read_plain(manifest_path)
+    manifest_scenarios = [entry.get("name") for entry in manifest.get("scenarios") or []]
+    if manifest_scenarios != native["requiredScenarios"]:
+        raise core.AtcsError("identity-mismatch", "nativeTimingContext scenarios differ from designStateManifest")
+    root = Path(manifest.get("root") or ".")
+    constraint_hashes = []
+    for value in manifest.get("sdc") or []:
+        target = Path(value)
+        if not target.is_absolute():
+            target = root / target
+        constraint_hashes.append(core.file_sha256(target))
+    if constraint_hashes != [ref["sha256"] for ref in native["constraints"]]:
+        raise core.AtcsError("identity-mismatch", "nativeTimingContext constraints differ from designStateManifest")
+    return _cmd_bind_inputs(workspace, [manifest_path, site_caps_path])
+
+
+def _copy_verified_file(source, destination):
+    source, destination = Path(source), Path(destination)
+    if source.is_symlink() or not source.is_file():
+        raise core.AtcsError("missing-input", f"retained native file is missing or linked: {source}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    return {"path": None, "sha256": core.file_sha256(destination)}
+
+
+def _cmd_prepare_native_context(workspace, args):
+    native_context_path, site_caps_path = args
+    workspace = Path(workspace)
+    native = _native_timing_input(native_context_path)
+    base = _read_declared(_paths(workspace)["baseline"], "design-state")
+    if list(base.get("scenarios") or []) != native["requiredScenarios"]:
+        raise core.AtcsError("identity-mismatch", "retained native scenarios differ from staged baseline")
+    if [entry.get("sha256") for entry in base.get("sdc") or []] != [entry["sha256"] for entry in native["constraints"]]:
+        raise core.AtcsError("identity-mismatch", "retained native constraints differ from staged baseline")
+    site = _read_plain(site_caps_path)
+    site_context = adapters.compile_xtop_site_context(site, native["requiredScenarios"])
+    if site_context is None:
+        raise core.AtcsError("missing-input", "the Site declares no XTop context")
+    root = workspace / "research" / "native-input"
+    sta_target = root / "sta-data"
+    if sta_target.exists():
+        raise core.AtcsError("write-once", "native timing context was already prepared")
+    shutil.copytree(native["staData"]["path"], sta_target, symlinks=False)
+    if core.tree_digest(sta_target) != native["staData"]["digest"]:
+        raise core.AtcsError("identity-mismatch", "copied native STA data differs from retained input")
+    library_path = root / "xtop-library.tcl"
+    library_path.parent.mkdir(parents=True, exist_ok=True)
+    library_path.write_text(site_context["libraryTcl"], encoding="utf-8")
+    report_refs = []
+    for index, ref in enumerate(native["sourceReports"]):
+        target = root / "source-reports" / f"{index:03d}-{Path(ref['path']).name}"
+        copied = _copy_verified_file(ref["path"], target)
+        copied["path"] = _relpath(target, workspace)
+        if copied["sha256"] != ref["sha256"]:
+            raise core.AtcsError("identity-mismatch", f"copied native source report {index} changed")
+        report_refs.append(copied)
+    body = {
+        "designStateId": base["id"], "requiredScenarios": list(native["requiredScenarios"]),
+        "libraryTcl": {"path": _relpath(library_path, workspace), "sha256": core.file_sha256(library_path)},
+        "staData": {"path": _relpath(sta_target, workspace), "digest": core.tree_digest(sta_target)},
+        "libraryFiles": site_context["libraryFiles"], "siteMap": site_context["siteMap"],
+        "removableFillers": site_context["removableFillers"], "ecoParameters": site_context["ecoParameters"],
+        "constraints": list(native["constraints"]), "sourceReports": report_refs,
+        "producer": dict(native["producer"]), "sourceInputSha256": core.file_sha256(Path(native_context_path)),
+    }
+    return _paths(workspace)["xtop_context"], core.stamp("xtop-context", body)
+
+
 def _stage_baseline_inputs(workspace, manifest):
     """Copy `manifest`'s referenced source files into `<workspace>/baseline/` and return a
     new manifest whose `root` is `workspace` itself (C3, final review: wrong file root).
@@ -4260,12 +4370,12 @@ def _native_task(workspace, base, site, root, context, body, prefix):
     adapters.run_tool(site, ["xtop", "-f", str(path)], cwd=root, log_path=root / "native-stage.log")
 
 
-def _native_analysis_tcl(directory):
+def _native_analysis_tcl(directory, summary_top_n=10000, detail_top_n=1000):
     return f"""
 file mkdir "{adapters.tcl_quote(str(directory))}"
 foreach check {{setup hold}} {{
-    redirect -file [file join "{adapters.tcl_quote(str(directory))}" "$check.rpt"] [list summarize_gba_violations -exclude_path -$check -with_distribution -with_top_n 10000]
-    analyze_${{check}}_path_violations -top 1000 -detail_info -output_dir "{adapters.tcl_quote(str(directory))}" -prefix $check
+    redirect -file [file join "{adapters.tcl_quote(str(directory))}" "$check.rpt"] [list summarize_gba_violations -exclude_path -$check -with_distribution -with_top_n {int(summary_top_n)}]
+    analyze_${{check}}_path_violations -top {int(detail_top_n)} -detail_info -output_dir "{adapters.tcl_quote(str(directory))}" -prefix $check
     set endpoints {{}}
     foreach_in_collection pin [get_${{check}}_gba_violated_pins -exclude_path -endpoint_only] {{
         lappend endpoints [get_attribute $pin full_name]
@@ -4287,8 +4397,42 @@ def _eco_pair(workspace, root, prefix):
     return pair
 
 
+def _native_measurements(workspace, report_dir):
+    """Actual native summarize reports as fixed setup/hold metrics plus hashed raw refs."""
+    result = {}
+    for mode in ("setup", "hold"):
+        path = Path(report_dir) / f"{mode}.rpt"
+        text = path.read_text(encoding="utf-8")
+        section = contributions.parse_gain_summary(text).get(mode)
+        total = (section or {}).get("total") or {}
+        if not all(key in total for key in ("worst", "tns", "count")):
+            raise core.AtcsError("native-result-unreadable", f"{path} has no readable native {mode} total WNS/TNS/count")
+        result[mode] = {
+            "wnsNs": total["worst"], "tnsNs": total["tns"], "violations": total["count"],
+            "report": {"path": _relpath(path, workspace), "sha256": core.file_sha256(path)},
+        }
+    return result
+
+
+def _resident_input_identity(workspace, common):
+    baseline = _read_declared(_paths(workspace)["baseline"], "design-state")
+    context = _read_declared(_paths(workspace)["xtop_context"], "xtop-context")
+    return {
+        "baselineStateId": baseline["id"], "nativeContextId": context["id"],
+        "commonStateId": common["stateId"], "worklistId": common["worklistId"],
+    }
+
+
 def _cmd_common_autofix(workspace, args):
-    (site_path,) = args
+    site_path, *rest = args
+    summary_top_n, detail_top_n = 10000, 1000
+    if rest:
+        try:
+            summary_top_n = detail_top_n = int(rest[0])
+        except (TypeError, ValueError) as exc:
+            raise InputError("invalid-input", "native report path breadth must be an integer") from exc
+        if not 1000 <= detail_top_n <= 100000:
+            raise InputError("invalid-input", "native report path breadth must be 1000..100000")
     workspace = Path(workspace)
     base = _read_declared(_paths(workspace)["working_state"], "design-state")
     site = _read_plain(site_path)
@@ -4308,7 +4452,8 @@ def _cmd_common_autofix(workspace, args):
     _canonical_write(clock_path, clock)
     before, residual = root / "initial-analysis", root / "residual-analysis"
     fixes = integration.auto_fix_tcl(integration.DEFAULT_SETUP_MARGIN, integration.DEFAULT_HOLD_MARGIN)
-    body = _native_analysis_tcl(before) + "\n".join(fixes) + "\n" + _native_analysis_tcl(residual)
+    body = (_native_analysis_tcl(before, summary_top_n, detail_top_n) + "\n".join(fixes)
+            + "\n" + _native_analysis_tcl(residual, summary_top_n, detail_top_n))
     body += f"""
 atcs_write_cell_dump "{adapters.tcl_quote(str(root / 'r1.dump'))}"
 file mkdir "{adapters.tcl_quote(str(root / 'eco'))}"
@@ -4344,10 +4489,97 @@ exit 0
     return output, {"parentStateId": base["id"], "stateId": state_id, "worklistId": worklist_id,
         "seed": {"path": _relpath(seed_path, workspace), "digest": core.tree_digest(seed_path)},
         "summaries": summaries, "endpoints": endpoints, "nativeChecks": native_checks, "eco": eco,
-        "analysisBoard": _relpath(residual, workspace), "analysisTopPaths": 1000,
+        "analysisBoard": _relpath(residual, workspace), "analysisTopPaths": detail_top_n,
         "cellStateDigest": core.digest(contributions.parse_cell_dump((root / "r1.dump").read_text())),
         "autoFixCommands": fixes, "startedAt": clock["startedAt"], "completedAt": time.time(),
         "experimentDeadline": clock["experimentDeadline"], "predictionOnly": True}
+
+
+def _cmd_resident_common_autofix(workspace, args):
+    """The existing native analysis/common R1 without the legacy matched-deadline assumption."""
+    path, body = _cmd_common_autofix(workspace, args)
+    if body.get("schema") == "atcs.common-stage/1":
+        _read_declared(path, "common-stage")
+        return path, body
+    body = dict(body)
+    body.pop("experimentDeadline", None)
+    root = Path(workspace) / "research" / "observe" / "common-r1"
+    body["measurements"] = {
+        "before": _native_measurements(workspace, root / "initial-analysis"),
+        "after": _native_measurements(workspace, root / "residual-analysis"),
+    }
+    body["nativeLog"] = {
+        "path": _relpath(root / "native-stage.log", workspace),
+        "sha256": core.file_sha256(root / "native-stage.log"),
+    }
+    return path, core.stamp("common-stage", body)
+
+
+def _cmd_auto_fix_reference(workspace, args):
+    """Matched ordinary AutoFix from common R1 until native timing reports cease changing."""
+    (site_path,) = args
+    workspace = Path(workspace)
+    output = workspace / "state" / "autofix-reference.json"
+    common = _read_declared(workspace / "state" / "common-stage.json", "common-stage")
+    base = _read_declared(_paths(workspace)["working_state"], "design-state")
+    site = _read_plain(site_path)
+    context = _verified_xtop_context(workspace, base["id"], site)
+    if output.is_file():
+        existing = _read_declared(output, "autofix-reference")
+        if existing.get("inputIdentity") != _resident_input_identity(workspace, common):
+            raise core.AtcsError("stale-base", "ordinary AutoFix reference belongs to another input/R1")
+        return output, existing
+    root = workspace / "research" / "control" / "autofix-reference"
+    if root.exists():
+        raise core.AtcsError("incomplete-autofix-reference", "ordinary AutoFix started without a sealed result; inspect its native trace")
+    before, after = root / "before", root / "after"
+    fixes = integration.auto_fix_tcl(integration.DEFAULT_SETUP_MARGIN, integration.DEFAULT_HOLD_MARGIN)
+    top_n = int(common.get("analysisTopPaths", 10000))
+    body = _native_analysis_tcl(before, top_n, top_n)
+    body += "\nset fixes [list " + " ".join('"' + adapters.tcl_quote(command) + '"' for command in fixes) + "]\n"
+    body += adapters.load_template("xtop-autofix-reference.tcl")
+    body += "\n" + _native_analysis_tcl(after, top_n, top_n) + "\nexit 0\n"
+    _native_task(workspace, base, site, root, context, body, "atcs_autofix_reference_")
+    terminal = _read_plain(root / "control-result.json")
+    if terminal.get("complete") is not True or terminal.get("stopped") not in ("goal", "no-timing-report-improvement"):
+        raise core.AtcsError("incomplete-autofix-reference", "ordinary AutoFix has no honest terminal reason")
+    eco = _eco_pair(workspace, root / "eco", "atcs_autofix_reference")
+    checkpoint = root / "best-workspace"
+    if not checkpoint.is_dir():
+        raise core.AtcsError("missing-input", "ordinary AutoFix did not export its selected workspace")
+    result = {
+        "inputIdentity": _resident_input_identity(workspace, common),
+        "measurements": {"before": _native_measurements(workspace, before),
+                         "after": _native_measurements(workspace, after)},
+        "artifacts": {
+            "logicalEco": eco["netlist"], "physicalEco": eco["physical"],
+            "checkpoint": {"path": _relpath(checkpoint, workspace), "digest": core.tree_digest(checkpoint)},
+            "nativeTrace": {"path": _relpath(root / "native-stage.log", workspace),
+                            "sha256": core.file_sha256(root / "native-stage.log")},
+        },
+        "autoFixCommands": fixes, "stopReason": terminal["stopped"], "rounds": terminal.get("rounds") or [],
+        "predictionOnly": True,
+    }
+    return output, core.stamp("autofix-reference", result)
+
+
+def _cmd_engineering_result(workspace, args):
+    """Normal-work fallback: never fabricate the outsourced result; only preserve an existing one."""
+    target_setup, target_hold = args
+    for name, value in (("target setup", target_setup), ("target hold", target_hold)):
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError) as exc:
+            raise InputError("invalid-input", f"{name} must be numeric") from exc
+        if parsed != 0.0:
+            raise InputError("invalid-input", f"{name} must be 0.0 for current native evidence")
+    path = Path(workspace) / "state" / "engineering-result.json"
+    if not path.is_file():
+        raise core.AtcsError("engineering-required", "fix-timing requires resident delivery; no result exists to validate")
+    result = _read_plain(path)
+    if result.get("schema") != "atcs.engineering-result/1":
+        raise core.AtcsError("invalid-input", "engineering result has the wrong schema")
+    return path, result
 
 
 def _lead_native_pins(workspace, targets):
@@ -4575,9 +4807,14 @@ def _cmd_finalize_lead(workspace, args):
 
 SUBCOMMANDS = {
     "common-autofix": _cmd_common_autofix,
+    "resident-common-autofix": _cmd_resident_common_autofix,
+    "auto-fix-reference": _cmd_auto_fix_reference,
+    "engineering-result": _cmd_engineering_result,
     "prepare-lead": _cmd_prepare_lead,
     "finalize-lead": _cmd_finalize_lead,
     "bind-inputs": _cmd_bind_inputs,
+    "bind-resident-inputs": _cmd_bind_resident_inputs,
+    "prepare-native-context": _cmd_prepare_native_context,
     "baseline": _cmd_baseline,
     "observe": _cmd_observe,
     "risk": _cmd_risk,

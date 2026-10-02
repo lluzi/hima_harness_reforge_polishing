@@ -15,6 +15,7 @@ from unittest.mock import patch
 TESTS = Path(__file__).resolve().parent
 FLOW = TESTS.parent
 ROOT = FLOW.parents[2]
+REPO_ROOT = Path(os.environ.get("HIMA_TEST_REPO_ROOT", ROOT))
 sys.path[:0] = [str(FLOW), str(TESTS)]
 import atcs_cli as cli
 from atcs import adapters, core, workspaces
@@ -80,6 +81,15 @@ class OwnerTimingLeadChecks(unittest.TestCase):
         text = 'set env(STUB_CALLS) "' + str(Path(cwd) / "vendor-calls.txt") + '"\n' + STUB_XTOP
         text += r"""
 foreach name {create_corner create_scenario link_timing_library create_mode} { proc $name {args} {} }
+rename summarize_gba_violations fixture_summarize_gba_violations
+proc summarize_gba_violations {args} {
+    stub_record summarize_gba_violations {*}$args
+    set check [expr {[lsearch -exact $args -setup] >= 0 ? "setup" : "hold"}]
+    set slack [expr {$check eq "setup" ? -0.02 : -0.07}]
+    append ::stub_out "### $check summary ###\nScenario Count Worst TNS\n--------------------------------\ntotal 1 $slack $slack\n"
+    append ::stub_out "### $check top 1 endpoints ###\nSlack Scenario Name\n--------------------------------\n$slack synthetic U9/D\n"
+    return ""
+}
 rename redirect fixture_redirect
 proc redirect {args} {
     if {[lindex $args 0] eq "-file"} {
@@ -111,7 +121,8 @@ proc write_design_changes {args} {
     }
 }
 """
-        if "xtop-repeat-control" in tcl.read_text() or "set stopped deadline" in tcl.read_text():
+        if ("xtop-repeat-control" in tcl.read_text() or "set stopped deadline" in tcl.read_text()
+                or "no-timing-report-improvement" in tcl.read_text()):
             text += r"""
 set ::fixture_fix_count 0
 proc fixture_default {name args} {
@@ -197,6 +208,32 @@ close $fh
         seed_path.write_text("wrong R1")
         with self.assertRaisesRegex(core.AtcsError, "saved common R1 bytes changed"):
             cli._verified_xtop_context(self.ws, self.base["id"], self.site)
+
+    def test_resident_common_r1_and_matched_autofix_use_actual_native_reports_without_method_caps(self):
+        (self.ws / "state/common-stage.json").unlink()
+        shutil.rmtree(self.ws / "research/observe/common-r1")
+        with patch.object(adapters, "run_tool", side_effect=self.stub_native_tool):
+            self.assertEqual(cli.main([
+                "resident-common-autofix", str(self.ws), str(self.site_path), "10000",
+            ]), 0)
+        common = cli._read_declared(self.ws / "state/common-stage.json", "common-stage")
+        self.assertEqual(common["analysisTopPaths"], 10000)
+        self.assertNotIn("experimentDeadline", common)
+        self.assertEqual(set(common["measurements"]), {"before", "after"})
+        for phase in ("before", "after"):
+            for mode in ("setup", "hold"):
+                ref = common["measurements"][phase][mode]["report"]
+                self.assertEqual(core.file_sha256(self.ws / ref["path"]), ref["sha256"])
+
+        with patch.object(adapters, "run_tool", side_effect=self.stub_native_tool):
+            self.assertEqual(cli.main(["auto-fix-reference", str(self.ws), str(self.site_path)]), 0)
+        reference = cli._read_declared(self.ws / "state/autofix-reference.json", "autofix-reference")
+        self.assertIn(reference["stopReason"], ("goal", "no-timing-report-improvement"))
+        self.assertEqual(reference["inputIdentity"]["commonStateId"], common["stateId"])
+        script = (self.ws / "research/control/autofix-reference/native-stage.tcl").read_text()
+        self.assertNotIn("round <= 128", script)
+        self.assertNotIn("clock seconds] < $deadline", script)
+        self.assertIn("no-timing-report-improvement", script)
 
     @unittest.skipUnless(TCLSH, "tclsh required")
     def test_lead_replay_own_mutation_final_eco_is_implement_input(self):
@@ -304,10 +341,15 @@ proc write_design_changes {args} {
 
     def test_graph_contract_smoke(self):
         node = "/Users/lluzi/.local/node24/bin/node"
+        legacy_root = self.ws / "legacy-packs"
+        legacy_pack = legacy_root / "agentic-timing-closure-system"
+        shutil.copytree(FLOW.parent, legacy_pack)
+        shutil.copyfile(legacy_pack / "legacy/0.2.10/contract.yml", legacy_pack / "contract.yml")
+        shutil.copyfile(legacy_pack / "legacy/0.2.10/graph.yml", legacy_pack / "graph.yml")
         script = """
 import assert from 'node:assert/strict';
 import { loadPack } from '@hima/harness';
-const pack = loadPack('packs', 'agentic-timing-closure-system');
+const pack = loadPack(__LEGACY_ROOT__, 'agentic-timing-closure-system');
 assert.equal(pack.contract.version, '0.2.10');
 const edges=pack.graph.edges;
 const to=id=>edges.filter(e=>e.from===id).map(e=>e.to);
@@ -322,12 +364,12 @@ assert.equal(edges.some(e=>['presta','replay-prepare','reconcile'].includes(e.to
 assert.equal(pack.contract.strategy.autoFinish.max,0);
 assert.equal(pack.contract.agentTeams.length,6);
 console.log('graph/contract PASS: six fork branches, owner lead, direct physical referee');
-"""
-        ran = subprocess.run([node, "--input-type=module", "-e", script], cwd=ROOT, capture_output=True, text=True)
+""".replace("__LEGACY_ROOT__", json.dumps(str(legacy_root)))
+        ran = subprocess.run([node, "--input-type=module", "-e", script], cwd=REPO_ROOT, capture_output=True, text=True)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
         import datetime, re
         from zoneinfo import ZoneInfo
-        wrapper = (ROOT / "sites/linglong-atcs28/atcs-xtop-operator-v26.sh").read_text()
+        wrapper = (REPO_ROOT / "sites/linglong-atcs28/atcs-xtop-operator-v26.sh").read_text()
         zone = re.search(r"(?m)^\s+-e TZ=([A-Za-z_/]+)\s+\\$", wrapper)
         self.assertIsNotNone(zone, "private saved R1 must recover in the batch Site's timezone")
         # Source: current v24 lead L4 library-identity.json, tech LEF unchanged mtime epoch.

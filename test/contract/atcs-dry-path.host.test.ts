@@ -45,7 +45,7 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { appendFile, cp, mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
+import { appendFile, cp, mkdir, readFile, readdir, realpath, writeFile, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
 import {
@@ -111,6 +111,20 @@ const ATTEMPT4_AUTO_FINISH = [
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS = 'ledger';
+process.env.HIMA_RESIDENT_TESTING = '1';
+
+const canonicalObject = (value: any): any => Array.isArray(value) ? value.map(canonicalObject)
+  : value && typeof value === 'object'
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonicalObject(value[key])]))
+    : value;
+const stampAtcs = (kind: string, value: Record<string, unknown>) => {
+  const body = { ...value, schema: `atcs.${kind}/1` };
+  const id = createHash('sha256').update(JSON.stringify(canonicalObject(body))).digest('hex').slice(0, 20);
+  return { ...body, id };
+};
+const treeDigestForSingleFile = (name: string, bytes: Buffer) => createHash('sha256').update(JSON.stringify([{
+  path: name, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length,
+}])).digest('hex');
 
 interface Home {
   readonly h: HimaHome;
@@ -171,6 +185,16 @@ async function prepareHome(t: TestContext, teamExecutions: number, siteFaults = 
   const variant = path.join(packsDir, packId);
   await cp(path.join(repoRoot, 'packs', packId), variant, { recursive: true,
     filter: (src) => !src.includes('__pycache__') });
+  // These production dry-path cases preserve the admitted 0.2.10 six-branch/physical-referee
+  // method. The current Pack is 0.3.0; overlay the explicit immutable method snapshot instead of
+  // weakening the old assertions to fit the new resident-engineering graph.
+  await cp(path.join(variant, 'legacy/0.2.10/contract.yml'), path.join(variant, 'contract.yml'));
+  await cp(path.join(variant, 'legacy/0.2.10/graph.yml'), path.join(variant, 'graph.yml'));
+  await cp(path.join(variant, 'legacy/0.2.10/semantics.yml'), path.join(variant, 'semantics.yml'));
+  for (const file of ['INTENT.md', 'SPEC.md', 'FABRIC.md']) {
+    await cp(path.join(variant, `legacy/0.2.10/${file}`), path.join(variant, file));
+  }
+  await rm(path.join(variant, 'TEST.md'), { force: true });
   const contract = parse(await readFile(path.join(variant, 'contract.yml'), 'utf8')) as any;
   const wrapper = await realpath('/usr/bin/tclsh');
   contract.environment.wrappers = [wrapper, 'python3', '/usr/bin/python3'];
@@ -1011,4 +1035,192 @@ test('ATCS 0.2.0 timing-only contract: an analysisContract override is the Run\'
   assert.equal(stamped.maxNewConstraintFailures, 1000000);
   assert.equal(stamped.degradeLimitNs, 0);
   assert.deepEqual(stamped.goal, { setup: 0, hold: 0 }, 'the timing Goal is the Run\'s, unchanged');
+});
+
+test('ATCS 0.3 public Host delivers one production-adapter engineering result and ends honestly with Goal false', async (t) => {
+  const local = await localHome(t, { sleepSeconds: 0, parallelJobs: 2 }); assert.ok(local);
+  const h = { ...local.h, workspace: await realpath(local.h.workspace) };
+  const packsDir = path.join(h.home, 'hima/packs');
+  const variant = path.join(packsDir, packId);
+  await cp(path.join(repoRoot, 'packs', packId), variant, { recursive: true,
+    filter: (src) => !src.includes('__pycache__') });
+  const graph = parse(await readFile(path.join(variant, 'graph.yml'), 'utf8')) as any;
+  graph.entry = 'fix-timing';
+  graph.autopilot = [{ from: ['read-engineering-result'], until: ['check-engineering-goal', 'wait-for-person'] }];
+  await writeFile(path.join(variant, 'graph.yml'), stringify(graph));
+  const contract = parse(await readFile(path.join(variant, 'contract.yml'), 'utf8')) as any;
+  contract.budget.closingReserveMs = 1000;
+  await writeFile(path.join(variant, 'contract.yml'), stringify(contract));
+
+  const wrapper = path.join(repoRoot, 'sites/linglong-atcs28/templates/resident-engineering-wrapper.py');
+  const native = path.join(repoRoot, 'sites/linglong-atcs28/tests/fixtures/acp-standin.py');
+  const admin = path.join(h.workspace, 'resident-admin');
+  await mkdir(admin, { recursive: true });
+  const resultSource = path.join(admin, 'atcs-engineering-result.json');
+  const capability = path.join(admin, 'engineering-capabilities-v1.json');
+  await writeFile(capability, JSON.stringify({
+    schema: 'hima-resident-engineering-capability/1', protocol: 'hima-resident-engineering/1',
+    wrapper: { argv: [wrapper, '--capability', capability] },
+    native: { executable: native, version: '1.18.34', argv: [], model: 'deepseek/deepseek-flash', protocolVersion: 1 },
+    sandbox: { kind: 'none', testOnly: true, privateWorkspace: 'workspace', privateHome: 'home' },
+    environment: { inherit: [], set: { STANDIN_RESULT_SOURCE: resultSource }, toolPaths: [], credentialReadPaths: [] },
+    permissions: { autoApprove: ['read', 'edit', 'write', 'bash'], denyUnknown: true },
+    delivery: { candidate: 'resident-delivery.json' }, stopGraceSeconds: 1,
+  }));
+  const dummy = path.join(h.workspace, 'declared-input.json');
+  await writeFile(dummy, '{}\n');
+  await writeLocalSite(h, {
+    allowedReadRoots: [h.workspace, path.dirname(wrapper), path.dirname(native)],
+    allowedWriteRoots: [h.workspace], allowedWrappers: ['python3', '/usr/bin/python3', wrapper],
+    bindings: { designStateManifest: dummy, nativeTimingContext: dummy, siteCapabilities: dummy,
+      workspaceRoot: h.workspace, engineeringCapabilities: capability },
+    licences: { xtop: 1 }, parallelJobs: 2,
+  });
+
+  const host = await bootInProcess(h);
+  let runId: string | undefined;
+  t.after(async () => {
+    if (runId) await host.ctx.hima.cancelRun(runId).catch(() => undefined);
+    await host.dispose().catch(() => undefined); await h.dispose();
+  });
+  const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
+  const started = await host.ctx.hima.startRun({ pack: packId, site: 'local', test: true,
+    goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0 },
+    strategy: { nativeReportPaths: 10000 }, ownerSessionId: actor, timeBoxMs: 60_000 });
+  assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
+  runId = started.run.id; const workspace = started.workspace;
+
+  const fileRef = async (rel: string, text: string) => {
+    const bytes = Buffer.from(text);
+    const full = path.join(workspace, rel); await mkdir(path.dirname(full), { recursive: true }); await writeFile(full, bytes);
+    return { path: rel, sha256: createHash('sha256').update(bytes).digest('hex') };
+  };
+  const metric = async (prefix: string, setupWns: number, setupTns: number, setupCount: number) => ({
+    setup: { wnsNs: setupWns, tnsNs: setupTns, violations: setupCount,
+      report: await fileRef(`engineering-fixture/${prefix}-setup.rpt`,
+        `### setup summary ###\nScenario Count Worst TNS\n----------------\ntotal ${setupCount} ${setupWns} ${setupTns}\n`) },
+    hold: { wnsNs: 0, tnsNs: 0, violations: 0,
+      report: await fileRef(`engineering-fixture/${prefix}-hold.rpt`,
+        '### hold summary ###\nScenario Count Worst TNS\n----------------\ntotal 0 0 0\n') },
+  });
+  const before = await metric('common', -0.10, -0.20, 1);
+  const referenceAfter = await metric('autofix', -0.02, -0.02, 1);
+  const residentAfter = await metric('resident', -0.05, -0.08, 1);
+  const baseline = stampAtcs('design-state', { top: 'fixture' });
+  const nativeContext = stampAtcs('xtop-context', { requiredScenarios: ['fixture'] });
+  const readiness = stampAtcs('input-readiness', {
+    missing: [], missingCount: { value: 0 }, scope: 'post-route-only',
+    lifecycleAvailable: { value: 0 }, lifecycleMissing: ['init', 'place', 'cts', 'route', 'postroute'],
+  });
+  const common = stampAtcs('common-stage', {
+    stateId: 'common-r1-state', worklistId: 'common-r1-worklist',
+    measurements: { before, after: before },
+  });
+  const inputIdentity = {
+    baselineStateId: baseline.id, nativeContextId: nativeContext.id,
+    commonStateId: 'common-r1-state', worklistId: 'common-r1-worklist',
+  };
+  const reference = stampAtcs('autofix-reference', {
+    inputIdentity, measurements: { before, after: referenceAfter },
+  });
+  await mkdir(path.join(workspace, 'state'), { recursive: true });
+  await Promise.all([
+    writeFile(path.join(workspace, 'state/readiness.json'), JSON.stringify(readiness)),
+    writeFile(path.join(workspace, 'state/baseline.json'), JSON.stringify(baseline)),
+    writeFile(path.join(workspace, 'state/xtop-context.json'), JSON.stringify(nativeContext)),
+    writeFile(path.join(workspace, 'state/common-stage.json'), JSON.stringify(common)),
+    writeFile(path.join(workspace, 'state/autofix-reference.json'), JSON.stringify(reference)),
+  ]);
+  const checkpointBytes = Buffer.from('selected native checkpoint\n');
+  await mkdir(path.join(workspace, 'engineering-fixture/best-workspace'), { recursive: true });
+  await writeFile(path.join(workspace, 'engineering-fixture/best-workspace/state'), checkpointBytes);
+  const collateral = Object.fromEntries(await Promise.all(['transition', 'capacitance', 'fanout', 'legality'].map(async check =>
+    [check, { violations: 0, report: await fileRef(`engineering-fixture/${check}.rpt`, `${check}: 0 violations\n`) }])));
+  const resultBody = {
+    kind: 'result',
+    inputIdentity,
+    selected: { stateId: 'resident-selected-state', checkpoint: {
+      path: 'engineering-fixture/best-workspace', digest: treeDigestForSingleFile('state', checkpointBytes),
+    } },
+    measurements: { before, after: residentAfter }, collateral,
+    artifacts: {
+      scripts: [await fileRef('engineering-fixture/fix.tcl', '# native fixture repair script\n')],
+      logicalEco: await fileRef('engineering-fixture/final_netlist_eco.txt', 'fixture logical ECO\n'),
+      physicalEco: await fileRef('engineering-fixture/final_physical_eco.txt', 'fixture physical ECO\n'),
+      reproduction: await fileRef('engineering-fixture/REPRODUCE.md', 'source fix.tcl\n'),
+      nativeTrace: [await fileRef('engineering-fixture/native.log', 'native XTop fixture trace\n')],
+    },
+    remaining: [{ mode: 'setup', endpoint: 'fixture/U1/D', slackNs: -0.05 }],
+    regressed: [], blocked: [], unknown: [],
+    stopReason: 'residual remains after best measured state', bestEffort: true, noOp: false,
+  };
+
+  let serial = 0;
+  const controlled = () => host.ctx.hima.ledger.run(runId!)!.control!;
+  const call = async (args: Record<string, unknown>) => {
+    const answer = await host.ctx.tools.execute({ callId: `atcs-resident-${++serial}` as never,
+      name: 'hima_execute', arguments: args, agent: owner, signal: AbortSignal.timeout(30_000) });
+    assert.equal(answer.isError, false, JSON.stringify(answer));
+    return JSON.parse(answer.content.filter(item => item.type === 'text').map(item => item.text).join(''));
+  };
+  const execute = (requestId: string, action: string, extra: Record<string, unknown>) => call({
+    run: runId, action, requestId, expectedEpoch: controlled().epoch, expectedRevision: controlled().revision, ...extra,
+  });
+  const begun = await execute('atcs-begin', 'begin', { nodeId: 'fix-timing' });
+  const executionId = begun.receipt.executionId as string;
+  const taskId = `resident-${createHash('sha256').update(JSON.stringify(canonicalObject({
+    runId, executionId,
+  }))).digest('hex').slice(0, 24)}`;
+  const result = stampAtcs('engineering-result', {
+    ...resultBody, task: { taskId, runId, executionId, nodeId: 'fix-timing' },
+  });
+  await writeFile(resultSource, JSON.stringify(result) + '\n');
+  const engineering = await execute('atcs-start', 'engineering', {
+    executionId, engineering: { operation: 'start', goal: 'DELIVER_BEST_EFFORT', context: 'Use the full ATCS resident playbook.' },
+  });
+  assert.equal(engineering.kind, 'accepted', JSON.stringify(engineering));
+  assert.equal(engineering.data?.status, 'started', JSON.stringify(engineering));
+  assert.equal(engineering.data.taskId, taskId);
+  const taskDir = path.join(workspace, '.hima-engineering', taskId);
+  await waitUntil('ATCS resident native candidate', async () => {
+    try { return (await readFile(path.join(taskDir, 'workspace/resident-delivery.json'))).byteLength > 0; } catch { return false; }
+  }, 10_000, 20);
+  const delivered = await execute('atcs-delivery', 'engineering', { executionId, engineering: { operation: 'delivery' } });
+  assert.equal(delivered.data.status, 'verified', JSON.stringify(delivered));
+  assert.equal(delivered.data.outcome, 'best-effort');
+  const released = await execute('atcs-release', 'engineering', { executionId, engineering: { operation: 'release' } });
+  assert.equal(released.data.status, 'released');
+  const completed = await execute('atcs-complete', 'complete', { executionId });
+  assert.equal(completed.kind, 'accepted', JSON.stringify(completed));
+  await waitUntil('ATCS route reaches the terminal Goal judge',
+    () => host.ctx.hima.ledger.run(runId!)?.currentNode === 'check-engineering-goal', 30_000, 20);
+  const goalBegin = await execute('atcs-goal-begin', 'begin', { nodeId: 'check-engineering-goal' });
+  assert.equal(goalBegin.kind, 'accepted', JSON.stringify(goalBegin));
+  const goalExecutionId = goalBegin.receipt.executionId as string;
+  const goalWork = await execute('atcs-goal-work', 'work', { executionId: goalExecutionId });
+  assert.notEqual(goalWork.kind, 'refused', JSON.stringify(goalWork));
+  await waitUntil('ATCS terminal Goal judge is ready',
+    () => controlled().executions[goalExecutionId]?.phase === 'ready', 10_000, 20);
+  const goalComplete = await execute('atcs-goal-complete', 'complete', { executionId: goalExecutionId });
+  assert.equal(goalComplete.kind, 'accepted', JSON.stringify(goalComplete));
+  try {
+    await waitUntil('ATCS best-effort route ends', () => String(host.ctx.hima.ledger.run(runId!)?.status).startsWith('ended-'), 30_000, 20);
+  } catch (error) {
+    throw new Error(`${(error as Error).message}: ${JSON.stringify({
+      run: host.ctx.hima.ledger.run(runId!), records: host.ctx.hima.ledger.records({ runId }).slice(-20),
+    })}`);
+  }
+
+  const records = host.ctx.hima.ledger.records({ runId });
+  assert.ok(records.some(record => record.type === 'observation' && record.reader.id === 'atcs-engineering-result'));
+  assert.ok(records.some(record => record.type === 'node' && record.nodeId === 'check-engineering-delivery'
+    && record.state === 'done' && (record as any).outcome === 'PASS'));
+  assert.ok(records.some(record => record.type === 'node' && record.nodeId === 'check-engineering-goal'
+    && record.state === 'done' && (record as any).outcome === 'FAIL'));
+  const jobs = records.filter(record => record.type === 'job' && record.event === 'launched') as any[];
+  assert.equal(jobs.filter(record => record.job.name === 'engineering-fix-timing').length, 1,
+    'the dry route launched one resident production adapter Job');
+  assert.equal(jobs.filter(record => record.job.name === 'reader-atcs-engineering-result').length, 2,
+    'delivery and graph consumption each used the real Pack Reader');
+  for (const job of jobs) assert.doesNotMatch(String(job.job.wire), /pt_shell|innovus|StarXtract|starrc/i);
 });
