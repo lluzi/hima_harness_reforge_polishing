@@ -50,12 +50,19 @@ Initial RED: 4/4 original lifecycle tests failed because the wrapper did not exi
 python3 sites/linglong-atcs28/test_resident_engineering_wrapper.py -v
 ```
 
-Current GREEN: 11/11 in 2.53 seconds, covering persistent session start/message, stand-in-generated
+Current GREEN: 13/13 in 8.41 seconds, covering persistent session start/message, a 5.5-second message
+with immediate durable queue acknowledgement and later native completion fact, stand-in-generated
 delivery, best-effort fixture support, native permission rejection/event retention, detached descendant
-cancel, unknown/no-replay restart, exact live-owned-process reconciliation before release, full
+cancel, unknown/no-replay restart including an accepted but unfinished message, exact
+live-owned-process reconciliation before release, full
 160-character Host request IDs, exact Campaign-workspace scope/refusal, and same-session result repair
-with immutable prior artifact snapshots plus atomic latest delivery manifests. `py_compile` and `git
-diff --check` also pass.
+with immutable prior artifact snapshots plus atomic latest delivery manifests. `py_compile` and
+`git diff --check` also pass.
+
+After a fresh build, the focused public Host file passed 8/8 in 19.04 seconds. Its main lifecycle case
+asserts the slow message returns `accepted` before the Host's five-second wait, then waits for the actual
+completion state before delivery. The same suite retains cancel, unknown/no-replay, best-effort,
+capacity/licence and same-session Reader-repair coverage.
 
 ## Deployment blockers retained
 

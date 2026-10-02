@@ -179,7 +179,14 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
             time.sleep(.02)
 
         message = self.request("message-1", "message", {"text": "continue from the same facts"})
-        self.assertEqual((message["status"], message["sessionId"]), ("completed", "native-session-1"))
+        self.assertEqual((message["status"], message["sessionId"]), ("accepted", "native-session-1"))
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            state = wait_json(self.task / "state.json")
+            if state.get("phase") == "waiting" and state.get("detail", {}).get("completedRequestId") == "message-1":
+                break
+            time.sleep(.02)
+        self.assertEqual(state.get("detail", {}).get("completedRequestId"), "message-1")
 
         artifact = self.task / "workspace" / "result.json"
         artifact.write_text('{"measured":true}\n')
@@ -206,6 +213,67 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         prompts = [entry for entry in trace if entry["direction"] == "wrapper-to-native"
                    and entry["message"].get("method") == "session/prompt"]
         self.assertEqual(len(prompts), 2, "one initial prompt and one same-session message, without replay")
+
+    def test_slow_message_ack_is_immediate_and_completion_is_a_later_retained_fact(self):
+        self.start_wrapper()
+        self.request("start:slow", "start")
+        deadline = time.monotonic() + 5
+        while wait_json(self.task / "state.json")["phase"] == "running" and time.monotonic() < deadline:
+            time.sleep(.02)
+        started = time.monotonic()
+        receipt = self.request("message:slow", "message", {"text": "LONG_MESSAGE"})
+        elapsed = time.monotonic() - started
+        self.assertEqual(receipt["status"], "accepted", receipt)
+        self.assertEqual(receipt["result"], {"queued": True})
+        self.assertLess(elapsed, 1.0, "receipt acknowledges durable queue admission, not prompt completion")
+        queued = wait_json(self.task / "native" / "messages" / "message:slow.queued.json")
+        self.assertEqual((queued["status"], queued["requestSha256"]), ("queued", receipt["requestSha256"]))
+        deadline = time.monotonic() + 8
+        completed = None
+        while time.monotonic() < deadline:
+            for event in (self.task / "events").glob("*.json"):
+                value = json.loads(event.read_text())
+                if value.get("kind") == "input" and value.get("requestId") == "message:slow":
+                    completed = value
+                    break
+            if completed is not None:
+                break
+            time.sleep(.02)
+        self.assertIsNotNone(completed)
+        self.assertEqual(completed["status"], "completed")
+        state = wait_json(self.task / "state.json")
+        self.assertEqual((state["phase"], state["detail"]["completedRequestId"]), ("waiting", "message:slow"))
+
+    def test_restart_marks_accepted_but_unfinished_message_unknown_without_replay(self):
+        self.start_wrapper()
+        self.request("start:queued-crash", "start")
+        deadline = time.monotonic() + 5
+        while wait_json(self.task / "state.json")["phase"] == "running" and time.monotonic() < deadline:
+            time.sleep(.02)
+        receipt = self.request("message:queued-crash", "message", {"text": "LONG_MESSAGE"})
+        self.assertEqual(receipt["status"], "accepted")
+        os.kill(self.process.pid, signal.SIGKILL)
+        self.process.wait(timeout=3)
+        self.process.communicate()
+        self.process = None
+        self.start_wrapper()
+        deadline = time.monotonic() + 5
+        unknown = None
+        while time.monotonic() < deadline:
+            for event in (self.task / "events").glob("*.json"):
+                value = json.loads(event.read_text())
+                if value.get("requestId") == "message:queued-crash":
+                    unknown = value
+                    break
+            if unknown is not None:
+                break
+            time.sleep(.02)
+        self.assertIsNotNone(unknown)
+        self.assertEqual(unknown["status"], "unknown")
+        trace = [json.loads(line) for line in (self.task / "native" / "session-events.jsonl").read_text().splitlines()]
+        prompts = [entry for entry in trace if entry["direction"] == "wrapper-to-native"
+                   and entry["message"].get("method") == "session/prompt"]
+        self.assertEqual(len(prompts), 2, "restart did not replay the accepted but unfinished message")
 
     def test_native_stand_in_produces_delivery_without_host_prewrite(self):
         self.task_record["goal"] = "DELIVER_RESULT"
@@ -235,6 +303,14 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         self.assertEqual((self.task / "workspace" / "result.json").read_bytes(), b'{"schema":"fixture-result/1","value":"bad"}\n')
         message = self.request("message:repair", "message", {"text": "FIX_DELIVERY"})
         self.assertEqual(message["sessionId"], "native-session-1")
+        self.assertEqual(message["status"], "accepted")
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            state = wait_json(self.task / "state.json")
+            if state.get("phase") == "waiting" and state.get("detail", {}).get("completedRequestId") == "message:repair":
+                break
+            time.sleep(.02)
+        self.assertEqual(state.get("detail", {}).get("completedRequestId"), "message:repair")
         second = self.request("delivery:second", "delivery")
         second_manifest = wait_json(self.task / "delivery" / "manifest.json")
         self.assertNotEqual(second_manifest["sha256"], first_manifest["sha256"])

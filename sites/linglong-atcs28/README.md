@@ -107,6 +107,11 @@ after the ACP process and owned descendants are gone; release preserves task fil
 model/EDA run, deploy and hash the candidate bytes, reload the Site, and run the deterministic protocol
 tests. These repository files do not prove remote deployment or a real XTop engineering task qualified.
 
+A same-task message receipt means durable queue admission: the wrapper writes a request-bound queued
+record, then returns immutable `accepted` immediately. It records native prompt completion separately in
+an `input` event and the latest state. Callers must not interpret `accepted` as completed, and must not
+replay a message merely because the native turn is still running.
+
 The new Pack also binds `nativeTimingContext` to
 `/data/eda/project/hima_harness/atcs-inputs/nativeTimingContext-v1.json`. The remote file was absent during
 the 2026-10-02 read-only inventory, so Pack/Site preparation remains blocked until an administrator

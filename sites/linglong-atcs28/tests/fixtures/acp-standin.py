@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 
 
 write_lock = threading.Lock()
@@ -28,6 +29,8 @@ def send(value):
 
 
 def complete_prompt(request_id, text):
+    if "LONG_MESSAGE" in text:
+        time.sleep(5.5)
     if "SURVIVE_WRAPPER_CRASH" in text:
         survive_wrapper_crash.set()
     if "FIX_DELIVERY" in text:

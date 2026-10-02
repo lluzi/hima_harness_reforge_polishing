@@ -322,7 +322,9 @@ class Wrapper:
         self.cancelled = threading.Event()
         self.rpc = None
         self.session_id = None
-        self.event_seq = 0
+        self.event_seq = max(
+            [int(path.stem) for path in self.events.glob("*.json") if path.stem.isdigit()] or [0]
+        )
         self.prompt_threads = set()
         self.inflight = set()
         self.prompt_lock = threading.Lock()
@@ -427,6 +429,27 @@ class Wrapper:
         body = {"schema": PROTOCOL, "taskId": self.task["taskId"], "seq": f"{self.event_seq:08d}", "kind": kind, **payload, "createdAt": now()}
         atomic_create(self.events / f"{self.event_seq:08d}.json", framed(body))
 
+    def reconcile_queued_messages(self):
+        completed = set()
+        for path in self.events.glob("*.json"):
+            try:
+                value = load_json(path)
+            except Exception:
+                continue
+            if value.get("kind") == "input" and isinstance(value.get("requestId"), str):
+                completed.add(value["requestId"])
+        messages = self.native_dir / "messages"
+        for path in sorted(messages.glob("*.queued.json")) if messages.exists() else []:
+            queued = load_json(path)
+            request_id = queued.get("requestId")
+            if request_id in completed:
+                continue
+            self.event("input", {
+                "sessionId": queued.get("sessionId"), "requestId": request_id,
+                "requestSha256": queued.get("requestSha256"), "status": "unknown",
+                "error": "wrapper restarted before native message completion was confirmed; message was not replayed",
+            })
+
     def native_argv(self):
         native = self.capability["native"]
         sandbox = self.capability["sandbox"]
@@ -528,7 +551,11 @@ class Wrapper:
                 with self.prompt_lock:
                     if self.cancelled.is_set():
                         if not initial:
-                            self.receipt(request, "unknown", error="task was cancelled before message delivery was confirmed")
+                            self.event("input", {
+                                "sessionId": self.session_id, "requestId": request["requestId"],
+                                "requestSha256": request["sha256"], "status": "unknown",
+                                "error": "task was cancelled before message delivery was confirmed",
+                            })
                         return
                     self.state("running", request["requestId"])
                     result = self.rpc.request("session/prompt", {
@@ -537,18 +564,24 @@ class Wrapper:
                         "prompt": [{"type": "text", "text": self.prompt_text(request["payload"], initial)}],
                     }, timeout=24 * 60 * 60)
                     if not self.cancelled.is_set():
-                        self.state("waiting", detail={"stopReason": result.get("stopReason")})
+                        detail = {"stopReason": result.get("stopReason")}
+                        if not initial:
+                            detail["completedRequestId"] = request["requestId"]
+                        self.state("waiting", detail=detail)
                         if not initial:
                             self.event("input", {
                                 "sessionId": self.session_id, "requestId": request["requestId"],
-                                "requestSha256": request["sha256"], "stopReason": result.get("stopReason"),
+                                "requestSha256": request["sha256"], "status": "completed",
+                                "stopReason": result.get("stopReason"),
                             })
-                            self.receipt(request, "completed", result={"stopReason": result.get("stopReason")})
             except Exception as error:
                 if not self.cancelled.is_set():
                     self.state("failed", request["requestId"], {"error": str(error)})
                     if not initial:
-                        self.receipt(request, "unknown", error=str(error))
+                        self.event("input", {
+                            "sessionId": self.session_id, "requestId": request["requestId"],
+                            "requestSha256": request["sha256"], "status": "unknown", "error": str(error),
+                        })
             finally:
                 self.prompt_threads.discard(threading.current_thread())
                 self.inflight.discard(request["requestId"])
@@ -805,6 +838,16 @@ class Wrapper:
             if self.rpc is None or self.session_id is None:
                 self.receipt(request, "rejected", error="task has no native session")
             else:
+                # Validate before acknowledging, then persist queue admission before the immutable
+                # receipt. Completion is a later input event/state fact and never mutates this ack.
+                self.prompt_text(request["payload"], initial=False)
+                queued = framed({
+                    "schema": PROTOCOL, "taskId": self.task["taskId"], "sessionId": self.session_id,
+                    "requestId": request["requestId"], "requestSha256": request["sha256"],
+                    "status": "queued", "queuedAt": now(),
+                })
+                atomic_create(self.native_dir / "messages" / f"{request['requestId']}.queued.json", queued)
+                self.receipt(request, "accepted", result={"queued": True})
                 self.run_prompt(request)
         elif operation == "status":
             state_path = self.task_dir / "state.json"
@@ -865,6 +908,7 @@ class Wrapper:
             quiescence = "confirmed" if self.recovered_owned is not None and self.recovered_owned.get("quiescent") is True else "unconfirmed"
             self.state("failed", detail={"error": "wrapper restarted; unreceipted requests are unknown and are not replayed",
                                          "nativeQuiescence": quiescence})
+            self.reconcile_queued_messages()
             for path in sorted((self.task_dir / "requests").glob("*.json")):
                 if not (self.receipts / path.name).exists():
                     try:

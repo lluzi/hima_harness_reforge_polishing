@@ -207,9 +207,19 @@ test('public Host keeps one resident task through start, message, Reader-verifie
       catch { return false; }
     }, 10_000, 20);
 
+    const messageStartedAt = Date.now();
     const message = await execute('03-message', 'engineering', { executionId,
-      engineering: { operation: 'message', message: 'Confirm this stays in the same native session.' } });
-    assert.equal(message.data.status, 'completed', JSON.stringify(message));
+      engineering: { operation: 'message', message: 'LONG_MESSAGE' } });
+    assert.equal(message.data.status, 'accepted', JSON.stringify(message));
+    assert.ok(Date.now() - messageStartedAt < 4_000, 'Host returns the durable queue ack before the 5.5s native prompt completes');
+    const queued = JSON.parse(await readFile(path.join(taskDir, 'native/messages/03-message.queued.json'), 'utf8'));
+    assert.equal(queued.status, 'queued');
+    await waitUntil('slow same-session message actual completion fact', async () => {
+      try {
+        const state = JSON.parse(await readFile(path.join(taskDir, 'state.json'), 'utf8'));
+        return state.phase === 'waiting' && state.detail?.completedRequestId === '03-message';
+      } catch { return false; }
+    }, 10_000, 20);
     const statusArgs = { run: started.run.id, action: 'engineering', requestId: '04-status', executionId,
       expectedEpoch: controlled().epoch, expectedRevision: controlled().revision, engineering: { operation: 'status' } };
     const status = readToolResult(await call(statusArgs));
@@ -382,7 +392,13 @@ test('Reader rejection is repaired in the same native session and release binds 
     const firstArtifact = await readFile(path.join(taskDir, firstManifest.artifactRoot, firstManifest.artifacts[0].path));
     const repaired = await task.execute('repair-message', 'engineering', { executionId: task.executionId,
       engineering: { operation: 'message', message: 'FIX_DELIVERY' } });
-    assert.equal(repaired.data.status, 'completed', JSON.stringify(repaired));
+    assert.equal(repaired.data.status, 'accepted', JSON.stringify(repaired));
+    await waitUntil('repair message actual completion fact', async () => {
+      try {
+        const state = JSON.parse(await readFile(path.join(taskDir, 'state.json'), 'utf8'));
+        return state.phase === 'waiting' && state.detail?.completedRequestId === 'repair-message';
+      } catch { return false; }
+    }, 10_000, 20);
     const accepted = await task.execute('repair-delivery-good', 'engineering', { executionId: task.executionId, engineering: { operation: 'delivery' } });
     assert.ok(accepted.data, JSON.stringify(accepted));
     assert.equal(accepted.data.status, 'verified', JSON.stringify(accepted));
