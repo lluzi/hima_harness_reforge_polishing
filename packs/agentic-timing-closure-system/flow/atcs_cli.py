@@ -388,6 +388,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import math
 import re
 import os
 import shutil
@@ -4517,7 +4518,15 @@ def _cmd_resident_common_autofix(workspace, args):
 
 def _cmd_auto_fix_reference(workspace, args):
     """Matched ordinary AutoFix from common R1 until native timing reports cease changing."""
-    (site_path,) = args
+    if len(args) != 3:
+        raise InputError("missing-input", "auto-fix-reference needs Site and the Run's setup/hold Goal targets")
+    site_path, setup_target_raw, hold_target_raw = args
+    try:
+        setup_target, hold_target = float(setup_target_raw), float(hold_target_raw)
+    except (TypeError, ValueError) as exc:
+        raise InputError("invalid-input", "auto-fix-reference Goal targets must be numeric") from exc
+    if not all(math.isfinite(value) for value in (setup_target, hold_target)):
+        raise InputError("invalid-input", "auto-fix-reference Goal targets must be finite")
     workspace = Path(workspace)
     output = workspace / "state" / "autofix-reference.json"
     common = _read_declared(workspace / "state" / "common-stage.json", "common-stage")
@@ -4532,32 +4541,45 @@ def _cmd_auto_fix_reference(workspace, args):
     root = workspace / "research" / "control" / "autofix-reference"
     if root.exists():
         raise core.AtcsError("incomplete-autofix-reference", "ordinary AutoFix started without a sealed result; inspect its native trace")
-    before, after = root / "before", root / "after"
+    before = root / "before"
     fixes = integration.auto_fix_tcl(integration.DEFAULT_SETUP_MARGIN, integration.DEFAULT_HOLD_MARGIN)
     top_n = int(common.get("analysisTopPaths", 10000))
     body = _native_analysis_tcl(before, top_n, top_n)
-    body += "\nset fixes [list " + " ".join('"' + adapters.tcl_quote(command) + '"' for command in fixes) + "]\n"
+    body += f"\nset ::ATCS_REFERENCE_SETUP_TARGET {{{setup_target}}}\n"
+    body += f"set ::ATCS_REFERENCE_HOLD_TARGET {{{hold_target}}}\n"
+    body += "set fixes [list " + " ".join('"' + adapters.tcl_quote(command) + '"' for command in fixes) + "]\n"
     body += adapters.load_template("xtop-autofix-reference.tcl")
-    body += "\n" + _native_analysis_tcl(after, top_n, top_n) + "\nexit 0\n"
+    body += "\nexit 0\n"
     _native_task(workspace, base, site, root, context, body, "atcs_autofix_reference_")
     terminal = _read_plain(root / "control-result.json")
-    if terminal.get("complete") is not True or terminal.get("stopped") not in ("goal", "no-timing-report-improvement"):
+    if terminal.get("complete") is not True or terminal.get("stopped") not in (
+            "goal", "no-improvement", "oscillation", "regression", "mixed-no-improvement"):
         raise core.AtcsError("incomplete-autofix-reference", "ordinary AutoFix has no honest terminal reason")
-    eco = _eco_pair(workspace, root / "eco", "atcs_autofix_reference")
-    checkpoint = root / "best-workspace"
+    best = root / "best"
+    eco = _eco_pair(workspace, best / "eco", "atcs_autofix_reference")
+    checkpoint = best / "workspace"
     if not checkpoint.is_dir():
         raise core.AtcsError("missing-input", "ordinary AutoFix did not export its selected workspace")
+    before_measurements = _native_measurements(workspace, before)
+    best_measurements = _native_measurements(workspace, best)
+    compact = lambda measured: {mode: {key: measured[mode][key] for key in ("violations", "wnsNs", "tnsNs")}
+                                for mode in ("setup", "hold")}
+    if terminal.get("initialMetrics") != compact(before_measurements):
+        raise core.AtcsError("identity-mismatch", "ordinary AutoFix initial metrics differ from its same-R1 before reports")
+    if terminal.get("bestMetrics") != compact(best_measurements):
+        raise core.AtcsError("identity-mismatch", "ordinary AutoFix selected metrics differ from its retained best reports")
     result = {
         "inputIdentity": _resident_input_identity(workspace, common),
-        "measurements": {"before": _native_measurements(workspace, before),
-                         "after": _native_measurements(workspace, after)},
+        "goal": {"setupWnsNs": setup_target, "holdWnsNs": hold_target},
+        "measurements": {"before": before_measurements, "after": best_measurements},
         "artifacts": {
             "logicalEco": eco["netlist"], "physicalEco": eco["physical"],
             "checkpoint": {"path": _relpath(checkpoint, workspace), "digest": core.tree_digest(checkpoint)},
             "nativeTrace": {"path": _relpath(root / "native-stage.log", workspace),
                             "sha256": core.file_sha256(root / "native-stage.log")},
         },
-        "autoFixCommands": fixes, "stopReason": terminal["stopped"], "rounds": terminal.get("rounds") or [],
+        "autoFixCommands": fixes, "stopReason": terminal["stopped"], "bestRound": terminal.get("bestRound"),
+        "rounds": terminal.get("rounds") or [],
         "predictionOnly": True,
     }
     return output, core.stamp("autofix-reference", result)

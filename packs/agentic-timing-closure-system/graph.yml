@@ -49,6 +49,8 @@ nodes:
       tool: auto-fix-reference
       arguments:
         SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+        TARGET_SETUP_NS: { from: goal, name: target_setup_wns_ns }
+        TARGET_HOLD_NS: { from: goal, name: target_hold_wns_ns }
   - id: fix-timing
     kind: act
     parameters:

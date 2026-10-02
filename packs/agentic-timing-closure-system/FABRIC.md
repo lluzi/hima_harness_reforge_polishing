@@ -4,8 +4,9 @@
 
 contract.yml and graph.yml declare the retained-native-input, common-R1, matched-AutoFix and single
 fix-timing route. flow/atcs_cli.py and xtop-autofix-reference.tcl prepare and verify retained native
-context, reuse native analysis/common AutoFix, and run ordinary AutoFix without a method round or
-deadline cap. readers/atcs-engineering-result.yml, tools/read-atcs.py, semantics.yml and the six
+context, reuse native analysis/common AutoFix, and run ordinary AutoFix against the same Goal without
+a method round or deadline cap, retaining the best actual residual state across later regression or
+oscillation. readers/atcs-engineering-result.yml, tools/read-atcs.py, semantics.yml and the six
 engineering rules validate delivery and Goal/effect facts. resident-timing-playbook.md supplies the
 complete engineering and delivery method. legacy/0.2.10 preserves the prior method records.
 
@@ -26,8 +27,11 @@ physical signoff or superiority over AutoFix on the production design.
 ## Reviews
 
 The Pack-local Reader requires exactly one Host delivery manifest, current task/execution identity,
-parseable raw native reports and hashed engineering artifacts. Best-effort Goal-false, no-op,
-unknown collateral, missing script and tampered report cases are covered. The public Host dry path
+parseable raw native timing/fail-reason reports and hashed engineering artifacts. It derives
+remaining/regression facts independently of model lists. Bounded fail-reason findings provide only
+a positive lower bound and remain unknown as global checks; zero and unsupported formats cannot
+PASS. Best-effort Goal-false, no-op, contradictory model/raw evidence, missing script and
+tampered report cases are covered. The public Host dry path
 uses the production resident wrapper and real Pack Reader, and launches no PT/Innovus/StarRC.
 
 The 0.2.10 six-branch and owner-lead tests install the explicit legacy method snapshot. Legacy helper

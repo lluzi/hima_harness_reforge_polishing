@@ -26,13 +26,13 @@ values:
     description: Actual native XTop hold TNS of the selected resident-engineering state.
   tc_engineering_remaining_violation_count:
     unit: count
-    description: Known remaining setup, hold and required collateral violations; unknown when a required collateral check is unknown.
+    description: Reader-derived known remaining setup/hold plus raw-native collateral lower bound; a positive lower bound is known, while zero is unknown unless required global raw scope is proved.
   tc_engineering_regression_count:
     unit: count
-    description: Required checks or constraints recorded as regressed by the actual before/after comparison.
+    description: Reader-derived Goal/residual timing modes and witnessed raw-native blocker findings that worsened; positive already-satisfied margin is expendable, and the model list length is ignored.
   tc_engineering_collateral_unknown_count:
     unit: count
-    description: Required transition, capacitance, fanout or legality checks whose violation count is unknown.
+    description: Required global transition, capacitance, fanout or legality checks whose full violation count is unknown; bounded fail-reason samples remain unknown even when they prove blockers.
   tc_engineering_effect_vs_autofix:
     unit: count
-    description: 1 resident-dominant, 0 exact tie, -1 AutoFix-dominant; unknown for mixed or incomparable timing effects.
+    description: 1 resident-better, 0 Goal/residual equivalent, -1 AutoFix-better; positive satisfied margin is expendable and mixed unsatisfied effects are unknown.

@@ -59,9 +59,10 @@ The document must contain:
 - selected: a state identity and hashed selected checkpoint directory;
 - actual measurements.before and measurements.after, each with setup/hold WNS, TNS, violation
   count and the hashed raw native report that carries those numbers;
-- collateral with exactly transition, capacitance, fanout and legality. Each entry carries an actual
-  violation count and hashed raw native report, or an explicit unknown reason when the current XTop
-  environment cannot produce that check;
+- collateral with before and after, each containing exactly transition, capacitance, fanout and
+  legality. Each check declares the state/scenario scope and a hashed raw XTop source report with
+  tool/version/command, or an explicit unknown reason. Do not write a violation count: the Reader
+  parses known native fail-reason tables and derives counts/regressions itself;
 - artifacts: at least one generated script, logical ECO, physical ECO, reproduction file and at
   least one native trace, all by workspace-relative path and SHA-256;
 - remaining, regressed, blocked and unknown fact arrays;
@@ -73,10 +74,11 @@ that is the best result: set noOp true, keep before and after equal, and provide
 logical/physical ECO files plus a reproducible no-op script and real raw reports. Missing reports,
 scripts, identity, measurement or export material is an incomplete delivery, not best effort.
 
-Every item of remaining represents one actual remaining violation, so its length equals the sum of
-the selected setup and hold violation counts. Record constraints or checks that got worse in
-regressed. Put tool/input/permission blockers in blocked and evidence gaps in unknown; do not turn
-either into zero.
+remaining and regressed are explanatory lists only; they do not produce numeric facts. The Reader
+derives those values from raw before/after reports. Put tool/input/permission blockers in blocked and
+evidence gaps in unknown. A timing-fix fail-reason report proves only a positive blocker lower bound;
+it remains unknown as a global transition/capacitance/fanout/legality check, and absence in that
+limited scope cannot prove zero. Do not invent a normalized all-clear document.
 
 ## Admitted shape
 
@@ -115,10 +117,18 @@ with this task's actual facts and recompute all hashes and the canonical id.
     }
   },
   "collateral": {
-    "transition": {"violations": 0, "report": {"path": "engineering/raw/transition.rpt", "sha256": "sha256"}},
-    "capacitance": {"violations": 0, "report": {"path": "engineering/raw/capacitance.rpt", "sha256": "sha256"}},
-    "fanout": {"violations": 0, "report": {"path": "engineering/raw/fanout.rpt", "sha256": "sha256"}},
-    "legality": {"unknown": "replace with an actual native check or keep this limitation explicit"}
+    "before": {
+      "transition": {"scope": "timing-fix-fail-reasons", "stateId": "common-r1-state-id", "requiredScenarios": ["scenario-name"], "source": {"path": "engineering/raw/before-transition.rpt", "sha256": "sha256", "tool": "XTop", "version": "actual-version", "command": "actual native command"}},
+      "capacitance": {"unknown": "no admitted native report for this check"},
+      "fanout": {"unknown": "no admitted native report for this check"},
+      "legality": {"unknown": "no admitted native report for this check"}
+    },
+    "after": {
+      "transition": {"scope": "timing-fix-fail-reasons", "stateId": "selected-native-state-id", "requiredScenarios": ["scenario-name"], "source": {"path": "engineering/raw/after-transition.rpt", "sha256": "sha256", "tool": "XTop", "version": "actual-version", "command": "actual native command"}},
+      "capacitance": {"unknown": "no admitted native report for this check"},
+      "fanout": {"unknown": "no admitted native report for this check"},
+      "legality": {"unknown": "no admitted native report for this check"}
+    }
   },
   "artifacts": {
     "scripts": [{"path": "engineering/scripts/fix.tcl", "sha256": "sha256"}],

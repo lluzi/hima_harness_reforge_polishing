@@ -2081,46 +2081,132 @@ def _engineering_tree_ref(value, workspace, core, label):
     _require_tree(workspace, value["path"], value["digest"], core, label)
 
 
-def _engineering_effect(candidate, reference, core):
-    """Dominance-only native effect: 1 better, 0 tie, -1 worse, unknown for mixed effects."""
-    higher = []
-    for mode in _ENGINEERING_MODES:
-        higher.extend([
-            candidate[mode]["wnsNs"] - reference[mode]["wnsNs"],
-            candidate[mode]["tnsNs"] - reference[mode]["tnsNs"],
-            reference[mode]["violations"] - candidate[mode]["violations"],
-        ])
+def _engineering_effect(candidate, reference, goal, core):
+    """Goal-aware effect: satisfying margin is expendable; unsatisfied residuals cannot be hidden."""
+    signs = set()
     epsilon = 1e-9
-    signs = {1 if delta > epsilon else -1 if delta < -epsilon else 0 for delta in higher}
+    for mode in _ENGINEERING_MODES:
+        target = goal[f"{mode}WnsNs"]
+        current, control = candidate[mode], reference[mode]
+        current_ok = current["violations"] == 0 and current["wnsNs"] >= target
+        control_ok = control["violations"] == 0 and control["wnsNs"] >= target
+        if current_ok or control_ok:
+            signs.add(0 if current_ok and control_ok else 1 if current_ok else -1)
+            continue
+        deltas = (
+            control["violations"] - current["violations"],
+            current["wnsNs"] - control["wnsNs"],
+            current["tnsNs"] - control["tnsNs"],
+        )
+        metric_signs = {1 if delta > epsilon else -1 if delta < -epsilon else 0 for delta in deltas}
+        if 1 in metric_signs and -1 in metric_signs:
+            return core.unknown(f"resident and ordinary AutoFix {mode} residual effects are mixed")
+        signs.add(1 if 1 in metric_signs else -1 if -1 in metric_signs else 0)
     if signs <= {0}:
         return core.known(0)
     if signs <= {0, 1}:
         return core.known(1)
     if signs <= {-1, 0}:
         return core.known(-1)
-    return core.unknown("resident and ordinary AutoFix effects are mixed; neither dominates")
+    return core.unknown("resident and ordinary AutoFix Goal/residual effects are mixed; neither dominates")
 
 
-def _engineering_collateral(value, workspace, core, label):
-    required = {"transition", "capacitance", "fanout", "legality"}
-    if not isinstance(value, dict) or set(value) != required:
-        raise ValueError(f"{label} must have exactly {sorted(required)}")
-    known, unknown = {}, {}
-    for check in sorted(required):
-        row = value[check]
-        if not isinstance(row, dict):
-            raise ValueError(f"{label}.{check} must be an object")
-        if set(row) == {"unknown"} and isinstance(row["unknown"], str) and row["unknown"].strip():
-            unknown[check] = row["unknown"]
-            continue
-        if set(row) != {"violations", "report"}:
-            raise ValueError(f"{label}.{check} must be {{violations,report}} or {{unknown}}")
-        count = row["violations"]
-        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
-            raise ValueError(f"{label}.{check}.violations must be a non-negative int")
-        _engineering_file_ref(row["report"], workspace, core, f"{label}.{check}.report")
-        known[check] = count
-    return known, unknown
+_COLLATERAL_CHECKS = {"transition", "capacitance", "fanout", "legality"}
+_COLLATERAL_REASON_PREFIXES = {
+    "transition": ("break_max_transition",),
+    "capacitance": ("break_max_capacitance",),
+    "fanout": ("break_max_fanout",),
+    "legality": ("legal_fail_",),
+}
+
+
+def _engineering_collateral_report(row, check, workspace, core, contributions, state_id, scenarios, label):
+    if not isinstance(row, dict):
+        raise ValueError(f"{label} must be an object")
+    if set(row) == {"unknown"} and isinstance(row["unknown"], str) and row["unknown"].strip():
+        return None, row["unknown"]
+    if set(row) != {"scope", "stateId", "requiredScenarios", "source"}:
+        raise ValueError(
+            f"{label} must declare scope/stateId/requiredScenarios/source or unknown; model counts are not evidence")
+    if row["scope"] != "timing-fix-fail-reasons":
+        return None, f"unsupported native collateral scope: {row['scope']!r}"
+    if row["stateId"] != state_id or row["requiredScenarios"] != list(scenarios):
+        raise ValueError(f"{label} does not match the current state/scenario identity")
+    source = row["source"]
+    source_keys = {"path", "sha256", "tool", "version", "command"}
+    if (not isinstance(source, dict) or set(source) != source_keys
+            or not all(isinstance(source.get(key), str) and source[key].strip() for key in source)):
+        raise ValueError(f"{label}.source must name hashed path and non-empty tool/version/command")
+    _engineering_file_ref(
+        {"path": source["path"], "sha256": source["sha256"]}, workspace, core, f"{label}.source")
+    text = _safe_join(workspace, source["path"], f"{label}.source").read_text(encoding="utf-8")
+    parsed = contributions.parse_fail_reasons(text)
+    if parsed is None:
+        return None, "unsupported native collateral report format: no XTop fail-reason table"
+    for raw_line in text.splitlines():
+        tokens = raw_line.split()
+        if (len(tokens) >= 4 and re.match(r"^-?(?:\d+(?:\.\d*)?|\.\d+)$", tokens[0])
+                and any(re.match(r"^[a-zA-Z0-9_]+:\d+(?:\.\d+)?%$", token) for token in tokens[3:])
+                and tokens[1] not in scenarios):
+            raise ValueError(f"{label}.source names undeclared scenario {tokens[1]!r}")
+    prefixes = _COLLATERAL_REASON_PREFIXES[check]
+    facts = {reason: count for reason, count in parsed.items()
+             if any(reason.startswith(prefix) for prefix in prefixes)}
+    if not facts:
+        return None, (
+            f"native timing-fix fail-reason scope has no {check} finding; it cannot prove global zero")
+    return facts, (
+        f"native timing-fix fail-reason scope is a bounded blocker sample, not a global {check} check")
+
+
+def _engineering_collateral(value, workspace, core, contributions, identity, native, selected_state_id):
+    if not isinstance(value, dict) or set(value) != {"before", "after"}:
+        raise ValueError("engineering-result.collateral must have exactly before and after")
+    scenarios = native.get("requiredScenarios")
+    if not isinstance(scenarios, list) or not scenarios:
+        raise ValueError("xtop-context.requiredScenarios must be a non-empty list")
+    facts, unknown = {"before": {}, "after": {}}, {"before": {}, "after": {}}
+    for phase, state_id in (("before", identity["commonStateId"]), ("after", selected_state_id)):
+        rows = value[phase]
+        if not isinstance(rows, dict) or set(rows) != _COLLATERAL_CHECKS:
+            raise ValueError(f"engineering-result.collateral.{phase} must have exactly {sorted(_COLLATERAL_CHECKS)}")
+        for check in sorted(_COLLATERAL_CHECKS):
+            parsed, reason = _engineering_collateral_report(
+                rows[check], check, workspace, core, contributions, state_id, scenarios,
+                f"engineering-result.collateral.{phase}.{check}")
+            if parsed is not None:
+                facts[phase][check] = parsed
+            if reason is not None:
+                unknown[phase][check] = reason
+    return facts, unknown
+
+
+def _engineering_regressions(before, after, goal, collateral, collateral_unknown, core):
+    reasons = []
+    for mode in _ENGINEERING_MODES:
+        target = goal[f"{mode}WnsNs"]
+        prior, current = before[mode], after[mode]
+        prior_ok = prior["violations"] == 0 and prior["wnsNs"] >= target
+        current_ok = current["violations"] == 0 and current["wnsNs"] >= target
+        regressed = prior_ok and not current_ok
+        if not prior_ok and not current_ok:
+            regressed = (current["violations"] > prior["violations"]
+                or current["wnsNs"] < prior["wnsNs"] - 1e-9
+                or current["tnsNs"] < prior["tnsNs"] - 1e-9)
+        if regressed:
+            reasons.append(f"timing:{mode}")
+    for check in sorted(_COLLATERAL_CHECKS):
+        prior = collateral["before"].get(check, {})
+        current = collateral["after"].get(check, {})
+        reasons.extend(f"{check}:{key}" for key, excess in current.items()
+                       if key not in prior or excess > prior[key] + 1e-9)
+    if reasons:
+        return core.known(len(reasons)), reasons
+    if collateral_unknown["before"] or collateral_unknown["after"]:
+        return core.unknown(
+            "required collateral comparison unknown: "
+            + ", ".join(sorted(set(collateral_unknown["before"]) | set(collateral_unknown["after"])))), reasons
+    return core.known(len(reasons)), reasons
 
 
 def _read_engineering_result(report, workspace, extra, mods):
@@ -2204,8 +2290,13 @@ def _read_engineering_result(report, workspace, extra, mods):
         raise ValueError("engineering result did not start from the verified common R1 measurements")
     reference = _engineering_metrics(control.get("measurements", {}).get("after"),
                                      "autofix-reference.measurements.after")
+    goal = control.get("goal")
+    if (not isinstance(goal, dict) or set(goal) != {"setupWnsNs", "holdWnsNs"}
+            or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+                   for value in goal.values())):
+        raise ValueError("autofix-reference.goal must carry finite setupWnsNs/holdWnsNs")
     collateral, collateral_unknown = _engineering_collateral(
-        obj.get("collateral"), workspace, core, "engineering-result.collateral")
+        obj.get("collateral"), workspace, core, mods["contributions"], identity, native, selected["stateId"])
 
     _verify_engineering_metric_reports(
         common["measurements"]["after"], common_after, workspace, core, mods["contributions"],
@@ -2239,23 +2330,22 @@ def _read_engineering_result(report, workspace, extra, mods):
         if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
             raise ValueError(f"engineering-result.{key} must be a list of facts")
     timing_remaining = sum(after[mode]["violations"] for mode in _ENGINEERING_MODES)
-    known_remaining = timing_remaining + sum(collateral.values())
-    if len(obj["remaining"]) != known_remaining:
-        raise ValueError("engineering-result.remaining length disagrees with actual after violation counts")
-    unknown_checks = {item.get("check") for item in obj["unknown"] if isinstance(item.get("check"), str)}
-    if not set(collateral_unknown) <= unknown_checks:
-        raise ValueError("engineering-result.unknown must name every unknown required collateral check")
+    known_remaining = timing_remaining + sum(
+        sum(facts.values()) for facts in collateral["after"].values())
+    regression_measure, _regression_reasons = _engineering_regressions(
+        before, after, goal, collateral, collateral_unknown, core)
     if not isinstance(obj.get("stopReason"), str) or not obj["stopReason"].strip():
         raise ValueError("engineering-result.stopReason must be a non-empty string")
     if not isinstance(obj.get("bestEffort"), bool) or not isinstance(obj.get("noOp"), bool):
         raise ValueError("engineering-result.bestEffort and noOp must be booleans")
-    if obj["noOp"] and before != after:
-        raise ValueError("engineering-result.noOp is true but before and after measurements differ")
+    if obj["noOp"] and (before != after or collateral["before"] != collateral["after"]
+                        or collateral_unknown["before"] != collateral_unknown["after"]):
+        raise ValueError("engineering-result.noOp is true but raw before/after facts differ")
 
-    effect = _engineering_effect(after, reference, core)
-    remaining_measure = (core.unknown(
-        "required collateral checks unknown: " + ", ".join(sorted(collateral_unknown)))
-        if collateral_unknown else core.known(known_remaining))
+    effect = _engineering_effect(after, reference, goal, core)
+    remaining_measure = (core.known(known_remaining) if known_remaining > 0
+        else core.unknown("required collateral checks unknown: " + ", ".join(sorted(collateral_unknown["after"])))
+        if collateral_unknown["after"] else core.known(0))
     return [
         _emit_count("tc_engineering_result_error_count", 0),
         _emit("tc_engineering_setup_wns_ns", "ns", core.known(after["setup"]["wnsNs"]), mode="setup"),
@@ -2263,8 +2353,8 @@ def _read_engineering_result(report, workspace, extra, mods):
         _emit("tc_engineering_setup_tns_ns", "ns", core.known(after["setup"]["tnsNs"]), mode="setup"),
         _emit("tc_engineering_hold_tns_ns", "ns", core.known(after["hold"]["tnsNs"]), mode="hold"),
         _emit("tc_engineering_remaining_violation_count", "count", remaining_measure),
-        _emit_count("tc_engineering_regression_count", len(obj["regressed"])),
-        _emit_count("tc_engineering_collateral_unknown_count", len(collateral_unknown)),
+        _emit("tc_engineering_regression_count", "count", regression_measure),
+        _emit_count("tc_engineering_collateral_unknown_count", len(collateral_unknown["after"])),
         _emit("tc_engineering_effect_vs_autofix", "count", effect),
     ]
 

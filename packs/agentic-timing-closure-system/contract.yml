@@ -99,10 +99,10 @@ tools:
 
   - id: auto-fix-reference
     file: flow/atcs_cli.py
-    description: Run ordinary matched AutoFix from common R1 until goal or no native timing-report improvement, then export its actual result.
-    inputs: [WORKSPACE, SITE_CAPABILITIES]
+    description: Run ordinary matched AutoFix from common R1 against the same Run Goal; allow positive satisfied margin to fund residual repair, forbid losing a satisfied mode or worsening unsatisfied residuals, stop on goal/non-improvement/regression/oscillation, and export the best actual state rather than the last.
+    inputs: [WORKSPACE, SITE_CAPABILITIES, TARGET_SETUP_NS, TARGET_HOLD_NS]
     licences: { xtop: 1 }
-    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', auto-fix-reference, '${WORKSPACE}', '${SITE_CAPABILITIES}']
+    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', auto-fix-reference, '${WORKSPACE}', '${SITE_CAPABILITIES}', '${TARGET_SETUP_NS}', '${TARGET_HOLD_NS}']
 
   - id: fix-timing
     file: flow/atcs_cli.py

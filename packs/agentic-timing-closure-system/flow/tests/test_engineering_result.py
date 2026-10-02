@@ -46,7 +46,8 @@ class EngineeringResultReaderTest(unittest.TestCase):
         self.identity = identity
         self.reference = self._metrics("reference", -0.02, -0.02, 1, 0.0, 0.0, 0)
         self._write_state("autofix-reference.json", core.stamp("autofix-reference", {
-            "inputIdentity": identity, "measurements": {"before": self.before, "after": self.reference},
+            "inputIdentity": identity, "goal": {"setupWnsNs": 0, "holdWnsNs": 0},
+            "measurements": {"before": self.before, "after": self.reference},
         }))
 
     def _write_state(self, name, obj):
@@ -72,6 +73,29 @@ class EngineeringResultReaderTest(unittest.TestCase):
                      "report": report("hold", hold_wns, hold_tns, hold_count)},
         }
 
+    def _collateral_phase(self, phase, counts=None):
+        counts = counts or {check: 1 for check in ("transition", "capacitance", "fanout", "legality")}
+        reason = {
+            "transition": "break_max_transition", "capacitance": "break_max_capacitance",
+            "fanout": "break_max_fanout", "legality": "legal_fail_no_space_on_row",
+        }
+        result = {}
+        for check in ("transition", "capacitance", "fanout", "legality"):
+            rows = "".join(
+                f"-0.01 s1 U{i}/D {reason[check]}:100%\n" for i in range(counts.get(check, 0)))
+            raw = ("### setup top 20 endpoints ###\n"
+                   "Slack Scenario Name Fail Reason\n"
+                   "--------------------------------\n" + rows)
+            result[check] = {
+                "scope": "timing-fix-fail-reasons",
+                "stateId": self.identity["commonStateId"] if phase == "before" else "selected-state",
+                "requiredScenarios": ["s1"],
+                "source": {**self._file(f"raw/{phase}-{check}.rpt", raw),
+                           "tool": "XTop", "version": "fixture",
+                           "command": "summarize_gba_violations -with_fail_reason"},
+            }
+        return result
+
     def _result(self, after=None, no_op=False):
         after = after or self._metrics("after", 0.0, 0.0, 0, 0.0, 0.0, 0)
         checkpoint = self.w / "engineering/best-workspace"
@@ -79,10 +103,7 @@ class EngineeringResultReaderTest(unittest.TestCase):
         (checkpoint / "state").write_text("native checkpoint", encoding="utf-8")
         remaining = [{"mode": "setup", "endpoint": f"U{i}/D"} for i in range(
             after["setup"]["violations"] + after["hold"]["violations"])]
-        collateral = {
-            check: {"violations": 0, "report": self._file(f"raw/after-{check}.rpt", f"{check}: 0 violations\n")}
-            for check in ("transition", "capacitance", "fanout", "legality")
-        }
+        collateral = {"before": self._collateral_phase("before"), "after": self._collateral_phase("after")}
         body = {
             "kind": "result",
             "task": {"taskId": "task-1", "runId": "run-1", "executionId": "execution-1", "nodeId": "fix-timing"},
@@ -127,8 +148,9 @@ class EngineeringResultReaderTest(unittest.TestCase):
         values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
         self.assertEqual(values["tc_engineering_result_error_count"]["value"], 0)
         self.assertEqual(values["tc_engineering_setup_wns_ns"]["value"], 0.0)
-        self.assertEqual(values["tc_engineering_remaining_violation_count"]["value"], 0)
-        self.assertEqual(values["tc_engineering_collateral_unknown_count"]["value"], 0)
+        self.assertEqual(values["tc_engineering_remaining_violation_count"]["value"], 4)
+        self.assertEqual(values["tc_engineering_collateral_unknown_count"]["value"], 4,
+                         "timing-fix fail reasons are bounded blocker evidence, not global checks")
         self.assertEqual(values["tc_engineering_effect_vs_autofix"]["value"], 1)
 
     def test_complete_best_effort_mixed_effect_is_unknown_and_goal_can_remain_false(self):
@@ -136,9 +158,20 @@ class EngineeringResultReaderTest(unittest.TestCase):
         report = self._deliver(self._result(after=after))
         values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
         self.assertEqual(values["tc_engineering_result_error_count"]["value"], 0)
-        self.assertEqual(values["tc_engineering_remaining_violation_count"]["value"], 1)
+        self.assertEqual(values["tc_engineering_remaining_violation_count"]["value"], 5)
         self.assertIsNone(values["tc_engineering_effect_vs_autofix"]["value"])
         self.assertIn("mixed", values["tc_engineering_effect_vs_autofix"]["unknownReason"])
+
+    def test_effect_comparison_allows_positive_setup_margin_to_fund_hold_progress(self):
+        control = self._metrics("margin-control", 0.10, 0.0, 0, -0.10, -0.30, 2)
+        self._write_state("autofix-reference.json", core.stamp("autofix-reference", {
+            "inputIdentity": self.identity, "goal": {"setupWnsNs": 0, "holdWnsNs": 0},
+            "measurements": {"before": self.before, "after": control},
+        }))
+        after = self._metrics("margin-resident", 0.03, 0.0, 0, -0.05, -0.10, 1)
+        report = self._deliver(self._result(after=after))
+        values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
+        self.assertEqual(values["tc_engineering_effect_vs_autofix"]["value"], 1)
 
     def test_legitimate_no_op_requires_real_exports_and_equal_measurements(self):
         report = self._deliver(self._result(after=self.before, no_op=True))
@@ -148,13 +181,68 @@ class EngineeringResultReaderTest(unittest.TestCase):
 
     def test_unknown_required_collateral_keeps_all_violations_goal_unknown(self):
         result = self._result()
-        result["collateral"]["legality"] = {"unknown": "native legality report command was unavailable"}
+        result["collateral"]["after"]["legality"] = {"unknown": "native legality report command was unavailable"}
         result["unknown"] = [{"check": "legality", "reason": "native legality report command was unavailable"}]
         result = core.stamp("engineering-result", {key: value for key, value in result.items() if key not in ("schema", "id")})
         report = self._deliver(result)
         values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
+        self.assertEqual(values["tc_engineering_remaining_violation_count"]["value"], 3,
+                         "other raw blockers remain a known positive lower bound")
+        self.assertEqual(values["tc_engineering_collateral_unknown_count"]["value"], 4)
+
+    def test_raw_collateral_and_timing_facts_override_empty_model_remaining_and_regressed_lists(self):
+        after = self._metrics("regressed", -0.20, -0.30, 2, 0.0, 0.0, 0)
+        result = self._result(after=after)
+        result["collateral"]["after"] = self._collateral_phase(
+            "after", {"transition": 2, "capacitance": 1, "fanout": 1, "legality": 1})
+        result["remaining"] = []
+        result["regressed"] = []
+        result = core.stamp("engineering-result", {key: value for key, value in result.items() if key not in ("schema", "id")})
+        report = self._deliver(result)
+        values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
+        self.assertEqual(values["tc_engineering_remaining_violation_count"]["value"], 7)
+        self.assertEqual(values["tc_engineering_regression_count"]["value"], 2,
+                         "setup and transition regressions come from raw before/after facts")
+
+    def test_unsupported_collateral_report_format_is_unknown_never_proof_of_zero(self):
+        result = self._result()
+        unsupported = self._file("raw/after-legality-unsupported.rpt", "native format not yet supported\n")
+        result["collateral"]["after"]["legality"] = {
+            "scope": "timing-fix-fail-reasons", "stateId": "selected-state", "requiredScenarios": ["s1"],
+            "source": {**unsupported, "tool": "XTop", "version": "fixture", "command": "unknown report"},
+        }
+        result["unknown"] = []
+        result = core.stamp("engineering-result", {key: value for key, value in result.items() if key not in ("schema", "id")})
+        report = self._deliver(result)
+        values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
+        self.assertEqual(values["tc_engineering_remaining_violation_count"]["value"], 3)
+        self.assertIsNone(values["tc_engineering_regression_count"]["value"])
+        self.assertEqual(values["tc_engineering_collateral_unknown_count"]["value"], 4)
+
+    def test_model_declared_zero_collateral_is_refused_even_with_a_hashed_file(self):
+        result = self._result()
+        source = result["collateral"]["after"]["transition"]["source"]
+        result["collateral"]["after"]["transition"] = {
+            "violations": 0, "report": {"path": source["path"], "sha256": source["sha256"]},
+        }
+        result = core.stamp("engineering-result", {key: value for key, value in result.items() if key not in ("schema", "id")})
+        report = self._deliver(result)
+        with self.assertRaisesRegex(ValueError, "model counts are not evidence"):
+            reader.read("engineering-result", report, self.w)
+
+    def test_empty_bounded_fail_reason_reports_cannot_prove_global_zero(self):
+        result = self._result()
+        empty = {check: 0 for check in ("transition", "capacitance", "fanout", "legality")}
+        result["collateral"] = {
+            "before": self._collateral_phase("before", empty),
+            "after": self._collateral_phase("after", empty),
+        }
+        result = core.stamp("engineering-result", {key: value for key, value in result.items() if key not in ("schema", "id")})
+        report = self._deliver(result)
+        values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
         self.assertIsNone(values["tc_engineering_remaining_violation_count"]["value"])
-        self.assertEqual(values["tc_engineering_collateral_unknown_count"]["value"], 1)
+        self.assertIsNone(values["tc_engineering_regression_count"]["value"])
+        self.assertEqual(values["tc_engineering_collateral_unknown_count"]["value"], 4)
 
     def test_tampered_raw_report_is_refused_instead_of_becoming_unknown_or_zero(self):
         result = self._result()

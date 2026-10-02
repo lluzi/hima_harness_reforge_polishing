@@ -19,8 +19,11 @@ model-step count, design object list or method deadline; Runtime/Site budget rem
 designStateManifest is staged and hashed as baselineState. nativeTimingContext identifies retained
 same-design timing data, source reports, SDC hashes, ordered scenarios and producer provenance.
 prepare-native-context copies and re-hashes those bytes and current Site libraries without launching
-PrimeTime. The route then produces actual common R1, runs matched ordinary AutoFix from that same R1
-until goal or unchanged timing reports, and stops at fix-timing. The Campaign owner uses engineering
+PrimeTime. The route then produces actual common R1 and runs matched ordinary AutoFix from that same
+R1 against the same Run Goal. A mode already meeting Goal may spend positive margin while another
+residual improves; the control may not lose a satisfied mode or worsen an unsatisfied residual.
+It stops on goal, non-improvement, regression or oscillation and exports the best actual checkpoint,
+ECO and reports rather than the last attempted state. The Campaign owner uses engineering
 start/message/status/delivery/release. After delivery, the graph reads the result and judges delivery
 then Goal.
 
@@ -39,6 +42,14 @@ The Reader binds the primary result to exactly one signed Host delivery manifest
 task/run/execution/node identity. It re-hashes raw reports, parses their WNS/TNS/count, and re-hashes
 scripts, logical/physical ECO, checkpoint, reproduction and native trace. Missing or tampered
 identity/evidence refuses the result rather than producing zero.
+
+Collateral evidence names before/after state, scenario scope and a hashed native XTop source report.
+The Reader parses known XTop fail-reason tables itself and derives a positive blocker lower bound
+plus witnessed regressions. That timing-fix scope remains unknown for each required global
+transition, capacitance, fanout and legality check even when it finds blockers; it can never prove
+global zero. An unsupported native format is also unknown. Model-authored counts and lists never
+drive Goal values. A future all-clear path requires a separately admitted real native global report
+and parser; no synthetic or model-normalized document can create that PASS.
 
 ## Judge rules
 

@@ -1121,7 +1121,7 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
     commonStateId: 'common-r1-state', worklistId: 'common-r1-worklist',
   };
   const reference = stampAtcs('autofix-reference', {
-    inputIdentity, measurements: { before, after: referenceAfter },
+    inputIdentity, goal: { setupWnsNs: 0, holdWnsNs: 0 }, measurements: { before, after: referenceAfter },
   });
   await mkdir(path.join(workspace, 'state'), { recursive: true });
   await Promise.all([
@@ -1134,8 +1134,21 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
   const checkpointBytes = Buffer.from('selected native checkpoint\n');
   await mkdir(path.join(workspace, 'engineering-fixture/best-workspace'), { recursive: true });
   await writeFile(path.join(workspace, 'engineering-fixture/best-workspace/state'), checkpointBytes);
-  const collateral = Object.fromEntries(await Promise.all(['transition', 'capacitance', 'fanout', 'legality'].map(async check =>
-    [check, { violations: 0, report: await fileRef(`engineering-fixture/${check}.rpt`, `${check}: 0 violations\n`) }])));
+  const collateralReason: Record<string, string> = {
+    transition: 'break_max_transition', capacitance: 'break_max_capacitance',
+    fanout: 'break_max_fanout', legality: 'legal_fail_no_space_on_row',
+  };
+  const collateralPhase = async (phase: 'before' | 'after', stateId: string) => Object.fromEntries(
+    await Promise.all(Object.entries(collateralReason).map(async ([check, reason]) => {
+      const raw = `### setup top 20 endpoints ###\nSlack Scenario Name Fail Reason\n----------------\n-0.01 fixture U1/D ${reason}:100%\n`;
+      const ref = await fileRef(`engineering-fixture/${phase}-${check}.rpt`, raw);
+      return [check, { scope: 'timing-fix-fail-reasons', stateId, requiredScenarios: ['fixture'],
+        source: { ...ref, tool: 'XTop', version: 'fixture', command: 'summarize_gba_violations -with_fail_reason' } }];
+    })));
+  const collateral = {
+    before: await collateralPhase('before', 'common-r1-state'),
+    after: await collateralPhase('after', 'resident-selected-state'),
+  };
   const resultBody = {
     kind: 'result',
     inputIdentity,

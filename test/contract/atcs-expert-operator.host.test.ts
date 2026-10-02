@@ -23,6 +23,7 @@ import { localHome, waitUntil } from './support/fabric.ts';
 import { writeMomentScenario } from './support/moments.ts';
 import { writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import { writeLocalSite } from './support/site.ts';
+import { copyLegacyAtcsPack } from './support/atcs-legacy.ts';
 
 const packId = 'agentic-timing-closure-system';
 const dry = path.join(repoRoot, 'test/fixtures/atcs-dry-path');
@@ -43,8 +44,7 @@ test('ATCS expert Operator through the Team seam: a scope of three mutations adm
   const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local);
   const h = { ...local.h, workspace: await realpath(local.h.workspace) };
   const packsDir = path.join(h.home, 'hima/packs');
-  const variant = path.join(packsDir, packId);
-  await cp(path.join(repoRoot, 'packs', packId), variant, { recursive: true, filter: (src) => !src.includes('__pycache__') });
+  const variant = await copyLegacyAtcsPack(packsDir);
   const contract = parse(await readFile(path.join(variant, 'contract.yml'), 'utf8')) as any;
   const wrapper = await realpath('/usr/bin/tclsh');
   contract.environment.wrappers = [wrapper, 'python3', '/usr/bin/python3'];

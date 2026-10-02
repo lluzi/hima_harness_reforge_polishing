@@ -9,6 +9,7 @@ import type { LayoutGraph, CanvasScene, PlacedNode } from '@hima/harness';
 import { goalSaid, sceneInputs, jobFolded, absentSaid, cardPosition, TABS_BY_KIND, pickOwnedRun, recordEndedSeenAt } from '@hima/harness';
 import type { RunView, RunHeadView } from '@hima/harness';
 import type { ExecutionContext } from '@hima/harness';
+import { legacyAtcsGraph } from './support/atcs-legacy.ts';
 
 const node = (id: string, kind: 'act' | 'judge' | 'explore' | 'wait' = 'act') => ({ id, kind });
 const linear: LayoutGraph = { entry: 'prepare', nodes: [node('prepare'), node('analyze'), node('check', 'judge'), node('select', 'explore')],
@@ -275,6 +276,11 @@ const shippedScene = (packId: string): CanvasScene => {
   const { graph, facts } = sceneInputs(loadPack(packsDir, packId).graph);
   return layoutCanvas(graph, facts);
 };
+const legacyAtcs = legacyAtcsGraph();
+const legacyAtcsScene = (): CanvasScene => {
+  const { graph, facts } = sceneInputs(legacyAtcs);
+  return layoutCanvas(graph, facts);
+};
 const shippedPackIds = readdirSync(packsDir).filter((id) => existsSync(path.join(packsDir, id, 'graph.yml')));
 
 /** What a node paints: its 36-unit glyph plus the id and caption lines `FabricNode` draws under it
@@ -283,6 +289,21 @@ const shippedPackIds = readdirSync(packsDir).filter((id) => existsSync(path.join
  *  renderer's own figures, not from the layout under test. */
 const footprint = (n: PlacedNode) => ({ left: n.x - (PITCH - 8) / 2, right: n.x + (PITCH - 8) / 2, top: n.y - NODE / 2, bottom: n.y + NODE / 2 + 39 });
 const overlaps = (a: ReturnType<typeof footprint>, b: ReturnType<typeof footprint>) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+test('the current ATCS 0.3 single-engineering route lays out its fix, delivery and terminal Goal nodes', () => {
+  const pack = loadPack(packsDir, 'agentic-timing-closure-system');
+  const scene = shippedScene('agentic-timing-closure-system');
+  assert.equal(pack.contract.version, '0.3.0');
+  assert.equal(scene.nodes.length, pack.graph.nodes.length);
+  for (const id of ['fix-timing', 'read-engineering-result', 'check-engineering-delivery', 'check-engineering-goal']) {
+    assert.ok(scene.nodes.some((node) => node.id === id), `${id} is placed`);
+  }
+  for (let i = 0; i < scene.nodes.length; i++) {
+    for (let j = i + 1; j < scene.nodes.length; j++) {
+      assert.ok(!overlaps(footprint(scene.nodes[i]!), footprint(scene.nodes[j]!)));
+    }
+  }
+});
 
 /** Points along an SVG path `d` built from M/L/C/Q commands (the only ones `layoutCanvas` emits),
  *  at most one unit apart along each segment's own control polygon (and never fewer than 40 per
@@ -408,11 +429,11 @@ test('two revisit arcs whose spans overlap without nesting peak at distinct heig
   assert.ok(apex('d') - apex('g') >= 8, `the wider arc g -> b peaks clear above d -> a (${apex('g').toFixed(1)} vs ${apex('d').toFixed(1)})`);
 });
 
-test('the ATCS reference graph spreads into lanes where no two nodes or their labels overlap', () => {
-  const scene = shippedScene('agentic-timing-closure-system');
+test('the retained ATCS 0.2.10 graph spreads into lanes where no two nodes or their labels overlap', () => {
+  const scene = legacyAtcsScene();
   // Every node of the shipped graph is placed, however many it has (the count is read from graph.yml,
   // not written here, so a Pack change does not leave a stale number behind).
-  assert.equal(scene.nodes.length, loadPack(packsDir, 'agentic-timing-closure-system').graph.nodes.length);
+  assert.equal(scene.nodes.length, legacyAtcs.nodes.length);
   assert.ok(scene.nodes.length > 60);
   const rows = new Set(scene.nodes.map((n) => n.row));
   assert.ok(rows.size >= 3, `expected several lanes, got rows ${[...rows].join(', ')}`);
@@ -428,8 +449,8 @@ test('the ATCS reference graph spreads into lanes where no two nodes or their la
   }
 });
 
-test('the six ATCS worker chains run side by side in their own lanes, between the fork and the join that feeds collect', () => {
-  const scene = shippedScene('agentic-timing-closure-system');
+test('the retained six ATCS worker chains run side by side between the fork and join', () => {
+  const scene = legacyAtcsScene();
   const at = (id: string) => {
     const placed = scene.nodes.find((n) => n.id === id);
     assert.ok(placed, `${id} is placed`);
@@ -476,12 +497,13 @@ for (const packId of shippedPackIds) {
   });
 }
 
-test('the ATCS outcome chips sit clear of one another and of every node\'s glyph and labels', () => {
-  const scene = shippedScene('agentic-timing-closure-system');
+test('the retained ATCS outcome chips sit clear of one another and of every node\'s glyph and labels', () => {
+  const scene = legacyAtcsScene();
   // `FabricCanvas`'s own chip pill: `text.length * 6.5 + 16` wide, 18 tall, centred on the chip point.
   const chips = scene.edges.flatMap((e) => e.chip === undefined ? [] : [{ edge: `${e.from} -> ${e.to}`, left: e.chip.x - (e.chip.text.length * 6.5 + 16) / 2, right: e.chip.x + (e.chip.text.length * 6.5 + 16) / 2, top: e.chip.y - 9, bottom: e.chip.y + 9 }]);
-  // ADR-0016: every in-loop Judge labels its three outcomes, nine Judges of them.
-  assert.ok(chips.length >= 20);
+  const declaredOutcomes = legacyAtcs.edges.filter((edge: any) => edge.outcome !== undefined).length;
+  assert.equal(chips.length, declaredOutcomes, 'every retained labelled outcome renders one chip');
+  assert.ok(chips.length >= 12, 'the retained multi-Judge route exercises overlapping chip placement');
   for (let i = 0; i < chips.length; i++) {
     for (let j = i + 1; j < chips.length; j++) assert.ok(!overlaps(chips[i]!, chips[j]!), `the chips of ${chips[i]!.edge} and ${chips[j]!.edge} overlap`);
     for (const n of scene.nodes) {
@@ -492,12 +514,11 @@ test('the ATCS outcome chips sit clear of one another and of every node\'s glyph
   }
 });
 
-test('the ATCS revisit arcs nest by span above the lanes instead of drawing over one another', () => {
-  const scene = shippedScene('agentic-timing-closure-system');
+test('the retained ATCS revisit arcs nest by span above the lanes instead of drawing over one another', () => {
+  const scene = legacyAtcsScene();
   const arcs = scene.edges.filter((e) => e.kind === 'revisit');
   // One arc per `revisit: true` edge of the shipped graph, counted from graph.yml.
-  assert.equal(arcs.length, (loadPack(packsDir, 'agentic-timing-closure-system').graph.edges as { revisit?: boolean }[])
-    .filter((edge) => edge.revisit === true).length);
+  assert.equal(arcs.length, legacyAtcs.edges.filter((edge) => edge.revisit === true).length);
   // ADR-0016: one decision per generation, so one revisit arc, from the decision to the next generation.
   assert.ok(arcs.length >= 1);
   const apex = (d: string) => Math.min(...samplePath(d).map((p) => p.y));

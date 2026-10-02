@@ -28,6 +28,7 @@ import session_fixtures as sf
 
 class OwnerTimingLeadChecks(unittest.TestCase):
     def setUp(self):
+        self.native_metric_trajectory = None
         self.ws = Path(tempfile.mkdtemp(prefix="atcs-owner-lead-"))
         self.addCleanup(shutil.rmtree, self.ws, ignore_errors=True)
         manifest = _make_baseline_manifest(self.ws)
@@ -121,6 +122,31 @@ proc write_design_changes {args} {
     }
 }
 """
+        if self.native_metric_trajectory is not None:
+            rows = []
+            for metrics in self.native_metric_trajectory:
+                rows.append("{" + " ".join(str(value) for value in (
+                    metrics["setup"]["violations"], metrics["setup"]["wnsNs"], metrics["setup"]["tnsNs"],
+                    metrics["hold"]["violations"], metrics["hold"]["wnsNs"], metrics["hold"]["tnsNs"],
+                )) + "}")
+            text += """
+rename summarize_gba_violations fixture_static_summarize
+set ::fixture_metric_trajectory [list %s]
+set ::fixture_metric_index 0
+proc summarize_gba_violations {args} {
+    set check [expr {[lsearch -exact $args -setup] >= 0 ? "setup" : "hold"}]
+    set row [lindex $::fixture_metric_trajectory $::fixture_metric_index]
+    set offset [expr {$check eq "setup" ? 0 : 3}]
+    set count [lindex $row $offset]
+    set worst [lindex $row [expr {$offset + 1}]]
+    set tns [lindex $row [expr {$offset + 2}]]
+    append ::stub_out "### $check summary ###\nScenario Count Worst TNS\n--------------------------------\ntotal $count $worst $tns\n"
+    append ::stub_out "### $check top $count endpoints ###\nSlack Scenario Name\n--------------------------------\n"
+    for {set i 0} {$i < $count} {incr i} { append ::stub_out "$worst synthetic U${i}/D\n" }
+    if {$check eq "hold"} { incr ::fixture_metric_index }
+    return ""
+}
+""" % " ".join(rows)
         if ("xtop-repeat-control" in tcl.read_text() or "set stopped deadline" in tcl.read_text()
                 or "no-timing-report-improvement" in tcl.read_text()):
             text += r"""
@@ -226,14 +252,83 @@ close $fh
                 self.assertEqual(core.file_sha256(self.ws / ref["path"]), ref["sha256"])
 
         with patch.object(adapters, "run_tool", side_effect=self.stub_native_tool):
-            self.assertEqual(cli.main(["auto-fix-reference", str(self.ws), str(self.site_path)]), 0)
+            self.assertEqual(cli.main(["auto-fix-reference", str(self.ws), str(self.site_path), "0", "0"]), 0)
         reference = cli._read_declared(self.ws / "state/autofix-reference.json", "autofix-reference")
-        self.assertIn(reference["stopReason"], ("goal", "no-timing-report-improvement"))
+        self.assertIn(reference["stopReason"], (
+            "goal", "no-improvement", "oscillation", "regression", "mixed-no-improvement"))
         self.assertEqual(reference["inputIdentity"]["commonStateId"], common["stateId"])
         script = (self.ws / "research/control/autofix-reference/native-stage.tcl").read_text()
         self.assertNotIn("round <= 128", script)
         self.assertNotIn("clock seconds] < $deadline", script)
-        self.assertIn("no-timing-report-improvement", script)
+        self.assertIn("set stopped no-improvement", script)
+
+    def _run_reference_trajectory(self, trajectory):
+        (self.ws / "state/common-stage.json").unlink()
+        shutil.rmtree(self.ws / "research/observe/common-r1")
+        self.native_metric_trajectory = None
+        with patch.object(adapters, "run_tool", side_effect=self.stub_native_tool):
+            self.assertEqual(cli.main([
+                "resident-common-autofix", str(self.ws), str(self.site_path), "10000",
+            ]), 0)
+        self.native_metric_trajectory = trajectory
+        with patch.object(adapters, "run_tool", side_effect=self.stub_native_tool):
+            self.assertEqual(cli.main(["auto-fix-reference", str(self.ws), str(self.site_path), "0", "0"]), 0)
+        return cli._read_declared(self.ws / "state/autofix-reference.json", "autofix-reference")
+
+    @staticmethod
+    def _metric(setup_count, setup_wns, setup_tns, hold_count, hold_wns, hold_tns):
+        return {
+            "setup": {"violations": setup_count, "wnsNs": setup_wns, "tnsNs": setup_tns},
+            "hold": {"violations": hold_count, "wnsNs": hold_wns, "tnsNs": hold_tns},
+        }
+
+    def test_autofix_reference_keeps_the_best_actual_state_when_the_next_round_worsens(self):
+        initial = self._metric(3, -0.10, -0.30, 2, -0.08, -0.20)
+        improved = self._metric(1, -0.03, -0.03, 1, -0.02, -0.02)
+        worse = self._metric(2, -0.06, -0.10, 1, -0.03, -0.03)
+        result = self._run_reference_trajectory([initial, initial, improved, worse])
+        self.assertEqual(result["stopReason"], "regression")
+        self.assertEqual(result["bestRound"], 1)
+        self.assertEqual(result["measurements"]["after"]["setup"]["wnsNs"], improved["setup"]["wnsNs"])
+        self.assertEqual(result["measurements"]["after"]["hold"]["tnsNs"], improved["hold"]["tnsNs"])
+        self.assertEqual(len(result["rounds"]), 2)
+        self.assertIn("/best/workspace", result["artifacts"]["checkpoint"]["path"])
+        self.assertIn("/best/eco/", result["artifacts"]["logicalEco"]["path"])
+        selection = cli._read_plain(self.ws / "research/control/autofix-reference/best/selection.json")
+        self.assertEqual(selection["round"], 1)
+
+    def test_autofix_reference_stops_on_stagnation_at_the_common_r1(self):
+        initial = self._metric(3, -0.10, -0.30, 2, -0.08, -0.20)
+        result = self._run_reference_trajectory([initial, initial, initial])
+        self.assertEqual((result["stopReason"], result["bestRound"]), ("no-improvement", 0))
+        self.assertEqual(result["measurements"]["after"]["setup"]["wnsNs"], initial["setup"]["wnsNs"])
+
+    def test_autofix_reference_stops_an_oscillation_and_retains_the_improved_state(self):
+        initial = self._metric(3, -0.10, -0.30, 2, -0.08, -0.20)
+        improved = self._metric(1, -0.03, -0.03, 1, -0.02, -0.02)
+        result = self._run_reference_trajectory([initial, initial, improved, initial])
+        self.assertEqual((result["stopReason"], result["bestRound"]), ("oscillation", 1))
+        self.assertEqual(result["measurements"]["after"]["setup"]["wnsNs"], improved["setup"]["wnsNs"])
+
+    def test_autofix_reference_allows_positive_setup_margin_to_fund_hold_progress(self):
+        initial = self._metric(0, 0.10, 0.0, 3, -0.08, -0.20)
+        improved = self._metric(0, 0.03, 0.0, 1, -0.02, -0.02)
+        result = self._run_reference_trajectory([initial, initial, improved, improved])
+        self.assertEqual((result["stopReason"], result["bestRound"]), ("no-improvement", 1))
+        self.assertEqual(result["measurements"]["after"]["setup"]["wnsNs"], 0.03)
+        self.assertEqual(result["measurements"]["after"]["hold"]["violations"], 1)
+
+    def test_autofix_reference_does_not_run_a_round_when_the_common_r1_already_meets_goal(self):
+        clean = self._metric(0, 0.05, 0.0, 0, 0.02, 0.0)
+        result = self._run_reference_trajectory([clean, clean])
+        self.assertEqual((result["stopReason"], result["bestRound"], result["rounds"]), ("goal", 0, []))
+
+    def test_autofix_reference_does_not_trade_fewer_violations_for_worse_unsatisfied_wns(self):
+        initial = self._metric(3, -0.10, -0.30, 2, -0.08, -0.20)
+        mixed = self._metric(2, -0.20, -0.20, 2, -0.08, -0.20)
+        result = self._run_reference_trajectory([initial, initial, mixed])
+        self.assertEqual((result["stopReason"], result["bestRound"]), ("regression", 0))
+        self.assertEqual(result["measurements"]["after"]["setup"]["wnsNs"], initial["setup"]["wnsNs"])
 
     @unittest.skipUnless(TCLSH, "tclsh required")
     def test_lead_replay_own_mutation_final_eco_is_implement_input(self):
