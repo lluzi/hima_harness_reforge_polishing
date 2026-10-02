@@ -285,7 +285,7 @@ proc write_design_changes {args} {
 import assert from 'node:assert/strict';
 import { loadPack } from '@hima/harness';
 const pack = loadPack('packs', 'agentic-timing-closure-system');
-assert.equal(pack.contract.version, '0.2.6');
+assert.equal(pack.contract.version, '0.2.7');
 const edges=pack.graph.edges;
 const to=id=>edges.filter(e=>e.from===id).map(e=>e.to);
 assert.deepEqual(to('common-autofix'), ['read-refresh-budget']);
