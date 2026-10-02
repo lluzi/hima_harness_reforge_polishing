@@ -9,7 +9,7 @@ import { controlPathFor, jobPlumbing, loadSite, processProbes, readOnlyProbes, w
 const destination = 'luzi@192.168.50.41';
 /** The test's own judgement of what a read-only probe is, kept apart from the channel's list on
  *  purpose: the last test holds both against it. */
-const readOnlyVerbs = new Set(['cat', 'realpath', 'readlink', 'stat', 'ls', 'test', 'true', 'uname', 'getconf', 'which']);
+const readOnlyVerbs = new Set(['cat', 'realpath', 'readlink', 'sha256sum', 'stat', 'ls', 'test', 'true', 'uname', 'getconf', 'which']);
 
 const changesTheSite =
   /^(rm|rmdir|mv|cp|dd|tee|touch|mkdir|ln|chmod|chown|chgrp|truncate|shred|systemctl|service|kill|killall|pkill|reboot|shutdown|mount|umount|apt|apt-get|dnf|yum|pip|npm|git|wget|curl|scp|rsync|sudo|su|tmux|innovus|dc_shell|make)$/;
@@ -103,7 +103,7 @@ test('HimaChannel admits exactly the bounded read-only probes used by observatio
   // is a verb some future caller may run on a customer's Site without anyone deciding to allow it.
   // `cat` and `realpath` are what this harness runs; when a caller needs another, it goes on the list
   // with the caller, not ahead of it.
-  assert.deepEqual([...readOnlyProbes].sort(), ['cat', 'getconf', 'realpath', 'uname', 'which'], "the channel's allowlist is exactly the fixed observation and discovery verbs it runs");
+  assert.deepEqual([...readOnlyProbes].sort(), ['cat', 'getconf', 'realpath', 'sha256sum', 'uname', 'which'], "the channel's allowlist is exactly the fixed observation and discovery verbs it runs");
   for (const verb of readOnlyProbes) {
     assert.doesNotMatch(verb, changesTheSite, `the channel's own allowlist admits ${verb}`);
     assert.ok(readOnlyVerbs.has(verb), `the channel's own allowlist admits ${verb}, which this test does not judge read-only`);

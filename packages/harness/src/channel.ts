@@ -59,7 +59,7 @@ export interface Channel extends PathResolver {
  *  agent may look; this says that looking is all these two can do. Kept to what is actually run
  *  rather than to what would be harmless — every extra verb here is permission granted on a
  *  customer's Site ahead of any caller needing it. */
-export const readOnlyProbes: ReadonlySet<string> = new Set(['cat', 'realpath', 'uname', 'getconf', 'which']);
+export const readOnlyProbes: ReadonlySet<string> = new Set(['cat', 'realpath', 'sha256sum', 'uname', 'getconf', 'which']);
 
 /** The job plumbing: what the job operations themselves run on a Site to put a command in a detached
  *  tmux session and find out what became of it — `tmux` for the session, `test` and `cat` for the

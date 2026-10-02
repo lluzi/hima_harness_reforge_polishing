@@ -1057,13 +1057,16 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
   const admin = path.join(h.workspace, 'resident-admin');
   await mkdir(admin, { recursive: true });
   const resultSource = path.join(admin, 'atcs-engineering-result.json');
+  const artifactSource = path.join(admin, 'atcs-engineering-artifacts');
   const capability = path.join(admin, 'engineering-capabilities-v1.json');
   await writeFile(capability, JSON.stringify({
     schema: 'hima-resident-engineering-capability/1', protocol: 'hima-resident-engineering/1',
     wrapper: { argv: [wrapper, '--capability', capability] },
     native: { executable: native, version: '1.18.34', argv: [], model: 'deepseek/deepseek-flash', protocolVersion: 1 },
     sandbox: { kind: 'none', testOnly: true, privateWorkspace: 'workspace', privateHome: 'home' },
-    environment: { inherit: [], set: { STANDIN_RESULT_SOURCE: resultSource }, toolPaths: [], credentialReadPaths: [] },
+    environment: { inherit: [], set: {
+      STANDIN_RESULT_SOURCE: resultSource, STANDIN_ARTIFACT_SOURCE_ROOT: artifactSource,
+    }, toolPaths: [], credentialReadPaths: [] },
     permissions: { autoApprove: ['read', 'edit', 'write', 'bash'], denyUnknown: true },
     delivery: { candidate: 'resident-delivery.json' }, stopGraceSeconds: 1,
   }));
@@ -1095,17 +1098,23 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
     const full = path.join(workspace, rel); await mkdir(path.dirname(full), { recursive: true }); await writeFile(full, bytes);
     return { path: rel, sha256: createHash('sha256').update(bytes).digest('hex') };
   };
-  const metric = async (prefix: string, setupWns: number, setupTns: number, setupCount: number) => ({
+  const deliveryFileRef = async (rel: string, text: string | Buffer) => {
+    const bytes = Buffer.isBuffer(text) ? text : Buffer.from(text);
+    const full = path.join(artifactSource, rel); await mkdir(path.dirname(full), { recursive: true }); await writeFile(full, bytes);
+    return { path: rel, sha256: createHash('sha256').update(bytes).digest('hex') };
+  };
+  const metric = async (prefix: string, setupWns: number, setupTns: number, setupCount: number,
+    writer: typeof fileRef = fileRef) => ({
     setup: { wnsNs: setupWns, tnsNs: setupTns, violations: setupCount,
-      report: await fileRef(`engineering-fixture/${prefix}-setup.rpt`,
+      report: await writer(`engineering/fixture/${prefix}-setup.rpt`,
         `### setup summary ###\nScenario Count Worst TNS\n----------------\ntotal ${setupCount} ${setupWns} ${setupTns}\n`) },
     hold: { wnsNs: 0, tnsNs: 0, violations: 0,
-      report: await fileRef(`engineering-fixture/${prefix}-hold.rpt`,
+      report: await writer(`engineering/fixture/${prefix}-hold.rpt`,
         '### hold summary ###\nScenario Count Worst TNS\n----------------\ntotal 0 0 0\n') },
   });
   const before = await metric('common', -0.10, -0.20, 1);
   const referenceAfter = await metric('autofix', -0.02, -0.02, 1);
-  const residentAfter = await metric('resident', -0.05, -0.08, 1);
+  const residentAfter = await metric('resident', -0.05, -0.08, 1, deliveryFileRef);
   const baseline = stampAtcs('design-state', { top: 'fixture' });
   const nativeContext = stampAtcs('xtop-context', { requiredScenarios: ['fixture'] });
   const readiness = stampAtcs('input-readiness', {
@@ -1132,36 +1141,36 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
     writeFile(path.join(workspace, 'state/autofix-reference.json'), JSON.stringify(reference)),
   ]);
   const checkpointBytes = Buffer.from('selected native checkpoint\n');
-  await mkdir(path.join(workspace, 'engineering-fixture/best-workspace'), { recursive: true });
-  await writeFile(path.join(workspace, 'engineering-fixture/best-workspace/state'), checkpointBytes);
+  await deliveryFileRef('engineering/fixture/best-workspace/state', checkpointBytes);
   const collateralReason: Record<string, string> = {
     transition: 'break_max_transition', capacitance: 'break_max_capacitance',
     fanout: 'break_max_fanout', legality: 'legal_fail_no_space_on_row',
   };
-  const collateralPhase = async (phase: 'before' | 'after', stateId: string) => Object.fromEntries(
+  const collateralPhase = async (phase: 'before' | 'after', stateId: string,
+    writer: typeof fileRef = fileRef) => Object.fromEntries(
     await Promise.all(Object.entries(collateralReason).map(async ([check, reason]) => {
       const raw = `### setup top 20 endpoints ###\nSlack Scenario Name Fail Reason\n----------------\n-0.01 fixture U1/D ${reason}:100%\n`;
-      const ref = await fileRef(`engineering-fixture/${phase}-${check}.rpt`, raw);
+      const ref = await writer(`engineering/fixture/${phase}-${check}.rpt`, raw);
       return [check, { scope: 'timing-fix-fail-reasons', stateId, requiredScenarios: ['fixture'],
         source: { ...ref, tool: 'XTop', version: 'fixture', command: 'summarize_gba_violations -with_fail_reason' } }];
     })));
   const collateral = {
     before: await collateralPhase('before', 'common-r1-state'),
-    after: await collateralPhase('after', 'resident-selected-state'),
+    after: await collateralPhase('after', 'resident-selected-state', deliveryFileRef),
   };
   const resultBody = {
     kind: 'result',
     inputIdentity,
     selected: { stateId: 'resident-selected-state', checkpoint: {
-      path: 'engineering-fixture/best-workspace', digest: treeDigestForSingleFile('state', checkpointBytes),
+      path: 'engineering/fixture/best-workspace', digest: treeDigestForSingleFile('state', checkpointBytes),
     } },
     measurements: { before, after: residentAfter }, collateral,
     artifacts: {
-      scripts: [await fileRef('engineering-fixture/fix.tcl', '# native fixture repair script\n')],
-      logicalEco: await fileRef('engineering-fixture/final_netlist_eco.txt', 'fixture logical ECO\n'),
-      physicalEco: await fileRef('engineering-fixture/final_physical_eco.txt', 'fixture physical ECO\n'),
-      reproduction: await fileRef('engineering-fixture/REPRODUCE.md', 'source fix.tcl\n'),
-      nativeTrace: [await fileRef('engineering-fixture/native.log', 'native XTop fixture trace\n')],
+      scripts: [await deliveryFileRef('engineering/fixture/fix.tcl', '# native fixture repair script\n')],
+      logicalEco: await deliveryFileRef('engineering/fixture/final_netlist_eco.txt', 'fixture logical ECO\n'),
+      physicalEco: await deliveryFileRef('engineering/fixture/final_physical_eco.txt', 'fixture physical ECO\n'),
+      reproduction: await deliveryFileRef('engineering/fixture/REPRODUCE.md', 'source fix.tcl\n'),
+      nativeTrace: [await deliveryFileRef('engineering/fixture/native.log', 'native XTop fixture trace\n')],
     },
     remaining: [{ mode: 'setup', endpoint: 'fixture/U1/D', slackNs: -0.05 }],
     regressed: [], blocked: [], unknown: [],
@@ -1188,6 +1197,8 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
     ...resultBody, task: { taskId, runId, executionId, nodeId: 'fix-timing' },
   });
   await writeFile(resultSource, JSON.stringify(result) + '\n');
+  await assert.rejects(readFile(path.join(workspace, 'engineering/fixture/best-workspace/state')), { code: 'ENOENT' },
+    'the selected checkpoint starts only in the resident private workspace');
   const engineering = await execute('atcs-start', 'engineering', {
     executionId, engineering: { operation: 'start', goal: 'DELIVER_BEST_EFFORT', context: 'Use the full ATCS resident playbook.' },
   });
@@ -1201,6 +1212,8 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
   const delivered = await execute('atcs-delivery', 'engineering', { executionId, engineering: { operation: 'delivery' } });
   assert.equal(delivered.data.status, 'verified', JSON.stringify(delivered));
   assert.equal(delivered.data.outcome, 'best-effort');
+  assert.deepEqual(await readFile(path.join(workspace, 'engineering/fixture/best-workspace/state')), checkpointBytes,
+    'Host reconstructs the native checkpoint directory before the ATCS Reader verifies its tree digest');
   const released = await execute('atcs-release', 'engineering', { executionId, engineering: { operation: 'release' } });
   assert.equal(released.data.status, 'released');
   const completed = await execute('atcs-complete', 'complete', { executionId });

@@ -262,6 +262,8 @@ export const engineeringOutsourcing = z.strictObject({
   knowledge: z.array(knowledgeFileName).min(1).max(128).refine((items) => new Set(items).size === items.length, {
     error: 'outsourcing knowledge files must be unique',
   }),
+  artifactPrefix: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/,
+    'outsourcing artifactPrefix must be a normalized workspace-relative directory').optional(),
   produces: declaredName,
 });
 export type EngineeringOutsourcing = z.infer<typeof engineeringOutsourcing>;

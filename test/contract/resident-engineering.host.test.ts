@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { access, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, symlink, unlink, writeFile } from 'node:fs/promises';
 import { checkPack, jobKill, jobStatus, launchJob, loadPack, loadSite, type JobRecord, type WorkspaceRecord } from '@hima/harness';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
@@ -20,6 +20,7 @@ const declaration = `    outsourcing:
       role: resident-engineering-agent
       reads: [qorReport]
       knowledge: [push-method.md]
+      artifactPrefix: engineering
       produces: qorReport
 `;
 
@@ -160,11 +161,20 @@ test('a normal tool may declare one generic resident engineering delivery contra
     ], [], undefined, { 'knowledge/push-method.md': '# Push method\n' });
     const pack = loadPack(packsDirOf(home.h), id);
     assert.deepEqual(pack.contract.tools[0]?.outsourcing, {
-      role: 'resident-engineering-agent', reads: ['qorReport'], knowledge: ['push-method.md'], produces: 'qorReport',
+      role: 'resident-engineering-agent', reads: ['qorReport'], knowledge: ['push-method.md'],
+      artifactPrefix: 'engineering', produces: 'qorReport',
     });
     const missing = checkPack(pack, loadSite(path.join(home.h.home, 'hima/sites'), 'local'));
     assert.equal(missing.fit, false);
     assert.ok(missing.errors.some((error) => /engineeringCapabilities/.test(error)), JSON.stringify(missing.errors));
+    const historical = 'resident-engineering-historical-schema';
+    await writePackVariant(packsDirOf(home.h), historical, [
+      ['tools:\n', `knowledge:\n  - file: push-method.md\n    purpose: Engineering playbook.\n\ntools:\n`],
+      ['    inputs: [WORKSPACE, FLOW_ROOT, DESIGN, PERIOD_NS, CAMPAIGN]\n',
+        `${declaration.replace('      artifactPrefix: engineering\n', '')}    inputs: [WORKSPACE, FLOW_ROOT, DESIGN, PERIOD_NS, CAMPAIGN]\n`],
+    ], [], undefined, { 'knowledge/push-method.md': '# Push method\n' });
+    assert.equal(loadPack(packsDirOf(home.h), historical).contract.tools[0]?.outsourcing?.artifactPrefix, undefined,
+      'preserved pre-artifactPrefix methods remain readable under the current schema');
   } finally {
     await home.h.dispose();
   }
@@ -257,6 +267,8 @@ test('public Host keeps one resident task through start, message, Reader-verifie
     const delivery = await execute('05-delivery', 'engineering', { executionId, engineering: { operation: 'delivery' } });
     assert.equal(delivery.data.status, 'verified', JSON.stringify(delivery));
     assert.equal(delivery.data.outcome, 'completed');
+    assert.equal(await readFile(path.join(workspace.workspace, 'engineering/support.txt'), 'utf8'),
+      'nested retained engineering support\n', 'all manifest files are materialized for Reader/checkpoint references');
     const observations = host.ctx.hima.ledger.records({ runId: started.run.id, type: 'observation' });
     assert.ok(observations.some((record) => record.type === 'observation' && record.reader.id === 'fixture-result'));
     const deliveredBytes = await readFile(path.join(workspace.workspace, 'engineering/result.json'));
@@ -267,6 +279,82 @@ test('public Host keeps one resident task through start, message, Reader-verifie
     assert.equal(release.data.status, 'released', JSON.stringify(release));
     const completed = await execute('07-complete', 'complete', { executionId });
     assert.equal(completed.kind, 'accepted', JSON.stringify(completed));
+  } finally {
+    await host.dispose(); await fixture.h.dispose();
+  }
+});
+
+test('delivery preflight cannot overwrite Campaign authority outside the Pack artifact prefix', async (t) => {
+  const fixture = await installResidentFixture(t);
+  const host = await bootInProcess(fixture.h);
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    const task = await openResidentTask(host, fixture, owner, 'DELIVER_RESULT OUTSIDE_PREFIX');
+    const taskDir = path.join(task.workspace.workspace, '.hima-engineering', task.engineering.data.taskId);
+    const protectedPath = path.join(task.workspace.workspace, 'state/protected.json');
+    await mkdir(path.dirname(protectedPath), { recursive: true });
+    await writeFile(protectedPath, 'Campaign authority\n');
+    await waitUntil('outside-prefix native candidate', async () => {
+      try { return (await readFile(path.join(taskDir, 'workspace/resident-delivery.json'))).byteLength > 0; } catch { return false; }
+    }, 10_000, 20);
+    const answer = await task.call({ run: task.started.run.id, action: 'engineering', requestId: 'outside-prefix-delivery',
+      executionId: task.executionId, expectedEpoch: task.controlled().epoch, expectedRevision: task.controlled().revision,
+      engineering: { operation: 'delivery' } });
+    assert.equal(answer.isError, false, JSON.stringify(answer));
+    assert.match(answer.content.filter((item) => item.type === 'text').map((item) => item.text).join(''), /outside Pack prefix engineering/);
+    assert.equal(await readFile(protectedPath, 'utf8'), 'Campaign authority\n');
+    await assert.rejects(readFile(path.join(task.workspace.workspace, 'engineering/result.json')), { code: 'ENOENT' },
+      'complete manifest preflight occurs before the result output is written');
+  } finally {
+    await host.dispose(); await fixture.h.dispose();
+  }
+});
+
+test('repair must use a fresh revisioned support path instead of mutating a published tree member', async (t) => {
+  const fixture = await installResidentFixture(t);
+  const host = await bootInProcess(fixture.h);
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    const task = await openResidentTask(host, fixture, owner, 'DELIVER_RESULT');
+    const taskDir = path.join(task.workspace.workspace, '.hima-engineering', task.engineering.data.taskId);
+    const supportPath = path.join(task.workspace.workspace, 'engineering/support.txt');
+    await mkdir(path.dirname(supportPath), { recursive: true });
+    await writeFile(supportPath, 'earlier immutable revision\n');
+    await waitUntil('mutable-support native candidate', async () => {
+      try { return (await readFile(path.join(taskDir, 'workspace/resident-delivery.json'))).byteLength > 0; } catch { return false; }
+    }, 10_000, 20);
+    const answer = await task.call({ run: task.started.run.id, action: 'engineering', requestId: 'mutable-support-delivery',
+      executionId: task.executionId, expectedEpoch: task.controlled().epoch, expectedRevision: task.controlled().revision,
+      engineering: { operation: 'delivery' } });
+    assert.equal(answer.isError, false, JSON.stringify(answer));
+    assert.match(answer.content.filter((item) => item.type === 'text').map((item) => item.text).join(''), /fresh revisioned artifact path/);
+    assert.equal(await readFile(supportPath, 'utf8'), 'earlier immutable revision\n');
+    await assert.rejects(readFile(path.join(task.workspace.workspace, 'engineering/result.json')), { code: 'ENOENT' });
+  } finally {
+    await host.dispose(); await fixture.h.dispose();
+  }
+});
+
+test('artifact prefix must be a plain directory and cannot resolve through a Campaign symlink', async (t) => {
+  const fixture = await installResidentFixture(t);
+  const host = await bootInProcess(fixture.h);
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    const task = await openResidentTask(host, fixture, owner, 'DELIVER_RESULT');
+    const taskDir = path.join(task.workspace.workspace, '.hima-engineering', task.engineering.data.taskId);
+    const stateDir = path.join(task.workspace.workspace, 'state');
+    await mkdir(stateDir, { recursive: true });
+    await symlink(stateDir, path.join(task.workspace.workspace, 'engineering'));
+    await waitUntil('symlink-prefix native candidate', async () => {
+      try { return (await readFile(path.join(taskDir, 'workspace/resident-delivery.json'))).byteLength > 0; } catch { return false; }
+    }, 10_000, 20);
+    const answer = await task.call({ run: task.started.run.id, action: 'engineering', requestId: 'symlink-prefix-delivery',
+      executionId: task.executionId, expectedEpoch: task.controlled().epoch, expectedRevision: task.controlled().revision,
+      engineering: { operation: 'delivery' } });
+    assert.equal(answer.isError, false, JSON.stringify(answer));
+    assert.match(answer.content.filter((item) => item.type === 'text').map((item) => item.text).join(''), /plain non-symlink directory/);
+    await assert.rejects(readFile(path.join(stateDir, 'result.json')), { code: 'ENOENT' });
+    await assert.rejects(readFile(path.join(stateDir, 'support.txt')), { code: 'ENOENT' });
   } finally {
     await host.dispose(); await fixture.h.dispose();
   }

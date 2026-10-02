@@ -128,6 +128,7 @@ tools:
       role: resident-engineering-agent
       reads: [inputReadiness, baselineState, nativeContext, commonStage, autoFixReference]
       knowledge: [resident-timing-playbook.md, xtop-capabilities.md, state-and-evidence.md]
+      artifactPrefix: engineering
       produces: engineeringResult
 
 rules:

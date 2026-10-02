@@ -67,7 +67,9 @@ const engineeringReceiptBody = z.strictObject({
   result: z.json().optional(), error: z.string().optional(),
 });
 const engineeringReceipt = engineeringReceiptBody.extend({ sha256: digestHex });
-const relativeArtifactPath = z.string().min(1).refine((value) => !value.startsWith('/') && !value.split('/').includes('..'), 'must be a workspace-relative path without ..');
+const relativeArtifactPath = z.string().min(1).refine((value) => !value.startsWith('/')
+  && value.split('/').every((part) => part !== '' && part !== '.' && part !== '..'),
+'must be a normalized workspace-relative path');
 const deliveryArtifact = z.strictObject({ path: relativeArtifactPath, sha256: digestHex, kind: z.string().min(1) });
 const engineeringDeliveryBody = z.strictObject({
   schema: z.literal('hima-resident-engineering-delivery/1'), taskId: z.string(), executionId: z.string(),
@@ -195,6 +197,9 @@ export async function loadEngineeringCapability(site: Site): Promise<{ readonly 
 /** Resolve every fixed input before an engineering start is admitted; this function writes nothing. */
 export async function planEngineeringTask(identity: EngineeringTaskIdentity, request: Extract<EngineeringRequest, { operation: 'start' }>): Promise<EngineeringTaskPlan> {
   const { run, execution, site, pack, workspace, bindings, outsourcing, tool, boundInputs } = identity;
+  if (outsourcing.artifactPrefix === undefined) {
+    throw new Error(`tool ${tool.id} resident engineering start needs an artifactPrefix; preserved older methods remain readable but cannot start new engineering work`);
+  }
   const channel = channelFor(site);
   const loadedCapability = await loadEngineeringCapability(site);
   const { capability } = loadedCapability;
@@ -350,8 +355,8 @@ export async function readEngineeringDelivery(site: Site, taskDir: string, taskI
   if (manifest.taskId !== taskId || manifest.executionId !== executionId) throw new Error('engineering delivery belongs to another task execution');
   const channel = channelFor(site);
   for (const artifact of manifest.artifacts) {
-    const found = await decidedBytes(site, channel, pathsOf(site).join(taskDir, manifest.artifactRoot, artifact.path), `engineering artifact ${artifact.path}`);
-    if (sha256(found.bytes) !== artifact.sha256) throw new Error(`engineering artifact ${artifact.path} does not match its delivery digest`);
+    const found = await decidedDigest(site, channel, pathsOf(site).join(taskDir, manifest.artifactRoot, artifact.path), `engineering artifact ${artifact.path}`);
+    if (found.sha256 !== artifact.sha256) throw new Error(`engineering artifact ${artifact.path} does not match its delivery digest`);
   }
   return manifest;
 }
@@ -444,23 +449,89 @@ export async function reconcileEngineeringTask(
   return { status: 'stopped', session, state, owned };
 }
 
-/** Put the one declared result into the Pack output location and verify the bytes after the copy. */
+async function decidedDigest(site: Site, channel: Channel, at: string, label: string): Promise<{ readonly path: string; readonly sha256: string }> {
+  const decision = await decideRead(site, at, channel);
+  if (!decision.ok) throw new Error(`${label}: ${decision.reason}`);
+  const output = await mustRun(channel, ['sha256sum', '--', decision.absPath], `hash ${label} ${decision.absPath}`);
+  const digest = /^([0-9a-f]{64})\s/.exec(output)?.[1];
+  if (digest === undefined) throw new Error(`${label}: sha256sum returned an invalid digest`);
+  return { path: decision.absPath, sha256: digest };
+}
+
+async function plainDirectory(channel: Channel, at: string, label: string): Promise<string> {
+  const link = await channel.exec(['test', '-L', at]);
+  if (link.code === 0) throw new Error(`${label} must be a plain non-symlink directory: ${at}`);
+  const directory = await channel.exec(['test', '-d', at]);
+  if (directory.code !== 0) throw new Error(`${label} is not a directory: ${at}`);
+  return channel.realpath(at);
+}
+
+const beneath = (candidate: string, root: string): boolean => candidate.startsWith(root.endsWith('/') ? root : `${root}/`);
+
+/** Materialize the result and the Pack-confined immutable support tree before its Reader runs. */
 export async function materializeEngineeringResult(identity: EngineeringTaskIdentity, taskDir: string, delivery: EngineeringDelivery): Promise<{ readonly path: string; readonly sha256: string }> {
   const results = delivery.artifacts.filter((artifact) => artifact.kind === 'result');
   if (results.length !== 1) throw new Error(`engineering delivery needs exactly one result artifact; found ${results.length}`);
   const channel = channelFor(identity.site);
   const p = pathsOf(identity.site);
-  const source = p.join(taskDir, delivery.artifactRoot, results[0]!.path);
-  const retained = await decidedBytes(identity.site, channel, source, 'retained engineering result');
-  if (sha256(retained.bytes) !== results[0]!.sha256) throw new Error('retained engineering result digest changed');
   const produced = identity.pack.contract.outputs.find((item) => item.name === identity.outsourcing.produces)!;
-  const target = p.join(identity.workspace, outputPath(produced, identity.bindings));
-  await ensureDirectory(identity.site, channel, p.dirname(target));
-  const write = await decideWrite(identity.site, target, channel);
-  if (!write.ok) throw new Error(write.reason);
-  await mustRun(channel, ['tee', '--', write.absPath], `materialize engineering result ${write.absPath}`, { stdin: retained.bytes });
-  const bytes = await channel.readFile(write.absPath);
-  const digest = sha256(bytes);
-  if (digest !== results[0]!.sha256) throw new Error(`materialized engineering result ${write.absPath} failed digest verification`);
-  return { path: write.absPath, sha256: digest };
+  const resultTarget = p.join(identity.workspace, outputPath(produced, identity.bindings));
+  const artifactPrefix = identity.outsourcing.artifactPrefix;
+  if (artifactPrefix === undefined) throw new Error('resident engineering delivery has no Pack artifactPrefix');
+  const prefix = `${artifactPrefix}/`;
+  const prefixTarget = p.join(identity.workspace, artifactPrefix);
+  const seenPaths = new Set<string>();
+  const planned: { readonly artifact: EngineeringDelivery['artifacts'][number]; readonly source: string;
+    readonly target: string; readonly absPath: string; readonly write: boolean }[] = [];
+  const prefixWasAbsent = await channel.absent(prefixTarget);
+  if (!prefixWasAbsent) await plainDirectory(channel, prefixTarget, 'engineering artifactPrefix');
+
+  // Read, hash, authorize and collision-check the complete manifest before creating even a parent
+  // directory. Support files are immutable once published: a repair must name a fresh revisioned
+  // checkpoint/artifact path, so omitted old members cannot contaminate the selected tree digest.
+  for (const artifact of delivery.artifacts) {
+    if (seenPaths.has(artifact.path)) throw new Error(`engineering delivery repeats artifact path ${artifact.path}`);
+    seenPaths.add(artifact.path);
+    if (artifact.kind !== 'result' && !artifact.path.startsWith(prefix)) {
+      throw new Error(`engineering support artifact ${artifact.path} is outside Pack prefix ${artifactPrefix}`);
+    }
+    const source = p.join(taskDir, delivery.artifactRoot, artifact.path);
+    const retained = await decidedDigest(identity.site, channel, source, `retained engineering artifact ${artifact.path}`);
+    if (retained.sha256 !== artifact.sha256) throw new Error(`retained engineering artifact ${artifact.path} digest changed`);
+    const target = artifact.kind === 'result' ? resultTarget : p.join(identity.workspace, artifact.path);
+    const decision = await decideWrite(identity.site, target, channel);
+    if (!decision.ok) throw new Error(decision.reason);
+    if (planned.some((item) => item.absPath === decision.absPath
+      || item.absPath.startsWith(`${decision.absPath}/`) || decision.absPath.startsWith(`${item.absPath}/`))) {
+      throw new Error(`engineering artifacts collide at Campaign path ${decision.absPath}`);
+    }
+    let needsWrite = true;
+    if (artifact.kind !== 'result' && decision.exists) {
+      const existing = await decidedDigest(identity.site, channel, decision.absPath, `existing engineering support artifact ${artifact.path}`);
+      if (existing.sha256 !== artifact.sha256) {
+        throw new Error(`engineering support path ${decision.absPath} already contains different bytes; use a fresh revisioned artifact path`);
+      }
+      needsWrite = false;
+    }
+    planned.push({ artifact, source: retained.path, target, absPath: decision.absPath, write: needsWrite });
+  }
+  if (prefixWasAbsent) await ensureDirectory(identity.site, channel, prefixTarget);
+  const realPrefix = await plainDirectory(channel, prefixTarget, 'engineering artifactPrefix');
+  for (const item of planned.filter((candidate) => candidate.artifact.kind !== 'result')) {
+    const decision = await decideWrite(identity.site, item.target, channel);
+    if (!decision.ok) throw new Error(decision.reason);
+    if (!beneath(decision.absPath, realPrefix)) throw new Error(`engineering support path ${decision.absPath} escapes resolved Pack prefix ${realPrefix}`);
+  }
+  for (const item of planned) await ensureDirectory(identity.site, channel, p.dirname(item.absPath));
+  for (const item of planned) {
+    if (item.write) await mustRun(channel, item.artifact.kind === 'result'
+      ? ['cp', '-f', '--', item.source, item.absPath]
+      : ['cp', '-n', '--', item.source, item.absPath], `materialize engineering artifact ${item.absPath}`);
+  }
+  for (const item of planned) {
+    const landed = await decidedDigest(identity.site, channel, item.absPath, `materialized engineering artifact ${item.absPath}`);
+    if (landed.sha256 !== item.artifact.sha256) throw new Error(`materialized engineering artifact ${item.absPath} failed digest verification`);
+  }
+  const materializedResult = planned.find((item) => item.artifact.kind === 'result')!;
+  return { path: materializedResult.absPath, sha256: materializedResult.artifact.sha256 };
 }

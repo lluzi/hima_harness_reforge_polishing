@@ -59,13 +59,34 @@ def complete_prompt(request_id, text):
         source = os.environ.get("STANDIN_RESULT_SOURCE")
         result = Path(source).read_bytes() if source else b'{"schema":"fixture-result/1","value":"native"}\n'
         Path("result.json").write_bytes(result)
+        artifacts = [{"path": "result.json", "sha256": sha256(result).hexdigest(), "kind": "result"}]
+        artifact_source = os.environ.get("STANDIN_ARTIFACT_SOURCE_ROOT")
+        if artifact_source:
+            root = Path(artifact_source)
+            for source_file in sorted(item for item in root.rglob("*") if item.is_file()):
+                relative = source_file.relative_to(root)
+                delivered = Path(*relative.parts)
+                delivered.parent.mkdir(parents=True, exist_ok=True)
+                support = source_file.read_bytes()
+                delivered.write_bytes(support)
+                artifacts.append({"path": relative.as_posix(), "sha256": sha256(support).hexdigest(), "kind": "support"})
+        if "DELIVER_RESULT" in text:
+            support = b"nested retained engineering support\n"
+            Path("engineering").mkdir(exist_ok=True)
+            Path("engineering/support.txt").write_bytes(support)
+            artifacts.append({"path": "engineering/support.txt", "sha256": sha256(support).hexdigest(), "kind": "support"})
+        if "OUTSIDE_PREFIX" in text:
+            outside = b"native task must not replace Campaign authority\n"
+            Path("state").mkdir(exist_ok=True)
+            Path("state/protected.json").write_bytes(outside)
+            artifacts.append({"path": "state/protected.json", "sha256": sha256(outside).hexdigest(), "kind": "support"})
         best_effort = "DELIVER_BEST_EFFORT" in text
         candidate = {
             "schema": "hima-resident-engineering-candidate/1",
             "outcome": "best-effort" if best_effort else "completed",
             "summary": "deterministic native result with residual" if best_effort else "deterministic native result",
             "stopReason": "residual remains" if best_effort else "fixture complete",
-            "artifacts": [{"path": "result.json", "sha256": sha256(result).hexdigest(), "kind": "result"}],
+            "artifacts": artifacts,
         }
         Path("resident-delivery.json").write_text(json.dumps(candidate, sort_keys=True, separators=(",", ":")))
     if "SPAWN_DESCENDANT" in text:

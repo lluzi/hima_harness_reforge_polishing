@@ -101,9 +101,19 @@ const engineeringCalls = (owner: any): EngineeringCall[] => toolCalls(owner)
   .map((call) => call.args as EngineeringCall);
 
 function assertNoBusyStatus(calls: readonly EngineeringCall[], turn: string): void {
-  const statuses = calls.filter((call) => call.engineering?.operation === 'status');
-  assert.ok(statuses.length <= 1,
-    `${turn} busy-polled ${statuses.length} resident status snapshots instead of yielding: ${JSON.stringify(calls)}`);
+  let priorWasStatus = false;
+  for (const call of calls) {
+    const operation = call.engineering?.operation;
+    const status = operation === 'status';
+    assert.ok(!(status && priorWasStatus),
+      `${turn} repeated resident status without an intervening lifecycle action: ${JSON.stringify(calls)}`);
+    const executionBoundLifecycle = typeof call.executionId === 'string' && call.executionId.length > 0
+      && (operation === 'cancel' || operation === 'delivery' || operation === 'release'
+        || (operation === 'start' && typeof call.engineering?.goal === 'string' && call.engineering.goal.length > 0)
+        || (operation === 'message' && typeof call.engineering?.message === 'string' && call.engineering.message.length > 0));
+    if (status) priorWasStatus = true;
+    else if (executionBoundLifecycle) priorWasStatus = false;
+  }
 }
 
 function engineeringReceipts(host: any, runId: string): any[] {
