@@ -53,8 +53,12 @@ Read `hima_context`, then use `hima_execute` with its current owner epoch and co
 2. For a Workshop, call `recommend` with its `executionId` to obtain the purpose, private entry path,
    actual argv/values, declared reads, knowledge and output. Use `read` with the declared `output`,
    `knowledge` with the declared `file`, and `write` with a relative private code `path` and exact
-   `content`. Derive the algorithm from actual inputs. Then call `work` for its real Job. For other
-   nodes, use `work` for the declared mechanical operation. A Job starts asynchronously and its identity
+   `content`. Derive the algorithm from actual inputs. Then call `work` for its real Job. For a tool
+   declaring `outsourcing`, form the complete engineering goal from its method and actual inputs,
+   then call `engineering` with `engineering: {operation: 'start', goal, context}`. Track the returned
+   task/Job; use `message` for the same task's follow-up, `status` for facts, `delivery` to validate
+   artifacts, and `release` to close resources while retaining them. Request `cancel` when an actual
+   stop is needed. Use normal `work` for other mechanical nodes. A Job starts asynchronously and its identity
    returns before completion. Do not wait in a long foreground tool or start a second Run.
 3. Inspect new context and actual Job/output facts. A notification only says new facts were saved;
    it does not mean the node succeeded or give permission to ignore a pause.

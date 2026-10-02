@@ -37,6 +37,9 @@ which knowledge file shaped it, by file name. A section no knowledge shaped says
   measurement was made under.
 - `## Run contract` — inputs, outputs, wrappers, tools and budget: what a Site must bind and allow,
   which source identity each input has, and what bounds new attempts or generations.
+  For each engineering tool eligible for outsourcing, state its full task goal, input/output and
+  knowledge references, permitted work, delivery location and completion evidence. The Site supplies
+  the concrete Resident Engineering Agent executor; the method declares the engineering role.
 - `## Semantics` — every typed value the readers will produce: name, unit, source and what it
   measures. One entry per value, its zero/absence meaning, and no value the readers do not produce.
 - `## Judge rules` — the rules over those values that decide how a node continues, and what each
@@ -47,6 +50,7 @@ which knowledge file shaped it, by file name. A section no knowledge shaped says
   endings this pack declares for itself.
 - `## Workshops` — where the AI may write code at run time: the purpose, the inputs it is given, and
   the semantics of what it must produce.
+  Distinguish a Workshop from a complete engineering task outsourced through an act/tool node.
 - `## Knowledge` — the pack's own knowledge files to write, by name and purpose. These are the files
   that will sit in the pack folder's `knowledge/` and be named by its contract; they are the domain
   knowledge a Model moment may read.
