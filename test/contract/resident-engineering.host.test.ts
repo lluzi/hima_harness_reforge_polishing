@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { checkPack, jobKill, launchJob, loadPack, loadSite, type JobRecord, type WorkspaceRecord } from '@hima/harness';
+import { spawnSync } from 'node:child_process';
+import { access, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { checkPack, jobKill, jobStatus, launchJob, loadPack, loadSite, type JobRecord, type WorkspaceRecord } from '@hima/harness';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { packsDirOf, writePackVariant } from './support/pack.ts';
@@ -102,14 +103,15 @@ async function openResidentTask(
   await mkdir(path.dirname(input), { recursive: true });
   await writeFile(input, 'fixture input retained for the engineering task\n');
   const call = publicCaller(host, owner);
+  const requestPrefix = goal.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 80);
   const controlled = () => host.ctx.hima.ledger.run(started.run.id)!.control!;
   const execute = async (requestId: string, action: string, extra: Record<string, unknown>) => readToolResult(await call({
     run: started.run.id, action, requestId, expectedEpoch: controlled().epoch, expectedRevision: controlled().revision, ...extra,
   }));
-  const begun = await execute(`${goal}-begin`, 'begin', { nodeId: started.run.currentNode });
+  const begun = await execute(`${requestPrefix}-begin`, 'begin', { nodeId: started.run.currentNode });
   assert.equal(begun.kind, 'accepted');
   const executionId = begun.receipt.executionId as string;
-  const engineering = await execute(`${goal}-start`, 'engineering', { executionId, engineering: { operation: 'start', goal } });
+  const engineering = await execute(`${requestPrefix}-start`, 'engineering', { executionId, engineering: { operation: 'start', goal } });
   assert.equal(engineering.data?.status, 'started', JSON.stringify(engineering));
   return { started, workspace, call, controlled, execute, executionId, engineering };
 }
@@ -121,6 +123,30 @@ const processIsAlive = (pid: number): boolean => {
 
 const jobsOf = (host: Awaited<ReturnType<typeof bootInProcess>>, runId: string): JobRecord[] =>
   host.ctx.hima.ledger.records({ runId, type: 'job' }).filter((record): record is JobRecord => record.type === 'job');
+
+async function crashResidentWrapper(host: Awaited<ReturnType<typeof bootInProcess>>, runId: string, sitesDir: string): Promise<JobRecord> {
+  const launch = jobsOf(host, runId).find((record) => record.event === 'launched' && record.job.name.startsWith('engineering-'));
+  assert.ok(launch);
+  const jobPid = launch.job.pid;
+  assert.ok(jobPid);
+  const rows = spawnSync('/bin/ps', ['-axo', 'pid=,ppid=,command='], { encoding: 'utf8' }).stdout.split('\n').flatMap((line) => {
+    const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+    return match === null ? [] : [{ pid: Number(match[1]), ppid: Number(match[2]), command: match[3]! }];
+  });
+  const descendants = new Set<number>([jobPid]);
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const row of rows) if (descendants.has(row.ppid) && !descendants.has(row.pid)) { descendants.add(row.pid); changed = true; }
+  }
+  const wrapper = rows.filter((row) => row.pid !== jobPid && descendants.has(row.pid)
+    && row.command.includes('resident-engineering-wrapper.py') && !row.command.includes('--reconcile')
+    && !/\b(?:ba|z|c|k)?sh\s+-c\b/.test(row.command)).at(-1);
+  assert.ok(wrapper, `wrapper process not found below Job pid ${jobPid}`);
+  process.kill(wrapper.pid, 'SIGKILL');
+  await waitUntil('crashed resident wrapper Job exits', async () =>
+    (await jobStatus({ ledger: host.ctx.hima.ledger, sitesDir }, { run: runId, session: launch.job.session })).state.state !== 'running', 5_000, 20);
+  return launch;
+}
 
 test('a normal tool may declare one generic resident engineering delivery contract', async (t) => {
   const home = await localHome(t, { sleepSeconds: 0 });
@@ -251,7 +277,7 @@ test('paused execution still reports and actually cancels the same resident nati
   const host = await bootInProcess(fixture.h);
   try {
     const owner = await createRootAgent(host.ctx, fixture.h.workspace);
-    const task = await openResidentTask(host, fixture, owner, 'SPAWN_DESCENDANT');
+    const task = await openResidentTask(host, fixture, owner, 'SPAWN_DESCENDANT SURVIVE_WRAPPER_CRASH');
     await waitUntil('resident native descendant pid', async () => {
       try { return Number.isInteger(Number((await readFile(fixture.descendantPid, 'utf8')).trim())); } catch { return false; }
     }, 10_000, 20);
@@ -270,13 +296,14 @@ test('paused execution still reports and actually cancels the same resident nati
     assert.equal(cancelled.data.status, 'stopped', JSON.stringify(cancelled));
     await waitUntil('resident native descendant stopped', () => !processIsAlive(descendant), 5_000, 20);
     const released = await task.execute('paused-release', 'engineering', { executionId: task.executionId, engineering: { operation: 'release' } });
+    assert.ok(released.data, JSON.stringify(released));
     assert.equal(released.data.status, 'released', JSON.stringify(released));
   } finally {
     await host.dispose(); await fixture.h.dispose();
   }
 });
 
-test('Run cancel kills its resident Job descendants and an unknown follow-up is never replayed', async (t) => {
+test('Run cancel confirms cleanup or keeps resources fenced without replay when ownership retention races', async (t) => {
   const fixture = await installResidentFixture(t);
   const host = await bootInProcess(fixture.h);
   try {
@@ -285,7 +312,9 @@ test('Run cancel kills its resident Job descendants and an unknown follow-up is 
     await task.execute('run-pause-before-cancel', 'pause', { nodeId: task.started.run.currentNode });
     const cancel = await task.execute('run-cancel-resident', 'cancel', {});
     assert.equal(cancel.kind, 'accepted');
-    await waitUntil('Run cancel settles', () => host.ctx.hima.ledger.run(task.started.run.id)?.status === 'cancelled', 10_000, 20);
+    await waitUntil('Run cancel resolves retained ownership', () =>
+      ['confirmed', 'uncertain'].includes(host.ctx.hima.ledger.run(task.started.run.id)?.control?.stop?.status ?? ''), 15_000, 20);
+    const stopStatus = host.ctx.hima.ledger.run(task.started.run.id)?.control?.stop?.status;
     const jobFacts = jobsOf(host, task.started.run.id);
     const launchedSession = jobFacts.find((record) => record.event === 'launched')?.job.session;
     assert.ok(launchedSession);
@@ -294,11 +323,13 @@ test('Run cancel kills its resident Job descendants and an unknown follow-up is 
     const args = { run: task.started.run.id, action: 'engineering', requestId: 'status-after-dead-wrapper', executionId: task.executionId,
       expectedEpoch: task.controlled().epoch, expectedRevision: task.controlled().revision, engineering: { operation: 'status' } };
     const unknown = readToolResult(await task.call(args));
-    assert.equal(unknown.data.status, 'unknown', JSON.stringify(unknown));
+    assert.equal(unknown.data.status, stopStatus === 'confirmed' ? 'stopped' : 'unknown', JSON.stringify(unknown));
     const duplicate = readToolResult(await task.call(args));
     assert.equal(duplicate.kind, 'duplicate');
-    assert.equal(jobsOf(host, task.started.run.id).filter((record) => record.event === 'launched').length, 1,
-      'unknown status did not restart or replay the resident task');
+    assert.equal(host.ctx.hima.ledger.run(task.started.run.id)?.status, stopStatus === 'confirmed' ? 'cancelled' : 'waiting');
+    assert.ok(jobsOf(host, task.started.run.id).filter((record) => record.event === 'launched')
+      .slice(1).every((record) => record.job.name.startsWith('engineering-reconcile-')),
+    'unknown reconciliation launches only bounded cleanup Jobs and never replays resident business work');
   } finally {
     await host.dispose(); await fixture.h.dispose();
   }
@@ -413,6 +444,133 @@ test('Reader rejection is repaired in the same native session and release binds 
     assert.equal(release.data.status, 'released', JSON.stringify(release));
     const completed = await task.execute('repair-complete', 'complete', { executionId: task.executionId });
     assert.equal(completed.kind, 'accepted');
+  } finally {
+    await host.dispose(); await fixture.h.dispose();
+  }
+});
+
+test('public status reconciles a crashed wrapper orphan without replay and release keeps the stopped task fenced', async (t) => {
+  const fixture = await installResidentFixture(t);
+  const host = await bootInProcess(fixture.h);
+  const sitesDir = path.join(fixture.h.home, 'hima/sites');
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    const task = await openResidentTask(host, fixture, owner, 'SPAWN_DESCENDANT SURVIVE_WRAPPER_CRASH');
+    await waitUntil('detached native descendant exists', async () => {
+      try { return processIsAlive(Number((await readFile(fixture.descendantPid, 'utf8')).trim())); } catch { return false; }
+    }, 10_000, 20);
+    const descendant = Number((await readFile(fixture.descendantPid, 'utf8')).trim());
+    await crashResidentWrapper(host, task.started.run.id, sitesDir);
+    assert.equal(processIsAlive(descendant), true, 'wrapper crash leaves the separately-owned native descendant alive for reconciliation');
+    const status = await task.execute('crash-status', 'engineering', { executionId: task.executionId, engineering: { operation: 'status' } });
+    assert.equal(status.data.status, 'stopped', JSON.stringify(status));
+    assert.equal(status.data.nativeQuiescence, 'confirmed');
+    await waitUntil('reconciliation stops detached descendant', () => !processIsAlive(descendant), 5_000, 20);
+    assert.equal(jobsOf(host, task.started.run.id).filter((record) => record.event === 'launched').length, 2,
+      'one original wrapper Job plus one bounded reconciliation Job; no business retry');
+    const lostMessage = await task.execute('crash-message', 'engineering', { executionId: task.executionId,
+      engineering: { operation: 'message', message: 'continue lost RPC' } });
+    assert.equal(lostMessage.kind, 'refused');
+    assert.match(lostMessage.reason, /cannot be continued|wrapper is gone/i);
+    const release = await task.execute('crash-release', 'engineering', { executionId: task.executionId, engineering: { operation: 'release' } });
+    assert.equal(release.data.status, 'released', JSON.stringify(release));
+    const releasedStatus = await task.execute('crash-released-status', 'engineering', { executionId: task.executionId, engineering: { operation: 'status' } });
+    assert.equal(releasedStatus.data.status, 'released', JSON.stringify(releasedStatus));
+    assert.equal(host.ctx.hima.ledger.run(task.started.run.id)!.control!.executions[task.executionId]!.phase, 'failed');
+  } finally {
+    await host.dispose(); await fixture.h.dispose();
+  }
+});
+
+test('Run cancel after wrapper crash reconciles the retained native tree before ending and launches no retry', async (t) => {
+  const fixture = await installResidentFixture(t);
+  const host = await bootInProcess(fixture.h);
+  const sitesDir = path.join(fixture.h.home, 'hima/sites');
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    const task = await openResidentTask(host, fixture, owner, 'SPAWN_DESCENDANT SURVIVE_WRAPPER_CRASH');
+    await waitUntil('detached native descendant exists', async () => {
+      try { return processIsAlive(Number((await readFile(fixture.descendantPid, 'utf8')).trim())); } catch { return false; }
+    }, 10_000, 20);
+    const descendant = Number((await readFile(fixture.descendantPid, 'utf8')).trim());
+    await crashResidentWrapper(host, task.started.run.id, sitesDir);
+    const cancelled = await task.execute('crash-run-cancel', 'cancel', {});
+    assert.equal(cancelled.kind, 'accepted');
+    await waitUntil('crashed-wrapper Run cancel finishes', () => host.ctx.hima.ledger.run(task.started.run.id)?.status === 'cancelled', 15_000, 20);
+    await waitUntil('Run cancel stops detached descendant', () => !processIsAlive(descendant), 5_000, 20);
+    const launches = jobsOf(host, task.started.run.id).filter((record) => record.event === 'launched');
+    assert.equal(launches.length, 2, JSON.stringify(launches.map((record) => ({ name: record.job.name, session: record.job.session }))));
+    assert.ok(launches.some((record) => record.job.name.startsWith('engineering-reconcile-')));
+    assert.equal(host.ctx.hima.ledger.records({ runId: task.started.run.id, type: 'node' })
+      .filter((record) => record.type === 'node' && record.state === 'retrying').length, 0,
+      'crash cleanup never retries the engineering business action');
+  } finally {
+    await host.dispose(); await fixture.h.dispose();
+  }
+});
+
+test('Host restart fences a finished resident wrapper instead of settling it as ordinary tool work', async (t) => {
+  const fixture = await installResidentFixture(t);
+  const sitesDir = path.join(fixture.h.home, 'hima/sites');
+  let host = await bootInProcess(fixture.h);
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    const task = await openResidentTask(host, fixture, owner, 'SPAWN_DESCENDANT SURVIVE_WRAPPER_CRASH');
+    await waitUntil('detached native descendant exists', async () => {
+      try { return processIsAlive(Number((await readFile(fixture.descendantPid, 'utf8')).trim())); } catch { return false; }
+    }, 10_000, 20);
+    const descendant = Number((await readFile(fixture.descendantPid, 'utf8')).trim());
+    await crashResidentWrapper(host, task.started.run.id, sitesDir);
+    await host.dispose();
+    host = await bootInProcess(fixture.h);
+    await host.ctx.hima.reconciled;
+    const recovered = host.ctx.hima.executionContext(task.started.run.id);
+    assert.equal(recovered.executions.find((execution) => execution.id === task.executionId)?.phase, 'uncertain');
+    assert.match(recovered.executions.find((execution) => execution.id === task.executionId)?.reason ?? '', /same-task reconciliation|ordinary node settlement is refused/i);
+    assert.equal(jobsOf(host, task.started.run.id).filter((record) => record.event === 'launched').length, 1,
+      'Host restart launches neither a replacement wrapper nor business retry');
+    assert.equal(host.ctx.hima.ledger.records({ runId: task.started.run.id, type: 'node' })
+      .filter((record) => record.type === 'node' && ['done', 'retrying'].includes(record.state)).length, 0);
+    // Desktop/Host exit is allowed to request mechanical cleanup. Whichever side won that race,
+    // recovery above must be based on retained facts and must not settle/retry ordinary node work.
+    const cleanup = await host.ctx.hima.cancelRun(task.started.run.id);
+    assert.equal(cleanup.kind, 'cancelled', JSON.stringify(cleanup));
+    await waitUntil('post-restart cancel stops detached descendant', () => !processIsAlive(descendant), 5_000, 20);
+  } finally {
+    await host.dispose(); await fixture.h.dispose();
+  }
+});
+
+test('missing retained owner identity returns unknown, keeps the orphan fenced, and never replays business work', async (t) => {
+  const fixture = await installResidentFixture(t);
+  const host = await bootInProcess(fixture.h);
+  const sitesDir = path.join(fixture.h.home, 'hima/sites');
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    const task = await openResidentTask(host, fixture, owner, 'SPAWN_DESCENDANT SURVIVE_WRAPPER_CRASH');
+    await waitUntil('detached native descendant exists', async () => {
+      try { return processIsAlive(Number((await readFile(fixture.descendantPid, 'utf8')).trim())); } catch { return false; }
+    }, 10_000, 20);
+    const descendant = Number((await readFile(fixture.descendantPid, 'utf8')).trim());
+    const taskDir = path.join(task.workspace.workspace, '.hima-engineering', task.engineering.data.taskId);
+    const ownedPath = path.join(taskDir, 'native/owned.json');
+    const retainedOwned = await readFile(ownedPath);
+    await crashResidentWrapper(host, task.started.run.id, sitesDir);
+    await unlink(ownedPath);
+    const unknown = await task.execute('missing-owner-status', 'engineering', { executionId: task.executionId, engineering: { operation: 'status' } });
+    assert.equal(unknown.data.status, 'unknown', JSON.stringify(unknown));
+    assert.match(unknown.data.reason, /ownership|identity|confirm/i);
+    assert.equal(processIsAlive(descendant), true, 'missing identity cannot authorize killing an arbitrary retained PID');
+    assert.equal(host.ctx.hima.ledger.run(task.started.run.id)?.status, 'running');
+    assert.equal(host.ctx.hima.ledger.run(task.started.run.id)!.control!.executions[task.executionId]!.phase, 'uncertain');
+    assert.ok(jobsOf(host, task.started.run.id).filter((record) => record.event === 'launched')
+      .slice(1).every((record) => record.job.name.startsWith('engineering-reconcile-')));
+    // Restore the exact signed authority only to clean this isolated fixture; the first request's
+    // unknown receipt remains immutable and is not replayed.
+    await writeFile(ownedPath, retainedOwned);
+    const stopped = await task.execute('restored-owner-status', 'engineering', { executionId: task.executionId, engineering: { operation: 'status' } });
+    assert.equal(stopped.data.status, 'stopped', JSON.stringify(stopped));
+    await waitUntil('restored identity cleanup stops orphan', () => !processIsAlive(descendant), 5_000, 20);
   } finally {
     await host.dispose(); await fixture.h.dispose();
   }

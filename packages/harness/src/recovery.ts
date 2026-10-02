@@ -27,7 +27,8 @@ import { advance, endBudgetExhausted, attemptOf, attemptOfSession, currentAttemp
 import { killDidNotTake, workshopOutputProblem, type Driving, type FabricDeps } from './node-turns.js';
 import { SiteUnreadableError } from './errors.js';
 import { counted } from './words.js';
-import { drive, controlling, executionPack, reconcileAppliedRevisions, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
+import { drive, controlling, executionPack, reconcileAppliedRevisions, residentEngineeringIdentityFor, residentEngineeringStartOf, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
+import { engineeringTaskDirectory, engineeringTaskId, loadEngineeringCapability, readEngineeringOwned, reconcileEngineeringTask } from './engineering-executor.js';
 import { owesAnExperience, owesRunAssets, writeExperience } from './experience.js';
 import { closeInterruptedMoments } from './moments.js';
 
@@ -202,6 +203,31 @@ async function reconcileControlledRun(deps: FabricDeps, snapshot: RunRecord): Pr
       await updateExecution(deps, snapshot.id, execution.id, { phase: 'uncertain', reason });
       for (const [requestId] of requests) await updateExecution(deps, snapshot.id, execution.id, {}, requestId, 'uncertain');
     };
+    if (residentEngineeringStartOf(recoveredSnapshot.control!, execution.id) !== undefined) {
+      let session = execution.jobSession;
+      if (execution.intent !== undefined) {
+        const recovered = await reconcileLaunchIntent(deps, execution.intent);
+        if (recovered.kind === 'uncertain') { await uncertain(recovered.reason); continue; }
+        session = recovered.record.job.session;
+      }
+      if (session === undefined) {
+        await uncertain('resident engineering start has no confirmed wrapper Job; no business action was replayed');
+        continue;
+      }
+      try {
+        const status = await jobStatus(deps, { run: snapshot.id, session });
+        if (status.state.state === 'running') {
+          await updateExecution(deps, snapshot.id, execution.id, { phase: 'working', jobSession: session,
+            reason: 'resident wrapper Job remains live; its retained native session stays authoritative' });
+          found = 'running';
+          details.push(`${execution.id}: resident wrapper Job ${session} remains live; no business action was replayed`);
+        } else {
+          await uncertain(`resident wrapper Job ${session} is ${status.state.state}; native/container quiescence requires same-task reconciliation before cancel, release or retry, and ordinary node settlement is refused`);
+          found = status.state.state === 'finished' ? 'finished' : 'gone';
+        }
+      } catch (error) { await uncertain((error as Error).message); }
+      continue;
+    }
     if (requests.some(([, request]) => request.receipt.action !== 'work')) {
       await uncertain('the Host was interrupted during an admitted non-Job action; its prior Job does not establish whether that action committed; it was not replayed');
       continue;
@@ -680,6 +706,41 @@ async function cancelFencedRun(deps: FabricDeps, runId: string): Promise<CancelR
     ...(moved.currentNode === undefined ? {} : { nodeId: moved.currentNode }),
     ...(open[0] === undefined ? {} : { jobSession: open[0].job.session, jobSessions: open.map((r) => r.job.session) }),
   });
+  const reconcileResidentOrphans = async (): Promise<{ readonly session: string; readonly reason: string } | undefined> => {
+    const latest = existingRun(deps.ledger, run.id);
+    for (const execution of Object.values(latest.control?.executions ?? {})) {
+      if (execution.supersededBy !== undefined || latest.control === undefined
+          || residentEngineeringStartOf(latest.control, execution.id) === undefined) continue;
+      try {
+        const identity = residentEngineeringIdentityFor(deps, latest, execution);
+        const taskId = engineeringTaskId(latest.id, execution.id);
+        const taskDir = engineeringTaskDirectory(identity.site, identity.workspace, taskId);
+        const capability = await loadEngineeringCapability(identity.site);
+        const quiescenceDeadline = Date.now() + Math.ceil((capability.capability.stopGraceSeconds + 2) * 1_000);
+        let alreadyOwned = await readEngineeringOwned(identity.site, taskDir, taskId);
+        while (alreadyOwned?.quiescent !== true && Date.now() < quiescenceDeadline) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          alreadyOwned = await readEngineeringOwned(identity.site, taskDir, taskId);
+        }
+        if (alreadyOwned?.quiescent === true) continue;
+        const reconciled = await reconcileEngineeringTask(deps, identity, taskId, async (intent) => {
+          await updateExecution(deps, latest.id, execution.id, { intent });
+        });
+        if (reconciled.status !== 'stopped') {
+          return { session: reconciled.session ?? execution.jobSession ?? taskId,
+            reason: `resident engineering orphan cleanup is ${reconciled.status}: ${reconciled.reason}` };
+        }
+        await updateExecution(deps, latest.id, execution.id, {
+          phase: 'uncertain', jobSession: reconciled.session,
+          reason: 'resident wrapper/native ownership was reconciled quiescent during Run cancellation; no business action was replayed',
+        });
+      } catch (error) {
+        return { session: execution.jobSession ?? engineeringTaskId(latest.id, execution.id),
+          reason: `resident engineering orphan cleanup is unknown: ${(error as Error).message}` };
+      }
+    }
+    return undefined;
+  };
   /** The node one of these Jobs belongs to, or the node the Run stands at where its launch names
    *  none, moved to where the cancel left it. The attempt is the one under way. */
   const settle = async (nodeId: string | undefined, state: NodeState, extra: { jobSession?: string; reason?: string } = {}): Promise<void> => {
@@ -700,6 +761,12 @@ async function cancelFencedRun(deps: FabricDeps, runId: string): Promise<CancelR
   };
 
   if (open.length === 0) {
+    const orphan = await reconcileResidentOrphans();
+    if (orphan !== undefined) {
+      await settle(moved.currentNode, 'blocked', { jobSession: orphan.session, reason: orphan.reason });
+      await advance(deps.ledger, run.id, {}, { status: 'waiting' });
+      return { kind: 'not-stopped', run: existingRun(deps.ledger, run.id), ...orphan };
+    }
     // Nothing of this Run is running on the Site: it stands at a node that launches nothing, or its
     // Job has already been accounted for. There is no stop to observe, so the node is cancelled where
     // it stands and the Run ends.
@@ -741,6 +808,8 @@ async function cancelFencedRun(deps: FabricDeps, runId: string): Promise<CancelR
       await settle(at, 'blocked', { jobSession: session, reason: `the cancel found tmux session ${session} already gone, and it wrote no exit status` });
     }
   }
+  const orphan = await reconcileResidentOrphans();
+  if (orphan !== undefined) notStopped ??= orphan;
   if (notStopped) {
     // One Job still on the Site is enough: nothing may say a licence was released while the tool
     // still holds it, so the Run is not cancelled and a person is told which session to look at.

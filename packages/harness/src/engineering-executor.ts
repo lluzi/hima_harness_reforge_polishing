@@ -10,8 +10,8 @@ import { channelFor, mustRun, type Channel } from './channel.js';
 import { decideRead, decideWrite } from './shell.js';
 import { outputPath, packKnowledgeDir, toolArgv, type EngineeringOutsourcing, type Pack, type PackTool } from './packs.js';
 import { pathsOf, type Site } from './sites.js';
-import type { JobDeps, LaunchIntent } from './jobs.js';
-import { claimSlotAndLaunch, type Claim } from './job-cap.js';
+import { jobKill, jobStatus, jobTail, launchJob, type JobDeps, type LaunchIntent } from './jobs.js';
+import { claimSlot, claimSlotAndLaunch, type Claim } from './job-cap.js';
 import type { NodeExecution, RunRecord } from './ledger.js';
 
 export const engineeringProtocol = 'hima-resident-engineering/1' as const;
@@ -79,13 +79,38 @@ const engineeringDeliveryBody = z.strictObject({
   artifacts: z.array(deliveryArtifact).min(1).max(1024), createdAt: z.string(),
 });
 const engineeringDelivery = engineeringDeliveryBody.extend({ sha256: digestHex });
+const engineeringOwnedBody = z.strictObject({
+  schema: z.literal('hima-resident-engineering-owned/1'), taskId: z.string(), sandbox: z.enum(['podman', 'none']),
+  processPid: z.number().int().positive(), processIdentity: z.string().min(1), processGroupId: z.number().int().positive(),
+  containerCidFile: z.string().min(1), quiescent: z.boolean(), updatedAt: z.string(), detail: z.json().optional(),
+  containerId: digestHex.optional(),
+  descendants: z.array(z.strictObject({ pid: z.number().int().positive(), processIdentity: z.string().min(1) })).max(4096).optional(),
+});
+const engineeringNeverStartedOwnedBody = z.strictObject({
+  schema: z.literal('hima-resident-engineering-owned/1'), taskId: z.string(), sandbox: z.enum(['podman', 'none']),
+  quiescent: z.literal(true), updatedAt: z.string(),
+  detail: z.strictObject({ reason: z.literal('never-started') }),
+});
+const engineeringOwned = z.union([
+  engineeringOwnedBody.extend({ sha256: digestHex }),
+  engineeringNeverStartedOwnedBody.extend({ sha256: digestHex }),
+]);
 
 export type EngineeringState = z.infer<typeof engineeringState>;
 export type EngineeringReceiptFrame = z.infer<typeof engineeringReceipt>;
 export type EngineeringDelivery = z.infer<typeof engineeringDelivery>;
+export type EngineeringOwned = z.infer<typeof engineeringOwned>;
 
 /** Canonical JSON shared with the production wrapper. Object keys are Unicode-code-point sorted. */
 export function canonicalEngineeringJson(value: unknown): string {
+  return canonicalJson(value, false);
+}
+
+function canonicalWrapperJson(value: unknown): string {
+  return canonicalJson(value, true);
+}
+
+function canonicalJson(value: unknown, allowIntegerNumbers: boolean): string {
   const normalize = (item: unknown): unknown => {
     if (Array.isArray(item)) return item.map(normalize);
     if (item !== null && typeof item === 'object') {
@@ -95,7 +120,9 @@ export function canonicalEngineeringJson(value: unknown): string {
         .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
         .map(([key, child]) => [key, normalize(child)]));
     }
-    if (typeof item === 'number') throw new Error('signed Host engineering protocol JSON does not carry numbers');
+    if (typeof item === 'number' && (!allowIntegerNumbers || !Number.isSafeInteger(item))) {
+      throw new Error(allowIntegerNumbers ? 'wrapper engineering protocol numbers must be safe integers' : 'signed Host engineering protocol JSON does not carry numbers');
+    }
     if (item === undefined) throw new Error('engineering protocol JSON contains undefined');
     return item;
   };
@@ -130,6 +157,8 @@ export interface EngineeringTaskIdentity {
   readonly licences: Readonly<Record<string, number>>;
   readonly tool: PackTool;
   readonly boundInputs: Readonly<Record<string, string>>;
+  readonly siteIdentityMatches: boolean;
+  readonly expectedCapabilitySha256?: string;
 }
 
 export const engineeringTaskId = (runId: string, executionId: string): string =>
@@ -144,13 +173,10 @@ async function decidedBytes(site: Site, channel: Channel, at: string, what: stri
   return { path: decision.absPath, bytes: await channel.readFile(decision.absPath) };
 }
 
-/** Resolve every fixed input before an engineering start is admitted; this function writes nothing. */
-export async function planEngineeringTask(identity: EngineeringTaskIdentity, request: Extract<EngineeringRequest, { operation: 'start' }>): Promise<EngineeringTaskPlan> {
-  const { run, execution, site, pack, workspace, bindings, outsourcing, tool, boundInputs } = identity;
-  const channel = channelFor(site);
+export async function loadEngineeringCapability(site: Site): Promise<{ readonly capability: EngineeringCapability; readonly path: string; readonly sha256: string }> {
   const configured = site.bindings.engineeringCapabilities;
   if (configured === undefined) throw new Error(`site ${site.name} has no engineeringCapabilities binding`);
-  const capabilityFile = await decidedBytes(site, channel, configured, 'engineering capability');
+  const capabilityFile = await decidedBytes(site, channelFor(site), configured, 'engineering capability');
   const capability = engineeringCapability.parse(JSON.parse(Buffer.from(capabilityFile.bytes).toString('utf8')));
   if (capability.sandbox.kind === 'none' && process.env.HIMA_RESIDENT_TESTING !== '1') {
     throw new Error('an unsandboxed resident engineering capability is test-only');
@@ -159,7 +185,18 @@ export async function planEngineeringTask(identity: EngineeringTaskIdentity, req
   if (capabilityAt < 0 || capability.wrapper.argv[capabilityAt + 1] !== capabilityFile.path) {
     throw new Error('engineering capability wrapper argv does not bind its exact capability file');
   }
-  if (capability.wrapper.argv.includes('--task-dir')) throw new Error('engineering capability wrapper argv must leave task-dir binding to the Host');
+  if (capability.wrapper.argv.includes('--task-dir') || capability.wrapper.argv.includes('--reconcile')) {
+    throw new Error('engineering capability wrapper argv must leave task-dir and recovery mode binding to the Host');
+  }
+  return { capability, path: capabilityFile.path, sha256: sha256(capabilityFile.bytes) };
+}
+
+/** Resolve every fixed input before an engineering start is admitted; this function writes nothing. */
+export async function planEngineeringTask(identity: EngineeringTaskIdentity, request: Extract<EngineeringRequest, { operation: 'start' }>): Promise<EngineeringTaskPlan> {
+  const { run, execution, site, pack, workspace, bindings, outsourcing, tool, boundInputs } = identity;
+  const channel = channelFor(site);
+  const loadedCapability = await loadEngineeringCapability(site);
+  const { capability } = loadedCapability;
   const taskId = engineeringTaskId(run.id, execution.id);
   const p = pathsOf(site);
   const taskDir = engineeringTaskDirectory(site, workspace, taskId);
@@ -193,8 +230,8 @@ export async function planEngineeringTask(identity: EngineeringTaskIdentity, req
     delivery: { manifest: p.join(taskDir, 'delivery', 'manifest.json'), candidate: capability.delivery.candidate },
     ...(request.context === undefined ? {} : { context: request.context }), createdAt: new Date().toISOString(),
   });
-  return { taskId, taskDir, capability, capabilityPath: capabilityFile.path,
-    capabilitySha256: sha256(capabilityFile.bytes), envelope, knowledge, methodFiles, outputPath: producedPath };
+  return { taskId, taskDir, capability, capabilityPath: loadedCapability.path,
+    capabilitySha256: loadedCapability.sha256, envelope, knowledge, methodFiles, outputPath: producedPath };
 }
 
 async function ensureDirectory(site: Site, channel: Channel, at: string): Promise<string> {
@@ -277,7 +314,7 @@ async function readFramed<T extends z.ZodTypeAny>(site: Site, at: string, schema
   if (!decision.ok) throw new Error(decision.reason);
   const parsed = schema.parse(JSON.parse(Buffer.from(await channel.readFile(decision.absPath)).toString('utf8')));
   const { sha256: claimed, ...body } = parsed as Record<string, unknown> & { sha256: string };
-  if (sha256(canonicalEngineeringJson(body)) !== claimed) throw new Error(`${at} has an invalid engineering protocol digest`);
+  if (sha256(canonicalWrapperJson(body)) !== claimed) throw new Error(`${at} has an invalid engineering protocol digest`);
   return parsed;
 }
 
@@ -316,6 +353,76 @@ export async function readEngineeringDelivery(site: Site, taskDir: string, taskI
     if (sha256(found.bytes) !== artifact.sha256) throw new Error(`engineering artifact ${artifact.path} does not match its delivery digest`);
   }
   return manifest;
+}
+
+export async function readEngineeringOwned(site: Site, taskDir: string, taskId: string): Promise<EngineeringOwned | undefined> {
+  const owned = await readFramed(site, pathsOf(site).join(taskDir, 'native', 'owned.json'), engineeringOwned);
+  if (owned !== undefined && owned.taskId !== taskId) throw new Error('engineering ownership facts belong to another task');
+  return owned;
+}
+
+export type EngineeringReconcileResult =
+  | { readonly status: 'stopped'; readonly session: string; readonly state: EngineeringState; readonly owned: EngineeringOwned }
+  | { readonly status: 'at-cap' | 'unknown'; readonly reason: string; readonly session?: string };
+
+/**
+ * Run the fixed same-task cleanup mode as one ordinary Job. It starts no native session and replays
+ * no request; the signed owned/state files plus the recovery Job's actual exit are the authority.
+ */
+export async function reconcileEngineeringTask(
+  deps: JobDeps,
+  identity: EngineeringTaskIdentity,
+  taskId: string,
+  beforeLaunch: (intent: LaunchIntent) => Promise<void>,
+): Promise<EngineeringReconcileResult> {
+  const loaded = await loadEngineeringCapability(identity.site);
+  if (!identity.siteIdentityMatches) return { status: 'unknown', reason: 'the Site identity changed since engineering start; recovery was not dispatched' };
+  if (identity.expectedCapabilitySha256 === undefined || loaded.sha256 !== identity.expectedCapabilitySha256) {
+    return { status: 'unknown', reason: 'the engineering capability identity changed since start; recovery was not dispatched' };
+  }
+  const taskDir = engineeringTaskDirectory(identity.site, identity.workspace, taskId);
+  const slots = {
+    name: identity.site.name,
+    jobs: identity.run.budget?.jobCap ?? identity.site.capacity.parallelJobs,
+    licences: identity.run.budget?.licences ?? identity.site.capacity.licences,
+  };
+  const claimed = await claimSlot(deps, {
+    site: slots, holds: {}, launch: () => launchJob(deps, {
+      site: identity.site.name, run: identity.run.id, workspace: identity.workspace,
+      argv: [...loaded.capability.wrapper.argv, '--task-dir', taskDir, '--reconcile'],
+      name: `engineering-reconcile-${identity.execution.nodeId}`, nodeId: identity.execution.nodeId,
+      attempt: identity.execution.attempt,
+      ...(identity.execution.branchId === undefined ? {} : { branchId: identity.execution.branchId }),
+      beforeLaunch,
+    }),
+  });
+  if (claimed.kind === 'unreadable') return { status: 'unknown', reason: claimed.error.message };
+  if (claimed.kind === 'at-cap') return { status: 'at-cap', reason: `site ${identity.site.name} has no free recovery Job slot` };
+  if (claimed.launched.kind !== 'launched') return { status: 'unknown', reason: claimed.launched.record.reason };
+  const session = claimed.launched.record.job.session;
+  const deadline = Date.now() + Math.ceil((loaded.capability.stopGraceSeconds + 5) * 1000);
+  let actual = await jobStatus(deps, { run: identity.run.id, session });
+  while (actual.state.state === 'running' && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    actual = await jobStatus(deps, { run: identity.run.id, session });
+  }
+  if (actual.state.state === 'running') {
+    await jobKill(deps, { run: identity.run.id, session });
+    return { status: 'unknown', session, reason: 'the bounded engineering reconciliation Job did not finish; orphan quiescence is unknown' };
+  }
+  const state = await readEngineeringState(identity.site, taskDir, taskId);
+  const owned = await readEngineeringOwned(identity.site, taskDir, taskId);
+  // The original wrapper signal handler and the bounded reconciler can race to the same signed final
+  // facts. Those facts, not which process returned zero first, are the ownership authority.
+  if (state?.phase === 'stopped' && owned?.quiescent === true) return { status: 'stopped', session, state, owned };
+  if (actual.state.state !== 'finished' || actual.state.exitCode !== 0) {
+    const tail = await jobTail(deps, { run: identity.run.id, session, lines: 20 }).catch(() => undefined);
+    return { status: 'unknown', session, reason: `engineering reconciliation Job ${session} did not confirm cleanup${tail?.text.trim() ? `: ${tail.text.trim()}` : ''}` };
+  }
+  if (state?.phase !== 'stopped' || owned?.quiescent !== true) {
+    return { status: 'unknown', session, reason: 'engineering reconciliation exited without signed stopped/quiescent facts' };
+  }
+  return { status: 'stopped', session, state, owned };
 }
 
 /** Put the one declared result into the Pack output location and verify the bytes after the copy. */

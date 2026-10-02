@@ -101,3 +101,60 @@ engineering operations:
 Presence of `DEEPSEEK_API_KEY` is not execution evidence. The production run
 must still prove the real Site/OpenCode/XTop path separately from this L2 Host
 mechanism.
+
+## Independent-review crash recovery correction
+
+The P0/P1 review at baseline `241f324a` found that ACP starts in a separate
+session from the wrapper Job. Killing or losing the wrapper could therefore
+leave the native process/container and reparented descendants alive while
+generic Run recovery treated the wrapper exit as ordinary tool completion.
+
+The correction keeps the same task and existing Job/Channel/Ledger authority:
+
+- the wrapper retains signed native PID start identity, PGID, optional Podman
+  CID and exact descendant PID identities;
+- the Host recognizes resident executions during restart and never calls the
+  ordinary `observeExecution` settlement path for a dead wrapper;
+- public status/cancel/release and Run cancellation may launch one fixed
+  same-task `--reconcile` Job through the existing Site capacity, Permit,
+  launch-intent and Job records;
+- reconciliation starts no ACP session, consumes no business request and
+  replays no prompt/action; it exits successfully only after signed
+  `owned.quiescent=true` and stopped state facts exist;
+- missing, partial or mismatched ownership remains `unknown`, leaves the Run
+  and execution fenced, and permits no business retry;
+- a wrapper killed before runtime/ownership creation has a separate signed
+  never-started quiescence fact; partial creation remains unknown.
+
+Red evidence included: public status after SIGKILL originally wrote a request
+that nobody consumed; restart attempted ordinary Job settlement; normal cancel
+could race before retained PID identity or runtime creation; the strict Host
+schema initially rejected new descendant/CID facts. Each was reproduced at the
+public Host seam with the production wrapper and deterministic ACP stand-in.
+
+Final focused evidence:
+
+```text
+pnpm run build
+PASS
+
+pnpm run test:local --files test/contract/resident-engineering.host.test.ts
+PASS: 12 tests, 0 failures, 0 skipped
+PASS: 11 in-process Host boots, 0 Host subprocess, 0 Electron, 0 SSH
+elapsed: 25.602 s
+
+pnpm run test:local --files \
+  test/contract/agent-recovery.host.test.ts \
+  test/contract/agent-controls.host.test.ts \
+  test/contract/node-jobs.host.test.ts \
+  test/contract/conversation-execution.host.test.ts
+PASS: 34 tests, 0 failures, 0 skipped
+PASS: 48 in-process Host boots, 1 Host subprocess, 0 Electron, 0 SSH
+elapsed: 84.271 s
+```
+
+The recovery tests kill the actual wrapper while its native root and detached
+descendant remain alive, then prove public status cleanup, public Run cancel,
+release fencing, signed unknown behavior with missing identity, and restart
+without ordinary settlement or retry. No live API, model, EDA, SSH, or desktop
+window was used.

@@ -132,8 +132,8 @@ import { adoptHistoricalRun, cancelRun } from './recovery.js';
 import { settleStrandedTeamExecutions } from './delegation-runtime.js';
 import {
   engineeringRequest, engineeringTaskDirectory, engineeringTaskId, launchEngineeringTask,
-  materializeEngineeringResult, planEngineeringTask, readEngineeringDelivery, readEngineeringState,
-  waitEngineeringReceipt, writeEngineeringRequest,
+  materializeEngineeringResult, planEngineeringTask, readEngineeringDelivery, readEngineeringOwned, readEngineeringState,
+  reconcileEngineeringTask, waitEngineeringReceipt, writeEngineeringRequest,
   type EngineeringRequest, type EngineeringTaskIdentity,
 } from './engineering-executor.js';
 
@@ -2686,13 +2686,13 @@ export async function settleStrandedExecution(deps:FabricDeps,runId:string,execu
   return true;
 }
 
-function residentStartOf(control: RunControl, executionId: string): ExecutionReceipt | undefined {
+export function residentEngineeringStartOf(control: RunControl, executionId: string): ExecutionReceipt | undefined {
   return Object.values(control.requests).map((request) => request.receipt).find((receipt) => receipt.action === 'engineering'
     && receipt.executionId === executionId && (receipt.data as { operation?: unknown } | undefined)?.operation === 'start'
     && !['at-cap', 'refused', 'budget-exhausted', 'stopped'].includes(String((receipt.data as { status?: unknown }).status)));
 }
 
-function engineeringIdentityFor(deps: FabricDeps, run: RunRecord, execution: NodeExecution): EngineeringTaskIdentity {
+export function residentEngineeringIdentityFor(deps: FabricDeps, run: RunRecord, execution: NodeExecution): EngineeringTaskIdentity {
   const pack = executionPack(deps, run);
   const position = positionOf(pack, execution.nodeId);
   if (position?.node.kind !== 'act' || position.node.parameters.tool === undefined) {
@@ -2713,8 +2713,15 @@ function engineeringIdentityFor(deps: FabricDeps, run: RunRecord, execution: Nod
     DESIGN: bindings.design, CAMPAIGN: run.campaignId,
   };
   const boundInputs = Object.fromEntries(tool.inputs.flatMap((name) => availableInputs[name] === undefined ? [] : [[name, availableInputs[name]!]]));
+  const expectedCapabilitySha256 = Object.values(run.control?.requests ?? {}).map((request) => request.receipt)
+    .find((receipt) => receipt.action === 'engineering' && receipt.executionId === execution.id
+      && (receipt.data as { operation?: unknown } | undefined)?.operation === 'start'
+      && (receipt.data as { status?: unknown }).status === 'started')?.data;
   return { run, execution, site, pack, workspace: prepared.workspace, bindings,
-    outsourcing: tool.outsourcing, licences: tool.licences, tool, boundInputs };
+    outsourcing: tool.outsourcing, licences: tool.licences, tool, boundInputs,
+    siteIdentityMatches: run.control?.siteDigest === identityOf(site),
+    ...((expectedCapabilitySha256 as { capabilitySha256?: unknown } | undefined)?.capabilitySha256 === undefined ? {}
+      : { expectedCapabilitySha256: String((expectedCapabilitySha256 as { capabilitySha256: unknown }).capabilitySha256) }) };
 }
 
 /** Finish one already-admitted filesystem operation without spending a second control revision. */
@@ -2739,13 +2746,24 @@ async function finishEngineeringRequest(
 const engineeringResult = (operation: EngineeringRequest['operation'], taskId: string, status: string, extra: Record<string, unknown> = {}): NonNullable<ExecutionReceipt['data']> =>
   ({ operation, taskId, status, ...extra }) as NonNullable<ExecutionReceipt['data']>;
 
+async function engineeringJobStatus(deps: FabricDeps, runId: string, session: string, retryMs = 1_000) {
+  const deadline = Date.now() + retryMs;
+  for (;;) {
+    try { return await jobStatus(deps, { run: runId, session }); }
+    catch (error) {
+      if (!(error instanceof SiteUnreadableError) || Date.now() >= deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+}
+
 async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: ExecutionActionRequest, execution: NodeExecution, digest: string): Promise<ExecutionActionResult> {
   const no = (reason: string) => executionAnswer(deps, run.id, 'refused', { reason });
   const parsed = engineeringRequest.safeParse(req.engineering);
   if (!parsed.success) return no(`invalid engineering request: ${parsed.error.message}`);
   const engineering = parsed.data;
   let identity: EngineeringTaskIdentity;
-  try { identity = engineeringIdentityFor(deps, run, execution); }
+  try { identity = residentEngineeringIdentityFor(deps, run, execution); }
   catch (error) { return no((error as Error).message); }
   const taskId = engineeringTaskId(run.id, execution.id);
   const taskDir = engineeringTaskDirectory(identity.site, identity.workspace, taskId);
@@ -2754,7 +2772,7 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
     && execution.inputThroughSeq !== undefined && execution.inputDigest === inputIdentity(deps, run, execution.inputThroughSeq, execution.branchId)
     && run.control?.siteDigest === identityOf(identity.site);
   const paused = executionPauseReason(identity.pack, run, execution.nodeId);
-  const start = residentStartOf(run.control!, execution.id);
+  const start = residentEngineeringStartOf(run.control!, execution.id);
 
   if (engineering.operation === 'start') {
     if (!current) return no('the execution input version or generation is stale; no engineering task was started');
@@ -2807,6 +2825,72 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
   }
 
   if (start === undefined) return no('this execution has no resident engineering task; start it first');
+
+  // A finished/gone wrapper cannot consume another request file. Re-enter only the fixed cleanup
+  // mode as a separate ordinary Job; it verifies retained PID start identity/process group/container
+  // ownership and never opens ACP or replays a business request.
+  if (['status', 'cancel', 'release'].includes(engineering.operation) && execution.jobSession !== undefined) {
+    const wrapper = await engineeringJobStatus(deps, run.id, execution.jobSession);
+    if (wrapper.state.state !== 'running') {
+      let receipt: ExecutionReceipt = { requestId: req.requestId, action: 'engineering', executionId: execution.id,
+        data: engineeringResult(engineering.operation, taskId, 'reconciling') };
+      await recordExecutionAction(deps, run, req, digest, {}, receipt, {}, 'admitted');
+      try {
+        const retainedState = await readEngineeringState(identity.site, taskDir, taskId);
+        const retainedOwned = await readEngineeringOwned(identity.site, taskDir, taskId);
+        let recovered: Awaited<ReturnType<typeof reconcileEngineeringTask>> | undefined;
+        if (retainedOwned?.quiescent !== true || !['stopped', 'released'].includes(retainedState?.phase ?? '')) {
+          recovered = await reconcileEngineeringTask(deps, identity, taskId, async (intent) => {
+            await updateExecution(deps, run.id, execution.id, { intent });
+          });
+        }
+        const stopped = recovered?.status === 'stopped' || retainedOwned?.quiescent === true
+          && ['stopped', 'released'].includes(retainedState?.phase ?? '');
+        if (!stopped) {
+          const reason = recovered !== undefined && recovered.status !== 'stopped'
+            ? recovered.reason : 'retained engineering quiescence is not confirmed';
+          const data = engineeringResult(engineering.operation, taskId, recovered?.status ?? 'unknown', { reason });
+          receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'uncertain', {
+            phase: 'uncertain', reason,
+            ...(recovered?.session === undefined ? {} : { jobSession: recovered.session }),
+          });
+          return executionAnswer(deps, run.id, 'accepted', { receipt, data, reason });
+        }
+        const previouslyReleased = Object.values(existingRun(deps.ledger, run.id).control!.requests).some((request) =>
+          request.receipt.action === 'engineering' && request.receipt.executionId === execution.id
+          && (request.receipt.data as { operation?: unknown; status?: unknown } | undefined)?.operation === 'release'
+          && (request.receipt.data as { status?: unknown }).status === 'released');
+        const phase = engineering.operation === 'release' || engineering.operation === 'status' && previouslyReleased ? 'released' : 'stopped';
+        const data = engineeringResult(engineering.operation, taskId, phase, {
+          nativeQuiescence: 'confirmed', recovered: recovered !== undefined,
+          ...((recovered?.status === 'stopped' ? recovered.session : undefined) === undefined ? {} : { recoverySession: recovered!.session }),
+        });
+        const latestExecution = existingRun(deps.ledger, run.id).control!.executions[execution.id]!;
+        const change: Partial<NodeExecution> = {
+          ...(recovered?.status === 'stopped' ? { jobSession: recovered.session } : {}),
+          ...(engineering.operation === 'status' && previouslyReleased ? {}
+            : engineering.operation === 'release' && latestExecution.phase !== 'ready'
+            ? { phase: 'failed', result: { kind: 'stopped', reason: 'lost native session was reconciled and released' } }
+            : engineering.operation === 'release' ? {} : { phase: 'uncertain', reason: 'native session was lost and reconciled stopped; no business continuation is possible' }),
+        };
+        receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', change);
+        return executionAnswer(deps, run.id, 'accepted', { receipt, data });
+      } catch (error) {
+        const reason = `same-task engineering reconciliation is unknown: ${(error as Error).message}`;
+        const data = engineeringResult(engineering.operation, taskId, 'unknown', { reason });
+        receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'uncertain', { phase: 'uncertain', reason });
+        return executionAnswer(deps, run.id, 'accepted', { receipt, data, reason });
+      }
+    }
+  }
+
+  if (['message', 'delivery'].includes(engineering.operation) && execution.jobSession !== undefined) {
+    const wrapper = await engineeringJobStatus(deps, run.id, execution.jobSession);
+    if (wrapper.state.state !== 'running') {
+      return no('the resident wrapper is gone and its native RPC session cannot be continued; use status, cancel or release to reconcile retained ownership without replaying business work');
+    }
+  }
+
   if (engineering.operation === 'message') {
     if (!current) return no('the engineering execution is stale; status, cancel, delivery or release it instead of sending new work');
     if (paused !== undefined) return no(paused);
@@ -2911,13 +2995,13 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
     if (wrapperReceipt?.status !== 'completed') throw new RunStartError(wrapperReceipt?.error ?? 'the wrapper did not confirm release');
     if (execution.jobSession !== undefined) {
       const deadline = Date.now() + 5_000;
-      let actual = await jobStatus(deps, { run: run.id, session: execution.jobSession });
+      let actual = await engineeringJobStatus(deps, run.id, execution.jobSession);
       while (actual.state.state === 'running' && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 50));
-        actual = await jobStatus(deps, { run: run.id, session: execution.jobSession });
+        actual = await engineeringJobStatus(deps, run.id, execution.jobSession);
       }
       if (actual.state.state === 'running') await jobKill(deps, { run: run.id, session: execution.jobSession });
-      const after = await jobStatus(deps, { run: run.id, session: execution.jobSession });
+      const after = await engineeringJobStatus(deps, run.id, execution.jobSession);
       if (after.state.state === 'running') throw new RunStartError('engineering wrapper and owned process group survived release');
     }
     const data = engineeringResult('release', taskId, 'released', { retained: true });
