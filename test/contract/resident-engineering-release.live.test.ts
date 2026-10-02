@@ -124,6 +124,8 @@ test('Issue #82 release qualification: native OpenCode repackages retained real 
       + `cp -- "$old/state/readiness.json" "$old/state/baseline.json" "$old/state/common-stage.json" "$old/state/xtop-context.json" "$old/state/autofix-reference.json" "$new/state/"; `
       + `(cd "$old" && cp --parents -- research/observe/common-r1/residual-analysis/hold.rpt research/observe/common-r1/residual-analysis/setup.rpt research/control/autofix-reference/best/hold.rpt research/control/autofix-reference/best/setup.rpt "$new"); `
       + `cp -a -- "$src/." "$new/retained-source/"; `
+      + `cp -- "$old/.hima-engineering/resident-2095ddfaf07b5653f962c081/workspace/engineering/raw/before-legality.txt" "$new/retained-source/engineering/raw/before-legality.txt"; `
+      + `cp -- "$old/.hima-engineering/resident-2095ddfaf07b5653f962c081/workspace/engineering/raw/after-legality.txt" "$new/retained-source/engineering/raw/after-legality.txt"; `
       + `test "$(find "$new/retained-source/engineering/checkpoints/final-workspace" -type f | wc -l)" -eq 60; `
       + `sha256sum -- "$new/retained-source/state/engineering-result.json"`);
     assert.equal(seed.status, 0, seed.stderr);
@@ -165,7 +167,7 @@ test('Issue #82 release qualification: native OpenCode repackages retained real 
       'Write engineering/qualification/followup.txt containing RELEASE_QUALIFICATION_FOLLOWUP.',
       'Copy retained-source/engineering to the private workspace preserving every relative file and byte.',
       'Rebuild result.json from retained-source/state/engineering-result.json by changing only taskId/runId/executionId/nodeId to the current task identity and recomputing schema/id with the current flow/atcs/core.py.',
-      'Verify all referenced hashes. Write resident-delivery.json as hima-resident-engineering-candidate/1 outcome completed with exactly one result artifact result.json and every regular file under engineering as support, each with its actual sha256. State that this is retained-artifact integration, not new engineering effect.',
+      'Verify all referenced hashes. Write resident-delivery.json with exactly five top-level fields and no others: schema, outcome, summary, stopReason, artifacts. schema is hima-resident-engineering-candidate/1; outcome is completed; summary and stopReason are nonempty strings saying retained-artifact integration, not new engineering effect. artifacts is the array with exactly one result artifact result.json and every regular file under engineering as support, each record containing exactly path, sha256, kind.',
     ].join(' ');
     const message = await execute('qualify-followup', 'engineering', { executionId,
       engineering: { operation: 'message', message: followup } });
@@ -175,6 +177,28 @@ test('Issue #82 release qualification: native OpenCode repackages retained real 
         && JSON.parse(remoteText(path.posix.join(taskDir, 'workspace/resident-delivery.json'))).schema === 'hima-resident-engineering-candidate/1'; }
       catch { return false; }
     }, 15 * 60_000, 1_000);
+
+    const expectedCandidateFields = ['artifacts', 'outcome', 'schema', 'stopReason', 'summary'];
+    let candidate = JSON.parse(remoteText(path.posix.join(taskDir, 'workspace/resident-delivery.json')));
+    if (JSON.stringify(Object.keys(candidate).sort()) !== JSON.stringify(expectedCandidateFields)) {
+      const repair = await execute('qualify-candidate-repair', 'engineering', { executionId,
+        engineering: { operation: 'message', message: [
+          'Repair only resident-delivery.json in this same task; do not rerun or recopy anything.',
+          'It must have exactly five top-level fields: schema, outcome, summary, stopReason, artifacts.',
+          'Use schema hima-resident-engineering-candidate/1, outcome completed, nonempty summary and stopReason, and rename your existing artifact array to artifacts.',
+          'Every artifacts item must have exactly path, sha256, kind; keep exactly one result kind. Remove taskId, runId, executionId, nodeId, note, artifactPaths and every other top-level field.',
+        ].join(' ') } });
+      assert.equal(repair.data.status, 'accepted', JSON.stringify(repair));
+      await waitUntil('native qualification candidate repair', () => {
+        try { return JSON.parse(remoteText(path.posix.join(taskDir, 'state.json'))).detail?.completedRequestId === 'qualify-candidate-repair'; }
+        catch { return false; }
+      }, 5 * 60_000, 1_000);
+      candidate = JSON.parse(remoteText(path.posix.join(taskDir, 'workspace/resident-delivery.json')));
+    }
+    assert.deepEqual(Object.keys(candidate).sort(), expectedCandidateFields);
+    assert.equal(candidate.schema, 'hima-resident-engineering-candidate/1');
+    assert.equal(candidate.outcome, 'completed');
+    assert.equal(candidate.artifacts.filter((artifact: any) => artifact.kind === 'result').length, 1);
 
     const delivery = await execute('qualify-delivery', 'engineering', { executionId, engineering: { operation: 'delivery' } });
     assert.equal(delivery.data.status, 'verified', JSON.stringify(delivery));
