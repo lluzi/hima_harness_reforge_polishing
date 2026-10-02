@@ -838,10 +838,54 @@ proc set_placement_constraint {args} { stub_record set_placement_constraint {*}$
 proc report_placement_constraint {args} { stub_record report_placement_constraint {*}$args; append ::stub_out $::fixture_constraint }
 """
 
+    def test_incompatible_rank_pairs_refuse_before_native_state_and_recover(self):
+        # Vendor commands mark only hold-path inputs or setup-path outputs.
+        # v30 native hold/output fails on min paths; incompatible pairs are
+        # deliberately unsupported, never silently remapped to another check.
+        for check, direction in (("hold", "output"), ("setup", "input")):
+            with self.subTest(check=check, direction=direction):
+                session = Session(self, max_mutations=2)
+                native = self.NATIVE + r"""
+proc get_paths {args} {
+    stub_record get_paths {*}$args
+    return [list path:[lindex $args [expr {[lsearch -exact $args -delay_type] + 1}]]]
+}
+proc mark_hold_path_pin_rank {args} {
+    stub_record mark_hold_path_pin_rank {*}$args
+    if {[lindex $args end] ne "path:min"} { error {Specified paths is not valid.} }
+    set ::fixture_direction input
+}
+proc mark_setup_path_pin_rank {args} {
+    stub_record mark_setup_path_pin_rank {*}$args
+    if {[lindex $args end] ne "path:max"} { error {Specified paths is not valid.} }
+    set ::fixture_direction output
+}
+"""
+                commands = f"T invalid {{atcs_path_pin_rank {check} {direction} U9/D 3 {PLAN}}}\n"
+                commands += 'puts "INVALID-STATE:$::atcs_mutations|$::atcs_plan_sha256|$::atcs_tainted"\n'
+                commands += f"T hold {{atcs_path_pin_rank hold input U9/D 3 {PLAN}}}\n"
+                commands += f"T setup {{atcs_path_pin_rank setup output U9/D 3 {PLAN}}}\n"
+                commands += 'T export {atcs_export_changes {valid ranks after incompatible refusal}}\n'
+                commands += 'puts "COUNT:$::atcs_mutations"\n'
+                session.run(commands, before=native)
+                self.assertEqual(session.returncode, 0, session.stdout + session.stderr)
+                self.assertEqual(session.outcome("invalid")[0], "ERR")
+                self.assertIn("supported pairs: hold input, setup output", session.outcome("invalid")[1])
+                self.assertIn("INVALID-STATE:0||", session.stdout)
+                self.assertFalse((session.root / "tainted.json").exists())
+                self.assertEqual(session.outcome("hold")[0], "OK")
+                self.assertEqual(session.outcome("setup")[0], "OK")
+                self.assertEqual(session.outcome("export")[0], "OK")
+                self.assertIn("COUNT:2", session.stdout)
+                self.assertEqual(len(session.calls_to("get_paths")), 2)
+                self.assertEqual(len(session.calls_to("mark_hold_path_pin_rank")), 1)
+                self.assertEqual(len(session.calls_to("mark_setup_path_pin_rank")), 1)
+                self.assertEqual(session.ops, [])
+
     def test_settings_are_bounded_counted_evidence_without_physical_edits(self):
         session = Session(self, max_mutations=6)
         commands = "".join(f"T range{n} {{atcs_legalization_range {n} {PLAN}}}\n" for n in (150, 300, 600, 1000))
-        commands += f"T rank {{atcs_path_pin_rank hold input U9/D 3 {PLAN}}}\nT output {{atcs_path_pin_rank hold output U9/D 3 {PLAN}}}\n"
+        commands += f"T rank {{atcs_path_pin_rank hold input U9/D 3 {PLAN}}}\nT output {{atcs_path_pin_rank setup output U9/D 3 {PLAN}}}\n"
         commands += f"T exhausted {{atcs_legalization_range 150 {PLAN}}}\nputs \"COUNT:$::atcs_mutations\"\n"
         session.run(commands, before=self.NATIVE)
         self.assertEqual(session.returncode, 0, session.stdout + session.stderr)

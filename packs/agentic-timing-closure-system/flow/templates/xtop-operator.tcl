@@ -991,6 +991,13 @@ proc atcs_path_pin_rank {check direction endpoint top_n plan_sha256} {
         atcs_begin_mutation $plan_sha256
         atcs_choice check $check {setup hold}
         atcs_choice direction $direction {input output}
+        # Vendor hold ranking marks inputs on hold paths; setup ranking marks
+        # outputs on setup paths. Never reinterpret the requested check.
+        # Refuse before pin/path lookup or any native setting/allowance commit.
+        if {($check eq "hold" && $direction ne "input") ||
+            ($check eq "setup" && $direction ne "output")} {
+            error "unsupported rank pair $check $direction; supported pairs: hold input, setup output; use the matching check and pin side without changing the intended path set"
+        }
         atcs_int topN $top_n 1 30
         atcs_require_domain_pin $endpoint
         set delay_type [expr {$check eq "hold" ? "min" : "max"}]

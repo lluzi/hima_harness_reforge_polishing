@@ -1,3 +1,16 @@
+# Path Rank compatibility repair (v31 / Pack 0.2.10)
+
+Development candidate, not yet native-qualified. The existing typed rank command now admits
+only hold/input (min-delay paths, setup margin on input pins) and setup/output (max-delay
+paths, hold margin on output pins). Cross pairs are refused before native lookup/marking or
+mutation commit; no silent path-type mapping. Plan/hash/domain/budget and post-setting taint
+protections stay in place. Qualification must prove invalid-pair recovery followed by valid
+native ranks/export, strict bounded legalization, then one short actual Flash expert loop.
+
+Install v31 additively with the unchanged verifier/fresh-slot/image/Reader/CLI and newly pinned
+flow. Frozen v30 remains retained. Contract/graph version metadata changes together for the
+existing loader; graph behavior, Harness and schema shapes are unchanged.
+
 # Derived lead domain repair (v26 / Pack0.2.5)
 
 Real v25 R1 recovery and cumulative ECO qualification passed. prepare-lead then refused brace-quoted
