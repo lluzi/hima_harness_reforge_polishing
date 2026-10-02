@@ -258,7 +258,8 @@ async function reconcileControlledRun(deps: FabricDeps, snapshot: RunRecord): Pr
   // Non-Job admissions have no recoverable process effect. Preserve the request and expose its gap.
   const run = existingRun(deps.ledger, snapshot.id);
   const control = run.control!;
-  const interrupted = Object.entries(control.requests).filter(([, request]) => request.state === 'admitted' && request.receipt.action !== 'cancel');
+  const interrupted = Object.entries(control.requests).filter(([, request]) => request.state === 'admitted'
+    && request.receipt.action !== 'cancel' && request.receipt.action !== 'engineering');
   if (interrupted.length > 0) {
     const requests = { ...control.requests };
     const executions = { ...control.executions };

@@ -159,6 +159,7 @@ export interface EngineeringTaskIdentity {
   readonly boundInputs: Readonly<Record<string, string>>;
   readonly siteIdentityMatches: boolean;
   readonly expectedCapabilitySha256?: string;
+  readonly expectedTaskEnvelopeSha256?: string;
 }
 
 export const engineeringTaskId = (runId: string, executionId: string): string =>
@@ -361,6 +362,20 @@ export async function readEngineeringOwned(site: Site, taskDir: string, taskId: 
   return owned;
 }
 
+async function readEngineeringTaskEnvelopeIdentity(site: Site, taskDir: string, taskId: string, executionId: string): Promise<string> {
+  const at = pathsOf(site).join(taskDir, 'task.json');
+  const found = await decidedBytes(site, channelFor(site), at, 'engineering task envelope');
+  const document = JSON.parse(Buffer.from(found.bytes).toString('utf8')) as Record<string, unknown>;
+  const claimed = document.sha256;
+  if (typeof claimed !== 'string' || !/^[0-9a-f]{64}$/.test(claimed)) throw new Error('engineering task envelope has no valid digest');
+  const { sha256: _claimed, ...body } = document;
+  if (sha256(canonicalWrapperJson(body)) !== claimed) throw new Error('engineering task envelope digest is invalid');
+  if (body.schema !== engineeringProtocol || body.taskId !== taskId || body.executionId !== executionId) {
+    throw new Error('engineering task envelope identity differs from the retained execution');
+  }
+  return claimed;
+}
+
 export type EngineeringReconcileResult =
   | { readonly status: 'stopped'; readonly session: string; readonly state: EngineeringState; readonly owned: EngineeringOwned }
   | { readonly status: 'at-cap' | 'unknown'; readonly reason: string; readonly session?: string };
@@ -381,6 +396,10 @@ export async function reconcileEngineeringTask(
     return { status: 'unknown', reason: 'the engineering capability identity changed since start; recovery was not dispatched' };
   }
   const taskDir = engineeringTaskDirectory(identity.site, identity.workspace, taskId);
+  if (identity.expectedTaskEnvelopeSha256 === undefined
+      || await readEngineeringTaskEnvelopeIdentity(identity.site, taskDir, taskId, identity.execution.id) !== identity.expectedTaskEnvelopeSha256) {
+    return { status: 'unknown', reason: 'the engineering task/material identity changed since start; recovery was not dispatched' };
+  }
   const slots = {
     name: identity.site.name,
     jobs: identity.run.budget?.jobCap ?? identity.site.capacity.parallelJobs,

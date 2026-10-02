@@ -482,6 +482,54 @@ test('public status reconciles a crashed wrapper orphan without replay and relea
   }
 });
 
+test('crash cleanup preserves Reader-verified ready delivery through status, release and completion', async (t) => {
+  const fixture = await installResidentFixture(t);
+  const host = await bootInProcess(fixture.h);
+  const sitesDir = path.join(fixture.h.home, 'hima/sites');
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    const task = await openResidentTask(host, fixture, owner, 'DELIVER_RESULT');
+    const taskDir = path.join(task.workspace.workspace, '.hima-engineering', task.engineering.data.taskId);
+    await waitUntil('native delivery candidate', async () => {
+      try { return (await readFile(path.join(taskDir, 'workspace/resident-delivery.json'))).byteLength > 0; } catch { return false; }
+    }, 10_000, 20);
+    const settledPrompt = await task.execute('verified-before-crash-message', 'engineering', { executionId: task.executionId,
+      engineering: { operation: 'message', message: 'Confirm delivery remains in this same session.' } });
+    assert.equal(settledPrompt.data.status, 'accepted', JSON.stringify(settledPrompt));
+    await waitUntil('message completion state', async () => {
+      try {
+        const state = JSON.parse(await readFile(path.join(taskDir, 'state.json'), 'utf8'));
+        return state.phase === 'waiting' && state.detail?.completedRequestId === 'verified-before-crash-message';
+      } catch { return false; }
+    }, 10_000, 20);
+    const delivery = await task.execute('verified-before-crash-delivery', 'engineering', { executionId: task.executionId,
+      engineering: { operation: 'delivery' } });
+    assert.equal(delivery.data.status, 'verified', JSON.stringify(delivery));
+    assert.equal(host.ctx.hima.ledger.run(task.started.run.id)!.control!.executions[task.executionId]!.phase, 'ready');
+    const outputPath = path.join(task.workspace.workspace, 'engineering/result.json');
+    const outputSha256 = createHash('sha256').update(await readFile(outputPath)).digest('hex');
+    const observations = host.ctx.hima.ledger.records({ runId: task.started.run.id, type: 'observation' })
+      .filter((record) => record.type === 'observation').map((record) => [record.id, record.contentSha256]);
+    await crashResidentWrapper(host, task.started.run.id, sitesDir);
+    const status = await task.execute('verified-crash-status', 'engineering', { executionId: task.executionId, engineering: { operation: 'status' } });
+    assert.equal(status.data.status, 'stopped', JSON.stringify(status));
+    assert.equal(host.ctx.hima.ledger.run(task.started.run.id)!.control!.executions[task.executionId]!.phase, 'ready');
+    const release = await task.execute('verified-crash-release', 'engineering', { executionId: task.executionId, engineering: { operation: 'release' } });
+    assert.equal(release.data.status, 'released', JSON.stringify(release));
+    assert.equal(host.ctx.hima.ledger.run(task.started.run.id)!.control!.executions[task.executionId]!.phase, 'ready');
+    assert.equal(createHash('sha256').update(await readFile(outputPath)).digest('hex'), outputSha256);
+    assert.deepEqual(host.ctx.hima.ledger.records({ runId: task.started.run.id, type: 'observation' })
+      .filter((record) => record.type === 'observation').map((record) => [record.id, record.contentSha256]), observations);
+    const completed = await task.execute('verified-crash-complete', 'complete', { executionId: task.executionId });
+    assert.equal(completed.kind, 'accepted', JSON.stringify(completed));
+    assert.equal(host.ctx.hima.ledger.run(task.started.run.id)?.currentNode, 'read-qor');
+    assert.equal(host.ctx.hima.ledger.records({ runId: task.started.run.id, type: 'node' })
+      .filter((record) => record.type === 'node' && record.state === 'retrying').length, 0);
+  } finally {
+    await host.dispose(); await fixture.h.dispose();
+  }
+});
+
 test('Run cancel after wrapper crash reconciles the retained native tree before ending and launches no retry', async (t) => {
   const fixture = await installResidentFixture(t);
   const host = await bootInProcess(fixture.h);
@@ -571,6 +619,64 @@ test('missing retained owner identity returns unknown, keeps the orphan fenced, 
     const stopped = await task.execute('restored-owner-status', 'engineering', { executionId: task.executionId, engineering: { operation: 'status' } });
     assert.equal(stopped.data.status, 'stopped', JSON.stringify(stopped));
     await waitUntil('restored identity cleanup stops orphan', () => !processIsAlive(descendant), 5_000, 20);
+  } finally {
+    await host.dispose(); await fixture.h.dispose();
+  }
+});
+
+test('pre-receipt Host crash retains task identity so restart can clean the same native task without replay', async (t) => {
+  const fixture = await installResidentFixture(t);
+  let host = await bootInProcess(fixture.h);
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: fixture.id, site: 'local', goal: { target_period_ns: 2 },
+      ownerSessionId: String(owner.id), timeBoxMs: 60_000 });
+    assert.equal(started.kind, 'ran'); if (started.kind !== 'ran') return;
+    const workspace = host.ctx.hima.ledger.records({ runId: started.run.id, type: 'workspace' })
+      .findLast((record): record is WorkspaceRecord => record.type === 'workspace')!;
+    const input = path.join(workspace.workspace, `flow/results/${fixture.flow.design}/syn/report/qor.rpt`);
+    await mkdir(path.dirname(input), { recursive: true }); await writeFile(input, 'pre-receipt fixture input\n');
+    const call = publicCaller(host, owner); const controlled = () => host.ctx.hima.ledger.run(started.run.id)!.control!;
+    const begun = readToolResult(await call({ run: started.run.id, action: 'begin', requestId: 'pre-receipt-begin', nodeId: started.run.currentNode,
+      expectedEpoch: controlled().epoch, expectedRevision: controlled().revision }));
+    const executionId = begun.receipt.executionId as string;
+    const advanceRun = host.ctx.hima.ledger.advanceRun.bind(host.ctx.hima.ledger);
+    host.ctx.hima.ledger.advanceRun = async (...args) => {
+      const request = args[1].control?.requests?.['pre-receipt-start'];
+      const status = (request?.receipt.data as { status?: unknown } | undefined)?.status;
+      if (status === 'started' || status === 'unknown') throw new Error('fixture Host crashed after launch before final start receipt');
+      return advanceRun(...args);
+    };
+    const interrupted = await call({ run: started.run.id, action: 'engineering', requestId: 'pre-receipt-start', executionId,
+      expectedEpoch: controlled().epoch, expectedRevision: controlled().revision,
+      engineering: { operation: 'start', goal: 'SPAWN_DESCENDANT SURVIVE_WRAPPER_CRASH' } });
+    host.ctx.hima.ledger.advanceRun = advanceRun;
+    assert.equal(interrupted.isError, true, JSON.stringify(interrupted));
+    const admitted = host.ctx.hima.ledger.run(started.run.id)!.control!.requests['pre-receipt-start']!;
+    assert.equal(admitted.state, 'admitted');
+    assert.equal((admitted.receipt.data as { status?: unknown }).status, 'admitted');
+    assert.match(String((admitted.receipt.data as { capabilitySha256?: unknown }).capabilitySha256), /^[0-9a-f]{64}$/);
+    assert.match(String((admitted.receipt.data as { taskEnvelopeSha256?: unknown }).taskEnvelopeSha256), /^[0-9a-f]{64}$/);
+    await waitUntil('pre-receipt native descendant exists', async () => {
+      try { return processIsAlive(Number((await readFile(fixture.descendantPid, 'utf8')).trim())); } catch { return false; }
+    }, 10_000, 20);
+    const descendant = Number((await readFile(fixture.descendantPid, 'utf8')).trim());
+    assert.equal(jobsOf(host, started.run.id).filter((record) => record.event === 'launched').length, 1);
+    await host.dispose();
+    host = await bootInProcess(fixture.h);
+    await host.ctx.hima.reconciled;
+    const recovered = host.ctx.hima.executionContext(started.run.id);
+    const recoveredExecution = recovered.executions.find((execution) => execution.id === executionId)!;
+    assert.ok(['working', 'uncertain'].includes(recoveredExecution.phase), JSON.stringify(recoveredExecution));
+    if (recoveredExecution.phase === 'uncertain') assert.match(recoveredExecution.reason ?? '', /same-task reconciliation|resident wrapper Job/i);
+    assert.equal(recovered.run.control?.requests['pre-receipt-start']?.state, 'admitted');
+    const cleanup = await host.ctx.hima.cancelRun(started.run.id);
+    assert.equal(cleanup.kind, 'cancelled', JSON.stringify(cleanup));
+    await waitUntil('pre-receipt retained identity cleanup stops orphan', () => !processIsAlive(descendant), 5_000, 20);
+    const launches = jobsOf(host, started.run.id).filter((record) => record.event === 'launched');
+    assert.equal(launches.filter((record) => record.job.name === 'engineering-synthesize').length, 1);
+    assert.ok(launches.slice(1).every((record) => record.job.name.startsWith('engineering-reconcile-')),
+      'restart cleanup may add one bounded reconcile Job but never another engineering business Job');
   } finally {
     await host.dispose(); await fixture.h.dispose();
   }

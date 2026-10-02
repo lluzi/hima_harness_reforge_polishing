@@ -158,3 +158,49 @@ descendant remain alive, then prove public status cleanup, public Run cancel,
 release fencing, signed unknown behavior with missing identity, and restart
 without ordinary settlement or retry. No live API, model, EDA, SSH, or desktop
 window was used.
+
+## Delta-review identity and verified-progress correction
+
+The follow-up review at `6031512f` found two narrower crash windows.
+
+First, the Host originally added `capabilitySha256` only to the final `started`
+receipt. A Host loss after actual Job launch and before that update left a
+durable admitted start without the identity required by bounded reconciliation.
+The admitted receipt now carries protocol, capability hash, complete signed task
+envelope hash, method digest and input digest before the existing launch intent
+or any Site process dispatch. Reconciliation independently re-reads and hashes
+the task envelope and refuses a changed Site, capability or task/material
+identity.
+
+Second, status cleanup previously changed a Reader-verified `ready` execution to
+`uncertain`; release then changed it to `failed`. Confirmed native cleanup now
+preserves `ready` only when a durable delivery receipt says `verified`. The
+Reader observation, materialized artifact hash and settled result remain
+unchanged through crash status, release and normal node completion. An execution
+without verified delivery remains uncertain/failed as before.
+
+Deterministic public Host tests now cover:
+
+- an injected Host persistence failure after the real wrapper/native launch but
+  before the final start receipt, followed by restart and same-task cleanup;
+- valid Reader delivery, wrapper SIGKILL, status reconciliation, release and
+  completion with unchanged output/observation identities and no retry.
+
+```text
+pnpm run build
+PASS
+
+pnpm run test:local --files test/contract/resident-engineering.host.test.ts
+PASS: 14 tests, 0 failures, 0 skipped
+PASS: 14 in-process Host boots, 0 Host subprocess, 0 Electron, 0 SSH
+elapsed: 28.410 s
+
+pnpm run test:local --files \
+  test/contract/agent-recovery.host.test.ts \
+  test/contract/agent-controls.host.test.ts
+PASS: 21 tests, 0 failures, 0 skipped
+PASS: 33 in-process Host boots, 0 Host subprocess, 0 Electron, 0 SSH
+elapsed: 56.863 s
+```
+
+This delta also used no live API, model, EDA, SSH or desktop window.

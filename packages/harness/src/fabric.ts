@@ -2713,15 +2713,17 @@ export function residentEngineeringIdentityFor(deps: FabricDeps, run: RunRecord,
     DESIGN: bindings.design, CAMPAIGN: run.campaignId,
   };
   const boundInputs = Object.fromEntries(tool.inputs.flatMap((name) => availableInputs[name] === undefined ? [] : [[name, availableInputs[name]!]]));
-  const expectedCapabilitySha256 = Object.values(run.control?.requests ?? {}).map((request) => request.receipt)
-    .find((receipt) => receipt.action === 'engineering' && receipt.executionId === execution.id
+  const expectedStartIdentity = Object.values(run.control?.requests ?? {}).map((request) => request.receipt)
+    .findLast((receipt) => receipt.action === 'engineering' && receipt.executionId === execution.id
       && (receipt.data as { operation?: unknown } | undefined)?.operation === 'start'
-      && (receipt.data as { status?: unknown }).status === 'started')?.data;
+      && typeof (receipt.data as { capabilitySha256?: unknown }).capabilitySha256 === 'string')?.data;
   return { run, execution, site, pack, workspace: prepared.workspace, bindings,
     outsourcing: tool.outsourcing, licences: tool.licences, tool, boundInputs,
     siteIdentityMatches: run.control?.siteDigest === identityOf(site),
-    ...((expectedCapabilitySha256 as { capabilitySha256?: unknown } | undefined)?.capabilitySha256 === undefined ? {}
-      : { expectedCapabilitySha256: String((expectedCapabilitySha256 as { capabilitySha256: unknown }).capabilitySha256) }) };
+    ...((expectedStartIdentity as { capabilitySha256?: unknown } | undefined)?.capabilitySha256 === undefined ? {}
+      : { expectedCapabilitySha256: String((expectedStartIdentity as { capabilitySha256: unknown }).capabilitySha256) }),
+    ...((expectedStartIdentity as { taskEnvelopeSha256?: unknown } | undefined)?.taskEnvelopeSha256 === undefined ? {}
+      : { expectedTaskEnvelopeSha256: String((expectedStartIdentity as { taskEnvelopeSha256: unknown }).taskEnvelopeSha256) }) };
 }
 
 /** Finish one already-admitted filesystem operation without spending a second control revision. */
@@ -2784,8 +2786,10 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
     let plan: Awaited<ReturnType<typeof planEngineeringTask>>;
     try { plan = await planEngineeringTask(identity, engineering); }
     catch (error) { return no((error as Error).message); }
+    const startIdentity = { protocol: plan.capability.protocol, capabilitySha256: plan.capabilitySha256,
+      taskEnvelopeSha256: plan.envelope.sha256, methodDigest: execution.methodDigest, inputDigest: execution.inputDigest };
     let receipt: ExecutionReceipt = { requestId: req.requestId, action: 'engineering', executionId: execution.id,
-      data: engineeringResult('start', taskId, 'admitted') };
+      data: engineeringResult('start', taskId, 'admitted', startIdentity) };
     await recordExecutionAction(deps, run, req, digest, {
       executions: { ...run.control!.executions, [execution.id]: { ...execution, phase: 'working' } },
     }, receipt, {}, 'admitted');
@@ -2798,8 +2802,7 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
       });
       if (claim.kind === 'claimed' && claim.launched.kind === 'launched') {
         const session = claim.launched.record.job.session;
-        const data = engineeringResult('start', taskId, 'started', { jobSession: session, protocol: plan.capability.protocol,
-          capabilitySha256: plan.capabilitySha256 });
+        const data = engineeringResult('start', taskId, 'started', { ...startIdentity, jobSession: session });
         receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', {
           phase: 'working', jobSession: session, result: { kind: 'pending', session },
         });
@@ -2809,7 +2812,7 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
         : claim.kind === 'stopped' ? 'stopped' : 'refused';
       const reason = claim.kind === 'at-cap' ? claim.reason
         : claim.kind === 'claimed' && claim.launched.kind === 'refused' ? claim.launched.record.reason : undefined;
-      const data = engineeringResult('start', taskId, status, reason === undefined ? {} : { reason });
+      const data = engineeringResult('start', taskId, status, { ...startIdentity, ...(reason === undefined ? {} : { reason }) });
       receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', {
         phase: status === 'budget-exhausted' || status === 'stopped' ? 'failed' : 'begun',
         result: status === 'at-cap' ? { kind: 'at-cap', reason } : { kind: 'stopped', reason },
@@ -2817,7 +2820,7 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
       return executionAnswer(deps, run.id, 'accepted', { receipt, data, ...(reason === undefined ? {} : { reason }) });
     } catch (error) {
       const reason = `engineering start was admitted but its launch outcome is uncertain; do not replay it: ${(error as Error).message}`;
-      const data = engineeringResult('start', taskId, 'unknown', { reason });
+      const data = engineeringResult('start', taskId, 'unknown', { ...startIdentity, reason });
       receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId,
         data, 'uncertain', { phase: 'uncertain', reason });
       return executionAnswer(deps, run.id, 'accepted', { receipt, data, reason });
@@ -2866,9 +2869,15 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
           ...((recovered?.status === 'stopped' ? recovered.session : undefined) === undefined ? {} : { recoverySession: recovered!.session }),
         });
         const latestExecution = existingRun(deps.ledger, run.id).control!.executions[execution.id]!;
+        const hasVerifiedDelivery = Object.values(existingRun(deps.ledger, run.id).control!.requests).some((request) =>
+          request.receipt.action === 'engineering' && request.receipt.executionId === execution.id
+          && (request.receipt.data as { operation?: unknown; status?: unknown } | undefined)?.operation === 'delivery'
+          && (request.receipt.data as { status?: unknown }).status === 'verified');
+        const preserveVerifiedReady = latestExecution.phase === 'ready' && hasVerifiedDelivery;
         const change: Partial<NodeExecution> = {
           ...(recovered?.status === 'stopped' ? { jobSession: recovered.session } : {}),
-          ...(engineering.operation === 'status' && previouslyReleased ? {}
+          ...(preserveVerifiedReady ? {}
+            : engineering.operation === 'status' && previouslyReleased ? {}
             : engineering.operation === 'release' && latestExecution.phase !== 'ready'
             ? { phase: 'failed', result: { kind: 'stopped', reason: 'lost native session was reconciled and released' } }
             : engineering.operation === 'release' ? {} : { phase: 'uncertain', reason: 'native session was lost and reconciled stopped; no business continuation is possible' }),
