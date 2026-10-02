@@ -68,6 +68,64 @@ final global AutoFinish after the active Owner Timing Lead.
 
 # linglong-atcs28 Site administration
 
+## Task-local resident engineering executor (Issue #82)
+
+`engineering-capabilities-v1.json` and `templates/resident-engineering-wrapper.py` are additive Site
+deployment materials. Install them unchanged and administrator-owned under
+`/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/` (wrapper mode 0555). The
+`engineeringCapabilities` binding names the JSON file. The Host uses its fixed `wrapper.argv` and appends
+only `--task-dir <execution task directory>`; prompts, credentials and caller-selected cwd do not enter
+argv or environment.
+
+The capability pins the installed `/home/luzi/.opencode/bin/opencode` 1.18.34, ACP v1 over stdio,
+`deepseek/deepseek-flash`, and image ID
+`7d651dc8f1ab7d423b9d61be83fc3f5d608996ed7b91fa6588c3ed16daccfd54`
+(`localhost/edarunner:alma8`, observed digest
+`sha256:8467102dbae851e4136e998661ae3a01ad9b65d49711c82f2b0883ab8d1bbb8c`). Version and ACP identity
+mismatches fail before task acceptance. This supersedes the design-time 1.18.31 inventory; no install or
+downgrade was performed.
+
+Each task gets a new rootless Podman container with a read-only root, no added capabilities,
+`no-new-privileges`, no host home or container socket, declared design/library/input roots plus the exact
+Host-generated Campaign workspace read-only, and only its private task workspace/home writable. Other
+Run workspaces are not mounted. `/data/eda/env/eda_tools_2025_env.sh` supplies the normal
+Bash/Python/Tcl/XTop environment. A no-model/no-EDA probe ran the exact OpenCode binary in the pinned
+image, wrote its private tmp, refused an append to the protected ATCS manifest, and preserved that file's
+digest. Bubblewrap was rejected because this host denies its uid-map setup.
+
+OpenCode's existing config directory and `auth.json` are mounted read-only at their native locations;
+their bytes are never copied into task material, argv, wrapper logs, or delivery. OpenCode and its shell
+tools share the container uid, so this remains a native-client trust boundary: it does not prove a hostile
+shell cannot read the mounted auth file. A stronger boundary would require a credential broker or
+executable-domain policy outside this adapter. Do not broaden the mount to the rest of `/home/luzi`.
+
+The wrapper retains canonical request/receipt digests, native ACP trace, permission decisions, state,
+immutable request-scoped artifact snapshots/manifests and an atomic latest delivery manifest under
+`.hima-engineering/<taskId>/`; it contains no timing algorithm. An
+unreceipted operation found after restart becomes `unknown` and is not replayed. Cancel completes only
+after the ACP process and owned descendants are gone; release preserves task files. Before a real
+model/EDA run, deploy and hash the candidate bytes, reload the Site, and run the deterministic protocol
+tests. These repository files do not prove remote deployment or a real XTop engineering task qualified.
+
+The new Pack also binds `nativeTimingContext` to
+`/data/eda/project/hima_harness/atcs-inputs/nativeTimingContext-v1.json`. The remote file was absent during
+the 2026-10-02 read-only inventory, so Pack/Site preparation remains blocked until an administrator
+publishes it. `inputs/nativeTimingContext-v1.json` is the locally prepared candidate from the bounded
+checks below; `inputs/nativeTimingContext-v1.template.json` records the shape for later refreshes. The
+object records the exact bound design-manifest SHA-256, its ordered scenarios, an absolute retained
+`staData` directory plus ATCS tree digest, nonempty source reports, constraints in manifest SDC order,
+and the producing tool/version/command. Do not select an old run by name alone.
+
+The cheapest inventory found a promising but **not admitted** candidate at
+`atcs-runs/qual-v31-20261002T051947Z/native`. Its context/observation/working-state IDs agree; all four
+ordered scenarios match the current manifest; the 48-file STA tree recomputed to
+`5cf7fc4cc0ded370ec34f88c38ed2aeaf7aa96355f9bbe096f6cd7d91c68ef0e`; the current and retained SDC
+both hash to `47b51fc7a7f2ea572c78cbd48645ded06c8b21f016ae8ea6e4ca541232f9b565`; and all 16 observation
+source reports remain plain files with their recorded hashes. Their original v28 observe command and
+PrimeTime X-2025.06 identity are in the candidate. Re-run these same cheap checks immediately before
+publication because remote retained bytes can drift. This is read-only reuse; it must not launch fresh
+PrimeTime or Innovus.
+
 Development successor (Issue #66 export/close repair, Pack 0.2.2): `atcs-xtop-operator-v23.sh`
 under `operator-admin/atcs-v23/`. It is **not installed or qualified**. Its flow removes unused worker
 saved-DB dependencies, refreshes ECO scripts after later admitted mutations and records export limitations.
