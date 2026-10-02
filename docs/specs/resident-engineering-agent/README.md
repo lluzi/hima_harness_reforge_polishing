@@ -1,8 +1,8 @@
 # Resident Engineering Agent 与 OpenCode Timing Fix 外包实施规格
 
 Issue: [#82](https://github.com/lluzi/hima_harness_reforge_polishing/issues/82)
-状态：规格就绪；本次只编写规格，未恢复开发、模型或 EDA 执行。
-源码基线：`b20ef44a9672f8c5a5ab645e49e0ef3446e2c0f7`，ATCS `0.2.10`；已确认的产品定义、CONTEXT 和 ADR-0017 位于文档分支 `codex/issue82-opencode-design`。主目录的 ATCS `0.1.10` 不是本规格实现基线。
+状态：已实现并完成一次真实工程试验；现场业务效果成立，原 live 接回仍诚实为 FAIL，后修复只完成 retained-artifact integration 验证。
+作者基线：`b20ef44a9672f8c5a5ab645e49e0ef3446e2c0f7`，当前方法 ATCS `0.3.0`；旧 `0.2.10` 方法快照继续只读保留。
 
 ## Problem Statement
 
@@ -17,6 +17,8 @@ Hima 增加一项小接口、完整任务能力：工程 Agent 在 Pack 明确�
 任务内可以发新信息、回答问题、纠偏、查看进展或请求停止；正常 Agent 间跟进不算开发者替它写答案。任务结束保留实际脚本、报告、执行轨迹与残余事实，释放任务进程和资源。没有长期驻场服务、项目记忆系统或固定内部团队。
 
 同一升级同时交付平台能力与新版 ATCS Pack。新版方法用一个完整 `fix-timing` 工程节点替代 Hima 六席和 retained Lead 内层编排；保留已有设计身份、native analysis/common R1、结果读取和工程归档能力，并采用 XTop-only 交付，不强制新增 APR/提取/PrimeTime 阶段。本次不会修改旧 Pack 的物理签核语义。
+
+2026-10-02 的真实 Run 中，OpenCode 在长驻 XTop session 内将 Hold 从普通 AutoFix 的 82 条修到 0 条，将 Setup 从 24 条修到 18 条，并改善 Setup WNS/TNS；18 条残余令 Goal 保持 false。原 live test 因 Host 未把 result 引用的 checkpoint/support tree落入 Campaign而失败。后续实现增加 Pack `artifactPrefix`、完整 preflight、不可变 revisioned support 和站点端 hash/copy；原 ATCS Reader 的 focused 合同已证明目录树重建与 tree digest 接受，但没有重跑现场。
 
 ## User Stories
 
@@ -79,7 +81,7 @@ Hima 增加一项小接口、完整任务能力：工程 Agent 在 Pack 明确�
 
 ### D2. Pack 的最小声明
 
-在现有工具方法声明上增加可选 `outsourcing`：`role` 固定为通用 `resident-engineering-agent`，`reads` 引用已有输出，`knowledge` 引用已有知识材料，`produces` 指向一个已有 Reader 的结果输出。目标、工作与完成说明复用工具 `description`，任务启动材料复用 `file`，输入及 Goal 绑定复用 `inputs` 和图参数，许可数量及固定启动入口复用 `licences`、`argv`。任务私有目录与执行身份由 Host 生成，不由 Pack 写全局句柄。
+在现有工具方法声明上增加可选 `outsourcing`：`role` 固定为通用 `resident-engineering-agent`，`reads` 引用已有输出，`knowledge` 引用已有知识材料，`artifactPrefix` 声明 result 以外工程文件在 Campaign 中唯一可物化的目录，`produces` 指向一个已有 Reader 的结果输出。历史快照缺 `artifactPrefix` 仍可读，但不得启动新的 resident work。目标、工作与完成说明复用工具 `description`，任务启动材料复用 `file`，输入及 Goal 绑定复用 `inputs` 和图参数，许可数量及固定启动入口复用 `licences`、`argv`。任务私有目录与执行身份由 Host 生成，不由 Pack 写全局句柄。
 
 图仍使用现有 act 节点和 tool 引用；引用此工具的节点明确可外包。没有声明不得启动工程外包，也不按 Pack ID/节点名称硬编码。没有该字段的旧 Pack 保持原行为。外包与普通 `work` 对同一次 execution 互斥；工程 Agent 明确选择执行方式，不能两个入口各启动一次。该工具不得同时声明 Tcl interactive，避免两个不同执行协议混用。
 
@@ -99,7 +101,9 @@ start 在已 begin 的可外包节点执行，返回当前 execution/Job 绑定�
 
 Site 配置具体 executor，Pack 只声明角色。第一版复用 Site 的 bindings：一个 `engineeringCapabilities` 配置材料描述固定 wrapper/实际 OpenCode 可执行文件、版本、原生 profile/认证环境、模型、读写/工具策略及退出宽限；声明与文件受现有 Permit 决定。没有配置时报告 unavailable，不自动安装、迁移 DSH 或换模型。
 
-Site wrapper 作为普通 Job 启动。首个 adapter 使用任务本地 OpenCode ACP/stdIO 会话，以支持完整 prompt、正在进行任务的消息/事件、native permission、cancel 和关闭；不依赖 DSH 官方一次性 ACP provider 来假装已有持续子会话。OpenCode 自己启动的内部服务/协作者属于该任务，任务关闭后退出，不注册为 Hima 常驻服务。CLI/profile 以 Site 实际环境为准，首验为 OpenCode 1.18.31 与 `deepseek-flash`；普通 run/JSON 可作原生协议证据，但不能把每次 message 变成新任务。
+Site wrapper 作为普通 Job 启动。首个 adapter 使用任务本地 OpenCode ACP/stdIO 会话，以支持完整 prompt、正在进行任务的消息/事件、native permission、cancel 和关闭；不依赖 DSH 官方一次性 ACP provider 来假装已有持续子会话。OpenCode 自己启动的内部服务/协作者属于该任务，任务关闭后退出，不注册为 Hima 常驻服务。CLI/profile 以 Site 实际环境为准，现场版本为 OpenCode 1.18.34 与 `deepseek/deepseek-flash`；普通 run/JSON 可作原生协议证据，但不能把每次 message 变成新任务。
+
+OpenCode 直接使用 Site 既有 native config/auth；Hima 不再提供 provider broker、task token、净化 profile 或 permission-kind 分类。当前 native session 的普通 ACP permission 统一 allow-once，foreign session 拒绝。任务的真实保护边界来自 Podman namespace、Site Permit、当前 task 身份、Campaign只读来源和 task-private写区。原生认证因此对 OpenCode 自己的执行环境可见；这是正常 executor 信任边界，不得描述成 Hima 已对 OpenCode shell 隔离账户密钥。Hima 不把字面 credential 复制进 prompt、request、trace 或 result。
 
 wrapper/adapter 只做环境准备、协议转换、状态与产物衔接、退出清理；不代替模型实施修复、预写完整 ECO、整理后重放模型答案或再造内部团队。协议实现优先复用原生 SDK/现有传输能力；新增依赖必须确为最小且兼容，不引入整个新运行平台。
 
@@ -109,7 +113,7 @@ wrapper/adapter 只做环境准备、协议转换、状态与产物衔接、退�
 
 在当前 Run 的私有任务目录完整工作；原始设计、库、公共工具与他人工作区保护。明确外部读目录、私有写目录、执行工具/环境和实际文件隔离；只配置 OpenCode edit/read 规则不能声称 Bash 也被文件系统隔离。复用原生 OpenCode 权限与 Site 环境，验证正常工程访问确实可行，并验证受保护资产不被写入。
 
-已授权操作预先可用，不反复等待无人处理的弹窗。权限/资料请求应成为对接 Agent 可处理的事实；不得默认批准越界请求。拓展 Site 权限依照既有授权路径，不用聊天文字绕过 Permit。凭据由已有原生认证/进程环境使用，不能进入模型材料、参数、日志或报告。工具版本、有效目录和 native 权限匹配须按实际安装版本核对，不能复用失效的字符串规则。
+当前 native session 的正常操作预先可用，不反复等待无人处理的弹窗，也不在 Hima 中按 read/execute/other 再建权限语义。越界由固定 namespace、Site Permit 与任务目录拒绝；需要扩展这些外层边界时仍走既有管理员授权，不用聊天文字绕过。凭据由已有原生认证/进程环境使用，可能被受信任的 OpenCode进程及其工具读取；Hima 不把字面凭据注入业务材料、请求、轨迹或报告。工具版本、有效目录和 native 环境须按实际安装版本核对。
 
 ### D6. 既有事实与控制的加深
 
@@ -158,7 +162,7 @@ Pack primary result 使用已有 output/Reader，附带当前任务/执行、bas
 - L0/L1：有效/无效 Pack 声明与 output/context 引用，普通 Pack兼容；native raw report/result fixture、partial/no-op/unknown/missing/tamper场景。所有模型需要产生的文档先有可通过的格式与 Reader fixture。
 - L2：当前真实 Host、存储、Job/Channel和当前 owning Agent 身份，外部原生协议进程 stand-in 作为唯一昂贵依赖替身。通过公开工具从 begin 到 start/message/status/delivery/release/complete；覆盖未声明节点、错误 actor/epoch、重复/失联、不确定消息、实际 cancel、受保护目录、保留的产物和 Goal未达成的诚实结束。至少一个真实 tool admission 路径，而不是只调用私有函数。
 - 新 Pack dry path：同一公开入口启动生产 adapter 的协议替身，返回 native-source样本和工程文件，Reader/Goal/残余及归档可消费；明确无 Innovus/StarRC/PT启动，不使用旧六席成功注入证明新委派。
-- L4 技术依赖：实际 Site OpenCode 1.18.31初始化、完整任务/同任务沟通、目录权限与停止/释放，验证实际 CLI/模型身份；不恢复固定 Python小题或 repeatedqualification，也不以产品步骤数证明研究能力。
+- L4 技术依赖：冻结候选已完成实际 Site OpenCode 1.18.34初始化、完整任务/同任务沟通、目录权限与停止/释放；人类纠偏后的 direct-native-auth/full-current-session-permission代码只完成本地确定性验证，尚未重新部署或 live 复验。不得用旧候选的 provider broker 现场事实替新代码背书。
 - 真实业务验收：真实 Hima owning Agent 知道可外包能力，自己形成 timing 目标/上下文/playbook任务并确实调用 OpenCode；它独立研究和操作 XTop，实际工程交付可读取，主 Agent据证据接受/跟进/结束。保留真实委派、native执行、脚本、before/after与残余，再按 D9 判断效果。无开发者逐步补写修复方案。
 - L3 仅在既有 UI/context/control 投影改变时补关键路径，沿用现有 driver和Catsights；不另造resident面板或录制体系。
 - 每层失败只追最小直接反例；已有正确部分、配置、数据和 native证据复用。pass/fail/blocked/negative/inconclusive分别报告，未运行不算通过。
@@ -177,6 +181,6 @@ Pack primary result 使用已有 output/Reader，附带当前任务/执行、bas
 
 ## Further Notes
 
-技术准备使用 Codex gpt-6.1-sol/High；实现与一次关键复核遵循相同当前模型政策。独立现场任务由既有 Claude Opus5.5/High执行；产品 Hima/OpenCode使用明确的 DeepSeek4.1Flash路由，不能静默改成CLI默认模型。
+本次实现与独立复核按用户明确覆盖使用 GPT-5.6 Sol/high；产品 Hima/OpenCode 使用 DeepSeek Flash。模型选择、代码通过、provider可用都不能代替 XTop 工程效果与 Reader 接回。
 
-已确认的需求、术语和责任取舍来自 Issue82、CONTEXT、产品定义、ADR-0017；这些不是工程能力已实现的证据。规格 authoring baseline明确固定当前0.2.10，主目录旧0.1.10不得混用为代码事实。Spec就绪不等于已恢复实验、已发布产品或已打败AutoFix。
+已确认的需求、术语和责任取舍来自 Issue82、CONTEXT、产品定义、ADR-0017。现场已证明 Resident 的 XTop效果优于普通AutoFix；这不是最终物理签核。后续物化修复与认证/permission简化没有重新部署，不能描述成新的 live end-to-end PASS。

@@ -76,7 +76,6 @@ async function installResidentFixture(t: Parameters<typeof localHome>[0], option
     native: { executable: native, version: '1.18.34', argv: [], model: 'deepseek/deepseek-flash', protocolVersion: 1 },
     sandbox: { kind: 'none', testOnly: true, privateWorkspace: 'workspace', privateHome: 'home' },
     environment: { inherit: [], set: { STANDIN_DESCENDANT_PID: descendantPid, STANDIN_PERMISSION_RESPONSE: permissionResponse }, toolPaths: [], credentialReadPaths: [] },
-    permissions: { autoApprove: ['read', 'edit', 'write', 'bash'], denyUnknown: true },
     delivery: { candidate: 'resident-delivery.json' }, stopGraceSeconds: 1,
   }, null, 2)}\n`);
   await writeLocalSite(home.h, {

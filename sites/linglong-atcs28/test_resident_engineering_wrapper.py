@@ -1,8 +1,6 @@
 """Public filesystem-protocol tests for the task-local OpenCode ACP wrapper."""
 
 from hashlib import sha256
-import http.client
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
 import os
@@ -11,7 +9,6 @@ import signal
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import unittest
 from unittest import mock
@@ -86,7 +83,6 @@ class WrapperFixture(unittest.TestCase):
                 "toolPaths": [],
                 "credentialReadPaths": [],
             },
-            "permissions": {"autoApprove": ["read", "edit", "write", "bash"], "denyUnknown": True},
             "delivery": {"candidate": "resident-delivery.json"},
             "stopGraceSeconds": 1,
         }))
@@ -151,15 +147,15 @@ class WrapperFixture(unittest.TestCase):
         (self.task / "workspace").mkdir(parents=True)
         read_root = self.root / "readonly-inputs"
         read_root.mkdir()
-        protected_auth = self.root / "protected-auth.json"
-        protected_auth.write_text(json.dumps({"deepseek": {"type": "api", "key": "DUMMY-ACCOUNT-KEY-MUST-NOT-LEAK"}}))
         capability = json.loads(self.capability.read_text())
         capability["sandbox"] = {
             "kind": "podman", "executable": "/usr/bin/false", "image": "fixture-image",
             "readOnlyRoots": [str(read_root)], "privateWorkspace": "workspace", "privateHome": "home",
             "network": "host",
         }
-        capability["environment"]["credentialReadPaths"] = [str(protected_auth)]
+        capability["environment"]["credentialReadPaths"] = [
+            "/home/luzi/.config/opencode", "/home/luzi/.local/share/opencode/auth.json",
+        ]
         self.capability.write_text(json.dumps(capability))
         self.task_record["campaignWorkspace"] = str(declared_campaign or campaign)
         self.task_record["workspace"] = str(self.task / "workspace")
@@ -175,7 +171,7 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         })
         self.assertEqual(capability["sandbox"]["kind"], "podman")
         self.assertEqual(capability["environment"]["credentialReadPaths"],
-                         ["/home/luzi/.local/share/opencode/auth.json"])
+                         ["/home/luzi/.config/opencode", "/home/luzi/.local/share/opencode/auth.json"])
         self.assertNotIn("/", capability["sandbox"]["readOnlyRoots"])
         self.assertNotIn("/home/luzi", capability["sandbox"]["readOnlyRoots"])
         self.assertNotIn("/data/eda/project/hima_harness/atcs-runs", capability["sandbox"]["readOnlyRoots"])
@@ -199,125 +195,13 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         _, stderr = self.process.communicate()
         self.assertIn("not scoped beneath its declared campaign workspace", stderr)
 
-    def test_task_provider_broker_forwards_selected_model_without_exposing_account_key(self):
-        received = {}
-
-        class Upstream(BaseHTTPRequestHandler):
-            def log_message(self, _format, *_args):
-                return
-
-            def do_POST(self):
-                body = self.rfile.read(int(self.headers["Content-Length"]))
-                request = json.loads(body)
-                received.update(path=self.path, authorization=self.headers.get("Authorization"), body=request)
-                if request.get("stream") is True:
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/event-stream")
-                    self.end_headers()
-                    self.wfile.write(b"data: first\n\n")
-                    self.wfile.flush()
-                    time.sleep(.75)
-                    self.wfile.write(b"data: second\n\n")
-                    self.wfile.flush()
-                    return
-                output = b'{"id":"fixture","choices":[]}\n'
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(output)))
-                self.end_headers()
-                self.wfile.write(output)
-
-        upstream = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
-        thread = threading.Thread(target=upstream.serve_forever, daemon=True)
-        thread.start()
-        protected = self.root / "outside-native-sandbox" / "auth.json"
-        protected.parent.mkdir()
-        account_key = "DUMMY-ACCOUNT-KEY-MUST-NOT-LEAK"
-        protected.write_text(json.dumps({"deepseek": {"type": "api", "key": account_key}}))
-        task_home = self.root / "sanitized-home"
-        task_home.mkdir()
-        module = load_wrapper_module()
-        broker = module.ProviderBroker(protected, task_home, f"http://127.0.0.1:{upstream.server_address[1]}")
-        sibling_home = self.root / "sibling-sanitized-home"
-        sibling_home.mkdir()
-        sibling_broker = module.ProviderBroker(protected, sibling_home, f"http://127.0.0.1:{upstream.server_address[1]}")
-        try:
-            base_url = broker.start()
-            sibling_url = sibling_broker.start()
-            self.assertNotEqual(broker.token, sibling_broker.token)
-            endpoint = base_url.removeprefix("http://")
-            host, route = endpoint.split("/", 1)
-            connection = http.client.HTTPConnection(host, timeout=5)
-            body = json.dumps({"model": "deepseek-flash", "messages": [{"role": "user", "content": "fixture"}]})
-            connection.request("POST", f"/{route}/chat/completions", body=body,
-                               headers={"Authorization": f"Bearer {broker.token}", "Content-Type": "application/json"})
-            response = connection.getresponse()
-            self.assertEqual(response.status, 200)
-            response.read()
-            connection.close()
-            self.assertEqual(received["path"], "/chat/completions")
-            self.assertEqual(received["authorization"], f"Bearer {account_key}")
-            self.assertEqual(received["body"]["model"], "deepseek-flash")
-            sanitized_config = json.loads((task_home / ".config/opencode/opencode.json").read_text())
-            sanitized_auth = json.loads((task_home / ".local/share/opencode/auth.json").read_text())
-            self.assertEqual(sanitized_config["model"], "deepseek/deepseek-flash")
-            self.assertEqual(sanitized_config["small_model"], "deepseek/deepseek-flash")
-            self.assertEqual(sanitized_config["enabled_providers"], ["deepseek"])
-            self.assertEqual(sanitized_config["provider"]["deepseek"]["options"]["baseURL"], base_url)
-            self.assertEqual(sanitized_auth, {"deepseek": {"type": "api", "key": broker.token}})
-            visible = b"".join(path.read_bytes() for path in task_home.rglob("*") if path.is_file())
-            self.assertNotIn(account_key.encode(), visible, "native shell-visible home contains no account credential")
-            self.assertIn(broker.token.encode(), visible, "native receives only a task-lifetime route token")
-            shell_probe = subprocess.run(
-                ["/bin/sh", "-c", f'if grep -R -F {account_key!r} "$HOME" >/dev/null 2>&1; then exit 91; fi'],
-                env={"HOME": str(task_home), "PATH": "/usr/bin:/bin"},
-                check=False,
-            )
-            self.assertEqual(shell_probe.returncode, 0, "native shell can read only sanitized task-home credentials")
-            connection = http.client.HTTPConnection(host, timeout=5)
-            wrong = json.dumps({"model": "another-model", "messages": []})
-            connection.request("POST", f"/{route}/chat/completions", body=wrong,
-                               headers={"Authorization": f"Bearer {broker.token}", "Content-Type": "application/json"})
-            self.assertEqual(connection.getresponse().status, 403)
-            connection.close()
-            connection = http.client.HTTPConnection(host, timeout=5)
-            streamed = json.dumps({"model": "deepseek-flash", "messages": [], "stream": True})
-            started = time.monotonic()
-            connection.request("POST", f"/{route}/chat/completions", body=streamed,
-                               headers={"Authorization": f"Bearer {broker.token}", "Content-Type": "application/json"})
-            response = connection.getresponse()
-            first = response.read1(64 * 1024)
-            self.assertIn(b"data: first", first)
-            self.assertLess(time.monotonic() - started, .5, "broker forwards the first SSE chunk before upstream completion")
-            self.assertIn(b"data: second", response.read())
-            connection.close()
-            sibling_endpoint = sibling_url.removeprefix("http://")
-            sibling_host, sibling_route = sibling_endpoint.split("/", 1)
-            connection = http.client.HTTPConnection(sibling_host, timeout=5)
-            connection.request("POST", f"/{sibling_route}/chat/completions", body=body,
-                               headers={"Authorization": f"Bearer {broker.token}", "Content-Type": "application/json"})
-            self.assertEqual(connection.getresponse().status, 401, "one task token cannot call a sibling broker")
-            connection.close()
-            connection = http.client.HTTPConnection(sibling_host, timeout=5)
-            connection.request("POST", f"/{sibling_route}/chat/completions", body=body,
-                               headers={"Authorization": f"Bearer {sibling_broker.token}", "Content-Type": "application/json"})
-            sibling_response = connection.getresponse()
-            self.assertEqual(sibling_response.status, 200, "the sibling broker accepts only its own task token")
-            sibling_response.read()
-            connection.close()
-        finally:
-            sibling_broker.stop()
-            broker.stop()
-            upstream.shutdown()
-            upstream.server_close()
-            thread.join(timeout=3)
-
-    def test_production_native_argv_never_mounts_wrapper_host_auth(self):
+    def test_production_native_argv_mounts_native_opencode_configuration_directly(self):
         self.use_production_scope_fixture()
         module = load_wrapper_module()
         wrapper = module.Wrapper(self.task, self.capability)
-        auth_path = wrapper.capability["environment"]["credentialReadPaths"][0]
-        self.assertNotIn(auth_path, "\n".join(wrapper.native_argv()))
+        argv = "\n".join(wrapper.native_argv())
+        for native_path in wrapper.capability["environment"]["credentialReadPaths"]:
+            self.assertIn(f"type=bind,src={native_path},dst={native_path},ro=true", argv)
 
     def test_production_shell_keeps_eda_init_banner_off_acp_stdout(self):
         self.use_production_scope_fixture()
@@ -567,7 +451,7 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         released = self.request("release:repair", "release", {"deliverySha256": second_manifest["sha256"]})
         self.assertEqual(released["status"], "completed")
 
-    def test_unknown_native_permission_is_rejected_and_retained_as_event(self):
+    def test_current_session_native_permission_is_allowed_once_and_retained_as_event(self):
         self.task_record["goal"] = "REQUEST_UNKNOWN_PERMISSION"
         publish(self.task / "task.json", framed(self.task_record))
         self.start_wrapper()
@@ -576,12 +460,12 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         while not self.permission_response.exists() and time.monotonic() < deadline:
             time.sleep(.02)
         response = json.loads(self.permission_response.read_text())
-        self.assertEqual(response, {"outcome": {"outcome": "selected", "optionId": "reject"}})
+        self.assertEqual(response, {"outcome": {"outcome": "selected", "optionId": "once"}})
         events = list((self.task / "events").glob("*.json"))
         self.assertEqual(len(events), 1)
         self.assertEqual(json.loads(events[0].read_text())["kind"], "permission")
 
-    def test_actual_opencode_generic_permission_uses_its_prior_typed_tool_update(self):
+    def test_actual_opencode_generic_permission_needs_no_kind_projection(self):
         self.task_record["goal"] = "REQUEST_GENERIC_READ_PERMISSION"
         publish(self.task / "task.json", framed(self.task_record))
         self.start_wrapper()
@@ -592,10 +476,10 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         response = json.loads(self.permission_response.read_text())
         self.assertEqual(response, {"outcome": {"outcome": "selected", "optionId": "once"}})
         event = json.loads(next((self.task / "events").glob("*.json")).read_text())
-        self.assertEqual((event["kind"], event["reportedKind"], event["effectiveKind"], event["decision"]),
-                         ("permission", "other", "read", "allow_once"))
+        self.assertEqual((event["kind"], event["reportedKind"], event["decision"]),
+                         ("permission", "other", "allow_once"))
 
-    def test_permission_projection_is_same_session_one_shot_and_fresh(self):
+    def test_permission_is_full_for_current_session_and_rejects_foreign_session(self):
         module = load_wrapper_module()
         with mock.patch.dict(os.environ, {"HIMA_RESIDENT_TESTING": "1"}):
             wrapper = module.Wrapper(self.task, self.capability)
@@ -614,15 +498,6 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
             {"optionId": "reject", "kind": "reject_once", "name": "Reject"},
         ]
 
-        def update(session_id, tool_call_id, kind="read"):
-            module.incoming.put({
-                "jsonrpc": "2.0", "method": "session/update",
-                "params": {"sessionId": session_id, "update": {
-                    "sessionUpdate": "tool_call_update", "toolCallId": tool_call_id,
-                    "kind": kind, "status": "in_progress",
-                }},
-            })
-
         def permission(request_id, session_id, tool_call_id, kind="other"):
             module.incoming.put({
                 "jsonrpc": "2.0", "id": request_id, "method": "session/request_permission",
@@ -631,33 +506,19 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
                 }, "options": options},
             })
 
-        update("native-session-1", "tool-consumed")
-        permission("permission-positive", "native-session-1", "tool-consumed")
-        permission("permission-reused", "native-session-1", "tool-consumed")
-        update("other-session", "tool-cross")
-        permission("permission-cross", "native-session-1", "tool-cross")
+        permission("permission-generic", "native-session-1", "tool-generic")
+        permission("permission-explicit", "native-session-1", "tool-explicit", "execute")
         permission("permission-foreign", "other-session", "tool-explicit", "read")
-        wrapper.handle_native()
-
-        update("native-session-1", "tool-stale")
-        wrapper.handle_native()
-        wrapper.tool_kinds[("native-session-1", "tool-stale")] = (
-            "read", time.monotonic() - module.PERMISSION_CORRELATION_SECONDS - 1,
-        )
-        permission("permission-stale", "native-session-1", "tool-stale")
         wrapper.handle_native()
 
         choices = {message["id"]: message["result"]["outcome"]["optionId"] for message in wrapper.rpc.messages}
         self.assertEqual(choices, {
-            "permission-positive": "once",
-            "permission-reused": "reject",
-            "permission-cross": "reject",
+            "permission-generic": "once",
+            "permission-explicit": "once",
             "permission-foreign": "reject",
-            "permission-stale": "reject",
         })
         events = [json.loads(path.read_text()) for path in sorted((self.task / "events").glob("*.json"))]
-        self.assertEqual([event["decision"] for event in events],
-                         ["allow_once", "reject", "reject", "reject", "reject"])
+        self.assertEqual([event["decision"] for event in events], ["allow_once", "allow_once", "reject"])
 
     def test_cancel_waits_for_detached_owned_descendant_to_die(self):
         self.task_record["goal"] = "SPAWN_DESCENDANT"

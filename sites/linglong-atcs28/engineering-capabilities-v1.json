@@ -60,12 +60,9 @@
     },
     "toolPaths": ["/usr/local/bin", "/usr/bin", "/bin"],
     "credentialReadPaths": [
+      "/home/luzi/.config/opencode",
       "/home/luzi/.local/share/opencode/auth.json"
     ]
-  },
-  "permissions": {
-    "autoApprove": ["execute", "edit", "read", "search", "think", "fetch"],
-    "denyUnknown": true
   },
   "delivery": {
     "candidate": "resident-delivery.json"

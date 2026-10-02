@@ -1067,7 +1067,6 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
     environment: { inherit: [], set: {
       STANDIN_RESULT_SOURCE: resultSource, STANDIN_ARTIFACT_SOURCE_ROOT: artifactSource,
     }, toolPaths: [], credentialReadPaths: [] },
-    permissions: { autoApprove: ['read', 'edit', 'write', 'bash'], denyUnknown: true },
     delivery: { candidate: 'resident-delivery.json' }, stopGraceSeconds: 1,
   }));
   const dummy = path.join(h.workspace, 'declared-input.json');

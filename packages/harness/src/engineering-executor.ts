@@ -36,7 +36,6 @@ export const engineeringCapability = z.strictObject({
     inherit: z.array(environmentName).max(128), set: z.record(environmentName, z.string()),
     toolPaths: z.array(absolute).max(128), credentialReadPaths: z.array(absolute).max(128),
   }),
-  permissions: z.strictObject({ autoApprove: z.array(z.string().min(1)).max(128), denyUnknown: z.literal(true) }),
   delivery: z.strictObject({ candidate: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/)
     .refine((value) => !value.split('/').includes('..') && !value.startsWith('/')) }),
   stopGraceSeconds: z.number().positive().max(300),

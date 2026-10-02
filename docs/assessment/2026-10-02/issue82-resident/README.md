@@ -11,8 +11,34 @@ HimaHarness 0.2.2 exposes task-local Resident Engineering Agent execution throug
 node. Site implementation uses the existing rootless Podman EDA image and OpenCode 1.18.34 ACP with
 `deepseek/deepseek-flash`; no DSH migration, registered Harness component or long-lived task service.
 
-Implementation and cheap integration checks are recorded below. Actual Hima owner/OpenCode/XTop
-acceptance has not started. This document does not claim timing gain or a deployed product.
+Implementation, the completed field attempt and the post-field integration repair are recorded below.
+The actual Resident result beats the matched ordinary AutoFix in XTop, but the frozen live test is
+still FAIL because its Host candidate did not materialize referenced support/checkpoint files. The
+post-field Reader proof is not a new live end-to-end PASS.
+
+## Superseding field result and human correction
+
+Frozen candidate `2d2e9dc5` ran as Run `run-2ab21055-e5ae-4e6b-b5b6-e2cdcd13d10e`, task
+`resident-2095ddfaf07b5653f962c081`. It ended best-effort: ordinary serial AutoFix had Setup 24
+(WNS -0.0333 ns, TNS -0.1568 ns) and Hold 82 (WNS -0.1523 ns, TNS -4.5816 ns); Resident delivered
+Setup 18 (WNS -0.0237 ns, TNS -0.0973 ns) and Hold 0 (WNS/TNS 0). Non-fixed overlaps were zero.
+OpenCode used one persistent XTop process for the repair sequence and one final reopen to verify the
+saved Hold-clean checkpoint. Setup Goal remained false; global transition/capacitance/fanout and final
+physical signoff remain unknown.
+
+The native delivery manifest `7ef2768d...c5ad` retains one result plus ECOs, scripts, reports, logs and
+60 nested checkpoint files. The Pack self-Reader accepted the task-private result; the Campaign Reader
+rejected because the old Host copied only the result JSON. Commit `76eeba8c` adds Pack-declared
+`artifactPrefix`, full no-clobber preflight, Site-side hashing/copy and original Reader tree-digest
+coverage. It is retained-artifact integration evidence only; the closed Run was not restarted.
+
+The field candidate also used a transitional provider broker/task token and permission-kind projection.
+The human correction explicitly rejects continuing either subsystem: OpenCode is already the trusted
+engineering executor. Current code removes the broker/token/sanitized profile and kind policy, mounts
+the Site's native OpenCode config/auth read-only, and allows normal permissions for the exact current
+ACP session. This means the trusted OpenCode process/tools can read native auth; Hima only avoids
+copying literal credentials into prompts, request frames, traces and results. The simplified candidate
+has local deterministic coverage but has not been deployed or live-qualified.
 
 The user's 2026-10-02 `/implement #82` instruction overrides the default development model policy
 for this task: implementation and independent review workers use GPT-5.6 Sol/high, fresh bounded
@@ -80,10 +106,10 @@ and model access and is never included in local checks. `HIMA_ISSUE82_LIVE=1` ex
 Credentials are inherited only as environment/native authentication, never literal command arguments,
 task material or reports. A six-hour outer Runtime timebox is a closing guard, not a winner criterion.
 
-Before selecting it, freeze the source, actual native executable/image, Pack, flow, Site/Permit,
+Before a future rerun, freeze the source, actual native executable/image, Pack, flow, Site/Permit,
 wrapper, capability and retained native input hashes; verify no conflicting XTop/QuaLib or manual
-session. Deploy only the new owned paths. The verified retained native context candidate is in
-`sites/linglong-atcs28/inputs/nativeTimingContext-v1.json`; its production target is not deployed yet.
+session. The frozen field candidate's three owned paths were deployed and later reconciled quiescent;
+the post-field direct-auth/materialization bytes have not been deployed and need a new candidate identity.
 
 The real model must form the complete engineering delegation. Preserve actual owner/native events,
 scripts, raw before/after reports, selected state, residuals, collateral, all input identities and
@@ -91,14 +117,10 @@ ordinary AutoFix comparison. A valid best-effort delivery may finish with Goal f
 unknown effects remain honest. Model prose, CLI presence and protocol fixtures are not engineering
 value. Release preserves engineering materials and confirms owned process/container quiescence.
 
-The independent review reproduced a credential exposure through the same-uid read-only auth mount.
-That mount was removed: real account authentication is wrapper-host-only; a task-lifetime in-process
-broker provides the native container a sanitized profile and ephemeral route token restricted to
-`deepseek-flash` chat completions. It is not a registered Harness service or new business owner.
-The task token is transient client capability, not the account key; the broker closes with the task.
-The sandbox protects original inputs/shared libraries/foreign workspaces from writes and narrows Run
-material reads to the exact Campaign. Installed OpenCode 1.18.34 `acp --pure` initialized/closed with
-this sanitized profile and network disabled; real provider/model use remains pending.
+The earlier broker/token credential section is historical evidence for the frozen field candidate,
+not current product direction. Current code directly reuses native OpenCode configuration and auth,
+keeps the task Podman/Campaign filesystem boundary, and applies no Hima-specific permission taxonomy.
+No claim is made that the native credential is hidden from the trusted executor.
 
 ## Rollback
 
@@ -124,10 +146,10 @@ again; unchanged source and historical methods are not requalified.
   Job to collect actual owned PID-start/PGID/CID/descendant quiescence, without replay. Missing/partial
   identity remains unknown and fenced; recovery avoids ordinary tool settlement. Host 12/12 and
   affected recovery/control/Job/conversation 34/34 pass; no new typecheck errors.
-- `06dadceb`: directory-FD/no-follow artifact traversal blocks parent symlink and linked-file escape;
-  host-only account credentials and the task broker protect native model material; stopped facts are
-  serialized across normal signal/reconcile; recovery has no CLI/version/provider preflight. Site
-  tests 22/22, Python compile/diff checks and installed-client zero-model profile probe pass.
+- `06dadceb` historical candidate: directory-FD/no-follow artifact traversal blocks parent symlink and
+  linked-file escape; its now-superseded task broker protected native model material; stopped facts are
+  serialized across normal signal/reconcile. The broker claim is retained only to identify the field
+  bytes and is not current product guidance.
 
 Global transition/capacitance/fanout/legality all-clear is not proven by timing-fix fail-reason tables.
 The Reader explicitly keeps that scope unknown. This can make the whole Goal/effect comparison
@@ -137,5 +159,6 @@ There is no fabricated global collateral PASS or physical-signoff claim.
 The first broad local validation was interrupted after reproducing six legacy ATCS fixture-loading
 failures (651 seconds, 0 SSH, 0 Electron); its original output remains
 `.hima-tmp/issue82-full-local.log`. It is not a completed or passed full suite. The later completed
-full-local result and its three test-only corrections are recorded above. No live model, EDA or remote
-deployment has started.
+full-local result and its three test-only corrections are recorded above. A later live model/EDA/remote
+deployment is recorded in the superseding section; the current direct-auth/materialization candidate
+itself has not been deployed or live-run.

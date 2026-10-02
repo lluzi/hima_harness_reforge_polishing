@@ -1,7 +1,29 @@
 # Issue #82 Site adapter evidence — 2026-10-02
 
-Scope: read-only Site inventory and local deterministic protocol tests. No model request, OpenCode
-session, EDA process, installation, remote file write, or deployment was performed.
+Scope note: the inventory/probe sections below describe the pre-field candidate as tested at that
+time. They are superseded for current product direction by the field/post-field note immediately
+below; historical broker/token facts are retained rather than rewritten.
+
+## Superseding field and post-field note
+
+Three owned production paths were later deployed for frozen candidate `2d2e9dc5`; a real Hima owner,
+OpenCode 1.18.34 and XTop completed one best-effort engineering task. Resident beat strong serial
+AutoFix: Setup 24→18 with better WNS/TNS and Hold 82→0. The Run stayed Goal false because 18 Setup
+violations remained. It was cancelled after the live harness reported two integration defects; the
+exact task was reconciled stopped/quiescent and its checkpoint/ECO/reports remain retained.
+
+The Campaign Reader defect was result-only Host materialization, not invalid engineering content.
+Post-field commit `76eeba8c` reconstructs every declared `engineering/` support path with immutable,
+no-clobber staging and Site-side hash verification; the original ATCS Reader accepts the focused tree
+digest contract. This was not deployed into the closed Run and is not a live rerun.
+
+The deployed candidate's provider broker, sanitized profile/task token and permission-kind correlation
+are also superseded by direct human correction. Current code removes them, read-only mounts the Site's
+native OpenCode config/auth and grants allow-once to permissions from the exact current ACP session.
+The native credential is consequently within the trusted OpenCode execution environment; Hima does not
+claim to hide it from OpenCode shell tools and only keeps literal credentials out of prompts, Host
+frames, ACP traces and deliveries. This simpler adapter has local deterministic validation only and
+must receive a new candidate identity before any future deployment.
 
 ## Native and protocol identity
 

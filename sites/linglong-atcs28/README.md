@@ -99,27 +99,24 @@ local licence metadata and `xtop` could not resolve. With that root read-only, t
 resolved the XTop 2025.09 wrapper and executable, all 80 loader dependencies and bundled docs; a write
 probe was refused. This was metadata-only: XTop was not started and no licence was checked out.
 
-`environment.credentialReadPaths` names one wrapper-host-only OpenCode `auth.json`; it is never mounted
-in the container. The wrapper reads only the DeepSeek API key and starts an in-process, task-lifetime
-loopback broker. The container receives a sanitized OpenCode profile and an ephemeral route token. The
-broker accepts only authenticated `POST /deepseek/chat/completions` for model `deepseek-flash`, forwards
-to the fixed DeepSeek endpoint without logging headers or bodies, and stops with task quiescence. The
-account key never enters task material, native argv/environment/home, ACP trace or delivery. A dummy
-upstream test proves normal forwarding while a task-home/native-argv negative check proves the dummy
-account key and host auth path are absent. A network-disabled tmpfs probe using the exact installed
-`opencode acp --pure` argv also initialized, selected `deepseek/deepseek-flash`, created and closed an
-ephemeral ACP session, and exited 0 without a model/API call or persistent Site write.
+`environment.credentialReadPaths` names the Site's existing OpenCode config directory and `auth.json`.
+They are mounted read-only at their native `/home/luzi` paths after the private task home mount. There
+is no Hima provider broker, task route token or sanitized provider profile. ACP explicitly selects
+`deepseek/deepseek-flash`; provider discovery/authentication otherwise remains OpenCode-native. The
+native OpenCode process and its normal shell tools can read these native files, so this configuration
+does not claim to isolate the account key from the trusted executor. Hima does not copy literal
+credentials into task prompts, Host request frames, ACP traces or delivery documents.
 
-The sanitized profile pins both `model` and `small_model` to `deepseek/deepseek-flash` and enables only
-the `deepseek` provider, so titles, summaries and internal task collaborators cannot silently select a
-different provider. The exact installed ACP probe exposed only the DeepSeek Pro and Flash options and
-retained Flash as current.
+Every ACP permission request bound to the exact current native session receives `allow_once`, without
+Hima classifying read/execute/other kinds; foreign-session requests reject. The external boundary is
+the rootless Podman namespace, Site Permit, exact Campaign/task identity, read-only shared sources and
+task-private write mounts. Expanding those boundaries remains an administrator change.
 
 The Campaign remains a read-only source for declared business outputs, but the container masks its
 shared `.hima-engineering` subtree and rebinds only the current task directory read-only, followed by
-that task's private workspace read-write. A sibling task's home, broker token, native trace and delivery
-metadata are absent from this task's namespace. Tokens are independent per task, and each loopback
-broker rejects every sibling token while accepting its own.
+that task's private workspace read-write. A sibling task's home, native trace and delivery
+metadata are absent from this task's namespace. Native OpenCode config/auth is Site-level executor
+state, not task-level business material.
 
 The wrapper retains canonical request/receipt digests, native ACP trace, permission decisions, state,
 immutable request-scoped artifact snapshots/manifests and an atomic latest delivery manifest under
@@ -129,7 +126,8 @@ symlink parents, linked foreign files and path escapes are rejected before hashi
 unreceipted operation found after restart becomes `unknown` and is not replayed. Cancel completes only
 after the ACP process and owned descendants are gone; release preserves task files. Before a real
 model/EDA run, deploy and hash the candidate bytes, reload the Site, and run the deterministic protocol
-tests. These repository files do not prove remote deployment or a real XTop engineering task qualified.
+tests. The frozen broker-based candidate was deployed and ran one real XTop task; current direct-auth
+repository bytes have not been deployed or live-qualified.
 
 A same-task message receipt means durable queue admission: the wrapper writes a request-bound queued
 record, then returns immutable `accepted` immediately. It records native prompt completion separately in
@@ -139,14 +137,14 @@ replay a message merely because the native turn is still running.
 If the wrapper Job dies, the Host may launch the same fixed wrapper with `--task-dir <existing>
 --reconcile`. This one-shot mode verifies signed task/runtime/owned identities, stops only the retained
 PID-start/PGID/container CID, writes signed `owned.quiescent=true` and `state.phase=stopped`, and exits 0.
-It never starts ACP or the provider broker and never scans or replays business request frames. Missing,
+It never starts ACP and never scans or replays business request frames. Missing,
 changed or still-live ownership exits nonzero and remains fenced as unknown.
 
 The new Pack also binds `nativeTimingContext` to
-`/data/eda/project/hima_harness/atcs-inputs/nativeTimingContext-v1.json`. The remote file was absent during
-the 2026-10-02 read-only inventory, so Pack/Site preparation remains blocked until an administrator
-publishes it. `inputs/nativeTimingContext-v1.json` is the locally prepared candidate from the bounded
-checks below; `inputs/nativeTimingContext-v1.template.json` records the shape for later refreshes. The
+`/data/eda/project/hima_harness/atcs-inputs/nativeTimingContext-v1.json`. The remote file was later
+published for the frozen field candidate and verified byte-exact before its Run.
+`inputs/nativeTimingContext-v1.json` is the versioned source;
+`inputs/nativeTimingContext-v1.template.json` records the shape for later refreshes. The
 object records the exact bound design-manifest SHA-256, its ordered scenarios, an absolute retained
 `staData` directory plus ATCS tree digest, nonempty source reports, constraints in manifest SDC order,
 and the producing tool/version/command. Do not select an old run by name alone.

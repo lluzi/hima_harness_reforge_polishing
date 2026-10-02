@@ -10,8 +10,6 @@ import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
-import http.client
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
 import fcntl
@@ -19,14 +17,12 @@ import os
 from pathlib import Path, PurePosixPath
 import queue
 import re
-import secrets
 import signal
 import stat
 import subprocess
 import sys
 import threading
 import time
-from urllib.parse import urlsplit
 
 
 PROTOCOL = "hima-resident-engineering/1"
@@ -34,8 +30,6 @@ CAPABILITY_SCHEMA = "hima-resident-engineering-capability/1"
 REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$")
 UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
 HEX64 = re.compile(r"^[a-f0-9]{64}$")
-DEEPSEEK_UPSTREAM = "https://api.deepseek.com"
-PERMISSION_CORRELATION_SECONDS = 30
 
 
 def now():
@@ -276,162 +270,6 @@ def copy_confined(root, relative, destination):
     fsync_directory(destination.parent)
 
 
-class ProviderBroker:
-    """Task-lifetime DeepSeek forwarder; the real account key never enters the native sandbox."""
-
-    def __init__(self, auth_path, task_home, upstream=DEEPSEEK_UPSTREAM):
-        self.auth_path = Path(auth_path)
-        self.task_home = Path(task_home)
-        self.upstream = urlsplit(upstream)
-        self.token = secrets.token_urlsafe(32)
-        self.server = None
-        self.thread = None
-        self.connections = set()
-        self.connection_lock = threading.Lock()
-        self.handler_threads = set()
-
-    def _account_key(self):
-        plain_file(self.auth_path)
-        auth = load_json(self.auth_path)
-        record = auth.get("deepseek") if isinstance(auth, dict) else None
-        if not isinstance(record, dict) or record.get("type") != "api" or not isinstance(record.get("key"), str) or not record["key"]:
-            raise ValueError("native DeepSeek API authentication is unavailable")
-        return record["key"]
-
-    def _prepare_sanitized_home(self, base_url):
-        config = self.task_home / ".config" / "opencode" / "opencode.json"
-        auth = self.task_home / ".local" / "share" / "opencode" / "auth.json"
-        atomic_create(config, {
-            "model": "deepseek/deepseek-flash",
-            "small_model": "deepseek/deepseek-flash",
-            "enabled_providers": ["deepseek"],
-            "provider": {"deepseek": {"options": {"baseURL": base_url}}},
-        })
-        atomic_create(auth, {"deepseek": {"type": "api", "key": self.token}})
-
-    def start(self):
-        account_key = self._account_key()
-        broker = self
-
-        class Handler(BaseHTTPRequestHandler):
-            protocol_version = "HTTP/1.0"
-
-            def log_message(self, _format, *_args):
-                return
-
-            def handle(self):
-                current = threading.current_thread()
-                with broker.connection_lock:
-                    broker.handler_threads.add(current)
-                try:
-                    return super().handle()
-                finally:
-                    with broker.connection_lock:
-                        broker.handler_threads.discard(current)
-
-            def _deny(self, status, message):
-                body = json.dumps({"error": message}, separators=(",", ":")).encode("utf-8")
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def do_POST(self):
-                if self.path != "/deepseek/chat/completions":
-                    self._deny(404, "provider route is not allowed")
-                    return
-                if self.headers.get("Authorization") != f"Bearer {broker.token}":
-                    self._deny(401, "task provider token is invalid")
-                    return
-                try:
-                    length = int(self.headers.get("Content-Length", ""))
-                except ValueError:
-                    length = -1
-                if length < 0 or length > 128 * 1024 * 1024:
-                    self._deny(413, "provider request size is invalid")
-                    return
-                body = self.rfile.read(length)
-                try:
-                    request = json.loads(body.decode("utf-8"), parse_constant=reject_constant, object_pairs_hook=unique_object)
-                except Exception:
-                    self._deny(400, "provider request is not valid JSON")
-                    return
-                if not isinstance(request, dict) or request.get("model") != "deepseek-flash":
-                    self._deny(403, "provider model is outside this task capability")
-                    return
-                connection_class = http.client.HTTPSConnection if broker.upstream.scheme == "https" else http.client.HTTPConnection
-                port = broker.upstream.port or (443 if broker.upstream.scheme == "https" else 80)
-                connection = connection_class(broker.upstream.hostname, port, timeout=300)
-                with broker.connection_lock:
-                    broker.connections.add(connection)
-                try:
-                    prefix = broker.upstream.path.rstrip("/")
-                    connection.request("POST", f"{prefix}/chat/completions", body=body, headers={
-                        "Authorization": f"Bearer {account_key}",
-                        "Content-Type": "application/json",
-                        "Accept": self.headers.get("Accept", "application/json"),
-                    })
-                    response = connection.getresponse()
-                    self.send_response(response.status)
-                    for name in ("Content-Type", "Content-Encoding", "Cache-Control"):
-                        value = response.getheader(name)
-                        if value:
-                            self.send_header(name, value)
-                    self.end_headers()
-                    while True:
-                        chunk = response.read1(64 * 1024)
-                        if not chunk:
-                            break
-                        self.wfile.write(chunk)
-                        self.wfile.flush()
-                except Exception:
-                    self._deny(502, "upstream provider request failed")
-                finally:
-                    connection.close()
-                    with broker.connection_lock:
-                        broker.connections.discard(connection)
-
-            def do_GET(self):
-                self._deny(405, "provider method is not allowed")
-
-        ThreadingHTTPServer.daemon_threads = True
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.thread = threading.Thread(target=self.server.serve_forever, name="resident-provider-broker", daemon=True)
-        self.thread.start()
-        port = self.server.server_address[1]
-        base_url = f"http://127.0.0.1:{port}/deepseek"
-        self._prepare_sanitized_home(base_url)
-        return base_url
-
-    def stop(self):
-        with self.connection_lock:
-            connections = list(self.connections)
-        for connection in connections:
-            try:
-                if connection.sock is not None:
-                    connection.sock.shutdown(2)
-                connection.close()
-            except Exception:
-                pass
-        if self.server is not None:
-            self.server.shutdown()
-            self.server.server_close()
-        if self.thread is not None:
-            self.thread.join(timeout=5)
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            with self.connection_lock:
-                alive = [thread for thread in self.handler_threads if thread.is_alive()]
-            if not alive:
-                break
-            time.sleep(.02)
-        if alive:
-            raise RuntimeError("task provider broker requests did not quiesce")
-        self.server = None
-        self.thread = None
-
-
 class ACP:
     def __init__(self, argv, cwd, env, trace, stderr_log):
         self.trace = trace
@@ -547,9 +385,7 @@ class Wrapper:
         self.stop_event = threading.Event()
         self.cancelled = threading.Event()
         self.rpc = None
-        self.provider_broker = None
         self.session_id = None
-        self.tool_kinds = {}
         self.event_seq = max(
             [int(path.stem) for path in self.events.glob("*.json") if path.stem.isdigit()] or [0]
         )
@@ -575,7 +411,7 @@ class Wrapper:
                 raise ValueError("retained native ownership identity is invalid")
 
     def validate_configuration(self):
-        required = {"schema", "protocol", "wrapper", "native", "sandbox", "environment", "permissions", "delivery", "stopGraceSeconds"}
+        required = {"schema", "protocol", "wrapper", "native", "sandbox", "environment", "delivery", "stopGraceSeconds"}
         if set(self.capability) != required:
             raise ValueError(f"capability fields differ: {sorted(set(self.capability) ^ required)}")
         if self.capability["schema"] != CAPABILITY_SCHEMA or self.capability["protocol"] != PROTOCOL:
@@ -584,7 +420,6 @@ class Wrapper:
             "wrapper": {"argv"},
             "native": {"executable", "version", "argv", "model", "protocolVersion"},
             "environment": {"inherit", "set", "toolPaths", "credentialReadPaths"},
-            "permissions": {"autoApprove", "denyUnknown"},
             "delivery": {"candidate"},
         }
         for name, fields in nested.items():
@@ -615,11 +450,9 @@ class Wrapper:
                 raise ValueError(f"sandbox {field} must be one relative directory")
         if not isinstance(self.capability["stopGraceSeconds"], (int, float)) or self.capability["stopGraceSeconds"] <= 0:
             raise ValueError("stopGraceSeconds must be positive")
-        if self.capability["permissions"].get("denyUnknown") is not True:
-            raise ValueError("unknown native permissions must fail closed")
         if sandbox.get("kind") == "podman":
-            if len(self.capability["environment"]["credentialReadPaths"]) != 1:
-                raise ValueError("production capability needs one wrapper-host auth file")
+            if not self.capability["environment"]["credentialReadPaths"]:
+                raise ValueError("production capability needs the native OpenCode configuration/auth paths")
             campaign = Path(self.task.get("campaignWorkspace", ""))
             if (not campaign.is_absolute() or campaign.resolve() != self.task_dir.parent.parent
                     or self.task_dir.parent.name != ".hima-engineering"):
@@ -724,6 +557,20 @@ class Wrapper:
         argv.extend(["--tmpfs", f"{private_root}:rw,nosuid,nodev,noexec"])
         argv.extend(["--mount", f"type=bind,src={self.task_dir},dst={self.task_dir},ro=true"])
         argv.extend(["--mount", f"type=bind,src={self.home},dst=/home/luzi,rw=true"])
+        for native_path in self.capability["environment"]["credentialReadPaths"]:
+            source = Path(native_path)
+            try:
+                relative = source.relative_to("/home/luzi")
+            except ValueError:
+                raise ValueError(f"native OpenCode configuration is outside its home: {source}") from None
+            target = self.home / relative
+            if source.is_dir():
+                target.mkdir(mode=0o700, parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                if not target.exists():
+                    target.touch(mode=0o400)
+            argv.extend(["--mount", f"type=bind,src={source},dst={source},ro=true"])
         argv.extend([
             "--mount", f"type=bind,src={native['executable']},dst={native['executable']},ro=true",
             "--mount", f"type=bind,src={self.workspace},dst={self.workspace},rw=true",
@@ -756,10 +603,6 @@ class Wrapper:
     def launch(self):
         self.state("starting")
         try:
-            if self.capability["sandbox"]["kind"] == "podman":
-                auth_file = self.capability["environment"]["credentialReadPaths"][0]
-                self.provider_broker = ProviderBroker(auth_file, self.home)
-                self.provider_broker.start()
             self.rpc = ACP(self.native_argv(), str(self.workspace), self.native_env(), self.native_dir / "session-events.jsonl", self.native_dir / "stderr.log")
             self.record_owned(False)
             initialized = self.rpc.request("initialize", {
@@ -781,15 +624,7 @@ class Wrapper:
                     self.shutdown_native(graceful=False)
                 except Exception:
                     pass
-            elif self.provider_broker is not None:
-                self.provider_broker.stop()
-                self.provider_broker = None
             raise
-
-    def stop_provider_broker(self):
-        if self.provider_broker is not None:
-            self.provider_broker.stop()
-            self.provider_broker = None
 
     def prompt_text(self, payload, initial=False):
         if initial:
@@ -886,13 +721,6 @@ class Wrapper:
                 return
             method = message.get("method")
             if method == "session/update":
-                update = message.get("params", {}).get("update", {})
-                tool_call_id = update.get("toolCallId")
-                kind = update.get("kind")
-                session_id = message.get("params", {}).get("sessionId")
-                if (session_id == self.session_id and isinstance(tool_call_id, str)
-                        and isinstance(kind, str) and kind != "other"):
-                    self.tool_kinds[(session_id, tool_call_id)] = (kind, time.monotonic())
                 continue
             if method != "session/request_permission" or "id" not in message:
                 if "id" in message:
@@ -900,15 +728,8 @@ class Wrapper:
                 continue
             tool = message.get("params", {}).get("toolCall", {})
             reported_kind = tool.get("kind", "other")
-            tool_call_id = tool.get("toolCallId")
             permission_session = message.get("params", {}).get("sessionId")
-            session_matches = permission_session == self.session_id
-            projected = self.tool_kinds.pop((permission_session, tool_call_id), None) \
-                if session_matches and isinstance(tool_call_id, str) else None
-            projected_kind = projected[0] if (projected is not None
-                and time.monotonic() - projected[1] <= PERMISSION_CORRELATION_SECONDS) else None
-            kind = projected_kind if reported_kind == "other" and isinstance(projected_kind, str) else reported_kind
-            approve = session_matches and kind in self.capability["permissions"]["autoApprove"]
+            approve = permission_session == self.session_id
             options = message.get("params", {}).get("options", [])
             desired = "once" if approve else "reject"
             selected = next((item["optionId"] for item in options if item.get("optionId") == desired), None)
@@ -918,7 +739,7 @@ class Wrapper:
                 approve = False
                 selected = next((item["optionId"] for item in options if item.get("kind", "").startswith("reject")), None)
             self.event("permission", {"sessionId": self.session_id, "toolCall": tool,
-                                      "reportedKind": reported_kind, "effectiveKind": kind,
+                                      "reportedKind": reported_kind,
                                       "decision": "allow_once" if approve else "reject"})
             result = {"outcome": {"outcome": "selected", "optionId": selected}} if selected else {"outcome": {"outcome": "cancelled"}}
             self.rpc.send({"jsonrpc": "2.0", "id": message["id"], "result": result})
@@ -1134,7 +955,6 @@ class Wrapper:
         if alive:
             raise RuntimeError(f"owned descendants remain alive: {alive}")
         self.record_owned(True, {"reason": "native shutdown confirmed"})
-        self.stop_provider_broker()
 
     def shutdown_recovered(self):
         with self.ownership_lock():
@@ -1269,7 +1089,6 @@ class Wrapper:
                 self.state("stopped", request["requestId"], {"quiescent": True})
                 self.receipt(request, "completed", result={"quiescent": True})
             except Exception as error:
-                self.stop_provider_broker()
                 self.state("failed", request["requestId"], {"quiescent": False, "error": str(error)})
                 self.receipt(request, "unknown", error=f"native quiescence unconfirmed: {error}")
         elif operation == "delivery":
@@ -1297,7 +1116,6 @@ class Wrapper:
                 self.receipt(request, "completed", result={"artifactsPreserved": True, "quiescent": True})
                 self.stop_event.set()
             except Exception as error:
-                self.stop_provider_broker()
                 self.state("failed", request["requestId"], {"nativeQuiescence": "unconfirmed", "error": str(error)})
                 self.receipt(request, "unknown", error=f"release cannot confirm native quiescence: {error}")
         else:
@@ -1377,7 +1195,6 @@ def main():
             if had_owner:
                 wrapper.state("stopped", detail={"reason": "signal", "signal": str(_signum), "quiescent": True})
         finally:
-            wrapper.stop_provider_broker()
             wrapper.stop_event.set()
 
     signal.signal(signal.SIGTERM, stop)

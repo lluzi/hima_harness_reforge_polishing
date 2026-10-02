@@ -8,27 +8,27 @@
 - 主目录 `0626bba3` 中 ATCS `0.1.10` 不得拿来当本切片 module/graph事实。落地前核对实际分支与 base，保留用户 dirty状态。
 - 一个 Codex gpt-6.1-sol/High 主集成者负责共享 `packs/fabric/tools/index/ledger` 接线。独立 worker可在已冻结接口后处理 Site adapter、Pack方法和测试；也使用 gpt-6.1-sol/High且fresh boundedcontext，不继续派生。
 - 实现稳定后一次独立 gpt-6.1-sol/High关键复核。真实 Site/产品操作由既有 Opus5.5/High FL负责，产品实际模型为 DeepSeek4.1Flash。
-- 当前仅规格写作；以下命令和验收尚未执行。
+- 当前实现已完成一次真实工程试验。现场业务效果成立，但 frozen live Run 的 Campaign Reader 接回失败；post-field artifact staging 与 direct-native-auth 简化只有本地验证，未重跑现场。
 
 ## 平台代码地图
 
 | 职责 | 当前文件／符号 | 最小增量及保持项 |
 |---|---|---|
-| Pack 允许外包与材料引用 | `packages/harness/src/packs.ts`: `packTool`, `actNode`, `validatePack`, `checkPack` | tools上可选 `outsourcing {role,reads,knowledge,produces}`；复用description/inputs/file/argv/licences/outputReader。验证声明引用与对应Site能力；无字段保留普通tool。不要改native Team、Workshop语义或加新graphkind。 |
+| Pack 允许外包与材料引用 | `packages/harness/src/packs.ts`: `packTool`, `actNode`, `validatePack`, `checkPack` | tools上可选 `outsourcing {role,reads,knowledge,artifactPrefix,produces}`；support只可在声明前缀下不可变落地，result映射精确output。历史缺前缀方法可读但不能启动新任务。 |
 | 公开Agent动作 | `packages/harness/src/tools.ts`: `hima_execute` schema/execute | `action:engineering` + operation `start/message/status/cancel/delivery/release`，沿用实际agent actor和当前Run控制参数；不收原始启动argv/任意cwd/credential。 |
 | 声明上下文与真实Agent能力 | `packages/harness/src/index.ts`: product systemPrompt section/context/inventory；`fabric.ts`: `executionContext`；已有recommend描述 | Agent实际知道可外包工程能力、节点资格和完整方法，能自行发任务与跟进；不以被动脚本固定prompt代替Agent。 |
 | admission／单execution／幂等 | `packages/harness/src/fabric.ts`: `ExecutionActionRequest`, `executionAction`, `controlling`, `actOnExecution` | 在现有控制锁/epoch/revision/requestreceipt下处理engineering。任务ref绑定既有execution/Job；普通work与engineering互斥；未声明/重复/旧owner/staleexecution无副作用。 |
 | launch与容量 | `packages/harness/src/node-turns.ts`: `toolNode`, `launchAndWait`；`job-cap.ts`: `claimSlotAndLaunch`；`jobs.ts`: `launchJob` | 复用普通SiteJob launch/slot/Permit/intents，不要求nativeWorkshop代码、nativeOperatorchild或全部工程完成后才返回start。 |
 | 材料准备 | `packages/harness/src/workshop.ts`: `captureWorkshopInputs`, knowledge读取/身份；`node-turns.ts`现有材料/参数准备 | 复用材料保留/hash/读取函数形成当前taskenvelope，不能复制另一套Workshop作者或把entry验证绕成成功。 |
 | Site具体能力 | `packages/harness/src/sites.ts`: `loadSite`/既有bindings；`shell.ts`: `decideLaunch`, `decideWrite` | 首版采用 `bindings.engineeringCapabilities` 的受Permit约束材料；内容固定wrapper/executable/protocol/profile/model/read-write/tool/environment/stopgrace。沿用binding/配置加载职责，非新providerregistry。 |
-| SSH／消息文件 | `packages/harness/src/channel.ts`: `Channel`, `LocalChannel`, `SshChannel`, checked workspacePlumbing | 复用私有任务目录read/checkedtee/jobplumbing。帧完整+requestId/digest才接收；不新增任意SSHshell/cwd语言。 |
+| SSH／消息文件 | `packages/harness/src/channel.ts`: `Channel`, `LocalChannel`, `SshChannel`, checked workspacePlumbing | 复用私有任务目录、固定 `sha256sum`/`cp` plumbing和Job控制。交付先完整路径/解析边界/hash预检，support no-clobber，Reader前复核；不新增任意SSH shell语言。 |
 | Job状态／实际停止 | `packages/harness/src/jobs.ts`: `jobStatus`, `jobTail`, `jobKill`, `reconcileLaunchIntent`, `killSession`；`interactive-job.ts`: `endJobProcessGroup` | Job/native ownedchild真实quiescence，不能只看tmux会话或cancelack；释放进程不删工程文件。保留现有Runpause与cancel区别。 |
 | 记录／恢复／既有view | `packages/harness/src/ledger.ts`: nodeExecution/job/launchIntent/executionReceipt；`recovery.ts`: `reconcileRuns`, `cancelRun`；`remote.ts`: 现有Run/execution/control投影 | 先用已有receipt.data、Job目录/日志和产物引用表达task。仅必要时加可选metadata；遵守既有ledger版本/兼容规则，不新建EngineeringTask表/状态服务/伪nativechild。恢复不重放不确定操作。 |
 | artifact保留 | `packages/harness/src/experience.ts`: `retainRunMaterial` 及已有Run归档 | 保存真正的脚本、报告、native事件和来源引用，再release。既有delete禁止和历史方法保护保持。 |
 
 允许一个 module-private OpenCode adapter/helper文件来集中协议转换，若拆文件能改善locality可采用，例如 `packages/harness/src/engineering-executor.ts`；**不注册新Cordis/Harness组件或ctx任务服务**。启动在Site侧的薄wrapper模板可放在现有 `sites/linglong-atcs28/templates/`，明确标为部署材料，例如 `resident-engineering-wrapper.py`。它只实现task-local ACP/native-session过程与request/receipt衔接，不实施Timing策略。实际落地路径由模块owner选择并在变更记录列明；不能用一个新文件名掩盖新的业务主脑。
 
-普通task/privateCoding目录具备正常文件读写/脚本/测试能力。既有允许wrapper/cwd并不自动隔离wrapper内任意shell；Site/native工作环境必须有真正有效的目录与执行边界，正常访问positive与保护资产negative均可达。不能把nativepermissiondeny、文件规则字符串错误或host失联算作模型不会修复。
+普通task/privateCoding目录具备正常文件读写/脚本/测试能力。当前 native session 的 ACP permissions统一 allow-once，不在Hima内分类read/execute/other；Site Permit、Podman namespace、Campaign只读和task-private写区才是边界。OpenCode直接使用native config/auth，Hima不提供provider broker或task token，也不宣称对受信任executor隐藏账户密钥。
 
 ## Pack代码地图与具体路线
 
@@ -80,7 +80,7 @@ pnpm run test:local --files test/contract/conversation-execution.host.test.ts te
 ## 切片、边界与回滚
 
 1. **通用contract/Host切片**：声明+context/tool+当前execution/Job admission/receipt；可用确定性native-protocol进程fixture证明start/message/stop/delivery与旧pack兼容。固定接口后Siteadapter与新Pack可独立实现。
-2. **Site/OpenCode adapter切片**：task-local会话、正常coding/EDA环境、真实消息/permission/control/childcleanup；只一个wrapper/adapter职责，不新建长期平台。
+2. **Site/OpenCode adapter切片**：task-local会话、正常coding/EDA环境、真实消息/control/childcleanup；直接复用OpenCode native auth与全current-session权限，只一个wrapper/adapter职责，不新建provider代理或长期平台。
 3. **ATCS Pack切片**：新版单工程节点、nativeR1/结果Reader/partialgoal/普通AutoFix效果入口、方法知识和例子；不改旧physicaltruth。
 4. **集成与真实工程验收**：同一candidate+task输入身份，真实HimaAgent调用OpenCode。平台功能与XTop效果分别保留证据；效果负结果不改写平台已证行为，也不预先宣称业务成功。
 
