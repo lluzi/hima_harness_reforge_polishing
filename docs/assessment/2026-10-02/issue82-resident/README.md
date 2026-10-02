@@ -30,6 +30,7 @@ model calls or EDA runs are included in the cheap checks.
 | `4b6ca3cd` | ATCS 0.3.0 native input/common R1/ordinary AutoFix/outsourced task/Reader/Goal | Pack checks 3/3; native/Reader/legacy Python 13/13; new public Host dry path 1/1, terminal Goal false; old method preserved |
 | `6dad071d` | Immediate durable message queue acknowledgement; separate actual completion/unknown facts | Protocol 13/13; Host 8/8; 5.5-second message acknowledged under one second; no restart replay |
 | `07fe2c8e` | Opt-in real Site/model acceptance through an actual standard owning Hima Agent | Guard test: 1 SKIP, zero boots/SSH/model calls; not live acceptance |
+| `54f63991` | Stabilize three inherited local tests exposed by the final broad run without changing product behavior | Affected files 17/17; delegation pair 2/2 across five additional runs; zero SSH/Electron |
 
 Each slice was immediately pushed and its remote branch SHA compared with its local commit.
 The 0.2.10 graph/contract/docs are retained explicitly for legacy regression; old Run snapshots and
@@ -49,6 +50,28 @@ dependencies/scripts and is retained as a failed setup probe, not baseline evide
 `.hima-tmp/issue82-baseline-build.log`, `.hima-tmp/issue82-baseline-typecheck.log` and
 `.hima-tmp/issue82-typecheck.log` in the implementation worktree. No unrelated typing cleanup was
 added to this feature. A non-green whole-repository typecheck remains an explicit limitation.
+
+## Final local validation
+
+The frozen `60e6e752` product candidate completed the full local group once: 778 tests, 775 passed,
+3 failed, 0 skipped, 0 SSH attempts and 0 Electron launches in 1,897.924 seconds. The complete log is
+`.hima-tmp/issue82-final-full-local.log`; it is retained as a failed suite and is not reported as a
+pass.
+
+All three failures were in unchanged tests and were independently traced to existing test-contract
+defects already present at the `e762789a` authoring baseline:
+
+- `branch-autopilot.host.test.ts` still expected a generic transport close to replace the typed
+  `atcs_close` finalizer introduced by `f50988f8`. The test now proves premature close is refused,
+  completes the declared finalizer, closes transport, and still reaches `done` without a retry.
+- Both delegation-input tests assumed a continuable child must be synchronously visible in the native
+  Agent registry as soon as the durable `created` receipt returns. They now wait for publication within
+  the unchanged task deadline and then exercise the same registered tool.
+
+After the test-only correction, the three affected files passed 17/17. The two former publication-race
+files then passed 2/2 in five consecutive additional runs. `git diff --check` passes; the repository
+typecheck still reports exactly the 16 baseline diagnostics above and no new error. These focused runs
+do not relabel the original broad suite as passed and do not requalify unchanged product surfaces.
 
 ## Field admission and remaining proof
 
@@ -113,6 +136,6 @@ There is no fabricated global collateral PASS or physical-signoff claim.
 
 The first broad local validation was interrupted after reproducing six legacy ATCS fixture-loading
 failures (651 seconds, 0 SSH, 0 Electron); its original output remains
-`.hima-tmp/issue82-full-local.log`. It is not a completed or passed full suite. Final full validation
-will run after the scoped fixes and final candidate freeze. No live model, EDA or remote deployment
-has started.
+`.hima-tmp/issue82-full-local.log`. It is not a completed or passed full suite. The later completed
+full-local result and its three test-only corrections are recorded above. No live model, EDA or remote
+deployment has started.
