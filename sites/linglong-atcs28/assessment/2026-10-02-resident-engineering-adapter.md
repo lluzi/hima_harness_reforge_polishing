@@ -38,9 +38,20 @@ pre/post SHA-256 was unchanged. Production adds only the read roots in the capab
 workspace/home write mounts, the proven XTop shm/ulimit profile, and host networking required by model
 and licence services.
 
-The existing OpenCode config and `auth.json` require exact read-only mounts. They are excluded from
-prompts, argv, logs and delivery, but OpenCode tools share the container uid and can technically read
-the auth mount. This is recorded native-client trust, not secret isolation.
+The original candidate mounted OpenCode config and `auth.json` read-only into the native home; review
+correctly showed that a shell could still read the account key. The corrected wrapper keeps one auth
+path on the wrapper host, exposes only a sanitized task profile plus ephemeral local route token, and
+forwards only `deepseek-flash` chat-completion requests through an in-process broker. A fake upstream
+received the real dummy account header while recursive task-home and native-argv checks found no dummy
+account key/path. No actual provider call was made.
+
+A zero-network, ephemeral Podman probe first ran the installed OpenCode 1.18.34 `debug config` against a
+tmpfs-only home containing the same sanitized profile and a dummy route token. It resolved model
+`deepseek/deepseek-flash` and base URL `http://127.0.0.1:43123/deepseek`; provider fields contained only
+`options`. A second probe used the exact `opencode acp --pure --cwd /work` native argv, performed only
+ACP initialize/new-session/close, observed agent version 1.18.34 and model currentValue
+`deepseek/deepseek-flash`, then exited 0. Both containers were removed; network was disabled, so neither
+probe made a model/API call or persistent Site write.
 
 ## Deterministic protocol tests
 
@@ -50,7 +61,12 @@ Initial RED: 4/4 original lifecycle tests failed because the wrapper did not exi
 python3 sites/linglong-atcs28/test_resident_engineering_wrapper.py -v
 ```
 
-Current GREEN: 13/13 in 8.41 seconds, covering persistent session start/message, a 5.5-second message
+Review RED reproduced the delivery escape: `linked-parent/auth.json` followed a workspace symlink and
+was incorrectly accepted as a result artifact. Current GREEN is 22/22 in 11.33 seconds, including
+no-follow positive/negative containment, dummy provider credential separation, selected-model
+streaming forwarding, fixed one-shot/never-started/HUP reconciliation, and the original task protocol
+cases.
+The original protocol set covers persistent session start/message, a 5.5-second message
 with immediate durable queue acknowledgement and later native completion fact, stand-in-generated
 delivery, best-effort fixture support, native permission rejection/event retention, detached descendant
 cancel, unknown/no-replay restart including an accepted but unfinished message, exact
@@ -59,10 +75,12 @@ live-owned-process reconciliation before release, full
 with immutable prior artifact snapshots plus atomic latest delivery manifests. `py_compile` and
 `git diff --check` also pass.
 
-After a fresh build, the focused public Host file passed 8/8 in 19.04 seconds. Its main lifecycle case
+After a fresh build, the final focused public Host recovery file passed 12/12 in 30.95 seconds using
+11 actual in-process Hosts and zero SSH/model/Electron attempts. Its main lifecycle case
 asserts the slow message returns `accepted` before the Host's five-second wait, then waits for the actual
 completion state before delivery. The same suite retains cancel, unknown/no-replay, best-effort,
-capacity/licence and same-session Reader-repair coverage.
+capacity/licence, same-session Reader repair, wrapper-crash cleanup, never-started cleanup and restart
+fencing coverage.
 
 ## Deployment blockers retained
 

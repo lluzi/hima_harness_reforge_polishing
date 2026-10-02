@@ -93,15 +93,22 @@ Bash/Python/Tcl/XTop environment. A no-model/no-EDA probe ran the exact OpenCode
 image, wrote its private tmp, refused an append to the protected ATCS manifest, and preserved that file's
 digest. Bubblewrap was rejected because this host denies its uid-map setup.
 
-OpenCode's existing config directory and `auth.json` are mounted read-only at their native locations;
-their bytes are never copied into task material, argv, wrapper logs, or delivery. OpenCode and its shell
-tools share the container uid, so this remains a native-client trust boundary: it does not prove a hostile
-shell cannot read the mounted auth file. A stronger boundary would require a credential broker or
-executable-domain policy outside this adapter. Do not broaden the mount to the rest of `/home/luzi`.
+`environment.credentialReadPaths` names one wrapper-host-only OpenCode `auth.json`; it is never mounted
+in the container. The wrapper reads only the DeepSeek API key and starts an in-process, task-lifetime
+loopback broker. The container receives a sanitized OpenCode profile and an ephemeral route token. The
+broker accepts only authenticated `POST /deepseek/chat/completions` for model `deepseek-flash`, forwards
+to the fixed DeepSeek endpoint without logging headers or bodies, and stops with task quiescence. The
+account key never enters task material, native argv/environment/home, ACP trace or delivery. A dummy
+upstream test proves normal forwarding while a task-home/native-argv negative check proves the dummy
+account key and host auth path are absent. A network-disabled tmpfs probe using the exact installed
+`opencode acp --pure` argv also initialized, selected `deepseek/deepseek-flash`, created and closed an
+ephemeral ACP session, and exited 0 without a model/API call or persistent Site write.
 
 The wrapper retains canonical request/receipt digests, native ACP trace, permission decisions, state,
 immutable request-scoped artifact snapshots/manifests and an atomic latest delivery manifest under
-`.hima-engineering/<taskId>/`; it contains no timing algorithm. An
+`.hima-engineering/<taskId>/`; it contains no timing algorithm. Each artifact is opened from the
+private-workspace directory FD with `O_NOFOLLOW` on every parent and leaf;
+symlink parents, linked foreign files and path escapes are rejected before hashing or retention. An
 unreceipted operation found after restart becomes `unknown` and is not replayed. Cancel completes only
 after the ACP process and owned descendants are gone; release preserves task files. Before a real
 model/EDA run, deploy and hash the candidate bytes, reload the Site, and run the deterministic protocol
@@ -111,6 +118,12 @@ A same-task message receipt means durable queue admission: the wrapper writes a 
 record, then returns immutable `accepted` immediately. It records native prompt completion separately in
 an `input` event and the latest state. Callers must not interpret `accepted` as completed, and must not
 replay a message merely because the native turn is still running.
+
+If the wrapper Job dies, the Host may launch the same fixed wrapper with `--task-dir <existing>
+--reconcile`. This one-shot mode verifies signed task/runtime/owned identities, stops only the retained
+PID-start/PGID/container CID, writes signed `owned.quiescent=true` and `state.phase=stopped`, and exits 0.
+It never starts ACP or the provider broker and never scans or replays business request frames. Missing,
+changed or still-live ownership exits nonzero and remains fenced as unknown.
 
 The new Pack also binds `nativeTimingContext` to
 `/data/eda/project/hima_harness/atcs-inputs/nativeTimingContext-v1.json`. The remote file was absent during

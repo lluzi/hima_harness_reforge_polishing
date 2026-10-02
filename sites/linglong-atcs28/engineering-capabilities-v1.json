@@ -59,7 +59,6 @@
     },
     "toolPaths": ["/usr/local/bin", "/usr/bin", "/bin"],
     "credentialReadPaths": [
-      "/home/luzi/.config/opencode",
       "/home/luzi/.local/share/opencode/auth.json"
     ]
   },

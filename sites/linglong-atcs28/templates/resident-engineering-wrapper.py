@@ -7,26 +7,33 @@ delivery-file identity.  stdout is never part of the Host protocol.
 """
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
+import http.client
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
+import fcntl
 import os
 from pathlib import Path, PurePosixPath
 import queue
 import re
+import secrets
 import signal
 import stat
 import subprocess
 import sys
 import threading
 import time
+from urllib.parse import urlsplit
 
 
 PROTOCOL = "hima-resident-engineering/1"
 CAPABILITY_SCHEMA = "hima-resident-engineering-capability/1"
 REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$")
 HEX64 = re.compile(r"^[a-f0-9]{64}$")
+DEEPSEEK_UPSTREAM = "https://api.deepseek.com"
 
 
 def now():
@@ -147,6 +154,14 @@ def file_digest(path):
 
 
 def process_identity(pid):
+    stat_path = Path(f"/proc/{pid}/stat")
+    try:
+        raw = stat_path.read_text()
+        fields = raw[raw.rfind(")") + 2:].split()
+        if len(fields) > 19:
+            return f"proc-start-ticks:{fields[19]}"
+    except (FileNotFoundError, PermissionError, ValueError):
+        pass
     try:
         return subprocess.check_output(
             ["ps", "-o", "lstart=", "-p", str(pid)], text=True, stderr=subprocess.DEVNULL,
@@ -178,25 +193,6 @@ def descendant_pids(root_pid):
     return owned
 
 
-def copy_exclusive(source, destination):
-    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    source_fd = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-    target_fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o400)
-    try:
-        while True:
-            chunk = os.read(source_fd, 1024 * 1024)
-            if not chunk:
-                break
-            remaining = memoryview(chunk)
-            while remaining:
-                remaining = remaining[os.write(target_fd, remaining):]
-        os.fsync(target_fd)
-    finally:
-        os.close(source_fd)
-        os.close(target_fd)
-    fsync_directory(destination.parent)
-
-
 def framed(body):
     return {**body, "sha256": sha256(canonical(body)).hexdigest()}
 
@@ -205,6 +201,231 @@ def plain_file(path):
     mode = path.lstat().st_mode
     if not stat.S_ISREG(mode) or path.is_symlink():
         raise ValueError(f"not a plain file: {path}")
+
+
+@contextmanager
+def confined_file(root, relative):
+    """Open a workspace-relative plain file without following any path component."""
+    parts = tuple(relative.parts)
+    if not parts or relative.is_absolute() or ".." in parts:
+        raise ValueError("path is not workspace-relative")
+    opened = []
+    try:
+        current = os.open(root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0))
+        opened.append(current)
+        for index, part in enumerate(parts):
+            final = index == len(parts) - 1
+            flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            if not final:
+                flags |= getattr(os, "O_DIRECTORY", 0)
+            current = os.open(part, flags, dir_fd=current)
+            opened.append(current)
+        state = os.fstat(current)
+        if not stat.S_ISREG(state.st_mode) or state.st_nlink != 1:
+            raise ValueError(f"workspace artifact is not a single-link plain file: {relative}")
+        yield current
+    except OSError as error:
+        raise ValueError(f"workspace path contains a symlink, missing component, or non-plain file: {relative}: {error}") from error
+    finally:
+        for fd in reversed(opened):
+            os.close(fd)
+
+
+def read_confined(root, relative, maximum=8 * 1024 * 1024):
+    with confined_file(root, relative) as fd:
+        state = os.fstat(fd)
+        if state.st_size > maximum:
+            raise ValueError(f"workspace JSON file exceeds {maximum} bytes: {relative}")
+        chunks = []
+        while True:
+            chunk = os.read(fd, min(1024 * 1024, maximum + 1 - sum(map(len, chunks))))
+            if not chunk:
+                return b"".join(chunks)
+            chunks.append(chunk)
+            if sum(map(len, chunks)) > maximum:
+                raise ValueError(f"workspace JSON file exceeds {maximum} bytes: {relative}")
+
+
+def confined_digest(root, relative):
+    digest = sha256()
+    with confined_file(root, relative) as fd:
+        while True:
+            chunk = os.read(fd, 1024 * 1024)
+            if not chunk:
+                return digest.hexdigest()
+            digest.update(chunk)
+
+
+def copy_confined(root, relative, destination):
+    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with confined_file(root, relative) as source_fd:
+        target_fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o400)
+        try:
+            while True:
+                chunk = os.read(source_fd, 1024 * 1024)
+                if not chunk:
+                    break
+                remaining = memoryview(chunk)
+                while remaining:
+                    remaining = remaining[os.write(target_fd, remaining):]
+            os.fsync(target_fd)
+        finally:
+            os.close(target_fd)
+    fsync_directory(destination.parent)
+
+
+class ProviderBroker:
+    """Task-lifetime DeepSeek forwarder; the real account key never enters the native sandbox."""
+
+    def __init__(self, auth_path, task_home, upstream=DEEPSEEK_UPSTREAM):
+        self.auth_path = Path(auth_path)
+        self.task_home = Path(task_home)
+        self.upstream = urlsplit(upstream)
+        self.token = secrets.token_urlsafe(32)
+        self.server = None
+        self.thread = None
+        self.connections = set()
+        self.connection_lock = threading.Lock()
+        self.handler_threads = set()
+
+    def _account_key(self):
+        plain_file(self.auth_path)
+        auth = load_json(self.auth_path)
+        record = auth.get("deepseek") if isinstance(auth, dict) else None
+        if not isinstance(record, dict) or record.get("type") != "api" or not isinstance(record.get("key"), str) or not record["key"]:
+            raise ValueError("native DeepSeek API authentication is unavailable")
+        return record["key"]
+
+    def _prepare_sanitized_home(self, base_url):
+        config = self.task_home / ".config" / "opencode" / "opencode.json"
+        auth = self.task_home / ".local" / "share" / "opencode" / "auth.json"
+        atomic_create(config, {
+            "model": "deepseek/deepseek-flash",
+            "provider": {"deepseek": {"options": {"baseURL": base_url}}},
+        })
+        atomic_create(auth, {"deepseek": {"type": "api", "key": self.token}})
+
+    def start(self):
+        account_key = self._account_key()
+        broker = self
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.0"
+
+            def log_message(self, _format, *_args):
+                return
+
+            def handle(self):
+                current = threading.current_thread()
+                with broker.connection_lock:
+                    broker.handler_threads.add(current)
+                try:
+                    return super().handle()
+                finally:
+                    with broker.connection_lock:
+                        broker.handler_threads.discard(current)
+
+            def _deny(self, status, message):
+                body = json.dumps({"error": message}, separators=(",", ":")).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self):
+                if self.path != "/deepseek/chat/completions":
+                    self._deny(404, "provider route is not allowed")
+                    return
+                if self.headers.get("Authorization") != f"Bearer {broker.token}":
+                    self._deny(401, "task provider token is invalid")
+                    return
+                try:
+                    length = int(self.headers.get("Content-Length", ""))
+                except ValueError:
+                    length = -1
+                if length < 0 or length > 128 * 1024 * 1024:
+                    self._deny(413, "provider request size is invalid")
+                    return
+                body = self.rfile.read(length)
+                try:
+                    request = json.loads(body.decode("utf-8"), parse_constant=reject_constant, object_pairs_hook=unique_object)
+                except Exception:
+                    self._deny(400, "provider request is not valid JSON")
+                    return
+                if not isinstance(request, dict) or request.get("model") != "deepseek-flash":
+                    self._deny(403, "provider model is outside this task capability")
+                    return
+                connection_class = http.client.HTTPSConnection if broker.upstream.scheme == "https" else http.client.HTTPConnection
+                port = broker.upstream.port or (443 if broker.upstream.scheme == "https" else 80)
+                connection = connection_class(broker.upstream.hostname, port, timeout=300)
+                with broker.connection_lock:
+                    broker.connections.add(connection)
+                try:
+                    prefix = broker.upstream.path.rstrip("/")
+                    connection.request("POST", f"{prefix}/chat/completions", body=body, headers={
+                        "Authorization": f"Bearer {account_key}",
+                        "Content-Type": "application/json",
+                        "Accept": self.headers.get("Accept", "application/json"),
+                    })
+                    response = connection.getresponse()
+                    self.send_response(response.status)
+                    for name in ("Content-Type", "Content-Encoding", "Cache-Control"):
+                        value = response.getheader(name)
+                        if value:
+                            self.send_header(name, value)
+                    self.end_headers()
+                    while True:
+                        chunk = response.read1(64 * 1024)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+                except Exception:
+                    self._deny(502, "upstream provider request failed")
+                finally:
+                    connection.close()
+                    with broker.connection_lock:
+                        broker.connections.discard(connection)
+
+            def do_GET(self):
+                self._deny(405, "provider method is not allowed")
+
+        ThreadingHTTPServer.daemon_threads = True
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, name="resident-provider-broker", daemon=True)
+        self.thread.start()
+        port = self.server.server_address[1]
+        base_url = f"http://127.0.0.1:{port}/deepseek"
+        self._prepare_sanitized_home(base_url)
+        return base_url
+
+    def stop(self):
+        with self.connection_lock:
+            connections = list(self.connections)
+        for connection in connections:
+            try:
+                if connection.sock is not None:
+                    connection.sock.shutdown(2)
+                connection.close()
+            except Exception:
+                pass
+        if self.server is not None:
+            self.server.shutdown()
+            self.server.server_close()
+        if self.thread is not None:
+            self.thread.join(timeout=5)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            with self.connection_lock:
+                alive = [thread for thread in self.handler_threads if thread.is_alive()]
+            if not alive:
+                break
+            time.sleep(.02)
+        if alive:
+            raise RuntimeError("task provider broker requests did not quiesce")
+        self.server = None
+        self.thread = None
 
 
 class ACP:
@@ -289,7 +510,8 @@ incoming = queue.Queue()
 
 
 class Wrapper:
-    def __init__(self, task_dir, capability_path):
+    def __init__(self, task_dir, capability_path, reconcile_only=False):
+        self.reconcile_only = reconcile_only
         self.task_dir = task_dir.resolve()
         self.capability_path = capability_path.resolve()
         plain_file(self.capability_path)
@@ -321,6 +543,7 @@ class Wrapper:
         self.stop_event = threading.Event()
         self.cancelled = threading.Event()
         self.rpc = None
+        self.provider_broker = None
         self.session_id = None
         self.event_seq = max(
             [int(path.stem) for path in self.events.glob("*.json") if path.stem.isdigit()] or [0]
@@ -330,8 +553,21 @@ class Wrapper:
         self.prompt_lock = threading.Lock()
         self.runtime = self.task_dir / "runtime.json"
         self.resumed = self.runtime.exists()
-        if not self.resumed:
-            atomic_create(self.runtime, {"schema": "hima-resident-engineering-runtime/1", "taskId": self.task["taskId"], "createdAt": now()})
+        if self.resumed:
+            runtime = load_json(self.runtime)
+            if (runtime.get("schema") != "hima-resident-engineering-runtime/1"
+                    or runtime.get("taskId") != self.task["taskId"]
+                    or runtime.get("sha256") != digest_body(runtime)):
+                raise ValueError("retained runtime identity is invalid")
+        elif not self.reconcile_only:
+            atomic_create(self.runtime, framed({
+                "schema": "hima-resident-engineering-runtime/1", "taskId": self.task["taskId"], "createdAt": now(),
+            }))
+        if self.recovered_owned is not None:
+            if (self.recovered_owned.get("schema") != "hima-resident-engineering-owned/1"
+                    or self.recovered_owned.get("taskId") != self.task["taskId"]
+                    or self.recovered_owned.get("sha256") != digest_body(self.recovered_owned)):
+                raise ValueError("retained native ownership identity is invalid")
 
     def validate_configuration(self):
         required = {"schema", "protocol", "wrapper", "native", "sandbox", "environment", "permissions", "delivery", "stopGraceSeconds"}
@@ -377,6 +613,8 @@ class Wrapper:
         if self.capability["permissions"].get("denyUnknown") is not True:
             raise ValueError("unknown native permissions must fail closed")
         if sandbox.get("kind") == "podman":
+            if len(self.capability["environment"]["credentialReadPaths"]) != 1:
+                raise ValueError("production capability needs one wrapper-host auth file")
             campaign = Path(self.task.get("campaignWorkspace", ""))
             if (not campaign.is_absolute() or campaign.resolve() != self.task_dir.parent.parent
                     or self.task_dir.parent.name != ".hima-engineering"):
@@ -389,10 +627,11 @@ class Wrapper:
         native = self.capability["native"]
         if native.get("protocolVersion") != 1 or native.get("model") != "deepseek/deepseek-flash":
             raise ValueError("native ACP protocol/model mismatch")
-        version = subprocess.run([native["executable"], "--version"], capture_output=True, text=True, timeout=10)
-        observed = (version.stdout or version.stderr).strip()
-        if version.returncode != 0 or observed != native["version"]:
-            raise ValueError(f"native executable version mismatch: expected {native['version']}, observed {observed or version.returncode}")
+        if not self.reconcile_only:
+            version = subprocess.run([native["executable"], "--version"], capture_output=True, text=True, timeout=10)
+            observed = (version.stdout or version.stderr).strip()
+            if version.returncode != 0 or observed != native["version"]:
+                raise ValueError(f"native executable version mismatch: expected {native['version']}, observed {observed or version.returncode}")
         if sandbox.get("kind") == "none":
             if not sandbox.get("testOnly") or os.environ.get("HIMA_RESIDENT_TESTING") != "1":
                 raise ValueError("an unsandboxed resident session is test-only")
@@ -455,6 +694,15 @@ class Wrapper:
         sandbox = self.capability["sandbox"]
         if sandbox["kind"] == "none":
             return [native["executable"], *native["argv"]]
+        try:
+            native_relative = Path(native["executable"]).relative_to("/home/luzi")
+        except ValueError:
+            native_relative = None
+        if native_relative is not None:
+            native_target = self.home / native_relative
+            native_target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if not native_target.exists():
+                native_target.touch(mode=0o500)
         argv = [
             sandbox["executable"], "run", "--rm", "-i", "--read-only", "--network", sandbox["network"],
             "--userns", "keep-id", "--security-opt=no-new-privileges", "--cap-drop=all", "--pids-limit", "4096",
@@ -468,8 +716,6 @@ class Wrapper:
         campaign = Path(self.task["campaignWorkspace"]).resolve()
         argv.extend(["--mount", f"type=bind,src={campaign},dst={campaign},ro=true"])
         argv.extend(["--mount", f"type=bind,src={self.home},dst=/home/luzi,rw=true"])
-        for source in self.capability["environment"]["credentialReadPaths"]:
-            argv.extend(["--mount", f"type=bind,src={source},dst={source},ro=true"])
         argv.extend([
             "--mount", f"type=bind,src={native['executable']},dst={native['executable']},ro=true",
             "--mount", f"type=bind,src={self.workspace},dst={self.workspace},rw=true",
@@ -501,21 +747,41 @@ class Wrapper:
 
     def launch(self):
         self.state("starting")
-        self.rpc = ACP(self.native_argv(), str(self.workspace), self.native_env(), self.native_dir / "session-events.jsonl", self.native_dir / "stderr.log")
-        self.record_owned(False)
-        initialized = self.rpc.request("initialize", {
-            "protocolVersion": self.capability["native"]["protocolVersion"],
-            "clientCapabilities": {},
-            "clientInfo": {"name": "Hima resident engineering adapter", "version": "1"},
-        }, timeout=30)
-        info = initialized.get("agentInfo", {})
-        if info.get("version") != self.capability["native"]["version"]:
-            raise RuntimeError(f"ACP agent version mismatch: {info.get('version')}")
-        session = self.rpc.request("session/new", {"cwd": str(self.workspace), "mcpServers": []}, timeout=30)
-        self.session_id = session["sessionId"]
-        self.rpc.request("session/set_config_option", {
-            "sessionId": self.session_id, "configId": "model", "value": self.capability["native"]["model"],
-        }, timeout=30)
+        try:
+            if self.capability["sandbox"]["kind"] == "podman":
+                auth_file = self.capability["environment"]["credentialReadPaths"][0]
+                self.provider_broker = ProviderBroker(auth_file, self.home)
+                self.provider_broker.start()
+            self.rpc = ACP(self.native_argv(), str(self.workspace), self.native_env(), self.native_dir / "session-events.jsonl", self.native_dir / "stderr.log")
+            self.record_owned(False)
+            initialized = self.rpc.request("initialize", {
+                "protocolVersion": self.capability["native"]["protocolVersion"],
+                "clientCapabilities": {},
+                "clientInfo": {"name": "Hima resident engineering adapter", "version": "1"},
+            }, timeout=30)
+            info = initialized.get("agentInfo", {})
+            if info.get("version") != self.capability["native"]["version"]:
+                raise RuntimeError(f"ACP agent version mismatch: {info.get('version')}")
+            session = self.rpc.request("session/new", {"cwd": str(self.workspace), "mcpServers": []}, timeout=30)
+            self.session_id = session["sessionId"]
+            self.rpc.request("session/set_config_option", {
+                "sessionId": self.session_id, "configId": "model", "value": self.capability["native"]["model"],
+            }, timeout=30)
+        except Exception:
+            if self.rpc is not None:
+                try:
+                    self.shutdown_native(graceful=False)
+                except Exception:
+                    pass
+            elif self.provider_broker is not None:
+                self.provider_broker.stop()
+                self.provider_broker = None
+            raise
+
+    def stop_provider_broker(self):
+        if self.provider_broker is not None:
+            self.provider_broker.stop()
+            self.provider_broker = None
 
     def prompt_text(self, payload, initial=False):
         if initial:
@@ -636,9 +902,8 @@ class Wrapper:
         relative = PurePosixPath(self.capability["delivery"]["candidate"])
         if relative.is_absolute() or ".." in relative.parts:
             raise ValueError("invalid delivery candidate path")
-        candidate_path = self.workspace.joinpath(*relative.parts)
-        plain_file(candidate_path)
-        candidate = load_json(candidate_path)
+        candidate_bytes = read_confined(self.workspace, relative)
+        candidate = json.loads(candidate_bytes.decode("utf-8"), parse_constant=reject_constant, object_pairs_hook=unique_object)
         if set(candidate) != {"schema", "outcome", "summary", "stopReason", "artifacts"} or candidate["schema"] != "hima-resident-engineering-candidate/1":
             raise ValueError("invalid delivery candidate")
         if candidate["outcome"] not in {"completed", "best-effort", "blocked", "cancelled"}:
@@ -655,16 +920,14 @@ class Wrapper:
             rel = PurePosixPath(artifact["path"])
             if rel.is_absolute() or ".." in rel.parts or not rel.parts:
                 raise ValueError("delivery artifact escapes workspace")
-            at = self.workspace.joinpath(*rel.parts)
-            plain_file(at)
-            observed = file_digest(at)
+            observed = confined_digest(self.workspace, rel)
             if observed != artifact["sha256"]:
                 raise ValueError(f"delivery artifact digest mismatch: {artifact['path']}")
             result_count += artifact["kind"] == "result"
             artifacts.append(artifact)
         if result_count != 1:
             raise ValueError("delivery needs exactly one result artifact")
-        candidate_digest = file_digest(candidate_path)
+        candidate_digest = sha256(candidate_bytes).hexdigest()
         latest = self.task_dir / "delivery" / "manifest.json"
         if latest.exists():
             previous = load_json(latest)
@@ -679,9 +942,8 @@ class Wrapper:
         snapshot_root = self.task_dir.joinpath(*artifact_root.parts)
         for artifact in artifacts:
             rel = PurePosixPath(artifact["path"])
-            source = self.workspace.joinpath(*rel.parts)
             destination = snapshot_root.joinpath(*rel.parts)
-            copy_exclusive(source, destination)
+            copy_confined(self.workspace, rel, destination)
             if file_digest(destination) != artifact["sha256"]:
                 raise ValueError(f"retained delivery artifact digest mismatch: {artifact['path']}")
         body = {
@@ -703,14 +965,75 @@ class Wrapper:
             return
         previous = self.recovered_owned or {}
         pid = self.rpc.process.pid if self.rpc is not None else previous.get("processPid")
-        identity = process_identity(pid) if self.rpc is not None else previous.get("processIdentity")
+        identity = previous.get("processIdentity")
+        process_group = previous.get("processGroupId")
+        container_id = previous.get("containerId")
+        if not quiescent and self.rpc is not None:
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                if self.rpc.process.poll() is not None:
+                    break
+                identity = process_identity(pid)
+                try:
+                    process_group = os.getpgid(pid)
+                except ProcessLookupError:
+                    process_group = None
+                if identity and process_group == pid:
+                    break
+                time.sleep(.02)
+            if not identity or process_group != pid:
+                try:
+                    os.killpg(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                raise RuntimeError("native process identity/PGID was not observable after launch")
+            if self.capability["sandbox"]["kind"] == "podman":
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    if self.container_cid.exists():
+                        container_id = self.container_cid.read_text().strip()
+                        if HEX64.fullmatch(container_id):
+                            break
+                    time.sleep(.02)
+                if not isinstance(container_id, str) or not HEX64.fullmatch(container_id):
+                    try:
+                        os.killpg(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    raise RuntimeError("native Podman container identity was not observable after launch")
         body = {
             "schema": "hima-resident-engineering-owned/1", "taskId": self.task["taskId"],
             "sandbox": self.capability["sandbox"]["kind"], "processPid": pid,
-            "processIdentity": identity, "processGroupId": pid,
+            "processIdentity": identity, "processGroupId": process_group,
             "containerCidFile": str(self.container_cid), "quiescent": quiescent,
+            **({"containerId": container_id} if container_id else {}),
+            **({"descendants": previous["descendants"]} if previous.get("descendants") else {}),
             "updatedAt": now(), **({"detail": detail} if detail else {}),
         }
+        atomic_replace(self.owned_file, framed(body))
+        self.recovered_owned = body
+
+    @contextmanager
+    def ownership_lock(self):
+        lock_path = self.native_dir / "ownership.lock"
+        fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
+    def retain_descendant_identities(self, pids):
+        facts = []
+        for pid in sorted(pids):
+            identity = process_identity(pid)
+            if identity:
+                facts.append({"pid": pid, "processIdentity": identity})
+        if not facts or self.recovered_owned is None:
+            return
+        body = {key: value for key, value in self.recovered_owned.items() if key != "sha256"}
+        body.update(descendants=facts, updatedAt=now())
         atomic_replace(self.owned_file, framed(body))
         self.recovered_owned = body
 
@@ -722,6 +1045,9 @@ class Wrapper:
         container = self.container_cid.read_text().strip()
         if not container:
             raise RuntimeError("owned Podman container identity is empty; quiescence is unknown")
+        expected = (self.recovered_owned or {}).get("containerId")
+        if not isinstance(expected, str) or container != expected:
+            raise RuntimeError("owned Podman container identity changed; quiescence is unknown")
         executable = self.capability["sandbox"]["executable"]
         subprocess.run([executable, "stop", "--time", str(grace), container],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=grace + 5, check=False)
@@ -733,11 +1059,16 @@ class Wrapper:
             raise RuntimeError(f"owned container remains alive: {container}")
 
     def shutdown_native(self, graceful=True):
+        with self.ownership_lock():
+            return self._shutdown_native(graceful)
+
+    def _shutdown_native(self, graceful=True):
         if self.rpc is None:
             return
         process = self.rpc.process
         running = process.poll() is None
         owned = descendant_pids(process.pid) if running else set()
+        self.retain_descendant_identities(owned)
         if running and graceful and self.session_id:
             try:
                 self.rpc.request("session/close", {"sessionId": self.session_id}, timeout=2)
@@ -776,8 +1107,13 @@ class Wrapper:
         if alive:
             raise RuntimeError(f"owned descendants remain alive: {alive}")
         self.record_owned(True, {"reason": "native shutdown confirmed"})
+        self.stop_provider_broker()
 
     def shutdown_recovered(self):
+        with self.ownership_lock():
+            return self._shutdown_recovered()
+
+    def _shutdown_recovered(self):
         owned = self.recovered_owned
         if owned is None:
             raise RuntimeError("prior native ownership has no retained identity; quiescence is unknown")
@@ -789,6 +1125,12 @@ class Wrapper:
             raise RuntimeError("prior native process identity is incomplete")
         current = process_identity(pid)
         descendants = descendant_pids(pid) if current == identity else set()
+        retained_descendants = owned.get("descendants") if isinstance(owned.get("descendants"), list) else []
+        for fact in retained_descendants:
+            child = fact.get("pid") if isinstance(fact, dict) else None
+            child_identity = fact.get("processIdentity") if isinstance(fact, dict) else None
+            if isinstance(child, int) and isinstance(child_identity, str) and process_identity(child) == child_identity:
+                descendants.add(child)
         if current == identity:
             group = owned.get("processGroupId")
             if isinstance(group, int):
@@ -819,11 +1161,40 @@ class Wrapper:
                 except ProcessLookupError:
                     pass
         deadline = time.monotonic() + grace
-        while time.monotonic() < deadline and (process_identity(pid) == identity or any(process_alive(child) for child in descendants)):
+        def retained_child_alive(child):
+            fact = next((item for item in retained_descendants if isinstance(item, dict) and item.get("pid") == child), None)
+            return process_identity(child) == fact.get("processIdentity") if fact else process_alive(child)
+
+        while time.monotonic() < deadline and (process_identity(pid) == identity or any(retained_child_alive(child) for child in descendants)):
             time.sleep(.02)
-        if process_identity(pid) == identity or any(process_alive(child) for child in descendants):
+        if process_identity(pid) == identity or any(retained_child_alive(child) for child in descendants):
             raise RuntimeError("prior owned native process tree remains alive")
         self.record_owned(True, {"reason": "recovered native shutdown confirmed"})
+
+    def reconcile_once(self):
+        """Stop exactly the retained native owner; never start ACP or consume business requests."""
+        if not self.resumed:
+            if self.owned_file.exists() or self.container_cid.exists():
+                raise RuntimeError("runtime is absent but partial native ownership exists; quiescence is unknown")
+            atomic_create(self.owned_file, framed({
+                "schema": "hima-resident-engineering-owned/1", "taskId": self.task["taskId"],
+                "sandbox": self.capability["sandbox"]["kind"], "quiescent": True,
+                "detail": {"reason": "never-started"}, "updatedAt": now(),
+            }))
+            self.state("stopped", detail={"reason": "recovery", "quiescent": True, "native": "never-started"})
+            return
+        try:
+            self.shutdown_recovered()
+            owned = load_json(self.owned_file)
+            if owned.get("sha256") != digest_body(owned) or owned.get("quiescent") is not True:
+                raise RuntimeError("reconciled ownership fact is not signed quiescent state")
+            self.state("stopped", detail={"reason": "recovery", "quiescent": True})
+            state = load_json(self.task_dir / "state.json")
+            if state.get("sha256") != digest_body(state) or state.get("phase") != "stopped":
+                raise RuntimeError("reconciliation did not publish stopped state")
+        except Exception as error:
+            self.state("failed", detail={"reason": "recovery", "quiescent": False, "error": str(error)})
+            raise
 
     def handle(self, request):
         operation = request["operation"]
@@ -871,6 +1242,7 @@ class Wrapper:
                 self.state("stopped", request["requestId"], {"quiescent": True})
                 self.receipt(request, "completed", result={"quiescent": True})
             except Exception as error:
+                self.stop_provider_broker()
                 self.state("failed", request["requestId"], {"quiescent": False, "error": str(error)})
                 self.receipt(request, "unknown", error=f"native quiescence unconfirmed: {error}")
         elif operation == "delivery":
@@ -898,6 +1270,7 @@ class Wrapper:
                 self.receipt(request, "completed", result={"artifactsPreserved": True, "quiescent": True})
                 self.stop_event.set()
             except Exception as error:
+                self.stop_provider_broker()
                 self.state("failed", request["requestId"], {"nativeQuiescence": "unconfirmed", "error": str(error)})
                 self.receipt(request, "unknown", error=f"release cannot confirm native quiescence: {error}")
         else:
@@ -955,14 +1328,29 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--task-dir", required=True, type=Path)
     parser.add_argument("--capability", required=True, type=Path)
+    parser.add_argument("--reconcile", action="store_true")
     args = parser.parse_args()
-    wrapper = Wrapper(args.task_dir, args.capability)
+    wrapper = Wrapper(args.task_dir, args.capability, reconcile_only=args.reconcile)
+
+    if args.reconcile:
+        wrapper.reconcile_once()
+        return
 
     def stop(_signum, _frame):
         wrapper.cancelled.set()
+        had_owner = wrapper.rpc is not None or wrapper.recovered_owned is not None
         try:
-            wrapper.shutdown_native(graceful=False)
+            if wrapper.rpc is not None:
+                wrapper.shutdown_native(graceful=False)
+            elif wrapper.resumed:
+                wrapper.shutdown_recovered()
+        except Exception as error:
+            wrapper.state("failed", detail={"reason": "signal-recovery", "quiescent": False, "error": str(error)})
+        else:
+            if had_owner:
+                wrapper.state("stopped", detail={"reason": "signal", "signal": str(_signum), "quiescent": True})
         finally:
+            wrapper.stop_provider_broker()
             wrapper.stop_event.set()
 
     signal.signal(signal.SIGTERM, stop)
