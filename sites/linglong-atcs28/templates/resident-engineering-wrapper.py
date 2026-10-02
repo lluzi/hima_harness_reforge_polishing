@@ -35,6 +35,7 @@ REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$")
 UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
 HEX64 = re.compile(r"^[a-f0-9]{64}$")
 DEEPSEEK_UPSTREAM = "https://api.deepseek.com"
+PERMISSION_CORRELATION_SECONDS = 30
 
 
 def now():
@@ -548,6 +549,7 @@ class Wrapper:
         self.rpc = None
         self.provider_broker = None
         self.session_id = None
+        self.tool_kinds = {}
         self.event_seq = max(
             [int(path.stem) for path in self.events.glob("*.json") if path.stem.isdigit()] or [0]
         )
@@ -884,14 +886,29 @@ class Wrapper:
                 return
             method = message.get("method")
             if method == "session/update":
+                update = message.get("params", {}).get("update", {})
+                tool_call_id = update.get("toolCallId")
+                kind = update.get("kind")
+                session_id = message.get("params", {}).get("sessionId")
+                if (session_id == self.session_id and isinstance(tool_call_id, str)
+                        and isinstance(kind, str) and kind != "other"):
+                    self.tool_kinds[(session_id, tool_call_id)] = (kind, time.monotonic())
                 continue
             if method != "session/request_permission" or "id" not in message:
                 if "id" in message:
                     self.rpc.send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32601, "message": "unsupported client method"}})
                 continue
             tool = message.get("params", {}).get("toolCall", {})
-            kind = tool.get("kind", "other")
-            approve = kind in self.capability["permissions"]["autoApprove"]
+            reported_kind = tool.get("kind", "other")
+            tool_call_id = tool.get("toolCallId")
+            permission_session = message.get("params", {}).get("sessionId")
+            session_matches = permission_session == self.session_id
+            projected = self.tool_kinds.pop((permission_session, tool_call_id), None) \
+                if session_matches and isinstance(tool_call_id, str) else None
+            projected_kind = projected[0] if (projected is not None
+                and time.monotonic() - projected[1] <= PERMISSION_CORRELATION_SECONDS) else None
+            kind = projected_kind if reported_kind == "other" and isinstance(projected_kind, str) else reported_kind
+            approve = session_matches and kind in self.capability["permissions"]["autoApprove"]
             options = message.get("params", {}).get("options", [])
             desired = "once" if approve else "reject"
             selected = next((item["optionId"] for item in options if item.get("optionId") == desired), None)
@@ -900,7 +917,9 @@ class Wrapper:
             if selected is None:
                 approve = False
                 selected = next((item["optionId"] for item in options if item.get("kind", "").startswith("reject")), None)
-            self.event("permission", {"sessionId": self.session_id, "toolCall": tool, "decision": "allow_once" if approve else "reject"})
+            self.event("permission", {"sessionId": self.session_id, "toolCall": tool,
+                                      "reportedKind": reported_kind, "effectiveKind": kind,
+                                      "decision": "allow_once" if approve else "reject"})
             result = {"outcome": {"outcome": "selected", "optionId": selected}} if selected else {"outcome": {"outcome": "cancelled"}}
             self.rpc.send({"jsonrpc": "2.0", "id": message["id"], "result": result})
 

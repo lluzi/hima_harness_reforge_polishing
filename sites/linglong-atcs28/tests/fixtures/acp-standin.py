@@ -89,6 +89,33 @@ def complete_prompt(request_id, text):
             },
         })
         pending_permission.wait(5)
+    if "REQUEST_GENERIC_READ_PERMISSION" in text:
+        send({
+            "jsonrpc": "2.0", "method": "session/update",
+            "params": {
+                "sessionId": "native-session-1",
+                "update": {
+                    "sessionUpdate": "tool_call_update", "toolCallId": "tool-read-1",
+                    "kind": "read", "title": "read", "status": "in_progress",
+                    "rawInput": {"filePath": "state/readiness.json"},
+                },
+            },
+        })
+        send({
+            "jsonrpc": "2.0", "id": "permission-read-1", "method": "session/request_permission",
+            "params": {
+                "sessionId": "native-session-1",
+                "toolCall": {
+                    "toolCallId": "tool-read-1", "kind": "other", "title": "read",
+                    "status": "pending", "rawInput": {"filePath": "state/readiness.json"},
+                },
+                "options": [
+                    {"optionId": "once", "kind": "allow_once", "name": "Allow once"},
+                    {"optionId": "reject", "kind": "reject_once", "name": "Reject"},
+                ],
+            },
+        })
+        pending_permission.wait(5)
     send({
         "jsonrpc": "2.0",
         "method": "session/update",
@@ -127,7 +154,7 @@ for raw in sys.stdin:
         cancelled.set()
     elif method == "session/close":
         send({"jsonrpc": "2.0", "id": request_id, "result": {}})
-    elif request_id == "permission-1":
+    elif request_id in {"permission-1", "permission-read-1"}:
         Path(os.environ["STANDIN_PERMISSION_RESPONSE"]).write_text(json.dumps(message["result"]))
         pending_permission.set()
     elif request_id is not None:

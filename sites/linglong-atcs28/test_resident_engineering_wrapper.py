@@ -14,6 +14,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 
 
 SITE = Path(__file__).resolve().parent
@@ -579,6 +580,84 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         events = list((self.task / "events").glob("*.json"))
         self.assertEqual(len(events), 1)
         self.assertEqual(json.loads(events[0].read_text())["kind"], "permission")
+
+    def test_actual_opencode_generic_permission_uses_its_prior_typed_tool_update(self):
+        self.task_record["goal"] = "REQUEST_GENERIC_READ_PERMISSION"
+        publish(self.task / "task.json", framed(self.task_record))
+        self.start_wrapper()
+        self.request("start:generic-read", "start")
+        deadline = time.monotonic() + 5
+        while not self.permission_response.exists() and time.monotonic() < deadline:
+            time.sleep(.02)
+        response = json.loads(self.permission_response.read_text())
+        self.assertEqual(response, {"outcome": {"outcome": "selected", "optionId": "once"}})
+        event = json.loads(next((self.task / "events").glob("*.json")).read_text())
+        self.assertEqual((event["kind"], event["reportedKind"], event["effectiveKind"], event["decision"]),
+                         ("permission", "other", "read", "allow_once"))
+
+    def test_permission_projection_is_same_session_one_shot_and_fresh(self):
+        module = load_wrapper_module()
+        with mock.patch.dict(os.environ, {"HIMA_RESIDENT_TESTING": "1"}):
+            wrapper = module.Wrapper(self.task, self.capability)
+        wrapper.session_id = "native-session-1"
+
+        class Rpc:
+            def __init__(self):
+                self.messages = []
+
+            def send(self, message):
+                self.messages.append(message)
+
+        wrapper.rpc = Rpc()
+        options = [
+            {"optionId": "once", "kind": "allow_once", "name": "Allow once"},
+            {"optionId": "reject", "kind": "reject_once", "name": "Reject"},
+        ]
+
+        def update(session_id, tool_call_id, kind="read"):
+            module.incoming.put({
+                "jsonrpc": "2.0", "method": "session/update",
+                "params": {"sessionId": session_id, "update": {
+                    "sessionUpdate": "tool_call_update", "toolCallId": tool_call_id,
+                    "kind": kind, "status": "in_progress",
+                }},
+            })
+
+        def permission(request_id, session_id, tool_call_id, kind="other"):
+            module.incoming.put({
+                "jsonrpc": "2.0", "id": request_id, "method": "session/request_permission",
+                "params": {"sessionId": session_id, "toolCall": {
+                    "toolCallId": tool_call_id, "kind": kind, "status": "pending",
+                }, "options": options},
+            })
+
+        update("native-session-1", "tool-consumed")
+        permission("permission-positive", "native-session-1", "tool-consumed")
+        permission("permission-reused", "native-session-1", "tool-consumed")
+        update("other-session", "tool-cross")
+        permission("permission-cross", "native-session-1", "tool-cross")
+        permission("permission-foreign", "other-session", "tool-explicit", "read")
+        wrapper.handle_native()
+
+        update("native-session-1", "tool-stale")
+        wrapper.handle_native()
+        wrapper.tool_kinds[("native-session-1", "tool-stale")] = (
+            "read", time.monotonic() - module.PERMISSION_CORRELATION_SECONDS - 1,
+        )
+        permission("permission-stale", "native-session-1", "tool-stale")
+        wrapper.handle_native()
+
+        choices = {message["id"]: message["result"]["outcome"]["optionId"] for message in wrapper.rpc.messages}
+        self.assertEqual(choices, {
+            "permission-positive": "once",
+            "permission-reused": "reject",
+            "permission-cross": "reject",
+            "permission-foreign": "reject",
+            "permission-stale": "reject",
+        })
+        events = [json.loads(path.read_text()) for path in sorted((self.task / "events").glob("*.json"))]
+        self.assertEqual([event["decision"] for event in events],
+                         ["allow_once", "reject", "reject", "reject", "reject"])
 
     def test_cancel_waits_for_detached_owned_descendant_to_die(self):
         self.task_record["goal"] = "SPAWN_DESCENDANT"
