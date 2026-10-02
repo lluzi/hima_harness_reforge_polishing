@@ -178,6 +178,11 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         self.assertNotIn("/", capability["sandbox"]["readOnlyRoots"])
         self.assertNotIn("/home/luzi", capability["sandbox"]["readOnlyRoots"])
         self.assertNotIn("/data/eda/project/hima_harness/atcs-runs", capability["sandbox"]["readOnlyRoots"])
+        self.assertIn("/data/eda/software/eda_tools/empyrean", capability["sandbox"]["readOnlyRoots"])
+        self.assertNotIn("/data/eda/software/eda_tools", capability["sandbox"]["readOnlyRoots"])
+        permit = (SITE / "permit.yml").read_text()
+        self.assertIn("  - /data/eda/software/eda_tools/empyrean\n", permit)
+        self.assertNotIn("  - /data/eda/software/eda_tools\n", permit)
         self.assertTrue(capability["sandbox"]["image"].isalnum())
 
     def test_production_scope_mount_is_exact_declared_campaign_not_all_runs(self):

@@ -1,5 +1,6 @@
 allowedReadRoots:
   - /data/eda/env
+  - /data/eda/software/eda_tools/empyrean
   - /data/eda/project/hima_harness/operator-admin/atcs-v31
   - /data/eda/project/hima_harness/operator-admin/resident-engineering-v1
   - /data/eda/project/hima_harness/operator-admin/atcs-v30

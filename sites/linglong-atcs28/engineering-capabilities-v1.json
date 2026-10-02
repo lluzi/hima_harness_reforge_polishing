@@ -21,6 +21,7 @@
     "image": "7d651dc8f1ab7d423b9d61be83fc3f5d608996ed7b91fa6588c3ed16daccfd54",
     "readOnlyRoots": [
       "/data/eda/env",
+      "/data/eda/software/eda_tools/empyrean",
       "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation",
       "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input",
       "/data/eda/project/techlib/tsmc28",

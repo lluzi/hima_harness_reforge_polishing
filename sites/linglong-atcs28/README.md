@@ -93,6 +93,12 @@ Bash/Python/Tcl/XTop environment. A no-model/no-EDA probe ran the exact OpenCode
 image, wrote its private tmp, refused an append to the protected ATCS manifest, and preserved that file's
 digest. Bubblewrap was rejected because this host denies its uid-map setup.
 
+The EDA initialization also needs the narrowly mounted
+`/data/eda/software/eda_tools/empyrean` vendor root. Without it, sourcing the init failed at the missing
+local licence metadata and `xtop` could not resolve. With that root read-only, the exact new namespace
+resolved the XTop 2025.09 wrapper and executable, all 80 loader dependencies and bundled docs; a write
+probe was refused. This was metadata-only: XTop was not started and no licence was checked out.
+
 `environment.credentialReadPaths` names one wrapper-host-only OpenCode `auth.json`; it is never mounted
 in the container. The wrapper reads only the DeepSeek API key and starts an in-process, task-lifetime
 loopback broker. The container receives a sanitized OpenCode profile and an ephemeral route token. The

@@ -58,6 +58,14 @@ model selector contained only `deepseek/deepseek-v4-pro` and `deepseek/deepseek-
 current. A separate ephemeral mount probe kept the Campaign business path and selected own-task subtree
 readable while the sibling subtree was absent.
 
+The first exact EDA namespace probe failed before tool resolution because
+`/data/eda/software/eda_tools/empyrean/license/license.dat` was absent. The capability and Permit now add
+only `/data/eda/software/eda_tools/empyrean` read-only, rather than all EDA software. After sourcing the
+same `eda_tools_2025_env.sh`, `command -v xtop` resolved
+`xtop-2025.09.tmp15/bin/xtop`; its `icexplorer-xtop_exe` was executable, all 80 `ldd` dependencies
+resolved under the wrapper's library environment, and `share/doc` was readable. A write probe under the
+tool root was refused. Network was disabled; no XTop process or licence checkout was attempted.
+
 ## Deterministic protocol tests
 
 Initial RED: 4/4 original lifecycle tests failed because the wrapper did not exist. Current command:
@@ -67,7 +75,7 @@ python3 sites/linglong-atcs28/test_resident_engineering_wrapper.py -v
 ```
 
 Review RED reproduced the delivery escape: `linked-parent/auth.json` followed a workspace symlink and
-was incorrectly accepted as a result artifact. Current GREEN is 24/24 in 12.96 seconds, including
+was incorrectly accepted as a result artifact. Current GREEN is 24/24 in 12.19 seconds, including
 no-follow positive/negative containment, dummy provider credential separation, selected-model
 streaming forwarding, sibling namespace/token isolation, fixed one-shot/never-started/HUP
 reconciliation, UUID/non-UUID ACP message IDs, and the original task protocol cases.
