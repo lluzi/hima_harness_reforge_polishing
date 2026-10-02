@@ -386,6 +386,7 @@ Known gaps still open (see also `adapters.py`'s own "Gaps")
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import re
 import os
@@ -4349,6 +4350,37 @@ exit 0
         "experimentDeadline": clock["experimentDeadline"], "predictionOnly": True}
 
 
+def _lead_native_pins(workspace, targets):
+    """Keep native pin endpoints; resolve ports through the Pack's existing Reader authority."""
+    pins = {target.split("|", 2)[2] for target in targets}
+    ports = sorted(pin for pin in pins if "/" not in pin)
+    if not ports:
+        return pins, []
+    reader_path = _FLOW_DIR.parent / "tools/read-atcs.py"
+    if not reader_path.is_file():
+        reader_path = Path(workspace) / "hima-readers/atcs-readiness/read-atcs.py"
+    if not reader_path.is_file():
+        raise core.AtcsError("missing-input", "prepare-lead needs the installed atcs-readiness Reader to resolve native ports")
+    spec = importlib.util.spec_from_file_location("atcs_lead_reader", reader_path)
+    reader = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reader)
+    answer = reader.resolve_endpoints(workspace, ports)
+    resolved = {row["endpoint"]: row for row in answer["resolved"]}
+    unresolved = {row["endpoint"]: row["unresolved"] for row in answer["unresolved"]}
+    modules = reader._netlist_index_cache[str(reader._safe_join(workspace, answer["netlist"]["path"], "design-state.netlist"))]
+    drivers = []
+    for port in ports:
+        row, reason = resolved.get(port), unresolved.get(port)
+        if row is None and "primary port" in (reason or ""):
+            row, reason = reader._net_driver(modules, answer["top"], reader._endpoint_part(port), [])
+        if row is None or not row.get("pin"):
+            raise core.AtcsError("invalid-work-package", f"native endpoint {port!r} needs a driving cell/output pin: {reason}")
+        pins.remove(port)
+        pins.add(f"{row['instance']}/{row['pin']}")
+        drivers.append(row["instance"])
+    return pins, drivers
+
+
 def _cmd_prepare_lead(workspace, args):
     (site_path,) = args
     workspace = Path(workspace)
@@ -4404,13 +4436,13 @@ def _cmd_prepare_lead(workspace, args):
         # The retained lead fixes the common residual, including paths no trial
         # seat covered. These are native R1 checks, not model-supplied scope.
         native_targets = set(common.get("nativeChecks") or [])
-        native_pins = {target.split("|", 2)[2] for target in native_targets}
+        native_pins, native_drivers = _lead_native_pins(workspace, native_targets)
         package = {k: v for k, v in active[0].items() if k not in ("schema", "id")}
         package.update(taskId="lead", problem="Owner-directed integration and additional residual ECO",
             targets=sorted(native_targets | {t for p in active for t in p["targets"]}),
             targetPins=sorted(native_pins | {t for p in active for t in p.get("targetPins") or []}),
             scope={"commands": list(workspaces.MUTATE_COMMANDS), "maxMutations": workspaces.SCOPE_MAX_MUTATIONS})
-        domains = [p["editDomain"] for p in active]
+        domains = [p["editDomain"] for p in active] + [{"instances": native_drivers}]
         dropped = {"instances": [], "nets": []}
         for contribution in collected["contributions"]:
             effective = contribution.get("effectiveDomain")

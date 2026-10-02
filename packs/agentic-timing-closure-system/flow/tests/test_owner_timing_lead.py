@@ -30,6 +30,11 @@ class OwnerTimingLeadChecks(unittest.TestCase):
         self.ws = Path(tempfile.mkdtemp(prefix="atcs-owner-lead-"))
         self.addCleanup(shutil.rmtree, self.ws, ignore_errors=True)
         manifest = _make_baseline_manifest(self.ws)
+        (self.ws / "netlist.v").write_text(
+            "module top(input a, output OUT);\n"
+            "BUFX1 U1(.A(a),.Y(n1)); INVX1 U2(.A(n1),.Y(n2));\n"
+            "BUFX2 U3(.A(a),.Y(n3)); BUFX1 UOUT(.A(a),.Y(OUT));\n"
+            "DFFX1 U9(.D(n1),.Q(n9));\nendmodule\n")
         (self.ws / "tech.lef").write_text("stub")
         (self.ws / "cells.lef").write_text("stub")
         (self.ws / "design.def").write_text("VERSION 5.8 ;\nEND DESIGN\n")
@@ -50,7 +55,7 @@ class OwnerTimingLeadChecks(unittest.TestCase):
             "worklistId": "r1-residual", "seed": {"path": str(seed.relative_to(self.ws)), "digest": core.tree_digest(seed)},
             "cellStateDigest": core.digest({"U1": "BUFX1", "U2": "INVX1", "U3": "BUFX2", "UOUT": "BUFX1", "U9": "DFFX1"}),
             "summaries": {"setup": "native setup", "hold": "native hold"}, "endpoints": {"setup": [], "hold": ["U9/D"]},
-            "nativeChecks": ["synthetic|hold|U9/D"],
+            "nativeChecks": ["synthetic|hold|U9/D", "synthetic|setup|OUT"],
             "analysisBoard": "research/observe/common-r1/residual-analysis", "experimentDeadline": 9999999999}
         _write_json(self.ws / "state/common-stage.json", self.common)
         self.packages = {slot: _active(slot, self.base["id"]) for slot in workspaces.TASK_IDS}
@@ -212,7 +217,19 @@ close $fh
         plan = {"batchId": "owner-lead-test", "baseStateId": self.base["id"], "select": [contribution["id"]],
                 "resolutions": [], "deferred": [], "reason": "Merge and add measured common U9 trial", "autoFinish": False}
         _write_json(self.ws / "research/requests/integration-plan.json", {"plan": plan})
-        out, brief = cli._cmd_prepare_lead(self.ws, [str(self.site_path)])
+        # A native primary input has no cell driver: never silently lose its check.
+        missing = {**self.common, "nativeChecks": self.common["nativeChecks"] + ["synthetic|setup|a"]}
+        _write_json(self.ws / "state/common-stage.json", missing)
+        with self.assertRaisesRegex(core.AtcsError, "native endpoint 'a'.*driving cell/output pin"):
+            cli._cmd_prepare_lead(self.ws, [str(self.site_path)])
+        self.assertNotIn("lead", cli._read_plain(self.ws / "state/workers.json")["workers"])
+        _write_json(self.ws / "state/common-stage.json", self.common)
+        # Exercise the deployed workspace Reader path, not only the source Pack layout.
+        reader = self.ws / "hima-readers/atcs-readiness/read-atcs.py"
+        reader.parent.mkdir(parents=True)
+        shutil.copyfile(FLOW.parent / "tools/read-atcs.py", reader)
+        with patch.object(cli, "_FLOW_DIR", self.ws / "flow"):
+            out, brief = cli._cmd_prepare_lead(self.ws, [str(self.site_path)])
         _write_json(out, brief)
         self.assertEqual(brief["planSha256"], core.file_sha256(self.ws / "research/requests/integration-plan.json"))
         self.assertEqual(brief["namePrefix"], "atcs_lead_r1_")
@@ -222,6 +239,12 @@ close $fh
         self.assertIn("synthetic|hold|U9/D", lead_package["targets"])
         self.assertIn("U9/D", lead_package["targetPins"])
         self.assertIn("U9/D", brief["targetPins"])
+        self.assertIn("synthetic|setup|OUT", lead_package["targets"])
+        self.assertNotIn("OUT", lead_package["targetPins"])
+        self.assertIn("UOUT/Y", lead_package["targetPins"])
+        self.assertIn("UOUT/Y", brief["targetPins"])
+        self.assertTrue(set(self.common["nativeChecks"]) <= set(lead_package["targets"]))
+        self.assertIn("UOUT", lead_package["editDomain"]["instances"])
         self.assertIn("{swerv_dma_ctrl/dma_axi_wstrb[1]}", brief["derivedDomainDropped"]["nets"])
         root = self.ws / brief["leadRoot"]
         self.assertEqual(workers["requiredSlots"], list(workspaces.TASK_IDS))
@@ -285,7 +308,7 @@ proc write_design_changes {args} {
 import assert from 'node:assert/strict';
 import { loadPack } from '@hima/harness';
 const pack = loadPack('packs', 'agentic-timing-closure-system');
-assert.equal(pack.contract.version, '0.2.7');
+assert.equal(pack.contract.version, '0.2.8');
 const edges=pack.graph.edges;
 const to=id=>edges.filter(e=>e.from===id).map(e=>e.to);
 assert.deepEqual(to('common-autofix'), ['read-refresh-budget']);
