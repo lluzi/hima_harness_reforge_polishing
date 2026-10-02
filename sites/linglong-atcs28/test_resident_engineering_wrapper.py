@@ -232,8 +232,13 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         task_home.mkdir()
         module = load_wrapper_module()
         broker = module.ProviderBroker(protected, task_home, f"http://127.0.0.1:{upstream.server_address[1]}")
+        sibling_home = self.root / "sibling-sanitized-home"
+        sibling_home.mkdir()
+        sibling_broker = module.ProviderBroker(protected, sibling_home, f"http://127.0.0.1:{upstream.server_address[1]}")
         try:
             base_url = broker.start()
+            sibling_url = sibling_broker.start()
+            self.assertNotEqual(broker.token, sibling_broker.token)
             endpoint = base_url.removeprefix("http://")
             host, route = endpoint.split("/", 1)
             connection = http.client.HTTPConnection(host, timeout=5)
@@ -250,6 +255,8 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
             sanitized_config = json.loads((task_home / ".config/opencode/opencode.json").read_text())
             sanitized_auth = json.loads((task_home / ".local/share/opencode/auth.json").read_text())
             self.assertEqual(sanitized_config["model"], "deepseek/deepseek-flash")
+            self.assertEqual(sanitized_config["small_model"], "deepseek/deepseek-flash")
+            self.assertEqual(sanitized_config["enabled_providers"], ["deepseek"])
             self.assertEqual(sanitized_config["provider"]["deepseek"]["options"]["baseURL"], base_url)
             self.assertEqual(sanitized_auth, {"deepseek": {"type": "api", "key": broker.token}})
             visible = b"".join(path.read_bytes() for path in task_home.rglob("*") if path.is_file())
@@ -278,7 +285,22 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
             self.assertLess(time.monotonic() - started, .5, "broker forwards the first SSE chunk before upstream completion")
             self.assertIn(b"data: second", response.read())
             connection.close()
+            sibling_endpoint = sibling_url.removeprefix("http://")
+            sibling_host, sibling_route = sibling_endpoint.split("/", 1)
+            connection = http.client.HTTPConnection(sibling_host, timeout=5)
+            connection.request("POST", f"/{sibling_route}/chat/completions", body=body,
+                               headers={"Authorization": f"Bearer {broker.token}", "Content-Type": "application/json"})
+            self.assertEqual(connection.getresponse().status, 401, "one task token cannot call a sibling broker")
+            connection.close()
+            connection = http.client.HTTPConnection(sibling_host, timeout=5)
+            connection.request("POST", f"/{sibling_route}/chat/completions", body=body,
+                               headers={"Authorization": f"Bearer {sibling_broker.token}", "Content-Type": "application/json"})
+            sibling_response = connection.getresponse()
+            self.assertEqual(sibling_response.status, 200, "the sibling broker accepts only its own task token")
+            sibling_response.read()
+            connection.close()
         finally:
+            sibling_broker.stop()
             broker.stop()
             upstream.shutdown()
             upstream.server_close()
@@ -290,6 +312,30 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         wrapper = module.Wrapper(self.task, self.capability)
         auth_path = wrapper.capability["environment"]["credentialReadPaths"][0]
         self.assertNotIn(auth_path, "\n".join(wrapper.native_argv()))
+
+    def test_production_namespace_masks_sibling_task_home_and_rebinds_only_own_task(self):
+        self.use_production_scope_fixture()
+        business_output = self.task.parent.parent / "flow/results/current-output.json"
+        business_output.parent.mkdir(parents=True)
+        business_output.write_text('{"current":true}\n')
+        method_file = self.task / "method/task.md"
+        method_file.parent.mkdir()
+        method_file.write_text("own declared method\n")
+        sibling = self.task.parent / "sibling-task"
+        sibling_auth = sibling / "home/.local/share/opencode/auth.json"
+        sibling_auth.parent.mkdir(parents=True)
+        sibling_auth.write_text('{"deepseek":{"type":"api","key":"SIBLING-TASK-TOKEN"}}')
+        module = load_wrapper_module()
+        wrapper = module.Wrapper(self.task, self.capability)
+        argv = wrapper.native_argv()
+        masked = f"{wrapper.task_dir.parent}:rw,nosuid,nodev,noexec"
+        self.assertIn(masked, argv, "the shared .hima-engineering subtree is masked inside the container")
+        mounts = [argv[index + 1] for index, value in enumerate(argv[:-1]) if value == "--mount"]
+        campaign = wrapper.task_dir.parent.parent
+        self.assertIn(f"type=bind,src={campaign},dst={campaign},ro=true", mounts,
+                      "declared current Campaign outputs remain readable")
+        self.assertTrue(any(f"type=bind,src={wrapper.task_dir},dst={wrapper.task_dir},ro=true" == mount for mount in mounts))
+        self.assertFalse(any(str(sibling) in mount for mount in mounts), "no sibling task path is rebound through the mask")
 
     def test_start_message_delivery_and_release_keep_one_native_session(self):
         self.start_wrapper()
@@ -340,6 +386,7 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         prompts = [entry for entry in trace if entry["direction"] == "wrapper-to-native"
                    and entry["message"].get("method") == "session/prompt"]
         self.assertEqual(len(prompts), 2, "one initial prompt and one same-session message, without replay")
+        self.assertNotIn("messageId", prompts[1]["message"]["params"], "non-UUID request ID is omitted, not sent as null")
 
     def test_slow_message_ack_is_immediate_and_completion_is_a_later_retained_fact(self):
         self.start_wrapper()
@@ -370,6 +417,26 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         self.assertEqual(completed["status"], "completed")
         state = wait_json(self.task / "state.json")
         self.assertEqual((state["phase"], state["detail"]["completedRequestId"]), ("waiting", "message:slow"))
+
+    def test_uuid_message_id_is_forwarded_while_non_uuid_ids_are_omitted(self):
+        self.start_wrapper()
+        self.request("start:uuid", "start")
+        deadline = time.monotonic() + 5
+        while wait_json(self.task / "state.json")["phase"] == "running" and time.monotonic() < deadline:
+            time.sleep(.02)
+        request_id = "123e4567-e89b-42d3-a456-426614174000"
+        self.assertEqual(self.request(request_id, "message", {"text": "uuid message"})["status"], "accepted")
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            state = wait_json(self.task / "state.json")
+            if state.get("detail", {}).get("completedRequestId") == request_id:
+                break
+            time.sleep(.02)
+        trace = [json.loads(line) for line in (self.task / "native/session-events.jsonl").read_text().splitlines()]
+        prompt = next(entry for entry in trace if entry["direction"] == "wrapper-to-native"
+                      and entry["message"].get("method") == "session/prompt"
+                      and entry["message"]["params"].get("messageId") == request_id)
+        self.assertEqual(prompt["message"]["params"]["messageId"], request_id)
 
     def test_restart_marks_accepted_but_unfinished_message_unknown_without_replay(self):
         self.start_wrapper()

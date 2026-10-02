@@ -53,6 +53,11 @@ ACP initialize/new-session/close, observed agent version 1.18.34 and model curre
 `deepseek/deepseek-flash`, then exited 0. Both containers were removed; network was disabled, so neither
 probe made a model/API call or persistent Site write.
 
+The final exact-argv probe also set `small_model` to Flash and `enabled_providers` to DeepSeek. ACP's
+model selector contained only `deepseek/deepseek-v4-pro` and `deepseek/deepseek-flash`, with Flash
+current. A separate ephemeral mount probe kept the Campaign business path and selected own-task subtree
+readable while the sibling subtree was absent.
+
 ## Deterministic protocol tests
 
 Initial RED: 4/4 original lifecycle tests failed because the wrapper did not exist. Current command:
@@ -62,10 +67,10 @@ python3 sites/linglong-atcs28/test_resident_engineering_wrapper.py -v
 ```
 
 Review RED reproduced the delivery escape: `linked-parent/auth.json` followed a workspace symlink and
-was incorrectly accepted as a result artifact. Current GREEN is 22/22 in 11.33 seconds, including
+was incorrectly accepted as a result artifact. Current GREEN is 24/24 in 12.96 seconds, including
 no-follow positive/negative containment, dummy provider credential separation, selected-model
-streaming forwarding, fixed one-shot/never-started/HUP reconciliation, and the original task protocol
-cases.
+streaming forwarding, sibling namespace/token isolation, fixed one-shot/never-started/HUP
+reconciliation, UUID/non-UUID ACP message IDs, and the original task protocol cases.
 The original protocol set covers persistent session start/message, a 5.5-second message
 with immediate durable queue acknowledgement and later native completion fact, stand-in-generated
 delivery, best-effort fixture support, native permission rejection/event retention, detached descendant

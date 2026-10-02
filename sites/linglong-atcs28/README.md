@@ -104,6 +104,17 @@ account key and host auth path are absent. A network-disabled tmpfs probe using 
 `opencode acp --pure` argv also initialized, selected `deepseek/deepseek-flash`, created and closed an
 ephemeral ACP session, and exited 0 without a model/API call or persistent Site write.
 
+The sanitized profile pins both `model` and `small_model` to `deepseek/deepseek-flash` and enables only
+the `deepseek` provider, so titles, summaries and internal task collaborators cannot silently select a
+different provider. The exact installed ACP probe exposed only the DeepSeek Pro and Flash options and
+retained Flash as current.
+
+The Campaign remains a read-only source for declared business outputs, but the container masks its
+shared `.hima-engineering` subtree and rebinds only the current task directory read-only, followed by
+that task's private workspace read-write. A sibling task's home, broker token, native trace and delivery
+metadata are absent from this task's namespace. Tokens are independent per task, and each loopback
+broker rejects every sibling token while accepting its own.
+
 The wrapper retains canonical request/receipt digests, native ACP trace, permission decisions, state,
 immutable request-scoped artifact snapshots/manifests and an atomic latest delivery manifest under
 `.hima-engineering/<taskId>/`; it contains no timing algorithm. Each artifact is opened from the

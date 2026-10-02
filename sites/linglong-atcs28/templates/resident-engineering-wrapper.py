@@ -32,6 +32,7 @@ from urllib.parse import urlsplit
 PROTOCOL = "hima-resident-engineering/1"
 CAPABILITY_SCHEMA = "hima-resident-engineering-capability/1"
 REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$")
+UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
 HEX64 = re.compile(r"^[a-f0-9]{64}$")
 DEEPSEEK_UPSTREAM = "https://api.deepseek.com"
 
@@ -301,6 +302,8 @@ class ProviderBroker:
         auth = self.task_home / ".local" / "share" / "opencode" / "auth.json"
         atomic_create(config, {
             "model": "deepseek/deepseek-flash",
+            "small_model": "deepseek/deepseek-flash",
+            "enabled_providers": ["deepseek"],
             "provider": {"deepseek": {"options": {"baseURL": base_url}}},
         })
         atomic_create(auth, {"deepseek": {"type": "api", "key": self.token}})
@@ -715,6 +718,9 @@ class Wrapper:
             argv.extend(["--mount", f"type=bind,src={root},dst={root},ro=true"])
         campaign = Path(self.task["campaignWorkspace"]).resolve()
         argv.extend(["--mount", f"type=bind,src={campaign},dst={campaign},ro=true"])
+        private_root = self.task_dir.parent
+        argv.extend(["--tmpfs", f"{private_root}:rw,nosuid,nodev,noexec"])
+        argv.extend(["--mount", f"type=bind,src={self.task_dir},dst={self.task_dir},ro=true"])
         argv.extend(["--mount", f"type=bind,src={self.home},dst=/home/luzi,rw=true"])
         argv.extend([
             "--mount", f"type=bind,src={native['executable']},dst={native['executable']},ro=true",
@@ -824,11 +830,13 @@ class Wrapper:
                             })
                         return
                     self.state("running", request["requestId"])
-                    result = self.rpc.request("session/prompt", {
+                    params = {
                         "sessionId": self.session_id,
-                        "messageId": request["requestId"] if len(request["requestId"]) == 36 else None,
                         "prompt": [{"type": "text", "text": self.prompt_text(request["payload"], initial)}],
-                    }, timeout=24 * 60 * 60)
+                    }
+                    if UUID.fullmatch(request["requestId"]):
+                        params["messageId"] = request["requestId"]
+                    result = self.rpc.request("session/prompt", params, timeout=24 * 60 * 60)
                     if not self.cancelled.is_set():
                         detail = {"stopReason": result.get("stopReason")}
                         if not initial:
