@@ -74,6 +74,7 @@ set root $::operator_root
 set rounds {}
 set stopped ""
 set best_round 0
+atcs_write_cell_dump [file join $root loaded-r1.dump]
 set best_metrics [atcs_reference_capture [file join $root round-000]]
 set initial_metrics $best_metrics
 set seen [list [join $best_metrics {|}]]

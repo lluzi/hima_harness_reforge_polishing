@@ -4533,6 +4533,12 @@ def _cmd_auto_fix_reference(workspace, args):
     base = _read_declared(_paths(workspace)["working_state"], "design-state")
     site = _read_plain(site_path)
     context = _verified_xtop_context(workspace, base["id"], site)
+    seed = context.get("seed") or {}
+    expected_seed = common.get("seed") or {}
+    expected_seed_path = (workspace / expected_seed.get("path", "")).resolve()
+    if (Path(seed.get("path", "")).resolve(), seed.get("digest")) != (
+            expected_seed_path, expected_seed.get("digest")):
+        raise core.AtcsError("identity-mismatch", "ordinary AutoFix is not bound to the verified common R1 seed")
     if output.is_file():
         existing = _read_declared(output, "autofix-reference")
         if existing.get("inputIdentity") != _resident_input_identity(workspace, common):
@@ -4551,6 +4557,14 @@ def _cmd_auto_fix_reference(workspace, args):
     body += adapters.load_template("xtop-autofix-reference.tcl")
     body += "\nexit 0\n"
     _native_task(workspace, base, site, root, context, body, "atcs_autofix_reference_")
+    loaded_dump = root / "loaded-r1.dump"
+    if not loaded_dump.is_file():
+        raise core.AtcsError("missing-input", "ordinary AutoFix did not capture its loaded common R1 state")
+    loaded_cells = contributions.parse_cell_dump(loaded_dump.read_text(encoding="utf-8"))
+    loaded_cell_digest = core.digest(loaded_cells)
+    if loaded_cell_digest != common.get("cellStateDigest"):
+        raise core.AtcsError(
+            "identity-mismatch", "ordinary AutoFix loaded state differs from common R1 cell-state identity")
     terminal = _read_plain(root / "control-result.json")
     if terminal.get("complete") is not True or terminal.get("stopped") not in (
             "goal", "no-improvement", "oscillation", "regression", "mixed-no-improvement"):
@@ -4570,6 +4584,11 @@ def _cmd_auto_fix_reference(workspace, args):
         raise core.AtcsError("identity-mismatch", "ordinary AutoFix selected metrics differ from its retained best reports")
     result = {
         "inputIdentity": _resident_input_identity(workspace, common),
+        "loadedR1": {
+            "cellStateDigest": loaded_cell_digest,
+            "dump": {"path": _relpath(loaded_dump, workspace), "sha256": core.file_sha256(loaded_dump)},
+            "seed": {"path": expected_seed["path"], "digest": expected_seed["digest"]},
+        },
         "goal": {"setupWnsNs": setup_target, "holdWnsNs": hold_target},
         "measurements": {"before": before_measurements, "after": best_measurements},
         "artifacts": {

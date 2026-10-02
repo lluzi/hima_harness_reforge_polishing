@@ -53,9 +53,9 @@ outputs:
   - name: autoFixReference
     path: state/autofix-reference.json
     description: >-
-      Matched ordinary AutoFix from the same common R1, design, constraints, libraries and scenarios,
-      iterated until goal or no timing-report improvement, with actual raw native measurements and
-      exported engineering files.
+      Matched ordinary AutoFix after opening the exact saved common R1 seed under the same design,
+      constraints, libraries and scenarios; includes loaded-R1 cell/seed identity, best actual raw
+      native measurements and exported engineering files.
   - name: engineeringResult
     path: state/engineering-result.json
     reader: atcs-engineering-result
@@ -99,7 +99,7 @@ tools:
 
   - id: auto-fix-reference
     file: flow/atcs_cli.py
-    description: Run ordinary matched AutoFix from common R1 against the same Run Goal; allow positive satisfied margin to fund residual repair, forbid losing a satisfied mode or worsening unsatisfied residuals, stop on goal/non-improvement/regression/oscillation, and export the best actual state rather than the last.
+    description: Open and verify the exact saved common R1 seed, then run ordinary matched AutoFix against the same Run Goal; allow positive satisfied margin to fund residual repair, forbid losing a satisfied mode or worsening unsatisfied residuals, stop on goal/non-improvement/regression/oscillation, and export the best actual state rather than the last.
     inputs: [WORKSPACE, SITE_CAPABILITIES, TARGET_SETUP_NS, TARGET_HOLD_NS]
     licences: { xtop: 1 }
     argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', auto-fix-reference, '${WORKSPACE}', '${SITE_CAPABILITIES}', '${TARGET_SETUP_NS}', '${TARGET_HOLD_NS}']

@@ -5,8 +5,10 @@
 contract.yml and graph.yml declare the retained-native-input, common-R1, matched-AutoFix and single
 fix-timing route. flow/atcs_cli.py and xtop-autofix-reference.tcl prepare and verify retained native
 context, reuse native analysis/common AutoFix, and run ordinary AutoFix against the same Goal without
-a method round or deadline cap, retaining the best actual residual state across later regression or
-oscillation. readers/atcs-engineering-result.yml, tools/read-atcs.py, semantics.yml and the six
+a method round or deadline cap. The native startup opens a private copy of commonStage.seed and the
+Pack checks its first cell dump against commonStage.cellStateDigest before accepting the reference,
+then retains the best actual residual state across later regression or oscillation.
+readers/atcs-engineering-result.yml, tools/read-atcs.py, semantics.yml and the six
 engineering rules validate delivery and Goal/effect facts. resident-timing-playbook.md supplies the
 complete engineering and delivery method. legacy/0.2.10 preserves the prior method records.
 

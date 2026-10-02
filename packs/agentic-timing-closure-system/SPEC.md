@@ -20,7 +20,10 @@ designStateManifest is staged and hashed as baselineState. nativeTimingContext i
 same-design timing data, source reports, SDC hashes, ordered scenarios and producer provenance.
 prepare-native-context copies and re-hashes those bytes and current Site libraries without launching
 PrimeTime. The route then produces actual common R1 and runs matched ordinary AutoFix from that same
-R1 against the same Run Goal. A mode already meeting Goal may spend positive margin while another
+R1 against the same Run Goal. Before any control measurement or fix, XTop opens a private copy of
+commonStage.seed; Pack code re-hashes that seed and compares a native loaded-state cell dump with
+commonStage.cellStateDigest. Baseline R0 or a replayed approximation is refused. A mode already
+meeting Goal may spend positive margin while another
 residual improves; the control may not lose a satisfied mode or worsen an unsatisfied residual.
 It stops on goal, non-improvement, regression or oscillation and exports the best actual checkpoint,
 ECO and reports rather than the last attempted state. The Campaign owner uses engineering

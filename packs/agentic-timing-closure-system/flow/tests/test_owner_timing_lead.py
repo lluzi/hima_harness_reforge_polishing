@@ -18,7 +18,7 @@ ROOT = FLOW.parents[2]
 REPO_ROOT = Path(os.environ.get("HIMA_TEST_REPO_ROOT", ROOT))
 sys.path[:0] = [str(FLOW), str(TESTS)]
 import atcs_cli as cli
-from atcs import adapters, core, workspaces
+from atcs import adapters, core, workspaces, contributions
 from test_cli_state import _make_baseline_manifest, _write_json, _write_xtop_context, _xtop_site_config
 from test_worker_slots import _active
 from test_xtop_toolkit import STUB_XTOP, TCLSH, PLAN
@@ -100,7 +100,19 @@ proc redirect {args} {
         close $fh
     } else { uplevel 1 [list fixture_redirect {*}$args] }
 }
-proc open_workspace {path} { stub_record open_workspace $path }
+proc open_workspace {path} {
+    stub_record open_workspace $path
+    set state [file join $path design.data]
+    if {[file readable $state]} {
+        set fh [open $state r]
+        set serialized [read $fh]
+        close $fh
+        if {[llength $serialized] % 2 == 0} {
+            array unset ::cells
+            array set ::cells $serialized
+        }
+    }
+}
 proc save_workspace {args} {
     stub_record save_workspace {*}$args
     set path [lindex $args [expr {[lsearch -exact $args -as] + 1}]]
@@ -147,6 +159,20 @@ proc summarize_gba_violations {args} {
     return ""
 }
 """ % " ".join(rows)
+        if Path(cwd).name == "common-r1":
+            text += r"""
+set ::fixture_common_fix_count 0
+proc fixture_common_fix {name args} {
+    stub_record $name {*}$args
+    if {$::fixture_common_fix_count == 0} {
+        set ::cells(U1) BUFX2
+        stub_act {U1}
+    }
+    incr ::fixture_common_fix_count
+}
+proc fix_setup_gba_violations {args} { fixture_common_fix fix_setup_gba_violations {*}$args }
+proc fix_hold_gba_violations {args} { fixture_common_fix fix_hold_gba_violations {*}$args }
+"""
         if ("xtop-repeat-control" in tcl.read_text() or "set stopped deadline" in tcl.read_text()
                 or "no-timing-report-improvement" in tcl.read_text()):
             text += r"""
@@ -204,7 +230,7 @@ proc fix_hold_gba_violations {args} { fixture_default fix_hold_gba_violations {*
         counter = root / "late-before-counter.tcl"
         counter.write_text(Path(entry["sessionTcl"]).read_text() + f'''
 set baseline_at_ready [file exists [file join $::operator_root before.dump]]
-atcs_size_cell U1 BUFX2 {PLAN}
+atcs_size_cell U1 BUFX4 {PLAN}
 atcs_dump_cells before.dump
 set baseline_path [file join $::operator_root before.dump]
 file copy $baseline_path [file join $::operator_root retained-before-fixture.dump]
@@ -226,7 +252,7 @@ close $fh
         before = cli.contributions.parse_cell_dump((root / "before.dump").read_text())
         after = cli.contributions.parse_cell_dump((root / "after.dump").read_text())
         self.assertEqual(core.digest(before), common["cellStateDigest"])
-        self.assertEqual((before["U1"], after["U1"]), ("BUFX1", "BUFX2"))
+        self.assertEqual((before["U1"], after["U1"]), ("BUFX2", "BUFX4"))
         self.assertEqual((root / "baseline-at-ready.txt").read_text().strip(), "1")
         self.assertEqual((root / "missing-before-proof.txt").read_text().strip(), "1 0")
         self.assertEqual(cli.main(["capture-contribution", str(self.ws), "w01"]), 0)
@@ -243,6 +269,8 @@ close $fh
                 "resident-common-autofix", str(self.ws), str(self.site_path), "10000",
             ]), 0)
         common = cli._read_declared(self.ws / "state/common-stage.json", "common-stage")
+        r0_digest = core.digest({"U1": "BUFX1", "U2": "INVX1", "U3": "BUFX2", "UOUT": "BUFX1", "U9": "DFFX1"})
+        self.assertNotEqual(common["cellStateDigest"], r0_digest, "the native fixture's common R1 differs from baseline R0")
         self.assertEqual(common["analysisTopPaths"], 10000)
         self.assertNotIn("experimentDeadline", common)
         self.assertEqual(set(common["measurements"]), {"before", "after"})
@@ -254,6 +282,17 @@ close $fh
         with patch.object(adapters, "run_tool", side_effect=self.stub_native_tool):
             self.assertEqual(cli.main(["auto-fix-reference", str(self.ws), str(self.site_path), "0", "0"]), 0)
         reference = cli._read_declared(self.ws / "state/autofix-reference.json", "autofix-reference")
+        loaded = contributions.parse_cell_dump(
+            (self.ws / "research/control/autofix-reference/loaded-r1.dump").read_text())
+        self.assertEqual(core.digest(loaded), common["cellStateDigest"],
+                         "the AutoFix reference's first native state is the actual saved common R1")
+        self.assertEqual(reference["loadedR1"]["cellStateDigest"], common["cellStateDigest"])
+        calls = (self.ws / "research/control/autofix-reference/vendor-calls.txt").read_text().splitlines()
+        opened = next(i for i, line in enumerate(calls) if line.startswith("open_workspace"))
+        measured = next(i for i, line in enumerate(calls) if line.startswith("summarize_gba_violations"))
+        fixed = next(i for i, line in enumerate(calls) if line.startswith("fix_"))
+        self.assertLess(opened, measured)
+        self.assertLess(measured, fixed, "round-000 is measured from loaded common R1 before the next AutoFix")
         self.assertIn(reference["stopReason"], (
             "goal", "no-improvement", "oscillation", "regression", "mixed-no-improvement"))
         self.assertEqual(reference["inputIdentity"]["commonStateId"], common["stateId"])
