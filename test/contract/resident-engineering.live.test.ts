@@ -30,7 +30,7 @@ import { homePatchFile } from '../../packages/desktop/src/hima-home.ts';
 requireLiveSite();
 
 const PACK_ID = 'agentic-timing-closure-system';
-const PACK_VERSION = '0.3.0';
+const PACK_VERSION = '0.3.1';
 const SITE_NAME = 'linglong-atcs28';
 const SITE_DIR = path.join(repoRoot, 'sites', SITE_NAME);
 const DESTINATION = 'luzi@192.168.50.41';

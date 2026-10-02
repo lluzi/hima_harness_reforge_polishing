@@ -46,6 +46,137 @@ Keep the best measured state rather than the last attempted state. A tie is a ti
 missing comparable evidence are unknown. A complete engineering delivery may be negative or
 inconclusive and may leave the Campaign Goal false.
 
+## Evidence-led Hold/Setup repair method
+
+The mechanisms below come from two retained XTop engineering trails, not from a design-independent
+guarantee. A user-supplied manual case moved Hold 109 / WNS -0.1523 ns / TNS -4.7021 ns to 0 / 0 / 0
+and Setup 28 / -0.0380 / -0.2306 to 22 / -0.0380 / -0.1949. The Issue #82 Resident run started from
+the same common-R1 family, compared against serial AutoFix Setup 24 / -0.0333 / -0.1568 and Hold
+82 / -0.1523 / -4.5816, and delivered Setup 18 / -0.0237 / -0.0973 and Hold 0 / 0 / 0. The latter
+beats the matched reference but remains best-effort because 18 Setup violations remain. Neither trail
+establishes global transition/capacitance/fanout closure or physical signoff.
+
+Treat these as hypotheses to test against the current design. Discover every endpoint, pin, net,
+master, range and margin from the active state; never replay a historical object list or ECO.
+
+### Keep one live XTop state
+
+Load the verified common R1 or a lineage-checked best checkpoint once into one long-lived XTop
+process. Use that same process to inspect, source generated Tcl, mutate, measure, undo, checkpoint and
+export. Strip standalone scripts' `open_workspace` and `exit` when sourcing only their operation body.
+One writer owns mutable XTop state; collaborators may analyze reports or prepare scripts but do not
+mutate concurrently. A command timeout means running/unknown, not permission to replay. Reopen only
+once at the end when an independent persistence check of the saved best state is useful.
+
+The Resident trail retained repeated request/response operations against one XTop PID while reducing
+Hold through measured stages, then reopened the saved Hold-clean checkpoint once for final setup/hold,
+legality and export verification. That is evidence for the interaction method, not a required count of
+stages.
+
+### Classify the residual before fixing it
+
+Recompute setup and hold in every required scenario. Group residuals by shared launch/cone, data,
+scan, async reset/set removal/recovery, fanout, placement and setup headroom. Inspect native failure
+reasons and both min/max critical paths. Useful XTop observations include:
+
+~~~tcl
+summarize_gba_violations -exclude_path -hold -with_distribution -with_top_n 10000
+summarize_gba_violations -exclude_path -setup -with_distribution -with_top_n 10000
+get_critical_gba_path -to $endpoint -delay_type min -scenario $scenario
+get_critical_gba_path -to $endpoint -delay_type max -scenario $scenario
+~~~
+
+An empty path collection is not proof of no violation. It can distinguish a removal/recovery-style
+check from an ordinary data path only after pin function, launch, check type and native GBA evidence
+agree.
+
+### Use input-branch margin, not endpoint slack alone
+
+For a data Hold endpoint, rank pins on the observed min paths by setup margin:
+
+~~~tcl
+set hp [get_paths -delay_type min -end_points [get_pins -quiet -exact $endpoint_name]]
+if {[sizeof_collection $hp] > 0} {
+    mark_hold_path_pin_rank -type margin $hp
+    summarize_pin_rank -with_top_n 30
+    set ranked [get_rank_pins -by order "(1,30)"]
+}
+~~~
+
+Inspect each ranked pin's direction, full name, margin, cone and fanout. Reconvergence can give one
+input branch useful Hold/setup headroom while another branch or the shared endpoint is setup-critical.
+Delay or regenerate the isolated high-margin branch so a shared endpoint is not charged the same
+delay. Historical margins are evidence only; the current report must justify the current branch.
+
+### Distinguish buffer regeneration from deliberate delay
+
+A dedicated delay cell can add useful fast-corner delay but excessive slow-corner setup/recovery
+delay. A plain buffer may instead regenerate drive and improve electrical behavior with a smaller
+slow-corner penalty. For isolated data branches with ample measured headroom, test an available delay
+cell or buffer. For tight setup/recovery headroom, prefer a small plain buffer, a more isolated branch
+or another coherent technique. Discover masters from the active library and remeasure all scenarios;
+library family names from either retained case are not portable rules.
+
+### Treat reset/IO removal as a port-net problem when evidence says so
+
+Async clear/set residuals with no enumerated min paths may be removal checks launched from reset,
+test or scan primary inputs. Confirm the pin function, launch, polarity, check type, fanout, recovery
+constraints and critical GBA path. For a confirmed high-fanout reset/IO cluster, test regenerative
+buffering or branching on the driving port/net rather than per-data-path delay insertion. Regenerate
+the actual current net/load relation and choose strength, placement and branches from current evidence.
+The manual case reduced Hold 93 to 37 with this class of repair while Setup stayed unchanged; its
+buffer counts and nets are not a recipe.
+
+### Legalize ECO cells without silently moving the design
+
+When inserted cells require placement help, use an explicitly reviewed legalization/displacement
+range, report the active constraint and inspect displacement and overlap:
+
+~~~tcl
+set_parameter placement_legalization_mode true
+set_parameter placement_legalization_obligated false
+set_placement_constraint -design $design -max_displacement $approved_range -readiness_check_level hard
+report_placement_constraint -design $design
+summarize_inst_displacement
+check_placement_overlap
+~~~
+
+The approved range is design- and Site-specific. `obligated false` is a behavior setting, not proof
+of legality. Preserve original placement when required and undo an illegal or unmeasured state.
+
+### Use a coherent Hold-clean/setup-compensation sequence
+
+Save a promising Hold-clean intermediate separately. If it worsens Setup, state a falsifiable setup
+recovery hypothesis and measure the coupled result. One demonstrated recovery used native setup sizing
+with an explicit hold margin, followed by small reset/removal buffering to close residual Hold reopened
+by recovery. Use current Goal and margins rather than fixed constants. A temporarily worse checkpoint
+is an experiment, not the accepted result; stop the compensation path if setup recovery or hold
+protection does not materialize.
+
+Retain each materially better checkpoint and return to the best measured coupled state. In the same
+session, save the selected checkpoint and export logical/physical ECOs. One useful export shape is:
+
+~~~tcl
+write_design_changes -format INNOVUS -eco_file_prefix $prefix -output_dir $eco_dir -keep_route
+save_workspace -as $selected_checkpoint
+~~~
+
+Report before/after metrics, mechanism, keep/undo decisions, selected-state identity, residuals and
+scope limitations. Cumulative ECOs need their base/lineage stated.
+
+### Provenance of this knowledge increment
+
+The manual trail was read from the user-owned `manual-analysis/hold-eco-20261001-235447` evidence and
+distilled without executing it. Key source SHA-256 values were: `SUMMARY.md`
+`d7e9e5109d642bebac9b04c3121fa750a0f81554a030cc4852529e9f4b76fc9a`,
+`manual-hold-eco.tcl` `25c1cf3637a1e78742c9d60d43733fb21df827c65d8b06e048d2ed97d23fc7b1`,
+`fix_bigmargin.tcl` `c887bbed5eed948f2381323c6cd8c6130fcb5feaee02c4b291c64f9d2cc22655`,
+`fix_reset.tcl` `ee82c773b60e81463246d1571850e2a7814503d0a9eb1c7b08e1833dc88b09ba`,
+and `fix_converge.tcl` `ba51cbd8b638d0de49dabcadaccef14dd3d1db69079ef9e0dafd1ec59e9617ae`.
+The Issue #82 Resident metrics and persistent-session facts come from retained Run
+`run-2ab21055-e5ae-4e6b-b5b6-e2cdcd13d10e`; its original live Campaign Reader failure was a Host
+materialization defect, not proof that every referenced artifact had been accepted into the Campaign.
+
 ## Required delivery
 
 Write exactly one atcs.engineering-result/1 JSON document as the delivery artifact of kind result.

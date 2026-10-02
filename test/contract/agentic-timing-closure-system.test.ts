@@ -33,7 +33,7 @@ async function copyLegacyAtcsPack(packsDir: string): Promise<string> {
 
 test('ATCS 0.3 outsources one whole fix-timing node and keeps XTop engineering evidence separate from final signoff', async () => {
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
-  assert.equal(pack.contract.version, '0.3.0');
+  assert.equal(pack.contract.version, '0.3.1');
 
   const tool = pack.contract.tools.find(item => item.id === 'fix-timing') as any;
   assert.ok(tool, 'the Pack declares one fix-timing tool');
@@ -41,6 +41,7 @@ test('ATCS 0.3 outsources one whole fix-timing node and keeps XTop engineering e
     role: 'resident-engineering-agent',
     reads: ['inputReadiness', 'baselineState', 'nativeContext', 'commonStage', 'autoFixReference'],
     knowledge: ['resident-timing-playbook.md', 'xtop-capabilities.md', 'state-and-evidence.md'],
+    artifactPrefix: 'engineering',
     produces: 'engineeringResult',
   });
   assert.equal(tool.interactive, undefined, 'outsourced work is not a second interactive protocol');

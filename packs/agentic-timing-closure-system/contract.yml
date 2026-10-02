@@ -1,5 +1,5 @@
 id: agentic-timing-closure-system
-version: "0.3.0"
+version: "0.3.1"
 title: Agentic timing closure system
 status: development
 minimumHarnessVersion: 0.2.2
@@ -154,7 +154,7 @@ words:
 
 knowledge:
   - file: resident-timing-playbook.md
-    purpose: Complete whole-task XTop engineering goal, fixed identities, autonomy, experiment loop, best-state selection and delivery contract.
+    purpose: Complete whole-task XTop engineering goal, fixed identities, one persistent native session, evidence-led hold/setup mechanisms, best-state selection and delivery contract.
   - file: xtop-capabilities.md
     purpose: XTop native analysis, AutoFix, ECO, checkpoint and export capabilities available to the engineering task.
   - file: state-and-evidence.md

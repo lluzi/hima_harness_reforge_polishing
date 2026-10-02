@@ -2,7 +2,7 @@
 # reference -> resident engineering delivery -> honest XTop goal/effect verdict. PrimeTime, Innovus,
 # StarRC, six Hima seats and physical-referee tails are not on this version's reference route.
 id: agentic-timing-closure-system
-version: "0.3.0"
+version: "0.3.1"
 entry: bind-inputs
 autopilot:
   - { from: [bind-inputs], until: [fix-timing, wait-for-person] }

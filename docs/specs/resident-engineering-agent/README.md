@@ -2,7 +2,7 @@
 
 Issue: [#82](https://github.com/lluzi/hima_harness_reforge_polishing/issues/82)
 状态：已实现并完成一次真实工程试验；现场业务效果成立，原 live 接回仍诚实为 FAIL，后修复只完成 retained-artifact integration 验证。
-作者基线：`b20ef44a9672f8c5a5ab645e49e0ef3446e2c0f7`，当前方法 ATCS `0.3.0`；旧 `0.2.10` 方法快照继续只读保留。
+作者基线：`b20ef44a9672f8c5a5ab645e49e0ef3446e2c0f7`，当前方法 ATCS `0.3.1`；旧 `0.2.10` 方法快照继续只读保留。
 
 ## Problem Statement
 

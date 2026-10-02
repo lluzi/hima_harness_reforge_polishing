@@ -7,7 +7,7 @@ Branch: `codex/issue82-opencode-design`.
 ## Current result
 
 HimaHarness 0.2.2 exposes task-local Resident Engineering Agent execution through the existing
-`hima_execute`/Fabric/Job/Channel/Reader path. ATCS 0.3.0 declares one complete `fix-timing` outsourced
+`hima_execute`/Fabric/Job/Channel/Reader path. Current ATCS 0.3.1 declares one complete `fix-timing` outsourced
 node. Site implementation uses the existing rootless Podman EDA image and OpenCode 1.18.34 ACP with
 `deepseek/deepseek-flash`; no DSH migration, registered Harness component or long-lived task service.
 

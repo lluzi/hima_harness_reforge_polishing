@@ -186,7 +186,7 @@ async function prepareHome(t: TestContext, teamExecutions: number, siteFaults = 
   await cp(path.join(repoRoot, 'packs', packId), variant, { recursive: true,
     filter: (src) => !src.includes('__pycache__') });
   // These production dry-path cases preserve the admitted 0.2.10 six-branch/physical-referee
-  // method. The current Pack is 0.3.0; overlay the explicit immutable method snapshot instead of
+  // method. The current Pack is 0.3.1; overlay the explicit immutable method snapshot instead of
   // weakening the old assertions to fit the new resident-engineering graph.
   await cp(path.join(variant, 'legacy/0.2.10/contract.yml'), path.join(variant, 'contract.yml'));
   await cp(path.join(variant, 'legacy/0.2.10/graph.yml'), path.join(variant, 'graph.yml'));
