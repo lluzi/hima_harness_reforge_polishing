@@ -4,7 +4,7 @@
 // Site and refuses anything else rather than trusting its caller: the read-only probes it reads
 // reports with, and the plumbing that puts a Job in a tmux session and asks what became of it. What
 // the Job itself may be is the Permit's decision (`shell.ts`), never this list's.
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { lstat, readFile, realpath, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
@@ -161,12 +161,35 @@ const channelVerbs: ReadonlySet<string> = new Set([...readOnlyProbes, ...jobPlum
 
 const listed = (verbs: ReadonlySet<string>): string => [...verbs].sort().join(', ');
 
+const checkpointInventoryOutputLimit = 4 * 1024 * 1024;
+
+/** A bounded collector is used only for the fixed, read-only checkpoint inventory command. */
+function captureCommandOutput(child: ChildProcess, limit?: number) {
+  const out: Buffer[] = []; let err = '', retained = 0, outputLimitExceeded = false;
+  const keep = (bytes: Buffer): boolean => {
+    if (outputLimitExceeded) return false;
+    if (limit !== undefined && retained + bytes.length > limit) {
+      outputLimitExceeded = true; child.kill('SIGKILL'); return false;
+    }
+    retained += bytes.length; return true;
+  };
+  child.stdout!.on('data', (bytes: Buffer) => { if (keep(bytes)) out.push(bytes); });
+  child.stderr!.on('data', (bytes: Buffer) => { if (keep(bytes)) err += bytes.toString('utf8'); });
+  return () => ({ stdout: Buffer.concat(out), stderr: err, outputLimitExceeded });
+}
+
 /** What went wrong, with what the far end said about it when it said anything. */
 const said = (how: string, stderr: string): string => (stderr.trim() ? `${how}: ${stderr.trim()}` : how);
 
 /** Refuse anything that is not the channel's own verb, before it is sent or spawned. */
 function admit(argv: readonly string[], siteName: string): void {
   const verb = argv[0] ?? '';
+  // Explicit read-only inventory for retained checkpoint references. Never admit find's command,
+  // deletion, link-following or caller-selected predicate options.
+  if (verb === 'find') {
+    if (argv.length === 7 && argv[1]?.startsWith('/') && argv.slice(2).join(' ') === '-maxdepth 33 -mindepth 1 -print0') return;
+    throw new Error('checkpoint inventory permits only find <absolute-root> -maxdepth 33 -mindepth 1 -print0');
+  }
   if (processProbes.has(verb)) {
     if (processProbeShape(argv)) return;
     throw new Error(`refusing to run "${argv.join(' ')}" on site ${siteName}: the process probe is only "kill -s 0 -- -<process group>", which sends no signal`);
@@ -284,6 +307,7 @@ export class LocalChannel implements Channel {
     const exit = await this.spawn(verb!, args, options.stdin).catch((err: Error) => {
       throw new SiteUnreadableError(this.siteName, `cannot run ${verb} on site ${this.siteName}: the command could not be started: ${err.message}`);
     });
+    if (exit.outputLimitExceeded) throw new Error(`checkpoint inventory exceeded ${checkpointInventoryOutputLimit} byte output limit`);
     if (exit.code === null) {
       const how = exit.timedOut ? `it timed out after ${LocalChannel.commandTimeoutMs} ms` : `it was killed by ${exit.signal}`;
       throw new SiteUnreadableError(this.siteName, `cannot run ${verb} on site ${this.siteName}: ${how}`);
@@ -303,24 +327,19 @@ export class LocalChannel implements Channel {
         child.stdin!.on('error', () => {});
         child.stdin!.end(stdin);
       }
-      const out: Buffer[] = [];
-      let err = '';
+      const output = captureCommandOutput(child, verb === 'find' ? checkpointInventoryOutputLimit : undefined);
       let timedOut = false;
       const timer = setTimeout(() => {
         timedOut = true;
         child.kill('SIGKILL');
       }, LocalChannel.commandTimeoutMs);
-      child.stdout!.on('data', (d: Buffer) => out.push(d));
-      child.stderr!.on('data', (d: Buffer) => {
-        err += d.toString('utf8');
-      });
       child.on('error', (e) => {
         clearTimeout(timer);
         reject(e);
       });
       child.on('close', (code, signal) => {
         clearTimeout(timer);
-        resolve({ code, signal, stdout: Buffer.concat(out), stderr: err, timedOut });
+        resolve({ code, signal, ...output(), timedOut });
       });
     });
   }
@@ -332,6 +351,7 @@ interface LocalExit {
   readonly stdout: Buffer;
   readonly stderr: string;
   readonly timedOut: boolean;
+  readonly outputLimitExceeded: boolean;
 }
 
 /** Splits the `:port` suffix ssh takes as `-p` off a destination. Site files require the
@@ -373,6 +393,7 @@ interface RemoteExit {
   readonly stdout: Buffer;
   readonly stderr: string;
   readonly timedOut: boolean;
+  readonly outputLimitExceeded: boolean;
 }
 
 /** A Site reached over SSH, through jump hosts where the site file names them. */
@@ -425,6 +446,7 @@ export class SshChannel implements Channel {
     const what = `run ${verb}`;
     const wire = argv.map(quote).join(' ');
     let exit = await this.send(argv, wire, what, options.stdin);
+    if (exit.outputLimitExceeded) throw new Error(`checkpoint inventory exceeded ${checkpointInventoryOutputLimit} byte output limit`);
     if (SshChannel.staleControlSocket.test(exit.stderr)) {
       // A master killed outright leaves its socket behind with nothing listening on it. ssh says so
       // and connects unmultiplexed, so without removing it every later command pays for its own
@@ -460,7 +482,7 @@ export class SshChannel implements Channel {
   private async send(argv: readonly string[], wire: string, what: string, stdin?: Uint8Array): Promise<RemoteExit> {
     recordRemoteCommand(argv, wire);
     try {
-      return await this.ssh(wire, stdin);
+      return await this.ssh(wire, stdin, argv[0] === 'find' ? checkpointInventoryOutputLimit : undefined);
     } catch (err) {
       // The local ssh client could not even be started (`spawn ssh ENOENT`, a missing execute bit).
       // A caller reading this failure needs the same framing as every other: which operation, on
@@ -524,7 +546,7 @@ export class SshChannel implements Channel {
     return args;
   }
 
-  private ssh(remote: string, stdin?: Uint8Array): Promise<RemoteExit> {
+  private ssh(remote: string, stdin?: Uint8Array, outputLimit?: number): Promise<RemoteExit> {
     return new Promise((resolve, reject) => {
       // ssh forwards its own standard input to the remote command, so the bytes a `tee` is to write
       // travel the connection rather than the command line — the wire stays the command, and a
@@ -537,24 +559,19 @@ export class SshChannel implements Channel {
         child.stdin!.on('error', () => {});
         child.stdin!.end(stdin);
       }
-      const out: Buffer[] = [];
-      let err = '';
+      const output = captureCommandOutput(child, outputLimit);
       let timedOut = false;
       const timer = setTimeout(() => {
         timedOut = true;
         child.kill('SIGKILL');
       }, SshChannel.commandTimeoutMs);
-      child.stdout!.on('data', (d: Buffer) => out.push(d));
-      child.stderr!.on('data', (d: Buffer) => {
-        err += d.toString('utf8');
-      });
       child.on('error', (e) => {
         clearTimeout(timer);
         reject(e);
       });
       child.on('close', (code, signal) => {
         clearTimeout(timer);
-        resolve({ code, signal, stdout: Buffer.concat(out), stderr: err, timedOut });
+        resolve({ code, signal, ...output(), timedOut });
       });
     });
   }

@@ -132,7 +132,7 @@ import { adoptHistoricalRun, cancelRun } from './recovery.js';
 import { settleStrandedTeamExecutions } from './delegation-runtime.js';
 import {
   engineeringRequest, engineeringTaskDirectory, engineeringTaskId, launchEngineeringTask,
-  materializeEngineeringResult, planEngineeringTask, readEngineeringDelivery, readEngineeringOwned, readEngineeringState,
+  materializeEngineeringResult, planEngineeringTask, readEngineeringDelivery, readEngineeringOwned, engineeringDeliveriesOf, readRetainedEngineeringAsset, readEngineeringState,
   reconcileEngineeringTask, waitEngineeringReceipt, writeEngineeringRequest,
   type EngineeringRequest, type EngineeringTaskIdentity,
 } from './engineering-executor.js';
@@ -2743,6 +2743,15 @@ async function finishEngineeringRequest(
     requests: { ...control.requests, [requestId]: { ...request, state, receipt } },
   } });
   return receipt;
+}
+
+/** Project-authorized read surface for retained delivery, including after release/Run end. */
+export async function readEngineeringAsset(deps: FabricDeps, runId: string, executionId: string, requestId: string, artifactId: string, treeId?: string, download = false) {
+  const run = existingRun(deps.ledger, runId);
+  const execution = run.control?.executions[executionId];
+  const delivery = engineeringDeliveriesOf(run).find(item => item.executionId === executionId && item.requestId === requestId);
+  if (!execution || !delivery) throw new RunStartError('Run has no verified engineering delivery for that execution/request');
+  return readRetainedEngineeringAsset(residentEngineeringIdentityFor(deps, run, execution), delivery, artifactId, treeId, download);
 }
 
 const engineeringResult = (operation: EngineeringRequest['operation'], taskId: string, status: string, extra: Record<string, unknown> = {}): NonNullable<ExecutionReceipt['data']> =>

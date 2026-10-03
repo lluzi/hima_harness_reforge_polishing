@@ -5,6 +5,11 @@
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { isUtf8 } from 'node:buffer';
+import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { z } from 'zod';
 import { channelFor, mustRun, type Channel } from './channel.js';
 import { decideRead, decideWrite } from './shell.js';
@@ -533,4 +538,216 @@ export async function materializeEngineeringResult(identity: EngineeringTaskIden
   }
   const materializedResult = planned.find((item) => item.artifact.kind === 'result')!;
   return { path: materializedResult.absPath, sha256: materializedResult.artifact.sha256 };
+}
+
+
+export interface EngineeringDeliveryView {
+  readonly executionId: string; readonly requestId: string; readonly taskId: string;
+  readonly manifestSha256: string; readonly summary: string;
+  readonly artifacts: readonly { readonly id: string; readonly path: string; readonly sha256: string; readonly kind: string }[];
+}
+export interface EngineeringAssetRef {
+  readonly id: string; readonly path: string; readonly kind: 'file' | 'directory';
+  readonly sha256?: string; readonly digest?: string; readonly bytes?: number; readonly treeId?: string;
+}
+export type EngineeringAssetRead =
+  | { readonly kind: 'file'; readonly ref: EngineeringAssetRef; readonly bytes: Uint8Array;
+      readonly text?: string; readonly truncated: boolean; readonly references: readonly EngineeringAssetRef[] }
+  | { readonly kind: 'directory'; readonly ref: EngineeringAssetRef; readonly entries: readonly EngineeringAssetRef[] };
+const assetId = (kind: string, at: string, digest: string) => sha256(`${kind}\0${at}\0${digest}`);
+
+/** Ledger-verified delivery provenance, projected without altering the completed Run/archive. */
+export function engineeringDeliveriesOf(run: RunRecord): EngineeringDeliveryView[] {
+  return Object.values(run.control?.requests ?? {}).flatMap(request => {
+    const receipt = request.receipt;
+    const data = receipt.data as { operation?: unknown; status?: unknown; taskId?: unknown; manifestSha256?: unknown; summary?: unknown; artifacts?: unknown } | undefined;
+    if (request.state !== 'done' || receipt.action !== 'engineering' || !receipt.executionId
+      || data?.operation !== 'delivery' || data.status !== 'verified') return [];
+    const taskId = engineeringTaskId(run.id, receipt.executionId);
+    if (data.taskId !== taskId) throw new Error('retained engineering delivery has a different task identity');
+    const manifestSha256 = digestHex.parse(data.manifestSha256);
+    const artifacts = z.array(deliveryArtifact).min(1).max(1024).parse(data.artifacts);
+    return [{ executionId: receipt.executionId, requestId: receipt.requestId, taskId, manifestSha256,
+      summary: typeof data.summary === 'string' ? data.summary : 'Engineering delivery',
+      artifacts: artifacts.map(artifact => ({ ...artifact, id: assetId('delivery', artifact.path, artifact.sha256) })) }];
+  });
+}
+
+// Explicit user reads, not background polling. Large native checkpoint members are downloadable;
+// text previews stay small. The current retained 105 MiB layout fits this finite per-file bound.
+const engineeringFileLimit = 256 * 1024 * 1024;
+const engineeringTreeFileLimit = 2048;
+const engineeringTreeByteLimit = 1024 * 1024 * 1024;
+
+async function plainEngineeringDirectories(site: Site, channel: Channel, anchor: string, directory: string): Promise<void> {
+  const p = pathsOf(site), relative = p.relative(anchor, directory);
+  if (relative === '..' || relative.startsWith('../') || p.isAbsolute(relative)) throw new Error('engineering path is outside its original Campaign');
+  await plainDirectory(channel, anchor, 'Campaign root');
+  let current = anchor;
+  for (const part of relative.split('/').filter(Boolean)) {
+    current = p.join(current, part);
+    await plainDirectory(channel, current, 'engineering path ancestor');
+  }
+}
+
+async function readEngineeringBytes(site: Site, at: string, root: string, expected: string, size?: number, anchor = root): Promise<Buffer> {
+  const channel = channelFor(site), p = pathsOf(site);
+  await plainEngineeringDirectories(site, channel, anchor, p.dirname(at));
+  const realRoot = await plainDirectory(channel, root, 'retained engineering root');
+  const decision = await decideRead(site, at, channel);
+  if (!decision.ok) throw new Error(decision.reason);
+  if (!beneath(decision.absPath, realRoot)) throw new Error('engineering asset escapes its retained root');
+  await plainDirectory(channel, p.dirname(at), 'engineering asset parent');
+  if ((await channel.exec(['test', '-L', at])).code === 0 || (await channel.exec(['test', '-f', decision.absPath])).code !== 0) {
+    throw new Error('engineering asset must be a plain file, not a link');
+  }
+  const measuredSize = Number(/^\s*(\d+)/.exec(await mustRun(channel, ['wc', '-c', '--', decision.absPath], 'measure retained asset'))?.[1]);
+  if (!Number.isSafeInteger(measuredSize) || measuredSize < 0 || measuredSize > engineeringFileLimit) throw new Error('engineering asset exceeds its file byte limit or has unreadable size');
+  if (size !== undefined && measuredSize !== size) throw new Error('engineering asset size differs from its verified inventory');
+  const read = await channel.exec(['tail', '-c', String(engineeringFileLimit + 1), '--', decision.absPath]);
+  if (read.code !== 0) throw new Error(`cannot read retained engineering asset: ${read.stderr}`);
+  const bytes = Buffer.from(read.stdout);
+  if (bytes.length > engineeringFileLimit) throw new Error(`engineering asset exceeds ${engineeringFileLimit} byte read/download limit`);
+  if (bytes.length !== measuredSize || sha256(bytes) !== expected || size !== undefined && bytes.length !== size) throw new Error('retained engineering asset bytes changed from their recorded identity');
+  return bytes;
+}
+
+/** Read only published delivery files or content-addressed references from the verified result.
+ * Linked references stay inside the original Run's declared artifact prefix (including its native
+ * private workspace). No actor-provided filesystem path or new business request is accepted. */
+export async function readRetainedEngineeringAsset(identity: EngineeringTaskIdentity, delivery: EngineeringDeliveryView,
+  requestedId: string, treeId?: string, download = false): Promise<EngineeringAssetRead> {
+  const { site, run, execution } = identity, p = pathsOf(site), channel = channelFor(site);
+  if (delivery.executionId !== execution.id || delivery.taskId !== engineeringTaskId(run.id, execution.id)
+    || !/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/.test(delivery.requestId)) throw new Error('engineering delivery identity is invalid');
+  const taskDir = engineeringTaskDirectory(site, identity.workspace, delivery.taskId);
+  const manifestPath = p.join(taskDir, 'delivery', 'manifests', `${delivery.requestId}.json`);
+  await plainEngineeringDirectories(site, channel, identity.workspace, p.dirname(manifestPath));
+  if ((await channel.exec(['test', '-L', manifestPath])).code === 0) throw new Error('engineering manifest must be a plain file');
+  const manifest = await readFramed(site, manifestPath, engineeringDelivery);
+  if (!manifest || manifest.sha256 !== delivery.manifestSha256 || manifest.taskId !== delivery.taskId
+    || manifest.executionId !== execution.id || manifest.runId !== run.id) throw new Error('retained engineering manifest differs from the verified delivery');
+  const artifactRoot = p.join(taskDir, manifest.artifactRoot);
+  const resultArtifact = manifest.artifacts.find(artifact => artifact.kind === 'result');
+  if (!resultArtifact || manifest.artifacts.filter(artifact => artifact.kind === 'result').length !== 1) throw new Error('verified delivery needs one result');
+  const resultBytes = await readEngineeringBytes(site, p.join(artifactRoot, resultArtifact.path), artifactRoot, resultArtifact.sha256, undefined, identity.workspace);
+  const prefix = identity.outsourcing.artifactPrefix;
+  if (!prefix) throw new Error('retained method has no engineering artifact prefix');
+  // Use the original content-addressed task envelope, not mutable current native configuration.
+  const envelopeAt = p.join(taskDir, 'task.json');
+  if ((await channel.exec(['test', '-L', envelopeAt])).code === 0) throw new Error('retained engineering envelope must be a plain file');
+  const envelopeBytes = await decidedBytes(site, channel, envelopeAt, 'retained engineering envelope');
+  const envelope = JSON.parse(Buffer.from(envelopeBytes.bytes).toString('utf8')) as Record<string, unknown>;
+  const { sha256: envelopeHash, ...envelopeBody } = envelope;
+  const start = Object.values(run.control!.requests).findLast(request => request.receipt.action === 'engineering'
+    && request.receipt.executionId === execution.id && (request.receipt.data as { operation?: unknown } | undefined)?.operation === 'start'
+    && !['at-cap', 'refused', 'budget-exhausted', 'stopped'].includes(String((request.receipt.data as { status?: unknown }).status)));
+  const expectedEnvelope = (start?.receipt.data as { taskEnvelopeSha256?: unknown } | undefined)?.taskEnvelopeSha256;
+  if (envelopeHash !== expectedEnvelope || sha256(canonicalWrapperJson(envelopeBody)) !== expectedEnvelope
+    || envelopeBody.taskId !== delivery.taskId || envelopeBody.executionId !== execution.id || typeof envelopeBody.workspace !== 'string'
+    || !beneath(envelopeBody.workspace, taskDir)) throw new Error('retained engineering envelope identity changed');
+  const roots = [p.join(identity.workspace, prefix), p.join(envelopeBody.workspace, prefix)];
+  const rootFor = (at: string) => roots.find(root => beneath(at, root) || at === root);
+  const references: EngineeringAssetRef[] = [];
+  const visit = (value: unknown, depth = 0): void => {
+    if (depth > 32 || references.length >= 2048 || !value || typeof value !== 'object') return;
+    if (Array.isArray(value)) { for (const child of value) visit(child, depth + 1); return; }
+    const obj = value as Record<string, unknown>;
+    const relative = relativeArtifactPath.safeParse(obj.path);
+    if (relative.success) {
+      const at = p.join(identity.workspace, relative.data);
+      const hash = digestHex.safeParse(obj.sha256), digest = digestHex.safeParse(obj.digest);
+      if (rootFor(at) && (hash.success || digest.success)) {
+        const kind = hash.success ? 'file' as const : 'directory' as const;
+        const expected = hash.success ? hash.data : digestHex.parse(obj.digest);
+        const id = assetId(kind, relative.data, expected);
+        if (!references.some(ref => ref.id === id)) references.push({ id, path: relative.data, kind,
+          ...(kind === 'file' ? { sha256: expected } : { digest: expected }) });
+      }
+    }
+    for (const child of Object.values(obj)) visit(child, depth + 1);
+  };
+  if (resultBytes.length <= 8 * 1024 * 1024) { try { visit(JSON.parse(resultBytes.toString('utf8'))); } catch { /* A generic result need not be JSON. */ } }
+  // The original declared task inputs (for example a matched reference result) remain useful
+  // provenance after Run end. They were supplied by the Host, not invented by result JSON.
+  const inputRoots = new Map<string, string>();
+  if (Array.isArray(envelopeBody.inputs)) for (const input of envelopeBody.inputs) {
+    const parsed = z.object({ path: z.string(), sha256: digestHex }).safeParse(input);
+    if (!parsed.success || !beneath(parsed.data.path, identity.workspace)) continue;
+    const relative = p.relative(identity.workspace, parsed.data.path);
+    if (!relativeArtifactPath.safeParse(relative).success) continue;
+    const id = assetId('input', relative, parsed.data.sha256);
+    references.push({ id, path: relative, kind: 'file', sha256: parsed.data.sha256 });
+    inputRoots.set(id, identity.workspace);
+  }
+  const fileAnswer = (ref: EngineeringAssetRef, bytes: Buffer): EngineeringAssetRead => {
+    const text = isUtf8(bytes) && !bytes.includes(0) ? bytes.toString('utf8', 0, 1024 * 1024) : undefined;
+    return { kind: 'file', ref: { ...ref, bytes: bytes.length }, bytes,
+      ...(text === undefined ? {} : { text }), truncated: text !== undefined && bytes.length > 1024 * 1024,
+      references: ref.id === assetId('delivery', resultArtifact.path, resultArtifact.sha256) ? references : [] };
+  };
+  const declared = delivery.artifacts.find(artifact => artifact.id === requestedId);
+  if (declared && treeId === undefined) {
+    const held = manifest.artifacts.find(artifact => artifact.path === declared.path && artifact.sha256 === declared.sha256);
+    if (!held) throw new Error('artifact is absent from the retained verified manifest');
+    const bytes = held === resultArtifact ? resultBytes : await readEngineeringBytes(site, p.join(artifactRoot, held.path), artifactRoot, held.sha256, undefined, identity.workspace);
+    return fileAnswer({ ...declared, kind: 'file' }, bytes);
+  }
+  const ref = references.find(item => item.id === (treeId ?? requestedId));
+  if (!ref) throw new Error('requested artifact is not a retained result reference');
+  const at = p.join(identity.workspace, ref.path), root = inputRoots.get(ref.id) ?? rootFor(at)!;
+  if (ref.kind === 'file' && treeId === undefined) return fileAnswer(ref, await readEngineeringBytes(site, at, root, ref.sha256!, undefined, identity.workspace));
+  if (ref.kind !== 'directory') throw new Error('requested member has no checkpoint directory');
+  await plainEngineeringDirectories(site, channel, identity.workspace, at);
+  const read = await decideRead(site, at, channel);
+  if (!read.ok) throw new Error(read.reason);
+  const realRoot = await plainDirectory(channel, root, 'engineering reference root');
+  const realTree = await plainDirectory(channel, at, 'engineering checkpoint');
+  if (realTree !== realRoot && !beneath(realTree, realRoot)) throw new Error('checkpoint escapes engineering root');
+  const listed = (await mustRun(channel, ['find', realTree, '-maxdepth', '33', '-mindepth', '1', '-print0'], 'inspect retained checkpoint')).split('\0').filter(Boolean);
+  if (listed.length > engineeringTreeFileLimit * 2) throw new Error('checkpoint inventory exceeds its entry limit');
+  const entries: { path: string; sha256: string; size: number }[] = [];
+  let total = 0;
+  for (const full of listed) {
+    const relative = p.relative(realTree, full);
+    if (!beneath(full, realTree) || relative.split('/').length > 32 || (await channel.exec(['test', '-L', full])).code === 0) throw new Error('checkpoint contains a link, deep path or escaping member');
+    if ((await channel.exec(['test', '-d', full])).code === 0) continue;
+    if ((await channel.exec(['test', '-f', full])).code !== 0) throw new Error('checkpoint contains a non-regular file');
+    const permit = await decideRead(site, full, channel);
+    if (!permit.ok || permit.absPath !== full) throw new Error('checkpoint member is outside its permitted plain path');
+    const sizeText = await mustRun(channel, ['wc', '-c', '--', full], 'measure checkpoint member');
+    const size = Number(/^\s*(\d+)/.exec(sizeText)?.[1]);
+    if (!Number.isSafeInteger(size) || size < 0) throw new Error('checkpoint member size is unreadable');
+    if (size > engineeringFileLimit || entries.length >= engineeringTreeFileLimit || total + size > engineeringTreeByteLimit) throw new Error('checkpoint exceeds its file/byte limit');
+    total += size;
+    const hash = await decidedDigest(site, channel, full, 'checkpoint member');
+    entries.push({ path: relative, sha256: hash.sha256, size });
+  }
+  entries.sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
+  if (sha256(canonicalWrapperJson(entries)) !== ref.digest) throw new Error('retained checkpoint tree differs from its recorded digest');
+  const members = entries.map(entry => ({ id: assetId(ref.id, entry.path, entry.sha256), path: `${ref.path}/${entry.path}`,
+    kind: 'file' as const, sha256: entry.sha256, bytes: entry.size, treeId: ref.id }));
+  if (treeId === undefined) {
+    if (!download) return { kind: 'directory', ref, entries: members };
+    // A complete checkpoint is useful as one download, not dozens of disconnected files. Stage
+    // verified bytes only in a fresh local directory; never change the original Site or archive.
+    const scratch = await mkdtemp(path.join(tmpdir(), 'hima-checkpoint-download-'));
+    try {
+      const contents = path.join(scratch, 'contents'); await mkdir(contents);
+      for (let index = 0; index < entries.length; index++) {
+        const entry = entries[index]!, member = members[index]!;
+        const bytes = await readEngineeringBytes(site, p.join(identity.workspace, member.path), root, entry.sha256, entry.size, identity.workspace);
+        const target = path.join(contents, ...entry.path.split('/'));
+        await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, bytes, { flag: 'wx', mode: 0o600 });
+      }
+      const archive = path.join(scratch, 'checkpoint.tar');
+      await promisify(execFile)('tar', ['-cf', archive, '-C', contents, '.'], { timeout: 30_000, maxBuffer: 1024 * 1024 });
+      if ((await stat(archive)).size > engineeringTreeByteLimit + 32 * 1024 * 1024) throw new Error('checkpoint download archive exceeds its byte limit');
+      const bytes = await readFile(archive);
+      return { kind: 'file', ref: { id: ref.id, path: `${ref.path}.tar`, kind: 'file', sha256: sha256(bytes), bytes: bytes.length }, bytes, truncated: false, references: [] };
+    } finally { await rm(scratch, { recursive: true, force: true }); }
+  }
+  const member = members.find(item => item.id === requestedId);
+  if (!member) throw new Error('requested file is not a verified checkpoint member');
+  return fileAnswer(member, await readEngineeringBytes(site, p.join(identity.workspace, member.path), root, member.sha256, member.bytes, identity.workspace));
 }

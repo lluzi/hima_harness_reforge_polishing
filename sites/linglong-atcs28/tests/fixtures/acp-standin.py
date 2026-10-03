@@ -58,6 +58,9 @@ def complete_prompt(request_id, text):
     elif "DELIVER_RESULT" in text or "DELIVER_BEST_EFFORT" in text:
         source = os.environ.get("STANDIN_RESULT_SOURCE")
         result = Path(source).read_bytes() if source else b'{"schema":"fixture-result/1","value":"native"}\n'
+        if b"${NATIVE_ENGINEERING_PREFIX}" in result:
+            native_prefix = ".hima-engineering/{}/{}/engineering".format(Path.cwd().parent.name, Path.cwd().name)
+            result = result.replace(b"${NATIVE_ENGINEERING_PREFIX}", native_prefix.encode())
         Path("result.json").write_bytes(result)
         artifacts = [{"path": "result.json", "sha256": sha256(result).hexdigest(), "kind": "result"}]
         artifact_source = os.environ.get("STANDIN_ARTIFACT_SOURCE_ROOT")

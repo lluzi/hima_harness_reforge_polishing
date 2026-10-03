@@ -1,15 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { access, mkdir, readFile, symlink, unlink, writeFile } from 'node:fs/promises';
-import { checkPack, jobKill, jobStatus, launchJob, loadPack, loadSite, type JobRecord, type WorkspaceRecord } from '@hima/harness';
+import { access, chmod, mkdir, mkdtemp, readFile, rename, rm, symlink, truncate, unlink, writeFile } from 'node:fs/promises';
+import { checkPack, jobKill, jobStatus, launchJob, loadPack, loadSite, readRunAssets, readEngineeringAsset, channelFor, type JobRecord, type WorkspaceRecord } from '@hima/harness';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent, resumeTestAgent } from './support/boot-inprocess.ts';
 import { packsDirOf, writePackVariant } from './support/pack.ts';
 import { writeLocalSite } from './support/site.ts';
 import { repoRoot } from './support/dsh-home.ts';
+import { bootHimaHost } from './support/boot-host.ts';
+import { api, createLiveSession, openSession } from './support/hima-api.ts';
+
 
 // The production wrapper independently refuses the unsandboxed fixture unless this exact test-only
 // switch is present. This test file runs in its own Node process, so keep it stable across concurrent
@@ -335,6 +339,139 @@ test('resident owner notification survives Reader-rejected native delivery and s
     owner?.cancel({ kind: 'hook', reason: 'resident repair notification test complete' });
     await maintenance; await host.dispose(); await fixture.h.dispose();
     if (silent === undefined) delete process.env.HIMA_TEST_SILENT_AGENT; else process.env.HIMA_TEST_SILENT_AGENT = silent;
+  }
+});
+
+test('ended resident Run assets expose verified files and checkpoint bytes without changing its archive or verdict', async (t) => {
+  const legacy = process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
+  process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0'; // Exercise production project authorization, not the old test-only global viewer.
+  const fixture = await installResidentFixture(t);
+  const binary = Buffer.from([0, 255, 10, 65]);
+  const binaryHash = createHash('sha256').update(binary).digest('hex');
+  const treeDigest = createHash('sha256').update(JSON.stringify([{ path: 'Ω/layout.oa', sha256: binaryHash, size: binary.length }])).digest('hex');
+  const admin = path.join(fixture.h.workspace, 'resident-admin');
+  const support = path.join(admin, 'retained-fixture');
+  await mkdir(path.join(support, 'engineering/checkpoints/best/Ω'), { recursive: true });
+  await writeFile(path.join(support, 'engineering/checkpoints/best/Ω/layout.oa'), binary);
+  const resultSource = path.join(admin, 'referenced-result.json');
+  await writeFile(resultSource, JSON.stringify({ schema: 'fixture-result/1', value: 'native',
+    selected: { checkpoint: { path: '${NATIVE_ENGINEERING_PREFIX}/checkpoints/best', digest: treeDigest } },
+    ignored: { path: '../private', sha256: binaryHash } }));
+  const capability = path.join(admin, 'engineering-capabilities-v1.json');
+  const config = JSON.parse(await readFile(capability, 'utf8'));
+  config.environment.set.STANDIN_RESULT_SOURCE = resultSource;
+  config.environment.set.STANDIN_ARTIFACT_SOURCE_ROOT = support;
+  await writeFile(capability, JSON.stringify(config));
+  const host = await bootInProcess(fixture.h);
+  let closed = false;
+  let web: Awaited<ReturnType<typeof bootHimaHost>> | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    const task = await openResidentTask(host, fixture, owner, 'DELIVER_RESULT');
+    const taskDir = path.join(task.workspace.workspace, '.hima-engineering', task.engineering.data.taskId);
+    await waitUntil('native result ready for collection', async () => {
+      try { return JSON.parse(await readFile(path.join(taskDir, 'state.json'), 'utf8')).phase === 'waiting'; }
+      catch { return false; }
+    }, 5_000, 20);
+    const delivery = await task.execute('assets-delivery', 'engineering', { executionId: task.executionId, engineering: { operation: 'delivery' } });
+    assert.equal(delivery.data.status, 'verified');
+    assert.equal((await task.execute('assets-release', 'engineering', { executionId: task.executionId, engineering: { operation: 'release' } })).data.status, 'released');
+    await host.ctx.hima.cancelRun(task.started.run.id);
+    const before = JSON.stringify(host.ctx.hima.ledger.run(task.started.run.id));
+    const deps = { ledger: host.ctx.hima.ledger, judge: host.ctx.hima.judge, sitesDir: path.join(fixture.h.home, 'hima/sites'), packsDir: packsDirOf(fixture.h) };
+    const result = await readRunAssets(deps, task.started.run.id);
+    assert.equal(result.kind, 'read', JSON.stringify(result)); if (result.kind !== 'read') return;
+    const archiveBytes = await readFile(result.manifestPath);
+    assert.ok(result.deliveries, 'normal archive surface must list the real retained delivery after Run end');
+    assert.equal(result.deliveries.length, 1);
+    const held = result.deliveries[0]!;
+    assert.equal(held.executionId, task.executionId);
+    const resultRef = held.artifacts.find(a => a.kind === 'result')!;
+    const readAsset = (id: string, tree?: string) => readEngineeringAsset(deps, task.started.run.id, task.executionId, held.requestId, id, tree);
+    const document = await readAsset(resultRef.id);
+    assert.equal(document.kind, 'file'); if (document.kind !== 'file') return;
+    assert.match(document.text!, /fixture-result/);
+    assert.ok(!document.references.some(ref => ref.path.includes('../private')), 'an escaping model reference grants no access');
+    const checkpointRef = document.references.find(ref => ref.kind === 'directory'); assert.ok(checkpointRef);
+    const tree = await readAsset(checkpointRef.id);
+    assert.equal(tree.kind, 'directory'); if (tree.kind !== 'directory') return;
+    assert.equal(tree.entries.length, 1);
+    const member = tree.entries[0]!;
+    const bytes = await readAsset(member.id, member.treeId);
+    assert.equal(bytes.kind, 'file'); if (bytes.kind !== 'file') return;
+    assert.equal(bytes.text, undefined, 'binary data is not rendered as corrupt UTF-8');
+    assert.deepEqual(Buffer.from(bytes.bytes), binary);
+    await assert.rejects(readAsset('../private'), /not a retained result reference/);
+    await assert.rejects(readEngineeringAsset(deps, task.started.run.id, 'other-execution', held.requestId, member.id), /no verified engineering delivery/);
+    const nativeMember = path.join(taskDir, 'workspace/engineering/checkpoints/best/Ω/layout.oa');
+    await writeFile(nativeMember, 'changed');
+    await assert.rejects(readAsset(tree.ref.id), /tree differs/);
+    await unlink(nativeMember);
+    const outside = path.join(fixture.h.workspace, 'outside.oa'); await writeFile(outside, binary); await symlink(outside, nativeMember);
+    await assert.rejects(readAsset(tree.ref.id), /link/);
+    await unlink(nativeMember); await writeFile(nativeMember, binary);
+    const checkpoints = path.join(taskDir, 'workspace/engineering/checkpoints');
+    await rename(checkpoints, `${checkpoints}-real`); await symlink(`${checkpoints}-real`, checkpoints);
+    let intermediateRejected = false;
+    try { await readAsset(tree.ref.id); } catch (error) { intermediateRejected = /symlink|ancestor|link/.test(String(error)); }
+    await unlink(checkpoints); await rename(`${checkpoints}-real`, checkpoints);
+    await truncate(nativeMember, 256 * 1024 * 1024 + 1);
+    let oversizeRejected = false;
+    try { await readAsset(tree.ref.id); } catch (error) { oversizeRejected = /file\/byte limit/.test(String(error)); }
+    await writeFile(nativeMember, binary);
+    assert.deepEqual({ intermediateRejected, oversizeRejected }, { intermediateRejected: true, oversizeRejected: true },
+      'intermediate aliases and excessive size are rejected before tree hashing/transfer');
+    const inputRef = document.references.find(ref => ref.path.endsWith('qor.rpt')); assert.ok(inputRef, 'declared task input provenance remains readable after end');
+    const input = await readAsset(inputRef.id); assert.equal(input.kind, 'file');
+    if (input.kind === 'file') assert.match(input.text!, /fixture input retained/);
+    const channel = channelFor(loadSite(deps.sitesDir, 'local'));
+    await assert.rejects(channel.exec(['find', taskDir, '-delete']), /only find/);
+    await assert.rejects(channel.exec(['find', taskDir, '-exec', 'echo', 'unsafe']), /only find/);
+    assert.equal(JSON.stringify(host.ctx.hima.ledger.run(task.started.run.id)), before);
+    assert.deepEqual(await readFile(result.manifestPath), archiveBytes, 'new read projections do not rewrite the original archive');
+    await host.dispose(); closed = true;
+    web = await bootHimaHost(fixture.h);
+    const cookie = await openSession(web), viewer = await createLiveSession(web, cookie, fixture.h.workspace);
+    const query = new URLSearchParams({ sessionId: viewer, execution: task.executionId, delivery: held.requestId, artifact: member.id, tree: member.treeId!, format: 'download' });
+    const download = await api(web, cookie, `/hima/api/runs/${task.started.run.id}/assets?${query}`);
+    assert.equal(download.status, 200, download.status === 200 ? '' : await download.text());
+    assert.match(download.headers.get('content-type') ?? '', /application\/octet-stream/);
+    assert.match(download.headers.get('content-disposition') ?? '', /attachment/);
+    assert.deepEqual(Buffer.from(await download.arrayBuffer()), binary, 'public Host download preserves every binary byte');
+    query.set('artifact', tree.ref.id); query.delete('tree');
+    const folderDownload = await api(web, cookie, `/hima/api/runs/${task.started.run.id}/assets?${query}`);
+    assert.equal(folderDownload.status, 200, folderDownload.status === 200 ? '' : await folderDownload.text());
+    const tarFile = path.join(fixture.h.workspace, 'downloaded-checkpoint.tar');
+    await writeFile(tarFile, Buffer.from(await folderDownload.arrayBuffer()));
+    const extracted = spawnSync('tar', ['-xOf', tarFile, './Ω/layout.oa']);
+    assert.equal(extracted.status, 0, extracted.stderr.toString());
+    assert.deepEqual(extracted.stdout, binary, 'one checkpoint download retains paths and bytes');
+    const foreignWorkspace = path.join(fixture.h.home, 'foreign-workspace'); await mkdir(foreignWorkspace);
+    const foreign = await createLiveSession(web, cookie, foreignWorkspace); query.set('sessionId', foreign);
+    const denied = await api(web, cookie, `/hima/api/runs/${task.started.run.id}/assets?${query}`);
+    assert.equal(denied.status, 403, 'another project cannot read engineering artifacts');
+    assert.deepEqual(await readFile(result.manifestPath), archiveBytes);
+  } finally {
+    if (web) await web.stop();
+    if (!closed) await host.dispose();
+    await fixture.h.dispose();
+    if (legacy === undefined) delete process.env.HIMA_TEST_LEGACY_AUTO_DRIVE; else process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = legacy;
+  }
+});
+
+test('checkpoint inventory caps transport output before retaining an unbounded listing', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'hima-inventory-output-'));
+  const prior = process.env.PATH;
+  try {
+    const fakeFind = path.join(dir, 'find');
+    await writeFile(fakeFind, '#!/usr/bin/env python3\nimport os\nos.write(1, b"x" * (4 * 1024 * 1024 + 4096))\n');
+    await chmod(fakeFind, 0o755);
+    process.env.PATH = `${dir}:${prior ?? ''}`;
+    const { LocalChannel } = await import('@hima/harness');
+    await assert.rejects(new LocalChannel('inventory-fixture').exec(['find', dir, '-maxdepth', '33', '-mindepth', '1', '-print0']), /byte output limit/);
+  } finally {
+    if (prior === undefined) delete process.env.PATH; else process.env.PATH = prior;
+    await rm(dir, { recursive: true, force: true });
   }
 });
 

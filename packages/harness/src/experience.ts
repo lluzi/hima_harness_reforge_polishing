@@ -21,6 +21,7 @@
 // Run without the record, and the next boot's reconciliation writes the report again from records
 // that have not moved. That is also the idempotence — a Run that carries the record is a Run whose
 // report is written, and this module leaves the Site alone.
+import { engineeringDeliveriesOf, type EngineeringDeliveryView } from './engineering-executor.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants, lstatSync } from 'node:fs';
 import { link, lstat, mkdir, open, readFile as readLocalFile, realpath, rename, rm } from 'node:fs/promises';
@@ -668,7 +669,7 @@ export type WriteRunAssetsResult =
   | { readonly kind: 'failed'; readonly why: string };
 
 export type ReadRunAssetsResult =
-  | { readonly kind: 'read'; readonly manifest: RunAssetManifest; readonly directory: string; readonly manifestPath: string }
+  | { readonly kind: 'read'; readonly manifest: RunAssetManifest; readonly directory: string; readonly manifestPath: string; readonly deliveries?: readonly EngineeringDeliveryView[] }
   | { readonly kind: 'none'; readonly why: string }
   | { readonly kind: 'changed'; readonly path: string; readonly recorded: string; readonly found: string }
   | { readonly kind: 'unreadable'; readonly path: string; readonly why: string };
@@ -1240,7 +1241,11 @@ export async function readRunAssets(deps: ExperienceDeps, runId: string): Promis
   }
   try { await archivePathSafe(folder.dir, runId, true); }
   catch (error) { return { kind: 'unreadable', path: directory, why: (error as Error).message }; }
-  return readRunAssetsAt(directory, runId, run, completion, runView(deps.ledger, run).run.packVersion ?? 'not recorded', relocated);
+  const archived = await readRunAssetsAt(directory, runId, run, completion, runView(deps.ledger, run).run.packVersion ?? 'not recorded', relocated);
+  // Supplement the read surface from existing verified receipts; the completed archive manifest
+  // and historical Run stay byte-for-byte authoritative, including older incomplete exports.
+  const deliveries = engineeringDeliveriesOf(run);
+  return archived.kind === 'read' && deliveries.length > 0 ? { ...archived, deliveries } : archived;
 }
 
 /** Read a named archived byte without contacting its original Site. */

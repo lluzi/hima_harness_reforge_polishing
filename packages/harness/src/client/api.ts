@@ -54,8 +54,22 @@ export function fetchMaterial(runId: string, recordId: string, signal?: AbortSig
   return runRequest(scoped(`${runPath(runId)}/material/${encodeURIComponent(recordId)}`, sessionId), { signal });
 }
 
-export function fetchArchive(runId: string, material?: string, signal?: AbortSignal, sessionId?: string): Promise<HimaResult<{ manifest: import('../experience-report.js').RunAssetManifest; text?: string }>> {
-  return runRequest(scoped(`${runPath(runId)}/assets${material === undefined ? '' : `?material=${encodeURIComponent(material)}`}`, sessionId), { signal });
+export interface EngineeringAssetSelection { execution: string; delivery: string; artifact: string; tree?: string }
+export interface ArchiveAnswer {
+  manifest?: import('../experience-report.js').RunAssetManifest;
+  deliveries?: readonly import('../engineering-executor.js').EngineeringDeliveryView[];
+  text?: string;
+  asset?: { kind: 'file' | 'directory'; ref: import('../engineering-executor.js').EngineeringAssetRef;
+    text?: string; truncated?: boolean; references?: readonly import('../engineering-executor.js').EngineeringAssetRef[];
+    entries?: readonly import('../engineering-executor.js').EngineeringAssetRef[] };
+}
+export function engineeringAssetDownloadUrl(runId: string, selection: EngineeringAssetSelection, sessionId?: string): string {
+  const query = new URLSearchParams({ ...selection, format: 'download' });
+  return scoped(`${runPath(runId)}/assets?${query}`, sessionId);
+}
+export function fetchArchive(runId: string, material?: string, signal?: AbortSignal, sessionId?: string, selection?: EngineeringAssetSelection): Promise<HimaResult<ArchiveAnswer>> {
+  const query = new URLSearchParams(selection ? { ...selection } : material === undefined ? {} : { material });
+  return runRequest(scoped(`${runPath(runId)}/assets?${query}`, sessionId), { signal });
 }
 
 export const fetchRuns = (signal?: AbortSignal, sessionId?: string): Promise<HimaResult<{ runs: RunHeadView[] }>> =>
