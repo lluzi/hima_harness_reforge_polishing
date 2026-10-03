@@ -2148,8 +2148,17 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (req.origin !== 'autopilot' && req.origin !== 'human' && ['begin', 'work', 'write', 'complete'].includes(req.action)) {
       const nodeId = req.action === 'begin' ? req.nodeId : (req.executionId === undefined ? undefined : control.executions[req.executionId]?.nodeId);
       try {
-        if (nodeId !== undefined && autopilotDrives(executionPack(deps, run), nodeId)) {
-          return no(`node ${nodeId} is driven by this Pack's autopilot: the Harness takes its turns and tells you once the Run leaves the self-driving region; read facts, pause or cancel instead`);
+        const pack = executionPack(deps, run);
+        if (nodeId !== undefined && autopilotDrives(pack, nodeId)) {
+          const pending = run.status === 'running' && control.stop === undefined && run.currentNode !== undefined
+            && !autopilotDrives(pack, run.currentNode) && executionPauseReason(pack, run, run.currentNode) === undefined
+            ? Object.values(control.executions).find(item => item.nodeId === run.currentNode && item.kind === 'act'
+              && item.phase === 'ready' && item.supersededBy === undefined && item.branchId === undefined
+              && item.generation === run.generation && item.loopId === run.loop?.id
+              && item.loopGeneration === run.loop?.generation) : undefined;
+          return no(`node ${nodeId} is driven by this Pack's autopilot. ` + (pending
+            ? `First complete current node ${pending.nodeId} with action complete and executionId ${pending.id}, after releasing any owned engineering session. Its ready result has not advanced the route; successor autopilot has not started.`
+            : 'The Harness takes those turns when the recorded route reaches that region, and notifies the owner on leaving it. Inspect the current execution; do not begin a future autopilot node.'));
         }
       } catch { /* an unreadable method is answered by the ordinary checks below */ }
     }
@@ -2784,6 +2793,10 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
     && run.control?.siteDigest === identityOf(identity.site);
   const paused = executionPauseReason(identity.pack, run, execution.nodeId);
   const start = residentEngineeringStartOf(run.control!, execution.id);
+  const completionAllowed = (candidate: NodeExecution): boolean => candidate.phase === 'ready' && current
+    && run.status === 'running' && run.control?.stop === undefined && paused === undefined;
+  const releaseReason = (canComplete: boolean): string =>
+    `Release ends the engineering session and retains its artifacts; it does not complete the node or advance the Run.${canComplete ? ` Call action complete with executionId ${execution.id} and the returned epoch/revision; then the declared route can proceed.` : ' Inspect current execution facts and control holds before further action.'}`;
 
   if (engineering.operation === 'start') {
     if (!current) return no('the execution input version or generation is stale; no engineering task was started');
@@ -2874,16 +2887,18 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
           && (request.receipt.data as { operation?: unknown; status?: unknown } | undefined)?.operation === 'release'
           && (request.receipt.data as { status?: unknown }).status === 'released');
         const phase = engineering.operation === 'release' || engineering.operation === 'status' && previouslyReleased ? 'released' : 'stopped';
-        const data = engineeringResult(engineering.operation, taskId, phase, {
-          nativeQuiescence: 'confirmed', recovered: recovered !== undefined,
-          ...((recovered?.status === 'stopped' ? recovered.session : undefined) === undefined ? {} : { recoverySession: recovered!.session }),
-        });
         const latestExecution = existingRun(deps.ledger, run.id).control!.executions[execution.id]!;
         const hasVerifiedDelivery = Object.values(existingRun(deps.ledger, run.id).control!.requests).some((request) =>
           request.receipt.action === 'engineering' && request.receipt.executionId === execution.id
           && (request.receipt.data as { operation?: unknown; status?: unknown } | undefined)?.operation === 'delivery'
           && (request.receipt.data as { status?: unknown }).status === 'verified');
         const preserveVerifiedReady = latestExecution.phase === 'ready' && hasVerifiedDelivery;
+        const canComplete = engineering.operation === 'release' && hasVerifiedDelivery && completionAllowed(latestExecution);
+        const data = engineeringResult(engineering.operation, taskId, phase, {
+          nativeQuiescence: 'confirmed', recovered: recovered !== undefined,
+          ...((recovered?.status === 'stopped' ? recovered.session : undefined) === undefined ? {} : { recoverySession: recovered!.session }),
+          ...(canComplete ? { nextAction: 'complete', executionId: execution.id } : {}),
+        });
         const change: Partial<NodeExecution> = {
           ...(recovered?.status === 'stopped' ? { jobSession: recovered.session } : {}),
           ...(preserveVerifiedReady ? {}
@@ -2893,7 +2908,8 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
             : engineering.operation === 'release' ? {} : { phase: 'uncertain', reason: 'native session was lost and reconciled stopped; no business continuation is possible' }),
         };
         receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', change);
-        return executionAnswer(deps, run.id, 'accepted', { receipt, data });
+        return executionAnswer(deps, run.id, 'accepted', { receipt, data,
+          ...(engineering.operation === 'release' ? { reason: releaseReason(canComplete) } : {}) });
       } catch (error) {
         const reason = `same-task engineering reconciliation is unknown: ${(error as Error).message}`;
         const data = engineeringResult(engineering.operation, taskId, 'unknown', { reason });
@@ -2995,10 +3011,12 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
         output: materialized, artifacts: delivery.artifacts, readerResult: observed.kind,
       });
       receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', verified
-        ? { phase: 'ready', result: { kind: 'settled', session: execution.jobSession } }
+        ? { phase: 'ready', reason: undefined, result: { kind: 'settled', session: execution.jobSession } }
         : { phase: 'working', reason: 'the Pack Reader did not accept the engineering result' });
       return executionAnswer(deps, run.id, 'accepted', { receipt, data,
-        ...(verified ? {} : { reason: 'the Pack Reader did not accept the engineering result; repair it in the same task' }) });
+        reason: verified
+          ? `The Reader accepted the result; execution ${execution.id} is ready, not completed. Release the engineering session.${completionAllowed({ ...execution, phase: 'ready' }) ? ' Then call action complete with this executionId. Successor autopilot starts only after that owner completion.' : ' Inspect the current control holds and Run state before any business completion.'}`
+          : 'the Pack Reader did not accept the engineering result; repair it in the same task' });
     }
 
     const cancelled = Object.values(existingRun(deps.ledger, run.id).control!.requests).some((request) => request.receipt.action === 'engineering'
@@ -3023,11 +3041,14 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
       const after = await engineeringJobStatus(deps, run.id, execution.jobSession);
       if (after.state.state === 'running') throw new RunStartError('engineering wrapper and owned process group survived release');
     }
-    const data = engineeringResult('release', taskId, 'released', { retained: true });
+    const canComplete = priorDelivery !== undefined && completionAllowed(execution);
+    const data = engineeringResult('release', taskId, 'released', { retained: true,
+      ...(canComplete ? { nextAction: 'complete', executionId: execution.id } : {}) });
     receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', cancelled && priorDelivery === undefined
       ? { phase: 'failed', result: { kind: 'stopped', reason: 'resident engineering task cancelled and released' } }
       : {});
-    return executionAnswer(deps, run.id, 'accepted', { receipt, data });
+    return executionAnswer(deps, run.id, 'accepted', { receipt, data,
+      reason: releaseReason(canComplete) });
   } catch (error) {
     const reason = `${engineering.operation} outcome is uncertain; do not replay it automatically: ${(error as Error).message}`;
     receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId,

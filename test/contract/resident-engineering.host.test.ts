@@ -658,6 +658,7 @@ test('paused execution still reports and actually cancels the same resident nati
     const released = await task.execute('paused-release', 'engineering', { executionId: task.executionId, engineering: { operation: 'release' } });
     assert.ok(released.data, JSON.stringify(released));
     assert.equal(released.data.status, 'released', JSON.stringify(released));
+    assert.equal(released.data.nextAction, undefined, 'cancelled cleanup must not recommend successful node completion');
   } finally {
     await host.dispose(); await fixture.h.dispose();
   }
@@ -794,6 +795,8 @@ test('Reader rejection is repaired in the same native session and release binds 
     assert.ok(accepted.data, JSON.stringify(accepted));
     assert.equal(accepted.data.status, 'verified', JSON.stringify(accepted));
     assert.equal(accepted.data.summary, 'deterministic repaired result');
+    assert.equal(host.ctx.hima.ledger.run(task.started.run.id)!.control!.executions[task.executionId]!.reason, undefined,
+      'a repaired delivery must clear the earlier Reader rejection from the current execution');
     const latestManifest = JSON.parse(await readFile(path.join(taskDir, 'delivery/manifest.json'), 'utf8'));
     assert.notEqual(latestManifest.sha256, firstManifest.sha256);
     assert.deepEqual(JSON.parse(await readFile(firstManifestPath, 'utf8')), firstManifest, 'the first rejected manifest remains immutable');
@@ -802,6 +805,8 @@ test('Reader rejection is repaired in the same native session and release binds 
     assert.equal(firstManifest.sessionId, latestManifest.sessionId, 'repair stayed in the original native session');
     const release = await task.execute('repair-release', 'engineering', { executionId: task.executionId, engineering: { operation: 'release' } });
     assert.equal(release.data.status, 'released', JSON.stringify(release));
+    assert.equal(release.data.nextAction, 'complete');
+    assert.equal(release.data.executionId, task.executionId);
     const completed = await task.execute('repair-complete', 'complete', { executionId: task.executionId });
     assert.equal(completed.kind, 'accepted');
   } finally {
@@ -842,6 +847,31 @@ test('public status reconciles a crashed wrapper orphan without replay and relea
   }
 });
 
+test('paused verified delivery and release retain facts without recommending completion', async (t) => {
+  const fixture = await installResidentFixture(t);
+  const host = await bootInProcess(fixture.h);
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    const task = await openResidentTask(host, fixture, owner, 'DELIVER_RESULT');
+    const taskDir = path.join(task.workspace.workspace, '.hima-engineering', task.engineering.data.taskId);
+    await waitUntil('paused task candidate', async () => {
+      try { return (await readFile(path.join(taskDir, 'workspace/resident-delivery.json'))).byteLength > 0; } catch { return false; }
+    }, 10_000, 20);
+    await task.execute('hold-before-delivery', 'pause');
+    const delivery = await task.execute('held-delivery', 'engineering', { executionId: task.executionId, engineering: { operation: 'delivery' } });
+    assert.equal(delivery.data.status, 'verified');
+    assert.doesNotMatch(delivery.reason, /then call action complete/);
+    assert.match(delivery.reason, /hold|paused|control/);
+    const release = await task.execute('held-release', 'engineering', { executionId: task.executionId, engineering: { operation: 'release' } });
+    assert.equal(release.data.status, 'released');
+    assert.equal(release.data.nextAction, undefined);
+    assert.equal((await task.execute('held-complete', 'complete', { executionId: task.executionId })).kind, 'refused');
+    assert.equal(host.ctx.hima.ledger.run(task.started.run.id)!.control!.executions[task.executionId]!.phase, 'ready');
+  } finally {
+    await host.dispose(); await fixture.h.dispose();
+  }
+});
+
 test('crash cleanup preserves Reader-verified ready delivery through status, release and completion', async (t) => {
   const fixture = await installResidentFixture(t);
   const host = await bootInProcess(fixture.h);
@@ -876,6 +906,9 @@ test('crash cleanup preserves Reader-verified ready delivery through status, rel
     assert.equal(host.ctx.hima.ledger.run(task.started.run.id)!.control!.executions[task.executionId]!.phase, 'ready');
     const release = await task.execute('verified-crash-release', 'engineering', { executionId: task.executionId, engineering: { operation: 'release' } });
     assert.equal(release.data.status, 'released', JSON.stringify(release));
+    assert.equal(release.data.nextAction, 'complete');
+    assert.equal(release.data.executionId, task.executionId);
+    assert.match(release.reason, /does not complete/);
     assert.equal(host.ctx.hima.ledger.run(task.started.run.id)!.control!.executions[task.executionId]!.phase, 'ready');
     assert.equal(createHash('sha256').update(await readFile(outputPath)).digest('hex'), outputSha256);
     assert.deepEqual(host.ctx.hima.ledger.records({ runId: task.started.run.id, type: 'observation' })

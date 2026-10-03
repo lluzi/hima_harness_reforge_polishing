@@ -1209,8 +1209,18 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
   assert.equal(delivered.data.outcome, 'best-effort');
   assert.deepEqual(await readFile(path.join(workspace, 'engineering/fixture/best-workspace/state')), checkpointBytes,
     'Host reconstructs the native checkpoint directory before the ATCS Reader verifies its tree digest');
+  // Field sequence: the owner mistook verified delivery for node completion and tried a future
+  // autopilot node. The refusal must point back to its ready execution, not tell it to wait.
+  const premature = await execute('atcs-premature-next', 'begin', { nodeId: 'read-engineering-result' });
+  assert.equal(premature.kind, 'refused');
+  assert.match(premature.reason, /complete.*fix-timing/);
+  assert.equal(host.ctx.hima.ledger.run(runId!)!.currentNode, 'fix-timing');
   const released = await execute('atcs-release', 'engineering', { executionId, engineering: { operation: 'release' } });
   assert.equal(released.data.status, 'released');
+  assert.equal(released.data.nextAction, 'complete');
+  assert.equal(released.data.executionId, executionId);
+  assert.match(released.reason, /does not complete/);
+  assert.equal(host.ctx.hima.ledger.run(runId!)!.currentNode, 'fix-timing', 'release must not replace owner completion');
   const completed = await execute('atcs-complete', 'complete', { executionId });
   assert.equal(completed.kind, 'accepted', JSON.stringify(completed));
   await waitUntil('ATCS route reaches the terminal Goal judge',
