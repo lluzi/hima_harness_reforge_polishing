@@ -1,0 +1,41 @@
+{
+  "schema": "Source rows: id, claim, primary_url, accessed_at, evidence_scope, limitation, decision_effect",
+  "sources": [
+    {
+      "id": "R-DAG",
+      "claim": "Dagster Python assets and code/input data versions offer useful explicit lineage; auto data version is not artifact bytes hash for nondeterminism",
+      "primary_url": "https://github.com/dagster-io/dagster/blob/1.13.25/docs/docs/guides/build/assets/asset-versioning-and-caching.md",
+      "accessed_at": "2026-10-03T04:56:27.360677+00:00",
+      "evidence_scope": "Fetched complete official release-tag doc; source lines 34,112-114,148",
+      "limitation": "No Hima integration/performance tested",
+      "decision_effect": "Borrow explicit producer/version/results, not replace Reader provenance with automatic data version"
+    },
+    {
+      "id": "R-PREFECT",
+      "claim": "Python flow final state follows return/exception semantics; failed child task can coexist with completed flow",
+      "primary_url": "https://docs.prefect.io/v3/concepts/flows#final-state-determination",
+      "accessed_at": "2026-10-03T04:56:27.360790+00:00",
+      "evidence_scope": "Official complete docs and 3.8.7 release source",
+      "limitation": "Not a claim that Prefect is incorrect; application must propagate business outcome",
+      "decision_effect": "Engine completion cannot replace Hima explicit Goal"
+    },
+    {
+      "id": "R-ARGO",
+      "claim": "Kubernetes CRD/container-native workflow engine with steps/DAG; mismatched to current TS embedded Host unless K8s becomes deployment target",
+      "primary_url": "https://github.com/argoproj/argo-workflows/blob/v4.1.4/docs/README.md",
+      "accessed_at": "2026-10-03T04:56:27.360791+00:00",
+      "evidence_scope": "Complete official release-tag README and official live homepage",
+      "limitation": "No assertion about resource usage or containerizing commercial EDA feasibility",
+      "decision_effect": "Deployment contrast and backend option, not primary Fabric adoption candidate"
+    },
+    {
+      "id": "R-HIMA",
+      "claim": "Current Pack rule-position/latest-evidence and completion coupling need explicit domain semantics even with framework",
+      "primary_url": "https://github.com/lluzi/hima_harness_reforge_polishing/blob/77223febe236df94d4db4eb006b6c9e612c62206/packages/harness/src/node-turns.ts#L1994",
+      "accessed_at": "2026-10-03T04:56:27.360792+00:00",
+      "evidence_scope": "Local read of packs.ts 874+, fabric.ts1289+, node-turns.ts1994+ and prior current-SHA review",
+      "limitation": "Static path reasoning, not runtime failure reproduction",
+      "decision_effect": "Do not disguise domain completion gap by adding generic workflow layer"
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "verified_at": "2026-10-03T05:07:44.539716+00:00",
+  "scope": "Documentation-only open-source-foundations investigation; no adoption or implementation approval",
+  "worktree": "/Users/lluzi/.codex/worktrees/harness-architecture-upgrade/hima_harness_reforge_polishing",
+  "branch": "future",
+  "product_baseline": "77223febe236df94d4db4eb006b6c9e612c62206",
+  "parent_report_head": "d540d9de95e40c2d3751f0d4658fda7cdd2550a2",
+  "remote_product_branch_readback": "codex/issue82-opencode-design at 77223febe236df94d4db4eb006b6c9e612c62206 before documentation delivery",
+  "research_workers": [
+    {
+      "role": "durable engines",
+      "model": "gpt-6.1-sol",
+      "effort": "high",
+      "context": "fresh; no nested delegation"
+    },
+    {
+      "role": "embedded graph libraries",
+      "model": "gpt-6.1-sol",
+      "effort": "high",
+      "context": "fresh; no nested delegation"
+    },
+    {
+      "role": "independent decision reader",
+      "model": "gpt-6.1-sol",
+      "effort": "high",
+      "context": "fresh; no nested delegation"
+    }
+  ],
+  "checks": {
+    "external_report_urls": 41,
+    "initial_http_200": 33,
+    "private_links_local_fixed_source_verified": 3,
+    "initial_tls_timeouts": 5,
+    "tls_timeout_fallback": "All five LangGraph pages read successfully by web tool; actual error records retained",
+    "canonical_redirect_followup": "Conductor old URL returned redirect stub; canonical complete page read via urllib; license statements checked; report updated",
+    "semantic_spotchecks": "Root checked Hima source, DBOS Postgres and zombie/ownership, Conductor license, XState restart semantics, Effect unstable/SingleRunner, Dagster nondeterministic data version, LangGraph latest graph/drain, Prefect final state. Fresh reviewer checked deciding facts independently; see independent-review.md",
+    "reader_verdict": "bounded pass; no unaddressed blocking finding",
+    "review_edits": [
+      "Engine-acknowledged result distinguished from artifact/Ledger alone",
+      "Fault scenarios distinguished from adoption routes",
+      "DBOS counterargument moved to correct subsection",
+      "No unmeasured maturity claim"
+    ],
+    "json_parse": "passed for all 10 JSON files",
+    "report_relative_links": "all present",
+    "canonical_report_sha256": "766eba706a0147ddffdbc1bcdf11626a4f4fa39a45a44eba3a38aaf165fd3d42"
+  },
+  "not_run": [
+    "dependency installation",
+    "candidate execution",
+    "Hima runtime",
+    "builds or product tests",
+    "GUI",
+    "SSH",
+    "EDA",
+    "performance or crash experiments"
+  ],
+  "product_mutations": [],
+  "unresolved": [
+    "deployment preference: optional user question unanswered",
+    "Hima integration/deletion and total operating cost",
+    "real external EDA effect reconciliation",
+    "production persistent-backend qualification",
+    "Temporal tutorial/API cancel default conflict; choose explicit option when implementing",
+    "DBOS cancelSignal docs versus fixed release support"
+  ],
+  "developer_usage": {
+    "requests": "not measured",
+    "tokens": "not measured",
+    "elapsed_attribution": "not measured"
+  },
+  "raw_snapshot_policy": "Original official text/source downloads remain in ignored research directory; archived claim ledgers preserve official URLs, version/SHA, limits and available content hashes",
+  "delivery": "Docs commit to future; repository requires immediate push and remote SHA readback after commit. Commit identity is available from git history, not self-embedded here."
+}

@@ -1,0 +1,351 @@
+{
+  "checked_utc": "2026-10-03T05:03:02.610005+00:00",
+  "method": "HTTP GET; unique report-body remote URLs; private source links checked against current fixed local source. HTTP success is not semantic verification. Anchors not automatically validated.",
+  "results": [
+    {
+      "url": "https://docs.dbos.dev/explanations/concurrent-executions",
+      "http_status": 200,
+      "final_url": "https://docs.dbos.dev/explanations/concurrent-executions",
+      "title": "Concurrent Executions | DBOS Docs",
+      "bytes_read": 27268,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.dbos.dev/production/hosting-conductor",
+      "http_status": 200,
+      "final_url": "https://docs.dbos.dev/production/hosting-conductor/",
+      "title": null,
+      "bytes_read": 388,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.dbos.dev/typescript/programming-guide",
+      "http_status": 200,
+      "final_url": "https://docs.dbos.dev/typescript/programming-guide",
+      "title": "Learn DBOS TypeScript | DBOS Docs",
+      "bytes_read": 122845,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.dbos.dev/typescript/reference/workflows-steps",
+      "http_status": 200,
+      "final_url": "https://docs.dbos.dev/typescript/reference/workflows-steps",
+      "title": "Workflows &amp; Steps | DBOS Docs",
+      "bytes_read": 148049,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.dbos.dev/typescript/tutorials/upgrading-workflows",
+      "http_status": 200,
+      "final_url": "https://docs.dbos.dev/typescript/tutorials/upgrading-workflows",
+      "title": "Upgrading Workflow Code | DBOS Docs",
+      "bytes_read": 66591,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.dbos.dev/typescript/tutorials/workflow-tutorial",
+      "http_status": 200,
+      "final_url": "https://docs.dbos.dev/typescript/tutorials/workflow-tutorial",
+      "title": "Workflows | DBOS Docs",
+      "bytes_read": 114412,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.langchain.com/oss/javascript/langgraph/backward-compatibility",
+      "error": "<urlopen error _ssl.c:1112: The handshake operation timed out>",
+      "fallback_verification": {
+        "tool": "web open",
+        "date": "2026-10-02 PDT",
+        "outcome": "official page fetched with matching title/content",
+        "note": "Original urllib TLS timeout retained; graph-api opened earlier in same root research; other four opened after automated check."
+      }
+    },
+    {
+      "url": "https://docs.langchain.com/oss/javascript/langgraph/checkpointers",
+      "error": "<urlopen error _ssl.c:1112: The handshake operation timed out>",
+      "fallback_verification": {
+        "tool": "web open",
+        "date": "2026-10-02 PDT",
+        "outcome": "official page fetched with matching title/content",
+        "note": "Original urllib TLS timeout retained; graph-api opened earlier in same root research; other four opened after automated check."
+      }
+    },
+    {
+      "url": "https://docs.langchain.com/oss/javascript/langgraph/fault-tolerance",
+      "error": "<urlopen error _ssl.c:1112: The handshake operation timed out>",
+      "fallback_verification": {
+        "tool": "web open",
+        "date": "2026-10-02 PDT",
+        "outcome": "official page fetched with matching title/content",
+        "note": "Original urllib TLS timeout retained; graph-api opened earlier in same root research; other four opened after automated check."
+      }
+    },
+    {
+      "url": "https://docs.langchain.com/oss/javascript/langgraph/graph-api",
+      "error": "<urlopen error _ssl.c:1112: The handshake operation timed out>",
+      "fallback_verification": {
+        "tool": "web open",
+        "date": "2026-10-02 PDT",
+        "outcome": "official page fetched with matching title/content",
+        "note": "Original urllib TLS timeout retained; graph-api opened earlier in same root research; other four opened after automated check."
+      }
+    },
+    {
+      "url": "https://docs.langchain.com/oss/javascript/langgraph/interrupts",
+      "error": "<urlopen error _ssl.c:1112: The handshake operation timed out>",
+      "fallback_verification": {
+        "tool": "web open",
+        "date": "2026-10-02 PDT",
+        "outcome": "official page fetched with matching title/content",
+        "note": "Original urllib TLS timeout retained; graph-api opened earlier in same root research; other four opened after automated check."
+      }
+    },
+    {
+      "url": "https://docs.prefect.io/v3/concepts/flows",
+      "http_status": 200,
+      "final_url": "https://docs.prefect.io/v3/concepts/flows",
+      "title": "Flows - Prefect",
+      "bytes_read": 624839,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.prefect.io/v3/concepts/flows#final-state-determination",
+      "http_status": 200,
+      "final_url": "https://docs.prefect.io/v3/concepts/flows#final-state-determination",
+      "title": "Flows - Prefect",
+      "bytes_read": 624839,
+      "fragment_not_validated": "final-state-determination"
+    },
+    {
+      "url": "https://docs.restate.dev/develop/ts/external-events",
+      "http_status": 200,
+      "final_url": "https://docs.restate.dev/develop/ts/external-events",
+      "title": "Signals and external events - Restate",
+      "bytes_read": 512234,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.restate.dev/guides/databases",
+      "http_status": 200,
+      "final_url": "https://docs.restate.dev/guides/databases",
+      "title": "Databases and Restate - Restate",
+      "bytes_read": 603604,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.restate.dev/server/overview",
+      "http_status": 200,
+      "final_url": "https://docs.restate.dev/server/overview",
+      "title": "Self-hosted Restate Overview - Restate",
+      "bytes_read": 393373,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.restate.dev/services/versioning",
+      "http_status": 200,
+      "final_url": "https://docs.restate.dev/services/versioning",
+      "title": "Versioning - Restate",
+      "bytes_read": 484875,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.temporal.io/develop/typescript/activities/asynchronous-activity",
+      "http_status": 200,
+      "final_url": "https://docs.temporal.io/develop/typescript/activities/asynchronous-activity",
+      "title": "Asynchronous Activity - TypeScript SDK | Temporal Documentation",
+      "bytes_read": 68259,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.temporal.io/develop/typescript/workflows/cancellation",
+      "http_status": 200,
+      "final_url": "https://docs.temporal.io/develop/typescript/workflows/cancellation",
+      "title": "Cancel a Workflow - TypeScript SDK | Temporal Documentation",
+      "bytes_read": 69525,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.temporal.io/production-deployment/worker-deployments/worker-versioning",
+      "http_status": 200,
+      "final_url": "https://docs.temporal.io/production-deployment/worker-deployments/worker-versioning",
+      "title": "Worker Versioning | Temporal Documentation",
+      "bytes_read": 65633,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://docs.temporal.io/self-hosted-guide",
+      "http_status": 200,
+      "final_url": "https://docs.temporal.io/self-hosted-guide",
+      "title": "Self-hosted Temporal Service guide | Temporal Documentation",
+      "bytes_read": 49921,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/Effect-TS/effect/blob/67ba4e46a11ccda0b6761578bfd22c04ae00167d/packages/effect/src/cluster/SingleRunner.ts",
+      "http_status": 200,
+      "final_url": "https://github.com/Effect-TS/effect/blob/67ba4e46a11ccda0b6761578bfd22c04ae00167d/packages/effect/src/cluster/SingleRunner.ts",
+      "title": "effect/packages/effect/src/cluster/SingleRunner.ts at 67ba4e46a11ccda0b6761578bfd22c04ae00167d · Effect-TS/effect · GitHub",
+      "bytes_read": 297442,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/Effect-TS/effect/blob/67ba4e46a11ccda0b6761578bfd22c04ae00167d/packages/effect/src/workflow/Workflow.ts",
+      "http_status": 200,
+      "final_url": "https://github.com/Effect-TS/effect/blob/67ba4e46a11ccda0b6761578bfd22c04ae00167d/packages/effect/src/workflow/Workflow.ts",
+      "title": "effect/packages/effect/src/workflow/Workflow.ts at 67ba4e46a11ccda0b6761578bfd22c04ae00167d · Effect-TS/effect · GitHub",
+      "bytes_read": 911328,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/Effect-TS/effect/tree/67ba4e46a11ccda0b6761578bfd22c04ae00167d",
+      "http_status": 200,
+      "final_url": "https://github.com/Effect-TS/effect/tree/67ba4e46a11ccda0b6761578bfd22c04ae00167d",
+      "title": "GitHub - Effect-TS/effect at 67ba4e46a11ccda0b6761578bfd22c04ae00167d · GitHub",
+      "bytes_read": 377889,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/argoproj/argo-workflows/blob/v4.1.4/docs/README.md",
+      "http_status": 200,
+      "final_url": "https://github.com/argoproj/argo-workflows/blob/v4.1.4/docs/README.md",
+      "title": "argo-workflows/docs/README.md at v4.1.4 · argoproj/argo-workflows · GitHub",
+      "bytes_read": 334381,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/dagster-io/dagster/blob/1.13.25/docs/docs/guides/build/assets/asset-versioning-and-caching.md",
+      "http_status": 200,
+      "final_url": "https://github.com/dagster-io/dagster/blob/1.13.25/docs/docs/guides/build/assets/asset-versioning-and-caching.md",
+      "title": "dagster/docs/docs/guides/build/assets/asset-versioning-and-caching.md at 1.13.25 · dagster-io/dagster · GitHub",
+      "bytes_read": 318602,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/dagster-io/dagster/releases/tag/1.13.25",
+      "http_status": 200,
+      "final_url": "https://github.com/dagster-io/dagster/releases/tag/1.13.25",
+      "title": "Release 1.13.25 (core) / 0.29.25 (libraries) · dagster-io/dagster · GitHub",
+      "bytes_read": 207885,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/dbos-inc/dbos-transact-ts/blob/3f36908f58fd8b3079cbf5372203c7a2d0ba06cc/src/dbos-executor.ts#L389",
+      "http_status": 200,
+      "final_url": "https://github.com/dbos-inc/dbos-transact-ts/blob/3f36908f58fd8b3079cbf5372203c7a2d0ba06cc/src/dbos-executor.ts#L389",
+      "title": "dbos-transact-ts/src/dbos-executor.ts at 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc · dbos-inc/dbos-transact-ts · GitHub",
+      "bytes_read": 983953,
+      "fragment_not_validated": "L389"
+    },
+    {
+      "url": "https://github.com/dbos-inc/dbos-transact-ts/releases/tag/v5.2",
+      "http_status": 200,
+      "final_url": "https://github.com/dbos-inc/dbos-transact-ts/releases/tag/v5.2",
+      "title": "Release v5.2 · dbos-inc/dbos-transact-ts · GitHub",
+      "bytes_read": 206768,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/langchain-ai/langgraphjs/tree/ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb",
+      "http_status": 200,
+      "final_url": "https://github.com/langchain-ai/langgraphjs/tree/ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb",
+      "title": "GitHub - langchain-ai/langgraphjs at ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb · GitHub",
+      "bytes_read": 336614,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/blob/77223febe236df94d4db4eb006b6c9e612c62206/packages/harness/src/fabric.ts#L1289",
+      "status": "local-fixed-SHA-source-verified",
+      "exists": true,
+      "baseline": "77223febe236df94d4db4eb006b6c9e612c62206"
+    },
+    {
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/blob/77223febe236df94d4db4eb006b6c9e612c62206/packages/harness/src/node-turns.ts#L1994",
+      "status": "local-fixed-SHA-source-verified",
+      "exists": true,
+      "baseline": "77223febe236df94d4db4eb006b6c9e612c62206"
+    },
+    {
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/blob/77223febe236df94d4db4eb006b6c9e612c62206/packages/harness/src/packs.ts#L897",
+      "status": "local-fixed-SHA-source-verified",
+      "exists": true,
+      "baseline": "77223febe236df94d4db4eb006b6c9e612c62206"
+    },
+    {
+      "url": "https://github.com/restatedev/restate/blob/5ab87a6b5eabb70d5ba09738e281edc69b6ae10e/LICENSE",
+      "http_status": 200,
+      "final_url": "https://github.com/restatedev/restate/blob/5ab87a6b5eabb70d5ba09738e281edc69b6ae10e/LICENSE",
+      "title": "restate/LICENSE at 5ab87a6b5eabb70d5ba09738e281edc69b6ae10e · restatedev/restate · GitHub",
+      "bytes_read": 285730,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/restatedev/restate/releases/tag/v1.7.13",
+      "http_status": 200,
+      "final_url": "https://github.com/restatedev/restate/releases/tag/v1.7.13",
+      "title": "Release v1.7.13 · restatedev/restate · GitHub",
+      "bytes_read": 222268,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/restatedev/sdk-typescript/releases/tag/v1.17.2",
+      "http_status": 200,
+      "final_url": "https://github.com/restatedev/sdk-typescript/releases/tag/v1.17.2",
+      "title": "Release Release v1.17.2 · restatedev/sdk-typescript · GitHub",
+      "bytes_read": 205736,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/statelyai/xstate/tree/fbee62e7c1586315ed478c2fedf530d7e0ff5a3e",
+      "http_status": 200,
+      "final_url": "https://github.com/statelyai/xstate/tree/fbee62e7c1586315ed478c2fedf530d7e0ff5a3e",
+      "title": "GitHub - statelyai/xstate at fbee62e7c1586315ed478c2fedf530d7e0ff5a3e · GitHub",
+      "bytes_read": 491957,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/temporalio/sdk-typescript/releases/tag/v1.24.0",
+      "http_status": 200,
+      "final_url": "https://github.com/temporalio/sdk-typescript/releases/tag/v1.24.0",
+      "title": "Release v1.24.0 · temporalio/sdk-typescript · GitHub",
+      "bytes_read": 211671,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://github.com/temporalio/temporal/releases/tag/v1.32.0",
+      "http_status": 200,
+      "final_url": "https://github.com/temporalio/temporal/releases/tag/v1.32.0",
+      "title": "Release v1.32.0 · temporalio/temporal · GitHub",
+      "bytes_read": 231762,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://stately.ai/docs/persistence",
+      "http_status": 200,
+      "final_url": "https://stately.ai/docs/persistence",
+      "title": "Persistence",
+      "bytes_read": 239086,
+      "fragment_not_validated": null
+    },
+    {
+      "url": "https://temporal.io/blog/idempotency-and-durable-execution",
+      "http_status": 200,
+      "final_url": "https://temporal.io/blog/idempotency-and-durable-execution",
+      "title": "What is idempotency? And why it matters for durable systems | Temporal",
+      "bytes_read": 186572,
+      "fragment_not_validated": null
+    }
+  ],
+  "followup_checks": [
+    {
+      "url": "https://docs.dbos.dev/conductor/self-hosting/hosting-conductor",
+      "http_status": 200,
+      "final_url": "https://docs.dbos.dev/conductor/self-hosting/hosting-conductor",
+      "semantic_terms": [
+        "proprietary",
+        "license key",
+        "license agreement"
+      ],
+      "checked_utc": "2026-10-03T05:05:45.951140+00:00"
+    }
+  ]
+}

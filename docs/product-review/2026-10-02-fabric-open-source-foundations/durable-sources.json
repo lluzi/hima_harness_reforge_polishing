@@ -1,0 +1,1058 @@
+{
+  "schema": "claim-source-ledger/v1",
+  "lane": "durable engines",
+  "verified_at": "2026-10-03T04:55:55.906009+00:00",
+  "source_baseline": "77223febe236df94d4db4eb006b6c9e612c62206",
+  "research_head": "d540d9de95e40c2d3751f0d4658fda7cdd2550a2",
+  "verification": "Official docs live reads + GitHub API release/SHA/license + fixed v5.2 DBOS source; no candidate code executed",
+  "repositories": [
+    {
+      "repo": "temporalio/temporal",
+      "release": "v1.32.0",
+      "release_date": "2026-09-11T16:10:29Z",
+      "release_sha": "d94e34a1ebba5410a2e7d07119a76896909591aa",
+      "head_sha": "92aff3961b3842a3573cac1a96c9d627b6e2cd0d",
+      "head_commit_date": "2026-10-02T22:47:21Z",
+      "verified_at": "2026-10-03T04:49:37.620891+00:00"
+    },
+    {
+      "repo": "temporalio/sdk-typescript",
+      "release": "v1.24.0",
+      "release_date": "2026-09-15T17:41:57Z",
+      "release_sha": "1fd1c81a0383f5f5c7923dd735472c7d1ffdc867",
+      "head_sha": "7510506c9d81207420b049c7eea936cdf9bf5ecb",
+      "head_commit_date": "2026-10-02T20:20:27Z",
+      "verified_at": "2026-10-03T04:49:39.138115+00:00"
+    },
+    {
+      "repo": "dbos-inc/dbos-transact-ts",
+      "release": "v5.2",
+      "release_date": "2026-09-29T15:42:14Z",
+      "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+      "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+      "head_commit_date": "2026-10-02T17:58:22Z",
+      "verified_at": "2026-10-03T04:49:40.583386+00:00"
+    },
+    {
+      "repo": "restatedev/restate",
+      "release": "v1.7.13",
+      "release_date": "2026-10-01T17:06:19Z",
+      "release_sha": "5ab87a6b5eabb70d5ba09738e281edc69b6ae10e",
+      "head_sha": "8a383eba008b325340ded34045321673b6373fb0",
+      "head_commit_date": "2026-10-02T21:21:01Z",
+      "verified_at": "2026-10-03T04:49:44.469283+00:00"
+    },
+    {
+      "repo": "restatedev/sdk-typescript",
+      "release": "v1.17.2",
+      "release_date": "2026-09-21T12:51:29Z",
+      "release_sha": "734ab9cea65fe0efec7bc507c22f7ec8980bf737",
+      "head_sha": "2433827b0291cf61ff37402c0ca6b1b2045524e7",
+      "head_commit_date": "2026-10-02T18:05:09Z",
+      "verified_at": "2026-10-03T04:49:46.102922+00:00"
+    }
+  ],
+  "claims": [
+    {
+      "id": "T1",
+      "project": "Temporal",
+      "claim": "Normal Activities外部执行默认at-least-once；引擎不能将任意外部effect与completion原子关联。",
+      "kind": "fact",
+      "url": "https://temporal.io/blog/idempotency-and-durable-execution",
+      "repo_version": {
+        "repo": "temporalio/temporal",
+        "release": "v1.32.0",
+        "release_date": "2026-09-11T16:10:29Z",
+        "release_sha": "d94e34a1ebba5410a2e7d07119a76896909591aa",
+        "head_sha": "92aff3961b3842a3573cac1a96c9d627b6e2cd0d",
+        "head_commit_date": "2026-10-02T22:47:21Z",
+        "verified_at": "2026-10-03T04:49:37.620891+00:00"
+      },
+      "evidence_locator": "Retries and at-least-once execution; Modern practices; raw T-idempotency.txt",
+      "limit": "厂商技术解释，非Hima实测；禁用retry会改为at-most-once但不消除unknown。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "T-idempotency",
+        "url": "https://temporal.io/blog/idempotency-and-durable-execution",
+        "verified_at": "2026-10-03T04:48:15.619388+00:00",
+        "status": 200,
+        "final_url": "https://temporal.io/blog/idempotency-and-durable-execution",
+        "local_file": "durable-raw/T-idempotency.txt",
+        "chars": 21384
+      }
+    },
+    {
+      "id": "T2",
+      "project": "Temporal",
+      "claim": "Activity completed结果入history；Child Workflow有自己的完整history，可用于确定性结果消费与流程恢复。",
+      "kind": "fact",
+      "url": "https://docs.temporal.io/child-workflows",
+      "repo_version": {
+        "repo": "temporalio/temporal",
+        "release": "v1.32.0",
+        "release_date": "2026-09-11T16:10:29Z",
+        "release_sha": "d94e34a1ebba5410a2e7d07119a76896909591aa",
+        "head_sha": "92aff3961b3842a3573cac1a96c9d627b6e2cd0d",
+        "head_commit_date": "2026-10-02T22:47:21Z",
+        "verified_at": "2026-10-03T04:49:37.620891+00:00"
+      },
+      "evidence_locator": "Child Workflows vs Activities; raw T-child.txt",
+      "limit": "业务nodeId/generation/Reader绑定需要应用输入输出schema。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "T-child",
+        "url": "https://docs.temporal.io/child-workflows",
+        "verified_at": "2026-10-03T04:48:14.625123+00:00",
+        "status": 200,
+        "final_url": "https://docs.temporal.io/child-workflows",
+        "local_file": "durable-raw/T-child.txt",
+        "chars": 7161
+      }
+    },
+    {
+      "id": "T3",
+      "project": "Temporal TS",
+      "claim": "异步Activity可以Function返回后由外部Client凭Task Token或namespace/workflow/activity ID heartbeat/complete。",
+      "kind": "fact",
+      "url": "https://docs.temporal.io/develop/typescript/activities/asynchronous-activity",
+      "repo_version": {
+        "repo": "temporalio/sdk-typescript",
+        "release": "v1.24.0",
+        "release_date": "2026-09-15T17:41:57Z",
+        "release_sha": "1fd1c81a0383f5f5c7923dd735472c7d1ffdc867",
+        "head_sha": "7510506c9d81207420b049c7eea936cdf9bf5ecb",
+        "head_commit_date": "2026-10-02T20:20:27Z",
+        "verified_at": "2026-10-03T04:49:39.138115+00:00"
+      },
+      "evidence_locator": "Asynchronously complete an Activity; raw T-async-canonical.txt",
+      "limit": "token与Job/Reader事实的映射为Hima责任，丢launch ack不可重发。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "T4",
+      "project": "Temporal TS",
+      "claim": "Workflow Signals/Updates/condition支持持久交互控制；Query不修改状态。",
+      "kind": "fact",
+      "url": "https://docs.temporal.io/develop/typescript/workflows/message-passing",
+      "repo_version": {
+        "repo": "temporalio/sdk-typescript",
+        "release": "v1.24.0",
+        "release_date": "2026-09-15T17:41:57Z",
+        "release_sha": "1fd1c81a0383f5f5c7923dd735472c7d1ffdc867",
+        "head_sha": "7510506c9d81207420b049c7eea936cdf9bf5ecb",
+        "head_commit_date": "2026-10-02T20:20:27Z",
+        "verified_at": "2026-10-03T04:49:39.138115+00:00"
+      },
+      "evidence_locator": "Write message handlers; async handlers and conditions; raw T-signals-canonical.txt",
+      "limit": "持久消息有序不自动决定Hima hold优先和权限。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "T5",
+      "project": "Temporal TS",
+      "claim": "Activity cancellation需要heartbeat，WAIT_CANCELLATION_COMPLETED/TRY_CANCEL/ABANDON有不同等待语义。",
+      "kind": "fact",
+      "url": "https://docs.temporal.io/develop/typescript/workflows/cancellation",
+      "repo_version": {
+        "repo": "temporalio/sdk-typescript",
+        "release": "v1.24.0",
+        "release_date": "2026-09-15T17:41:57Z",
+        "release_sha": "1fd1c81a0383f5f5c7923dd735472c7d1ffdc867",
+        "head_sha": "7510506c9d81207420b049c7eea936cdf9bf5ecb",
+        "head_commit_date": "2026-10-02T20:20:27Z",
+        "verified_at": "2026-10-03T04:49:39.138115+00:00"
+      },
+      "evidence_locator": "Cancel an Activity; Set cancellation type; raw T-cancel-canonical.txt",
+      "limit": "不能自动kill任意外部进程；教程写default TRY_CANCEL与latest API冲突。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "T6",
+      "project": "Temporal TS",
+      "claim": "latest ActivityOptions API将cancellationType默认写为WAIT_CANCELLATION_COMPLETED。",
+      "kind": "fact",
+      "url": "https://typescript.temporal.io/api/interfaces/workflow.ActivityOptions",
+      "repo_version": {
+        "repo": "temporalio/sdk-typescript",
+        "release": "v1.24.0",
+        "release_date": "2026-09-15T17:41:57Z",
+        "release_sha": "1fd1c81a0383f5f5c7923dd735472c7d1ffdc867",
+        "head_sha": "7510506c9d81207420b049c7eea936cdf9bf5ecb",
+        "head_commit_date": "2026-10-02T20:20:27Z",
+        "verified_at": "2026-10-03T04:49:39.138115+00:00"
+      },
+      "evidence_locator": "cancellationType section",
+      "limit": "unversioned API与教程不一致，应明确配置；不推定所选release默认。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "T7",
+      "project": "Temporal",
+      "claim": "Pinned Workflow锁同Worker Deployment Version；Auto-Upgrade另有兼容约束。",
+      "kind": "fact",
+      "url": "https://docs.temporal.io/production-deployment/worker-deployments/worker-versioning",
+      "repo_version": {
+        "repo": "temporalio/temporal",
+        "release": "v1.32.0",
+        "release_date": "2026-09-11T16:10:29Z",
+        "release_sha": "d94e34a1ebba5410a2e7d07119a76896909591aa",
+        "head_sha": "92aff3961b3842a3573cac1a96c9d627b6e2cd0d",
+        "head_commit_date": "2026-10-02T22:47:21Z",
+        "verified_at": "2026-10-03T04:49:37.620891+00:00"
+      },
+      "evidence_locator": "Workflow Pinning; Build ID; raw T-version.txt",
+      "limit": "旧Worker/bundle仍须实际可运行，不只是存版本。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "T-version",
+        "url": "https://docs.temporal.io/production-deployment/worker-deployments/worker-versioning",
+        "verified_at": "2026-10-03T04:48:14.625652+00:00",
+        "status": 200,
+        "final_url": "https://docs.temporal.io/production-deployment/worker-deployments/worker-versioning",
+        "local_file": "durable-raw/T-version.txt",
+        "chars": 10182
+      }
+    },
+    {
+      "id": "T8",
+      "project": "Temporal",
+      "claim": "单binary no-dependency dev server是local development；不能当production部署承诺。",
+      "kind": "fact",
+      "url": "https://docs.temporal.io/self-hosted-guide",
+      "repo_version": {
+        "repo": "temporalio/temporal",
+        "release": "v1.32.0",
+        "release_date": "2026-09-11T16:10:29Z",
+        "release_sha": "d94e34a1ebba5410a2e7d07119a76896909591aa",
+        "head_sha": "92aff3961b3842a3573cac1a96c9d627b6e2cd0d",
+        "head_commit_date": "2026-10-02T22:47:21Z",
+        "verified_at": "2026-10-03T04:49:37.620891+00:00"
+      },
+      "evidence_locator": "Do you need a production Temporal Service?; raw T-selfhost.txt",
+      "limit": "可离线自托管production不等于无外部存储嵌入库。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "T-selfhost",
+        "url": "https://docs.temporal.io/self-hosted-guide",
+        "verified_at": "2026-10-03T04:48:15.581295+00:00",
+        "status": 200,
+        "final_url": "https://docs.temporal.io/self-hosted-guide",
+        "local_file": "durable-raw/T-selfhost.txt",
+        "chars": 3493
+      }
+    },
+    {
+      "id": "T9",
+      "project": "Temporal",
+      "claim": "自托管配置含Workflow state与Visibility persistence stores；SQL postgres/mysql可选。",
+      "kind": "fact",
+      "url": "https://docs.temporal.io/references/service-configuration",
+      "repo_version": {
+        "repo": "temporalio/temporal",
+        "release": "v1.32.0",
+        "release_date": "2026-09-11T16:10:29Z",
+        "release_sha": "d94e34a1ebba5410a2e7d07119a76896909591aa",
+        "head_sha": "92aff3961b3842a3573cac1a96c9d627b6e2cd0d",
+        "head_commit_date": "2026-10-02T22:47:21Z",
+        "verified_at": "2026-10-03T04:49:37.620891+00:00"
+      },
+      "evidence_locator": "Persistence; SQL data store; raw T-config.txt",
+      "limit": "本轮未验证具体production资源/拓扑；还有TLS/auth/备份。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "T-config",
+        "url": "https://docs.temporal.io/references/service-configuration",
+        "verified_at": "2026-10-03T04:48:15.602377+00:00",
+        "status": 200,
+        "final_url": "https://docs.temporal.io/references/service-configuration",
+        "local_file": "durable-raw/T-config.txt",
+        "chars": 22620
+      }
+    },
+    {
+      "id": "T10",
+      "project": "Temporal TS",
+      "claim": "Worker依赖Node特性，官方不鼓励在Node兼容替代runtime跑worker。",
+      "kind": "fact",
+      "url": "https://github.com/temporalio/sdk-typescript/blob/1fd1c81a0383f5f5c7923dd735472c7d1ffdc867/README.md",
+      "repo_version": {
+        "repo": "temporalio/sdk-typescript",
+        "release": "v1.24.0",
+        "release_date": "2026-09-15T17:41:57Z",
+        "release_sha": "1fd1c81a0383f5f5c7923dd735472c7d1ffdc867",
+        "head_sha": "7510506c9d81207420b049c7eea936cdf9bf5ecb",
+        "head_commit_date": "2026-10-02T20:20:27Z",
+        "verified_at": "2026-10-03T04:49:39.138115+00:00"
+      },
+      "evidence_locator": "README supported runtime",
+      "limit": "Client可更广支持不等于worker可任意runtime；仅静态检查。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "T11",
+      "project": "Temporal",
+      "claim": "server MIT，latest release v1.32.0于2026-09-11，release SHA已固定。",
+      "kind": "fact",
+      "url": "https://github.com/temporalio/temporal/blob/d94e34a1ebba5410a2e7d07119a76896909591aa/LICENSE",
+      "repo_version": {
+        "repo": "temporalio/temporal",
+        "release": "v1.32.0",
+        "release_date": "2026-09-11T16:10:29Z",
+        "release_sha": "d94e34a1ebba5410a2e7d07119a76896909591aa",
+        "head_sha": "92aff3961b3842a3573cac1a96c9d627b6e2cd0d",
+        "head_commit_date": "2026-10-02T22:47:21Z",
+        "verified_at": "2026-10-03T04:49:37.620891+00:00"
+      },
+      "evidence_locator": "LICENSE; API releases/latest + commits/v1.32.0；raw metadata",
+      "limit": "MIT源码不等Cloud托管服务条款。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "T12",
+      "project": "Temporal TS",
+      "claim": "TS SDK MIT，latest v1.24.0于2026-09-15，近期维护。",
+      "kind": "fact",
+      "url": "https://github.com/temporalio/sdk-typescript/releases/tag/v1.24.0",
+      "repo_version": {
+        "repo": "temporalio/sdk-typescript",
+        "release": "v1.24.0",
+        "release_date": "2026-09-15T17:41:57Z",
+        "release_sha": "1fd1c81a0383f5f5c7923dd735472c7d1ffdc867",
+        "head_sha": "7510506c9d81207420b049c7eea936cdf9bf5ecb",
+        "head_commit_date": "2026-10-02T20:20:27Z",
+        "verified_at": "2026-10-03T04:49:39.138115+00:00"
+      },
+      "evidence_locator": "release metadata/body; pinned LICENSE",
+      "limit": "近期release不是可靠性/性能实测；部分ActivityHandle pause API仍experimental。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "D1",
+      "project": "DBOS TS",
+      "claim": "TS DBOS最低形态是应用进程内库+Postgres，Conductor不必需。",
+      "kind": "fact",
+      "url": "https://docs.dbos.dev/typescript/programming-guide",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "Setting Up Your App; raw D-guide.txt",
+      "limit": "不能跨Python推断SQLite支持；Postgres需独立DB进程或既有service。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "D-guide",
+        "url": "https://docs.dbos.dev/typescript/programming-guide",
+        "verified_at": "2026-10-03T04:48:16.787880+00:00",
+        "status": 200,
+        "final_url": "https://docs.dbos.dev/typescript/programming-guide",
+        "local_file": "durable-raw/D-guide.txt",
+        "chars": 9394
+      }
+    },
+    {
+      "id": "D2",
+      "project": "DBOS TS",
+      "claim": "官方production K8s文档明确库不需sidecar/operator/external service besides PostgreSQL。",
+      "kind": "fact",
+      "url": "https://docs.dbos.dev/production/hosting-with-kubernetes",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "Deployment Model; raw D-host.txt",
+      "limit": "例子接Conductor不表示核心库必需；多实例故障探测另议。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "D-host",
+        "url": "https://docs.dbos.dev/production/hosting-with-kubernetes",
+        "verified_at": "2026-10-03T04:48:16.949990+00:00",
+        "status": 200,
+        "final_url": "https://docs.dbos.dev/production/hosting-with-kubernetes",
+        "local_file": "durable-raw/D-host.txt",
+        "chars": 27261
+      }
+    },
+    {
+      "id": "D3",
+      "project": "DBOS TS",
+      "claim": "systemDatabaseUrl为Postgres URI，custom pool为node-postgres；无需Conductor配置可launch。",
+      "kind": "fact",
+      "url": "https://docs.dbos.dev/typescript/reference/configuration",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "Database Connection Settings; executorID",
+      "limit": "最新unversioned文档包含后来字段，最低DB要求与release源码匹配。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "D4",
+      "project": "DBOS TS",
+      "claim": "v5.2 init自动recoverPendingWorkflows([executorID])；无Conductor可同executor重启恢复。",
+      "kind": "fact",
+      "url": "https://github.com/dbos-inc/dbos-transact-ts/blob/3f36908f58fd8b3079cbf5372203c7a2d0ba06cc/src/dbos-executor.ts#L389",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "src/dbos-executor.ts:389,1264; raw DBOS-release-dbos-executor.ts",
+      "limit": "不能推出跨executorID自动死亡检测/HA；Conductor或用户需接线。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "D5",
+      "project": "DBOS TS",
+      "claim": "Steps at-least-once，完成checkpoint不重执行；事务exactly-once不能扩为SSH效果。",
+      "kind": "fact",
+      "url": "https://docs.dbos.dev/typescript/tutorials/workflow-tutorial",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "Workflow Guarantees",
+      "limit": "应用/DB最终必须重启可用；外部非原子effect需要自身幂等/核对。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "D-workflows",
+        "url": "https://docs.dbos.dev/typescript/tutorials/workflow-tutorial",
+        "verified_at": "2026-10-03T04:48:15.668120+00:00",
+        "status": 200,
+        "final_url": "https://docs.dbos.dev/typescript/tutorials/workflow-tutorial",
+        "local_file": "durable-raw/D-workflows.txt",
+        "chars": 12392
+      }
+    },
+    {
+      "id": "D6",
+      "project": "DBOS TS",
+      "claim": "workflowID去重；步骤是递增functionID和functionName校验绑定。",
+      "kind": "fact",
+      "url": "https://github.com/dbos-inc/dbos-transact-ts/blob/3f36908f58fd8b3079cbf5372203c7a2d0ba06cc/src/dbos-executor.ts#L907",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "funcID L907; runInternalStep L1186",
+      "limit": "不是按业务节点名自动缓存；Hima node/execution/generation须入结果scope。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "D7",
+      "project": "DBOS TS",
+      "claim": "v5.2写checkpoint前以owner_xid行锁检查ownership，失权不再持久化。",
+      "kind": "fact",
+      "url": "https://github.com/dbos-inc/dbos-transact-ts/blob/3f36908f58fd8b3079cbf5372203c7a2d0ba06cc/src/system_database.ts#L6277",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "recordOperationResultInternal L6277; checkOwner L6352",
+      "limit": "fencing防旧owner落账不撤销已经执行的外部effects。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "D8",
+      "project": "DBOS TS",
+      "claim": "zombie与新executor可能同时执行workflow，步骤仍at-least-once。",
+      "kind": "fact",
+      "url": "https://docs.dbos.dev/explanations/concurrent-executions",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "Concurrent Executions; Workflow Ownership; raw D-concurrency.txt",
+      "limit": "web search缓存旧叙述与实时正文细节不同；v5.2源码核owner token。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "D-concurrency",
+        "url": "https://docs.dbos.dev/explanations/concurrent-executions",
+        "verified_at": "2026-10-03T04:48:16.731018+00:00",
+        "status": 200,
+        "final_url": "https://docs.dbos.dev/explanations/concurrent-executions",
+        "local_file": "durable-raw/D-concurrency.txt",
+        "chars": 3792
+      }
+    },
+    {
+      "id": "D9",
+      "project": "DBOS TS",
+      "claim": "并行steps启动顺序必须确定；多async step链交错被官方禁止，应各用child workflow。",
+      "kind": "fact",
+      "url": "https://docs.dbos.dev/typescript/tutorials/workflow-tutorial",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "Running Steps In Parallel",
+      "limit": "局部子工作流不是自动Pack graph compiler。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "D-workflows",
+        "url": "https://docs.dbos.dev/typescript/tutorials/workflow-tutorial",
+        "verified_at": "2026-10-03T04:48:15.668120+00:00",
+        "status": 200,
+        "final_url": "https://docs.dbos.dev/typescript/tutorials/workflow-tutorial",
+        "local_file": "durable-raw/D-workflows.txt",
+        "chars": 12392
+      }
+    },
+    {
+      "id": "D10",
+      "project": "DBOS TS",
+      "claim": "send/recv、事件与streams持久；workflow内send去重和外部idempotency key范围明确。",
+      "kind": "fact",
+      "url": "https://docs.dbos.dev/typescript/tutorials/workflow-communication",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "Messages reliability; Events reliability; Streams",
+      "limit": "streams从step写仍at-least-once，不应误当所有输出exactly-once。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "D-communication",
+        "url": "https://docs.dbos.dev/typescript/tutorials/workflow-communication",
+        "verified_at": "2026-10-03T04:48:16.408949+00:00",
+        "status": 200,
+        "final_url": "https://docs.dbos.dev/typescript/tutorials/workflow-communication",
+        "local_file": "durable-raw/D-communication.txt",
+        "chars": 9662
+      }
+    },
+    {
+      "id": "D11",
+      "project": "DBOS TS",
+      "claim": "cancel于下一step/checkpoint停止，resume末次完成后续；fork复制历史产生新ID。",
+      "kind": "fact",
+      "url": "https://docs.dbos.dev/typescript/tutorials/workflow-management",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "Cancelling / Resuming / Forking Workflows",
+      "limit": "不是kill外部进程，也不是安全重试未知effect。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "D-management",
+        "url": "https://docs.dbos.dev/typescript/tutorials/workflow-management",
+        "verified_at": "2026-10-03T04:48:16.679264+00:00",
+        "status": 200,
+        "final_url": "https://docs.dbos.dev/typescript/tutorials/workflow-management",
+        "local_file": "durable-raw/D-management.txt",
+        "chars": 6601
+      }
+    },
+    {
+      "id": "D12",
+      "project": "DBOS TS",
+      "claim": "step timeout协作signal，忽略者继续后台执行且结果弃掉。",
+      "kind": "fact",
+      "url": "https://docs.dbos.dev/typescript/reference/workflows-steps",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "StepConfig.timeoutMS；v5.2 dbos-executor.ts L963 timeoutSignal",
+      "limit": "最新docs提cancelSignal但v5.2版本支持本轮未闭合。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "D-reference",
+        "url": "https://docs.dbos.dev/typescript/reference/workflows-steps",
+        "verified_at": "2026-10-03T04:48:15.950576+00:00",
+        "status": 200,
+        "final_url": "https://docs.dbos.dev/typescript/reference/workflows-steps",
+        "local_file": "durable-raw/D-reference.txt",
+        "chars": 17077
+      }
+    },
+    {
+      "id": "D13",
+      "project": "DBOS TS",
+      "claim": "applicationVersion默认workflow source hash，recover只匹配同version；可patch。",
+      "kind": "fact",
+      "url": "https://docs.dbos.dev/typescript/tutorials/upgrading-workflows",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "Versioning; Patching",
+      "limit": "旧代码执行器需保留；新version不自动恢复旧workflow。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "D-upgrade",
+        "url": "https://docs.dbos.dev/typescript/tutorials/upgrading-workflows",
+        "verified_at": "2026-10-03T04:48:16.514495+00:00",
+        "status": 200,
+        "final_url": "https://docs.dbos.dev/typescript/tutorials/upgrading-workflows",
+        "local_file": "durable-raw/D-upgrade.txt",
+        "chars": 7760
+      }
+    },
+    {
+      "id": "D14",
+      "project": "DBOS TS",
+      "claim": "TS库MIT；self-host Conductor proprietary需要key，production需license agreement。",
+      "kind": "fact",
+      "url": "https://docs.dbos.dev/conductor/self-hosting/hosting-conductor",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "Self-Hosting Conductor info / Licensing；MIT LICENSE固定release",
+      "limit": "网页curl获取只见极短loader，但web读取完整官方内容；Conductor是可选control plane。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "D15",
+      "project": "DBOS TS",
+      "claim": "v5.2 2026-09-29发布，包含conflict resolution/consistent resume修复。",
+      "kind": "fact",
+      "url": "https://github.com/dbos-inc/dbos-transact-ts/releases/tag/v5.2",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "release metadata/body",
+      "limit": "证明维护与存在修复，不证明Hima适配效果。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "R1",
+      "project": "Restate TS",
+      "claim": "ctx.run存外部非确定性结果；失败可retry；内部不能使用其他context操作。",
+      "kind": "fact",
+      "url": "https://docs.restate.dev/develop/ts/durable-steps",
+      "repo_version": {
+        "repo": "restatedev/sdk-typescript",
+        "release": "v1.17.2",
+        "release_date": "2026-09-21T12:51:29Z",
+        "release_sha": "734ab9cea65fe0efec7bc507c22f7ec8980bf737",
+        "head_sha": "2433827b0291cf61ff37402c0ca6b1b2045524e7",
+        "head_commit_date": "2026-10-02T18:05:09Z",
+        "verified_at": "2026-10-03T04:49:46.102922+00:00"
+      },
+      "evidence_locator": "Run; retry policy; raw R-steps.txt",
+      "limit": "completed journal粒度，不是外部EDA指令级恢复。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "R-steps",
+        "url": "https://docs.restate.dev/develop/ts/durable-steps.md",
+        "verified_at": "2026-10-03T04:48:17.276243+00:00",
+        "status": 200,
+        "final_url": "https://docs.restate.dev/develop/ts/durable-steps.md",
+        "local_file": "durable-raw/R-steps.txt",
+        "chars": 3933
+      }
+    },
+    {
+      "id": "R2",
+      "project": "Restate",
+      "claim": "官方DB示例明确承认query success但handler completion未到会重复；要条件写/idempotency table/事务协议。",
+      "kind": "fact",
+      "url": "https://docs.restate.dev/guides/databases",
+      "repo_version": {
+        "repo": "restatedev/restate",
+        "release": "v1.7.13",
+        "release_date": "2026-10-01T17:06:19Z",
+        "release_sha": "5ab87a6b5eabb70d5ba09738e281edc69b6ae10e",
+        "head_sha": "8a383eba008b325340ded34045321673b6373fb0",
+        "head_commit_date": "2026-10-02T21:21:01Z",
+        "verified_at": "2026-10-03T04:49:44.469283+00:00"
+      },
+      "evidence_locator": "keyedDbAccess.update source comments; idempotencyKeyDbAccess",
+      "limit": "DB解决协议不自动存在于SSH/EDA文件effects。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "R-db",
+        "url": "https://docs.restate.dev/guides/databases.md",
+        "verified_at": "2026-10-03T04:48:17.786645+00:00",
+        "status": 200,
+        "final_url": "https://docs.restate.dev/guides/databases.md",
+        "local_file": "durable-raw/R-db.txt",
+        "chars": 26169
+      }
+    },
+    {
+      "id": "R3",
+      "project": "Restate",
+      "claim": "Virtual Object单writer/key，state更新走同consensus journal；只有key范围事务。",
+      "kind": "fact",
+      "url": "https://docs.restate.dev/guides/databases",
+      "repo_version": {
+        "repo": "restatedev/restate",
+        "release": "v1.7.13",
+        "release_date": "2026-10-01T17:06:19Z",
+        "release_sha": "5ab87a6b5eabb70d5ba09738e281edc69b6ae10e",
+        "head_sha": "8a383eba008b325340ded34045321673b6373fb0",
+        "head_commit_date": "2026-10-02T21:21:01Z",
+        "verified_at": "2026-10-03T04:49:44.469283+00:00"
+      },
+      "evidence_locator": "What state to store; advantages and limitations",
+      "limit": "可以单一执行authority，但跨Run Site job-cap与领域证据另有归属。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "R-db",
+        "url": "https://docs.restate.dev/guides/databases.md",
+        "verified_at": "2026-10-03T04:48:17.786645+00:00",
+        "status": 200,
+        "final_url": "https://docs.restate.dev/guides/databases.md",
+        "local_file": "durable-raw/R-db.txt",
+        "chars": 26169
+      }
+    },
+    {
+      "id": "R4",
+      "project": "Restate TS",
+      "claim": "Signals/awakeables/workflow promises持久等待；exclusive handler wait会排队其他object调用。",
+      "kind": "fact",
+      "url": "https://docs.restate.dev/develop/ts/external-events",
+      "repo_version": {
+        "repo": "restatedev/sdk-typescript",
+        "release": "v1.17.2",
+        "release_date": "2026-09-21T12:51:29Z",
+        "release_sha": "734ab9cea65fe0efec7bc507c22f7ec8980bf737",
+        "head_sha": "2433827b0291cf61ff37402c0ca6b1b2045524e7",
+        "head_commit_date": "2026-10-02T18:05:09Z",
+        "verified_at": "2026-10-03T04:49:46.102922+00:00"
+      },
+      "evidence_locator": "Awakeables; workflow promises",
+      "limit": "一条长独占Run handler可能阻塞control；需要workflow/shared model，不暗加第二控制层。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "R-events",
+        "url": "https://docs.restate.dev/develop/ts/external-events.md",
+        "verified_at": "2026-10-03T04:48:18.393776+00:00",
+        "status": 200,
+        "final_url": "https://docs.restate.dev/develop/ts/external-events.md",
+        "local_file": "durable-raw/R-events.txt",
+        "chars": 8566
+      }
+    },
+    {
+      "id": "R5",
+      "project": "Restate TS",
+      "claim": "RestatePromise组合记录完成次序，all/allSettled/any/race可确定性并行join。",
+      "kind": "fact",
+      "url": "https://docs.restate.dev/develop/ts/concurrent-tasks",
+      "repo_version": {
+        "repo": "restatedev/sdk-typescript",
+        "release": "v1.17.2",
+        "release_date": "2026-09-21T12:51:29Z",
+        "release_sha": "734ab9cea65fe0efec7bc507c22f7ec8980bf737",
+        "head_sha": "2433827b0291cf61ff37402c0ca6b1b2045524e7",
+        "head_commit_date": "2026-10-02T18:05:09Z",
+        "verified_at": "2026-10-03T04:49:46.102922+00:00"
+      },
+      "evidence_locator": "Retrieving results",
+      "limit": "必须是RestatePromise和确定性代码；业务聚合/Reader仍Hima负责。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "R-parallel",
+        "url": "https://docs.restate.dev/develop/ts/concurrent-tasks.md",
+        "verified_at": "2026-10-03T04:48:18.150456+00:00",
+        "status": 200,
+        "final_url": "https://docs.restate.dev/develop/ts/concurrent-tasks.md",
+        "local_file": "durable-raw/R-parallel.txt",
+        "chars": 5679
+      }
+    },
+    {
+      "id": "R6",
+      "project": "Restate",
+      "claim": "cancel非阻塞需reachable endpoint，next await呈TerminalError；run block内effect可能完成；detached sends继续。",
+      "kind": "fact",
+      "url": "https://docs.restate.dev/services/invocation/managing-invocations",
+      "repo_version": {
+        "repo": "restatedev/restate",
+        "release": "v1.7.13",
+        "release_date": "2026-10-01T17:06:19Z",
+        "release_sha": "5ab87a6b5eabb70d5ba09738e281edc69b6ae10e",
+        "head_sha": "8a383eba008b325340ded34045321673b6373fb0",
+        "head_commit_date": "2026-10-02T21:21:01Z",
+        "verified_at": "2026-10-03T04:49:44.469283+00:00"
+      },
+      "evidence_locator": "Cancellation requirements/flow/example; Call Graph Propagation",
+      "limit": "引擎cancel/kill/pause都不能证明外部process quiescence；API可先返回。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "R-management",
+        "url": "https://docs.restate.dev/services/invocation/managing-invocations.md",
+        "verified_at": "2026-10-03T04:48:17.573518+00:00",
+        "status": 200,
+        "final_url": "https://docs.restate.dev/services/invocation/managing-invocations.md",
+        "local_file": "durable-raw/R-management.txt",
+        "chars": 15625
+      }
+    },
+    {
+      "id": "R7",
+      "project": "Restate",
+      "claim": "immutable endpoint pin同invocation全过程；新invocation新版；旧endpoint需留至drain，state schema跨版兼容。",
+      "kind": "fact",
+      "url": "https://docs.restate.dev/services/versioning",
+      "repo_version": {
+        "repo": "restatedev/restate",
+        "release": "v1.7.13",
+        "release_date": "2026-10-01T17:06:19Z",
+        "release_sha": "5ab87a6b5eabb70d5ba09738e281edc69b6ae10e",
+        "head_sha": "8a383eba008b325340ded34045321673b6373fb0",
+        "head_commit_date": "2026-10-02T21:21:01Z",
+        "verified_at": "2026-10-03T04:49:44.469283+00:00"
+      },
+      "evidence_locator": "Immutable deployments; Manual versioning; Journal mismatch",
+      "limit": "resume到不兼容新deployment会non-determinism；dev force不可作prod升级。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "R-version",
+        "url": "https://docs.restate.dev/services/versioning.md",
+        "verified_at": "2026-10-03T04:48:17.575554+00:00",
+        "status": 200,
+        "final_url": "https://docs.restate.dev/services/versioning.md",
+        "local_file": "durable-raw/R-version.txt",
+        "chars": 12746
+      }
+    },
+    {
+      "id": "R8",
+      "project": "Restate",
+      "claim": "单binary+durable disk支持容忍短停机的single-node production，不需外部DB；fsync再ack。",
+      "kind": "fact",
+      "url": "https://docs.restate.dev/server/overview",
+      "repo_version": {
+        "repo": "restatedev/restate",
+        "release": "v1.7.13",
+        "release_date": "2026-10-01T17:06:19Z",
+        "release_sha": "5ab87a6b5eabb70d5ba09738e281edc69b6ae10e",
+        "head_sha": "8a383eba008b325340ded34045321673b6373fb0",
+        "head_commit_date": "2026-10-02T21:21:01Z",
+        "verified_at": "2026-10-03T04:49:44.469283+00:00"
+      },
+      "evidence_locator": "When to Choose Single-Node",
+      "limit": "磁盘决定耐久，不具单节点HA；应用TS endpoint另需进程。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "R-host",
+        "url": "https://docs.restate.dev/server/overview.md",
+        "verified_at": "2026-10-03T04:48:17.657046+00:00",
+        "status": 200,
+        "final_url": "https://docs.restate.dev/server/overview.md",
+        "local_file": "durable-raw/R-host.txt",
+        "chars": 9041
+      }
+    },
+    {
+      "id": "R9",
+      "project": "Restate TS",
+      "claim": "TS SDK支持Node >=22、Bun、Deno；service/Virtual Object/workflow有不同控制模型。",
+      "kind": "fact",
+      "url": "https://docs.restate.dev/develop/ts/services",
+      "repo_version": {
+        "repo": "restatedev/sdk-typescript",
+        "release": "v1.17.2",
+        "release_date": "2026-09-21T12:51:29Z",
+        "release_sha": "734ab9cea65fe0efec7bc507c22f7ec8980bf737",
+        "head_sha": "2433827b0291cf61ff37402c0ca6b1b2045524e7",
+        "head_commit_date": "2026-10-02T18:05:09Z",
+        "verified_at": "2026-10-03T04:49:46.102922+00:00"
+      },
+      "evidence_locator": "Getting started; Service types",
+      "limit": "本轮未运行兼容性验证，不能移用Temporal Node要求。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00",
+      "retrieval": {
+        "id": "R-services",
+        "url": "https://docs.restate.dev/develop/ts/services.md",
+        "verified_at": "2026-10-03T04:48:18.404658+00:00",
+        "status": 200,
+        "final_url": "https://docs.restate.dev/develop/ts/services.md",
+        "local_file": "durable-raw/R-services.txt",
+        "chars": 5891
+      }
+    },
+    {
+      "id": "R10",
+      "project": "Restate",
+      "claim": "server BSL1.1 source-available，4年后Apache2；许可限制Public Restate Platform Service且给GUI/DSL/proprietary API抽象额外授权。",
+      "kind": "fact",
+      "url": "https://github.com/restatedev/restate/blob/5ab87a6b5eabb70d5ba09738e281edc69b6ae10e/LICENSE",
+      "repo_version": {
+        "repo": "restatedev/restate",
+        "release": "v1.7.13",
+        "release_date": "2026-10-01T17:06:19Z",
+        "release_sha": "5ab87a6b5eabb70d5ba09738e281edc69b6ae10e",
+        "head_sha": "8a383eba008b325340ded34045321673b6373fb0",
+        "head_commit_date": "2026-10-02T21:21:01Z",
+        "verified_at": "2026-10-03T04:49:44.469283+00:00"
+      },
+      "evidence_locator": "Parameters / Additional Use Grant / Notice",
+      "limit": "不是OSI开源；未来交付需要按具体是否直接暴露Restate API核验；非法律结论。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "R11",
+      "project": "Restate TS",
+      "claim": "TS SDK MIT；server许可不可由SDK许可代替。",
+      "kind": "fact",
+      "url": "https://github.com/restatedev/sdk-typescript/blob/734ab9cea65fe0efec7bc507c22f7ec8980bf737/LICENSE",
+      "repo_version": {
+        "repo": "restatedev/sdk-typescript",
+        "release": "v1.17.2",
+        "release_date": "2026-09-21T12:51:29Z",
+        "release_sha": "734ab9cea65fe0efec7bc507c22f7ec8980bf737",
+        "head_sha": "2433827b0291cf61ff37402c0ca6b1b2045524e7",
+        "head_commit_date": "2026-10-02T18:05:09Z",
+        "verified_at": "2026-10-03T04:49:46.102922+00:00"
+      },
+      "evidence_locator": "LICENSE",
+      "limit": "未核全部enterprise feature边界。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "R12",
+      "project": "Restate",
+      "claim": "v1.7.13修复VQueues Admin state未复制到followers导致leader切换回旧state，受影响者要re-submit state。",
+      "kind": "fact",
+      "url": "https://github.com/restatedev/restate/releases/tag/v1.7.13",
+      "repo_version": {
+        "repo": "restatedev/restate",
+        "release": "v1.7.13",
+        "release_date": "2026-10-01T17:06:19Z",
+        "release_sha": "5ab87a6b5eabb70d5ba09738e281edc69b6ae10e",
+        "head_sha": "8a383eba008b325340ded34045321673b6373fb0",
+        "head_commit_date": "2026-10-02T21:21:01Z",
+        "verified_at": "2026-10-03T04:49:44.469283+00:00"
+      },
+      "evidence_locator": "Consistent State Changes Across Replicas / Upgrade guidance",
+      "limit": "条件是replication factor >1+VQueues+state API，不推广到所有single-node。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "H1",
+      "project": "Temporal",
+      "claim": "B故障：若routing为纯确定性逻辑，saved result replay可消除再次外部执行；跨Hima Ledger写仍需fixed commit ID/幂等。",
+      "kind": "inference",
+      "url": "https://docs.temporal.io/child-workflows",
+      "repo_version": {
+        "repo": "temporalio/temporal",
+        "release": "v1.32.0",
+        "release_date": "2026-09-11T16:10:29Z",
+        "release_sha": "d94e34a1ebba5410a2e7d07119a76896909591aa",
+        "head_sha": "92aff3961b3842a3573cac1a96c9d627b6e2cd0d",
+        "head_commit_date": "2026-10-02T22:47:21Z",
+        "verified_at": "2026-10-03T04:49:37.620891+00:00"
+      },
+      "evidence_locator": "Activity result/history + Hima baseline report 1.3",
+      "limit": "适配推论，未实际集成测试；DBOS/Restate同类推论各据其checkpoint docs。",
+      "verified_at": "2026-10-03T04:55:55.906009+00:00"
+    },
+    {
+      "id": "D16",
+      "project": "DBOS TS",
+      "claim": "固定v5.2源码engines要求Node >=20；package版本为发布构建placeholder，与npm包版本需分开。",
+      "kind": "fact",
+      "url": "https://github.com/dbos-inc/dbos-transact-ts/blob/3f36908f58fd8b3079cbf5372203c7a2d0ba06cc/package.json",
+      "repo_version": {
+        "repo": "dbos-inc/dbos-transact-ts",
+        "release": "v5.2",
+        "release_date": "2026-09-29T15:42:14Z",
+        "release_sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+        "head_sha": "762d68745291e658734effd434837d20b4319dd9",
+        "head_commit_date": "2026-10-02T17:58:22Z",
+        "verified_at": "2026-10-03T04:49:40.583386+00:00"
+      },
+      "evidence_locator": "package.json engines；npm latest metadata另存",
+      "limit": "未执行Node兼容测试；GitHub tag不自行等同npm latest包版本。",
+      "verified_at": "2026-10-03T04:57:27.021631+00:00"
+    },
+    {
+      "id": "D17",
+      "project": "DBOS TS",
+      "claim": "查询时npm latest @dbos-inc/dbos-sdk=5.2.11，MIT，Node>=20，gitHead与GitHub v5.2固定SHA相同。",
+      "kind": "fact",
+      "url": "https://registry.npmjs.org/@dbos-inc/dbos-sdk/latest",
+      "repo_version": {
+        "release": "v5.2",
+        "npm_version": "5.2.11",
+        "sha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc"
+      },
+      "evidence_locator": "registry version,license,engines,gitHead；durable-raw/DBOS-npm-latest.json",
+      "limit": "registry元数据不等实际安装/运行验证；未从metadata推断未核能力。",
+      "verified_at": "2026-10-03T04:57:55.271416+00:00"
+    }
+  ]
+}
