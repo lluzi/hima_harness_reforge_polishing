@@ -297,6 +297,48 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         self.assertEqual(len(prompts), 2, "one initial prompt and one same-session message, without replay")
         self.assertNotIn("messageId", prompts[1]["message"]["params"], "non-UUID request ID is omitted, not sent as null")
 
+    def test_native_prompt_declares_the_exact_candidate_contract_accepted_by_delivery(self):
+        self.start_wrapper()
+        self.request("start:contract", "start")
+        deadline = time.monotonic() + 5
+        while wait_json(self.task / "state.json")["phase"] != "waiting" and time.monotonic() < deadline:
+            time.sleep(.02)
+        trace = [json.loads(line) for line in (self.task / "native/session-events.jsonl").read_text().splitlines()]
+        prompt = next(row["message"]["params"]["prompt"][0]["text"] for row in trace
+                      if row["direction"] == "wrapper-to-native" and row["message"].get("method") == "session/prompt")
+        delivery = json.loads(prompt)["delivery"]
+        contract = delivery["jsonSchema"]
+        self.assertEqual(set(contract["required"]), {"schema", "outcome", "summary", "stopReason", "artifacts"})
+        self.assertFalse(contract["additionalProperties"])
+        item = contract["properties"]["artifacts"]["items"]
+        self.assertEqual(set(item["required"]), {"path", "sha256", "kind"})
+        self.assertFalse(item["additionalProperties"])
+        self.assertIn("exactly one", delivery["instructions"])
+        artifact = self.task / "workspace/result.json"
+        artifact.write_text('{"measured":true}\n')
+        candidate = {"schema": contract["properties"]["schema"]["const"],
+                     "outcome": "best-effort", "summary": "actual fixture result", "stopReason": "residual remains",
+                     "artifacts": [{"path": "result.json", "sha256": sha256(artifact.read_bytes()).hexdigest(), "kind": "result"}]}
+        publish(self.task / "workspace/resident-delivery.json", candidate)
+        response = self.request("delivery:contract", "delivery")
+        self.assertEqual(response["status"], "completed", response)
+
+    def test_observed_extra_keys_and_missing_fields_have_actionable_delivery_errors(self):
+        self.start_wrapper()
+        self.request("start:invalid-contract", "start")
+        deadline = time.monotonic() + 5
+        while wait_json(self.task / "state.json")["phase"] != "waiting" and time.monotonic() < deadline:
+            time.sleep(.02)
+        # Same failure shape as the field executor mirroring the old advisory prompt block.
+        candidate = {"schema": "hima-resident-engineering-candidate/1", "outcome": "completed",
+                     "artifactPaths": "workspace-relative", "artifacts": [], "requiredResultArtifactKind": "result", "task": {}}
+        publish(self.task / "workspace/resident-delivery.json", candidate)
+        response = self.request("delivery:invalid-contract", "delivery")
+        self.assertEqual(response["status"], "rejected", response)
+        for word in ("missing", "summary", "stopReason", "unexpected", "artifactPaths", "requiredResultArtifactKind", "task"):
+            self.assertIn(word, response["error"])
+        self.assertFalse((self.task / "delivery/manifest.json").exists())
+
     def test_slow_message_ack_is_immediate_and_completion_is_a_later_retained_fact(self):
         self.start_wrapper()
         self.request("start:slow", "start")

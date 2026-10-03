@@ -32,6 +32,52 @@ UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][
 HEX64 = re.compile(r"^[a-f0-9]{64}$")
 
 
+# One contract is sent to the native executor and used by collection. Advisory descriptions must
+# not look like candidate fields: the candidate is the plain object described by this schema.
+DELIVERY_CANDIDATE_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["schema", "outcome", "summary", "stopReason", "artifacts"],
+    "properties": {
+        "schema": {"type": "string", "const": "hima-resident-engineering-candidate/1"},
+        "outcome": {"type": "string", "enum": ["completed", "best-effort", "blocked", "cancelled"]},
+        "summary": {"type": "string", "minLength": 1},
+        "stopReason": {"type": "string"},
+        "artifacts": {"type": "array", "minItems": 1, "maxItems": 512,
+            "items": {"type": "object", "additionalProperties": False,
+                "required": ["path", "sha256", "kind"],
+                "properties": {
+                    "path": {"type": "string", "minLength": 1,
+                             "description": "Normalized workspace-relative plain file; no absolute path, empty, . or .. segments."},
+                    "sha256": {"type": "string", "pattern": HEX64.pattern},
+                    "kind": {"type": "string", "minLength": 1,
+                             "description": "Exactly one artifact has kind result; other entries are supporting files."},
+                }},
+        },
+    },
+}
+
+
+def validate_delivery_record(value, schema, label):
+    """Validate this contract's exact object fields and strings; files are checked at collection."""
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be an object with fields {schema['required']}")
+    missing, extra = sorted(set(schema["required"]) - set(value)), sorted(set(value) - set(schema["properties"]))
+    if missing or extra:
+        raise ValueError(f"{label} fields: missing {missing}; unexpected {extra}; expected exactly {schema['required']}. Repair the candidate file, preserving existing engineering artifacts.")
+    for name, rule in schema["properties"].items():
+        if rule["type"] != "string":
+            continue
+        item = value[name]
+        if not isinstance(item, str) or len(item) < rule.get("minLength", 0):
+            raise ValueError(f"{label}.{name} must be a string of at least {rule.get('minLength', 0)} characters")
+        if "const" in rule and item != rule["const"]:
+            raise ValueError(f"{label}.{name} must be {rule['const']}")
+        if "enum" in rule and item not in rule["enum"]:
+            raise ValueError(f"{label}.{name} must be one of {rule['enum']}")
+        if "pattern" in rule and re.fullmatch(rule["pattern"], item) is None:
+            raise ValueError(f"{label}.{name} must match {rule['pattern']}")
+
+
 def now():
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -642,10 +688,8 @@ class Wrapper:
                 "workspace": str(self.workspace),
                 "delivery": {
                     "candidate": self.capability["delivery"]["candidate"],
-                    "schema": "hima-resident-engineering-candidate/1",
-                    "outcomes": ["completed", "best-effort", "blocked", "cancelled"],
-                    "requiredResultArtifactKind": "result",
-                    "artifactPaths": "workspace-relative plain files with sha256",
+                    "jsonSchema": DELIVERY_CANDIDATE_SCHEMA,
+                    "instructions": "Write only the candidate object described by jsonSchema to candidate. Include exactly one artifact with kind result containing the Pack result; list every referenced supporting plain file, including checkpoint tree files, with its actual sha256. Do not copy this delivery description, task IDs, envelope hashes or advisory keys into the candidate. A rejected candidate can be repaired in the same task without repeating engineering work.",
                 },
             }).decode("utf-8")
         text = payload.get("text")
@@ -752,22 +796,18 @@ class Wrapper:
             raise ValueError("invalid delivery candidate path")
         candidate_bytes = read_confined(self.workspace, relative)
         candidate = json.loads(candidate_bytes.decode("utf-8"), parse_constant=reject_constant, object_pairs_hook=unique_object)
-        if set(candidate) != {"schema", "outcome", "summary", "stopReason", "artifacts"} or candidate["schema"] != "hima-resident-engineering-candidate/1":
-            raise ValueError("invalid delivery candidate")
-        if candidate["outcome"] not in {"completed", "best-effort", "blocked", "cancelled"}:
-            raise ValueError("invalid delivery outcome")
-        if not isinstance(candidate["summary"], str) or not isinstance(candidate["stopReason"], str):
-            raise ValueError("delivery summary and stopReason must be strings")
+        validate_delivery_record(candidate, DELIVERY_CANDIDATE_SCHEMA, "delivery candidate")
         artifacts = []
         result_count = 0
-        if not isinstance(candidate["artifacts"], list) or len(candidate["artifacts"]) > 512:
-            raise ValueError("delivery artifacts must be a bounded list")
-        for artifact in candidate["artifacts"]:
-            if set(artifact) != {"path", "sha256", "kind"} or not HEX64.fullmatch(artifact.get("sha256", "")):
-                raise ValueError("invalid delivery artifact record")
+        artifact_contract = DELIVERY_CANDIDATE_SCHEMA["properties"]["artifacts"]
+        if (not isinstance(candidate["artifacts"], list)
+                or not artifact_contract["minItems"] <= len(candidate["artifacts"]) <= artifact_contract["maxItems"]):
+            raise ValueError(f"delivery artifacts must be a list of {artifact_contract['minItems']}..{artifact_contract['maxItems']} plain-file records")
+        for index, artifact in enumerate(candidate["artifacts"]):
+            validate_delivery_record(artifact, artifact_contract["items"], f"delivery artifacts[{index}]")
             rel = PurePosixPath(artifact["path"])
-            if rel.is_absolute() or ".." in rel.parts or not rel.parts:
-                raise ValueError("delivery artifact escapes workspace")
+            if rel.is_absolute() or any(part in ("", ".", "..") for part in artifact["path"].split("/")):
+                raise ValueError("delivery artifact path must be normalized and workspace-relative (no empty, . or .. segments)")
             observed = confined_digest(self.workspace, rel)
             if observed != artifact["sha256"]:
                 raise ValueError(f"delivery artifact digest mismatch: {artifact['path']}")
