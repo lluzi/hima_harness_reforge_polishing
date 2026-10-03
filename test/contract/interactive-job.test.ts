@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import {
-  closeInteractiveJob, interactiveCommandMarker, jobProcessGroupAlive, openInteractiveJob, observeInteractiveCommand,
+  LocalChannel, closeInteractiveJob, interactiveCommandMarker, jobProcessGroupAlive, openInteractiveJob, observeInteractiveCommand,
   parseInteractiveRecord, readInteractiveTranscript, sendInteractiveInput, signalInteractiveJob,
   type InteractiveAuthority, type InteractiveIntent, type InteractiveQualification, type InteractiveReceipt,
   type InteractiveChannel, type InteractiveRecord, type InteractiveSession,
@@ -25,6 +25,7 @@ class LocalTestChannel implements InteractiveChannel {
   realpath(pathname: string) { return realpath(pathname); }
   async absent(pathname: string) { try { await lstat(pathname); return false; } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true; throw error; } }
   exec(argv: readonly string[], options: { readonly stdin?: Uint8Array } = {}): Promise<{ code: number; stdout: Uint8Array; stderr: string }> {
+    if (argv.length === 5 && argv[0] === 'kill' && argv[1] === '-s' && argv[2] === '0' && argv[3] === '--' && /^-[1-9][0-9]*$/.test(argv[4]!)) return new LocalChannel(this.siteName).exec(argv, options);
     if (!['tmux', 'tail', 'wc'].includes(argv[0] ?? '')) throw new Error(`test channel refuses ${argv[0] ?? ''}`);
     return new Promise((resolve, reject) => {
       const child = spawn(argv[0]!, argv.slice(1), { stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
@@ -195,7 +196,7 @@ test('one durable tmux Job preserves REPL state, single-writer receipts, transcr
     await new Promise((resolve) => setTimeout(resolve, 50));
     const closed = await closeInteractiveJob(on, { runId: 'run-interactive', executionId: 'execution-1', nodeId: 'manual', requestId: 'close-1',
       actor: 'owner-session', ownerEpoch: 1, controlRevision: 0, callerDigest: hash('b'), session }, authority);
-    assert.equal(closed.status, 'closed');
+    assert.equal(closed.status, 'closed', 'reason' in closed ? closed.reason : undefined);
     assert.deepEqual(authority.jobStop, { wasRunning: false, observedGone: true }, 'normal adapter exit is not rewritten as a killed Job');
 
     const uncertain = await sendInteractiveInput(on, input(session, 'request-after-close', 'lost-1', { op: 'set', key: 'lost', value: 1 }, gap.cursor.end), authority);

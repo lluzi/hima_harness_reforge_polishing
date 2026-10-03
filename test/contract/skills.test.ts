@@ -1013,7 +1013,7 @@ test('every skeleton in the pack anatomy reference is a file this harness accept
     const chooserId = (parse(chooser) as { id: string }).id;
     const readerDeclaration = parse(reader) as { id: string; file: string; emits: string[] };
     const knowledgeFile = (parse(contract) as { knowledge: { file: string }[] }).knowledge[0]!.file;
-    const toolFile = (parse(contract) as { tools: { file: string }[] }).tools[0]!.file;
+    const toolFiles = (parse(contract) as { tools: { file: string }[] }).tools.map(tool => tool.file);
 
     const dir = path.join(packsDirOf(h), id);
     await mkdir(dir, { recursive: true });
@@ -1025,7 +1025,7 @@ test('every skeleton in the pack anatomy reference is a file this harness accept
       [`choosers/${chooserId}.yml`, chooser],
       [`readers/${readerDeclaration.id}.yml`, reader],
       [readerDeclaration.file, readerScript],
-      [toolFile, '#!/bin/sh\n# The tool the contract declares, holding the command line it declares.\nexit 0\n'],
+      ...toolFiles.map(file => [file, '#!/bin/sh\n# Shape-only fixture: actual command execution is qualified separately.\nexit 0\n'] as const),
       [`knowledge/${knowledgeFile}`, knowledge],
     ] as const) {
       await mkdir(path.dirname(path.join(dir, at)), { recursive: true });

@@ -117,7 +117,10 @@
     "test/contract/local-database.host.test.ts",
     "test/contract/flow-compiler.test.ts",
     "test/contract/dbos-runtime.host.test.ts",
-    "test/contract/dbos-commit.host.test.ts"
+    "test/contract/dbos-commit.host.test.ts",
+    "test/contract/task-effects.host.test.ts",
+    "test/contract/native-task-effects.host.test.ts",
+    "test/contract/task-interactive.host.test.ts"
   ],
   "desktop": [
     "test/contract/campaign-graph.desktop.test.ts",

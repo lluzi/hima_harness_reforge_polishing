@@ -64,6 +64,17 @@ tools:
       - DESIGN=${DESIGN}
       - measure
       - STEP_MS=${STEP_MS}
+  # JSON-native commands: the Golden Flow must implement these explicit operands.
+  - id: measure-json
+    file: tools/measure-json.sh
+    description: Measure from the business JSON input and write the declared JSON output.
+    inputs: [WORKSPACE, TASK_INPUT, TASK_OUTPUT]
+    argv: [sh, '${WORKSPACE}/flow/tools/measure-json.sh', '${TASK_INPUT}', '${TASK_OUTPUT}']
+  - id: deliver-json
+    file: tools/deliver-json.sh
+    description: Deliver the committed sample without recomputing it.
+    inputs: [WORKSPACE, TASK_INPUT, TASK_OUTPUT]
+    argv: [sh, '${WORKSPACE}/flow/tools/deliver-json.sh', '${TASK_INPUT}', '${TASK_OUTPUT}']
 
 rules:                       # the judge rules this pack may apply, by id: this folder's rules/ first,
   - measurement-within-bound #   the bundle's second
@@ -95,7 +106,8 @@ composition has a unique id. A task's `tool` names a declared contract tool; a c
 using a model and a complete outsourced engineering task share the same data contract. The builtin
 `builtin/human-wait` task waits for a durable human response.
 
-This complete strict graph uses the `measure` tool declared above. The task adapter returns the
+This strict graph uses the JSON-native `measure-json` and `deliver-json` tools declared above.
+The legacy `measure` command remains an example for the legacy graph later in this file. The task adapter returns the
 business value described by its output schema; Runtime fills identity and commits the envelope.
 The `sample` binding reads the predecessor's value, rather than guessing where a file was written.
 
@@ -109,7 +121,7 @@ flow:
   steps:
     - kind: task
       id: measure
-      tool: measure
+      tool: measure-json
       inputs:
         design: {source: runInput, path: [design]}
         step: {source: strategy, path: [stepMs]}
@@ -132,7 +144,7 @@ flow:
             $ref: schemas/measurement.json
     - kind: task
       id: deliver
-      tool: measure
+      tool: deliver-json
       inputs:
         sample: {source: committedOutput, taskId: measure, path: []}
       contract:
@@ -146,6 +158,35 @@ flow:
             required: [sample]
         output: *measurement-result
 ```
+
+## Command input and output
+
+A new JSON-native command explicitly declares `TASK_OUTPUT` in its tool `inputs` and uses it in
+`argv`. Runtime supplies a task-private output filename. Structured input uses an explicitly
+declared `TASK_INPUT` operand: Runtime writes the resolved business input object as immutable
+JSON and supplies its filename. Those files contain business data, not platform ledger fields.
+The Golden Flow command or its approved wrapper must implement these operands; declaring them
+does not make an existing command understand JSON.
+
+For scalar operands, a task input key must exactly match the name declared in `tools[].inputs`;
+strings, numbers and booleans become their string argv values. There is no `step` to `STEP_MS`
+translation. Runtime owns WORKSPACE, FLOW_ROOT, DESIGN, CAMPAIGN and the task file operands.
+Legacy `parameters.arguments` continue to bind their declared Goal/Strategy names through the
+legacy adapter. A new command without TASK_OUTPUT needs an explicitly registered native/Reader
+collector; Runtime refuses a missing collector before launching work and never guesses stdout.
+
+The command writes this producer shape to TASK_OUTPUT (illustrative fixture values only):
+
+```json
+{"schemaVersion":"1","value":{"route":"stop","measurement":2},"artifacts":[],"diagnostics":[]}
+```
+
+`value` must satisfy the task's output schema. To retain a file, an artifact declaration has
+`name`, a workspace-relative `path`, and optional `mediaType`. Runtime verifies the actual file,
+retains immutable bytes, and supplies SHA256 and Run/task/effect identity. A diagnostic has `code`,
+`message` and a concrete `source`. Producers never fabricate platform IDs or artifact hashes.
+Existing domain Readers still establish business meaning; JSON validity does not establish timing
+closure or a Goal. A valid result can say the business Goal was not met.
 
 ## Local schema files
 
@@ -211,8 +252,11 @@ return output. For example:
 flow:
   kind: task
   id: diagnostic-check
-  tool: measure
+  tool: measure-json
   inputs:
+    design: {source: runInput, path: [design]}
+    step: {source: strategy, path: [stepMs]}
+    target: {source: goal, path: [measurement_at_most]}
     original: {source: committedOutput, taskId: measure, path: []}
   contract:
     input:

@@ -169,6 +169,13 @@ export interface MomentRequest {
    * nothing for a pack since uninstalled or edited. Absent for every other purpose a moment is opened
    * for, and the `/hima/api/runs/<id>/moment` route's own moments carry none.
    */
+  /** Fixed identity for durable task producers; absence preserves legacy moments. */
+  readonly sessionId?: string;
+  /** Cold reconstruction uses the exact persisted session and never creates a new identity. */
+  readonly resumeOnly?: boolean;
+  /** Every model request, including tool-driven continuation, checks current native admission. */
+  readonly beforePrompt?:()=>Promise<void>;
+  readonly modelSelection?:{readonly provider:string;readonly model:string};
   readonly workshop?: { readonly id: string; readonly entry: string; readonly entryPath: string };
 }
 
@@ -219,7 +226,7 @@ export interface Moment {
  * @throws when a requested tool carries a governed name, when the host composes no agent registry,
  *         or when the preset or the composition refuses.
  */
-export async function openMoment(deps: MomentDeps, request: MomentRequest): Promise<Moment> {
+export async function openMoment(deps: {readonly ledger:{appendSession(runId:string,data:Parameters<Ledger['appendSession']>[1]):Promise<unknown>};readonly ctx:Context}, request: MomentRequest): Promise<Moment> {
   const { ctx, ledger } = deps;
   // Before the registry is even asked for: nothing is composed, nothing is claimed, and nothing is
   // recorded, so a caller that got this wrong leaves no session and no `session` record behind.
@@ -235,15 +242,15 @@ export async function openMoment(deps: MomentDeps, request: MomentRequest): Prom
   if (!agents) throw new Error('this host composes no agent registry, so it can open no model moment');
   // The profile's default route and model (D9), read from the host rather than spelled here: a
   // moment runs on whatever the deployment's model is, and this bundle names no model anywhere.
-  const selection = serviceOn(ctx, 'agentDefaultModel')?.currentSelection();
+  const selection = request.modelSelection ?? serviceOn(ctx, 'agentDefaultModel')?.currentSelection();
   if (!selection) throw new Error('this host declares no default model, so it can open no model moment');
-  const handle: AgentHandle = await agents.create({
-    sessionId: `session-${randomUUID()}` as never,
+  const compose = {
+    sessionId: (request.sessionId ?? `session-${randomUUID()}`) as never,
     // `agentPreset` on the session's own metadata, beside the mount below: the mount is what composes
     // this live session, and this is what the session's durable header says it was composed from.
     meta: { agentPreset: request.preset, ...(request.cwd === undefined ? {} : { cwd: request.cwd }) },
     agentOptions: { provider: selection.provider, model: selection.model },
-    setup: async (agentCtx) => {
+    setup: async (agentCtx:Context) => {
       // The purpose's own composition. A host with no roster (a headless one) composes nothing here
       // and the restriction below is what isolates the session on its own.
       await serviceOn(agentCtx, 'agentPresets')?.mount(agentCtx, request.preset);
@@ -258,8 +265,12 @@ export async function openMoment(deps: MomentDeps, request: MomentRequest): Prom
       // reaches a moment. Order is 0 because a complete section has nothing to be ordered against.
       serviceOn(agentCtx, 'systemPrompt')?.section({ name: INSTRUCTIONS_SECTION, order: 0, text: request.instructions, complete: true });
       for (const tool of request.tools) agentCtx.tools.register(tool);
+      if(request.beforePrompt) agentCtx.on('agent/request',async(_payload,next)=>{await request.beforePrompt!();return next();});
     },
-  });
+  };
+  const handle:AgentHandle=request.resumeOnly
+    ? await agents.resume({resumeSessionId:compose.sessionId,agentOptions:compose.agentOptions,setup:compose.setup})
+    : await agents.create(compose);
   const agent = handle.agent;
   // Nobody is watching this session, so nobody can answer it: `never` is refused deterministically
   // before any answerer is dispatched, where `ask` would hang until the turn's signal cut it off.
@@ -275,7 +286,8 @@ export async function openMoment(deps: MomentDeps, request: MomentRequest): Prom
   // Claimed before the `opened` record exists, never after: from the instant that record is on the
   // ledger this process's own reconciliation could read it as a moment somebody else left open, and
   // a claim made afterwards would have a window to be too late in.
-  openedHere.add(head.sessionId);
+  // The fixed native identity is journaled in PG and never enters the legacy Ledger close pass.
+  if(request.sessionId===undefined) openedHere.add(head.sessionId);
   try {
     await ledger.appendSession(request.runId, { ...head, event: 'opened', tools, ...forWorkshop });
   } catch (err) {
@@ -589,4 +601,20 @@ export async function momentOnCurrentNode(deps: MomentDeps, runId: string, instr
   await moment.close('completed');
   return { ...turn, sessionId: moment.sessionId, provider: moment.provider, model: moment.model,
     tools: moment.tools, nodeId, attempt };
+}
+
+/** Read a completed native moment from the persisted session log, including after Host loss. */
+export async function readMomentResult(ctx:Context,sessionId:string,cwd:string):Promise<MomentTurn|undefined> {
+  const query=ctx.get('sessionQuery' as never) as {readSession(id:string):Promise<{session:{id:unknown;cwd?:string};events:readonly {seq:number;type:string;data?:unknown}[]}>}|undefined;
+  if(!query) return undefined;
+  let log:Awaited<ReturnType<typeof query.readSession>>;
+  try{log=await query.readSession(sessionId);}catch{return undefined;}
+  if(String(log.session.id)!==sessionId || log.session.cwd!==cwd) throw new Error('Native moment identity or workspace changed');
+  const end=log.events.findLast(event=>event.type==='turn/end');
+  const ended=end?.data as {turn?:number;reason?:{kind?:string}}|undefined;
+  if(!end || ended?.reason?.kind!=='completed') return undefined;
+  const answer=log.events.findLast(event=>event.seq<end.seq && event.type==='assistant/message' && (event.data as {turn?:number})?.turn===ended.turn);
+  const data=answer?.data as {interrupted?:boolean;message?:{role?:string;content?:{type:string;text?:string}[]}}|undefined;
+  if(data?.interrupted || data?.message?.role!=='assistant') return undefined;
+  return {text:(data.message.content??[]).filter(block=>block.type==='text').map(block=>block.text??'').join('')};
 }

@@ -25,6 +25,14 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
       CREATE TABLE IF NOT EXISTS hima.effect_facts (
         effect_id text NOT NULL REFERENCES hima.effects, phase text NOT NULL, fact jsonb NOT NULL,
         PRIMARY KEY(effect_id,phase));
+      CREATE TABLE IF NOT EXISTS hima.effect_dispatches (
+        effect_id text NOT NULL REFERENCES hima.effects, dispatch_id text NOT NULL,
+        input_sha256 text NOT NULL, started_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+        PRIMARY KEY(effect_id,dispatch_id));
+      CREATE TABLE IF NOT EXISTS hima.effect_leases (
+        effect_id text PRIMARY KEY REFERENCES hima.effects, site_id text NOT NULL,
+        claim jsonb NOT NULL, released_at timestamptz, proof jsonb);
+      CREATE INDEX IF NOT EXISTS effect_leases_site ON hima.effect_leases(site_id) WHERE released_at IS NULL;
       CREATE TABLE IF NOT EXISTS hima.results (
         effect_id text PRIMARY KEY REFERENCES hima.effects, run_id text NOT NULL REFERENCES hima.runs,
         input_sha256 text NOT NULL, result_sha256 text NOT NULL, result jsonb NOT NULL);

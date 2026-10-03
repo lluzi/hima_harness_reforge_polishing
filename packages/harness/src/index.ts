@@ -21,6 +21,8 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { installedExecutableManifest, startDurableRuntime, type DurableRuntime } from './durable-runtime.js';
+import { nativeDelegationPolicy } from './native-task-adapters.js';
+import { operateTaskInteractive, type TaskInteractiveDeps } from './task-interactive.js';
 import { Service, type Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 // Type-only: these take the `ctx.commands` and `ctx.tools` declaration merges the registrations below
@@ -34,7 +36,7 @@ import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs, ownedW
 import { readEngineeringAsset, controlling, identityOf, drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, settleStrandedTeamExecutions, unreservedDelegationMs, type RunDelegationRequest } from './delegation-runtime.js';
-import { registerDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem, delegationInputSelected, selectDelegationInput, type DelegationInputSelection } from './delegation.js';
+import { registerDelegationGuard, registerAsyncDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem, delegationInputSelected, selectDelegationInput, type DelegationInputSelection } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
 import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
 import { executionPack, interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
@@ -499,6 +501,7 @@ export default class Hima extends Service {
   private notificationsActive = false;
   private exitRequest: HostExitRequest | undefined;
   private interactiveRuntime:InteractiveRuntimeDeps|undefined;
+  private taskInteractiveRuntime:TaskInteractiveDeps|undefined;
   private interactiveTimers:InteractiveTimerController|undefined;
   private readonly recoveredOwners = new Set<string>();
   private readonly delegationTimers = new Map<string,ReturnType<typeof setTimeout>>();
@@ -764,6 +767,7 @@ export default class Hima extends Service {
     this.ctx.effect(() => registerAuthoringGuard(this.ctx, this.config.packsDir), 'hima: the pack authoring guard');
     this.ctx.effect(() => this.ctx.tools.guard(execution => terminalDenial(execution, this.ledger)), 'hima: raw shell and terminals stay outside Campaign execution');
     this.ctx.effect(()=>registerDelegationGuard(this.ctx,id=>delegationRuntimePolicy(this.deps(),id)),'hima: delegated tool grants');
+    this.ctx.effect(()=>registerAsyncDelegationGuard(this.ctx,id=>nativeDelegationPolicy(this.durable.store,id)),'hima: durable native task grants');
     this.ctx.effect(()=>this.ctx.tools.guard(execution=>{
       const agent=execution.agent;if(!agent)return;
       const parent=agent.session.header.parentSession;
@@ -1011,7 +1015,19 @@ export default class Hima extends Service {
     };
     this.interactiveRuntime=runtime;this.interactiveTimers=createInteractiveTimerController(runtime);return runtime;
   }
+  private taskInteractiveDeps():TaskInteractiveDeps {
+    if (this.taskInteractiveRuntime) return this.taskInteractiveRuntime;
+    const bridge = createInteractiveBindingBridge({ packsDir: this.config.packsDir, sitesDir: this.config.sitesDir,
+      interactiveBindingsFile: this.config.interactiveBindingsFile });
+    this.taskInteractiveRuntime = { store: this.durable.store, sitesDir: this.config.sitesDir, bridge,
+      ...(testFixtureCanRunHere() && process.env.HIMA_TEST_INTERACTIVE_BINDING_ID
+        ? { trustedTestQualification: { bindingId: process.env.HIMA_TEST_INTERACTIVE_BINDING_ID } } : {}) };
+    return this.taskInteractiveRuntime;
+  }
   async interactive(sessionId:string,raw:unknown):Promise<object> {
+    if (await this.durable.store.nativeSessionEffect(sessionId)) {
+      return operateTaskInteractive(this.taskInteractiveDeps(), sessionId, raw);
+    }
     let request=parseInteractiveRequest(raw,sessionId);
     const run=this.ledger.run(request.runId);
     const delegated=run?.control&&run.control.owner!==sessionId?operatorInteractiveAuthority(this.deps(),sessionId,request):undefined;
@@ -1070,6 +1086,29 @@ export default class Hima extends Service {
   }
 
   async delegationInput(sessionId:string,request:{runId:string;recordId:string}&DelegationInputSelection):Promise<object> {
+    const native = await this.durable.store.nativeSessionEffect(sessionId);
+    if (native) {
+      const policy = await nativeDelegationPolicy(this.durable.store, sessionId);
+      if (!policy?.toolsAllowed || policy.effective.runRef?.runId !== request.runId
+        || native.identity.runId !== request.runId || !policy.effective.inputRefs.includes(request.recordId)) {
+        throw new BadRequest('This child has no retained grant for that exact durable input reference.');
+      }
+      const fact = await this.durable.store.fact(request.recordId);
+      if (!fact || fact.runId !== request.runId) throw new BadRequest('The delegated durable input is missing or belongs to another Run.');
+      const base = { runId: fact.runId, recordId: fact.factId, recordType: fact.kind,
+        source: 'hima-postgresql', seq: fact.seq, at: fact.at };
+      const viewLimitBytes = 40000;
+      const fits = (value: object) => Buffer.byteLength(JSON.stringify(value), 'utf8') <= viewLimitBytes;
+      if (delegationInputSelected(request)) {
+        const answer = (value: unknown, window: object) => ({ ...base, kind: 'selection', path: request.path ?? '', window, value });
+        const selected = selectDelegationInput(JSON.stringify(fact.payload), request, (value, window) => fits(answer(value, window)));
+        if (!selected.ok) throw new BadRequest(`${selected.reason} Select an existing JSON field with offset and limit.`);
+        return answer(selected.value, selected.window);
+      }
+      const answer = { ...base, kind: 'fact', value: fact.payload };
+      return fits(answer) ? answer : { ...base, kind: 'unavailable', truncated: true, viewLimitBytes,
+        reason: 'The durable input exceeds the native view; select its JSON fields with path, offset and limit.' };
+    }
     const policy=delegationRuntimePolicy(this.deps(),sessionId);
     const entry=runDelegations(this.deps(),request.runId).find(item=>item.childSessionId===sessionId);
     if(!policy||!('toolsAllowed' in policy)||policy.toolsAllowed!==true||!entry||entry.effective.runRef?.runId!==request.runId||!entry.contract.inputRefs.includes(request.recordId))throw new BadRequest('This child has no current grant for that exact input reference.');

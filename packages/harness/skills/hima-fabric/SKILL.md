@@ -21,6 +21,11 @@ extra validation task or human wait needs its own business purpose in the approv
 A dynamic diagnostic slot and a static branch are separate mechanisms: compile the one the spec
 chooses, without duplicating the diagnostic work.
 
+For command tasks, follow `Command input and output` in pack-anatomy: exact-name scalar operands,
+explicit TASK_INPUT for structured data and TASK_OUTPUT for the producer result. Use the declared
+command interface; changing an input schema alone does not adapt a tool's argv. Runtime fills the
+artifact hashes and platform identities after collecting the producer's named files.
+
 Runtime supplies invocation identity and versions. Schema acceptance proves the declared data shape;
 the Pack's Reader and Judge still establish business meaning. Runtime commits results and resumes
 mechanical work; the Campaign Agent owns research and decisions at declared business boundaries.
@@ -97,7 +102,8 @@ Before a single file is written, read the spec as one document and look for the 
 contradict itself. Each of them is a pack that would compile into files that disagree, and a person
 finding out at the first judge node has paid for a workspace and a licence to learn it.
 
-- A value a `Judge rules` entry or a `Choosers` entry reads that `Semantics` does not declare.
+- A value a `Judge rules` entry or a `Choosers` entry reads with no declared task input/output
+  source, or no Reader value in `Semantics` when a legacy rule requires one.
 - An `Endings` entry no declared path can reach: a versioned flow names its terminal task and
   business result; a legacy graph names its judge outcome or chooser decision.
 - A tool the `Run contract` names with no wrapper that section declares.
@@ -290,7 +296,8 @@ the current digest.
 - **This folder only.** Nothing outside it is created, edited or deleted, and `INTENT.md` and
   `SPEC.md` are not yours to touch.
 - **Nothing invented.** Every tool script holds a command line the Golden Flow showed you. Every
-  value a rule or a chooser reads is one some reader of this pack emits. A tool or a reader you
+  value a legacy rule or chooser reads is one a declared Reader emits; a versioned decision task
+  consumes its explicit input bindings and schemas. A tool or a reader you
   cannot write from what you were given is a gap you name, not a file you guess at.
 - **Six sources for shape, and no seventh.** The spec, the intent record's flow pointers and the flow
   at them, the six knowledge files, `knowledge/pack-anatomy.md`, the sibling reference pack with the

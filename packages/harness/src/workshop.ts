@@ -31,7 +31,7 @@ import { pathsOf, type Site } from './sites.js';
 import { currentRecordsIn, type KnowledgeRecord, type Ledger } from './ledger.js';
 import { packKnowledgeManifestOf, type Pack, type PackWorkshop } from './packs.js';
 import type { SemanticDeclaration } from './semantics.js';
-import { experimentBudgetSpent, ownedWaitedMs, reserveResearchWrite } from './budget.js';
+import { experimentBudgetSpent, ownedWaitedMs, reserveResearchWrite, type ResearchWriteRequest, type ResearchWriteAdmission } from './budget.js';
 import { existingRun } from './runs.js';
 
 /** One tool as `ctx.tools.register` takes it: whatever `defineTool` makes of a definition. */
@@ -109,7 +109,9 @@ export interface WorkshopKnowledge { readonly file: string; readonly purpose: st
  *  opened, which is what lets a tool refuse without asking the Site anything. */
 export interface WorkshopScope {
   readonly packsDir?: string;
-  readonly ledger: Ledger;
+  readonly ledger?: Ledger;
+  /** New Runs journal facts in PG; no Ledger control or admission reads are permitted. */
+  readonly authority?: WorkshopAuthority;
   readonly runId: string;
   readonly site: Site;
   readonly nodeId: string;
@@ -143,6 +145,31 @@ export interface WorkshopScope {
   readonly branchId?: string;
 }
 
+/** The native task bridge supplies these operations directly from the authoritative RunStore. */
+export interface WorkshopAuthority {
+  reserveWrite(request:ResearchWriteRequest & {contentSha256:string}):Promise<ResearchWriteAdmission>;
+  appendCode(data: Parameters<Ledger['appendCode']>[1],callId?:string): Promise<void>;
+  appendKnowledge(data: Parameters<Ledger['appendKnowledge']>[1]): Promise<void>;
+  appendRefusal(data: {path:string;reason:string}): Promise<void>;
+  retain(bytes: Uint8Array, sha256:string): Promise<string | undefined>;
+  /** Record identity and reread owner/epoch/revision/hold/Permit immediately before every write. */
+  beforeWrite(path:string, bytes:Uint8Array,callId?:string,kind?:'directory'|'file'): Promise<void>;
+}
+function legacyWorkshopLedger(scope:WorkshopScope):Ledger {
+  if(!scope.ledger || scope.authority) throw new Error('This operation requires a legacy Workshop Ledger');
+  return scope.ledger;
+}
+async function retainWorkshopBytes(scope:WorkshopScope,bytes:Uint8Array,sha256:string):Promise<string|undefined> {
+  if(scope.authority) return scope.authority.retain(bytes,sha256);
+  return scope.packsDir===undefined?undefined:retainRunMaterial({ledger:legacyWorkshopLedger(scope),packsDir:scope.packsDir},scope.runId,bytes,sha256);
+}
+async function appendWorkshopCode(scope:WorkshopScope,data:Parameters<Ledger['appendCode']>[1],callId?:string):Promise<void> {
+  if(scope.authority) await scope.authority.appendCode(data,callId); else await legacyWorkshopLedger(scope).appendCode(scope.runId,data);
+}
+async function appendWorkshopKnowledge(scope:WorkshopScope,data:Parameters<Ledger['appendKnowledge']>[1]):Promise<void> {
+  if(scope.authority) await scope.authority.appendKnowledge(data); else await legacyWorkshopLedger(scope).appendKnowledge(scope.runId,data);
+}
+
 /**
  * Is `real` inside `root`, as a path on this Site? The containment test `shell.ts` makes, made again
  * one directory down: the Permit says "inside the workspace", and this says "inside the workshop".
@@ -169,7 +196,8 @@ export function within(real: string, root: string, site: Site): boolean {
  * the five record kinds a fork is made of are the ones that carry a branch (`ledger.ts`).
  */
 async function refuse(scope: WorkshopScope, path: string, reason: string): Promise<void> {
-  await scope.ledger.appendRefusal(scope.runId, { path, reason }, 'executor');
+  if(scope.authority) await scope.authority.appendRefusal({path,reason});
+  else await legacyWorkshopLedger(scope).appendRefusal(scope.runId, { path, reason }, 'executor');
 }
 
 /** Why a path the model asked to write is not one this workshop will take, or undefined when it is.
@@ -292,7 +320,7 @@ export async function captureWorkshopInputs(scope: WorkshopScope): Promise<{
       }
       const bytes = Buffer.from(await channel.readFile(decided.absPath));
       const sha256 = createHash('sha256').update(bytes).digest('hex');
-      const prior = currentRecordsIn(scope.ledger.records({ runId: scope.runId })).findLast((record): record is KnowledgeRecord =>
+      const prior = currentRecordsIn(legacyWorkshopLedger(scope).records({ runId: scope.runId })).findLast((record): record is KnowledgeRecord =>
         record.type === 'knowledge' && record.origin === 'input' && record.exposedBytes === 0
         && record.nodeId === scope.nodeId && record.attempt === scope.attempt && record.workshop === scope.declaration.id
         && record.file === input.name && record.path === decided.absPath && record.sha256 === sha256 && record.bytes === bytes.byteLength);
@@ -300,8 +328,8 @@ export async function captureWorkshopInputs(scope: WorkshopScope): Promise<{
         captured.push({ file: input.name, path: decided.absPath, sha256, bytes: bytes.byteLength, recordId: prior.id });
         continue;
       }
-      const retainedPath = await retainRunMaterial({ ledger: scope.ledger, packsDir: scope.packsDir }, scope.runId, bytes, sha256);
-      const record = await scope.ledger.appendKnowledge(scope.runId, {
+      const retainedPath = await retainRunMaterial({ ledger: legacyWorkshopLedger(scope), packsDir: scope.packsDir }, scope.runId, bytes, sha256);
+      const record = await legacyWorkshopLedger(scope).appendKnowledge(scope.runId, {
         ...(scope.branchId === undefined ? {} : { branchId: scope.branchId }),
         origin: 'input', ...(retainedPath === undefined ? {} : { retainedPath }), exposedBytes: 0,
         nodeId: scope.nodeId, attempt: scope.attempt, sessionId, workshop: scope.declaration.id,
@@ -353,7 +381,7 @@ export function workshopTools(scope: WorkshopScope): ToolDefinition[] {
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      execute: async (args) => writeIntoWorkshop(scope, String(args.path), String(args.content)),
+      execute: async (args,execution) => writeIntoWorkshop(scope, String(args.path), String(args.content),String(execution.callId)),
     }),
     defineTool({
       name: WORKSHOP_READ_TOOL,
@@ -473,7 +501,7 @@ function pythonSyntaxProblem(asked: string, source: Uint8Array, site: Site): Pyt
   return { warn: `Python entry ${asked} did not compile under the Host's python3 ${hostVersion || '(unknown version)'}${siteVersion === undefined ? ` (site ${site.name} declares no Python version, so this is not checked against the interpreter that will run it)` : `, while site ${site.name} runs Python ${siteVersion}`}; it was written — check it before you run it: ${line}` };
 }
 
-export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, content: string): Promise<WriteAnswer> {
+export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, content: string,callId?:string): Promise<WriteAnswer> {
   const channel = channelFor(scope.site);
   const p = pathsOf(scope.site);
   let receipt: { readonly recordId: string; readonly usedWriteAttempts: number; readonly usedBytes: number } | undefined;
@@ -489,13 +517,14 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
     return refused('this workshop\'s session is not open yet, so nothing written in it could be recorded against a session');
   }
   const bytes = Buffer.from(content, 'utf8');
-  const reserved = await reserveResearchWrite(scope.ledger, scope.runId, {
+  const writer={nodeId:scope.nodeId,attempt:scope.attempt,sessionId,scope:'workshop' as const,workshop:scope.declaration.id,path:asked,requestedBytes:bytes.byteLength,...(callId===undefined?{}:{callId}),...(scope.branchId===undefined?{}:{branchId:scope.branchId})};
+  const reserved = scope.authority ? await scope.authority.reserveWrite({...writer,contentSha256:createHash('sha256').update(bytes).digest('hex')}) : await reserveResearchWrite(legacyWorkshopLedger(scope), scope.runId, {
     nodeId: scope.nodeId, attempt: scope.attempt, sessionId, scope: 'workshop', workshop: scope.declaration.id,
     path: asked, requestedBytes: bytes.byteLength, ...(scope.branchId === undefined ? {} : { branchId: scope.branchId }),
   });
   receipt = reserved;
-  if (!reserved.allowed) return refused(reserved.reason!);
-  const reserveStarted = (): boolean => { const r = existingRun(scope.ledger, scope.runId); return experimentBudgetSpent(r, ownedWaitedMs(r)); };
+  if (reserved && !reserved.allowed) return refused(reserved.reason!);
+  const reserveStarted = (): boolean => { if(scope.authority) return false; const r = existingRun(legacyWorkshopLedger(scope), scope.runId); return experimentBudgetSpent(r, ownedWaitedMs(r)); };
   const bad = badWritePath(asked);
   if (bad !== undefined) return refused(`a workshop writes only inside its own directory: ${bad}`);
 
@@ -531,6 +560,7 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
     }
     if (reserveStarted()) return refused('the Campaign entered its closing reserve before the workshop directory could be created; nothing was written');
     try {
+      await scope.authority?.beforeWrite(dir.absPath,new Uint8Array(),callId,'directory');
       await mustRun(channel, ['mkdir', '-p', '--', dir.absPath], `create ${dir.absPath} on site ${scope.site.name}`);
     } catch (err) {
       return refused(messageOf(err));
@@ -540,6 +570,7 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   if (reserveStarted()) return refused('the Campaign entered its closing reserve before the workshop file could be written; nothing was written');
   try {
+    await scope.authority?.beforeWrite(decided.absPath,bytes,callId);
     await mustRun(channel, ['tee', '--', decided.absPath], `write ${decided.absPath} on site ${scope.site.name}`, { stdin: bytes });
   } catch (err) {
     // The bytes may have landed anyway — a partial file behind an ENOSPC, a whole one behind an ssh
@@ -568,9 +599,8 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
   // the order it happened. What a face counts is files — distinct paths — and never records.
   const inBranch = scope.branchId === undefined ? {} : { branchId: scope.branchId };
   try {
-    const retainedPath = scope.packsDir === undefined ? undefined
-      : await retainRunMaterial({ ledger: scope.ledger, packsDir: scope.packsDir }, scope.runId, bytes, sha256);
-    await scope.ledger.appendCode(scope.runId, {
+    const retainedPath = await retainWorkshopBytes(scope,bytes,sha256);
+    await appendWorkshopCode(scope, {
       ...inBranch,
       ...(retainedPath === undefined ? {} : { retainedPath }),
       nodeId: scope.nodeId,
@@ -581,7 +611,7 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
       sha256,
       bytes: bytes.byteLength,
       language: scope.declaration.language,
-    });
+    },callId);
   } catch (err) {
     // **The one failure this promise cannot be kept through.** The bytes are there, verified, and
     // the one thing that would have said so has just failed. They stay there: nothing in this
@@ -654,12 +684,12 @@ export async function readForWorkshop(scope: WorkshopScope, asked: string): Prom
   const text = truncated ? whole.slice(0, WORKSHOP_READ_CAP) : whole;
   const returned = Buffer.from(text, 'utf8');
   const sessionId = scope.session.id;
-  if (sessionId !== undefined && scope.packsDir !== undefined) {
+  if (sessionId !== undefined && (scope.packsDir !== undefined || scope.authority !== undefined)) {
     try {
       const sha256 = createHash('sha256').update(returned).digest('hex');
       const sourceMaterialSha256 = createHash('sha256').update(bytes).digest('hex');
-      const retainedPath = await retainRunMaterial({ ledger: scope.ledger, packsDir: scope.packsDir }, scope.runId, returned, sha256);
-      await scope.ledger.appendKnowledge(scope.runId, {
+      const retainedPath = await retainWorkshopBytes(scope,returned,sha256);
+      await appendWorkshopKnowledge(scope, {
         ...(scope.branchId === undefined ? {} : { branchId: scope.branchId }),
         origin: 'input', ...(retainedPath === undefined ? {} : { retainedPath }), exposedBytes: returned.byteLength,
         nodeId: scope.nodeId, attempt: scope.attempt, sessionId, workshop: scope.declaration.id,
@@ -713,9 +743,8 @@ export async function knowledgeForWorkshop(scope: WorkshopScope, asked: string):
     const sessionId = scope.session.id;
     if (sessionId === undefined) return { read: false, reason: `the knowledge file "${known.file}" was not returned because this workshop has no recorded Agent session` };
     const sha256 = createHash('sha256').update(bytes).digest('hex');
-    const retainedPath = scope.packsDir === undefined ? undefined
-      : await retainRunMaterial({ ledger: scope.ledger, packsDir: scope.packsDir }, scope.runId, bytes, sha256);
-    await scope.ledger.appendKnowledge(scope.runId, {
+    const retainedPath = await retainWorkshopBytes(scope,bytes,sha256);
+    await appendWorkshopKnowledge(scope, {
       ...(scope.branchId === undefined ? {} : { branchId: scope.branchId }),
       origin: 'legacyPack', ...(retainedPath === undefined ? {} : { retainedPath }), exposedBytes: bytes.byteLength,
       nodeId: scope.nodeId,

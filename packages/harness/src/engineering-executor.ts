@@ -288,24 +288,26 @@ export async function launchEngineeringTask(
       // reaches this boundary and therefore leaves no filesystem task that a retry could conflict
       // with; a fault after this point is correctly uncertain and remains fenced by that intent.
       await beforeLaunch(intent);
-      const channel = channelFor(identity.site);
-      await ensureDirectory(identity.site, channel, path.posix.join(plan.taskDir, 'requests'));
-      await ensureDirectory(identity.site, channel, path.posix.join(plan.taskDir, 'receipts'));
-      await ensureDirectory(identity.site, channel, path.posix.join(plan.taskDir, 'events'));
-      await ensureDirectory(identity.site, channel, path.posix.join(plan.taskDir, 'delivery'));
-      await ensureDirectory(identity.site, channel, path.posix.join(plan.taskDir, 'knowledge'));
-      await ensureDirectory(identity.site, channel, path.posix.join(plan.taskDir, 'method'));
-      for (const item of plan.knowledge) await writeVerified(identity.site, channel, item.path, item.bytes);
-      for (const item of plan.methodFiles) {
-        await ensureDirectory(identity.site, channel, path.posix.dirname(item.path));
-        await writeVerified(identity.site, channel, item.path, item.bytes);
-      }
-      await writeVerified(identity.site, channel, path.posix.join(plan.taskDir, 'task.json'), Buffer.from(`${canonicalEngineeringJson(plan.envelope)}\n`));
-      const start = requestBody(plan.taskId, requestId, 'start', { goal: request.goal, ...(request.context === undefined ? {} : { context: request.context }), envelopeSha256: plan.envelope.sha256 });
-      await writeVerified(identity.site, channel, path.posix.join(plan.taskDir, 'requests', `${requestId}.json`), Buffer.from(`${canonicalEngineeringJson(start)}\n`));
+      await stageEngineeringTask(identity,plan,requestId,request);
     }, jobName: `engineering-${identity.execution.nodeId}`,
     ...(identity.execution.branchId === undefined ? {} : { branchId: identity.execution.branchId }),
   });
+}
+
+/** The same immutable filesystem preparation is shared with DBOS Job effects. It never starts
+ * a native session; the actual Job callback remains the current-admission boundary. */
+export async function stageEngineeringTask(identity:EngineeringTaskIdentity,plan:EngineeringTaskPlan,requestId:string,
+  request:Extract<EngineeringRequest,{operation:'start'}>):Promise<void> {
+  const channel=channelFor(identity.site);
+  for(const directory of ['requests','receipts','events','delivery','knowledge','method']) await ensureDirectory(identity.site,channel,path.posix.join(plan.taskDir,directory));
+  for(const item of plan.knowledge) await writeVerified(identity.site,channel,item.path,item.bytes);
+  for(const item of plan.methodFiles) {
+    await ensureDirectory(identity.site,channel,path.posix.dirname(item.path));
+    await writeVerified(identity.site,channel,item.path,item.bytes);
+  }
+  await writeVerified(identity.site,channel,path.posix.join(plan.taskDir,'task.json'),Buffer.from(`${canonicalEngineeringJson(plan.envelope)}\n`));
+  const start=requestBody(plan.taskId,requestId,'start',{goal:request.goal,...(request.context===undefined?{}:{context:request.context}),envelopeSha256:plan.envelope.sha256});
+  await writeVerified(identity.site,channel,path.posix.join(plan.taskDir,'requests',`${requestId}.json`),Buffer.from(`${canonicalEngineeringJson(start)}\n`));
 }
 
 export async function writeEngineeringRequest(identity: EngineeringTaskIdentity, taskId: string, requestId: string, request: Exclude<EngineeringRequest, { operation: 'start' }>, payloadOverride?: Readonly<Record<string, unknown>>): Promise<{ readonly frame: Record<string, unknown> & { readonly sha256: string }; readonly taskDir: string }> {

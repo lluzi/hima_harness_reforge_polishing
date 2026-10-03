@@ -57,8 +57,11 @@ it does not conditionally skip that branch.
   For each engineering tool eligible for outsourcing, state its full task goal, input/output and
   knowledge references, permitted work, delivery location and completion evidence. The Site supplies
   the concrete Resident Engineering Agent executor; the method declares the engineering role.
-- `## Semantics` — every typed value the readers will produce: name, unit, source and what it
-  measures. One entry per value, its zero/absence meaning, and no value the readers do not produce.
+- `## Semantics` — what the declared business fields mean, including units, source and the
+  distinction between zero and absence. Reference the task schemas already in `Run contract`;
+  JSON fields do not require a separate Reader. When the method uses report Readers, name each
+  typed value those Readers actually produce. A section with no additional meaning to define
+  can say `none` and point to the Run contract.
 - `## Judge rules` — only the business judgments the author requested, with their evidence.
   Runtime already validates every task input/output against its declared JSON schema. Ordinary
   payload validation stays inside that task contract and does not create a Judge task, Reader,
@@ -87,7 +90,8 @@ refuses the whole file naming the section and quoting the line when it finds one
 draft against those same six first, in these words, and rewrite it until it passes. A spec that fails
 its own check is never handed on.
 
-- A value a `Judge rules` entry or a `Choosers` entry reads that `Semantics` does not declare.
+- A value a `Judge rules` entry or a `Choosers` entry reads with no declared task input/output
+  source, or no Reader value in `Semantics` when a legacy rule requires one.
 - An `Endings` entry no declared path can reach: a versioned flow names its terminal task and
   business result; a legacy graph names its judge outcome or chooser decision.
 - A tool the `Run contract` names with no wrapper that section declares.
@@ -114,10 +118,10 @@ four-kind graph, use the following three declared shapes:
 - **a blocker this pack declares** — a judge rule whose FAIL routes to the wait node, which is where
   a Campaign stops for a person. Name the rule.
 
-**Every value a rule or a chooser reads is declared.** Take each name in `Judge rules` and `Choosers`
-and find it in `Semantics`. A rule that reads a value nothing declares is the contradiction the next
-stage refuses first, and it is always a `Semantics` section written before the rules rather than with
-them.
+**Every decision reads declared data.** For a versioned flow, trace the decision task's input
+bindings to declared sources and the output enum to the choice cases. Runtime schema validation is
+already part of the handoff. For a legacy rule or chooser, trace every value name to the Reader and
+`Semantics` declaration it consumes. A JSON business field does not become a Reader obligation.
 
 If holding the draft up this way shows a gap — an ending nothing reaches, a value nothing produces —
 the fix is the spec, not a note about the spec: rewrite the section so what it states is reachable,
@@ -146,7 +150,7 @@ what is here, and what is here is theirs.
 ## Rules that do not bend
 
 - **One file.** `SPEC.md`, in this folder. Nothing else is created, edited or deleted.
-- **Nothing invented.** Every value in `Semantics` is one some reader will actually produce. Every
+- **Nothing invented.** Every value in `Semantics` has a declared task or Reader source. Every
   ending in `Endings` is one some value can detect. A spec that names a number nobody reads is a
   spec the next stage cannot compile.
 - **It passes its own check.** The six contradictions above are the ones `/hima-fabric` refuses the
