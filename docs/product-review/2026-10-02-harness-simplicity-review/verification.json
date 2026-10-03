@@ -1,0 +1,125 @@
+{
+  "review_model": "gpt-6-astra",
+  "reasoning_effort": "xhigh",
+  "model_authorization": "User explicitly requested GPT-6 Astra extra high",
+  "product_source_sha": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+  "documentation_parent_sha": "57b2058db077b497bc76c52763164bce26c60911",
+  "original_agent_report_sha256": "cdfb469f06aa24b8ea43671b6063104da94e6f1584100f166040826d85f22787",
+  "archived_report_sha256": "b683a68781cc6088c3dfec490cf7d37e4bdcab1103888e76428fc2180b843d6a",
+  "checked_utc": "2026-10-03T03:29:04.836778+00:00",
+  "source_links_checked": [
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "docs/adr/0016-fork-branches-drive-themselves.md",
+      "line": 13,
+      "file_sha256": "419ecd4f61600de9847c4f1bc98f868579c6a8e20286b88ea2e621305b35352e"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "docs/assessment/2026-10-02/issue82-resident/README.md",
+      "line": 111,
+      "file_sha256": "5e5856dcb261904b7f970d9bf38868e3bf1d0fa3642314ad6496477a2f4aa1e2"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "docs/assessment/2026-10-02/issue82-resident/README.md",
+      "line": 21,
+      "file_sha256": "5e5856dcb261904b7f970d9bf38868e3bf1d0fa3642314ad6496477a2f4aa1e2"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "docs/assessment/2026-10-02/issue83-delivery-contract/README.md",
+      "line": 3,
+      "file_sha256": "bae7344ad27d17ad59be740256f0a013c7e8b4c5b8240922d1d41379d524e6b7"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "docs/assessment/2026-10-02/issue83-discovery/README.md",
+      "line": null,
+      "file_sha256": "2dd690fff3f5e0d8ec806403d3a1138cf6dad0ef8918fd069ac7d06c93dec5ca"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "docs/assessment/2026-10-02/issue83-owner-wake/README.md",
+      "line": 3,
+      "file_sha256": "165f5b75d11e6992420bca8b08508d37c60e431f6db0ec3e92becf1de2008f38"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "packages/harness/src/autopilot.ts",
+      "line": 173,
+      "file_sha256": "dc20d1e6cb7270bee0734487c292a8e51ec317dc6508add94acfb07cc6b90213"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "packages/harness/src/channel.ts",
+      "line": 421,
+      "file_sha256": "33e776b5e09675ab5abc36405702b20e176e8dd5f1420f0418402c032f9bd527"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "packages/harness/src/engineering-executor.ts",
+      "line": 197,
+      "file_sha256": "e726734360cfede335ae406e3d759a335bc3a1c8e3a06d6d976ae79af1ca39fe"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "packages/harness/src/fabric.ts",
+      "line": 2121,
+      "file_sha256": "8580ea9b53a22080e469fac66f3f01739d5b8cb7887cef18ae465b4bec6bb501"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "packages/harness/src/jobs.ts",
+      "line": 290,
+      "file_sha256": "9b68b65b1997ead65bb59ce69e8aa1b9c3a41b485007e64d066dac0b24f9c4d0"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "packages/harness/src/recovery.ts",
+      "line": 187,
+      "file_sha256": "f47a84c05fd2f297f063eb07b4d6687a9b0fb39ba45e35a63f6526584ddd4883"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "sites/linglong-atcs28/templates/resident-engineering-wrapper.py",
+      "line": 675,
+      "file_sha256": "37a5d7414123880bae0d7c2e5e0e58b13a3a412fa18ff0ca6f070cc77ed3db8c"
+    },
+    {
+      "commit": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+      "path": "test/contract/resident-engineering.host.test.ts",
+      "line": 341,
+      "file_sha256": "fbb1ef46ebb4b91a677d60814e0207ef3d9ec82873366f4096fdcf793b6df427"
+    }
+  ],
+  "evidence_markers": [
+    "E1",
+    "E2",
+    "E3",
+    "E4",
+    "E5",
+    "E6",
+    "S1",
+    "S2",
+    "S3",
+    "S4",
+    "S5",
+    "S6"
+  ],
+  "mermaid_blocks": 4,
+  "recent_issue_comment_checked": {
+    "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/83#issuecomment-5964037729",
+    "createdAt": "2026-10-03T01:20:06Z"
+  },
+  "semantic_checks": [
+    "Current implementation from issue82-opencode-design replaces old-main-only scope",
+    "ADR0016 autopilot and ADR0017 resident simplifications are already implemented",
+    "Resident status can create request/receipt and advance control revision; lost-wrapper path can launch cleanup",
+    "Existing artifact copy has same-hash skipping, no-clobber and rehash; outer errors retain uncertain classification",
+    "Public fixture count is 7 actions including deliberate message/status, 5-action skeleton; not measured model turns or speedup",
+    "Historical wake and delivery-schema defects have code fixes with bounded evidence, not fresh GUI or product-wide PASS",
+    "Implementation order revised to respect local recovery prerequisite before lifecycle consolidation"
+  ],
+  "validation_scope": "Static code/doc/link checks only; no product tests, build, GUI, native model, SSH, EDA or active-worktree modifications. Mermaid syntax not runtime-rendered in this turn."
+}

@@ -1,0 +1,18 @@
+{
+  "review_sha": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+  "observed_utc": "2026-10-03T03:21:13.203748+00:00",
+  "live_head": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+  "uncommitted_paths": [
+    "packages/harness/src/channel.ts",
+    "packages/harness/src/client/HimaRunCard.tsx",
+    "packages/harness/src/client/api.ts",
+    "packages/harness/src/engineering-executor.ts",
+    "packages/harness/src/experience.ts",
+    "packages/harness/src/fabric.ts",
+    "packages/harness/src/index.ts",
+    "packages/harness/src/remote.ts",
+    "sites/linglong-atcs28/tests/fixtures/acp-standin.py",
+    "test/contract/resident-engineering.host.test.ts"
+  ],
+  "scope_note": "Live worktree observed read-only for ownership/conflict context; uncommitted bytes excluded from frozen review."
+}
