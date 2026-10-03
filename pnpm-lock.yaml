@@ -80,6 +80,9 @@ importers:
       '@deepseek-ai/dsh-tool-terminal':
         specifier: 0.1.5-alpha.1
         version: 0.1.5-alpha.1(cce647ff5b0bd8ebafd61a9b3665dec0)
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
       unpdf:
         specifier: 1.8.1
         version: 1.8.1

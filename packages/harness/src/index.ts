@@ -1876,3 +1876,11 @@ export type { CampaignFile, PreparationOverrides } from './campaign-file.js';
 // bundle. Re-exported here too, beside `campaign-file.ts`'s own re-export, so every existing caller of
 // this bundle's surface keeps reading it from here.
 export { changedFields } from './campaign-file-diff.js';
+
+// Shared data boundary for DBOS tasks; adapters and Pack compilation consume one contract.
+export { taskResultProtocol, taskSchemaDraft, taskJsonValue, taskIdentity, taskInputBinding,
+  taskOutputBinding, taskSchema, taskContract, taskArtifact, taskDiagnostic, taskProjectionState,
+  taskProjection, taskToolOutput, taskResult, TaskContractError, validateTaskInput, createTaskResult } from './task-contract.js';
+export type { JsonValue, TaskIdentity, TaskInputBinding, TaskOutputBinding, TaskSchema, TaskContract,
+  TaskLocalSchemas, TaskArtifact, TaskDiagnostic, TaskProjectionState, TaskProjection,
+  TaskToolOutput, TaskResult, TaskContractErrorCode, TaskContractIssue } from './task-contract.js';

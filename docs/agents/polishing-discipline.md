@@ -10,6 +10,12 @@
 产品文档和 ADR；普通反馈、缺陷和体验问题进入现有模块，不自动产生一套新产品、
 新运行时或新控制面。
 
+2026-10-03 用户明确接受 [ADR-0018](../adr/0018-dbos-owns-durable-execution.md) 的 DBOS 与
+App 私有本地 PostgreSQL 例外：新 Run 由一个内核机械推进、持久执行与恢复，Fabric 保留产品
+语义和适配；旧记录保持可读，不热迁移活动 Run。这是有边界的架构升级，迁移期间先按
+[实施计划](../plans/2026-10-03-0701-refactor-dbos-fabric-atcs-migration-plan.md) 的 U-ID 找到
+文件所有者与共享合同，不能把目标责任当作已有实现资格，也不能因此增加其他运行时或模式。
+
 ## 每个切片的执行步骤
 
 1. **定位。** 从 Issue、规格和失败证据定位现有入口、模块、接口、实现、测试及
@@ -45,15 +51,17 @@
 | Site 声明与检查 | `sites.ts` 的 schema、`loadSite`、`installedSites` | 校验、导入和保存同一 Site 文件模型 |
 | 本地/SSH 执行 | `channel.ts` 的 `LocalChannel`、`SshChannel`、命令白名单 | 增加有界 probe 或复用现有 Channel，不建立另一远程执行层 |
 | Run 准备 | `index.ts:startPreparation`、`remote.ts:startChoices`、`packs.ts:checkPack` | 加深已有准备结果；表单和对话读取同一结果 |
-| Agent 业务执行 | DSH Agent Loop；`tools.ts:hima_execute`；`fabric.ts:executionAction` | 一个可见 Campaign Agent 是 Run 的唯一 owner；Side Talk 复用 DSH 多会话，不建立第二 Agent Loop |
-| 运行图与状态 | `fabric.ts:executionContext`、`remote.ts:RunView` | 投影现有 reference/growth graph 和 Ledger 状态，不建立第二图引擎 |
-| 人类控制与通知 | `client/api.ts:controlRun`、`remote.ts:controlOperation`、`fabric.ts:executionAction`、`index.ts` 的 `agent.followup` | 让 Host 负责控制落账后的可靠通知；UI 负责呈现 |
+| Agent 业务执行 | DSH Agent Loop；`tools.ts:hima_execute`；`fabric.ts:executionAction` | Campaign Agent 保持唯一业务 owner；新 Run 的机械推进按 ADR-0018 交给 DBOS，不建第二 Agent Loop |
+| 运行图与状态 | `fabric.ts:executionContext`、`remote.ts:RunView`；迁移共享合同 `task-contract.ts` | 新 Run 投影 DBOS/应用事实与冻结方法，Ledger 只作历史投影；不维护第二可驱动执行的状态机 |
+| 人类控制与通知 | `client/api.ts:controlRun`、`remote.ts:controlOperation`、`fabric.ts:executionAction`、`index.ts` 的 `agent.followup` | 人类/Agent 共用事实与控制；控制先持久记录、effect 实际提交前核对当前许可，Host 幂等通知、UI 如实呈现 |
 | 研究代码与策略变化 | Workshop、`analyze`、`grow`、`revise`、Judge、Chooser | 用 Pack 方法和实测数据改善决策；新增 Runtime 动作需要通用缺口证据 |
 | 知识与历史资产 | `workshop.ts:knowledgeForWorkshop`、Ledger `KnowledgeRecord`、`experience.ts`、Pack archive | 原件和记录保持权威；外部检索只提供候选并落回现有证据模型 |
 | Desktop 呈现 | `packages/harness/src/client/`、`workbench-style.ts`、`packages/desktop/` | 重排现有信息和交互；Host/Runtime 继续拥有事实 |
 
 文件可以新增，模块职责保持稳定。一个帮助函数、测试夹具、Pack 或外部 adapter 不等于
 新产品模块；让多个现有模块适配新的生命周期、身份或事实权威，才属于架构扩张。
+DBOS/数据库在本轮是已授权的职责替换：不得保持旧 Fabric/autopilot 与 DBOS 双调度，
+也不得在数据库故障时回退旧内核。数据库生命周期归现有 Host，Desktop 继续管理 Host。
 
 ## 任务就绪标准
 
@@ -87,6 +95,8 @@ Issue 或实施规格在派给实现 Agent 前必须包含：
 
 产品的可靠行为由代码、Pack 声明、Site Permit、工具输出、Ledger 和 Judge 保证。模型负责
 理解、研究、生成候选和在声明范围内选择；模型自述不写成成功事实。
+新 Run 的推进/恢复由 DBOS 保证，业务事实从应用数据库投影到历史；工具业务值按同一
+任务合同验证后交接，schema 接纳、持久完成、Goal 和采用范围分别核验。
 
 开发任务通过以下方式与模型能力解耦：
 

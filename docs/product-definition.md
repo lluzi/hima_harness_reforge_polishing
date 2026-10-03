@@ -14,14 +14,16 @@ AI 承担数据分析、假设与策略生成、试验组织、算法和脚本�
 
 Library-richness calibration 阶段的免费代理只提供各自指标、局部响应、适用范围和历史成功率；在这些因子尚未通过真实 EDA Commercial Label 证明相关性前，它们不能批准或拒绝 Action。逻辑等价、物理可实施性、权限、预算、proof 和 rollback 仍是硬约束。Information Graph 将免费因子与后续商业响应绑定在同一设计 subgraph 上，用累积证据决定未来哪些因子可以晋级为决策规则。
 
-用户最新明确：一个可见的 Campaign Agent 是该 Campaign 持久 Run 的唯一业务执行主体。它读取 Pack 的参考路线与实际状态，执行节点内的研究、Coding 和工具工作，并根据结果及人类指令决定后续动作；用户可以在同一产品内新开独立 Side Talk 继续普通对话和 Coding，切换会话不改变 Run owner。Fabric 提供执行上下文、合法动作、资源/依赖约束、验收与事实记录；主产品路径不再由 Fabric 自主连续推进整张图。机械的 Job 执行、状态采集和硬约束继续由基础设施代码承担。见 [并行会话与执行主导权决定](adr/0008-visible-campaign-agent-and-side-talk.md)。
+用户于 2026-10-03 明确升级执行责任：一个可见的 Campaign Agent 保持该 Campaign 持久 Run 的唯一业务 owner，负责理解目标、研究、Coding、策略与人类介入；DBOS 承担新 Run 的机械推进、持久执行和恢复。HimaFabric 保留 Pack、Site/Permit、预算、业务验收、事实与展示适配。已验证结果持久交接并完成必要资源收束后，按方法自动接续，不要求 owner 逐步 begin/work/release/complete。用户可在同一产品内新开独立 Side Talk，切换会话不改变 Run owner；Guide 保持独立。该决定替代 [ADR-0008](adr/0008-visible-campaign-agent-and-side-talk.md) 中 owner 驱动机械节点的分工，见 [ADR-0018](adr/0018-dbos-owns-durable-execution.md)。这是目标责任，尚不能据此宣称迁移或产品验收完成。
 
 用户于 2026-09-29 明确：fork 分支自行推进。Pack 可声明自行推进的区域（fork 的全部分支，以及
 refresh 链这样的连续段）；区域内的工具 Job、Workshop、Reader、Judge 与 Team 成员由 Harness
 连续执行，Team 结果按 schema 自动采纳，owner 不在其中逐节点轮转，人也不在循环里；并行分支
 真正并行。owner 只在 join 处的 Workshop 与 Explore 决定处行动，每代一个决定：从 working state
 继续下一代，或诚实停止。人的暂停只挂起受影响的分支；预算、时间盒与 generation limit 照旧结束
-Run；人只作为诚实结束出现。见 [ADR-0016](adr/0016-fork-branches-drive-themselves.md)。
+Run；人只作为诚实结束出现。见 [ADR-0016](adr/0016-fork-branches-drive-themselves.md)。2026-10-03 的
+[ADR-0018](adr/0018-dbos-owns-durable-execution.md) 以 DBOS 和统一组合替代新 Run 的 autopilot
+推进机制；分支并行、唯一业务 owner 与原总预算约束继续成立，旧声明按兼容编译使用同一内核。
 
 用户于 2026-09-23 进一步明确：Subagent 应有可独立打开的真实工作会话。工程师能查看委派任务、
 实际可用的上下文/来源、完整保留的 transcript、工具轨迹与产物，并向明确的子 Agent 跟进。
@@ -80,7 +82,40 @@ Pack 编写须明确可外包的工程节点及其任务目标、输入和相关
 Timing 的已知结论与 global collateral、no-regression、工程采用/物理签核分别表达。
 未知不转成零或 PASS，已知回归必须保留并限制任何更广泛质量/采用声明。新 Pack 的声明 Goal
 只覆盖已说明的 Timing 目标；尽力改进可仍留 Goal false。旧 Run、旧判据和结束状态
-不重写；通过原有 Explore 决定记录新任务的明确结束，不另建签核 Campaign。
+不重写。原有 Explore 是旧方法的结束机制；DBOS 迁移后的 ATCS 以显式最终任务输出记录
+Goal 与结束原因，不要求额外 Explore 或人工 completion 来使正常交付结束。
+
+## 本地可靠执行与统一任务合同（2026-10-03，已接受目标）
+
+App、编排、持久化和恢复在本地 macOS/Linux 运行，继续使用已有获准模型 API 和 Site 工具。
+产品负责安装、启动、退出、故障提示、备份及升级本地 PostgreSQL；用户无需自行运维数据库。
+这是本轮对数据库和部署范围的明确例外，不引入厂商云编排或独立业务调度服务。
+
+命令、内部调用模型的程序和完整工程 Agent 共用任务协议。Pack 声明 JSON Schema 2020-12 的
+输入、输出及明确引用；Runtime 填写 Run/task/effect、版本与 digest，工具提供业务值、不可变
+产物引用和有来源的诊断，领域 Reader 仍负责真实含义。只解析 Pack 本地 schema 引用，不联网
+取 schema，不做隐式值转换或补默认事实。输出不合法时说明缺项、预期版本或身份及修正位置；
+每个拒绝条件须有可通过的正例，不能要求工具或模型猜测平台账本字段。
+
+任务投影只有 pending、running、waiting、succeeded、failed、cancelled；waiting 附明确原因。
+succeeded 表示合同完成，Goal false、负结果和 UNKNOWN 可以是合法交付，不能显示 Goal met。
+工程目标、Timing 判定和物理采用范围分别表达；schema、进程退出或模型自述不代替实际证据。
+
+方法使用 task、sequence、choice、parallel、repeat 的同一版本化数据语法，输入来源是字面值、
+Run 输入、Goal、策略、已提交任务输出或产物引用。选择只消费已提交的命名枚举，重复有明确
+carry 与结束条件且使用原 Run 总预算。附加任务在声明位置验证、冻结并返回原流程，不改写基础
+方法。严格程度由任务及组合表达，不增设严格/宽松运行模式。
+
+所有新 Run 使用 DBOS，包括受支持旧 Pack 声明经兼容编译创建的 Run。运行固定方法、IR、
+adapter 和执行版本；DBOS 管推进与恢复，本地应用数据库管业务身份、控制、外部效果、验证结果、
+artifact 与投影 outbox，Ledger 为可追溯历史投影，不能再选择下一节点。人类与 Agent 读取同一
+事实并通过同一控制接口介入；暂停、预算、Site Permit、真实 Job 收束及显式 handoff 继续生效。
+
+旧 Run、方法快照、报告、hash 和原结论保持可读，不热转换活动 Run。切换前由旧 App 正常收束
+旧活动/可恢复 Run；新版不启动旧 Fabric recovery/dispatcher，数据库故障不回退旧调度器。
+备份恢复先核对版本与备份后新增的决定/外部效果，缺证据保持恢复 hold。首轮分发目标是明确
+基线的 macOS arm64 和 Linux x64；实际平台安装、许可材料及恢复测试分别取得证据后才可声明
+交付。这些需求与合同冻结不等于 DBOS、本地 PG、GUI 或真实 ATCS 已验收。
 
 
 ## Pack 与探索行为
@@ -116,7 +151,8 @@ HimaHarness 产品团队维护覆盖核心实体、Pack 状态、工具身份、
 用户同日要求将长期 memory 纳入 Session 和 Campaign 的整体设计。先核查当前 DSH 的会话记录、
 compaction/恢复、查询和上下文装配，以及现有 Run、Knowledge、experience、Pack archive 的可复用
 能力，再决定工作摘要、跨会话引用和经验晋级怎样衔接。Session-only 工作、Campaign 事实、child
-交接和跨任务经验分清范围与来源；不预设新的 memory 服务、数据库或自动进化存储。
+交接和跨任务经验分清范围与来源；不预设新的 memory 服务或自动进化存储。ADR-0018 的本地
+数据库仅承担可靠执行职责，不据此扩成新的长期 memory 系统。
 
 记忆用于保持目标、明确决定、未决问题和相关材料引用，恢复后仍须读取当前 Run/Job/控制事实。
 模型摘要不得清除人类暂停、扩大权限、伪造测量或导致重复 Job；过时/冲突/缺失应可见，用户能够
@@ -160,7 +196,7 @@ Golden Flow 是 Pack 作者学习、校准和测试方法的参考，不是客�
 任务/Run，前台保持 Data Insight；浏览已有报告不创建任务。下一阶段分批交付，具备独立条件的
 工作并行开展；R2 已确定首批硬验收为 Guide 发起独立任务、查看 child、Guide 保持可交互、结果可查与任务可恢复；新增 Library 计算和 Interactive ECO 可并行开发，在各自资格门通过后分批交付。以上均是需求决定，不是实现或测试通过声明。
 
-首个版本先支持明确环境的试点部署；一次站点准备后，研究工程师通过桌面和对话工作，无需构建源码或维护内部 YAML。商业签名、通用安装包、多操作系统未列为当前已承诺里程碑，不因本稿自动扩展范围。
+首个版本先支持明确环境的试点部署；一次站点准备后，研究工程师通过桌面和对话工作，无需构建源码或维护内部 YAML。2026-10-03 的本轮交付目标扩为 macOS arm64 和 Linux x64 本地 App 与数据库分发，逐平台独立验证；商业签名、商店发布及所有发行版/架构覆盖不作为本轮技术迁移资格。
 
 R3/Q19 确认：在已加载数据内筛选、切片和联动应即时响应，不调用模型；需要新工具计算时说明范围，
 在原授权与预算内执行并保留新结果版本，扩大范围才确认，不悄悄覆盖旧结果。
@@ -330,7 +366,7 @@ Campaign 的研究目标和停止条件，不是跨设计、跨 Site 的统一�
 
 Polishing 在 `hima_harness_reforge_claude` 当前架构上进行，源项目保持只读。代码需要先复制到 polishing 工作区，按 Step 1–4 和明确快照与 prototype 衔接，整合前核对差异，整合后独立验证。
 
-非万不得已不新增组件。组件扩张的重要判据是迫使多个模块适配、增加边界测试与长期治理成本；优先改进现有职责中的函数、逻辑与行为。旧版架构仅供参考，能力对标不授权迁回旧架构。
+非万不得已不新增组件。组件扩张的重要判据是迫使多个模块适配、增加边界测试与长期治理成本；优先改进现有职责中的函数、逻辑与行为。用户于 2026-10-03 接受 DBOS 与 App 私有本地 PostgreSQL 的明确例外，以消除已完成工程工作仍等机械交接的现有缺口，责任与兼容边界见 ADR-0018。其余架构约束保持；旧版架构仅供参考，能力对标不授权迁回旧架构。
 
 相关决定：[架构约束](/Users/lluzi/code/hima_harness_reforge_polishing/docs/adr/0001-polish-within-prototype-architecture.md)、[快照与独立验证](/Users/lluzi/code/hima_harness_reforge_polishing/docs/adr/0002-step-aligned-snapshots-and-independent-validation.md)、[参考图与附加研究](/Users/lluzi/code/hima_harness_reforge_polishing/docs/adr/0003-preserve-reference-graph-and-grow-research.md)、[Pack 内归档](/Users/lluzi/code/hima_harness_reforge_polishing/docs/adr/0004-archive-run-knowledge-inside-pack.md)。
 
