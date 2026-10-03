@@ -1,0 +1,116 @@
+{
+  "schema": "method-source-ledger/v1",
+  "access_date_utc": "2026-10-03",
+  "sources": [
+    {
+      "id": "M1",
+      "title": "Characterization Testing",
+      "author": "Michael Feathers",
+      "date": "2016-08-08",
+      "url": "https://michaelfeathers.silvrback.com/characterization-testing",
+      "evidence_type": "author method and anecdote",
+      "claim": "Actual behavior is not desired correctness; formatText example and users depending on removed behavior.",
+      "limits": "Open full original; no effect-size evidence."
+    },
+    {
+      "id": "M2",
+      "title": "A Philosophy of Software Design vs Clean Code",
+      "author": "John Ousterhout and Robert Martin",
+      "date": "2024-09 to 2025-02",
+      "url": "https://github.com/johnousterhout/aposd-vs-clean-code",
+      "evidence_type": "author dialogue and code example",
+      "claim": "Deep interfaces lower necessary knowledge; over-decomposition can hide side effects and entangle methods; both authors disagree about best decomposition.",
+      "limits": "Read introduction, method-length discussion and PrimeGenerator example; pedagogical not controlled trial."
+    },
+    {
+      "id": "M3",
+      "title": "Branch By Abstraction",
+      "author": "Martin Fowler",
+      "date": "2014-01-07",
+      "url": "https://martinfowler.com/bliki/BranchByAbstraction.html",
+      "evidence_type": "author method",
+      "claim": "Move consumers to an abstraction; replace one supplier incrementally; compare behind seam and remove supplier/possibly abstraction.",
+      "limits": "Full text; does not prove Hima needs a new seam."
+    },
+    {
+      "id": "M4",
+      "title": "Patterns of Legacy Displacement",
+      "author": "Ian Cartwright, Rob Horn, James Lewis",
+      "date": "2021 onward",
+      "url": "https://martinfowler.com/articles/patterns-legacy-displacement/",
+      "evidence_type": "practitioner case synthesis",
+      "claim": "Large replacement treadmill and unchanged work patterns can defeat modernization; business and technical seams must be considered together.",
+      "limits": "Anonymous consulting experience, no controlled denominator; do not use 50 percent as measured fact."
+    },
+    {
+      "id": "M5",
+      "title": "Transitional Architecture",
+      "author": "Ian Cartwright, Rob Horn, James Lewis",
+      "date": "2021",
+      "url": "https://martinfowler.com/articles/patterns-legacy-displacement/transitional-architecture.html",
+      "evidence_type": "practitioner method/case",
+      "claim": "Temporary adapters have explicit removal cost; choose paths by delivery/risk value and remove obsolete components.",
+      "limits": "Middleware replacement case; not empirical effect size."
+    },
+    {
+      "id": "M6",
+      "title": "Architecture Tradeoff Analysis Method Collection",
+      "author": "CMU SEI",
+      "date": "2018-02-14",
+      "url": "https://www.sei.cmu.edu/library/architecture-tradeoff-analysis-method-collection/",
+      "evidence_type": "official method",
+      "claim": "Business drivers become prioritized quality scenarios and risk/sensitivity/tradeoff findings; full ATAM typically 3-4 days.",
+      "limits": "Hima one-page scenario review is an adaptation, not completed ATAM or system correctness proof."
+    },
+    {
+      "id": "M7",
+      "title": "Quality Attribute Workshops Third Edition",
+      "author": "Barbacci et al., CMU SEI",
+      "date": "2003",
+      "url": "https://sei.cmu.edu/library/quality-attribute-workshops-qaws-third-edition/",
+      "evidence_type": "official method",
+      "claim": "Prioritized refined quality scenarios clarify requirements; designed before architecture.",
+      "limits": "Borrow scenario specificity; do not recommend full early-life-cycle workshop for existing Hima."
+    },
+    {
+      "id": "M8",
+      "title": "Fitness function-driven development",
+      "author": "Thoughtworks",
+      "date": "2019",
+      "url": "https://www.thoughtworks.com/insights/articles/fitness-function-driven-development",
+      "evidence_type": "practitioner method",
+      "claim": "Architecture goals expressed as measurable checks in delivery feedback; recovery/resilience and observability examples.",
+      "limits": "Illustrative metric thresholds such as 90 percent coverage are not validated defaults; documentation existence checks can be shallow."
+    },
+    {
+      "id": "M9",
+      "title": "Adam Tornhill on Software Design X-Rays",
+      "author": "Adam Tornhill, first-person podcast transcript",
+      "date": "date not confirmed",
+      "url": "https://www.case-podcast.org/48-adam-tornhill-on-software-design-x-rays/transcript",
+      "evidence_type": "author interview",
+      "claim": "Hotspot combines complexity and frequent change, contextualizes priorities; trends more informative than raw scores.",
+      "limits": "Vendor founder testimony; do not treat 80 percent remarks or positive experience as prevalence/effect size."
+    },
+    {
+      "id": "M10",
+      "title": "Change coupling: visualize the cost of change",
+      "author": "Adam Tornhill",
+      "date": "2025-09-22",
+      "url": "https://codescene.com/blog/change-coupling-visualize-the-cost-of-change",
+      "evidence_type": "author/vendor method",
+      "claim": "Co-changing implementation entities can reveal dependencies absent from static imports. Author explicitly says cochange is neither good nor bad; production code and its tests coevolving is expected healthy coupling.",
+      "limits": "Vendor evidence; cochange needs commit-content inspection; no recommendation to buy/install tool."
+    },
+    {
+      "id": "M11",
+      "title": "Technical Debt Friction for Maintenance Prioritization: An Industrial Multi-Case Study",
+      "author": "Tverdal et al.",
+      "date": "2026-07-02",
+      "url": "https://arxiv.org/abs/2607.01850",
+      "evidence_type": "primary paper abstract only",
+      "claim": "Contextual industrial walkthroughs: hotspots/coupling do not fully capture experienced change burden; complementary evidence matters.",
+      "limits": "Abstract only; exclude quantitative effects and sample claims; accepted industry track per authors metadata."
+    }
+  ]
+}

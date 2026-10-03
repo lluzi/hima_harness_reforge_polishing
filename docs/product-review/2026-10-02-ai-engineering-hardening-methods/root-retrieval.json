@@ -1,0 +1,30 @@
+{
+  "lane": "root empirical counter-evidence and current repository mapping",
+  "started_utc": "2026-10-03T05:59:08.648297+00:00",
+  "discovery_queries": [
+    "METR2026 AI experienced developer randomized followup",
+    "DORA2025 AI software delivery stability errata",
+    "OpenAI harness engineering agent-first",
+    "Evaluating AGENTS.md repository context coding agents",
+    "SkillsBench agent skills benchmark",
+    "LLM self correction external feedback coding"
+  ],
+  "include": "Primary study papers, official author repositories and datasets, original engineering account; current local repo authority",
+  "exclude": "SEO/reddit summaries, unscoped universal productivity claims, later registry counts substituted into paper experiments",
+  "retrieval_notes": [
+    "SkillsBench launch page contains historical84 figure/86text versus current87registry; retrieve fixed paper version before reporting counts",
+    "DORA2025 errata changes increase stability to increase instability; apply errata",
+    "METR2026 update cautions selection bias; do not treat early2025 effect as currentAstra estimate"
+  ],
+  "stop_reason": "Relevant positive and negative evidence plus current repo gap map complete; no generic productivity search can substitute for Hima bounded trial",
+  "targeted_followups": [
+    "Fixed latest arxiv versions after stale search abstracts",
+    "Read efficiency paper§5 for correctness boundary",
+    "Read SkillsBench§6.1 for controls and task/multiagent limits",
+    "Read official DORA errata",
+    "METR2026 selection caveat and self-correction non-reasoning scope",
+    "Direct maintainability empirical counterexample: Echoes of AI late2024 study published2026",
+    "Rival to oracle-first approach: specification-first no-oracle single case; scope bounded to author abstract",
+    "Delivery-time remote SHA/compare: d0a6637 advances two commits; read fabric/graph patch and bound old examples"
+  ]
+}
