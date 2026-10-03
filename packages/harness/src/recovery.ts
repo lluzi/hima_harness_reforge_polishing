@@ -27,7 +27,7 @@ import { advance, endBudgetExhausted, attemptOf, attemptOfSession, currentAttemp
 import { killDidNotTake, workshopOutputProblem, type Driving, type FabricDeps } from './node-turns.js';
 import { SiteUnreadableError } from './errors.js';
 import { counted } from './words.js';
-import { drive, controlling, executionPack, reconcileAppliedRevisions, residentEngineeringIdentityFor, residentEngineeringStartOf, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
+import { drive, controlling, executionPack, reconcileAppliedRevisions, residentEngineeringIdentityFor, residentEngineeringStartOf, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, observeResidentEngineering, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
 import { engineeringTaskDirectory, engineeringTaskId, loadEngineeringCapability, readEngineeringOwned, reconcileEngineeringTask } from './engineering-executor.js';
 import { owesAnExperience, owesRunAssets, writeExperience } from './experience.js';
 import { closeInterruptedMoments } from './moments.js';
@@ -219,6 +219,7 @@ async function reconcileControlledRun(deps: FabricDeps, snapshot: RunRecord): Pr
         if (status.state.state === 'running') {
           await updateExecution(deps, snapshot.id, execution.id, { phase: 'working', jobSession: session,
             reason: 'resident wrapper Job remains live; its retained native session stays authoritative' });
+          observeResidentEngineering(deps, snapshot.id, execution.id);
           found = 'running';
           details.push(`${execution.id}: resident wrapper Job ${session} remains live; no business action was replayed`);
         } else {

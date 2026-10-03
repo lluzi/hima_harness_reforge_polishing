@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { access, mkdir, readFile, symlink, unlink, writeFile } from 'node:fs/promises';
 import { checkPack, jobKill, jobStatus, launchJob, loadPack, loadSite, type JobRecord, type WorkspaceRecord } from '@hima/harness';
 import { localHome, waitUntil } from './support/fabric.ts';
-import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
+import { bootInProcess, createRootAgent, resumeTestAgent } from './support/boot-inprocess.ts';
 import { packsDirOf, writePackVariant } from './support/pack.ts';
 import { writeLocalSite } from './support/site.ts';
 import { repoRoot } from './support/dsh-home.ts';
@@ -199,6 +199,142 @@ test('outsourcing rejects unknown materials, unreadable delivery, and a second i
     }
   } finally {
     await home.h.dispose();
+  }
+});
+
+test('public Host wakes the owner when a resident turn waits without a status poll or human prompt', async (t) => {
+  const silent = process.env.HIMA_TEST_SILENT_AGENT;
+  process.env.HIMA_TEST_SILENT_AGENT = '0';
+  const fixture = await installResidentFixture(t);
+  const host = await bootInProcess(fixture.h);
+  let task: Awaited<ReturnType<typeof openResidentTask>> | undefined;
+  let maintenance: Promise<void> | undefined;
+  let owner: Awaited<ReturnType<typeof createRootAgent>> | undefined;
+  let next: typeof owner;
+  let nextMaintenance: Promise<void> | undefined;
+  try {
+    owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    maintenance = owner.runMaintenance(signal => new Promise<void>(resolve => {
+      signal.addEventListener('abort', () => resolve(), { once: true });
+    }));
+    task = await openResidentTask(host, fixture, owner, 'DELIVER_RESULT');
+    const taskDir = path.join(task.workspace.workspace, '.hima-engineering', task.engineering.data.taskId);
+    await waitUntil('resident native turn is actually waiting', async () => {
+      try { return JSON.parse(await readFile(path.join(taskDir, 'state.json'), 'utf8')).phase === 'waiting'; }
+      catch { return false; }
+    }, 5_000, 20);
+    await waitUntil('resident lifecycle queues an actionable owner turn without an owner status call',
+      () => owner!.inbox.nextTurn.length > 0, 5_000, 20);
+    const text = owner.inbox.nextTurn.flatMap(message => message.content)
+      .filter(block => block.type === 'text').map(block => block.text).join('\n');
+    assert.match(text, /resident.*waiting/i);
+    assert.match(text, /engineering.*status/i);
+    assert.equal(host.ctx.hima.executionContext(task.started.run.id).executions.find(e => e.id === task!.executionId)?.phase, 'working',
+      'turn-end is neither Reader verification nor node completion');
+    owner.inbox.clear();
+    await new Promise(resolve => setTimeout(resolve, 2_100));
+    assert.equal(owner.inbox.nextTurn.length, 0, 'unchanged waiting facts do not produce repeated turns');
+    const sent = await task.execute('second-native-turn', 'engineering', { executionId: task.executionId,
+      engineering: { operation: 'message', message: 'LONG_MESSAGE retain the same task and result' } });
+    assert.equal(sent.data.status, 'accepted');
+    next = await createRootAgent(host.ctx, fixture.h.workspace);
+    nextMaintenance = next.runMaintenance(signal => new Promise<void>(resolve => {
+      signal.addEventListener('abort', () => resolve(), { once: true });
+    }));
+    const handoff = await task.execute('transfer-owner', 'handoff', { targetOwner: String(next.id) });
+    assert.equal(handoff.kind, 'refused');
+    assert.match(handoff.reason, /safe boundary/);
+    const control = task.controlled();
+    assert.equal((await host.ctx.hima.executionAction({ runId: task.started.run.id, actor: String(owner.id),
+      expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: 'pause-after-transfer',
+      action: 'pause', nodeId: task.started.run.currentNode })).kind, 'accepted');
+    owner.inbox.clear(); next.inbox.clear();
+    await new Promise(resolve => setTimeout(resolve, 1_100));
+    assert.equal(owner.inbox.nextTurn.length, 0, 'running is not an actionable native boundary');
+    await waitUntil('second turn wakes the current owner even while paused', () => owner!.inbox.nextTurn.length > 0, 8_000, 20);
+    assert.equal(next.inbox.nextTurn.length, 0, 'a non-owner is not notified');
+    assert.match(JSON.stringify(owner.inbox.nextTurn), /Resident engineering task.*waiting/);
+    assert.ok(task.controlled().paused.includes(task.started.run.currentNode!));
+    assert.equal(jobsOf(host, task.started.run.id).filter(row => row.event === 'launched').length, 1,
+      'lifecycle observation launches no replacement task or Reader job');
+  } finally {
+    process.env.HIMA_TEST_SILENT_AGENT = '1';
+    if (task) await host.ctx.hima.cancelRun(task.started.run.id).catch(() => undefined);
+    owner?.cancel({ kind: 'hook', reason: 'resident notification test complete' });
+    await maintenance;
+    next?.cancel({ kind: 'hook', reason: 'resident notification test complete' });
+    await nextMaintenance;
+    await host.dispose(); await fixture.h.dispose();
+    if (silent === undefined) delete process.env.HIMA_TEST_SILENT_AGENT; else process.env.HIMA_TEST_SILENT_AGENT = silent;
+  }
+});
+
+test('Host recovery reattaches resident lifecycle observation without replaying the task', async (t) => {
+  const silent = process.env.HIMA_TEST_SILENT_AGENT;
+  process.env.HIMA_TEST_SILENT_AGENT = '1';
+  const fixture = await installResidentFixture(t);
+  let host = await bootInProcess(fixture.h);
+  let task: Awaited<ReturnType<typeof openResidentTask>> | undefined;
+  let resumed: Awaited<ReturnType<typeof resumeTestAgent>> | undefined;
+  let maintenance: Promise<void> | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    task = await openResidentTask(host, fixture, owner, 'LONG_MESSAGE DELIVER_RESULT');
+    const ownerId = String(owner.id);
+    await host.dispose();
+    host = await bootInProcess(fixture.h);
+    await host.ctx.hima.reconciled;
+    resumed = await resumeTestAgent(host.ctx, ownerId);
+    maintenance = resumed.agent.runMaintenance(signal => new Promise<void>(resolve => {
+      signal.addEventListener('abort', () => resolve(), { once: true });
+    }));
+    process.env.HIMA_TEST_SILENT_AGENT = '0';
+    await waitUntil('recovered waiting resident wakes its restored owner', () => resumed!.agent.inbox.nextTurn.length > 0, 10_000, 20);
+    assert.match(JSON.stringify(resumed.agent.inbox.nextTurn), /Resident engineering task.*waiting/);
+    assert.equal(jobsOf(host, task.started.run.id).filter(row => row.event === 'launched').length, 1);
+    assert.equal(host.ctx.hima.executionContext(task.started.run.id).executions.find(e => e.id === task!.executionId)?.phase, 'working');
+  } finally {
+    process.env.HIMA_TEST_SILENT_AGENT = '1';
+    if (task) await host.ctx.hima.cancelRun(task.started.run.id).catch(() => undefined);
+    resumed?.agent.cancel({ kind: 'hook', reason: 'resident recovery test complete' });
+    await maintenance; await resumed?.dispose();
+    await host.dispose(); await fixture.h.dispose();
+    if (silent === undefined) delete process.env.HIMA_TEST_SILENT_AGENT; else process.env.HIMA_TEST_SILENT_AGENT = silent;
+  }
+});
+
+test('resident owner notification survives Reader-rejected native delivery and same-task repair', async (t) => {
+  const silent = process.env.HIMA_TEST_SILENT_AGENT;
+  process.env.HIMA_TEST_SILENT_AGENT = '0';
+  const fixture = await installResidentFixture(t);
+  const host = await bootInProcess(fixture.h);
+  let task: Awaited<ReturnType<typeof openResidentTask>> | undefined;
+  let owner: Awaited<ReturnType<typeof createRootAgent>> | undefined;
+  let maintenance: Promise<void> | undefined;
+  try {
+    owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    maintenance = owner.runMaintenance(signal => new Promise<void>(resolve => {
+      signal.addEventListener('abort', () => resolve(), { once: true });
+    }));
+    task = await openResidentTask(host, fixture, owner, 'DELIVER_BAD_RESULT');
+    await waitUntil('initial bad result still finishes a native turn', () => owner!.inbox.nextTurn.length > 0, 5_000, 20);
+    owner.inbox.clear();
+    const rejected = await task.execute('reader-reject', 'engineering', {
+      executionId: task.executionId, engineering: { operation: 'delivery' } });
+    assert.equal(rejected.data.status, 'reader-rejected', JSON.stringify(rejected));
+    await new Promise(resolve => setTimeout(resolve, 2_100));
+    assert.equal(owner.inbox.nextTurn.length, 0, 'a delivery requested by the owner needs no duplicate wake-up');
+    const repaired = await task.execute('repair-after-reader', 'engineering', {
+      executionId: task.executionId, engineering: { operation: 'message', message: 'FIX_DELIVERY' } });
+    assert.equal(repaired.data.status, 'accepted');
+    await waitUntil('Reader repair completion still wakes the owner', () => owner!.inbox.nextTurn.length > 0, 5_000, 20);
+    assert.match(JSON.stringify(owner.inbox.nextTurn), /Resident engineering task.*waiting/);
+  } finally {
+    process.env.HIMA_TEST_SILENT_AGENT = '1';
+    if (task) await host.ctx.hima.cancelRun(task.started.run.id).catch(() => undefined);
+    owner?.cancel({ kind: 'hook', reason: 'resident repair notification test complete' });
+    await maintenance; await host.dispose(); await fixture.h.dispose();
+    if (silent === undefined) delete process.env.HIMA_TEST_SILENT_AGENT; else process.env.HIMA_TEST_SILENT_AGENT = silent;
   }
 });
 

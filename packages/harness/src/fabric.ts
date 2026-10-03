@@ -2806,6 +2806,7 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
         receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', {
           phase: 'working', jobSession: session, result: { kind: 'pending', session },
         });
+        observeResidentEngineering(deps, run.id, execution.id);
         return executionAnswer(deps, run.id, 'accepted', { receipt, data });
       }
       const status = claim.kind === 'at-cap' ? 'at-cap' : claim.kind === 'budget-exhausted' ? 'budget-exhausted'
@@ -3159,6 +3160,56 @@ export async function drainExecutionObservers(ledger: Ledger): Promise<void> {
   while (observers !== undefined && observers.size > 0) await Promise.allSettled([...observers.values()]);
   await Promise.allSettled([...(controlsPerRun.get(ledger)?.values() ?? [])]);
 }
+/** Observe the retained native task without driving its business work. The wrapper remains alive
+ * across turns, so ordinary Job completion cannot wake the owner at a native waiting boundary.
+ * Reuse the Host's abortable fact-work tracker and notification seam; a hint never verifies delivery.
+ * On Host recovery the current state may be hinted again, but no request or tool action is replayed. */
+export function observeResidentEngineering(deps: FabricDeps, runId: string, executionId: string): void {
+  trackExecutionTask(deps, `resident:${executionId}`, async () => {
+    const initial = existingRun(deps.ledger, runId);
+    const execution = initial.control?.executions[executionId];
+    if (!execution || !residentEngineeringStartOf(initial.control!, executionId)) return;
+    const identity = residentEngineeringIdentityFor(deps, initial, execution);
+    const taskId = engineeringTaskId(runId, executionId);
+    const taskDir = engineeringTaskDirectory(identity.site, identity.workspace, taskId);
+    let notified: string | undefined;
+    let readError: string | undefined;
+    for (;;) {
+      const current = existingRun(deps.ledger, runId);
+      const active = current.control?.executions[executionId];
+      if (deps.stopSignal?.aborted || !['running', 'waiting'].includes(current.status ?? '')
+        || current.control?.stop !== undefined || !active || active.phase !== 'working' || active.supersededBy !== undefined) return;
+      try {
+        const state = await readEngineeringState(identity.site, taskDir, taskId);
+        if (deps.stopSignal?.aborted) return;
+        readError = undefined;
+        // Read current authority again after Site I/O: a handoff, stop or settlement can land while
+        // the state file is in flight. Paused owners may hear facts; notifications grant no work.
+        const latest = existingRun(deps.ledger, runId);
+        const stillActive = latest.control?.executions[executionId];
+        if (!['running', 'waiting'].includes(latest.status ?? '') || stillActive?.phase !== 'working'
+          || latest.control?.stop !== undefined || stillActive.supersededBy !== undefined) return;
+        if (state && ['waiting', 'failed'].includes(state.phase)) {
+          const owner = latest.control!.owner;
+          const key = `${owner}:${state.sha256}`;
+          if (key !== notified) {
+            const delivery = deps.notify?.(owner, runId, executionId,
+              `Resident engineering task ${taskId} is ${state.phase}. Read engineering status for this same execution, then decide whether to collect delivery or send a same-task message. Native turn end is not Reader verification or Goal completion; do not start a duplicate task.`);
+            if (delivery?.status === 'queued') notified = key;
+          }
+        }
+        // Native delivery can still fail the Pack Reader and need same-task repair.
+        if (state && ['stopped', 'released'].includes(state.phase)) return;
+      } catch (error) {
+        const reason = (error as Error).message;
+        if (reason !== readError) deps.log?.(`resident ${taskId} state observation unavailable: ${reason}`);
+        readError = reason;
+      }
+      await sleepOrAbort(1_000, deps.stopSignal);
+    }
+  });
+}
+
 export function observeExecution(ctx: Driving, node: PackNode, execution: NodeExecution | undefined, session: string): void {
   const observers = executionObservers.get(ctx.deps.ledger) ?? new Map<string, Promise<void>>();
   executionObservers.set(ctx.deps.ledger, observers);
