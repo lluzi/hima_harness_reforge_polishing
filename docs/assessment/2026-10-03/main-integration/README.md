@@ -9,6 +9,9 @@ acceptance.
 
 - Previous main: `0626bba394db8b29a02aa9defa718aba07554571` (ATCS 0.1.10 delivery).
 - Resident engineering baseline: `eb38cb7d0fb6097d42ad52c65ffaed349d62197c`.
+- Research documents: `future` at `b0f11b117a7ff3411f315821feddcf429539a144`.
+- Harness/upstream reviews: `fa4c15ccbf28506c50dcb437c4849bc7545e93b5`, including `57b2058db077b497bc76c52763164bce26c60911`.
+- Approved LibInsight scope/specifications: `b1db52c75a21dbcf0d99638da2d4bed6045da523`.
 - Keep resident engineering execution, declared autopilot, recorded input bindings and Ledger v31.
 - Preserve main's applicable improvements: interactive-only batch refusal before admission,
   actionable schema/plan diagnostics, version-aware Python entry syntax checks, and durable
@@ -25,10 +28,34 @@ acceptance.
 
 ## Validation and limits
 
-Validation results are recorded after the integration checks finish. Commercial EDA, real model
-calls, GUI acceptance and release sealing are outside this branch-maintenance task. Existing
-evidence is not relabelled as new acceptance. Tests of old Pack versions do not prove current Pack
-behavior.
+The build, full typecheck, Node requirement, seam check, boundary check and 149-file test inventory
+pass. All 113 local files were exercised: a four-file Host subset passed 40/40; the remaining 109
+files ran 767 cases, with 766 passing and one stale canvas version assertion failing. The canvas
+expectation was corrected to 0.3.3 with its collateral node, then all 43 cases in that file passed.
+There are 807 distinct local cases across the two groups, with zero skips. The full group was not
+rerun after that test-only correction. Runtime/Pack/Site/script bytes remained unchanged after the
+initial integration commit; later commits added documents and corrected the canvas expectation.
+
+The large local runner also reported `ENOTEMPTY` during final temporary-directory cleanup. Three
+synthetic failed-state files were saved as evidence; a process/open-file check found no remaining
+owner, and only this invocation's temporary directory was removed. The original nonzero exit and
+cleanup warning remain in the log; this is not reported as an uninterrupted green command.
+
+Current Pack seam checks pass 158 cases. Historical 0.1.10 checks pass 22, with 132 original files
+byte-verified and all 131 sealed hashes matching. The obsolete Python method tests retain known
+failures: a 36-test comparison produces the same 55 failure assertions and three errors with frozen
+latest code and with merged code under identical legacy declarations. No new failure identity was
+introduced in that comparison. Details and precise limits are in [pack-review.txt](pack-review.txt).
+
+The old dry-path fixture lacks native read and workspace persistence behavior already required
+before this merge. Two bounded probes failed, were stopped with their own resources cleaned up,
+and the unverified fixture attempt was reverted. This remains a failed/uncompleted historical test,
+not a current resident-engineering PASS; see [dry-path-limitation.txt](dry-path-limitation.txt).
+
+Exact local counts and log digests are in [validation-summary.json](validation-summary.json).
+Independent Runtime and Pack/packaging reviews found no remaining actionable integration issue.
+Commercial EDA, real model calls, GUI acceptance and release sealing were not run. Existing evidence
+is not relabelled as new acceptance. Tests of old Pack versions do not prove current Pack behavior.
 
 ## Branch cleanup safeguards
 

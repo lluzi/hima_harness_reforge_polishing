@@ -1,0 +1,56 @@
+{
+  "source_commit": "61b649c407fef9b6ba6ac13ad3dbf3de63ec3b7f",
+  "product_tree_equal_to": "65bc382279bfb7b5282fb170e38be48dd6a390e4",
+  "build": "PASS",
+  "typecheck": "PASS",
+  "node_seams_boundary": "PASS",
+  "local_runs": [
+    {
+      "log": "merge-tests.log",
+      "sha256": "61e60aae663603650a2074edfe9a073634756d577a73a9e635c6a32742cb748b",
+      "tests": 40,
+      "pass": 40,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "local-remaining.log",
+      "sha256": "884d4744090e5b04f329f28b22e6da73849ea6ebcdd24dbf892f78e25ab816b7",
+      "tests": 767,
+      "pass": 766,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "log": "canvas-layout-followup.log",
+      "sha256": "5c74430ec91d371946dcfa7e6d8139f8c5c38ce2c918005808398c0a1a3837d7",
+      "tests": 43,
+      "pass": 43,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    }
+  ],
+  "local_file_coverage": 113,
+  "distinct_local_cases": 807,
+  "local_followup": "Only initial failure was stale ATCS 0.3.1 canvas expectation; updated 0.3.3 and collateral-node coverage passes all 43 canvas cases. Full suite was not repeated.",
+  "cleanup_warning": "Initial 109-file runner ended with ENOTEMPTY after its test summary. Three synthetic failed-state files were preserved, no matching process/open file was found, and only the owned test root was removed.",
+  "pack_current_seams": {
+    "pass": 158
+  },
+  "pack_historical_0_1_10": {
+    "pass": 22,
+    "files_byte_verified": 132,
+    "sealed_file_hashes_verified": 131
+  },
+  "legacy_python_limit": "Frozen-comparison subset: 36 tests, 55 failure assertions, 3 errors; identical failure identities before/after integration using the same legacy declaration projection. See pack-review.txt.",
+  "legacy_dry_limit": "Two bounded failed probes stopped; unverified stub edits reverted. See dry-path-limitation.txt.",
+  "not_run": [
+    "GUI acceptance",
+    "live product model",
+    "commercial EDA",
+    "new release sealing"
+  ]
+}
