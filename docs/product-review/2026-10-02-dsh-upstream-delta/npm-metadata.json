@@ -1,0 +1,994 @@
+{
+  "npm-dsh-llm.summary": {
+    "name": "@deepseek-ai/dsh-llm",
+    "dist-tags": {
+      "latest": "0.0.1-rc.1",
+      "alpha": "0.1.7-alpha.2",
+      "next": "0.2.0-rc.2"
+    },
+    "versions": {
+      "0.1.5-alpha.1": {
+        "published": "2026-09-08T15:44:51.882Z",
+        "name": "@deepseek-ai/dsh-llm",
+        "version": "0.1.5-alpha.1",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/llm/llm"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "^4.0.2"
+        },
+        "dependencies": {
+          "zod": "^4.4.3",
+          "@deepseek-ai/dsh-brand": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-timeout": "^0.1.5-alpha.1",
+          "@deepseek-ai/schemastery": "^3.18.2",
+          "@deepseek-ai/dsh-util-crypto": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-util-values": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-typert-protocol": "^0.1.5-alpha.1"
+        },
+        "dist": {
+          "shasum": "6f8e1fa5f0c40f3f7376cc90c4ebcd5b9343dba2",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-llm/-/dsh-llm-0.1.5-alpha.1.tgz",
+          "fileCount": 39,
+          "integrity": "sha512-ncbGiWdvOG9v3K4b/LluSnrrG1w0lHKGkDsjztz1rfekvp2meLeQwbf59VCQRG68N9hdqNcr8dm0GFLEpGTE4w==",
+          "signatures": [
+            {
+              "sig": "MEYCIQCOv7g7kbtzYnbwEe/ZhGizVAXfQvnbFrgShBprNNr9BAIhAJVAiuk8xTgNKRRdIfMlLHsU8fM4tnnCHL12LIXP106b",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEYCIQDMRRpl8S7v0jn3CeLeyULBM4VFoMa2kNdBJEQxAIYWEgIhALnLNraKqCrj5rp8416SvW1vFKdtdFRd81ih16jyJO45",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 389397
+        }
+      },
+      "0.1.7-alpha.2": {
+        "published": "2026-09-22T15:50:09.567Z",
+        "name": "@deepseek-ai/dsh-llm",
+        "version": "0.1.7-alpha.2",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/llm/llm"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "~4.0.4"
+        },
+        "dependencies": {
+          "zod": "^4.4.3",
+          "@deepseek-ai/dsh-brand": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-timeout": "0.1.7-alpha.2",
+          "@deepseek-ai/schemastery": "~3.18.4",
+          "@deepseek-ai/dsh-util-crypto": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-util-values": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-typert-protocol": "0.1.7-alpha.2"
+        },
+        "dist": {
+          "shasum": "cf11844ab1b098b4396cf83d4faae9a04bdc9ff0",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-llm/-/dsh-llm-0.1.7-alpha.2.tgz",
+          "fileCount": 39,
+          "integrity": "sha512-pCYCDTbxFYCLwnhwJqau4SiQ7pv31Zfzk3IfIia87832Rzh6lPMGGgm4h5OSfJo0c/AxqChDhPrHsOvQ1sj67w==",
+          "signatures": [
+            {
+              "sig": "MEUCIHLVhWsTStd3+cq33WZjlU9kb0VaCTyLETJLMEmWYRvvAiEAnT+qo4cWNx0UYv7S1iXB2uIcYBPqGaYhL+jfKmnVd/k=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEYCIQD+CTk4W5mCGe/9HuVfec5ykv5uBzy6QYBR6wS7A1Sj/wIhAPLkEQKC4rNeQCz8R+wLJP0MPA6gVBjf5uwcrPzt/0lt",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 400643
+        }
+      },
+      "0.2.0-rc.2": {
+        "published": "2026-09-29T09:41:51.525Z",
+        "name": "@deepseek-ai/dsh-llm",
+        "version": "0.2.0-rc.2",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/llm/llm"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "~4.0.4"
+        },
+        "dependencies": {
+          "zod": "^4.4.3",
+          "@deepseek-ai/dsh-brand": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-timeout": "0.2.0-rc.2",
+          "@deepseek-ai/schemastery": "~3.18.4",
+          "@deepseek-ai/dsh-util-crypto": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-util-values": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2"
+        },
+        "dist": {
+          "shasum": "d05c65dbb14c8f4d14020440297cdfb44daeef6b",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-llm/-/dsh-llm-0.2.0-rc.2.tgz",
+          "fileCount": 39,
+          "integrity": "sha512-6QFrQn/h0iNqCfPpgQidnHtLSpA99A7ZND/uYKaGSd/4BGP8KBhuRd0w63e9s4u+hfW8jc3j29WKcNLIOeUfcA==",
+          "signatures": [
+            {
+              "sig": "MEUCIG0XyVgFJBM+iyxK9tmCepyJVhBytg1RR8TUjZXRrNNFAiEA15pZKnx/oy8YnzY11o+484nRF9QkDccZRh4CIMzLx/I=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+              "sig": "MEUCIQCN9E7otTgAKxngl9im3OuodB57iTFH0x+te0CqtIB3nAIgDn0eQ1OVkOEb3y2IJsATJ+fqq3E+Ajag2WQitw076wU="
+            }
+          ],
+          "unpackedSize": 418418
+        }
+      }
+    }
+  },
+  "npm-dsh-agent.summary": {
+    "name": "@deepseek-ai/dsh-agent",
+    "dist-tags": {
+      "latest": "0.1.0-rc.6",
+      "alpha": "0.1.7-alpha.2",
+      "next": "0.2.0-rc.2"
+    },
+    "versions": {
+      "0.1.5-alpha.1": {
+        "published": "2026-09-08T15:47:07.923Z",
+        "name": "@deepseek-ai/dsh-agent",
+        "version": "0.1.5-alpha.1",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/core/agent"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "^4.0.2",
+          "@deepseek-ai/dsh-llm": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-scope": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-session": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-invariants": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-util-values": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-system-prompt": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-typert-protocol": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-session-projection": "^0.1.5-alpha.1"
+        },
+        "dependencies": null,
+        "dist": {
+          "shasum": "e84b47b36730f8185e5b7a45ca266aa44ba9ad27",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-agent/-/dsh-agent-0.1.5-alpha.1.tgz",
+          "fileCount": 23,
+          "integrity": "sha512-Klimoo970OFP2/5sk6MaycY5l4VHeK8dN5jEIL3l9EBerr4QnoDOZMmLVkrx3cSk9OCm4KfQWrv8Gkm1HJ3fUg==",
+          "signatures": [
+            {
+              "sig": "MEYCIQD4MlGyYEu0H1CIuQmPVrQt65erTOXWi+xB7uES9zQJ5AIhAM+XVWmMjklnXhO0aj8dchhE+RkTdx2N5CX3KyovL3D/",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEUCIQDN19shYAjYio7/LIV4xldDhSP7G3oylXA9OOauFdSp/gIgCi1FPt3aFXv/S5O01dDqcpQNoCveii/40scGzp52hYE=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 154492
+        }
+      },
+      "0.1.7-alpha.2": {
+        "published": "2026-09-22T15:50:04.145Z",
+        "name": "@deepseek-ai/dsh-agent",
+        "version": "0.1.7-alpha.2",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/core/agent"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "~4.0.4",
+          "@deepseek-ai/dsh-llm": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-scope": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-session": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-workspace": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-invariants": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-util-values": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-system-prompt": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-typert-protocol": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-session-projection": "0.1.7-alpha.2"
+        },
+        "dependencies": null,
+        "dist": {
+          "shasum": "056a531547e97b70bbedb36bd5b3f168634e700e",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-agent/-/dsh-agent-0.1.7-alpha.2.tgz",
+          "fileCount": 25,
+          "integrity": "sha512-jneRq1DJJTaQ6WrWQRuSPF7JoW22tAigzWkwfDXnI40vk6znhbe+Qsyb6w6+Yy6TueQ0FHtkx04POWABJoiW8w==",
+          "signatures": [
+            {
+              "sig": "MEUCIQC1KiHzd+/nR5VxU3y4cXB3xaBWQSOVkrAq64CkR0xiYAIgFv3H5XzV+2poQhQHb8U5dJHR3yJC30rZP1HMMAINkfQ=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEQCIGqaYNLFTKyEoYQEy0m1WcPWYPpfHYzs030TFKCmKucXAiAnfqlfMVYXN6S49Up6+FxKvtRK8pi7XSETF7F0Dfn5eA==",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 161885
+        }
+      },
+      "0.2.0-rc.2": {
+        "published": "2026-09-29T09:41:23.053Z",
+        "name": "@deepseek-ai/dsh-agent",
+        "version": "0.2.0-rc.2",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/core/agent"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "~4.0.4",
+          "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-scope": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-session": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-workspace": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-invariants": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-util-values": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-session-projection": "0.2.0-rc.2"
+        },
+        "dependencies": null,
+        "dist": {
+          "shasum": "12f2e01062c0a723121005cf205ba544398acdd1",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-agent/-/dsh-agent-0.2.0-rc.2.tgz",
+          "fileCount": 25,
+          "integrity": "sha512-CUkbU+c1G0ETXkpoLkpAFo5midz66FQGtlgQOP9pzvU9H3zJQVl4H5LrhhGVbEXKLFgdbtQiOynEW8hpWn3y0Q==",
+          "signatures": [
+            {
+              "sig": "MEQCIEgvWI92PZ1o30pb5YGprC0xRNTqOjwYKtXIMJvLIH8vAiAwtjOShLbXDQgN4mC8TF5F+qZul+l7Z7jnw8dla2ZJUQ==",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+              "sig": "MEUCIH5CuzirGmLVV46OYBvLTN8Vci/oKwL9BzBJVEvKrosrAiEAutuwf9SBgafKpWeQTasXmEqJJbUeZb5cZGWNL6tx/7c="
+            }
+          ],
+          "unpackedSize": 164953
+        }
+      }
+    }
+  },
+  "npm-dsh-subagent.summary": {
+    "name": "@deepseek-ai/dsh-subagent",
+    "dist-tags": {
+      "latest": "0.0.1-rc.1",
+      "alpha": "0.1.7-alpha.2",
+      "next": "0.2.0-rc.2"
+    },
+    "versions": {
+      "0.1.5-alpha.1": {
+        "published": "2026-09-08T15:49:20.237Z",
+        "name": "@deepseek-ai/dsh-subagent",
+        "version": "0.1.5-alpha.1",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/subagent/subagent"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "^4.0.2",
+          "@deepseek-ai/dsh-llm": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-jobs": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-agent": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-scope": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tools": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-sandbox": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-session": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-util-time": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-attachment": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-invariants": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-agent-presets": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-session-query": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-system-prompt": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-user-approval": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-sandbox-policy": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-typert-protocol": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-session-projection": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-session-persistence": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-session-projection-cache": "^0.1.5-alpha.1"
+        },
+        "dependencies": {
+          "zod": "^4.4.3",
+          "@deepseek-ai/dsh-brand": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-util-values": "^0.1.5-alpha.1"
+        },
+        "dist": {
+          "shasum": "dea75f8c1252cf92aa7da622365a048bc8cf40bb",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-subagent/-/dsh-subagent-0.1.5-alpha.1.tgz",
+          "fileCount": 55,
+          "integrity": "sha512-wXjiTD9t230lI2AywTjEBfa6B5Q22eVkZqrAE8z1pUrd7/CPoyMSLmySEobfb9ugX1LcjLn8lGTngO8k+Gj8DQ==",
+          "signatures": [
+            {
+              "sig": "MEUCIQDqD67LP5sH2ca0ohABLER31u58VYv/x+cZLV4qRfq8zgIgfX5E1vj8/9xrFKtTZmF6s9pqklg28tWk2H+sB4y9VEU=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 538292
+        }
+      },
+      "0.1.7-alpha.2": {
+        "published": "2026-09-22T15:59:00.903Z",
+        "name": "@deepseek-ai/dsh-subagent",
+        "version": "0.1.7-alpha.2",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/subagent/subagent"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "~4.0.4",
+          "@deepseek-ai/dsh-llm": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-jobs": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-agent": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-scope": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tools": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-sandbox": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-session": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-util-time": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-workspace": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-attachment": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-invariants": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-session-query": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-system-prompt": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-user-approval": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-sandbox-policy": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-typert-protocol": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-permission-presets": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-session-projection": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-session-persistence": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-agent-preset-registry": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-session-projection-cache": "0.1.7-alpha.2"
+        },
+        "dependencies": {
+          "zod": "^4.4.3",
+          "@deepseek-ai/dsh-brand": "0.1.7-alpha.2",
+          "@deepseek-ai/schemastery": "~3.18.4",
+          "@deepseek-ai/dsh-util-values": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-chunked-list": "0.1.7-alpha.2"
+        },
+        "dist": {
+          "shasum": "f9a88002061f67ace9328c1f35f8fd28c09d4824",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-subagent/-/dsh-subagent-0.1.7-alpha.2.tgz",
+          "fileCount": 59,
+          "integrity": "sha512-X+u7kKuwWzrVfJhB5wuvlRVxPgqJ00zhnhAGuyfdEZhwL8rHXIeWIItQmmKNSQUt/oF08DZT/PnxdtVs803iMQ==",
+          "signatures": [
+            {
+              "sig": "MEUCIAv/Ulh19r7gMv/ll3/VOFhiGWi8WGmnfoCaPha4a+vNAiEAw9OOaMVLo2qHg1rTvSVrelq8tAid8c1ZZIEbsmAZM7M=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEYCIQDoR75s4twZsy6/jYNYL2BInV7GCgNNBcLyt1bO2ImOtgIhAKGINXvOVopxTCABJvc6REwDFHQBbTF05q9/RRFUevsS",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 572844
+        }
+      },
+      "0.2.0-rc.2": {
+        "published": "2026-09-29T09:45:40.856Z",
+        "name": "@deepseek-ai/dsh-subagent",
+        "version": "0.2.0-rc.2",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/subagent/subagent"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "~4.0.4",
+          "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-jobs": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-scope": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-sandbox": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-session": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-util-time": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-workspace": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-attachment": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-invariants": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-session-query": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-user-approval": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-sandbox-policy": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-permission-presets": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-session-projection": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-session-persistence": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-agent-preset-registry": "0.2.0-rc.2"
+        },
+        "dependencies": {
+          "zod": "^4.4.3",
+          "@deepseek-ai/dsh-brand": "0.2.0-rc.2",
+          "@deepseek-ai/schemastery": "~3.18.4",
+          "@deepseek-ai/dsh-util-values": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-chunked-list": "0.2.0-rc.2"
+        },
+        "dist": {
+          "shasum": "55accb634eae236c364e76606164a215a6bd83fe",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-subagent/-/dsh-subagent-0.2.0-rc.2.tgz",
+          "fileCount": 59,
+          "integrity": "sha512-33izf4xhq03RzolYUjv223tKmeOBl8fMnvnRN15zZB3GWfNRcBTVUUxuu99rCN8TSRRt5A5ABTwYbObb1Isjqw==",
+          "signatures": [
+            {
+              "sig": "MEUCIQCdNNGhQH3iB5Nbx2eYmnrjN/lgKgQk78XTJCPfZM+KfwIgRqISWpX8+vbUnJOmoA0nhXy/eWRogXZJgjRbNHCd9nU=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+              "sig": "MEUCIBMvPSxrAaah+fFL4vzWUCPMYhvQ8CRwBJFxxYB2EhzWAiEAzH9pAQp9yxHSM6Gp3c3qBXWz4V0bLMraOKkJ442484I="
+            }
+          ],
+          "unpackedSize": 560249
+        }
+      }
+    }
+  },
+  "npm-dsh-session.summary": {
+    "name": "@deepseek-ai/dsh-session",
+    "dist-tags": {
+      "latest": "0.0.1-rc.1",
+      "alpha": "0.1.7-alpha.2",
+      "next": "0.2.0-rc.2"
+    },
+    "versions": {
+      "0.1.5-alpha.1": {
+        "published": "2026-09-08T15:42:42.682Z",
+        "name": "@deepseek-ai/dsh-session",
+        "version": "0.1.5-alpha.1",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/core/session"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "^4.0.2",
+          "@deepseek-ai/dsh-scope": "^0.1.5-alpha.1"
+        },
+        "dependencies": {
+          "@deepseek-ai/dsh-llm": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-brand": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-util-values": "^0.1.5-alpha.1"
+        },
+        "dist": {
+          "shasum": "f88cad668bb716fc355c4ccb3a4906b0cc7f52f9",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-session/-/dsh-session-0.1.5-alpha.1.tgz",
+          "fileCount": 25,
+          "integrity": "sha512-15+FxQFoVDDG1Lh0wA8dqVpVz7O4iUiXtVYM+ETg/ce6+gITPafXTEDd5i8HTIMnPRjZxEwX0BUlDDsChsjjNw==",
+          "signatures": [
+            {
+              "sig": "MEQCIBqkm8Ho+JY1MMtDkTdw2TI58UM7tYU8xJbFBna0IEbsAiBQSMudfBEoFoqoW7pAr+rFOzfsjdVVswPVfwdGNL/aug==",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 277187
+        }
+      },
+      "0.1.7-alpha.2": {
+        "published": "2026-09-22T15:50:50.327Z",
+        "name": "@deepseek-ai/dsh-session",
+        "version": "0.1.7-alpha.2",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/core/session"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "~4.0.4",
+          "@deepseek-ai/dsh-scope": "0.1.7-alpha.2"
+        },
+        "dependencies": {
+          "@deepseek-ai/dsh-llm": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-brand": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-util-values": "0.1.7-alpha.2"
+        },
+        "dist": {
+          "shasum": "2a97748f98dfda6a8631b8d6f8bd1ca4ac41e4ee",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-session/-/dsh-session-0.1.7-alpha.2.tgz",
+          "fileCount": 27,
+          "integrity": "sha512-0rRPX8JS4OLhAp2lF92UJNbNhh6cUDNxUUMmQjqrVwP/1i42e7UyN9t2qo0/QZuEAdMmbbpYLlO/PJCifTtktg==",
+          "signatures": [
+            {
+              "sig": "MEUCIQCDywo0L/+moEuXdLdCGN8/nCeu5WZLBV8/V5ZOgnOTiAIgMicWI4I2DC2tpOLkfEHqcPMeORDZ+EeN1uAJgbLHJWY=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEYCIQCHgZ952OWCpVNAWIfUwj4V0sD7mmMHph9YSKVYBdwHewIhAKNy+PpSc/yqMMLVITMJIDd/qP967jW3xI2xOhmGjQLo",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 314470
+        }
+      },
+      "0.2.0-rc.2": {
+        "published": "2026-09-29T09:40:56.961Z",
+        "name": "@deepseek-ai/dsh-session",
+        "version": "0.2.0-rc.2",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/core/session"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "~4.0.4",
+          "@deepseek-ai/dsh-scope": "0.2.0-rc.2"
+        },
+        "dependencies": {
+          "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-brand": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-util-values": "0.2.0-rc.2"
+        },
+        "dist": {
+          "shasum": "150a68375fd7d52f978b02db0dcef3895e2c9301",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-session/-/dsh-session-0.2.0-rc.2.tgz",
+          "fileCount": 29,
+          "integrity": "sha512-wj+6MeqCYbDcbEvKH3puHyEGdjyu51JwBoN6Ua2tz6griLufDgLM5HpSU40L5xgpbOfrYVhXZs4vRgOrMlFY2g==",
+          "signatures": [
+            {
+              "sig": "MEUCIEX422bcL2XiAriLkpg/19CNGUQ8hwzPkLc+rXA7k9RSAiEA5FOEaAPHDsL0Qxb0/mAREZF8hiwlWJYx2oxsCz/8aWo=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+              "sig": "MEUCIQCro7i681ztqxqo6piyzLd5tWgU0bwAjBCvZq3fV6DjdwIgYEA8TD5IAbskBFdvkXx4OlsDtdt6KrHIv7GXarB/tPI="
+            }
+          ],
+          "unpackedSize": 334195
+        }
+      }
+    }
+  },
+  "npm-dsh-agent-preset-registry.summary": {
+    "name": "@deepseek-ai/dsh-agent-preset-registry",
+    "dist-tags": {
+      "latest": "0.1.7-alpha.1",
+      "alpha": "0.1.7-alpha.2",
+      "next": "0.2.0-rc.2"
+    },
+    "versions": {
+      "0.1.7-alpha.2": {
+        "published": "2026-09-22T15:52:15.191Z",
+        "name": "@deepseek-ai/dsh-agent-preset-registry",
+        "version": "0.1.7-alpha.2",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/preset/agent-preset-registry"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "~4.0.4",
+          "@deepseek-ai/dsh-agent": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-scope": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tools": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-session": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-settings": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-invariants": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-system-prompt": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-typert-protocol": "0.1.7-alpha.2",
+          "@deepseek-ai/cordis-plugin-loader": "~1.0.5",
+          "@deepseek-ai/dsh-session-projection": "0.1.7-alpha.2"
+        },
+        "dependencies": {
+          "zod": "^4.4.3",
+          "@deepseek-ai/schemastery": "~3.18.4"
+        },
+        "dist": {
+          "shasum": "008f0c8a8216d13f766624e7c92758f7e2cd3fd7",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-agent-preset-registry/-/dsh-agent-preset-registry-0.1.7-alpha.2.tgz",
+          "fileCount": 29,
+          "integrity": "sha512-DWjoAPqKy/GTvBKR/3wGxUwgIF0WhR2SFbTwPoJAyQpVJCaPG4wmEknqccosGFiJBJfgfFOEE1h8oL0i4FbwRw==",
+          "signatures": [
+            {
+              "sig": "MEUCIQCa1uMXWDzCuA70QvaHW3UDVFyuK4za/BYOSyjyADf+6wIgVmUAwIIPLbhuqdaKG5neD8sPjiXgadzMZyRatLQA5eo=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEQCIFe72EjDm1yQftBaOjHgeado1mY/Jqa/FUEb7ryknjKoAiA2eeUvNGkgRP7tWocs8xUZZCawuFpCnTRqxM3X+yL4yA==",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 194234
+        }
+      },
+      "0.2.0-rc.2": {
+        "published": "2026-09-29T09:41:42.092Z",
+        "name": "@deepseek-ai/dsh-agent-preset-registry",
+        "version": "0.2.0-rc.2",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "packages/preset/agent-preset-registry"
+        },
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "~4.0.4",
+          "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-scope": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-session": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-settings": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-invariants": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2",
+          "@deepseek-ai/cordis-plugin-loader": "~1.0.5",
+          "@deepseek-ai/cordis-plugin-include": "~1.0.9",
+          "@deepseek-ai/dsh-session-projection": "0.2.0-rc.2"
+        },
+        "dependencies": {
+          "zod": "^4.4.3",
+          "js-yaml": "^4.2.0",
+          "@deepseek-ai/schemastery": "~3.18.4",
+          "@deepseek-ai/dsh-app-boot": "0.2.0-rc.2"
+        },
+        "dist": {
+          "shasum": "9d7a26e4fedd091a422eb925c9eed450aa1371d6",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-agent-preset-registry/-/dsh-agent-preset-registry-0.2.0-rc.2.tgz",
+          "fileCount": 29,
+          "integrity": "sha512-Awdhxsnm85ZrQASUc/fLpBHnggAnI2ar7RIJL++Lcy04Hx9q/INqJlFfCKVL68ugZGh14iJNy5/OM+ZfcmbjUw==",
+          "signatures": [
+            {
+              "sig": "MEQCIB3a1E+YFg6dZ9EJEOIcD85hHS6YBUmSkHsZo0kAVm8BAiB86RQyzKyhR0stJqSlr4gQ+I9eXKy3fp2K+E0OtH61uA==",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+              "sig": "MEQCIFt3vW6XzpakrKNQ3F/bBNRX0bVdl+eXGrota67zLM1uAiBVd42R/rXC5GAb/3wrhxr/fxf3CQDlp8zC3m9H45ss+Q=="
+            }
+          ],
+          "unpackedSize": 206403
+        }
+      }
+    }
+  },
+  "npm-dsh.summary": {
+    "name": "@deepseek-ai/dsh",
+    "dist-tags": {
+      "alpha": "0.1.7-alpha.2",
+      "latest": "0.2.0-rc.2",
+      "next": "0.2.0-rc.2"
+    },
+    "versions": {
+      "0.1.5-alpha.1": {
+        "published": "2026-09-08T15:57:30.560Z",
+        "name": "@deepseek-ai/dsh",
+        "version": "0.1.5-alpha.1",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "apps/cli"
+        },
+        "peerDependencies": null,
+        "dependencies": {
+          "js-yaml": "^4.2.0",
+          "commander": "^15.0.0",
+          "@deepseek-ai/cordis": "^4.0.2",
+          "@deepseek-ai/dsh-base": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-goal": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-skill": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-acp-app": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-cmdline": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-persona": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-sdk-app": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-fs": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-web-app": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-webhook": "^0.1.5-alpha.1",
+          "@deepseek-ai/schemastery": "^3.18.2",
+          "@deepseek-ai/dsh-app-boot": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-fs-local": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-headless": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-schedule": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-terminal": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-web": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-plan-mode": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-bash": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-goal": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-jobs": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-pwsh": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-todo": "^0.1.5-alpha.1",
+          "node-addon-require-builtin": "^0.1.4",
+          "@deepseek-ai/dsh-home-paths": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-http-proxy": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-jobs-local": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-mcp-client": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-pwsh-local": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-ralph": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-skill": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-hooks-codex": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-sdk-minimal": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-token-meter": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-cordis": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-command-goal": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-pwsh-sandbox": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-time-context": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tmux-context": "^0.1.5-alpha.1",
+          "@deepseek-ai/cordis-plugin-hmr": "^1.0.17",
+          "@deepseek-ai/dsh-terminal-bash": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-ask-user": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-subagent": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-workflow": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-fs-search": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-webhook-github": "^0.1.5-alpha.1",
+          "@deepseek-ai/cordis-plugin-timer": "^1.1.4",
+          "@deepseek-ai/dsh-command-compact": "^0.1.5-alpha.1",
+          "@deepseek-ai/cordis-plugin-loader": "^1.0.3",
+          "@deepseek-ai/dsh-client-ui-cordis": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-compaction-basic": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-skill-filesystem": "^0.1.5-alpha.1",
+          "@deepseek-ai/cordis-plugin-include": "^1.0.7",
+          "@deepseek-ai/dsh-goal-round-driver": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-hooks-claude-code": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-session-reference": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-agent-instructions": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-launch-environment": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-session-projection": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-cordis-client-runner": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-bash-persistent": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-pwsh-persistent": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-subagent-control": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-client-ui-agent-preset": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-workflow-worker-thread": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-agent-tool-presentation": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-tool-str-replace-editor": "^0.1.5-alpha.1",
+          "@deepseek-ai/dsh-compaction-tool-result-pruner": "^0.1.5-alpha.1"
+        },
+        "dist": {
+          "shasum": "5d008b33af044fcc726383112c36581f73138d2d",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh/-/dsh-0.1.5-alpha.1.tgz",
+          "fileCount": 10,
+          "integrity": "sha512-AUjywjrPnhXcAdAjRNgyQa1QCnplFTNYZ+XpR9uCZdbg2FiCb06pHyoDUB2Wxuddzid9D7pVwEiU1OTl4Oshsg==",
+          "signatures": [
+            {
+              "sig": "MEYCIQCX6oR1YWBAFkzWDmhX7RnbvDcz5+UnuJjCphGm/BlYJQIhAKSzw7FoEGuviSZdw1lYUi3BL/1zJ8Egwqq9kv311PIq",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 49167
+        }
+      },
+      "0.1.7-alpha.2": {
+        "published": "2026-09-22T16:08:55.647Z",
+        "name": "@deepseek-ai/dsh",
+        "version": "0.1.7-alpha.2",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "apps/cli"
+        },
+        "peerDependencies": null,
+        "dependencies": {
+          "js-yaml": "^4.2.0",
+          "commander": "^15.0.0",
+          "@deepseek-ai/cordis": "~4.0.4",
+          "@deepseek-ai/dsh-hmr": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-base": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-goal": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-skill": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-acp-app": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-cmdline": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-persona": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-sdk-app": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-fs": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-web-app": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-webhook": "0.1.7-alpha.2",
+          "@deepseek-ai/schemastery": "~3.18.4",
+          "@deepseek-ai/dsh-app-boot": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-fs-local": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-headless": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-schedule": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-terminal": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-web": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-plan-mode": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-bash": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-goal": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-jobs": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-pwsh": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-todo": "0.1.7-alpha.2",
+          "node-addon-require-builtin": "^0.1.6",
+          "@deepseek-ai/dsh-home-paths": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-http-proxy": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-jobs-local": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-mcp-client": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-pwsh-local": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-ralph": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-skill": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-hooks-codex": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-sdk-minimal": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-token-meter": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-cordis": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-agent-preset": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-atomic-write": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-command-goal": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-pwsh-sandbox": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-skill-office": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-time-context": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tmux-context": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-present": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-workflow-ptc": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-mcp-resources": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-terminal-bash": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-ask-user": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-subagent": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-workflow": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-plugin-manager": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-fs-search": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-webhook-github": "0.1.7-alpha.2",
+          "@deepseek-ai/cordis-plugin-timer": "~1.1.6",
+          "@deepseek-ai/dsh-command-compact": "0.1.7-alpha.2",
+          "@deepseek-ai/cordis-plugin-loader": "~1.0.5",
+          "@deepseek-ai/dsh-client-ui-cordis": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-compaction-basic": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-skill-filesystem": "0.1.7-alpha.2",
+          "@deepseek-ai/cordis-plugin-include": "~1.0.9",
+          "@deepseek-ai/dsh-goal-round-driver": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-hooks-claude-code": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-session-reference": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-agent-instructions": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-launch-environment": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-session-projection": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-cordis-client-runner": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-bash-persistent": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-pwsh-persistent": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-subagent-control": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-client-ui-agent-preset": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-agent-tool-presentation": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-str-replace-editor": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-tool-workspace-dependencies": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-compaction-tool-result-pruner": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-experimental-agent-team-profile": "0.1.7-alpha.2",
+          "@deepseek-ai/dsh-experimental-voice-input-bundle": "0.1.7-alpha.2"
+        },
+        "dist": {
+          "shasum": "5e9769230688ec6fee1e4c04709cd5aff0c9c810",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh/-/dsh-0.1.7-alpha.2.tgz",
+          "fileCount": 20,
+          "integrity": "sha512-uXuWobwmpNzqFOTFP61kgf0aH8IzU9LWPF9QWCUfv5DOtgtlm+6+zHvQMboEe0bCaitul61ySvUqd4mMNRedzw==",
+          "signatures": [
+            {
+              "sig": "MEUCIQDUpGFOfcTGbPTKfuOgAQPCAChqKzqR0Hol8a3gT0IXdgIgGKzzMp6LOahOfF6If1fUiYIjztyDYSr+euzop2fmBS4=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEQCIFGzUnkvsBOwn2LqgD4WazW3a1VlF9q367Bw385S1sN8AiAh9ng6NGYI+DX+c3+c8MshvicWH53Qa7LFM7b0/vttkA==",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 65470
+        }
+      },
+      "0.2.0-rc.2": {
+        "published": "2026-09-29T09:56:27.792Z",
+        "name": "@deepseek-ai/dsh",
+        "version": "0.2.0-rc.2",
+        "gitHead": null,
+        "repository": {
+          "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+          "type": "git",
+          "directory": "apps/cli"
+        },
+        "peerDependencies": null,
+        "dependencies": {
+          "js-yaml": "^4.2.0",
+          "commander": "^15.0.0",
+          "@deepseek-ai/cordis": "~4.0.4",
+          "@deepseek-ai/dsh-hmr": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-base": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-goal": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-skill": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-acp-app": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-cmdline": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-persona": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-sdk-app": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-fs": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-web-app": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-webhook": "0.2.0-rc.2",
+          "@deepseek-ai/schemastery": "~3.18.4",
+          "@deepseek-ai/dsh-app-boot": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-fs-local": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-headless": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-schedule": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-terminal": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-web": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-plan-mode": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-bash": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-goal": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-jobs": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-pwsh": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-todo": "0.2.0-rc.2",
+          "node-addon-require-builtin": "^0.1.6",
+          "@deepseek-ai/dsh-home-paths": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-http-proxy": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-jobs-local": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-mcp-client": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-pwsh-local": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-ralph": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-skill": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-hooks-codex": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-sdk-minimal": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-token-meter": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-cordis": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-agent-preset": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-atomic-write": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-command-goal": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-pwsh-sandbox": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-skill-office": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-time-context": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tmux-context": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-present": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-workflow-ptc": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-mcp-resources": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-terminal-bash": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-ask-user": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-subagent": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-workflow": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-plugin-manager": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-fs-search": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-webhook-github": "0.2.0-rc.2",
+          "@deepseek-ai/cordis-plugin-timer": "~1.1.6",
+          "@deepseek-ai/dsh-command-compact": "0.2.0-rc.2",
+          "@deepseek-ai/cordis-plugin-loader": "~1.0.5",
+          "@deepseek-ai/dsh-client-ui-cordis": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-compaction-basic": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-skill-filesystem": "0.2.0-rc.2",
+          "@deepseek-ai/cordis-plugin-include": "~1.0.9",
+          "@deepseek-ai/dsh-goal-round-driver": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-hooks-claude-code": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-session-reference": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-agent-instructions": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-launch-environment": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-session-projection": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-cordis-client-runner": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-bash-persistent": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-pwsh-persistent": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-subagent-control": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-client-ui-agent-preset": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-agent-tool-presentation": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-str-replace-editor": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-experimental-auto-review": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-tool-workspace-dependencies": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-experimental-schedule-bundle": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-compaction-tool-result-pruner": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-experimental-agent-team-profile": "0.2.0-rc.2",
+          "@deepseek-ai/dsh-experimental-voice-input-bundle": "0.2.0-rc.2"
+        },
+        "dist": {
+          "shasum": "dfc8f7e09cfa96b854d6f0cf3a973ce7f2948925",
+          "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh/-/dsh-0.2.0-rc.2.tgz",
+          "fileCount": 20,
+          "integrity": "sha512-EAJ3gPNcVt/uv8X19PMm9NkVhWgT7xXNMk0UKCVm+IQ5rpSQOcsMUa0HWlnYYVybKMsccjcRB21vVVsaXQ6IdA==",
+          "signatures": [
+            {
+              "sig": "MEYCIQD+tQwM0+pnVWktN+MLjWdOZ1lTF+vCLbvDxO/xeneU6QIhAIdUAlWtUAje0+eg006foqUS6zwCA2axW6RCMTAQEFX5",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEUCIQDS3oN9bKpfh9Ept+c6YgUvrYs2fgfRpzUrFczwHztswAIgce17yg4V3pHzBuJIz+Y3X0vsY+opVfb9lWGIGCGY9SU=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 73328
+        }
+      }
+    }
+  }
+}

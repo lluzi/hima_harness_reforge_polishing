@@ -1,0 +1,122 @@
+{
+  "scope": "documentation and read-only source/metadata checks; no product tests or dependency install",
+  "research_model": "gpt-6-astra",
+  "reasoning_effort": "high",
+  "hima_sha": "0626bba394db8b29a02aa9defa718aba07554571",
+  "reference_definitions": 47,
+  "reference_uses": 47,
+  "fixed_blob_links_validated": [
+    {
+      "reference": "S-preset",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/preset/agent-preset-registry/src/index.ts"
+    },
+    {
+      "reference": "S-client-contract",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/api/session-controller/src/client/contract/sessions.ts"
+    },
+    {
+      "reference": "S-catalog",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/subagent/subagent/src/projection-types.ts"
+    },
+    {
+      "reference": "S-message",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/llm/llm/src/message.ts"
+    },
+    {
+      "reference": "S-ui-child",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/client/ui-subagent/src/client/index.ts"
+    },
+    {
+      "reference": "S-agent",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/core/agent/src/runtime-types.ts"
+    },
+    {
+      "reference": "S-session",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/core/session/src/types.ts"
+    },
+    {
+      "reference": "S-query",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/session-query/session-query/src/index.ts"
+    },
+    {
+      "reference": "S-migration",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/.agents/notes/implemented/bug-fix/2026-09-19-session-local-subagent-migration.md"
+    },
+    {
+      "reference": "S-subagent",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/subagent/subagent/src/index.ts"
+    },
+    {
+      "reference": "S-workspace",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/workspace/workspace/src/index.ts"
+    },
+    {
+      "reference": "S-archive",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/core/agent/src/archive-admission.ts"
+    },
+    {
+      "reference": "S-base",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/bundle/base/cordis.patch.yml"
+    },
+    {
+      "reference": "S-auto",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/experimental/auto-review/src/index.ts"
+    },
+    {
+      "reference": "S-tools",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/core/tools/src/index.ts"
+    },
+    {
+      "reference": "S-prompt",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/core/system-prompt/src/index.ts"
+    },
+    {
+      "reference": "S-compaction",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/compaction/compaction-basic/src/config.ts"
+    },
+    {
+      "reference": "S-repair",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/core/session/src/repair.ts"
+    },
+    {
+      "reference": "S-terminal",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/terminal/tool-terminal/src/index.ts"
+    },
+    {
+      "reference": "S-files",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/api/workspace-files/src/index.ts"
+    },
+    {
+      "reference": "S-cli",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/apps/cli/reference/README.md"
+    },
+    {
+      "reference": "S-deepseek-key",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/llm/llm-deepseek-api-key/src/index.ts"
+    },
+    {
+      "reference": "S-ssh",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/ssh/ssh/README.md"
+    },
+    {
+      "reference": "S-ssh-sandbox",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/ssh/sandbox-ssh/README.md"
+    },
+    {
+      "reference": "S-mods",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/da00f7f5358f2949383b35c14f548bc20187d80c/packages/experimental/claude-code-mods/README.md"
+    }
+  ],
+  "independent_checks": [
+    "GitHub official repo/release/master API",
+    "first-parent and all-commit counts for three primary intervals, ancestor relation confirmed",
+    "npm dist-tags for dsh, agent, tools, session and agent-presets",
+    "published llm old/new and subagent rc2 declarations",
+    "Hima delegation catalog and tool evidence consumers",
+    "Hima legacy message source calls",
+    "Hima ClientContext navigation vs upstream ClientSessions/uiWorkspace"
+  ],
+  "runtime_checks": "not run",
+  "original_agent_report_sha256": "c3fa5b2b34b2645ba023a488214023bddcbdeec289f389a9462d74fa2200bfcc",
+  "archived_report_sha256": "5dff203a563b1103b1556d50f8517d717ebf56707c0e3f9f60b74e343969fc91"
+}

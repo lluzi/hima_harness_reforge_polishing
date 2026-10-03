@@ -1,0 +1,102 @@
+[
+  {
+    "path": "packages/llm/llm/src/message.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/llm/llm/src/message.ts",
+    "sha256": "5826fb32bc3d6e2221a7a39cc8b4fecc57282540a332417bb9f2ac3522b5c7da"
+  },
+  {
+    "path": "packages/core/session/src/types.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/core/session/src/types.ts",
+    "sha256": "71df05767d4436f7df989a7fe0d634befef54587f1ae63849cc6b28de6921c53"
+  },
+  {
+    "path": "packages/subagent/subagent/src/index.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/subagent/subagent/src/index.ts",
+    "sha256": "3b895310cece7d2a1c49446d6dd52b29a4b6fc979cd55d09b194640dc199edda"
+  },
+  {
+    "path": "packages/subagent/subagent/src/projection-types.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/subagent/subagent/src/projection-types.ts",
+    "sha256": "b1bc9af94fe7a084d3a17050c5444095284441e933e0129bc6073bc396901bfc"
+  },
+  {
+    "path": "packages/api/session-controller/src/client/contract/sessions.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/api/session-controller/src/client/contract/sessions.ts",
+    "sha256": "1b071e9f1d19b409cfe59284a22047205866d34515a8dc411d4d714d6a3f7b3a"
+  },
+  {
+    "path": "packages/api/session-controller/src/client/sessions/service.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/api/session-controller/src/client/sessions/service.ts",
+    "sha256": "71b6d24ef3c899e6fcc758ab21c0a3be9dcb2333fa2eb47ad8737d02a1aaacd7"
+  },
+  {
+    "path": "packages/client/ui-subagent/src/client/index.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/client/ui-subagent/src/client/index.ts",
+    "sha256": "cfdc9e6275d7f21e970238eeaa8f2cce4662cabe1817ac684050fdde8f720f73"
+  },
+  {
+    "path": "packages/preset/agent-preset-registry/src/index.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/preset/agent-preset-registry/src/index.ts",
+    "sha256": "a60f6e59d86faacb2d697a30cd4b4b7e7f28f0242800b1e7cbc012ee056e03aa"
+  },
+  {
+    "path": "packages/preset/agent-preset/src/index.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/preset/agent-preset/src/index.ts",
+    "sha256": "5bb8843f1a8d856ad439637b43ce2105aea5cb60a68786f8280e8bfdedef8279"
+  },
+  {
+    "path": "packages/session-query/session-query/src/index.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/session-query/session-query/src/index.ts",
+    "sha256": "549f7f90c90efec63a5c7d69dbc65938c0f9578f85dcfc8ee25a49a43a8e83e3"
+  },
+  {
+    "path": "packages/session/session-persistence/src/index.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/session/session-persistence/src/index.ts",
+    "sha256": "ac78517e2518f7baf00b4353944b96bb8040ee1edd9f2986ab663842eb763cb0"
+  },
+  {
+    "path": "packages/core/agent/src/runtime-types.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/core/agent/src/runtime-types.ts",
+    "sha256": "d0ac3509febb04308eff84bc6c949ff3c736dec9fd9f8d230c5d7fa3455ff204"
+  },
+  {
+    "path": "packages/core/agent/src/index.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/core/agent/src/index.ts",
+    "sha256": "9979fdae64fd0a342067981c39de9cde2da7066d28f8506a501fd51e8f9068b9"
+  },
+  {
+    "path": "packages/core/system-prompt/src/index.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/core/system-prompt/src/index.ts",
+    "sha256": "9e31442544109b3ff9be13458e826e0dcacbe31d9f59ddd96a6498ab20b1574e"
+  },
+  {
+    "path": "packages/compaction/compaction-basic/src/config.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/compaction/compaction-basic/src/config.ts",
+    "sha256": "4972edc6447dcff87eab54c3a9c5984171238aa06aa0eb34ffde4bfac4ce1275"
+  },
+  {
+    "path": "packages/bundle/base/cordis.patch.yml",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/bundle/base/cordis.patch.yml",
+    "sha256": "9c2be64f46a193eff3cca190c26e697e8e8eee25c9b40149dfdb56f8142c252d"
+  },
+  {
+    "path": "packages/storage/storage-domain/src/index.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/storage/storage-domain/src/index.ts",
+    "sha256": "661c0b7daa38e994443782a47362e9c3077c62df5da2c7db4892816ea5e8d32f"
+  },
+  {
+    "path": "packages/terminal/terminal/src/index.ts",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/terminal/terminal/src/index.ts",
+    "sha256": "0264b62850764a5e32f1e2da93540cdcbe6e0e6442314f72b25a8ee2da6d2995"
+  },
+  {
+    "path": "packages/ssh/ssh/README.md",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/ssh/ssh/README.md",
+    "sha256": "6296dabcde538ab631603f0329cc213790ddc3e47ec5239444187f4c8707326f"
+  },
+  {
+    "path": "packages/ssh/sandbox-ssh/README.md",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/ssh/sandbox-ssh/README.md",
+    "sha256": "54efddae2f097b52995e365ecdb0a9a6948ca15492cb380f1c9ff733a280b78c"
+  }
+]
