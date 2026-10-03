@@ -28,6 +28,26 @@ function fixture(): RunView {
 
 function projected(view: RunView) { return experienceReport(view, at).json.research; }
 
+test('report shows Reader comparison inputs omitted by the judging rule without promoting stale evidence', () => {
+  const view = fixture();
+  const values = [
+    { type: 'before_setup_violation_count', value: 28, unit: 'count' },
+    { type: 'reference_setup_violation_count', value: 24, unit: 'count' },
+    { type: 'selected_setup_violation_count', value: 0, unit: 'count' },
+    { type: 'collateral', value: null, unit: 'count', unknownReason: 'not measured' },
+  ];
+  const observation = { ...view.observations[0]!, values: [...view.observations[0]!.values, ...values] };
+  const current = { ...view, observations: [observation] };
+  const report = experienceReport(current, at);
+  assert.match(report.markdown, /before_setup_violation_count \| 28 \| count/);
+  assert.match(report.markdown, /reference_setup_violation_count \| 24 \| count/);
+  assert.match(report.markdown, /selected_setup_violation_count \| 0 \| count/);
+  assert.match(report.markdown, /collateral \| UNKNOWN \(not measured\)/);
+  const stale = experienceReport({ ...current, observations: [{ ...observation, contentSha256: 'b'.repeat(64) }] }, at);
+  assert.doesNotMatch(stale.markdown, /reference_setup_violation_count \| 24/);
+  assert.equal(stale.json.research.conclusion, 'insufficient-evidence');
+});
+
 test('model interpretation cannot turn missing citations or contradictory numbers into report facts', () => {
   const view = fixture();
   const analysis = { recordId: 'analysis-1', at, sessionId: 'owner', nodeId: 'explore', question: 'Can the measured period support this next experiment?',

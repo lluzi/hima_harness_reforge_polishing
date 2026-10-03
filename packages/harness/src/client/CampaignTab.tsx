@@ -127,7 +127,7 @@ function EvidenceView({ view }: { view: RunView }): ReactElement {
 
 /** The Report view: the Campaign's technical report, as a current ledger preview or — on request —
  *  the saved file itself, read back and held to its recorded hash. */
-function ReportView({ view, runId }: { view: RunView; runId: string }): ReactElement {
+function ReportView({ view, runId, openEvidence }: { view: RunView; runId: string; openEvidence(): void }): ReactElement {
   const viewer = useViewerSession();
   const [saved, setSaved] = useState<{ markdown?: string; error?: string; loading?: boolean }>();
   const pending = useRef<AbortController>();
@@ -149,6 +149,8 @@ function ReportView({ view, runId }: { view: RunView; runId: string }): ReactEle
   return (
     <div className="hima-detail hima-report">
       <h3>Technical report</h3>
+      <button type="button" className="hima-button" onClick={openEvidence}>Open deliverables and supporting evidence</button>
+      <p className="hima-small">Open and download verified files in Evidence. Engineering summaries are agent statements; recorded checks and the Run ending establish the verified outcome.</p>
       {saved ? (
         <>
           <button type="button" className="hima-button" onClick={() => { pending.current?.abort(); setSaved(undefined); }}>Current ledger preview</button>
@@ -281,7 +283,7 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
           ? <div className="hima-empty"><p>Reading Run records…</p></div>
           : section === 'generations'
             ? <div className="hima-detail"><h3>Generations</h3>{view.generations.length ? <GenerationsTable view={view} /> : <p>No Generation has opened yet.</p>}<GenerationResearch view={view}/></div>
-            : section === 'evidence' ? <EvidenceView view={view} /> : <ReportView view={view} runId={runId} />}
+            : section === 'evidence' ? <EvidenceView view={view} /> : <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />}
       </div>
       {!stale ? null : (
         <div className="hima-campaign-stale" role="status" data-hima-region="campaign-stale" data-hima-state-at={readAt === undefined ? '' : String(readAt)}>

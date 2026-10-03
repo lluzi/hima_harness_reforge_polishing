@@ -169,6 +169,8 @@ export interface ExperienceTrial {
   readonly status: 'judged' | 'incomplete' | 'undetermined';
   readonly reason: string;
   readonly observation?: ObservationView;
+  /** Complete current Reader values, including comparison inputs not consumed by a rule. */
+  readonly measurements?: readonly ObservationView[];
   readonly verdicts: readonly VerdictView[];
   /** The completed judge node's recorded outcome, never recalculated from the measured number. */
   readonly constraintOutcome?: GenerationView['verdicts'][number]['outcome'];
@@ -333,6 +335,9 @@ function researchOf(view: RunView): ExperienceResearch {
       ...(branch === undefined ? { strategy: generation.strategy } : { branchId: branch.id }),
       status, reason,
       ...(observation === undefined ? {} : { observation }),
+      measurements: status === 'incomplete' ? [] : [...latestSource.values()].filter(item =>
+        cited.some(verdict => verdict.cites.some(citation => citation.recordId === item.recordId
+          && citation.observation?.contentSha256 === item.contentSha256))),
       verdicts: cited,
       ...(status === 'incomplete' || constraintOutcome === undefined ? {} : { constraintOutcome }),
     };
@@ -404,8 +409,16 @@ function researchSection(research: ExperienceResearch): string[] {
     trial.reason,
   ]);
   const checks = [...new Map(research.trials.flatMap(trial => trial.verdicts).map(verdict => [verdict.recordId, verdict])).values()];
+  const measurements = [...new Map(research.trials.flatMap(trial => trial.measurements ?? []).map(item => [item.recordId, item])).values()];
   return [
     '## Research result and evidence limits', '', research.summary, '',
+    ...(measurements.length === 0 ? [] : [
+      '### Recorded measurements and comparison inputs', '',
+      'These are complete Reader values from current cited sources, including values a judging rule did not use. Missing historical comparison values are not reconstructed. Check outcomes below determine what those measurements establish.', '',
+      ...table(['measurement', 'value', 'unit', 'source observation'], measurements.flatMap(item => item.values.map(value => [
+        value.type, value.value === null ? `UNKNOWN (${value.unknownReason ?? 'unmeasured'})` : String(value.value), value.unit, item.recordId,
+      ]))), '',
+    ]),
     ...table(['recorded check', 'outcome', 'values as read', 'reason / evidence'], checks.map(verdict => [
       `${verdict.ruleId}@${verdict.ruleVersion}`, verdict.outcome,
       verdict.valuesAsRead.map(value => `${value.type}: ${value.value === null ? `UNKNOWN (${value.unknownReason ?? 'unmeasured'})` : value.value} ${value.unit}`).join('; '),
@@ -739,7 +752,7 @@ function pathSection(path: readonly NodeView[]): string[] {
   ]);
   if (rows.length === 0) return [];
   const heads = [pathColumns.index, pathColumns.node, pathColumns.kind, pathColumns.state, pathColumns.attempt, pathColumns.said];
-  return ['## The path', '', ...table(heads, rows), ''];
+  return ['## The path', '', 'Node outcomes record graph routing. A node PASS does not mean every check passed or that the Run ended goal-met; use the individual checks and recorded ending above.', '', ...table(heads, rows), ''];
 }
 
 /** Every Hard blocker the Campaign hit, each with the last lines its Job wrote, quoted whole. */

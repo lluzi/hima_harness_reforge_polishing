@@ -53,3 +53,36 @@ Tests establish mechanisms, not a new 0.3.2 field journey. Actual native adheren
 to the revised delivery contract and autonomous owner consumption still need a
 bounded retained-artifact interaction, without manual schema rescue or new
 Timing work. A refreshed GUI report also needs independent operator acceptance.
+
+## R4 operator follow-up and next normal task
+
+Independent FL used only normal product screens and found the report partly
+improved but not usable enough: numerical comparison was absent, and Report did
+not lead to the deliverables. ATCS0.3.2 already emits common-R1/reference/selected
+counts, WNS and TNS. The generic renderer omitted Reader values not consumed by
+a rule, so this would also affect a fresh0.3.2 Run. The minimal follow-up exposes
+complete current cited Reader measurements, preserving source identity and
+UNKNOWN, and connects Report to the existing Evidence view. A node routing
+PASS and an agent's summary are explicitly distinguished from verified checks
+and the recorded ending. No historical measurements are reconstructed.
+
+The direct failing fixture reproduces missing comparison inputs. The fixed
+report suite passes12/12 with a changed-source-hash counterexample; build passes.
+Evidence: `.hima-tmp/issue83-report-followup/`. Elapsed/budget presentation,
+generation columns, download speed and layout are deferred.
+
+Source audit found no ordinary cross-Run retained-delivery task: the original
+terminal Run cannot resume; new ATCS entry requires its common R1 and serial
+reference. DRI selected one fresh normal0.3.2 XTop task to prove the actual
+owner/native continuation and unaided delivery. This is not a second claim
+based on the original0/0 result and does not authorize a physical-signoff tail.
+
+The ordinary folder installer refuses an existing destination, while its upgrade
+mode requires a tested release. An isolated check of the exact production
+review/confirm functions accepts development0.3.2 into an empty destination and
+refuses the other two paths. Use a declared fresh Home/project, prepared only
+with normal administrator Site/Permit/credential baseline; FL installs the Pack,
+enters inputs and goal, starts and observes through normal UI. Existing Home,
+0.3.1 method and Run remain preserved. No seeded engineering workspace, graph
+overlay, silent owner, schema coaching or manual wake rescue is part of this
+acceptance. The new task remains unexecuted at this source checkpoint.
