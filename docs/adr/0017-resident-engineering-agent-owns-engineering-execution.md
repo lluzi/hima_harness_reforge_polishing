@@ -21,3 +21,16 @@ status: accepted
 包装进程丢失时，Host 仍通过固定包装入口核对并收束同任务保留的进程／容器身份，再记录 stopped 或 unknown；此路径只做收束，不重发业务 prompt、消息或 ECO。无法确认退出时继续禁止冲突工作。实际结果仍由原始工具证据和 Pack Reader 判断，认证可用、permission allow或进程退出都不构成业务成功。
 
 Issue: https://github.com/lluzi/hima_harness_reforge_polishing/issues/82
+
+## Issue #83 正常产品路径（2026-10-02）
+
+用户曾增加效率目标，随后明确“我不关心时间，就看修复效果就行”。当前沿用本 ADR 的
+修复效果比较，不以效率胜出为准入或完成条件。独立实际操作员通过 HimaHarness 正常 GUI
+完成从准备到工程交付及结束的验证仍在范围内；不可由临时 graph entry、开发脚本创建
+Campaign、注入已知 ECO 或后台直接执行工程业务代替。预先配置 Site/Permit/native auth
+属于一次站点准备，须在候选中声明；操作员仍在 GUI 检查并选择真实 Pack/Site/输入。
+
+复用现有 Pack、Site、Host/Job/Channel/ACP 和用户入口，不增加新的控制面。历史 Hold0/
+Setup18 与 retained-artifact 接回资格各守原范围；原 frozen FAIL 不改写。质量和用户路径
+分别给出支持证据，XTop-only 不冒充物理签核。有限 timebox 仅是资源和恢复边界。
+具体冻结、正常步骤与回滚见[Issue #83 验收增补](../specs/resident-engineering-agent/issue83-acceptance.md)。

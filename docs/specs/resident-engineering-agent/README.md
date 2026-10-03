@@ -1,5 +1,7 @@
 # Resident Engineering Agent 与 OpenCode Timing Fix 外包实施规格
 
+当前产品验证：[Issue #83 正常 GUI 验收增补](issue83-acceptance.md)。最新用户只关心修复效果，效率不是完成条件。
+
 Issue: [#82](https://github.com/lluzi/hima_harness_reforge_polishing/issues/82)
 状态：已实现并完成一次真实工程试验；现场业务效果成立，原 live 接回仍诚实为 FAIL，后修复只完成 retained-artifact integration 验证。
 作者基线：`b20ef44a9672f8c5a5ab645e49e0ef3446e2c0f7`，当前方法 ATCS `0.3.1`；旧 `0.2.10` 方法快照继续只读保留。
