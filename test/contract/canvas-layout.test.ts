@@ -293,9 +293,9 @@ const overlaps = (a: ReturnType<typeof footprint>, b: ReturnType<typeof footprin
 test('the current ATCS 0.3 single-engineering route lays out its fix, delivery and terminal Goal nodes', () => {
   const pack = loadPack(packsDir, 'agentic-timing-closure-system');
   const scene = shippedScene('agentic-timing-closure-system');
-  assert.equal(pack.contract.version, '0.3.1');
+  assert.equal(pack.contract.version, '0.3.3');
   assert.equal(scene.nodes.length, pack.graph.nodes.length);
-  for (const id of ['fix-timing', 'read-engineering-result', 'check-engineering-delivery', 'check-engineering-goal']) {
+  for (const id of ['fix-timing', 'read-engineering-result', 'check-engineering-delivery', 'check-engineering-collateral', 'check-engineering-goal']) {
     assert.ok(scene.nodes.some((node) => node.id === id), `${id} is placed`);
   }
   for (let i = 0; i < scene.nodes.length; i++) {

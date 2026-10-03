@@ -1,0 +1,40 @@
+Legacy ATCS dry-path fixture limitation at main integration
+
+Scope and identity
+- Product baseline: resident engineering branch eb38cb7d, ATCS Pack 0.3.3; merged candidate 65bc3822 at the time of this audit.
+- The dedicated atcs-dry group runs test/contract/atcs-dry-path.host.test.ts. Its first cases intentionally copy legacy/0.2.10 declarations and run the old six-branch / physical-referee method using local model and EDA stand-ins.
+- This is a baseline obsolete-fixture limitation. It is not a new claim that current resident engineering execution failed. No model, commercial EDA, SSH or GUI was launched.
+
+Pre-existing source evidence
+- Commit b20ef44a, packs/agentic-timing-closure-system/flow/atcs_cli.py:4270 already enumerates get_${check}_gba_violated_pins in native analysis.
+- That same commit's _cmd_common_autofix begins at line 4290, saves r1-workspace at line 4316, and refuses a missing saved directory at line 4343 with "XTop did not save the common R1 workspace".
+- Commit eb38cb7d, test/fixtures/atcs-dry-path/xtop-standin.tcl:34 still lists save_workspace among empty no-op procs. It defines neither get_setup_gba_violated_pins / get_hold_gba_violated_pins nor open_workspace.
+- Current operator startup copies the common R1 private seed and invokes open_workspace. The old fixture does not model that persistence or restore state.
+- The dry expertLoop and research-worker.py use a limited BUFFD1 -> BUFFD2 -> BUFFD4 -> BUFFD8 ladder; the neighbor's extra step assumes a BUFFD2 input. Real synthetic R1 AutoFix already changed reg0 cells to BUFFD2 before workers. A correct migration must recheck saved cells, pin/net relationships, later generation state, workshop request generation, and gain/undo/contribution expectations rather than supply fake favorable answers.
+
+Command and isolation
+PATH="$HOME/.local/node24/bin:$PATH" node scripts/run-contract-tests.mjs atcs-dry
+- Each invocation's run-contract-tests runner creates a distinct /tmp/hima-tests-* root, DSH/Hima homes and tmux socket namespace, removes SSH_AUTH_SOCK and applies test/contract/support/no-ssh.mjs.
+- Root coordinator local tests used a different temporary root/process. No coordinator/user process or home was terminated or cleaned.
+
+Attempt 1: original merged fixture
+- Run run-72edb0f5-2acd-497a-a7eb-cddfaa8d4aaf failed common-autofix with native "invalid command name get_setup_gba_violated_pins". Native Tcl stopped with tool-failed (exit 4); the ordinary retry then refused incomplete-common-stage (exit 3), and its node was blocked.
+- First-failure evidence retained in .hima-tmp/branch-audit/atcs-dry-first-failure/: common-autofix-records.json, both Job logs, native-stage.log and xtop_log_1.txt. Runner TAP is .hima-tmp/branch-audit/atcs-dry-initial.log.
+- After preserving this deterministic failure, only this worker's Node test child PID 63060 was sent SIGTERM. Runner returned exit 1 and removed /private/tmp/hima-tests-wMzYUY. This was a bounded stopped run, not a completed passing suite.
+
+Attempt 2: temporary minimal native-read stub
+- A 15-line uncommitted fixture experiment implemented only the missing setup/hold endpoint collection queries from the existing synthetic timing model; it did not change production code or assertions.
+- Run run-bb8e9f5d-1095-4633-af03-711398f75235 then reached the next real fixture gap: common-autofix exit 4 with "XTop did not save the common R1 workspace"; ordinary retry again refused incomplete-common-stage. r1.dump records the actual synthetic BUFFD2 reg0 cells.
+- The first six-branch test failed waiting for its plan because common-autofix remained blocked. Continuing the whole group would repeat the known obsolete fixture failure.
+- Evidence retained in .hima-tmp/branch-audit/atcs-dry-second-failure/ and .hima-tmp/branch-audit/atcs-dry.log. Runner summary: 0 pass / 1 fail, 350.116 seconds, 2 in-process Host starts, 0 Electron starts, 0 SSH attempts. This is a partial stopped run; later dry cases, including its current 0.3 public Host case, were not completed or counted as passes.
+- Only this worker's Node test child PID 88966 was sent SIGTERM. Runner returned exit 1 and removed /private/tmp/hima-tests-fuIOro.
+
+Boundary decision and retained state
+- Current task integrates the latest 0.3.3 resident product; it does not upgrade the frozen 0.2.10 method or rebuild its full synthetic protocol.
+- The minimal read stubs were withdrawn. xtop-standin.tcl is back to candidate bytes; no unverified fake implementation is retained to produce PASS.
+- Verified merged legacy declaration/knowledge/Reader helper restoration remains. No old tests were deleted or weakened.
+- The current canvas expectation was independently corrected from stale 0.3.1 to 0.3.3 and explicitly includes check-engineering-collateral. All 43 canvas-layout tests passed (1.917 seconds, zero Host/GUI/SSH). Log: .hima-tmp/branch-audit/canvas-layout-followup.log.
+- Earlier merge Host subset: 40/40 passed; test compiler and unique 149-file inventory passed. Coordinator owns remaining local suite and final acceptance.
+- Dedicated atcs-dry status: FAIL / incomplete due to baseline obsolete fixture. No L4 model, L4 Site or L5 engineering effectiveness acceptance is claimed.
+
+Development configuration: GPT-6.1 Sol / High; no child agents. Product-model calls zero. Development request/token totals not separately measured.
