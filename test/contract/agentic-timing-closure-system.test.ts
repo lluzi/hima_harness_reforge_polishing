@@ -33,7 +33,7 @@ async function copyLegacyAtcsPack(packsDir: string): Promise<string> {
 
 test('ATCS 0.3 outsources one whole fix-timing node and keeps XTop engineering evidence separate from final signoff', async () => {
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
-  assert.equal(pack.contract.version, '0.3.1');
+  assert.equal(pack.contract.version, '0.3.2');
 
   const tool = pack.contract.tools.find(item => item.id === 'fix-timing') as any;
   assert.ok(tool, 'the Pack declares one fix-timing tool');
@@ -51,7 +51,7 @@ test('ATCS 0.3 outsources one whole fix-timing node and keeps XTop engineering e
   assert.deepEqual(nodes, [
     'bind-inputs', 'read-readiness', 'check-inputs', 'baseline', 'prepare-native-context',
     'common-autofix', 'auto-fix-reference', 'fix-timing', 'read-engineering-result', 'check-engineering-delivery',
-    'check-engineering-goal', 'wait-for-person',
+    'check-engineering-collateral', 'check-engineering-goal', 'finish-engineering', 'wait-for-person',
   ]);
   assert.equal((pack.graph.nodes as any[]).find(node => node.id === 'fix-timing').kind, 'act');
   assert.deepEqual((pack.graph as any).autopilot, [

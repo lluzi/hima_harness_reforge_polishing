@@ -76,6 +76,13 @@ Pack 编写须明确可外包的工程节点及其任务目标、输入和相关
 质量与产品路径分别以真实证据给出结论；历史效果/接回资格不能计作新全过程 PASS。
 见[Issue #83 验收增补](specs/resident-engineering-agent/issue83-acceptance.md)。
 
+后续用户澄清：本轮验收是有原始证据的 Timing 修复改进及可读、可用的正常产品交付。
+Timing 的已知结论与 global collateral、no-regression、工程采用/物理签核分别表达。
+未知不转成零或 PASS，已知回归必须保留并限制任何更广泛质量/采用声明。新 Pack 的声明 Goal
+只覆盖已说明的 Timing 目标与对照；尽力改进可仍留 Goal false。旧 Run、旧判据和结束状态
+不重写；通过原有 Explore 决定记录新任务的明确结束，不另建签核 Campaign。
+
+
 ## Pack 与探索行为
 
 Pack 提供方法学与推荐做法。参考运行图不被 AI 改写或删节点；AI 可回溯、调整节点策略，并在 Pack 声明的探索位置生长附加节点。附加工作继续使用现有节点语义，明确输入、结束条件和返回位置，结果经判定后决定是否采用。

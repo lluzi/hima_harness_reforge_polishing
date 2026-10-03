@@ -1,5 +1,5 @@
 id: agentic-timing-closure-system
-version: "0.3.1"
+version: "0.3.2"
 title: Agentic timing closure system
 status: development
 minimumHarnessVersion: 0.2.2
@@ -137,6 +137,7 @@ rules:
   - engineering-setup-goal
   - engineering-hold-goal
   - engineering-no-remaining
+  - engineering-timing-clear
   - engineering-no-regression
   - engineering-beats-autofix
 

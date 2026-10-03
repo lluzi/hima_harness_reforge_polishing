@@ -778,6 +778,7 @@ export function ExperienceSection({ view, experience, onOpenSaved }: { view: Run
         <div><a href={scoped(experienceMarkdownHref(view.run.id), viewer)} onClick={onOpenSaved === undefined ? undefined : (event) => { event.preventDefault(); onOpenSaved(); }}>{EXPERIENCE_MARKDOWN_LINK}</a></div>
       </div>
       <div className="hima-run-card-section">
+        <p className="hima-muted">This view is refreshed from retained evidence. The download opens the original saved report; the recorded Run ending is unchanged.</p>
         {reportBlocks(experienceReport(view, experience.writtenAt).markdown).map((entry, index) => (
           <ReportBlockRow key={index} block={entry} />
         ))}

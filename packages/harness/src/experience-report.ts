@@ -35,7 +35,6 @@ import {
   loopClosedSaid,
   loopOpenedSaid,
   loopSaid,
-  LOCAL_DEMO_SOURCE,
   meterRows,
   NOT_HELD,
   NOTHING_JUDGED,
@@ -306,13 +305,25 @@ function researchOf(view: RunView): ExperienceResearch {
       const held = verdict.recordId === undefined ? undefined : verdicts.get(verdict.recordId);
       return held === undefined ? [] : [held];
     });
+    const invalidated = new Set((view.revisions ?? []).flatMap(revision => revision.invalidatedRecordIds));
+    const own = view.observations.filter(item => !invalidated.has(item.recordId) && (item.recordId === observation?.recordId
+      || item.generation === generation.generation && item.loopId === loopId && item.branchId === branch?.id));
+    const ownById = new Map(own.map(item => [item.recordId, item]));
+    const sourceKey = (item: ObservationView) => `${item.path}\0${item.reader.id}\0${item.reader.version}`;
+    const latestSource = new Map(own.map(item => [sourceKey(item), item]));
+    const supported = (verdict: VerdictView) => verdict.cites.length > 0 && verdict.cites.every(citation => {
+      const actual = ownById.get(citation.recordId);
+      return actual !== undefined && citation.observation?.contentSha256 === actual.contentSha256
+        && latestSource.get(sourceKey(actual))?.contentSha256 === actual.contentSha256;
+    });
+    // A missing/unknown check stays unknown without erasing a different, sourced PASS/FAIL.
+    // Definite claims still require current same-trial evidence, including multi-input judges.
     const traced = observation !== undefined && cited.length > 0 && cited.length === latest.size
-      && cited.every((verdict) => verdict.cites.length > 0 && verdict.cites.every((citation) =>
-        citation.recordId === observation.recordId && citation.observation?.contentSha256 === observation.contentSha256));
+      && cited.every(verdict => verdict.outcome === 'UNDETERMINED' || supported(verdict));
     const status = !settled || !traced ? 'incomplete'
       : cited.some((verdict) => verdict.outcome === 'UNDETERMINED') ? 'undetermined' : 'judged';
     const reason = !settled ? 'Execution and a subsequent completed judge are not both recorded for this trial.'
-      : !traced ? 'The complete verdict set cannot be traced to this trial\'s own observation; it does not support a result.'
+      : !traced ? 'A definite verdict lacks current, matching evidence in this trial; it cannot support a result.'
         : status === 'undetermined' ? 'The judge recorded missing or unknown evidence; no definite result is established.'
           : 'The experiment completed and its judge verdicts cite this observation. FAIL is a measured negative result, not an execution fault.';
     const constraintOutcome = branch === undefined ? judge?.outcome : undefined;
@@ -323,7 +334,7 @@ function researchOf(view: RunView): ExperienceResearch {
       status, reason,
       ...(observation === undefined ? {} : { observation }),
       verdicts: cited,
-      ...(status !== 'judged' || constraintOutcome === undefined ? {} : { constraintOutcome }),
+      ...(status === 'incomplete' || constraintOutcome === undefined ? {} : { constraintOutcome }),
     };
   };
   const visit = (generations: readonly GenerationView[], loopId?: string): void => {
@@ -338,7 +349,7 @@ function researchOf(view: RunView): ExperienceResearch {
   visit(view.generations);
   const judged = trials.filter((entry) => entry.status === 'judged');
   const decision = view.decision;
-  const supportedGoal = view.run.status === 'ended-goal-met' && decision !== null && 'goalMet' in decision.chosen
+  const legacySupportedGoal = view.run.status === 'ended-goal-met' && decision !== null && 'goalMet' in decision.chosen
     && judged.some((entry) => entry.observation !== undefined
       && decision.cites.includes(entry.observation.recordId)
       && entry.verdicts.every((verdict) => verdict.outcome === 'PASS')
@@ -346,24 +357,37 @@ function researchOf(view: RunView): ExperienceResearch {
         .every((peer) => peer.status === 'judged' && peer.verdicts.every((verdict) => verdict.outcome === 'PASS'))
       && decision.cites.every((id) => id === entry.observation!.recordId || entry.verdicts.some((verdict) => verdict.recordId === id))
       && entry.verdicts.every((verdict) => decision.cites.includes(verdict.recordId)));
-  const negative = judged.some((entry) => entry.verdicts.some((verdict) => verdict.outcome === 'FAIL'));
-  const conclusion = supportedGoal ? 'goal-supported' : judged.length === 0 ? 'insufficient-evidence'
+  const knownTrials = trials.filter(entry => entry.status !== 'incomplete');
+  const required = decision?.requiredVerdictIds;
+  const groups = new Map<string, ExperienceTrial[]>();
+  for (const entry of trials) { const key = `${entry.loopId ?? ''}:${entry.generation}`; groups.set(key, [...(groups.get(key) ?? []), entry]); }
+  const scopedGoal = view.run.status === 'ended-goal-met' && decision !== null && 'goalMet' in decision.chosen
+    && required !== undefined && required.length > 0 && new Set(required).size === required.length
+    && [...groups.values()].some(group => group.every(entry => entry.status !== 'incomplete')
+      && required.every(id => decision.cites.includes(id) && group.some(entry => entry.verdicts.some(verdict =>
+        verdict.recordId === id && verdict.outcome === 'PASS' && verdict.cites.length > 0
+        && verdict.cites.every(citation => decision.cites.includes(citation.recordId))))));
+  const supportedGoal = required === undefined ? legacySupportedGoal : scopedGoal;
+  const negative = knownTrials.some(entry => entry.verdicts.some(verdict => verdict.outcome === 'FAIL'));
+  const hasKnownCheck = knownTrials.some(entry => entry.verdicts.some(verdict => verdict.outcome !== 'UNDETERMINED'));
+  const conclusion = supportedGoal ? 'goal-supported' : !hasKnownCheck ? 'insufficient-evidence'
     : negative ? 'measured-negative' : 'goal-not-established';
-  const summary = supportedGoal ? 'The recorded goal-met decision is supported by completed, cited judge evidence in this Campaign.'
+  const broaderLimits = required !== undefined && knownTrials.some(entry => entry.verdicts.some(verdict => !required.includes(verdict.recordId) && verdict.outcome !== 'PASS'));
+  const summary = supportedGoal ? 'The recorded goal-met decision is supported by its required completed, cited judge evidence in this Campaign.'
+    + (broaderLimits ? ' Other recorded checks remain failed or unknown; this declared-goal result does not establish broader closure or adoption.' : '')
     : conclusion === 'measured-negative' ? 'Completed experiments include negative judge results. These results apply only to the recorded trials and do not establish that every strategy or the Campaign proposition is ineffective.'
-      : conclusion === 'goal-not-established' ? 'Completed judge evidence is recorded, but it does not establish the Campaign goal.'
+      : conclusion === 'goal-not-established' ? 'Some checks have supported outcomes; other checks or the complete Campaign goal remain unestablished. Read the individual results; UNKNOWN is not PASS.'
         : 'No complete, traceable judge evidence establishes a research result. Execution status alone is not a research conclusion.';
   const next = decision !== null && pendingDecisionId === decision.recordId && 'strategy' in decision.chosen ? decision.chosen.strategy : undefined;
   return {
     conclusion, summary, trials,
     ...(next === undefined ? {} : { untestedNextStrategy: next }),
     limitations: [
-      LOCAL_DEMO_SOURCE,
-      'Reported clock periods are report values, not measured Fmax. Requested strategy values are inputs, not measurements.',
-      'Convergence records the Pack rule over the tried values; it does not prove an optimum or general strategy failure.',
+      ...(view.observations.some(observation => observation.values.some(value => value.type === 'clock_period')) ? ['Reported clock periods are report values, not measured Fmax. Requested strategy values are inputs, not measurements.'] : []),
+      ...(view.run.status === 'ended-converged' ? ['Convergence records the Pack rule over the tried values; it does not prove an optimum or general strategy failure.'] : []),
       'Incomplete trials and unresolved or stale citations are retained as history and excluded from the definite result.',
-      'Workspace design, flow and container names are declarations, not verified runtime identity. Design-content identity, tool versions and operating system were not recorded; cross-trial comparability is unknown.',
-      'No causal research explanation or AI analysis was recorded by this deterministic report. No improvement percentage is inferred.',
+      'This summary does not infer design identity or tool versions from workspace names. Inspect the retained inputs and source reports for their actual identity and coverage.',
+      'Only recorded observations and verdicts determine this summary. Engineering explanations and reproducibility material remain in the retained files; no improvement percentage is inferred.',
     ],
     environment: { site: view.run.siteId, declaredDesign: view.workspace?.design ?? 'not recorded', declaredFlowRoot: view.workspace?.flowRoot ?? 'not recorded', declaredContainer: view.workspace?.containerName ?? 'not recorded', toolVersions: 'not recorded', operatingSystem: 'not recorded' },
   };
@@ -379,8 +403,14 @@ function researchSection(research: ExperienceResearch): string[] {
     trial.verdicts.map((verdict) => `${verdict.recordId}: ${verdict.outcome} ${verdict.ruleId}@${verdict.ruleVersion}`).join('; ') || 'no resolvable verdicts',
     trial.reason,
   ]);
+  const checks = [...new Map(research.trials.flatMap(trial => trial.verdicts).map(verdict => [verdict.recordId, verdict])).values()];
   return [
     '## Research result and evidence limits', '', research.summary, '',
+    ...table(['recorded check', 'outcome', 'values as read', 'reason / evidence'], checks.map(verdict => [
+      `${verdict.ruleId}@${verdict.ruleVersion}`, verdict.outcome,
+      verdict.valuesAsRead.map(value => `${value.type}: ${value.value === null ? `UNKNOWN (${value.unknownReason ?? 'unmeasured'})` : value.value} ${value.unit}`).join('; '),
+      [verdict.reason, ...verdict.cites.map(citation => citation.recordId)].filter(Boolean).join('; '),
+    ])), '',
     ...table(['trial', 'evidence', 'recorded constraint outcome', 'observation', 'judge records', 'scope'], trialRows), '',
     ...(research.untestedNextStrategy === undefined ? [] : [
       `The next strategy was proposed but not executed as a subsequent trial: ${JSON.stringify(research.untestedNextStrategy)}. It is unmeasured.`, '',

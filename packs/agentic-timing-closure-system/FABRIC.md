@@ -8,20 +8,25 @@ context, reuse native analysis/common AutoFix, and run ordinary AutoFix against 
 a method round or deadline cap. The native startup opens a private copy of commonStage.seed and the
 Pack checks its first cell dump against commonStage.cellStateDigest before accepting the reference,
 then retains the best actual residual state across later regression or oscillation.
-readers/atcs-engineering-result.yml, tools/read-atcs.py, semantics.yml and the six
-engineering rules validate delivery and Goal/effect facts. resident-timing-playbook.md supplies the
+readers/atcs-engineering-result.yml, tools/read-atcs.py, semantics.yml and the
+engineering rules validate delivery, narrow Timing Goal and separate broader-check facts. resident-timing-playbook.md supplies the
 complete engineering and delivery method. legacy/0.2.10 preserves the prior method records.
 
 All lifecycle authority stays in existing Fabric execution, Site Job, Channel, Ledger and Reader
 paths. fix-timing is an ordinary act node. The owning Campaign Agent begins it and uses hima_execute
 engineering operations. Work and engineering are mutually exclusive for that execution.
 
+The owner finishes at the existing finish-engineering Explore node after narrow Timing and broader
+collateral checks have been recorded separately. Goal-met still requires all actual required Judge
+verdicts; an honest stop is available for best effort. No new Runtime component or verdict rewrite.
+
 ## Gaps
 
-The repository Site template binds nativeTimingContext to an administrator publication path, but
-the production JSON is intentionally absent until same-design retained STA data, source reports,
-constraints, manifest digest and producer identity are independently verified. Therefore real Site
-fit and live OpenCode/XTop effect are blocked, not passed.
+Every Site must publish verified same-design nativeTimingContext, source reports, constraints,
+manifest digest and producer identity. Missing or placeholder data blocks that Site. Issue83 retained
+0.3.1 field evidence establishes native Timing improvement on its own inputs; it does not establish
+physical signoff, a perfect original journey, or a new 0.3.2 engineering experiment. The 0.3.2 scope
+and explicit ending changes are verified at Reader/Host seams without repeating expensive repair.
 
 Local deterministic tests do not prove real model research quality, real XTop effectiveness, final
 physical signoff or superiority over AutoFix on the production design.

@@ -1,11 +1,13 @@
-# ATCS 0.3.1 run contract
+# ATCS 0.3.2 run contract
 
 ## Goal template
 
-Repair every target native XTop setup and hold violation, leave no known transition, capacitance,
-fanout or legality violation, introduce no required-check regression, and produce a strictly better
-repair effect than matched ordinary iterative AutoFix. Targets are 0 ns setup WNS and 0 ns hold WNS.
-A complete best-effort delivery may end with this Goal false.
+The declared Goal is raw-verified target setup/hold clearance and a strictly better native Timing
+repair effect than strong ordinary iterative AutoFix, under the unchanged input problem. Targets
+are 0 ns setup WNS and 0 ns hold WNS. A complete best-effort improvement may still leave this Goal
+false. Global transition/capacitance/fanout/legality and broader no-regression/adoption remain separate
+checks: UNKNOWN is never zero, and known regression must stay visible and block an unqualified
+broader-quality or adoption claim. Meeting this narrow Goal is not physical signoff.
 
 ## Constraints
 
@@ -28,7 +30,8 @@ residual improves; the control may not lose a satisfied mode or worsen an unsati
 It stops on goal, non-improvement, regression or oscillation and exports the best actual checkpoint,
 ECO and reports rather than the last attempted state. The Campaign owner uses engineering
 start/message/status/delivery/release. After delivery, the graph reads the result and judges delivery
-then Goal.
+then broader checks and the narrow Timing Goal. The owner records a cited goal-met or honest stop
+at finish-engineering; a dead-end Judge is not an explicit Goal decision.
 
 The Site must publish nativeTimingContext as real data. A template or absent file blocks preparation.
 nativeReportPaths controls common raw evidence breadth from 1,000 to 100,000 paths; it does not limit
@@ -36,8 +39,9 @@ repair techniques or iterations.
 
 ## Semantics
 
-atcs-engineering-result emits result-error count, native setup/hold WNS and TNS, known remaining
-violation count, regression count, unknown required-collateral count and effect versus AutoFix.
+atcs-engineering-result emits raw-verified common-R1/reference/selected setup/hold counts, WNS and
+TNS, timing-only remaining count, result-error count, broader remaining/regression facts, required
+collateral unknown count and effect versus AutoFix.
 Effect is 1 for resident dominance, 0 for exact tie, -1 for AutoFix dominance, and unknown for mixed
 or incomparable timing effects. Cost, duration, calls and seats are absent.
 
@@ -57,14 +61,20 @@ and parser; no synthetic or model-normalized document can create that PASS.
 ## Judge rules
 
 engineering-delivery-ready requires a fully verified result. engineering-setup-goal and
-engineering-hold-goal compare actual native WNS to the Run targets. engineering-no-remaining refuses
-known violations and is undetermined when required collateral is unknown. engineering-no-regression
-requires zero regressions. engineering-beats-autofix requires effect 1.
+engineering-hold-goal compare actual native WNS to the Run targets. engineering-timing-clear requires
+zero setup/hold violations from verified raw reports; engineering-beats-autofix requires effect 1.
+The separate check-engineering-collateral records engineering-no-remaining (timing plus global
+collateral) and engineering-no-regression without changing their unknown/positive semantics. Every
+outcome remains visible before proceeding to the narrow Goal; broader FAIL/UNKNOWN is not adoption
+approval and is not erased by a Timing PASS.
 
 ## Choosers
 
-None. The resident chooses engineering tactics inside one task; Hima does not reproduce its internal
-team or strategy loop. The final Judge result terminates this single-generation reference graph.
+atcs-engineering-ending supports the existing owner-driven Explore completion. The owner may record
+only a cited goal-met backed by every required last-Judge rule, or a cited stop preserving best effort
+and limitations. It is an ending, not another experiment or native strategy loop. The resident still
+chooses engineering tactics; Hima does not reproduce its internal team. Historical 0.3.1 endings and
+verdicts are never recomputed or rewritten by this method upgrade.
 
 ## Endings
 

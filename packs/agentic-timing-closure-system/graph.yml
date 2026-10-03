@@ -2,7 +2,7 @@
 # reference -> resident engineering delivery -> honest XTop goal/effect verdict. PrimeTime, Innovus,
 # StarRC, six Hima seats and physical-referee tails are not on this version's reference route.
 id: agentic-timing-closure-system
-version: "0.3.1"
+version: "0.3.2"
 entry: bind-inputs
 autopilot:
   - { from: [bind-inputs], until: [fix-timing, wait-for-person] }
@@ -66,13 +66,21 @@ nodes:
   - id: check-engineering-delivery
     kind: judge
     parameters: { rules: [engineering-delivery-ready] }
+  - id: check-engineering-collateral
+    kind: judge
+    parameters:
+      rules: [engineering-no-remaining, engineering-no-regression]
   - id: check-engineering-goal
     kind: judge
     parameters:
-      rules: [engineering-setup-goal, engineering-hold-goal, engineering-no-remaining, engineering-no-regression, engineering-beats-autofix]
+      rules: [engineering-delivery-ready, engineering-timing-clear, engineering-setup-goal, engineering-hold-goal, engineering-beats-autofix]
       bind:
         target_setup_wns_ns: { from: goal, name: target_setup_wns_ns }
         target_hold_wns_ns: { from: goal, name: target_hold_wns_ns }
+  - id: finish-engineering
+    kind: explore
+    parameters:
+      chooser: atcs-engineering-ending
   - id: wait-for-person
     kind: wait
     parameters: { blocker: scope-input-or-engineering-delivery-required }
@@ -89,6 +97,12 @@ edges:
   - { from: auto-fix-reference, to: fix-timing }
   - { from: fix-timing, to: read-engineering-result }
   - { from: read-engineering-result, to: check-engineering-delivery }
-  - { from: check-engineering-delivery, to: check-engineering-goal, outcome: PASS }
+  - { from: check-engineering-delivery, to: check-engineering-collateral, outcome: PASS }
   - { from: check-engineering-delivery, to: wait-for-person, outcome: FAIL }
   - { from: check-engineering-delivery, to: wait-for-person, outcome: UNDETERMINED }
+  - { from: check-engineering-collateral, to: check-engineering-goal, outcome: PASS }
+  - { from: check-engineering-collateral, to: check-engineering-goal, outcome: FAIL }
+  - { from: check-engineering-collateral, to: check-engineering-goal, outcome: UNDETERMINED }
+  - { from: check-engineering-goal, to: finish-engineering, outcome: PASS }
+  - { from: check-engineering-goal, to: finish-engineering, outcome: FAIL }
+  - { from: check-engineering-goal, to: finish-engineering, outcome: UNDETERMINED }

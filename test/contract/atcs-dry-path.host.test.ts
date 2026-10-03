@@ -47,10 +47,11 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { appendFile, cp, mkdir, readFile, readdir, realpath, writeFile, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { parse, stringify } from 'yaml';
 import {
   BUILTIN_TCL_ADAPTER_DIGEST, HIMA_TEST_SECTIONS, WORKSHOP_ENTRY_SCHEMA, checkTestRecord, interactiveCommandsDigest, loadPack,
-  packDigestExcludes, packStage, retainRunMaterial, runDelegations, type ExecutionActionRequest,
+  experienceReport, packDigestExcludes, packStage, retainRunMaterial, runDelegations, type ExecutionActionRequest, type RunView,
 } from '@hima/harness';
 import { repoRoot, type HimaHome } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent, sayAsUser, saidByModel, toolCalls, toolResults, type InProcessHost } from './support/boot-inprocess.ts';
@@ -1228,6 +1229,14 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
     () => controlled().executions[goalExecutionId]?.phase === 'ready', 10_000, 20);
   const goalComplete = await execute('atcs-goal-complete', 'complete', { executionId: goalExecutionId });
   assert.equal(goalComplete.kind, 'accepted', JSON.stringify(goalComplete));
+  const ending = await execute('atcs-ending-begin', 'begin', { nodeId: 'finish-engineering' });
+  const endingId = ending.receipt.executionId;
+  await execute('atcs-ending-work', 'work', { executionId: endingId });
+  await waitUntil('honest ending is ready', () => controlled().executions[endingId]?.phase === 'ready', 10_000, 20);
+  const endingCites = host.ctx.hima.ledger.records({ runId }).filter(record => record.type === 'observation' || record.type === 'verdict').map(record => record.id);
+  const stopped = await execute('atcs-ending-stop', 'complete', { executionId: endingId, decision: 'stop', cites: endingCites,
+    rationale: 'The retained synthetic best-effort result does not meet the narrow Timing Goal.' });
+  assert.equal(stopped.kind, 'accepted', JSON.stringify(stopped));
   try {
     await waitUntil('ATCS best-effort route ends', () => String(host.ctx.hima.ledger.run(runId!)?.status).startsWith('ended-'), 30_000, 20);
   } catch (error) {
@@ -1240,8 +1249,7 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
   assert.ok(records.some(record => record.type === 'observation' && record.reader.id === 'atcs-engineering-result'));
   assert.ok(records.some(record => record.type === 'node' && record.nodeId === 'check-engineering-delivery'
     && record.state === 'done' && (record as any).outcome === 'PASS'));
-  assert.ok(records.some(record => record.type === 'node' && record.nodeId === 'check-engineering-goal'
-    && record.state === 'done' && (record as any).outcome === 'FAIL'));
+  assert.ok(records.some(record => record.type === 'verdict' && record.ruleId === 'engineering-timing-clear' && record.outcome === 'FAIL'));
   const jobs = records.filter(record => record.type === 'job' && record.event === 'launched') as any[];
   assert.equal(jobs.filter(record => record.job.name === 'engineering-fix-timing').length, 1,
     'the dry route launched one resident production adapter Job');
@@ -1249,3 +1257,84 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
     'delivery and graph consumption each used the real Pack Reader');
   for (const job of jobs) assert.doesNotMatch(String(job.job.wire), /pt_shell|innovus|StarXtract|starrc/i);
 });
+
+
+// Isolate the changed ending semantics, not a new engineering-effect claim: raw reports and the
+// checkpoint are the Pack Reader's admitted synthetic fixture. The public owner drives real Reader,
+// Judge and Explore operations. No native/model/EDA job, prewritten Ledger or success injection.
+for (const scenario of ['timing-clear-collateral-unknown', 'timing-residual', 'known-collateral-regression'] as const) {
+  test(`ATCS 0.3.2 Timing ending tail: ${scenario}`, async t => {
+    const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local);
+    const h = local.h, packsDir = path.join(h.home, 'hima/packs'), variant = path.join(packsDir, packId);
+    await cp(path.join(repoRoot, 'packs', packId), variant, { recursive: true, filter: p => !p.includes('__pycache__') });
+    const graph = parse(await readFile(path.join(variant, 'graph.yml'), 'utf8'));
+    graph.entry = 'read-engineering-result'; graph.autopilot = [];
+    await writeFile(path.join(variant, 'graph.yml'), stringify(graph));
+    const contract = parse(await readFile(path.join(variant, 'contract.yml'), 'utf8'));
+    contract.budget.closingReserveMs = 1000;
+    await writeFile(path.join(variant, 'contract.yml'), stringify(contract));
+    const dummy = path.join(h.workspace, 'declared.json'); await writeFile(dummy, '{}');
+    await writeLocalSite(h, { allowedReadRoots: [h.workspace], allowedWriteRoots: [h.workspace],
+      allowedWrappers: ['python3', '/usr/bin/python3'], licences: { xtop: 1 },
+      bindings: { designStateManifest: dummy, nativeTimingContext: dummy, siteCapabilities: dummy, workspaceRoot: h.workspace, engineeringCapabilities: dummy } });
+    const host = await bootInProcess(h); let runId: string | undefined;
+    try {
+      const owner = await createRootAgent(host.ctx, h.workspace);
+      const started = await host.ctx.hima.startRun({ pack: packId, site: 'local', test: true,
+        ownerSessionId: String(owner.id), goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0 }, timeBoxMs: 60_000 });
+      assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
+      runId = started.run.id;
+      const seeded = spawnSync('python3', ['-c', [
+        'import sys,shutil;from pathlib import Path',
+        'sys.path.insert(0,sys.argv[1]);import test_engineering_result as f',
+        't=f.EngineeringResultReaderTest();t.setUp()',
+        'after=t._metrics("tail-after",-0.01,-0.01,1,0,0,0) if sys.argv[3]=="timing-residual" else None',
+        'obj=t._result(after=after);empty={k:0 for k in ("transition","capacitance","fanout","legality")}',
+        'obj["collateral"]={"before":t._collateral_phase("before",empty),"after":t._collateral_phase("after",dict(empty,transition=2) if sys.argv[3]=="known-collateral-regression" else empty)}',
+        'obj=f.core.stamp("engineering-result",{k:v for k,v in obj.items() if k not in ("schema","id")});t._deliver(obj)',
+        'dst=Path(sys.argv[2])',
+        '[(shutil.copytree(child,dst/child.name,dirs_exist_ok=True) if child.is_dir() else shutil.copy2(child,dst/child.name)) for child in t.w.iterdir() if child.name!="flow"]',
+        't.doCleanups()',
+      ].join('\n'), path.join(repoRoot, 'packs', packId, 'flow/tests'), started.workspace!, scenario], { encoding: 'utf8' });
+      assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+      let serial = 0;
+      const act = async (action: ExecutionActionRequest['action'], extra: Partial<ExecutionActionRequest> = {}) => {
+        const control = host.ctx.hima.ledger.run(runId!)!.control!;
+        return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), expectedEpoch: control.epoch,
+          expectedRevision: control.revision, requestId: `tail-${++serial}`, action, ...extra });
+      };
+      const ready = async (nodeId: string) => {
+        const begun = await act('begin', { nodeId }); assert.equal(begun.kind, 'accepted', begun.reason);
+        const executionId = begun.receipt!.executionId!;
+        const worked = await act('work', { executionId }); assert.notEqual(worked.kind, 'refused', worked.reason);
+        await waitUntil(`${nodeId} ready`, () => host.ctx.hima.executionContext(runId!).executions.some(e => e.id === executionId && e.phase === 'ready'), 10_000, 20);
+        return executionId;
+      };
+      for (const nodeId of ['read-engineering-result', 'check-engineering-delivery', 'check-engineering-collateral', 'check-engineering-goal']) {
+        assert.equal((await act('complete', { executionId: await ready(nodeId) })).kind, 'accepted');
+      }
+      const endingId = await ready('finish-engineering');
+      const cites = host.ctx.hima.ledger.records({ runId }).filter(r => r.type === 'observation' || r.type === 'verdict').map(r => r.id);
+      if (scenario === 'timing-residual') {
+        assert.equal((await act('complete', { executionId: endingId, decision: 'goal-met', rationale: 'Attempt success with a known timing residual.', cites })).kind, 'refused');
+      }
+      const ending = await act('complete', { executionId: endingId, decision: scenario === 'timing-residual' ? 'stop' : 'goal-met',
+        rationale: 'Only the narrow raw Timing Goal is judged here; collateral unknowns/regressions remain separate and prevent an unqualified adoption claim.', cites });
+      assert.equal(ending.kind, 'accepted', ending.reason);
+      const final = host.ctx.hima.ledger.run(runId)!;
+      assert.equal(final.status, scenario === 'timing-residual' ? 'ended-goal-not-met' : 'ended-goal-met');
+      const remote = await import(new URL('../../packages/harness/lib/remote.js', import.meta.url).href);
+      const view = remote.runView(host.ctx.hima.ledger, final) as RunView, report = experienceReport(view, final.createdAt);
+      assert.ok(view.verdicts.some(v => v.ruleId === 'engineering-no-regression' && v.outcome === (scenario === 'known-collateral-regression' ? 'FAIL' : 'UNDETERMINED')));
+      if (scenario !== 'timing-residual') {
+        assert.equal(report.json.research.conclusion, 'goal-supported');
+        assert.match(report.json.research.summary, /Other recorded checks/);
+      }
+      assert.ok(view.decision?.requiredVerdictIds?.every(id => !view.verdicts.some(v => v.recordId === id && ['engineering-no-remaining', 'engineering-no-regression'].includes(v.ruleId))));
+      assert.doesNotMatch(report.markdown, /simulated synthesis|Reported clock periods/);
+    } finally {
+      if (runId) await host.ctx.hima.cancelRun(runId).catch(() => undefined);
+      await host.dispose(); await h.dispose();
+    }
+  });
+}

@@ -2346,8 +2346,17 @@ def _read_engineering_result(report, workspace, extra, mods):
     remaining_measure = (core.known(known_remaining) if known_remaining > 0
         else core.unknown("required collateral checks unknown: " + ", ".join(sorted(collateral_unknown["after"])))
         if collateral_unknown["after"] else core.known(0))
+    comparative = []
+    for phase, measured in (("before", before), ("reference", reference)):
+        for mode in _ENGINEERING_MODES:
+            for suffix, field, unit in (("violation_count", "violations", "count"), ("wns_ns", "wnsNs", "ns"), ("tns_ns", "tnsNs", "ns")):
+                comparative.append(_emit(f"tc_engineering_{phase}_{mode}_{suffix}", unit, core.known(measured[mode][field]), mode=mode))
     return [
         _emit_count("tc_engineering_result_error_count", 0),
+        _emit_count("tc_engineering_timing_remaining_violation_count", timing_remaining),
+        _emit("tc_engineering_setup_violation_count", "count", core.known(after["setup"]["violations"]), mode="setup"),
+        _emit("tc_engineering_hold_violation_count", "count", core.known(after["hold"]["violations"]), mode="hold"),
+        *comparative,
         _emit("tc_engineering_setup_wns_ns", "ns", core.known(after["setup"]["wnsNs"]), mode="setup"),
         _emit("tc_engineering_hold_wns_ns", "ns", core.known(after["hold"]["wnsNs"]), mode="hold"),
         _emit("tc_engineering_setup_tns_ns", "ns", core.known(after["setup"]["tnsNs"]), mode="setup"),

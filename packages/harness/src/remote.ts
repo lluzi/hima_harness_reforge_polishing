@@ -237,6 +237,8 @@ export interface DecisionView {
   readonly chosen: DecisionChoice;
   readonly rationale: Readonly<Record<string, number>>;
   readonly agent?: DecisionRecord['agent'];
+  /** Host-validated required Judge scope, when retained in the completed execution receipt. */
+  readonly requiredVerdictIds?: readonly string[];
   readonly cites: readonly string[];
 }
 
@@ -856,7 +858,13 @@ function resumeView(record: ResumedRecord): ResumeView {
   return { recordId: record.id, at: record.at, nodeId: record.nodeId, who: record.who };
 }
 
-function decisionView(record: DecisionRecord): DecisionView {
+function decisionView(record: DecisionRecord, run: RunRecord): DecisionView {
+  const receipt = record.agent === undefined ? undefined : Object.values(run.control?.requests ?? {}).findLast(request =>
+    request.state === 'done' && request.actor === record.agent!.sessionId && request.receipt.action === 'complete'
+    && request.receipt.executionId === record.agent!.executionId)?.receipt;
+  const scope = (receipt?.data as { requiredVerdictIds?: unknown } | undefined)?.requiredVerdictIds;
+  const requiredVerdictIds = Array.isArray(scope) && scope.length > 0 && scope.every(id => typeof id === 'string')
+    && new Set(scope).size === scope.length ? scope as string[] : scope === undefined ? undefined : [];
   return {
     recordId: record.id,
     at: record.at,
@@ -866,6 +874,7 @@ function decisionView(record: DecisionRecord): DecisionView {
     chosen: record.chosen,
     rationale: record.rationale,
     ...(record.agent === undefined ? {} : { agent: record.agent }),
+    ...(requiredVerdictIds === undefined ? {} : { requiredVerdictIds }),
     cites: record.cites,
   };
 }
@@ -982,7 +991,7 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
     cancels: records.filter((r): r is CancelRecord => r.type === 'cancel').map(cancelView),
     // A restart is shown with the revisions it resembles, not as a blocker resume.
     resumes: records.filter((r): r is ResumedRecord => r.type === 'resumed' && r.kind !== 'restart').map(resumeView),
-    decision: decision ? decisionView(decision) : null,
+    decision: decision ? decisionView(decision, run) : null,
     code: records.filter((r): r is CodeRecord => r.type === 'code').map(codeView),
     knowledge: records.filter((r): r is KnowledgeRecord => r.type === 'knowledge').map(knowledgeView),
     analyses: records.flatMap(record => record.type === 'analysis' ? [{ ...record.analysis, recordId: record.id, at: record.at, sessionId: record.sessionId, nodeId: record.nodeId, ...(record.generation===undefined?{}:{generation:record.generation}), ...(record.loopId===undefined?{}:{loopId:record.loopId}) }] : []),

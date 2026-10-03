@@ -7,8 +7,9 @@ resident engineering agent. The resident receives the fixed design/R1 identity, 
 matched ordinary AutoFix result and full method. It researches, writes scripts, operates authorized
 XTop, measures and keeps the best actual state, and returns reusable engineering material.
 
-The ambition is to repair every target violation without a required-constraint regression and to
-beat matched ordinary AutoFix on repair effect. A complete best-effort delivery may leave residuals;
+The ambition is to repair every target setup/hold violation under the fixed problem and to
+beat matched ordinary AutoFix on native Timing effect. Global collateral and regression checks
+remain separate; their UNKNOWN or known failure prevents an unqualified adoption/signoff claim. A complete best-effort delivery may leave residuals;
 the engineering node can complete while the downstream Goal stays false.
 
 ## Golden Flow

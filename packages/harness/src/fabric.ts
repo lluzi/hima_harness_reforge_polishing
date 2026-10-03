@@ -3401,7 +3401,7 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
     return no('the active growth branch must return before completing its reference point');
   }
   const { node, graph } = positionOf(ctx.pack, execution.nodeId)!;
-  const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
+  let receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
   if (execution.phase !== 'ready' || execution.result === undefined || (execution.result.kind !== 'settled' && execution.result.kind !== 'moved')) return no('completion needs the actual successful operation result; an Agent statement is not evidence');
   if (node.kind === 'wait' && execution.humanClearance === undefined) return no('this node requires an explicit human clearance of its blocker');
   if (execution.jobSession !== undefined) {
@@ -3448,6 +3448,9 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
       chosen = advice.chosen;
       rationale = advice.rationale;
     } else return no('the exploration decision is not one of the supported choices');
+    // Keep the validated scope in the existing receipt data. Optional extra citations may discuss
+    // broader unknown/failed checks; they are not silently promoted to this decision's Goal rules.
+    receipt = { ...receipt, data: { requiredVerdictIds: evidence.verdicts.map(verdict => verdict.id) } };
     decision = { nodeId: node.id, chooser: evidence.chooser.id, chooserOrigin: evidence.chooserOrigin,
       chosen, rationale, cites: [...cites], agent: { sessionId: req.actor, executionId: execution.id, rationale: req.rationale.trim() } };
   }

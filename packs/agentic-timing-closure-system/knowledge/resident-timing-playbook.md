@@ -16,6 +16,20 @@ This is an XTop engineering result. It remains prediction-only with respect to f
 signoff. Do not populate or reinterpret tc_final_*, DB-to-SPEF PrimeTime acceptance, DRC or
 connectivity facts.
 
+## Timing result and broader limits
+
+The declared Timing goal is the raw-verified setup/hold result and its effect versus the strong
+serial AutoFix reference. Required global collateral remains a separate recorded check: unknown
+transition/capacitance/fanout/legality never becomes zero, and a known regression must be reported
+and must prevent an unqualified adoption/signoff claim. A Timing goal can be met while broader
+closure remains unknown or failed. Preserve those facts and the original input identities.
+
+After Reader-verified delivery and release, the Hima Campaign owner (not this native executor)
+completes `finish-engineering` through the existing cited Explore decision: `goal-met` only when
+all required rules of `check-engineering-goal` passed, otherwise an honest `stop` with the retained
+best result and residuals. Do not rerun engineering merely to obtain a prettier ending. The separate
+collateral Judge remains visible and is not rewritten by that narrow Timing decision.
+
 ## Working method
 
 Use the normal private engineering workspace. Read the full raw common R1 reports, native context,

@@ -1,0 +1,11 @@
+id: atcs-engineering-ending
+version: "1"
+title: Record the narrow Timing goal or an honest best-effort stop, keeping collateral limits separate
+reads:
+  nativeSetupWns: { type: tc_engineering_setup_wns_ns, unit: ns, mode: setup }
+  nativeHoldWns: { type: tc_engineering_hold_wns_ns, unit: ns, mode: hold }
+# The conversational owner completes this Explore node with cited goal-met or stop. No new
+# experiment is required to end. Runtime still requires every rule of the last Judge to PASS.
+decide:
+  - when: { constraint: PASS, goal: PASS }
+    goalMet: true

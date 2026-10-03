@@ -58,3 +58,17 @@ smoke 是新 App 的 L0/L2；L3/真实模型与 EDA 完整业务由同一次 FL 
 回滚：保留 `0d641449`、旧 deployed archive 和全部历史 Run。候选字节在 Run 中不变。
 失败先保留成果，核实实际执行后在最近安全边界恢复；不因 schema/传输问题重做工程。
 若必须换候选，先正常收束 owned Run/process，保留旧证据，新身份新任务不改写旧结果。
+
+
+## 现场后的范围与一致性修正
+
+当前验收重心是实证 Timing 改进和正常可用交付。原始 Field Run 的四场景 setup/hold 0/0、
+相对强 AutoFix 24/82 的 Timing 收益保留；broader collateral UNKNOWN、原 ended-goal-not-met
+和先前 journey FAIL 不变。r3 先用于原成果的 GUI 查看/下载，后续源码修复不修改活动候选。
+
+ATCS 0.3.2 将声明的 Timing 清零/对照 Goal 与 broader remaining/regression 分别判定。
+已知回归、未知 collateral 和采用/签核范围必须显示，不把未知变成零。旧图缺少 Explore
+结束决定也是原结束标签的原因；新图通过既有接口记录明确且有引用的 goal-met 或 stop。
+报告按同一试验的各个真实来源展示每项检查；新的回执保留实际所需判据范围，额外引用的
+未知检查不抹去已知 Timing，但也不获得 PASS。旧保存报告仍按原字节读取；当前投影明确标注。
+所有新行为用具体 Reader/Host 反例及保留材料验证，不重跑昂贵 Timing 来制造更漂亮的历史。

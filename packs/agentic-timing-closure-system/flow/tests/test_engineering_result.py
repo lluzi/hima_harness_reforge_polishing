@@ -201,6 +201,7 @@ class EngineeringResultReaderTest(unittest.TestCase):
         report = self._deliver(result)
         values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
         self.assertEqual(values["tc_engineering_remaining_violation_count"]["value"], 7)
+        self.assertEqual(values["tc_engineering_timing_remaining_violation_count"]["value"], 2)
         self.assertEqual(values["tc_engineering_regression_count"]["value"], 2,
                          "setup and transition regressions come from raw before/after facts")
 
@@ -242,6 +243,10 @@ class EngineeringResultReaderTest(unittest.TestCase):
         values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
         self.assertIsNone(values["tc_engineering_remaining_violation_count"]["value"])
         self.assertIsNone(values["tc_engineering_regression_count"]["value"])
+        self.assertEqual(values["tc_engineering_timing_remaining_violation_count"]["value"], 0)
+        self.assertEqual(values["tc_engineering_setup_violation_count"]["value"], 0)
+        self.assertEqual(values["tc_engineering_hold_violation_count"]["value"], 0)
+        self.assertEqual(values["tc_engineering_reference_setup_violation_count"]["value"], 1)
         self.assertEqual(values["tc_engineering_collateral_unknown_count"]["value"], 4)
 
     def test_tampered_raw_report_is_refused_instead_of_becoming_unknown_or_zero(self):
