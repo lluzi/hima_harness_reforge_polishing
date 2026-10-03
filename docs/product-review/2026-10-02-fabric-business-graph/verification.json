@@ -1,0 +1,264 @@
+{
+  "source_sha": "77223febe236df94d4db4eb006b6c9e612c62206",
+  "review_branch": "future",
+  "review_model": "gpt-6-astra",
+  "reasoning_effort": "high",
+  "scope": "Current project implementation only; user explicitly clarified latest code, not an earlier prototype.",
+  "model_authorization": "User explicitly requested GPT-6 Astra effort high; overrides repository model default.",
+  "original_agent_report_sha256": "71fe6a2f8df44668d46c17b899e8785f12cdc0f31612032781b75e33363475d6",
+  "archived_report_sha256": "e0137bbed79cb1f672076bd8fc151a55e6dbc1fe9f6a1483f95692cffc0228e8",
+  "checked_utc": "2026-10-03T04:31:54.365770+00:00",
+  "source_locations_checked": [
+    {
+      "path": "docs/adr/0017-resident-engineering-agent-owns-engineering-execution.md",
+      "line": null,
+      "sha256": "93922beb07998825a20065977af1150e71ae05033add0888ff753ab9a2556821"
+    },
+    {
+      "path": "docs/assessment/2026-09-12/pls-22/chooser-equivalence/model-authored-checkpoint/graph.yml",
+      "line": null,
+      "sha256": "117925a2cfbef541bf9c9cd4ab02e606703c532167c1d4612ce69a0b38c90781"
+    },
+    {
+      "path": "packages/harness/src/adapters/library-qualification.ts",
+      "line": 203,
+      "sha256": "4a714fe4f62a0e84cd2fb07df17abff2d76e1f28cf2c1c182e9348ce0ef27541"
+    },
+    {
+      "path": "packages/harness/src/adapters/library-qualification.ts",
+      "line": 76,
+      "sha256": "4a714fe4f62a0e84cd2fb07df17abff2d76e1f28cf2c1c182e9348ce0ef27541"
+    },
+    {
+      "path": "packages/harness/src/autopilot.ts",
+      "line": 310,
+      "sha256": "dc20d1e6cb7270bee0734487c292a8e51ec317dc6508add94acfb07cc6b90213"
+    },
+    {
+      "path": "packages/harness/src/autopilot.ts",
+      "line": 582,
+      "sha256": "dc20d1e6cb7270bee0734487c292a8e51ec317dc6508add94acfb07cc6b90213"
+    },
+    {
+      "path": "packages/harness/src/autopilot.ts",
+      "line": 607,
+      "sha256": "dc20d1e6cb7270bee0734487c292a8e51ec317dc6508add94acfb07cc6b90213"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 1140,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 1289,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 1330,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 1403,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 2006,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 2085,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 2322,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 2771,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 2973,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 3222,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 3287,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 3394,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 3501,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/fabric.ts",
+      "line": 812,
+      "sha256": "5aad0b57d2fe0efe11d6aef2361a72a552e4180ab5bd93c0dd3c20fe00fab441"
+    },
+    {
+      "path": "packages/harness/src/generations.ts",
+      "line": 227,
+      "sha256": "f31c8c93824f08ddf2787d76b735f9c9f296ca697a63b6af7e1d96a406a0f401"
+    },
+    {
+      "path": "packages/harness/src/ledger.ts",
+      "line": 1506,
+      "sha256": "4a95cef08a1317b99dfd5362d37007bdb2b601bf251b20ba8935800ee5b28c0b"
+    },
+    {
+      "path": "packages/harness/src/ledger.ts",
+      "line": 447,
+      "sha256": "4a95cef08a1317b99dfd5362d37007bdb2b601bf251b20ba8935800ee5b28c0b"
+    },
+    {
+      "path": "packages/harness/src/loops.ts",
+      "line": 51,
+      "sha256": "04eb65d5dbd2674202e424105a1863be4688e8ce94aab15fb2520ac80f8d179b"
+    },
+    {
+      "path": "packages/harness/src/node-turns.ts",
+      "line": 1586,
+      "sha256": "c7ff3ff3c9f72e5ba9260632c870c7e93f4279a95b8de326d1863471a6f8cd28"
+    },
+    {
+      "path": "packages/harness/src/node-turns.ts",
+      "line": 1862,
+      "sha256": "c7ff3ff3c9f72e5ba9260632c870c7e93f4279a95b8de326d1863471a6f8cd28"
+    },
+    {
+      "path": "packages/harness/src/node-turns.ts",
+      "line": 1994,
+      "sha256": "c7ff3ff3c9f72e5ba9260632c870c7e93f4279a95b8de326d1863471a6f8cd28"
+    },
+    {
+      "path": "packages/harness/src/node-turns.ts",
+      "line": 231,
+      "sha256": "c7ff3ff3c9f72e5ba9260632c870c7e93f4279a95b8de326d1863471a6f8cd28"
+    },
+    {
+      "path": "packages/harness/src/node-turns.ts",
+      "line": 930,
+      "sha256": "c7ff3ff3c9f72e5ba9260632c870c7e93f4279a95b8de326d1863471a6f8cd28"
+    },
+    {
+      "path": "packages/harness/src/packs.ts",
+      "line": 2609,
+      "sha256": "cde781253ca7f5433f14b2af4882fc7a07f5b1e2f71449f3e5a6ad7e04a6c069"
+    },
+    {
+      "path": "packages/harness/src/packs.ts",
+      "line": 265,
+      "sha256": "cde781253ca7f5433f14b2af4882fc7a07f5b1e2f71449f3e5a6ad7e04a6c069"
+    },
+    {
+      "path": "packages/harness/src/packs.ts",
+      "line": 2804,
+      "sha256": "cde781253ca7f5433f14b2af4882fc7a07f5b1e2f71449f3e5a6ad7e04a6c069"
+    },
+    {
+      "path": "packages/harness/src/packs.ts",
+      "line": 2855,
+      "sha256": "cde781253ca7f5433f14b2af4882fc7a07f5b1e2f71449f3e5a6ad7e04a6c069"
+    },
+    {
+      "path": "packages/harness/src/packs.ts",
+      "line": 874,
+      "sha256": "cde781253ca7f5433f14b2af4882fc7a07f5b1e2f71449f3e5a6ad7e04a6c069"
+    },
+    {
+      "path": "packages/harness/src/recovery.ts",
+      "line": 188,
+      "sha256": "f47a84c05fd2f297f063eb07b4d6687a9b0fb39ba45e35a63f6526584ddd4883"
+    },
+    {
+      "path": "packages/harness/src/runs.ts",
+      "line": 56,
+      "sha256": "dc411318747bc71c3f8ea41db39571e76e128327075347ee98bdeb23d1a200d1"
+    },
+    {
+      "path": "packages/harness/src/tools.ts",
+      "line": 550,
+      "sha256": "8f47634d8bf2b69c8184a2b4bccdce67e52564a8724502c21f1e261dfeda66e6"
+    },
+    {
+      "path": "packs/agentic-timing-closure-system/graph.yml",
+      "line": null,
+      "sha256": "9cf5a011564a205b202b98dd54d5aacddbb016401c31fd9d788bef4f4e4bf627"
+    },
+    {
+      "path": "packs/opene902-timing-probe/graph.yml",
+      "line": null,
+      "sha256": "e58f0663712ac7d2431a0db5cab64c8ed7387e45a4fb342196fdc30526283d70"
+    },
+    {
+      "path": "test/contract/agent-recovery.host.test.ts",
+      "line": 285,
+      "sha256": "82bf9df8fb7aa7d3fdc89b83acaff7cfbf54dd56b6af0ff413dc5cf37c5c1c35"
+    },
+    {
+      "path": "test/contract/agent-recovery.host.test.ts",
+      "line": 95,
+      "sha256": "82bf9df8fb7aa7d3fdc89b83acaff7cfbf54dd56b6af0ff413dc5cf37c5c1c35"
+    },
+    {
+      "path": "test/contract/branch-autopilot.host.test.ts",
+      "line": 389,
+      "sha256": "e834e7c57f8b1d31dc73b1f7ee0d46547cc418d0019068f6aebdd286169a6369"
+    },
+    {
+      "path": "test/contract/branch-autopilot.host.test.ts",
+      "line": 518,
+      "sha256": "e834e7c57f8b1d31dc73b1f7ee0d46547cc418d0019068f6aebdd286169a6369"
+    },
+    {
+      "path": "test/contract/resident-engineering.host.test.ts",
+      "line": 478,
+      "sha256": "8bbec7fe35a2d44367d80e4d6c700f95f0b0e13b825deb9cc8eb377135c90e51"
+    },
+    {
+      "path": "test/fixtures/pipeline/workshop/graph.yml",
+      "line": null,
+      "sha256": "0147e161919723798210487090b9fada0a7e37983f6ea4a6defdda894b35c3ed"
+    }
+  ],
+  "evidence_marker_count": 20,
+  "mermaid_blocks": 1,
+  "runtime_checks": "None: no product tests, build, model, GUI, SSH or EDA. Diagram source not browser-rendered in this turn.",
+  "independent_semantic_checks": [
+    "future and active product branch local/remote matched the fixed SHA and both worktrees were clean",
+    "Current PackNode kinds remain act/judge/explore/wait",
+    "Fork shape requires act-only chains and judge join; structural restriction is not task impossibility",
+    "Judge routes by first rule; latestMatch and join/Explore selection are implicit consumption conventions",
+    "Terminal Judge natural-ending path calls endRun; latestDecision supplies goal-met; arbitrary local PASS must not imply Campaign Goal",
+    "All act admissions share attempt/closing classification; Reader still has actual Job/resource/permission costs",
+    "Autopilot uses existing executionAction/completion; historical driver is not a second production authority",
+    "Resident delivery already invokes output Reader; verification reuse proposal requires exact bytes/method/Reader/input/execution identity"
+  ],
+  "not_changed": [
+    "product code",
+    "dependencies",
+    "CONTEXT.md",
+    "ADRs",
+    "active product worktree",
+    "Runs and Jobs"
+  ]
+}
