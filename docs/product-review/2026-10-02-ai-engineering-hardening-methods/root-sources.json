@@ -1,0 +1,106 @@
+{
+  "schema": "claim-source-ledger/v1",
+  "lane": "root empirical and Hima grounding",
+  "verified_utc": "2026-10-03T06:04:52.570890+00:00",
+  "sources": [
+    {
+      "id": "R1",
+      "title": "SkillsBench v4",
+      "url": "https://arxiv.org/html/2602.12670v4",
+      "source_date": "2026-06-14",
+      "evidence": "§4,§5.1 Tables2-3,§6.1; 87tasks/8domains/18configs; curated33.9→50.5",
+      "type": "Controlled paired benchmark",
+      "limit": "Not Hima/Astra/long-run refactoring; task-macro aggregate; context-length control absent; negative task cases; self-generated condition confounded"
+    },
+    {
+      "id": "R2",
+      "title": "Evaluating AGENTS.md v3",
+      "url": "https://arxiv.org/html/2602.11988v3",
+      "source_date": "2026-09-29",
+      "evidence": "§3–5; CTXbench138/12Python + SWE-bench; current summary not generally improve",
+      "type": "Benchmark",
+      "limit": "Older model set; generated/refined task descriptions and tests; not universal ban on context"
+    },
+    {
+      "id": "R3",
+      "title": "AGENTS.md efficiency v2",
+      "url": "https://arxiv.org/html/2601.20404v2",
+      "source_date": "2026-03-30",
+      "evidence": "§3-5;124PR/10repos/gpt5.2codex; runtime/token; §5 explicitly correctness not measured",
+      "type": "Paired efficiency study",
+      "limit": "Agent final output not independent correct patch; not reliability/maintainability result"
+    },
+    {
+      "id": "R4",
+      "title": "OpenAI harness engineering",
+      "url": "https://openai.com/index/harness-engineering/",
+      "source_date": "2026-02-11",
+      "evidence": "Enforcing architecture; Entropy and garbage collection; What we are still learning",
+      "type": "Author engineering case",
+      "limit": "Greenfield internal beta, investment-specific, no measured brownfield effect; years unknown"
+    },
+    {
+      "id": "R5",
+      "title": "DORA Balancing AI tensions",
+      "url": "https://dora.dev/insights/balancing-ai-tensions/",
+      "source_date": "2026-03-10",
+      "evidence": "1110Google open-endedresponsesQ3 2025 plus DORA2025 associations",
+      "type": "Survey and qualitative analysis",
+      "limit": "Correlation and testimony, not current causal defect estimate"
+    },
+    {
+      "id": "R5E",
+      "title": "DORA2025 Errata",
+      "url": "https://dora.dev/research/2025/errata/",
+      "source_date": "accessed2026-10-03",
+      "evidence": "stability→instability correction",
+      "type": "Publisher correction",
+      "limit": "Use corrected directions, do not mix different year reports"
+    },
+    {
+      "id": "R6",
+      "title": "METR productivity update",
+      "url": "https://metr.org/blog/2026-02-24-uplift-update/",
+      "source_date": "2026-02-24",
+      "evidence": "Selection and time-attribution limitations; old+19 not currentAstra",
+      "type": "Study followup",
+      "limit": "Cannot claim current uplift magnitude; not Hima risk study"
+    },
+    {
+      "id": "R7",
+      "title": "Self Correction Bench v3",
+      "url": "https://arxiv.org/abs/2507.02778v3",
+      "source_date": "2026-08-02",
+      "evidence": "14open-source non-reasoning models; identical internal/external error attribution",
+      "type": "Controlled model benchmark",
+      "limit": "Not Astra/production code-review; interventions improve; no universal self-review incapacity"
+    },
+    {
+      "id": "R8",
+      "title": "Intrinsic self-correction ICLR2024",
+      "url": "https://arxiv.org/abs/2310.01798v2",
+      "source_date": "2024-03-14",
+      "evidence": "Abstract/scope intrinsic self-correction without external feedback",
+      "type": "Original paper abstract only in root lane",
+      "limit": "Historical reasoning setting; not used for quantitative current claim"
+    },
+    {
+      "id": "R9",
+      "title": "Echoes of AI",
+      "url": "https://link.springer.com/article/10.1007/s10664-026-10889-1",
+      "source_date": "2026-06-09",
+      "evidence": "Abstract,§1 actual late2024,§6 limitations;151participants/two-phase second phase randomized handoff",
+      "type": "Preregistered controlled experiment",
+      "limit": "Short-term smallJava/individuals before currentagentic era; no significant effect not proof of equivalence or long-term safety"
+    },
+    {
+      "id": "R10",
+      "title": "Specification-first convergence v2",
+      "url": "https://arxiv.org/abs/2608.12440v2",
+      "source_date": "2026-08-15",
+      "evidence": "Author abstract and raw-evidence links only",
+      "type": "Single author case report",
+      "limit": "Raw1500pages and deployed correctness not independently audited; two no-finding passes are not correctness oracle"
+    }
+  ]
+}

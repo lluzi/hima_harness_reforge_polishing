@@ -1,0 +1,1471 @@
+{
+  "as_of": "2026-10-03 UTC",
+  "scope": "read-only prompt/source audit; no installs or candidate execution",
+  "repositories": [
+    {
+      "repo": "mattpocock/skills",
+      "sha": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "commit_date": "2026-09-29T12:37:40Z",
+      "license": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": "v1.2.3",
+      "archive_sha256": "316f44914dd57a75d6e0179eb85213550ee1ef7bfcc097d22b1ba0091571a493",
+      "retrieved": "2026-10-03T05:58:47.184672+00:00"
+    },
+    {
+      "repo": "obra/superpowers",
+      "sha": "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+      "commit_date": "2026-09-25T18:06:27Z",
+      "license": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": "v6.4.2",
+      "archive_sha256": "99daa57ea03b6f1a68f9f201cea24fa4b56910b8c1cabb7465df857e0f221178",
+      "retrieved": "2026-10-03T05:58:47.577660+00:00"
+    },
+    {
+      "repo": "github/spec-kit",
+      "sha": "e1fa857a7f536b22760d48c1aa9ace41df0fd1dc",
+      "commit_date": "2026-10-02T21:53:33Z",
+      "license": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": "v1.1.0",
+      "archive_sha256": "b9601da68536381e0770867c6c13a278aa7344554f01e641217cd3f4ad2ff162",
+      "retrieved": "2026-10-03T05:58:50.077348+00:00"
+    },
+    {
+      "repo": "Fission-AI/OpenSpec",
+      "sha": "2500d6da971336167548b53731a35b2127df35ac",
+      "commit_date": "2026-10-02T17:34:46Z",
+      "license": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": "v1.14.0",
+      "archive_sha256": "028480fe4961e2ff592beb47d282ce62870bb6e70f2176d59922d9a5a8658278",
+      "retrieved": "2026-10-03T05:58:50.318067+00:00"
+    },
+    {
+      "repo": "EveryInc/compound-engineering-plugin",
+      "sha": "9af474a70e7f2a844338519ad9e92aafbd92d4fb",
+      "commit_date": "2026-10-02T03:14:12Z",
+      "license": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": "compound-engineering-v3.30.3",
+      "archive_sha256": "fbf49259456665f37c0c977fd5492d7453d1c0ea44fa1da6fc78952ff970d2a8",
+      "retrieved": "2026-10-03T05:58:50.703146+00:00"
+    },
+    {
+      "repo": "wondelai/skills",
+      "sha": "c172996495bed0fcd26896a9416b2093fd7073f0",
+      "commit_date": "2026-09-10T21:47:58Z",
+      "license": {
+        "spdx_id": "MIT"
+      },
+      "release": null
+    },
+    {
+      "repo": "luongnv89/claude-howto",
+      "sha": "556af8d52327525d241f17574ef3f11976982fc8",
+      "commit_date": "2026-09-30T12:33:22Z",
+      "license": {
+        "spdx_id": "MIT"
+      },
+      "release": null
+    }
+  ],
+  "sources": [
+    {
+      "id": "M01",
+      "claim": "ask-matt is a router, architecture survey and design vocabulary are distinct; latest flow adds implement-spec and glossary naming",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/ask-matt/SKILL.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/engineering/ask-matt/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/engineering/ask-matt/SKILL.md",
+      "sha256": "3f0f34614070aba3d9a7e2bd210718d78b9b942dd0f9af0c5869234fe34e16af",
+      "line_markers": [
+        {
+          "marker": "improve-codebase-architecture",
+          "lines": [
+            48,
+            58,
+            65,
+            84
+          ]
+        },
+        {
+          "marker": "implement-spec",
+          "lines": [
+            25,
+            28
+          ]
+        },
+        {
+          "marker": "GLOSSARY.md",
+          "lines": [
+            17,
+            64,
+            83,
+            89
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Routing description is not proof of task success"
+    },
+    {
+      "id": "M02",
+      "claim": "History/scoped candidate survey; delegated explorer; temp HTML; candidate selection; glossary edits; optional ADR and parallel design",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/improve-codebase-architecture/SKILL.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/engineering/improve-codebase-architecture/SKILL.md",
+      "sha256": "552240a5ab5cec6b67c15dd1ad6e9f6962b1bca6ce870059a8c2713760c20392",
+      "line_markers": [
+        {
+          "marker": "Scope before",
+          "lines": [
+            20
+          ]
+        },
+        {
+          "marker": "spawn a sub-agent",
+          "lines": [
+            27
+          ]
+        },
+        {
+          "marker": "Side effects happen inline",
+          "lines": [
+            66
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "AI experience of friction is a heuristic, not measured risk"
+    },
+    {
+      "id": "M03",
+      "claim": "Deep module interface includes invariants ordering errors configuration performance; deletion test and two-adapter heuristic",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/codebase-design/SKILL.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/engineering/codebase-design/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/engineering/codebase-design/SKILL.md",
+      "sha256": "2c20617f87ec8af6a434859f381b2f061a69b530444e74eb39e78bb016a6d1e2",
+      "line_markers": [
+        {
+          "marker": "Interface**",
+          "lines": [
+            16,
+            99,
+            100,
+            101,
+            102
+          ]
+        },
+        {
+          "marker": "deletion test",
+          "lines": [
+            63
+          ]
+        },
+        {
+          "marker": "Two adapters",
+          "lines": [
+            65
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Heuristics can reward fake seams; no independent outcome benchmark"
+    },
+    {
+      "id": "M04",
+      "claim": "Dependency categories guide testing; replace shallow tests with interface tests",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/codebase-design/DEEPENING.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/engineering/codebase-design/DEEPENING.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/engineering/codebase-design/DEEPENING.md",
+      "sha256": "f3dd099ce99289bd213914d8ee3e2429b78309c3957ca4583f7659551b1d53c1",
+      "line_markers": [
+        {
+          "marker": "Old unit tests",
+          "lines": [
+            34
+          ]
+        },
+        {
+          "marker": "Local-substitutable",
+          "lines": [
+            13
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Deleting old tests requires coverage equivalence beyond this prompt"
+    },
+    {
+      "id": "M05",
+      "claim": "Optional design exploration requires 3+ independent subagents with different constraints",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/codebase-design/DESIGN-IT-TWICE.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/engineering/codebase-design/DESIGN-IT-TWICE.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/engineering/codebase-design/DESIGN-IT-TWICE.md",
+      "sha256": "52b52e75655a27aea59c6966b410bac82448968ad46ef1ebb9f07c274e3ae010",
+      "line_markers": [
+        {
+          "marker": "Spawn 3+",
+          "lines": [
+            21
+          ]
+        },
+        {
+          "marker": "constraints",
+          "lines": [
+            13,
+            15
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Diverse briefs are not independent business truth"
+    },
+    {
+      "id": "M06",
+      "claim": "One already-run red-capable loop precedes hypothesis; replay/property/differential options; regression seam must reach real bug",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/diagnosing-bugs/SKILL.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/engineering/diagnosing-bugs/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/engineering/diagnosing-bugs/SKILL.md",
+      "sha256": "9168404abda0967a5d32977e3498cd95fda6807018852f3de736a78357c82b40",
+      "line_markers": [
+        {
+          "marker": "No red-capable",
+          "lines": [
+            66
+          ]
+        },
+        {
+          "marker": "3–5 ranked",
+          "lines": [
+            90
+          ]
+        },
+        {
+          "marker": "correct seam",
+          "lines": [
+            116,
+            118,
+            120,
+            122
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Rigid ban on hypothesizing before runnable repro can obstruct production-only incidents; 90% claim unsupported here"
+    },
+    {
+      "id": "M07",
+      "claim": "Agreed seam, independent expectations, vertical red-green; explicit user seam confirmation; refactoring assigned to review",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/tdd/SKILL.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/engineering/tdd/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/engineering/tdd/SKILL.md",
+      "sha256": "93ea419b76e9caaf26153b828e984f7c3fb136f4caa67b14af95f32ea965a1cc",
+      "line_markers": [
+        {
+          "marker": "pre-agreed",
+          "lines": [
+            22
+          ]
+        },
+        {
+          "marker": "Tautological",
+          "lines": [
+            31
+          ]
+        },
+        {
+          "marker": "Refactoring is not",
+          "lines": [
+            38
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Red-green proves test sensitivity for this fault, not oracle correctness or all behavior"
+    },
+    {
+      "id": "M08",
+      "claim": "Fixed merge-base diff plus spec; separate standards/spec reviewers; missing spec reported",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/code-review/SKILL.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/engineering/code-review/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/engineering/code-review/SKILL.md",
+      "sha256": "47f4e52c21694def9c7c11cbfbf891ca35eac7a93e395797515be3c8a409ae50",
+      "line_markers": [
+        {
+          "marker": "git diff",
+          "lines": [
+            21
+          ]
+        },
+        {
+          "marker": "parallel sub-agents",
+          "lines": [
+            3,
+            11,
+            23
+          ]
+        },
+        {
+          "marker": "no spec available",
+          "lines": [
+            32
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Both reviewers can accept a wrong spec; three-dot HEAD diff excludes dirty work"
+    },
+    {
+      "id": "M09",
+      "claim": "Rounds/frontier, delegated fact finding, user decisions and final confirmation",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/productivity/grilling/SKILL.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/productivity/grilling/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/productivity/grilling/SKILL.md",
+      "sha256": "10ff989e7498b23b5acb49d5048f11dcd906757d2f79c5cdf8a00001381296f2",
+      "line_markers": [
+        {
+          "marker": "frontier",
+          "lines": [
+            8,
+            24,
+            26,
+            28
+          ]
+        },
+        {
+          "marker": "Do not act",
+          "lines": [
+            28
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Unbounded interview is excessive for already-authorized bounded fixes"
+    },
+    {
+      "id": "M10",
+      "claim": "Inline glossary update; ADR only irreversible surprising real tradeoff",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/domain-modeling/SKILL.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/engineering/domain-modeling/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/engineering/domain-modeling/SKILL.md",
+      "sha256": "7b925d7b1e341a2eeae33ad68a8a8c0ab889a38ddd22a7598e4c240e5a7556a3",
+      "line_markers": [
+        {
+          "marker": "Update GLOSSARY",
+          "lines": [
+            60
+          ]
+        },
+        {
+          "marker": "Offer ADRs sparingly",
+          "lines": [
+            66
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Latest GLOSSARY conflicts with local CONTEXT convention without adaptation"
+    },
+    {
+      "id": "M11",
+      "claim": "One design question; throwaway no tests/persistence default; commit to branch and issue pointer",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/prototype/SKILL.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/engineering/prototype/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/engineering/prototype/SKILL.md",
+      "sha256": "714de632d116bb73f65cdb5a882db15b9369a6713b9a47c0fad827848f0bfbe3",
+      "line_markers": [
+        {
+          "marker": "Skip the polish",
+          "lines": [
+            24
+          ]
+        },
+        {
+          "marker": "Capture it when done",
+          "lines": [
+            26
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Prototype demonstrates a concept, not production reliability"
+    },
+    {
+      "id": "M12",
+      "claim": "Setup writes repo agent docs and tracker vocabulary after drafts and confirmation",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/setup-matt-pocock-skills/SKILL.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/engineering/setup-matt-pocock-skills/SKILL.md",
+      "sha256": "9a0c21694be19fa3eefc39343355d3af7414716ba364882c7432c2f821eac3e9",
+      "line_markers": [
+        {
+          "marker": "Confirm and edit",
+          "lines": [
+            63
+          ]
+        },
+        {
+          "marker": "AGENTS.md",
+          "lines": [
+            24,
+            67,
+            77,
+            80
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "No need to rerun in configured Hima; update could alter authority"
+    },
+    {
+      "id": "M13",
+      "claim": "Implementation uses TDD and review and commits current branch",
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/implement/SKILL.md",
+      "fixedSHA": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "date": "2026-09-29T12:37:40Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/engineering/implement/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/mattpocock--skills/source/skills/engineering/implement/SKILL.md",
+      "sha256": "6d3fd9e83b8f36e5213854779db49b256a457a7ebb4a503e53fa7dcff696adc3",
+      "line_markers": [
+        {
+          "marker": "Commit your work",
+          "lines": [
+            15
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "It is a mutating workflow, not an audit"
+    },
+    {
+      "id": "L01",
+      "claim": "Local refactor is byte-identical to upstream; phase approvals, line-count smells, micro-change/tests/commits",
+      "url": "https://github.com/luongnv89/claude-howto/blob/556af8d52327525d241f17574ef3f11976982fc8/03-skills/refactor/SKILL.md",
+      "fixedSHA": "556af8d52327525d241f17574ef3f11976982fc8",
+      "date": "2026-09-30T12:33:22Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "03-skills/refactor/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/luongnv89--claude-howto/source/03-skills/refactor/SKILL.md",
+      "sha256": "459b8b4aacdcb760b3f0abe68eefec780c7b8af3b98ca274670ca11cbc59bc38",
+      "line_markers": [
+        {
+          "marker": "User approval",
+          "lines": [
+            18
+          ]
+        },
+        {
+          "marker": "30-50",
+          "lines": [
+            147
+          ]
+        },
+        {
+          "marker": "Commit",
+          "lines": [
+            253,
+            272,
+            281,
+            314
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Source matching establishes content identity not installer provenance; metrics are proxy not correctness"
+    },
+    {
+      "id": "L02",
+      "claim": "Local clean-architecture byte-identical; seven-row diagnostic mapped to 10-point score and dependency inversion principles",
+      "url": "https://github.com/wondelai/skills/blob/c172996495bed0fcd26896a9416b2093fd7073f0/clean-architecture/SKILL.md",
+      "fixedSHA": "c172996495bed0fcd26896a9416b2093fd7073f0",
+      "date": "2026-09-10T21:47:58Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "clean-architecture/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/wondelai--skills/source/clean-architecture/SKILL.md",
+      "sha256": "fc9fe201ae040df80164bc7a407507882783e2c8cdbc0379a1fbdcf3719e4446",
+      "line_markers": [
+        {
+          "marker": "Scoring",
+          "lines": [
+            18
+          ]
+        },
+        {
+          "marker": "Goal: 10/10",
+          "lines": [
+            20
+          ]
+        },
+        {
+          "marker": "Premature boundaries",
+          "lines": [
+            152
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Book-derived heuristic checklist not Robert Martin endorsement or calibrated quality score"
+    },
+    {
+      "id": "S01",
+      "claim": "Broad auto-trigger requires skill invocation before any action when 1% applicable; user authority takes precedence",
+      "url": "https://github.com/obra/superpowers/blob/8ca22dba9a94f28898bbce59f2537ff4d87c747d/skills/using-superpowers/SKILL.md",
+      "fixedSHA": "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+      "date": "2026-09-25T18:06:27Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/using-superpowers/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/obra--superpowers/source/skills/using-superpowers/SKILL.md",
+      "sha256": "82c5c8866ad7f5dd4440ce66bd7806ba48a2f13771beae5cf112e53f08fe36ba",
+      "line_markers": [
+        {
+          "marker": "1% chance",
+          "lines": [
+            11
+          ]
+        },
+        {
+          "marker": "User Instructions",
+          "lines": [
+            63
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Prompt pressure is not deterministic enforcement"
+    },
+    {
+      "id": "S02",
+      "claim": "Three paths spike/bounded/architectural; all require explicit approval; full path writes and commits spec",
+      "url": "https://github.com/obra/superpowers/blob/8ca22dba9a94f28898bbce59f2537ff4d87c747d/skills/brainstorming/SKILL.md",
+      "fixedSHA": "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+      "date": "2026-09-25T18:06:27Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/brainstorming/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/obra--superpowers/source/skills/brainstorming/SKILL.md",
+      "sha256": "a32d2255354775aa124855aa7100cf276bea096fff4ebb3a0edf57be216e6c72",
+      "line_markers": [
+        {
+          "marker": "Three Paths",
+          "lines": [
+            58
+          ]
+        },
+        {
+          "marker": "HARD-GATE",
+          "lines": [
+            38,
+            56
+          ]
+        },
+        {
+          "marker": "Commit the design",
+          "lines": [
+            244
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Lighter bounded path exists, so not accurate to call all changes heavy-doc"
+    },
+    {
+      "id": "S03",
+      "claim": "Exact files/interfaces/tests and risk focus; smaller reviewable tasks; user chooses native or subagent execution",
+      "url": "https://github.com/obra/superpowers/blob/8ca22dba9a94f28898bbce59f2537ff4d87c747d/skills/writing-plans/SKILL.md",
+      "fixedSHA": "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+      "date": "2026-09-25T18:06:27Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/writing-plans/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/obra--superpowers/source/skills/writing-plans/SKILL.md",
+      "sha256": "a6c67c1900064347c2a329990dd3c555657c51c3ec53b259a08aa01a2c26139a",
+      "line_markers": [
+        {
+          "marker": "Task Right-Sizing",
+          "lines": [
+            34
+          ]
+        },
+        {
+          "marker": "Review Focus",
+          "lines": [
+            77,
+            173
+          ]
+        },
+        {
+          "marker": "Execution Handoff",
+          "lines": [
+            179
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Plan detail can anchor implementation and tests on the same incorrect premise"
+    },
+    {
+      "id": "S04",
+      "claim": "Fresh task implementer/reviewer, ledger, scoped rereview; 5-round cap, model upgrade rounds 4-5, controller adjudication",
+      "url": "https://github.com/obra/superpowers/blob/8ca22dba9a94f28898bbce59f2537ff4d87c747d/skills/subagent-driven-development/SKILL.md",
+      "fixedSHA": "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+      "date": "2026-09-25T18:06:27Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/subagent-driven-development/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/obra--superpowers/source/skills/subagent-driven-development/SKILL.md",
+      "sha256": "8dde5589ee083fb4999106d116f01c8fdaf3116a8a9813fdedeb80329de49046",
+      "line_markers": [
+        {
+          "marker": "Model Selection",
+          "lines": [
+            184,
+            382,
+            452
+          ]
+        },
+        {
+          "marker": "Rounds 4-5",
+          "lines": [
+            381
+          ]
+        },
+        {
+          "marker": "Five rounds",
+          "lines": [
+            373
+          ]
+        },
+        {
+          "marker": "Never dispatch multiple",
+          "lines": [
+            282
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Thresholds and model selection conflict with Hima evidence-based policy; no outcome experiment in this source"
+    },
+    {
+      "id": "S05",
+      "claim": "Root cause before fixes; single hypothesis, test, recheck; 3 failures imply architecture discussion",
+      "url": "https://github.com/obra/superpowers/blob/8ca22dba9a94f28898bbce59f2537ff4d87c747d/skills/systematic-debugging/SKILL.md",
+      "fixedSHA": "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+      "date": "2026-09-25T18:06:27Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/systematic-debugging/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/obra--superpowers/source/skills/systematic-debugging/SKILL.md",
+      "sha256": "808fc5717aa88ad65efff312b11c186294d3e6ee301afb584e2f86599b137787",
+      "line_markers": [
+        {
+          "marker": "If 3+",
+          "lines": [
+            198,
+            231
+          ]
+        },
+        {
+          "marker": "95%",
+          "lines": [
+            275
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Count is not causal evidence; source includes unsubstantiated 95% assertion"
+    },
+    {
+      "id": "S06",
+      "claim": "Evidence before completion, same-message full fresh command required",
+      "url": "https://github.com/obra/superpowers/blob/8ca22dba9a94f28898bbce59f2537ff4d87c747d/skills/verification-before-completion/SKILL.md",
+      "fixedSHA": "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+      "date": "2026-09-25T18:06:27Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/verification-before-completion/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/obra--superpowers/source/skills/verification-before-completion/SKILL.md",
+      "sha256": "2befe7fc55bcadaa3d97dd9e8efeb633d2561c0ebe74c5a8b17c4d9e7e4520b3",
+      "line_markers": [
+        {
+          "marker": "this message",
+          "lines": [
+            20
+          ]
+        },
+        {
+          "marker": "FULL command",
+          "lines": [
+            28
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Literal freshness can waste expensive EDA work; immutable matching evidence is stronger than repeated identical run"
+    },
+    {
+      "id": "S07",
+      "claim": "Plugin declares SessionStart command hook on startup clear compact",
+      "url": "https://github.com/obra/superpowers/blob/8ca22dba9a94f28898bbce59f2537ff4d87c747d/hooks/hooks.json",
+      "fixedSHA": "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+      "date": "2026-09-25T18:06:27Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "hooks/hooks.json",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/obra--superpowers/source/hooks/hooks.json",
+      "sha256": "47fd72cc8bedf31c72702b35b4ed7bab670294d658c4ce518330337525a3798b",
+      "line_markers": [
+        {
+          "marker": "SessionStart",
+          "lines": [
+            3
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Hook declaration not tested installation in Hima"
+    },
+    {
+      "id": "S08",
+      "claim": "Maintainer tests skill loading and expected agent behavior",
+      "url": "https://github.com/obra/superpowers/blob/8ca22dba9a94f28898bbce59f2537ff4d87c747d/tests/claude-code/README.md",
+      "fixedSHA": "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+      "date": "2026-09-25T18:06:27Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "tests/claude-code/README.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/obra--superpowers/source/tests/claude-code/README.md",
+      "sha256": "df8cc7a1709b5fd881f41f6e7afc180f1b686c14b97624c27e4957a174c09911",
+      "line_markers": [
+        {
+          "marker": "follows them as expected",
+          "lines": [
+            7
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Test existence not benchmark proving brownfield defect reduction"
+    },
+    {
+      "id": "K01",
+      "claim": "Full SDD specifies, review gate, plan, review gate, tasks, implementation",
+      "url": "https://github.com/github/spec-kit/blob/e1fa857a7f536b22760d48c1aa9ace41df0fd1dc/workflows/speckit/workflow.yml",
+      "fixedSHA": "e1fa857a7f536b22760d48c1aa9ace41df0fd1dc",
+      "date": "2026-10-02T21:53:33Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "workflows/speckit/workflow.yml",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/github--spec-kit/source/workflows/speckit/workflow.yml",
+      "sha256": "177761c5e7df28126beea043b5cb45aeaf7958090c022dc11ac71399422fcfbc",
+      "line_markers": [
+        {
+          "marker": "review-spec",
+          "lines": [
+            46
+          ]
+        },
+        {
+          "marker": "review-plan",
+          "lines": [
+            58
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Gates review documents; do not establish valid requirements"
+    },
+    {
+      "id": "K02",
+      "claim": "Test task creation explicitly optional unless spec or user requests TDD",
+      "url": "https://github.com/github/spec-kit/blob/e1fa857a7f536b22760d48c1aa9ace41df0fd1dc/templates/commands/tasks.md",
+      "fixedSHA": "e1fa857a7f536b22760d48c1aa9ace41df0fd1dc",
+      "date": "2026-10-02T21:53:33Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "templates/commands/tasks.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/github--spec-kit/source/templates/commands/tasks.md",
+      "sha256": "2f9176c6e7c23d2a83d2bd018ffa1e67aee977389a57f2a3fe35fe987b425944",
+      "line_markers": [
+        {
+          "marker": "Tests are OPTIONAL",
+          "lines": [
+            147
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Do not claim spec-kit guarantees executable regression tests"
+    },
+    {
+      "id": "K03",
+      "claim": "Reads plan/tasks; writes code/ignore files and task checkboxes; registered mandatory hooks execute",
+      "url": "https://github.com/github/spec-kit/blob/e1fa857a7f536b22760d48c1aa9ace41df0fd1dc/templates/commands/implement.md",
+      "fixedSHA": "e1fa857a7f536b22760d48c1aa9ace41df0fd1dc",
+      "date": "2026-10-02T21:53:33Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "templates/commands/implement.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/github--spec-kit/source/templates/commands/implement.md",
+      "sha256": "feab334232940cfd4ecbcdae41cf63ccb7d581a60380230837385f296f7b49bd",
+      "line_markers": [
+        {
+          "marker": "REQUIRED**: Create/verify",
+          "lines": [
+            100
+          ]
+        },
+        {
+          "marker": "Mandatory Post-Execution Hooks",
+          "lines": [
+            179,
+            221
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Configured hooks can expand side effects; source not execution receipt"
+    },
+    {
+      "id": "K04",
+      "claim": "Separate explicit command creates GitHub Issues from tasks with deduplication",
+      "url": "https://github.com/github/spec-kit/blob/e1fa857a7f536b22760d48c1aa9ace41df0fd1dc/templates/commands/taskstoissues.md",
+      "fixedSHA": "e1fa857a7f536b22760d48c1aa9ace41df0fd1dc",
+      "date": "2026-10-02T21:53:33Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "templates/commands/taskstoissues.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/github--spec-kit/source/templates/commands/taskstoissues.md",
+      "sha256": "a4298d09f8737bb41abbad481589ecfa277cb222d042c7f244194a3b51828900",
+      "line_markers": [
+        {
+          "marker": "create a new issue",
+          "lines": [
+            68
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Not a default side effect of ordinary specify/plan"
+    },
+    {
+      "id": "K05",
+      "claim": "Lean preset reduces implementation instructions to context/tasks/validation",
+      "url": "https://github.com/github/spec-kit/blob/e1fa857a7f536b22760d48c1aa9ace41df0fd1dc/presets/lean/commands/speckit.implement.md",
+      "fixedSHA": "e1fa857a7f536b22760d48c1aa9ace41df0fd1dc",
+      "date": "2026-10-02T21:53:33Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "presets/lean/commands/speckit.implement.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/github--spec-kit/source/presets/lean/commands/speckit.implement.md",
+      "sha256": "d50654ebfad997092a939d7020e546c48be47aa676c7ddeb90eb70b5cf20767c",
+      "line_markers": [
+        {
+          "marker": "Validate",
+          "lines": [
+            22
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Less ceremony also removes detailed verification safeguards"
+    },
+    {
+      "id": "K06",
+      "claim": "Brownfield bugfix workflow assess then human gate then fix/test exists",
+      "url": "https://github.com/github/spec-kit/blob/e1fa857a7f536b22760d48c1aa9ace41df0fd1dc/workflows/bugfix/workflow.yml",
+      "fixedSHA": "e1fa857a7f536b22760d48c1aa9ace41df0fd1dc",
+      "date": "2026-10-02T21:53:33Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "workflows/bugfix/workflow.yml",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/github--spec-kit/source/workflows/bugfix/workflow.yml",
+      "sha256": "d3372bdee13805ef852686d160bdfa43ecbce56411459cd7c4ad01c712a63feb",
+      "line_markers": [
+        {
+          "marker": "review-assessment",
+          "lines": [
+            34
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Does not show controlled effectiveness"
+    },
+    {
+      "id": "K07",
+      "claim": "Feature specification creation; branch creation optional via configured git hook",
+      "url": "https://github.com/github/spec-kit/blob/e1fa857a7f536b22760d48c1aa9ace41df0fd1dc/templates/commands/specify.md",
+      "fixedSHA": "e1fa857a7f536b22760d48c1aa9ace41df0fd1dc",
+      "date": "2026-10-02T21:53:33Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "templates/commands/specify.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/github--spec-kit/source/templates/commands/specify.md",
+      "sha256": "7d5a88e6afa504f1d16503df6bf8664f30e3df812b83f9a456a2eaccaeb638ee",
+      "line_markers": [
+        {
+          "marker": "Branch creation** (optional",
+          "lines": [
+            74
+          ]
+        },
+        {
+          "marker": "Spec directory and file creation",
+          "lines": [
+            278
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Older claim that spec-kit always forces branch creation is stale"
+    },
+    {
+      "id": "O01",
+      "claim": "Default proposal/specs/design/tasks graph; delta requirements; pure refactors can skip_specs; design conditional",
+      "url": "https://github.com/Fission-AI/OpenSpec/blob/2500d6da971336167548b53731a35b2127df35ac/schemas/spec-driven/schema.yaml",
+      "fixedSHA": "2500d6da971336167548b53731a35b2127df35ac",
+      "date": "2026-10-02T17:34:46Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "schemas/spec-driven/schema.yaml",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/Fission-AI--OpenSpec/source/schemas/spec-driven/schema.yaml",
+      "sha256": "9ce2b94c3d9d7030293ba6964a81d2b2ee4b68b0fb6afd333dcc065134d04bc4",
+      "line_markers": [
+        {
+          "marker": "skip_specs",
+          "lines": [
+            39,
+            81,
+            83
+          ]
+        },
+        {
+          "marker": "When to include design.md",
+          "lines": [
+            159
+          ]
+        },
+        {
+          "marker": "Each task MUST state",
+          "lines": [
+            214
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Validator checks artifact structure and declared conditions not running software"
+    },
+    {
+      "id": "O02",
+      "claim": "Propose creates transitive artifacts and requires new request before apply",
+      "url": "https://github.com/Fission-AI/OpenSpec/blob/2500d6da971336167548b53731a35b2127df35ac/skills/openspec-propose/SKILL.md",
+      "fixedSHA": "2500d6da971336167548b53731a35b2127df35ac",
+      "date": "2026-10-02T17:34:46Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/openspec-propose/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/Fission-AI--OpenSpec/source/skills/openspec-propose/SKILL.md",
+      "sha256": "7848351e7c513a25c32315b466b224ed228ceb43c75b914c145702aa9957ff0b",
+      "line_markers": [
+        {
+          "marker": "new user request",
+          "lines": [
+            14,
+            168
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Does not carry combined initial implementation authorization across planning boundary"
+    },
+    {
+      "id": "O03",
+      "claim": "Apply edits code/tasks; root guard prevents unintended initialization; context guidance explicitly prompt contracts not enforced checks",
+      "url": "https://github.com/Fission-AI/OpenSpec/blob/2500d6da971336167548b53731a35b2127df35ac/skills/openspec-apply-change/SKILL.md",
+      "fixedSHA": "2500d6da971336167548b53731a35b2127df35ac",
+      "date": "2026-10-02T17:34:46Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/openspec-apply-change/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/Fission-AI--OpenSpec/source/skills/openspec-apply-change/SKILL.md",
+      "sha256": "40fc0655ae650213a130f376eed1475527d6c65cdc32973754449776a3227152",
+      "line_markers": [
+        {
+          "marker": "prompt-level behavior contracts",
+          "lines": [
+            84
+          ]
+        },
+        {
+          "marker": "root\": null",
+          "lines": [
+            16,
+            18
+          ]
+        },
+        {
+          "marker": "Implement tasks",
+          "lines": [
+            3,
+            12,
+            104
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Task checkbox progress is not actual correctness"
+    },
+    {
+      "id": "O04",
+      "claim": "Verification is advisory completeness/correctness/coherence; searches code/test existence and reports not verified",
+      "url": "https://github.com/Fission-AI/OpenSpec/blob/2500d6da971336167548b53731a35b2127df35ac/skills/openspec-verify-change/SKILL.md",
+      "fixedSHA": "2500d6da971336167548b53731a35b2127df35ac",
+      "date": "2026-10-02T17:34:46Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/openspec-verify-change/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/Fission-AI--OpenSpec/source/skills/openspec-verify-change/SKILL.md",
+      "sha256": "890fe87bd7cade6490330a2a7a538859d9e1e98b36f8e275f0a99ef1f3a8bd9c",
+      "line_markers": [
+        {
+          "marker": "Verification is advisory",
+          "lines": [
+            72
+          ]
+        },
+        {
+          "marker": "Verification Heuristics",
+          "lines": [
+            204
+          ]
+        },
+        {
+          "marker": "tests exist",
+          "lines": [
+            135
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "No mandatory execution of tests; mapping/inference not executable oracle"
+    },
+    {
+      "id": "O05",
+      "claim": "Archive syncs specs and moves change; warns/confirms incomplete tasks rather than always blocks",
+      "url": "https://github.com/Fission-AI/OpenSpec/blob/2500d6da971336167548b53731a35b2127df35ac/skills/openspec-archive-change/SKILL.md",
+      "fixedSHA": "2500d6da971336167548b53731a35b2127df35ac",
+      "date": "2026-10-02T17:34:46Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/openspec-archive-change/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/Fission-AI--OpenSpec/source/skills/openspec-archive-change/SKILL.md",
+      "sha256": "b080e65449e9895fb63964c811168943bf99cb131a378b6a9937ed519ae4d37f",
+      "line_markers": [
+        {
+          "marker": "Don’t block archive",
+          "lines": []
+        },
+        {
+          "marker": "Don't block archive",
+          "lines": [
+            210
+          ]
+        },
+        {
+          "marker": "Perform the archive",
+          "lines": [
+            168
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Archived is not product sign-off"
+    },
+    {
+      "id": "C01",
+      "claim": "Only solved verified non-obvious durable learning qualifies; default Full; docs plus CONCEPTS and consented instruction edits",
+      "url": "https://github.com/EveryInc/compound-engineering-plugin/blob/9af474a70e7f2a844338519ad9e92aafbd92d4fb/skills/ce-compound/SKILL.md",
+      "fixedSHA": "9af474a70e7f2a844338519ad9e92aafbd92d4fb",
+      "date": "2026-10-02T03:14:12Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/ce-compound/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/EveryInc--compound-engineering-plugin/source/skills/ce-compound/SKILL.md",
+      "sha256": "951669e685c804a16138736c4bf132ee5f6ed9bbee3e3ccd5cbb096dd253b5d6",
+      "line_markers": [
+        {
+          "marker": "counterfactual",
+          "lines": [
+            21,
+            24
+          ]
+        },
+        {
+          "marker": "Default to **Full**",
+          "lines": [
+            64
+          ]
+        },
+        {
+          "marker": "Write boundary",
+          "lines": [
+            56
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Document usefulness still needs later retrieval/use evidence"
+    },
+    {
+      "id": "C02",
+      "claim": "Explicit lightweight avoids agents, keeps deterministic claims/frontmatter checks, can update existing CONCEPTS",
+      "url": "https://github.com/EveryInc/compound-engineering-plugin/blob/9af474a70e7f2a844338519ad9e92aafbd92d4fb/skills/ce-compound/references/lightweight.md",
+      "fixedSHA": "9af474a70e7f2a844338519ad9e92aafbd92d4fb",
+      "date": "2026-10-02T03:14:12Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/ce-compound/references/lightweight.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/EveryInc--compound-engineering-plugin/source/skills/ce-compound/references/lightweight.md",
+      "sha256": "c2ac10ddef96ff076a38595cdee769576108d205c99f0e986d4face704a50c40",
+      "line_markers": [
+        {
+          "marker": "No subagents",
+          "lines": [
+            52
+          ]
+        },
+        {
+          "marker": "Mechanical claims check",
+          "lines": [
+            26
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Skips semantic duplicate detection/grounding; still a write workflow"
+    },
+    {
+      "id": "C03",
+      "claim": "Risk selected reviewers, depth gate, external peer route under disclosure, validation/merge/report agents; report-only default no push",
+      "url": "https://github.com/EveryInc/compound-engineering-plugin/blob/9af474a70e7f2a844338519ad9e92aafbd92d4fb/skills/ce-code-review/SKILL.md",
+      "fixedSHA": "9af474a70e7f2a844338519ad9e92aafbd92d4fb",
+      "date": "2026-10-02T03:14:12Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/ce-code-review/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/EveryInc--compound-engineering-plugin/source/skills/ce-code-review/SKILL.md",
+      "sha256": "4dbdc4485af006035e1a8622735e58eb4298be69b404b1241e748b0057a7e9ac",
+      "line_markers": [
+        {
+          "marker": "cross-model",
+          "lines": [
+            31,
+            32,
+            40
+          ]
+        },
+        {
+          "marker": "Report-only by default",
+          "lines": [
+            37
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Multiple reviewers or different model still share spec and can share blindspots; external code egress requires scope review"
+    },
+    {
+      "id": "C04",
+      "claim": "Engine route, canonical host verification, return-to-caller mode omits shipping; standalone shipping invokes review",
+      "url": "https://github.com/EveryInc/compound-engineering-plugin/blob/9af474a70e7f2a844338519ad9e92aafbd92d4fb/skills/ce-work/SKILL.md",
+      "fixedSHA": "9af474a70e7f2a844338519ad9e92aafbd92d4fb",
+      "date": "2026-10-02T03:14:12Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/ce-work/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/EveryInc--compound-engineering-plugin/source/skills/ce-work/SKILL.md",
+      "sha256": "c9b392620e8ae856882cd5a493b1f0e5941aa06935a73578846e703e0f00ce00",
+      "line_markers": [
+        {
+          "marker": "Return-to-Caller Mode",
+          "lines": [
+            12,
+            30,
+            36,
+            54,
+            56,
+            58
+          ]
+        },
+        {
+          "marker": "shipping",
+          "lines": [
+            3,
+            12,
+            13,
+            22,
+            52,
+            54,
+            58,
+            60,
+            62
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Whole package duplicates existing Hima orchestration and model authority"
+    },
+    {
+      "id": "C05",
+      "claim": "Causal chain, convergent/divergent distinction, existing test home; pipeline can commit/push; standalone conditional PR shipping",
+      "url": "https://github.com/EveryInc/compound-engineering-plugin/blob/9af474a70e7f2a844338519ad9e92aafbd92d4fb/skills/ce-debug/SKILL.md",
+      "fixedSHA": "9af474a70e7f2a844338519ad9e92aafbd92d4fb",
+      "date": "2026-10-02T03:14:12Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/ce-debug/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/EveryInc--compound-engineering-plugin/source/skills/ce-debug/SKILL.md",
+      "sha256": "82540da83cbe42ff462a75557752b5f4313e5fe0fa89d5bb047c29eec6de5a80",
+      "line_markers": [
+        {
+          "marker": "Causal chain gate",
+          "lines": [
+            58
+          ]
+        },
+        {
+          "marker": "Ships**",
+          "lines": [
+            112
+          ]
+        },
+        {
+          "marker": "2-3 hypotheses",
+          "lines": [
+            11
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Do not accidentally treat debug as read-only; retry thresholds not causal evidence"
+    },
+    {
+      "id": "C06",
+      "claim": "Independent candidates/judge with fixed brief, criteria, authority and budget; conceptual not runtime proof",
+      "url": "https://github.com/EveryInc/compound-engineering-plugin/blob/9af474a70e7f2a844338519ad9e92aafbd92d4fb/skills/ce-bakeoff/SKILL.md",
+      "fixedSHA": "9af474a70e7f2a844338519ad9e92aafbd92d4fb",
+      "date": "2026-10-02T03:14:12Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/ce-bakeoff/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/EveryInc--compound-engineering-plugin/source/skills/ce-bakeoff/SKILL.md",
+      "sha256": "d831556a4cfdb2ea2aabbc792062d319463e10b46311285a17ab388f39653bcc",
+      "line_markers": [
+        {
+          "marker": "Agreement is not proof",
+          "lines": [
+            36
+          ]
+        },
+        {
+          "marker": "Runtime claims require experiments",
+          "lines": [
+            18
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "No default experiment or business oracle"
+    },
+    {
+      "id": "C07",
+      "claim": "Measured baseline, fixed spec, isolated keep/revert experiments and spending/stop gates",
+      "url": "https://github.com/EveryInc/compound-engineering-plugin/blob/9af474a70e7f2a844338519ad9e92aafbd92d4fb/skills/ce-optimize/SKILL.md",
+      "fixedSHA": "9af474a70e7f2a844338519ad9e92aafbd92d4fb",
+      "date": "2026-10-02T03:14:12Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/ce-optimize/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/EveryInc--compound-engineering-plugin/source/skills/ce-optimize/SKILL.md",
+      "sha256": "942ff8ce14c4f2b9a44891631ed2a418d26319df23beb077460bf040bbbe2a9b",
+      "line_markers": [
+        {
+          "marker": "measure, write, verify",
+          "lines": [
+            43
+          ]
+        },
+        {
+          "marker": "User approval gate",
+          "lines": [
+            56
+          ]
+        },
+        {
+          "marker": "stopping",
+          "lines": [
+            13,
+            56
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Needs valid immutable evaluator; metric gaming and operational cost remain"
+    },
+    {
+      "id": "C08",
+      "claim": "ce-proof is hosted document publishing, not correctness proof",
+      "url": "https://github.com/EveryInc/compound-engineering-plugin/blob/9af474a70e7f2a844338519ad9e92aafbd92d4fb/skills/ce-proof/SKILL.md",
+      "fixedSHA": "9af474a70e7f2a844338519ad9e92aafbd92d4fb",
+      "date": "2026-10-02T03:14:12Z",
+      "retrieved_at": "2026-10-03 UTC",
+      "location": "skills/ce-proof/SKILL.md",
+      "local_snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/EveryInc--compound-engineering-plugin/source/skills/ce-proof/SKILL.md",
+      "sha256": "80cc09158db0a55718ac169fdd38c161af43b0bf1a38ab39d6c24d693dabe7e2",
+      "line_markers": [
+        {
+          "marker": "Collaborative Markdown Editor",
+          "lines": [
+            11
+          ]
+        }
+      ],
+      "evidence_level": "documented mechanism",
+      "limit": "Name alone should not drive skill selection"
+    }
+  ],
+  "local_skills": [
+    {
+      "name": "ask-matt",
+      "actual_path": "/Users/lluzi/.agents/skills/ask-matt/SKILL.md",
+      "sha256": "b25d86fb36b1d294eeead5d7db529f86135f9671f2afcd607579a63bb2213769",
+      "snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/local/ask-matt/SKILL.md",
+      "original_install_commit": "not recorded in inspected lock",
+      "catalog_available": false
+    },
+    {
+      "name": "clean-architecture",
+      "actual_path": "/Users/lluzi/.codex/skills/clean-architecture/SKILL.md",
+      "sha256": "fc9fe201ae040df80164bc7a407507882783e2c8cdbc0379a1fbdcf3719e4446",
+      "snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/local/clean-architecture/SKILL.md",
+      "original_install_commit": "not recorded in inspected lock",
+      "catalog_available": true
+    },
+    {
+      "name": "code-review",
+      "actual_path": "/Users/lluzi/.agents/skills/code-review/SKILL.md",
+      "sha256": "47f4e52c21694def9c7c11cbfbf891ca35eac7a93e395797515be3c8a409ae50",
+      "snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/local/code-review/SKILL.md",
+      "original_install_commit": "not recorded in inspected lock",
+      "catalog_available": true
+    },
+    {
+      "name": "codebase-design",
+      "actual_path": "/Users/lluzi/.agents/skills/codebase-design/SKILL.md",
+      "sha256": "2c20617f87ec8af6a434859f381b2f061a69b530444e74eb39e78bb016a6d1e2",
+      "snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/local/codebase-design/SKILL.md",
+      "original_install_commit": "not recorded in inspected lock",
+      "catalog_available": true
+    },
+    {
+      "name": "diagnosing-bugs",
+      "actual_path": "/Users/lluzi/.agents/skills/diagnosing-bugs/SKILL.md",
+      "sha256": "77f3cf31bc99b2f49af943222526531fcc9fc41d047626d3640e875e85af3e84",
+      "snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/local/diagnosing-bugs/SKILL.md",
+      "original_install_commit": "not recorded in inspected lock",
+      "catalog_available": true
+    },
+    {
+      "name": "domain-modeling",
+      "actual_path": "/Users/lluzi/.agents/skills/domain-modeling/SKILL.md",
+      "sha256": "327a2b50620e2fd70abc6893cd6965e76b20f8d0adb0dc2c8d5eb3845efb643e",
+      "snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/local/domain-modeling/SKILL.md",
+      "original_install_commit": "not recorded in inspected lock",
+      "catalog_available": true
+    },
+    {
+      "name": "grilling",
+      "actual_path": "/Users/lluzi/.agents/skills/grilling/SKILL.md",
+      "sha256": "10ff989e7498b23b5acb49d5048f11dcd906757d2f79c5cdf8a00001381296f2",
+      "snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/local/grilling/SKILL.md",
+      "original_install_commit": "not recorded in inspected lock",
+      "catalog_available": true
+    },
+    {
+      "name": "improve-codebase-architecture",
+      "actual_path": "/Users/lluzi/.agents/skills/improve-codebase-architecture/SKILL.md",
+      "sha256": "d1ac25511a936ff4250a48dbcefda363837d6bb9321b3cba73df99fa37270a75",
+      "snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/local/improve-codebase-architecture/SKILL.md",
+      "original_install_commit": "not recorded in inspected lock",
+      "catalog_available": false
+    },
+    {
+      "name": "prototype",
+      "actual_path": "/Users/lluzi/.agents/skills/prototype/SKILL.md",
+      "sha256": "714de632d116bb73f65cdb5a882db15b9369a6713b9a47c0fad827848f0bfbe3",
+      "snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/local/prototype/SKILL.md",
+      "original_install_commit": "not recorded in inspected lock",
+      "catalog_available": true
+    },
+    {
+      "name": "refactor",
+      "actual_path": "/Users/lluzi/.codex/skills/refactor/SKILL.md",
+      "sha256": "459b8b4aacdcb760b3f0abe68eefec780c7b8af3b98ca274670ca11cbc59bc38",
+      "snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/local/refactor/SKILL.md",
+      "original_install_commit": "not recorded in inspected lock",
+      "catalog_available": true
+    },
+    {
+      "name": "tdd",
+      "actual_path": "/Users/lluzi/.agents/skills/tdd/SKILL.md",
+      "sha256": "cb01f66bebfaa25fa1f88e6b7e769cd9fd9f35b1120b8563749820738814c927",
+      "snapshot": ".hima-tmp/ai-engineering-methods-research/skills-raw/local/tdd/SKILL.md",
+      "original_install_commit": "not recorded in inspected lock",
+      "catalog_available": true
+    }
+  ],
+  "limitations": [
+    "No Hima skill effectiveness trial conducted.",
+    "MIT verified by fetched license files; not legal advice.",
+    "GitHub latest release metadata does not imply inspected default-branch SHA equals release tag.",
+    "Local hashes establish current content; Matt lock folder hash is not asserted to be a Git commit."
+  ]
+}

@@ -1,0 +1,327 @@
+{
+  "method": "GET all unique HTTP(S) links in final report; local fixed-source verification for private repo; HTTP success does not establish semantic support",
+  "report_path": ".hima-tmp/ai-engineering-methods-research/report.zh-CN.md",
+  "results": [
+    {
+      "url": "https://arxiv.org/abs/2507.02778v3",
+      "http_status": 200,
+      "final_url": "https://arxiv.org/abs/2507.02778v3",
+      "title": "[2507.02778v3] Self-Correction Bench: Uncovering and Addressing the Self-Correction Blind Spot in Large Language Models",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:19.888159+00:00"
+    },
+    {
+      "url": "https://arxiv.org/html/2510.09907v1",
+      "http_status": 200,
+      "final_url": "https://arxiv.org/html/2510.09907v1",
+      "title": "Agentic Property-Based Testing:Finding Bugs Across the Python Ecosystem",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:20.089585+00:00"
+    },
+    {
+      "url": "https://arxiv.org/html/2601.20404v2",
+      "http_status": 200,
+      "final_url": "https://arxiv.org/html/2601.20404v2",
+      "title": "On the Impact of AGENTS.md Files on the Efficiency of AI Coding Agents",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:19.822456+00:00"
+    },
+    {
+      "url": "https://arxiv.org/html/2602.11988v3",
+      "http_status": 200,
+      "final_url": "https://arxiv.org/html/2602.11988v3",
+      "title": "Evaluating AGENTS.md:Are Repository-Level Context Files Helpful for Coding Agents?",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:19.840871+00:00"
+    },
+    {
+      "url": "https://arxiv.org/html/2602.12670v4",
+      "http_status": 200,
+      "final_url": "https://arxiv.org/html/2602.12670v4",
+      "title": "SkillsBench: Benchmarking How Well Agent Skills Work Across Diverse Tasks",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:19.872677+00:00"
+    },
+    {
+      "url": "https://codescene.com/blog/change-coupling-visualize-the-cost-of-change",
+      "http_status": 200,
+      "final_url": "https://codescene.com/blog/change-coupling-visualize-the-cost-of-change",
+      "title": "Change coupling: visualize the cost of change",
+      "content_type": "text/html; charset=UTF-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:19.945334+00:00"
+    },
+    {
+      "url": "https://dora.dev/insights/balancing-ai-tensions/",
+      "http_status": 200,
+      "final_url": "https://dora.dev/insights/balancing-ai-tensions/",
+      "title": "DORA | Balancing AI tensions: Moving from AI adoption to effective SDLC use",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:20.438331+00:00"
+    },
+    {
+      "url": "https://fast-check.dev/docs/advanced/model-based-testing/",
+      "http_status": 200,
+      "final_url": "https://fast-check.dev/docs/advanced/model-based-testing/",
+      "title": "Model based testing | fast-check",
+      "content_type": "text/html; charset=UTF-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:21.388014+00:00"
+    },
+    {
+      "url": "https://github.com/EveryInc/compound-engineering-plugin/blob/9af474a70e7f2a844338519ad9e92aafbd92d4fb/skills/ce-compound/SKILL.md",
+      "http_status": 200,
+      "final_url": "https://github.com/EveryInc/compound-engineering-plugin/blob/9af474a70e7f2a844338519ad9e92aafbd92d4fb/skills/ce-compound/SKILL.md",
+      "title": "compound-engineering-plugin/skills/ce-compound/SKILL.md at 9af474a70e7f2a844338519ad9e92aafbd92d4fb · EveryInc/compound-engineering-plugin · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:12:00.630665+00:00"
+    },
+    {
+      "url": "https://github.com/Fission-AI/OpenSpec/blob/2500d6da971336167548b53731a35b2127df35ac/skills/openspec-verify-change/SKILL.md",
+      "http_status": 200,
+      "final_url": "https://github.com/Fission-AI/OpenSpec/blob/2500d6da971336167548b53731a35b2127df35ac/skills/openspec-verify-change/SKILL.md",
+      "title": "OpenSpec/skills/openspec-verify-change/SKILL.md at 2500d6da971336167548b53731a35b2127df35ac · Fission-AI/OpenSpec · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:12:00.731590+00:00"
+    },
+    {
+      "url": "https://github.com/dateutil/dateutil/issues/1437#issuecomment-3225141158",
+      "http_status": 200,
+      "final_url": "https://github.com/dateutil/dateutil/issues/1437#issuecomment-3225141158",
+      "title": "`easter(2015, method=1)` returns a non-sunday date · Issue #1437 · dateutil/dateutil · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:20.982736+00:00"
+    },
+    {
+      "url": "https://github.com/github/spec-kit/blob/e1fa857a7f536b22760d48c1aa9ace41df0fd1dc/templates/commands/tasks.md",
+      "http_status": 200,
+      "final_url": "https://github.com/github/spec-kit/blob/e1fa857a7f536b22760d48c1aa9ace41df0fd1dc/templates/commands/tasks.md",
+      "title": "spec-kit/templates/commands/tasks.md at e1fa857a7f536b22760d48c1aa9ace41df0fd1dc · github/spec-kit · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:12:00.668046+00:00"
+    },
+    {
+      "url": "https://github.com/johnousterhout/aposd-vs-clean-code",
+      "http_status": 200,
+      "final_url": "https://github.com/johnousterhout/aposd-vs-clean-code",
+      "title": "GitHub - johnousterhout/aposd-vs-clean-code: A discussion between John Ousterhout and Robert Martin about differences between John&#39;s book &quot;A Philosophy of Software Design&quot; and Bob&#39;s book &quot;Clean Code&quot;. · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:21.052375+00:00"
+    },
+    {
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/blob/77223febe236df94d4db4eb006b6c9e612c62206/docs/agents/fast-convergence-testing.md",
+      "local_verified": true,
+      "ref": "77223febe236df94d4db4eb006b6c9e612c62206",
+      "checked_utc": "2026-10-03T06:10:19.945521+00:00"
+    },
+    {
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/blob/77223febe236df94d4db4eb006b6c9e612c62206/docs/agents/polishing-discipline.md",
+      "local_verified": true,
+      "ref": "77223febe236df94d4db4eb006b6c9e612c62206",
+      "checked_utc": "2026-10-03T06:10:19.945562+00:00"
+    },
+    {
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/blob/77223febe236df94d4db4eb006b6c9e612c62206/packages/harness/src/engineering-executor.ts#L202",
+      "local_verified": true,
+      "ref": "77223febe236df94d4db4eb006b6c9e612c62206",
+      "checked_utc": "2026-10-03T06:10:19.945598+00:00"
+    },
+    {
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/compare/77223febe236df94d4db4eb006b6c9e612c62206...d0a66377c8812211dfef555461079e50f21df74b",
+      "http_status": 200,
+      "final_url": "https://github.com/lluzi/hima_harness_reforge_polishing/compare/77223febe236df94d4db4eb006b6c9e612c62206...d0a66377c8812211dfef555461079e50f21df74b",
+      "title": "Comparing 77223febe236df94d4db4eb006b6c9e612c62206...d0a66377c8812211dfef555461079e50f21df74b · lluzi/hima_harness_reforge_polishing · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:17:59.305946+00:00"
+    },
+    {
+      "url": "https://github.com/luongnv89/claude-howto/blob/556af8d52327525d241f17574ef3f11976982fc8/03-skills/refactor/SKILL.md",
+      "http_status": 200,
+      "final_url": "https://github.com/luongnv89/claude-howto/blob/556af8d52327525d241f17574ef3f11976982fc8/03-skills/refactor/SKILL.md",
+      "title": "claude-howto/03-skills/refactor/SKILL.md at 556af8d52327525d241f17574ef3f11976982fc8 · luongnv89/claude-howto · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:17:59.083067+00:00"
+    },
+    {
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/ask-matt/SKILL.md",
+      "http_status": 200,
+      "final_url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/ask-matt/SKILL.md",
+      "title": "skills/skills/engineering/ask-matt/SKILL.md at d81f3a183412e71a5b1e84ca21bc1a35eea03a60 · mattpocock/skills · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:12:00.602831+00:00"
+    },
+    {
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/code-review/SKILL.md",
+      "http_status": 200,
+      "final_url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/code-review/SKILL.md",
+      "title": "skills/skills/engineering/code-review/SKILL.md at d81f3a183412e71a5b1e84ca21bc1a35eea03a60 · mattpocock/skills · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:17:58.915373+00:00"
+    },
+    {
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/codebase-design/SKILL.md",
+      "http_status": 200,
+      "final_url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/codebase-design/SKILL.md",
+      "title": "skills/skills/engineering/codebase-design/SKILL.md at d81f3a183412e71a5b1e84ca21bc1a35eea03a60 · mattpocock/skills · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:17:58.923889+00:00"
+    },
+    {
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/diagnosing-bugs/SKILL.md",
+      "http_status": 200,
+      "final_url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/diagnosing-bugs/SKILL.md",
+      "title": "skills/skills/engineering/diagnosing-bugs/SKILL.md at d81f3a183412e71a5b1e84ca21bc1a35eea03a60 · mattpocock/skills · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:17:58.992266+00:00"
+    },
+    {
+      "url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/tdd/SKILL.md",
+      "http_status": 200,
+      "final_url": "https://github.com/mattpocock/skills/blob/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering/tdd/SKILL.md",
+      "title": "skills/skills/engineering/tdd/SKILL.md at d81f3a183412e71a5b1e84ca21bc1a35eea03a60 · mattpocock/skills · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:17:58.896558+00:00"
+    },
+    {
+      "url": "https://github.com/obra/superpowers/blob/8ca22dba9a94f28898bbce59f2537ff4d87c747d/skills/brainstorming/SKILL.md",
+      "http_status": 200,
+      "final_url": "https://github.com/obra/superpowers/blob/8ca22dba9a94f28898bbce59f2537ff4d87c747d/skills/brainstorming/SKILL.md",
+      "title": "superpowers/skills/brainstorming/SKILL.md at 8ca22dba9a94f28898bbce59f2537ff4d87c747d · obra/superpowers · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:12:00.573236+00:00"
+    },
+    {
+      "url": "https://github.com/wondelai/skills/blob/c172996495bed0fcd26896a9416b2093fd7073f0/clean-architecture/SKILL.md",
+      "http_status": 200,
+      "final_url": "https://github.com/wondelai/skills/blob/c172996495bed0fcd26896a9416b2093fd7073f0/clean-architecture/SKILL.md",
+      "title": "skills/clean-architecture/SKILL.md at c172996495bed0fcd26896a9416b2093fd7073f0 · wondelai/skills · GitHub",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:17:59.887053+00:00"
+    },
+    {
+      "url": "https://lamport.azurewebsites.net/tla/formal-methods-amazon.pdf",
+      "http_status": 200,
+      "final_url": "https://lamport.azurewebsites.net/tla/formal-methods-amazon.pdf",
+      "title": null,
+      "content_type": "application/pdf",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:20.876886+00:00"
+    },
+    {
+      "url": "https://link.springer.com/article/10.1007/s10664-026-10889-1",
+      "http_status": 200,
+      "final_url": "https://link.springer.com/article/10.1007/s10664-026-10889-1?error=cookies_not_supported&code=cd003f00-9f28-4bc2-9d00-f9bd0d6ab1fc",
+      "title": "Echoes of AI: Investigating the downstream effects of AI assistants on software maintainability | Empirical Software Engineering | Springer Nature Link",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:24.203932+00:00"
+    },
+    {
+      "url": "https://martinfowler.com/articles/patterns-legacy-displacement/transitional-architecture.html",
+      "http_status": 200,
+      "final_url": "https://martinfowler.com/articles/patterns-legacy-displacement/transitional-architecture.html",
+      "title": "Transitional Architecture",
+      "content_type": "text/html",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:21.416259+00:00"
+    },
+    {
+      "url": "https://martinfowler.com/bliki/BranchByAbstraction.html",
+      "http_status": 200,
+      "final_url": "https://martinfowler.com/bliki/BranchByAbstraction.html",
+      "title": "Branch By Abstraction",
+      "content_type": "text/html",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:21.749604+00:00"
+    },
+    {
+      "url": "https://metr.org/blog/2026-02-24-uplift-update/",
+      "http_status": 200,
+      "final_url": "https://metr.org/blog/2026-02-24-uplift-update/",
+      "title": "We are Changing our Developer Productivity Experiment Design - METR",
+      "content_type": "text/html; charset=UTF-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:21.604640+00:00"
+    },
+    {
+      "url": "https://michaelfeathers.silvrback.com/characterization-testing",
+      "http_status": 200,
+      "final_url": "https://michaelfeathers.silvrback.com/characterization-testing",
+      "title": "Michael Feathers - Characterization Testing",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:22.065521+00:00"
+    },
+    {
+      "url": "https://openai.com/index/harness-engineering/",
+      "error": "HTTP Error 403: Forbidden",
+      "checked_utc": "2026-10-03T06:17:59.490992+00:00",
+      "fallback": {
+        "method": "web open and find; complete official article",
+        "checked_date": "2026-10-03 UTC",
+        "semantic_sections": [
+          "Enforcing architecture and taste",
+          "Entropy and garbage collection",
+          "What we are still learning"
+        ],
+        "outcome": "content retrieved and checked; original urllib403 retained"
+      }
+    },
+    {
+      "url": "https://research.google/pubs/practical-mutation-testing-at-scale-a-view-from-google/",
+      "http_status": 200,
+      "final_url": "https://research.google/pubs/practical-mutation-testing-at-scale-a-view-from-google/",
+      "title": "Practical Mutation Testing at Scale: A view from Google",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:22.062372+00:00"
+    },
+    {
+      "url": "https://www.anthropic.com/research/property-based-testing",
+      "http_status": 200,
+      "final_url": "https://www.anthropic.com/research/property-based-testing",
+      "title": "Finding bugs with Claude and property-based testing \\ Anthropic",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:22.296504+00:00"
+    },
+    {
+      "url": "https://www.sei.cmu.edu/library/architecture-tradeoff-analysis-method-collection/",
+      "http_status": 200,
+      "final_url": "https://www.sei.cmu.edu/library/architecture-tradeoff-analysis-method-collection/",
+      "title": "Architecture Tradeoff Analysis Method® Collection | CMU Software Engineering Institute",
+      "content_type": "text/html; charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:24.426904+00:00"
+    },
+    {
+      "url": "https://www.thoughtworks.com/insights/articles/fitness-function-driven-development",
+      "http_status": 200,
+      "final_url": "https://www.thoughtworks.com/insights/articles/fitness-function-driven-development",
+      "title": "Fitness function-driven development | Thoughtworks",
+      "content_type": "text/html;charset=utf-8",
+      "fragment_validation": "not automatic; semantic reviewer checks decisive citations",
+      "checked_utc": "2026-10-03T06:10:22.529087+00:00"
+    }
+  ]
+}

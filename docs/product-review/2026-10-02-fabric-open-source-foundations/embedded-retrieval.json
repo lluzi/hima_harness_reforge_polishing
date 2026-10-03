@@ -1,0 +1,389 @@
+[
+  {
+    "file": "retrieval-2.json",
+    "record": [
+      {
+        "name": "xstate-LICENSE",
+        "url": "https://raw.githubusercontent.com/statelyai/xstate/fbee62e7c1586315ed478c2fedf530d7e0ff5a3e/LICENSE",
+        "final_url": "https://raw.githubusercontent.com/statelyai/xstate/fbee62e7c1586315ed478c2fedf530d7e0ff5a3e/LICENSE",
+        "bytes": 1083,
+        "verified_utc": "2026-10-03T04:47:19.253283+00:00"
+      },
+      {
+        "name": "langgraphjs-LICENSE",
+        "url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/9143976b8720524ad6ca4e3bf8261c311dfe51af/LICENSE",
+        "final_url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/9143976b8720524ad6ca4e3bf8261c311dfe51af/LICENSE",
+        "bytes": 1069,
+        "verified_utc": "2026-10-03T04:47:19.318735+00:00"
+      },
+      {
+        "name": "effect-LICENSE",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/LICENSE",
+        "final_url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/LICENSE",
+        "bytes": 1083,
+        "verified_utc": "2026-10-03T04:47:19.266926+00:00"
+      },
+      {
+        "name": "effect-workflow-directory.json",
+        "url": "https://api.github.com/repos/Effect-TS/effect/contents/packages/effect/src?ref=480bba2dfebba5b0e58695a9837895dfb65895ee",
+        "final_url": "https://api.github.com/repos/Effect-TS/effect/contents/packages/effect/src?ref=480bba2dfebba5b0e58695a9837895dfb65895ee",
+        "bytes": 162856,
+        "verified_utc": "2026-10-03T04:47:22.875801+00:00"
+      },
+      {
+        "name": "langgraph-graph-api.md",
+        "url": "https://docs.langchain.com/oss/javascript/langgraph/graph-api.md",
+        "final_url": "https://docs.langchain.com/oss/javascript/langgraph/graph-api.md",
+        "bytes": 60463,
+        "verified_utc": "2026-10-03T04:47:19.289817+00:00"
+      },
+      {
+        "name": "langgraph-interrupts.md",
+        "url": "https://docs.langchain.com/oss/javascript/langgraph/interrupts.md",
+        "final_url": "https://docs.langchain.com/oss/javascript/langgraph/interrupts.md",
+        "bytes": 44728,
+        "verified_utc": "2026-10-03T04:47:19.287284+00:00"
+      },
+      {
+        "name": "langgraph-fault-tolerance.md",
+        "url": "https://docs.langchain.com/oss/javascript/langgraph/fault-tolerance.md",
+        "final_url": "https://docs.langchain.com/oss/javascript/langgraph/fault-tolerance.md",
+        "bytes": 28313,
+        "verified_utc": "2026-10-03T04:47:19.981921+00:00"
+      },
+      {
+        "name": "langgraph-checkpointers.md",
+        "url": "https://docs.langchain.com/oss/javascript/langgraph/add-memory.md",
+        "final_url": "https://docs.langchain.com/oss/javascript/langgraph/add-memory.md",
+        "bytes": 40448,
+        "verified_utc": "2026-10-03T04:47:20.000855+00:00"
+      },
+      {
+        "name": "effect-v3-workflow-README.md",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/v3.19.18/packages/workflow/README.md",
+        "error": "HTTP Error 404: Not Found"
+      },
+      {
+        "name": "xstate-persistence.html",
+        "url": "https://stately.ai/docs/persistence",
+        "final_url": "https://stately.ai/docs/persistence",
+        "bytes": 239090,
+        "verified_utc": "2026-10-03T04:47:20.075179+00:00"
+      },
+      {
+        "name": "xstate-promises.html",
+        "url": "https://stately.ai/docs/promise-actors",
+        "final_url": "https://stately.ai/docs/promise-actors",
+        "bytes": 221545,
+        "verified_utc": "2026-10-03T04:47:19.984262+00:00"
+      }
+    ]
+  },
+  {
+    "file": "retrieval-3.json",
+    "record": [
+      {
+        "name": "effect-Activity.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/workflow/Activity.ts",
+        "final_url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/workflow/Activity.ts",
+        "bytes": 11505,
+        "verified_utc": "2026-10-03T04:47:51.306377+00:00"
+      },
+      {
+        "name": "effect-Workflow.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/workflow/Workflow.ts",
+        "final_url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/workflow/Workflow.ts",
+        "bytes": 31053,
+        "verified_utc": "2026-10-03T04:47:51.114992+00:00"
+      },
+      {
+        "name": "effect-WorkflowEngine.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/workflow/WorkflowEngine.ts",
+        "final_url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/workflow/WorkflowEngine.ts",
+        "bytes": 27789,
+        "verified_utc": "2026-10-03T04:47:51.169189+00:00"
+      },
+      {
+        "name": "effect-DurableDeferred.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/workflow/DurableDeferred.ts",
+        "final_url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/workflow/DurableDeferred.ts",
+        "bytes": 19914,
+        "verified_utc": "2026-10-03T04:47:51.114544+00:00"
+      },
+      {
+        "name": "effect-ClusterWorkflowEngine.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/cluster/ClusterWorkflowEngine.ts",
+        "final_url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/cluster/ClusterWorkflowEngine.ts",
+        "bytes": 35595,
+        "verified_utc": "2026-10-03T04:47:51.323835+00:00"
+      },
+      {
+        "name": "effect-SingleRunner.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/cluster/SingleRunner.ts",
+        "final_url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/cluster/SingleRunner.ts",
+        "bytes": 3390,
+        "verified_utc": "2026-10-03T04:47:51.132829+00:00"
+      },
+      {
+        "name": "effect-MessageStorage.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/cluster/MessageStorage.ts",
+        "final_url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/src/cluster/MessageStorage.ts",
+        "bytes": 41546,
+        "verified_utc": "2026-10-03T04:47:51.133326+00:00"
+      },
+      {
+        "name": "effect-package.json",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/package.json",
+        "final_url": "https://raw.githubusercontent.com/Effect-TS/effect/480bba2dfebba5b0e58695a9837895dfb65895ee/packages/effect/package.json",
+        "bytes": 3738,
+        "verified_utc": "2026-10-03T04:47:51.814506+00:00"
+      },
+      {
+        "name": "effect-v3-workflow-README.md",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/%40effect/workflow%400.19.1/packages/workflow/README.md",
+        "final_url": "https://raw.githubusercontent.com/Effect-TS/effect/%40effect/workflow%400.19.1/packages/workflow/README.md",
+        "bytes": 4800,
+        "verified_utc": "2026-10-03T04:47:51.801522+00:00"
+      },
+      {
+        "name": "langgraph-checkpointers-concept.md",
+        "url": "https://docs.langchain.com/oss/javascript/langgraph/checkpointers.md",
+        "final_url": "https://docs.langchain.com/oss/javascript/langgraph/checkpointers.md",
+        "bytes": 21866,
+        "verified_utc": "2026-10-03T04:47:51.863584+00:00"
+      },
+      {
+        "name": "langgraph-business-compatibility.md",
+        "url": "https://docs.langchain.com/oss/javascript/langgraph/business-compatibility.md",
+        "error": "HTTP Error 404: Not Found"
+      },
+      {
+        "name": "langgraph-pregel-index.ts",
+        "url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/9143976b8720524ad6ca4e3bf8261c311dfe51af/libs/langgraph/src/pregel/index.ts",
+        "final_url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/9143976b8720524ad6ca4e3bf8261c311dfe51af/libs/langgraph/src/pregel/index.ts",
+        "bytes": 466,
+        "verified_utc": "2026-10-03T04:47:51.871953+00:00"
+      },
+      {
+        "name": "langgraph-pregel-loop.ts",
+        "url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/9143976b8720524ad6ca4e3bf8261c311dfe51af/libs/langgraph/src/pregel/loop.ts",
+        "error": "HTTP Error 404: Not Found"
+      },
+      {
+        "name": "xstate-promise.ts",
+        "url": "https://raw.githubusercontent.com/statelyai/xstate/fbee62e7c1586315ed478c2fedf530d7e0ff5a3e/packages/core/src/actors/promise.ts",
+        "final_url": "https://raw.githubusercontent.com/statelyai/xstate/fbee62e7c1586315ed478c2fedf530d7e0ff5a3e/packages/core/src/actors/promise.ts",
+        "bytes": 6049,
+        "verified_utc": "2026-10-03T04:47:52.193039+00:00"
+      },
+      {
+        "name": "xstate-StateMachine.ts",
+        "url": "https://raw.githubusercontent.com/statelyai/xstate/fbee62e7c1586315ed478c2fedf530d7e0ff5a3e/packages/core/src/StateMachine.ts",
+        "final_url": "https://raw.githubusercontent.com/statelyai/xstate/fbee62e7c1586315ed478c2fedf530d7e0ff5a3e/packages/core/src/StateMachine.ts",
+        "bytes": 17013,
+        "verified_utc": "2026-10-03T04:47:52.977513+00:00"
+      }
+    ]
+  },
+  {
+    "file": "retrieval-4.json",
+    "record": [
+      {
+        "name": "xstate-version-commit.json",
+        "url": "https://api.github.com/repos/statelyai/xstate/commits/xstate%405.33.2",
+        "bytes": 7726,
+        "sha": "fbee62e7c1586315ed478c2fedf530d7e0ff5a3e",
+        "published": null,
+        "verified_utc": "2026-10-03T04:49:21.806253+00:00"
+      },
+      {
+        "name": "langgraphjs-version-commit.json",
+        "url": "https://api.github.com/repos/langchain-ai/langgraphjs/commits/%40langchain/langgraph%401.4.18",
+        "bytes": 57757,
+        "sha": "ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb",
+        "published": null,
+        "verified_utc": "2026-10-03T04:49:22.133245+00:00"
+      },
+      {
+        "name": "effect-version-commit.json",
+        "url": "https://api.github.com/repos/Effect-TS/effect/commits/effect%404.0.0",
+        "bytes": 353493,
+        "sha": "67ba4e46a11ccda0b6761578bfd22c04ae00167d",
+        "published": null,
+        "verified_utc": "2026-10-03T04:49:21.843071+00:00"
+      },
+      {
+        "name": "langgraphjs-version-release.json",
+        "url": "https://api.github.com/repos/langchain-ai/langgraphjs/releases/tags/%40langchain/langgraph%401.4.18",
+        "bytes": 2237,
+        "sha": null,
+        "published": "2026-09-25T03:17:30Z",
+        "verified_utc": "2026-10-03T04:49:21.767285+00:00"
+      },
+      {
+        "name": "effect-version-release.json",
+        "url": "https://api.github.com/repos/Effect-TS/effect/releases/tags/effect%404.0.0",
+        "bytes": 16302,
+        "sha": null,
+        "published": "2026-10-01T01:47:13Z",
+        "verified_utc": "2026-10-03T04:49:21.766931+00:00"
+      },
+      {
+        "name": "langgraph-src-dir.json",
+        "url": "https://api.github.com/repos/langchain-ai/langgraphjs/contents/libs/langgraph/src/pregel?ref=9143976b8720524ad6ca4e3bf8261c311dfe51af",
+        "bytes": 1107,
+        "sha": null,
+        "published": null,
+        "verified_utc": "2026-10-03T04:49:21.740964+00:00"
+      },
+      {
+        "name": "langgraph-backward-compatibility.md",
+        "url": "https://docs.langchain.com/oss/javascript/langgraph/backward-compatibility.md",
+        "bytes": 10130,
+        "sha": null,
+        "published": null,
+        "verified_utc": "2026-10-03T04:49:22.551020+00:00"
+      },
+      {
+        "name": "langgraph-functional-api.md",
+        "url": "https://docs.langchain.com/oss/javascript/langgraph/functional-api.md",
+        "bytes": 25835,
+        "sha": null,
+        "published": null,
+        "verified_utc": "2026-10-03T04:49:22.529190+00:00"
+      }
+    ]
+  },
+  {
+    "file": "retrieval-5.json",
+    "record": [
+      {
+        "name": "effect-release-Activity.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/67ba4e46a11ccda0b6761578bfd22c04ae00167d/packages/effect/src/workflow/Activity.ts",
+        "bytes": 11505,
+        "verified_utc": "2026-10-03T04:49:51.083452+00:00"
+      },
+      {
+        "name": "effect-release-Workflow.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/67ba4e46a11ccda0b6761578bfd22c04ae00167d/packages/effect/src/workflow/Workflow.ts",
+        "bytes": 31053,
+        "verified_utc": "2026-10-03T04:49:51.055262+00:00"
+      },
+      {
+        "name": "effect-release-WorkflowEngine.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/67ba4e46a11ccda0b6761578bfd22c04ae00167d/packages/effect/src/workflow/WorkflowEngine.ts",
+        "bytes": 27617,
+        "verified_utc": "2026-10-03T04:49:51.154874+00:00"
+      },
+      {
+        "name": "effect-release-DurableDeferred.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/67ba4e46a11ccda0b6761578bfd22c04ae00167d/packages/effect/src/workflow/DurableDeferred.ts",
+        "bytes": 19914,
+        "verified_utc": "2026-10-03T04:49:51.082476+00:00"
+      },
+      {
+        "name": "effect-release-ClusterWorkflowEngine.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/67ba4e46a11ccda0b6761578bfd22c04ae00167d/packages/effect/src/cluster/ClusterWorkflowEngine.ts",
+        "bytes": 34799,
+        "verified_utc": "2026-10-03T04:49:51.150007+00:00"
+      },
+      {
+        "name": "effect-release-SingleRunner.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/67ba4e46a11ccda0b6761578bfd22c04ae00167d/packages/effect/src/cluster/SingleRunner.ts",
+        "bytes": 3390,
+        "verified_utc": "2026-10-03T04:49:51.084174+00:00"
+      },
+      {
+        "name": "effect-release-SqlMessageStorage.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/67ba4e46a11ccda0b6761578bfd22c04ae00167d/packages/effect/src/cluster/SqlMessageStorage.ts",
+        "bytes": 43693,
+        "verified_utc": "2026-10-03T04:49:51.776431+00:00"
+      },
+      {
+        "name": "langgraph-release-pregel-index.ts",
+        "url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb/libs/langgraph/src/pregel/index.ts",
+        "bytes": 466,
+        "verified_utc": "2026-10-03T04:49:51.864859+00:00"
+      },
+      {
+        "name": "langgraph-release-pregel-loop.ts",
+        "url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb/libs/langgraph/src/pregel/loop.ts",
+        "error": "HTTP Error 404: Not Found"
+      },
+      {
+        "name": "langgraph-release-graph-state.ts",
+        "url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb/libs/langgraph/src/graph/state.ts",
+        "error": "HTTP Error 404: Not Found"
+      },
+      {
+        "name": "langgraph-release-LICENSE",
+        "url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb/LICENSE",
+        "bytes": 1069,
+        "verified_utc": "2026-10-03T04:49:51.864408+00:00"
+      },
+      {
+        "name": "effect-release-LICENSE",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/67ba4e46a11ccda0b6761578bfd22c04ae00167d/LICENSE",
+        "bytes": 1083,
+        "verified_utc": "2026-10-03T04:49:51.865137+00:00"
+      }
+    ]
+  },
+  {
+    "file": "retrieval-6.json",
+    "record": [
+      {
+        "name": "langgraph-release-pregel-loop.ts",
+        "url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb/libs/langgraph-core/src/pregel/loop.ts",
+        "bytes": 66073,
+        "verified_utc": "2026-10-03T04:50:27.722156+00:00"
+      },
+      {
+        "name": "langgraph-release-graph-state.ts",
+        "url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb/libs/langgraph-core/src/graph/state.ts",
+        "bytes": 67002,
+        "verified_utc": "2026-10-03T04:50:27.728721+00:00"
+      },
+      {
+        "name": "langgraph-release-pregel-runner.ts",
+        "url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb/libs/langgraph-core/src/pregel/runner.ts",
+        "bytes": 18462,
+        "verified_utc": "2026-10-03T04:50:27.737486+00:00"
+      },
+      {
+        "name": "langgraph-release-control.ts",
+        "url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb/libs/langgraph-core/src/pregel/control.ts",
+        "error": "HTTP Error 404: Not Found"
+      },
+      {
+        "name": "effect-release-ClusterSchema.ts",
+        "url": "https://raw.githubusercontent.com/Effect-TS/effect/67ba4e46a11ccda0b6761578bfd22c04ae00167d/packages/effect/src/cluster/ClusterSchema.ts",
+        "bytes": 5584,
+        "verified_utc": "2026-10-03T04:50:27.673921+00:00"
+      },
+      {
+        "name": "langgraph-core-release-package.json",
+        "url": "https://raw.githubusercontent.com/langchain-ai/langgraphjs/ec8cb378e3c7846b2a4aea31dfc4aff8f1cbf2fb/libs/langgraph-core/package.json",
+        "bytes": 5410,
+        "verified_utc": "2026-10-03T04:50:27.730468+00:00"
+      }
+    ]
+  },
+  {
+    "file": "retrieval-7.json",
+    "record": [
+      {
+        "name": "xstate-invoke.html",
+        "url": "https://stately.ai/docs/invoke",
+        "bytes": 687146,
+        "verified_utc": "2026-10-03T04:54:43.734730+00:00"
+      },
+      {
+        "name": "xstate-parallel.html",
+        "url": "https://stately.ai/docs/parallel-states",
+        "bytes": 201632,
+        "verified_utc": "2026-10-03T04:54:43.587305+00:00"
+      }
+    ]
+  }
+]

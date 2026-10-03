@@ -1,0 +1,168 @@
+{
+  "started_utc": "2026-10-03T05:56:05.195821+00:00",
+  "audience": "HimaHarness产品负责人，工程经验丰富，担忧AI可运行实现的长期可靠性与官僚化",
+  "user_words": [
+    "广泛",
+    "深度",
+    "已被AI做得可以运行",
+    "未来工程化风险",
+    "AI方法学",
+    "skill",
+    "提升",
+    "最先进的GPT-6 Astra"
+  ],
+  "decision": "用什么AI辅助方法、skills与验证方式，把已能运行的既有业务提升为可持续维护、可靠演进的工程系统；给出Hima可执行的轻量组合与反例，而非再选工作流引擎",
+  "lead_synthesizer": "astra_method_synthesis",
+  "root_role": "current-repo grounding, empirical counter-evidence, source checks, integration and delivery",
+  "models": {
+    "research_and_independent_review": "gpt-6-astra",
+    "effort": "high",
+    "override_basis": "latest explicit user model request; effort follows repo high rule",
+    "fresh_context": true
+  },
+  "scope": {
+    "date": "2026-10-02 PDT / 2026-10-03 UTC",
+    "product_source": "77223febe236df94d4db4eb006b6c9e612c62206",
+    "future_head": "b645e23b5fa4ceb0d93f731396cc6e767dbb9382",
+    "include": [
+      "existing brownfield architecture improvement",
+      "AI-assisted diagnosis/refactoring",
+      "skills and agent workflows",
+      "fault/model/property/mutation tests",
+      "independent review and evidence",
+      "lightweight change governance and production readiness"
+    ],
+    "exclude": [
+      "implementation",
+      "skill installation",
+      "running agents against live Hima/EDA",
+      "rewriting product architecture",
+      "replacement engine selection as primary topic",
+      "new implementation issues unless later requested"
+    ],
+    "parallel_development_head_at_delivery": "d0a66377c8812211dfef555461079e50f21df74b"
+  },
+  "outline": [
+    {
+      "id": "Q1",
+      "question": "能运行却未工程化有哪些不同风险，如何诊断而不泛化为技术债？",
+      "fields": [
+        "failure classes",
+        "business vs technical truth",
+        "current Hima cases",
+        "bounded diagnosis"
+      ]
+    },
+    {
+      "id": "Q2",
+      "question": "哪些成熟工程方法适合用AI增强，具体如何跑？",
+      "fields": [
+        "characterization",
+        "deep modules",
+        "change coupling",
+        "invariants",
+        "architecture fitness",
+        "incremental replacement",
+        "rivals"
+      ]
+    },
+    {
+      "id": "Q3",
+      "question": "有哪些真实可用的skills/workflows，其身份、维护、许可、流程和适配成本如何？",
+      "fields": [
+        "exact repo/path/SHA",
+        "local vs upstream",
+        "trigger/input/output",
+        "execution side effects",
+        "evidence of effectiveness",
+        "adoption boundary"
+      ]
+    },
+    {
+      "id": "Q4",
+      "question": "如何防止AI自审、自写测试或规格把原有错误固化？",
+      "fields": [
+        "independent oracle",
+        "fault injection",
+        "property/model based testing",
+        "mutation",
+        "review independence",
+        "scope limits"
+      ]
+    },
+    {
+      "id": "Q5",
+      "question": "实证研究与一手工程经验支持什么，不支持什么？",
+      "fields": [
+        "sample/model/task/date",
+        "effects",
+        "limitations",
+        "author experience vs controlled result",
+        "counter-evidence"
+      ]
+    },
+    {
+      "id": "Q6",
+      "question": "Hima该采用怎样最小、可回滚的组合，先做什么、怎样衡量和停止？",
+      "fields": [
+        "two real consumer cases",
+        "roles",
+        "small artifacts",
+        "existing repo discipline comparison",
+        "continue/stop signals",
+        "cost shift"
+      ]
+    }
+  ],
+  "theses": [
+    {
+      "claim": "最值得采用的是AI辅助风险诊断、接口加深与独立验证的组合，而非一个自动清理万能skill",
+      "rival": "成熟端到端agent workflow能省去人工组合并取得更可靠结果",
+      "falsifier": "高质量直接比较显示完整workflow在相似brownfield高副作用业务中净收益更好且负担更低"
+    },
+    {
+      "claim": "先锁定可观察业务行为和不可破坏约束，再渐进重构，优于全库AI大改",
+      "rival": "当前抽象已根本失配，渐进维护只延长旧债",
+      "falsifier": "多个真实consumer无法在现有职责表达且新模型可更简单通过同一故障例"
+    },
+    {
+      "claim": "独立预期结果和故障实验比增加AI角色/测试数量更能建立可靠性",
+      "rival": "多角色review和全量测试本身足以显著降低风险",
+      "falsifier": "适用实证显示低额外成本且跨任务可重复的错误发现收益"
+    },
+    {
+      "claim": "Hima现有纪律大多已有，主要缺口可能在落实与接口而非更多流程文件",
+      "rival": "缺失的方法步骤或工具正是主要瓶颈",
+      "falsifier": "逐项差距映射发现有影响大的方法机制尚未覆盖"
+    }
+  ],
+  "reader_value_test": "读者能选出一个轻量组合，知道各方法解决哪种风险、实际输入输出、证据强弱、技能可用性与下一步；能拒绝只加文档/角色/审批的伪治理",
+  "deliverable": "一个中文深度决策报告，短摘要+方法/技能比较+具体Hima示例+最小应用流程；附来源台账、检索日志和独立评阅。归档docs/product-review。",
+  "outline_changelog": [
+    {
+      "change": "Initial six questions",
+      "reason": "User broadened from Fabric engine selection to AI-built brownfield engineering risk governance"
+    },
+    {
+      "change": "Q5强化固定论文版本、效率与正确性的不同分母；Q3增加installed-but-not-exposed与副作用审计；Q6加入既有规则/实际增量对照",
+      "reason": "原文发现SkillsBench/AGENTS摘要已修订，skills默认派工/文档修改，Hima已有大部分纪律；这些改变推荐和证据覆盖"
+    },
+    {
+      "change": "Q6当前例子加固定快照/并行修复边界",
+      "reason": "交付前远端已增加两提交，ATCSending和证据scope有所修复；不能用旧例判定最新未修故障"
+    }
+  ],
+  "retrieval_protocol": {
+    "discovery": "bounded parallel primary-source lanes; root empirical studies and current-repo gap map",
+    "include": "official skill source, maintainer posts clearly labeled, original papers/studies, official tool docs",
+    "exclude": "star rankings, SEO tool lists, unsupported productivity numbers, studies applied beyond model/task scope",
+    "evidence_levels": [
+      "documented mechanism",
+      "author/project case",
+      "controlled empirical result",
+      "Hima verified result (none this round)"
+    ],
+    "stop": "after material rival explanations and skill behavior are checked; further delta queries only for decision-changing gaps"
+  },
+  "authority_note": "Old memory refers to different himaharness Phase4 repo and is not current product authority; use current polishing AGENTS/product/ADR. This research does not change those authorities."
+}

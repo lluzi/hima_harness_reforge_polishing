@@ -1,0 +1,245 @@
+[
+  {
+    "id": "T-activity",
+    "url": "https://docs.temporal.io/activity-definition",
+    "verified_at": "2026-10-03T04:48:14.622680+00:00",
+    "status": 200,
+    "final_url": "https://docs.temporal.io/activity-definition",
+    "local_file": "durable-raw/T-activity.txt",
+    "chars": 13611
+  },
+  {
+    "id": "T-async",
+    "url": "https://docs.temporal.io/develop/typescript/asynchronous-activity-completion",
+    "verified_at": "2026-10-03T04:48:14.624129+00:00",
+    "error": "HTTP Error 308: Permanent Redirect"
+  },
+  {
+    "id": "T-signals",
+    "url": "https://docs.temporal.io/develop/typescript/message-passing",
+    "verified_at": "2026-10-03T04:48:14.624791+00:00",
+    "error": "HTTP Error 308: Permanent Redirect"
+  },
+  {
+    "id": "T-child",
+    "url": "https://docs.temporal.io/child-workflows",
+    "verified_at": "2026-10-03T04:48:14.625123+00:00",
+    "status": 200,
+    "final_url": "https://docs.temporal.io/child-workflows",
+    "local_file": "durable-raw/T-child.txt",
+    "chars": 7161
+  },
+  {
+    "id": "T-cancel",
+    "url": "https://docs.temporal.io/develop/typescript/cancellation",
+    "verified_at": "2026-10-03T04:48:14.625395+00:00",
+    "error": "HTTP Error 308: Permanent Redirect"
+  },
+  {
+    "id": "T-version",
+    "url": "https://docs.temporal.io/production-deployment/worker-deployments/worker-versioning",
+    "verified_at": "2026-10-03T04:48:14.625652+00:00",
+    "status": 200,
+    "final_url": "https://docs.temporal.io/production-deployment/worker-deployments/worker-versioning",
+    "local_file": "durable-raw/T-version.txt",
+    "chars": 10182
+  },
+  {
+    "id": "T-selfhost",
+    "url": "https://docs.temporal.io/self-hosted-guide",
+    "verified_at": "2026-10-03T04:48:15.581295+00:00",
+    "status": 200,
+    "final_url": "https://docs.temporal.io/self-hosted-guide",
+    "local_file": "durable-raw/T-selfhost.txt",
+    "chars": 3493
+  },
+  {
+    "id": "T-config",
+    "url": "https://docs.temporal.io/references/service-configuration",
+    "verified_at": "2026-10-03T04:48:15.602377+00:00",
+    "status": 200,
+    "final_url": "https://docs.temporal.io/references/service-configuration",
+    "local_file": "durable-raw/T-config.txt",
+    "chars": 22620
+  },
+  {
+    "id": "T-idempotency",
+    "url": "https://temporal.io/blog/idempotency-and-durable-execution",
+    "verified_at": "2026-10-03T04:48:15.619388+00:00",
+    "status": 200,
+    "final_url": "https://temporal.io/blog/idempotency-and-durable-execution",
+    "local_file": "durable-raw/T-idempotency.txt",
+    "chars": 21384
+  },
+  {
+    "id": "D-workflows",
+    "url": "https://docs.dbos.dev/typescript/tutorials/workflow-tutorial",
+    "verified_at": "2026-10-03T04:48:15.668120+00:00",
+    "status": 200,
+    "final_url": "https://docs.dbos.dev/typescript/tutorials/workflow-tutorial",
+    "local_file": "durable-raw/D-workflows.txt",
+    "chars": 12392
+  },
+  {
+    "id": "D-steps",
+    "url": "https://docs.dbos.dev/typescript/tutorials/step-tutorial",
+    "verified_at": "2026-10-03T04:48:15.860764+00:00",
+    "status": 200,
+    "final_url": "https://docs.dbos.dev/typescript/tutorials/step-tutorial",
+    "local_file": "durable-raw/D-steps.txt",
+    "chars": 8351
+  },
+  {
+    "id": "D-reference",
+    "url": "https://docs.dbos.dev/typescript/reference/workflows-steps",
+    "verified_at": "2026-10-03T04:48:15.950576+00:00",
+    "status": 200,
+    "final_url": "https://docs.dbos.dev/typescript/reference/workflows-steps",
+    "local_file": "durable-raw/D-reference.txt",
+    "chars": 17077
+  },
+  {
+    "id": "D-communication",
+    "url": "https://docs.dbos.dev/typescript/tutorials/workflow-communication",
+    "verified_at": "2026-10-03T04:48:16.408949+00:00",
+    "status": 200,
+    "final_url": "https://docs.dbos.dev/typescript/tutorials/workflow-communication",
+    "local_file": "durable-raw/D-communication.txt",
+    "chars": 9662
+  },
+  {
+    "id": "D-upgrade",
+    "url": "https://docs.dbos.dev/typescript/tutorials/upgrading-workflows",
+    "verified_at": "2026-10-03T04:48:16.514495+00:00",
+    "status": 200,
+    "final_url": "https://docs.dbos.dev/typescript/tutorials/upgrading-workflows",
+    "local_file": "durable-raw/D-upgrade.txt",
+    "chars": 7760
+  },
+  {
+    "id": "D-management",
+    "url": "https://docs.dbos.dev/typescript/tutorials/workflow-management",
+    "verified_at": "2026-10-03T04:48:16.679264+00:00",
+    "status": 200,
+    "final_url": "https://docs.dbos.dev/typescript/tutorials/workflow-management",
+    "local_file": "durable-raw/D-management.txt",
+    "chars": 6601
+  },
+  {
+    "id": "D-concurrency",
+    "url": "https://docs.dbos.dev/explanations/concurrent-executions",
+    "verified_at": "2026-10-03T04:48:16.731018+00:00",
+    "status": 200,
+    "final_url": "https://docs.dbos.dev/explanations/concurrent-executions",
+    "local_file": "durable-raw/D-concurrency.txt",
+    "chars": 3792
+  },
+  {
+    "id": "D-guide",
+    "url": "https://docs.dbos.dev/typescript/programming-guide",
+    "verified_at": "2026-10-03T04:48:16.787880+00:00",
+    "status": 200,
+    "final_url": "https://docs.dbos.dev/typescript/programming-guide",
+    "local_file": "durable-raw/D-guide.txt",
+    "chars": 9394
+  },
+  {
+    "id": "D-host",
+    "url": "https://docs.dbos.dev/production/hosting-with-kubernetes",
+    "verified_at": "2026-10-03T04:48:16.949990+00:00",
+    "status": 200,
+    "final_url": "https://docs.dbos.dev/production/hosting-with-kubernetes",
+    "local_file": "durable-raw/D-host.txt",
+    "chars": 27261
+  },
+  {
+    "id": "D-conductor",
+    "url": "https://docs.dbos.dev/production/hosting-conductor",
+    "verified_at": "2026-10-03T04:48:17.193747+00:00",
+    "status": 200,
+    "final_url": "https://docs.dbos.dev/production/hosting-conductor/",
+    "local_file": "durable-raw/D-conductor.txt",
+    "chars": 2
+  },
+  {
+    "id": "R-steps",
+    "url": "https://docs.restate.dev/develop/ts/durable-steps.md",
+    "verified_at": "2026-10-03T04:48:17.276243+00:00",
+    "status": 200,
+    "final_url": "https://docs.restate.dev/develop/ts/durable-steps.md",
+    "local_file": "durable-raw/R-steps.txt",
+    "chars": 3933
+  },
+  {
+    "id": "R-management",
+    "url": "https://docs.restate.dev/services/invocation/managing-invocations.md",
+    "verified_at": "2026-10-03T04:48:17.573518+00:00",
+    "status": 200,
+    "final_url": "https://docs.restate.dev/services/invocation/managing-invocations.md",
+    "local_file": "durable-raw/R-management.txt",
+    "chars": 15625
+  },
+  {
+    "id": "R-version",
+    "url": "https://docs.restate.dev/services/versioning.md",
+    "verified_at": "2026-10-03T04:48:17.575554+00:00",
+    "status": 200,
+    "final_url": "https://docs.restate.dev/services/versioning.md",
+    "local_file": "durable-raw/R-version.txt",
+    "chars": 12746
+  },
+  {
+    "id": "R-host",
+    "url": "https://docs.restate.dev/server/overview.md",
+    "verified_at": "2026-10-03T04:48:17.657046+00:00",
+    "status": 200,
+    "final_url": "https://docs.restate.dev/server/overview.md",
+    "local_file": "durable-raw/R-host.txt",
+    "chars": 9041
+  },
+  {
+    "id": "R-db",
+    "url": "https://docs.restate.dev/guides/databases.md",
+    "verified_at": "2026-10-03T04:48:17.786645+00:00",
+    "status": 200,
+    "final_url": "https://docs.restate.dev/guides/databases.md",
+    "local_file": "durable-raw/R-db.txt",
+    "chars": 26169
+  },
+  {
+    "id": "R-parallel",
+    "url": "https://docs.restate.dev/develop/ts/concurrent-tasks.md",
+    "verified_at": "2026-10-03T04:48:18.150456+00:00",
+    "status": 200,
+    "final_url": "https://docs.restate.dev/develop/ts/concurrent-tasks.md",
+    "local_file": "durable-raw/R-parallel.txt",
+    "chars": 5679
+  },
+  {
+    "id": "R-events",
+    "url": "https://docs.restate.dev/develop/ts/external-events.md",
+    "verified_at": "2026-10-03T04:48:18.393776+00:00",
+    "status": 200,
+    "final_url": "https://docs.restate.dev/develop/ts/external-events.md",
+    "local_file": "durable-raw/R-events.txt",
+    "chars": 8566
+  },
+  {
+    "id": "R-services",
+    "url": "https://docs.restate.dev/develop/ts/services.md",
+    "verified_at": "2026-10-03T04:48:18.404658+00:00",
+    "status": 200,
+    "final_url": "https://docs.restate.dev/develop/ts/services.md",
+    "local_file": "durable-raw/R-services.txt",
+    "chars": 5891
+  },
+  {
+    "id": "R-error",
+    "url": "https://docs.restate.dev/develop/ts/error-handling.md",
+    "verified_at": "2026-10-03T04:48:18.415522+00:00",
+    "status": 200,
+    "final_url": "https://docs.restate.dev/develop/ts/error-handling.md",
+    "local_file": "durable-raw/R-error.txt",
+    "chars": 6867
+  }
+]

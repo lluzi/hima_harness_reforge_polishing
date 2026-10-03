@@ -1,0 +1,125 @@
+{
+  "audience": "HimaHarness产品/架构负责人，熟悉EDA与Agent工程",
+  "lead_synthesizer": "root",
+  "decision": "Fabric未来核心适合直接采用哪类开源基础，或仅复用局部机制/设计；不在本轮安装或替换",
+  "user_value_words": [
+    "核心",
+    "谨慎地升级",
+    "未来的灵魂",
+    "业务运行更高效、更可靠",
+    "节点、动作、必要属性"
+  ],
+  "source_baseline": "77223febe236df94d4db4eb006b6c9e612c62206",
+  "research_branch_head": "d540d9de95e40c2d3751f0d4658fda7cdd2550a2",
+  "time_scope": "2026-10-02 America/Los_Angeles；查询时实时核对官方版本/状态/许可；不以未来路线图当已有能力",
+  "constraints": [
+    "不安装依赖/启动框架或Hima/运行模型与EDA",
+    "不修改产品/ADR/CONTEXT",
+    "只用官方docs/source/release/license为决定证据",
+    "单一业务owner、证据/权限/真实副作用与unknown必须有清楚归属",
+    "图简单与执行可靠分开考察；不凭Stars和exactly-once口号评分"
+  ],
+  "deployment_preference": "用户异步问题待答；研究涵盖可嵌入和服务型，不先排除任一类",
+  "outline": [
+    {
+      "id": "Q1",
+      "question": "Fabric需要借的是业务图语义、可靠执行内核、状态机，还是组合？",
+      "fields": [
+        "existing responsibility",
+        "missing guarantee",
+        "ownership"
+      ]
+    },
+    {
+      "id": "Q2",
+      "question": "有哪些仍维护、许可可辨的开源或source-available候选？",
+      "fields": [
+        "repo",
+        "observed SHA/release/date",
+        "license components",
+        "inclusion/exclusion"
+      ]
+    },
+    {
+      "id": "Q3",
+      "question": "崩溃/消息重复/未知外部ECO/等待/并行/人类pause怎样处理？",
+      "fields": [
+        "durability granularity",
+        "retry/replay semantics",
+        "external effect caveat",
+        "counterexample"
+      ]
+    },
+    {
+      "id": "Q4",
+      "question": "哪些节点输入输出、完成与路由模型能解决Hima的隐含约定？",
+      "fields": [
+        "result binding",
+        "business completion",
+        "branch/join",
+        "scope and versions"
+      ]
+    },
+    {
+      "id": "Q5",
+      "question": "如何接入现有TS/DSH/Pack/Fabric/Ledger/Site而不维护两套执行权威？",
+      "fields": [
+        "adoption boundary",
+        "database/process footprint",
+        "migration",
+        "versioning",
+        "operational ownership"
+      ]
+    },
+    {
+      "id": "Q6",
+      "question": "推荐哪个最小可逆比较试验，什么证据会支持或否决？",
+      "fields": [
+        "options",
+        "smallest falsifier",
+        "expected cost shift",
+        "stop/continue signals"
+      ]
+    }
+  ],
+  "theses": [
+    {
+      "claim": "现有业务图应保留，最可能借用可靠执行或清晰结果绑定机制",
+      "rival": "成熟完整引擎可以同时减少图和执行维护，保留自研反而复杂",
+      "falsifier": "真实接入对照证明全引擎更少适配且仍保留业务事实/控制"
+    },
+    {
+      "claim": "部署与版本约束可能使轻量嵌入方案更适合当前产品",
+      "rival": "独立引擎所省恢复/并行正确性工作大于服务运维负担",
+      "falsifier": "可支持部署和明确的恢复收益、可迁移退出方案"
+    },
+    {
+      "claim": "框架durability不能自动让外部EDA副作用exactly-once",
+      "rival": "某具体接入协议可把副作用与框架日志原子关联",
+      "falsifier": "官方实现和可执行协议确能覆盖effect-before-ack的故障窗"
+    }
+  ],
+  "deliverable": "一个中文决策报告，比较表与简图；附来源台账、检索记录、差距与独立评阅。仅报告归档到docs/product-review。",
+  "reader_value_test": "读者能说出2–3个值得验证的方向、各自接管/保留什么、主要不适配和下一个最低成本反例，不能只记住项目名",
+  "outline_changelog": [
+    {
+      "change": "初始六问",
+      "reason": "用户将Fabric未来核心选型列为灵魂级决策，需分别评估图语义与持久执行而非列框架榜单"
+    },
+    {
+      "change": "Q2/Q5加明按组件许可与单实例/多executor区别；Q3/Q6加旧Run升级与外部effect反证",
+      "reason": "DBOS需要Postgres且Conductor可选但proprietary；Restate BSL；LangGraph resume最新图；Effect4 workflow unstable。部署负担与旧Run兼容会实质改变推荐。"
+    }
+  ],
+  "retrieval_protocol": {
+    "include": "官方仓库/文档/发布/许可；与graph/state/durable execution直接相关；优先TS兼容或清楚的跨进程模型",
+    "exclude": "营销榜单、未实现roadmap、只提供画图UI的库作为可靠执行内核",
+    "initial_lanes": [
+      "durable engines: Temporal/DBOS/Restate，按证据补候选",
+      "embedded graph/state: XState/LangGraph/Effect Workflow",
+      "root: general DAG/data orchestrators and independent license/deployment verification"
+    ],
+    "stop": "每个短名单有明确能力/限制/许可/部署/副作用语义与Hima接入边界；只对会改变取舍的缺口追查"
+  },
+  "created_utc": "2026-10-03T04:44:30.952450+00:00"
+}

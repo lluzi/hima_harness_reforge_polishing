@@ -1,0 +1,18 @@
+{
+  "lane": "root contrasts and disconfirmation",
+  "queries": [
+    "Dagster asset versioning code data nondeterminism",
+    "Prefect v3 flows final state",
+    "Argo latest architecture Kubernetes",
+    "DBOS TypeScript programming guide Postgres",
+    "DBOS concurrent executions zombie owner",
+    "Restate single node production overview"
+  ],
+  "inclusion": "Official complete docs or release-pinned source; metadata API discovery followed LICENSE; local current source",
+  "exclusion": "Secondary rankings, Reddit discussion from broad search results, roadmap, old Argo3.4 executor implementation, Python DBOS SQLite inference",
+  "retrieval_issues": [
+    "Initial GitHub API TLS timeout for 3 repos retried narrowly successfully",
+    "Dagster docs redirect inaccessible via web open; complete official1.13.25 raw source fetched successfully"
+  ],
+  "stop_reason": "Three contrasts cover assets/Python orchestration/Kubernetes; six deep candidates cover relevant TS deployment forms. More same-class candidates unlikely to change options; implementation cost requires comparative spike, not more web search."
+}
