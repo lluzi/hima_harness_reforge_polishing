@@ -2,12 +2,12 @@
 
 ## Files written
 
-contract.yml and graph.yml declare the retained-native-input, common-R1, matched-AutoFix and single
-fix-timing route. flow/atcs_cli.py and xtop-autofix-reference.tcl prepare and verify retained native
-context, reuse native analysis/common AutoFix, and run ordinary AutoFix against the same Goal without
-a method round or deadline cap. The native startup opens a private copy of commonStage.seed and the
-Pack checks its first cell dump against commonStage.cellStateDigest before accepting the reference,
-then retains the best actual residual state across later regression or oscillation.
+contract.yml and graph.yml declare retained native input, common R1 and a single fix-timing task.
+flow/atcs_cli.py prepares/verifies native context and uses initial AutoFix to establish the actual
+engineering starting state. Native AutoFix remains available as a repair tactic. The serial
+reference generator is retained only as a historical/external evaluation helper; it is absent from
+production graph/tools/outsourcing inputs. The benchmark comparator lives in flow/tests and is not
+copied into the Campaign flow. No reference file or superiority verdict is a product prerequisite.
 readers/atcs-engineering-result.yml, tools/read-atcs.py, semantics.yml and the
 engineering rules validate delivery, narrow Timing Goal and separate broader-check facts. resident-timing-playbook.md supplies the
 complete engineering and delivery method. legacy/0.2.10 preserves the prior method records.
@@ -25,8 +25,7 @@ verdicts; an honest stop is available for best effort. No new Runtime component 
 Every Site must publish verified same-design nativeTimingContext, source reports, constraints,
 manifest digest and producer identity. Missing or placeholder data blocks that Site. Issue83 retained
 0.3.1 field evidence establishes native Timing improvement on its own inputs; it does not establish
-physical signoff, a perfect original journey, or a new 0.3.2 engineering experiment. The 0.3.2 scope
-and explicit ending changes are verified at Reader/Host seams without repeating expensive repair.
+physical signoff, a perfect original journey, or a new 0.3.3 engineering experiment. The responsibility correction and explicit ending changes are verified at Reader/Host seams without repeating expensive repair.
 
 Local deterministic tests do not prove real model research quality, real XTop effectiveness, final
 physical signoff or superiority over AutoFix on the production design.

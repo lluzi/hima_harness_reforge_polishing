@@ -33,24 +33,28 @@ async function copyLegacyAtcsPack(packsDir: string): Promise<string> {
 
 test('ATCS 0.3 outsources one whole fix-timing node and keeps XTop engineering evidence separate from final signoff', async () => {
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
-  assert.equal(pack.contract.version, '0.3.2');
+  assert.equal(pack.contract.version, '0.3.3');
 
   const tool = pack.contract.tools.find(item => item.id === 'fix-timing') as any;
   assert.ok(tool, 'the Pack declares one fix-timing tool');
   assert.deepEqual(tool.outsourcing, {
     role: 'resident-engineering-agent',
-    reads: ['inputReadiness', 'baselineState', 'nativeContext', 'commonStage', 'autoFixReference'],
+    reads: ['inputReadiness', 'baselineState', 'nativeContext', 'commonStage'],
     knowledge: ['resident-timing-playbook.md', 'xtop-capabilities.md', 'state-and-evidence.md'],
     artifactPrefix: 'engineering',
     produces: 'engineeringResult',
   });
   assert.equal(tool.interactive, undefined, 'outsourced work is not a second interactive protocol');
+  assert.equal(pack.contract.outputs.some(item => item.name === 'autoFixReference'), false);
+  assert.equal(pack.contract.tools.some(item => item.id === 'auto-fix-reference'), false);
+  assert.ok(!(pack.graph.nodes as any[]).find(node => node.id === 'check-engineering-goal').parameters.rules.includes('engineering-beats-autofix'));
+
   assert.deepEqual(tool.licences, { xtop: 1 });
 
   const nodes = (pack.graph.nodes as any[]).map(node => node.id);
   assert.deepEqual(nodes, [
     'bind-inputs', 'read-readiness', 'check-inputs', 'baseline', 'prepare-native-context',
-    'common-autofix', 'auto-fix-reference', 'fix-timing', 'read-engineering-result', 'check-engineering-delivery',
+    'common-autofix', 'fix-timing', 'read-engineering-result', 'check-engineering-delivery',
     'check-engineering-collateral', 'check-engineering-goal', 'finish-engineering', 'wait-for-person',
   ]);
   assert.equal((pack.graph.nodes as any[]).find(node => node.id === 'fix-timing').kind, 'act');
@@ -65,7 +69,7 @@ test('ATCS 0.3 outsources one whole fix-timing node and keeps XTop engineering e
   }, 'the only strategy controls raw evidence breadth, not seats, mutations or methods');
 
   const reachableTools = new Set((pack.graph.nodes as any[]).map(node => node.parameters?.tool).filter(Boolean));
-  assert.deepEqual([...reachableTools], ['bind-inputs', 'baseline', 'prepare-native-context', 'common-autofix', 'auto-fix-reference', 'fix-timing']);
+  assert.deepEqual([...reachableTools], ['bind-inputs', 'baseline', 'prepare-native-context', 'common-autofix', 'fix-timing']);
   for (const id of ['observe-baseline', 'physical-baseline', 'implement', 'extract', 'sta', 'physical-candidate']) {
     assert.equal(reachableTools.has(id), false, `${id} is not a producer or mandatory tail on the new route`);
   }
@@ -78,7 +82,7 @@ test('ATCS 0.3 outsources one whole fix-timing node and keeps XTop engineering e
   for (const type of ['tc_engineering_result_error_count', 'tc_engineering_setup_wns_ns',
     'tc_engineering_hold_wns_ns', 'tc_engineering_setup_tns_ns', 'tc_engineering_hold_tns_ns',
     'tc_engineering_remaining_violation_count', 'tc_engineering_regression_count',
-    'tc_engineering_collateral_unknown_count', 'tc_engineering_effect_vs_autofix']) {
+    'tc_engineering_collateral_unknown_count']) {
     assert.ok(semanticValues[type], `${type} is Pack-local`);
   }
   assert.equal(semanticValues.tc_final_setup_wns_ns, undefined,

@@ -4517,7 +4517,11 @@ def _cmd_resident_common_autofix(workspace, args):
 
 
 def _cmd_auto_fix_reference(workspace, args):
-    """Matched ordinary AutoFix from common R1 until native timing reports cease changing."""
+    """Historical/external evaluation helper only; absent from the production Pack graph/tools.
+
+    Preserved for independent serial-reference tests and previously recorded method compatibility.
+    Ordinary AutoFix repair primitives remain available to the resident engineer.
+    """
     if len(args) != 3:
         raise InputError("missing-input", "auto-fix-reference needs Site and the Run's setup/hold Goal targets")
     site_path, setup_target_raw, hold_target_raw = args

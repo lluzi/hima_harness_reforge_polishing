@@ -2081,34 +2081,6 @@ def _engineering_tree_ref(value, workspace, core, label):
     _require_tree(workspace, value["path"], value["digest"], core, label)
 
 
-def _engineering_effect(candidate, reference, goal, core):
-    """Goal-aware effect: satisfying margin is expendable; unsatisfied residuals cannot be hidden."""
-    signs = set()
-    epsilon = 1e-9
-    for mode in _ENGINEERING_MODES:
-        target = goal[f"{mode}WnsNs"]
-        current, control = candidate[mode], reference[mode]
-        current_ok = current["violations"] == 0 and current["wnsNs"] >= target
-        control_ok = control["violations"] == 0 and control["wnsNs"] >= target
-        if current_ok or control_ok:
-            signs.add(0 if current_ok and control_ok else 1 if current_ok else -1)
-            continue
-        deltas = (
-            control["violations"] - current["violations"],
-            current["wnsNs"] - control["wnsNs"],
-            current["tnsNs"] - control["tnsNs"],
-        )
-        metric_signs = {1 if delta > epsilon else -1 if delta < -epsilon else 0 for delta in deltas}
-        if 1 in metric_signs and -1 in metric_signs:
-            return core.unknown(f"resident and ordinary AutoFix {mode} residual effects are mixed")
-        signs.add(1 if 1 in metric_signs else -1 if -1 in metric_signs else 0)
-    if signs <= {0}:
-        return core.known(0)
-    if signs <= {0, 1}:
-        return core.known(1)
-    if signs <= {-1, 0}:
-        return core.known(-1)
-    return core.unknown("resident and ordinary AutoFix Goal/residual effects are mixed; neither dominates")
 
 
 _COLLATERAL_CHECKS = {"transition", "capacitance", "fanout", "legality"}
@@ -2213,7 +2185,7 @@ def _read_engineering_result(report, workspace, extra, mods):
     """Read one Host-delivered resident result and independently verify its engineering evidence.
 
     Host delivery already binds the file to the current task/execution. This Reader binds its
-    business content to this Campaign's baseline, native context, common R1 and matched AutoFix,
+    business content to this Campaign's baseline, native context and engineering starting state,
     then re-hashes the raw reports, scripts, ECOs, selected checkpoint and reproduction material.
     """
     del extra
@@ -2258,8 +2230,6 @@ def _read_engineering_result(report, workspace, extra, mods):
     _verify_identity(common, "common-stage", core)
     native = _load_json(Path(workspace) / "state" / "xtop-context.json")
     _verify_identity(native, "xtop-context", core)
-    control = _load_json(Path(workspace) / "state" / "autofix-reference.json")
-    _verify_identity(control, "autofix-reference", core)
 
     identity = obj.get("inputIdentity")
     expected_identity = {
@@ -2270,8 +2240,6 @@ def _read_engineering_result(report, workspace, extra, mods):
     }
     if identity != expected_identity:
         raise ValueError("engineering-result.inputIdentity does not match baseline/native/common R1")
-    if control.get("inputIdentity") != expected_identity:
-        raise ValueError("matched AutoFix reference does not use the engineering result's exact inputs")
 
     selected = obj.get("selected")
     if (not isinstance(selected, dict) or set(selected) != {"stateId", "checkpoint"}
@@ -2288,22 +2256,15 @@ def _read_engineering_result(report, workspace, extra, mods):
                                         "common-stage.measurements.after")
     if before != common_after:
         raise ValueError("engineering result did not start from the verified common R1 measurements")
-    reference = _engineering_metrics(control.get("measurements", {}).get("after"),
-                                     "autofix-reference.measurements.after")
-    goal = control.get("goal")
-    if (not isinstance(goal, dict) or set(goal) != {"setupWnsNs", "holdWnsNs"}
-            or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
-                   for value in goal.values())):
-        raise ValueError("autofix-reference.goal must carry finite setupWnsNs/holdWnsNs")
+    # This method's declared setup/hold targets are both fixed at 0 ns (contract.yml).
+    # Regression classification belongs to the repair task, never to an external benchmark.
+    goal = {"setupWnsNs": 0, "holdWnsNs": 0}
     collateral, collateral_unknown = _engineering_collateral(
         obj.get("collateral"), workspace, core, mods["contributions"], identity, native, selected["stateId"])
 
     _verify_engineering_metric_reports(
         common["measurements"]["after"], common_after, workspace, core, mods["contributions"],
         "common-stage.measurements.after")
-    _verify_engineering_metric_reports(
-        control["measurements"]["after"], reference, workspace, core, mods["contributions"],
-        "autofix-reference.measurements.after")
     for phase in ("before", "after"):
         _verify_engineering_metric_reports(
             measurements[phase], before if phase == "before" else after,
@@ -2342,12 +2303,11 @@ def _read_engineering_result(report, workspace, extra, mods):
                         or collateral_unknown["before"] != collateral_unknown["after"]):
         raise ValueError("engineering-result.noOp is true but raw before/after facts differ")
 
-    effect = _engineering_effect(after, reference, goal, core)
     remaining_measure = (core.known(known_remaining) if known_remaining > 0
         else core.unknown("required collateral checks unknown: " + ", ".join(sorted(collateral_unknown["after"])))
         if collateral_unknown["after"] else core.known(0))
     comparative = []
-    for phase, measured in (("before", before), ("reference", reference)):
+    for phase, measured in (("before", before),):
         for mode in _ENGINEERING_MODES:
             for suffix, field, unit in (("violation_count", "violations", "count"), ("wns_ns", "wnsNs", "ns"), ("tns_ns", "tnsNs", "ns")):
                 comparative.append(_emit(f"tc_engineering_{phase}_{mode}_{suffix}", unit, core.known(measured[mode][field]), mode=mode))
@@ -2364,7 +2324,6 @@ def _read_engineering_result(report, workspace, extra, mods):
         _emit("tc_engineering_remaining_violation_count", "count", remaining_measure),
         _emit("tc_engineering_regression_count", "count", regression_measure),
         _emit_count("tc_engineering_collateral_unknown_count", len(collateral_unknown["after"])),
-        _emit("tc_engineering_effect_vs_autofix", "count", effect),
     ]
 
 

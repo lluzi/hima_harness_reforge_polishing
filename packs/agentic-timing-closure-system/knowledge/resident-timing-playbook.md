@@ -4,8 +4,8 @@
 
 Own the complete fix-timing engineering task. Start from the supplied common R1 and make the best
 actual native XTop state you can. The ambition is to clear every target setup and hold violation
-without a required-constraint regression and to beat the matched ordinary AutoFix reference on
-repair effect.
+without a required-constraint regression. Deliver the best actual state and explain residuals
+and limits. A separate evaluator may assess its effect; benchmarking is not this engineering task.
 
 The task envelope fixes the design state, common R1 state/worklist, constraints, libraries and
 scenarios. Re-hash or query those identities before experimentation. Never change an SDC, scenario,
@@ -18,8 +18,7 @@ connectivity facts.
 
 ## Timing result and broader limits
 
-The declared Timing goal is the raw-verified setup/hold result and its effect versus the strong
-serial AutoFix reference. Required global collateral remains a separate recorded check: unknown
+The declared Timing goal is the raw-verified setup/hold result against the requested targets. Required global collateral remains a separate recorded check: unknown
 transition/capacitance/fanout/legality never becomes zero, and a known regression must be reported
 and must prevent an unqualified adoption/signoff claim. A Timing goal can be met while broader
 closure remains unknown or failed. Preserve those facts and the original input identities.
@@ -32,8 +31,8 @@ collateral Judge remains visible and is not rewritten by that narrow Timing deci
 
 ## Working method
 
-Use the normal private engineering workspace. Read the full raw common R1 reports, native context,
-matched AutoFix reference and existing Pack knowledge before choosing a repair.
+Use the normal private engineering workspace. Read the full raw common R1 reports, native context
+and existing Pack knowledge before choosing a repair.
 
 1. Reproduce the common R1 metrics and save an untouched starting checkpoint.
 2. Map the current setup and hold residuals by scenario, endpoint, path/cone, fanout, transition,
@@ -49,15 +48,14 @@ matched AutoFix reference and existing Pack knowledge before choosing a repair.
    scenarios and constraints. Save a checkpoint when a candidate becomes the best actual state.
 6. Undo a trial that is worse, mixed without a justified constraint trade, illegal or outside the
    fixed problem. Continue with another useful hypothesis while the Run and Site budget permit.
-7. Ordinary AutoFix may be part of the engineering strategy, but the supplied autoFixReference is
-   the comparison authority. Do not rerun a weaker one-round control or use speed, cost, calls or
-   step count as a tie-break.
+7. Use ordinary AutoFix when it is a useful repair tactic. No serial benchmark or comparison
+   result is required to begin, deliver or finish this task.
 8. Stop on full goal, native evidence that useful mechanisms no longer improve the result, a real
    tool/input/permission blocker, or the actual Runtime/Site closing boundary. There is no fixed
    mutation count or design-specific answer.
 
-Keep the best measured state rather than the last attempted state. A tie is a tie. Mixed effects or
-missing comparable evidence are unknown. A complete engineering delivery may be negative or
+Keep the best measured state rather than the last attempted state. Explain trade-offs between
+measured candidates and keep missing evidence unknown. A complete engineering delivery may be negative or
 inconclusive and may leave the Campaign Goal false.
 
 ## Evidence-led Hold/Setup repair method
@@ -213,8 +211,8 @@ The document must contain:
 - remaining, regressed, blocked and unknown fact arrays;
 - non-empty stopReason, boolean bestEffort, and boolean noOp.
 
-measurements.before must be the supplied common R1 measurement. The Reader independently compares
-measurements.after with the supplied ordinary AutoFix reference. It accepts a legitimate no-op when
+measurements.before must be the supplied common R1 measurement. The Reader independently verifies
+before/after raw evidence and the selected state. It accepts a legitimate no-op when
 that is the best result: set noOp true, keep before and after equal, and provide hashed empty
 logical/physical ECO files plus a reproducible no-op script and real raw reports. Missing reports,
 scripts, identity, measurement or export material is an incomplete delivery, not best effort.

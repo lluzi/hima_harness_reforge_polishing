@@ -33,9 +33,6 @@ values:
   tc_engineering_collateral_unknown_count:
     unit: count
     description: Required global transition, capacitance, fanout or legality checks whose full violation count is unknown; bounded fail-reason samples remain unknown even when they prove blockers.
-  tc_engineering_effect_vs_autofix:
-    unit: count
-    description: 1 resident-better, 0 Goal/residual equivalent, -1 AutoFix-better; positive satisfied margin is expendable and mixed unsatisfied effects are unknown.
   tc_engineering_timing_remaining_violation_count:
     unit: count
     description: Sum of raw-verified selected setup and hold violation counts only. Global collateral and adoption are separate checks and may remain unknown.
@@ -50,48 +47,24 @@ values:
   tc_engineering_before_setup_violation_count:
     unit: count
     mode: [setup]
-    description: Raw-verified before setup violation count; before is common R1 and reference is the best strong serial AutoFix state under the same identity.
+    description: Raw-verified before setup violation count at the fixed common R1 engineering start.
   tc_engineering_before_setup_wns_ns:
     unit: ns
     mode: [setup]
-    description: Raw-verified before setup WNS; before is common R1 and reference is the best strong serial AutoFix state under the same identity.
+    description: Raw-verified before setup WNS at the fixed common R1 engineering start.
   tc_engineering_before_setup_tns_ns:
     unit: ns
     mode: [setup]
-    description: Raw-verified before setup TNS; before is common R1 and reference is the best strong serial AutoFix state under the same identity.
+    description: Raw-verified before setup TNS at the fixed common R1 engineering start.
   tc_engineering_before_hold_violation_count:
     unit: count
     mode: [hold]
-    description: Raw-verified before hold violation count; before is common R1 and reference is the best strong serial AutoFix state under the same identity.
+    description: Raw-verified before hold violation count at the fixed common R1 engineering start.
   tc_engineering_before_hold_wns_ns:
     unit: ns
     mode: [hold]
-    description: Raw-verified before hold WNS; before is common R1 and reference is the best strong serial AutoFix state under the same identity.
+    description: Raw-verified before hold WNS at the fixed common R1 engineering start.
   tc_engineering_before_hold_tns_ns:
     unit: ns
     mode: [hold]
-    description: Raw-verified before hold TNS; before is common R1 and reference is the best strong serial AutoFix state under the same identity.
-  tc_engineering_reference_setup_violation_count:
-    unit: count
-    mode: [setup]
-    description: Raw-verified reference setup violation count; before is common R1 and reference is the best strong serial AutoFix state under the same identity.
-  tc_engineering_reference_setup_wns_ns:
-    unit: ns
-    mode: [setup]
-    description: Raw-verified reference setup WNS; before is common R1 and reference is the best strong serial AutoFix state under the same identity.
-  tc_engineering_reference_setup_tns_ns:
-    unit: ns
-    mode: [setup]
-    description: Raw-verified reference setup TNS; before is common R1 and reference is the best strong serial AutoFix state under the same identity.
-  tc_engineering_reference_hold_violation_count:
-    unit: count
-    mode: [hold]
-    description: Raw-verified reference hold violation count; before is common R1 and reference is the best strong serial AutoFix state under the same identity.
-  tc_engineering_reference_hold_wns_ns:
-    unit: ns
-    mode: [hold]
-    description: Raw-verified reference hold WNS; before is common R1 and reference is the best strong serial AutoFix state under the same identity.
-  tc_engineering_reference_hold_tns_ns:
-    unit: ns
-    mode: [hold]
-    description: Raw-verified reference hold TNS; before is common R1 and reference is the best strong serial AutoFix state under the same identity.
+    description: Raw-verified before hold TNS at the fixed common R1 engineering start.

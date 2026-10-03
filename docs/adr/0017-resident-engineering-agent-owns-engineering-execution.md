@@ -4,9 +4,9 @@ status: accepted
 
 # 由驻场工程 Agent 承接完整工程任务
 
-用户在 2026-10-02 的 Issue #82 设计访谈 Q1/Q2 中确认：以 OpenCode 支撑 HimaHarness 的通用“驻场工程 Agent”，让它获得能自主完成完整工程任务的工作环境，负责学习 playbook、分析、Coding、获准工具操作与内部协作；Hima 的工程对接 Agent 负责用户目标、材料、工作边界、沟通介入和成果验收。Fix Timing 是首个业务，目标是修复目标违例、输出脚本与完整工程交付，并超过一般 AutoFix 迭代；Q3/Q4 明确本轮以 XTop 内充分运用各种合理手段取得的修复效果为准，不把后续 Innovus/提取/PrimeTime 作为本次升级的前置验收；AutoFix 对照只判断修复效果，不以耗时、费用或模型/工具调用数决定胜负。XTop 优化结果不冒充最终物理签核。
+用户在 2026-10-02 的 Issue #82 设计访谈 Q1/Q2 中确认：以 OpenCode 支撑 HimaHarness 的通用“驻场工程 Agent”，让它获得能自主完成完整工程任务的工作环境，负责学习 playbook、分析、Coding、获准工具操作与内部协作；Hima 的工程对接 Agent 负责用户目标、材料、工作边界、沟通介入和成果验收。Fix Timing 是首个业务，目标是修复目标违例、输出脚本与完整工程交付；是否超过一般 AutoFix 迭代由外部评估；Q3/Q4 明确本轮以 XTop 内充分运用各种合理手段取得的修复效果为准，不把后续 Innovus/提取/PrimeTime 作为本次升级的前置验收；AutoFix 对照只判断修复效果，不以耗时、费用或模型/工具调用数决定胜负。XTop 优化结果不冒充最终物理签核。
 
-选择完整工程委派，是为了让已有 Coding Agent 的自主学习、执行与组织能力真正进入业务，避免 Hima 再组织一套重复的细粒度修复团队。驻场工程 Agent 是通用角色，既不是只写代码的助手，也不由少量模型步骤或工具调用次数定义。原生 DSH 与 OpenCode 的 AB 比较不作为接入前置条件；对 AutoFix 的业务效果比较仍是用户声明的工程目标。
+选择完整工程委派，是为了让已有 Coding Agent 的自主学习、执行与组织能力真正进入业务，避免 Hima 再组织一套重复的细粒度修复团队。驻场工程 Agent 是通用角色，既不是只写代码的助手，也不由少量模型步骤或工具调用次数定义。原生 DSH 与 OpenCode 的 AB 比较不作为接入前置条件；对 AutoFix 的业务效果比较属于用户的外部评估目标，不是产品的工程任务或结束条件。
 
 本文责任分工已由 Issue #82 的 task-local Host/Job/ACP adapter 与 ATCS 0.3.0 实现。Q5 进一步确认“驻场”只是能力称呼：有任务时启用，任务完成后释放，不建立长期项目主会话或常驻团队服务。它替换 Fix Timing 内层固定分支/Team/Operator编排；不自动授予 OpenCode 会话 Campaign owner 身份，也不替换 ADR-0008/0014 的用户入口、单一 Run 所有权、事实、权限与用户介入责任。同一任务内保留必要的对话与协作；结束后保留脚本、报告与执行证据。Q6 已确认尽力交付：在充分探索后仍有不可修残余，可以返回最佳实际状态、可复现脚本、残余分析与原因并结束任务；不得把未解决表述为已解决。是否还有合理可行的新方案由 OpenCode 自主判断，Hima 不以操作次数、固定尝试配额或必然全清要求代替工程判断。
 
@@ -46,3 +46,7 @@ Timing-only 剩余值，保留原有 broader remaining/regression 与 unknown �
 默认 ended-goal-not-met。新图使用原有 owner-driven Explore 记录有证据的 goal-met 或 stop，
 不改 Runtime 结束语义或旧 Run。完成回执的已有 JSON data 保留实际必需判据 ID，报告据此区分
 声明 Goal 与额外引用的 broader checks；不新增 Ledger schema、控制面或报告实体。
+
+## Issue #83：产品执行修复，外部评估比较
+
+用户的进一步直接纠正撤回了先前将 Serial AutoFix 对照放入生产任务的解释。ATCS 0.3.3 从新图、外包输入、Reader 和 Goal 中移除独立串行对照及 beats-AutoFix 条件；保留共同工程起点、AutoFix 修复手段、真实 before/selected 测量、身份/hash 检查、已知回归与 UNKNOWN 和尽力交付。比较逻辑只由外部测试/评估者消费分别保留的实际材料。Harness 仍是通用 Pack 执行者，不新增 ATCS 业务政策、benchmark 服务或流程。活动 r5/0.3.2 以及历史方法和原始结果不热改；纠正在下一冻结方法生效。

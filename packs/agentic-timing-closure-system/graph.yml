@@ -1,8 +1,6 @@
-# One complete engineering task: retained native input -> common R1 -> matched ordinary AutoFix
-# reference -> resident engineering delivery -> honest XTop goal/effect verdict. PrimeTime, Innovus,
-# StarRC, six Hima seats and physical-referee tails are not on this version's reference route.
+# ATCS repairs Timing and delivers measured results. External benchmarking is not a Campaign step.
 id: agentic-timing-closure-system
-version: "0.3.2"
+version: "0.3.3"
 entry: bind-inputs
 autopilot:
   - { from: [bind-inputs], until: [fix-timing, wait-for-person] }
@@ -43,14 +41,6 @@ nodes:
       arguments:
         SITE_CAPABILITIES: { from: input, name: siteCapabilities }
         NATIVE_REPORT_PATHS: { from: strategy, name: nativeReportPaths }
-  - id: auto-fix-reference
-    kind: act
-    parameters:
-      tool: auto-fix-reference
-      arguments:
-        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
-        TARGET_SETUP_NS: { from: goal, name: target_setup_wns_ns }
-        TARGET_HOLD_NS: { from: goal, name: target_hold_wns_ns }
   - id: fix-timing
     kind: act
     parameters:
@@ -73,7 +63,7 @@ nodes:
   - id: check-engineering-goal
     kind: judge
     parameters:
-      rules: [engineering-delivery-ready, engineering-timing-clear, engineering-setup-goal, engineering-hold-goal, engineering-beats-autofix]
+      rules: [engineering-delivery-ready, engineering-timing-clear, engineering-setup-goal, engineering-hold-goal]
       bind:
         target_setup_wns_ns: { from: goal, name: target_setup_wns_ns }
         target_hold_wns_ns: { from: goal, name: target_hold_wns_ns }
@@ -93,8 +83,7 @@ edges:
   - { from: check-inputs, to: wait-for-person, outcome: UNDETERMINED }
   - { from: baseline, to: prepare-native-context }
   - { from: prepare-native-context, to: common-autofix }
-  - { from: common-autofix, to: auto-fix-reference }
-  - { from: auto-fix-reference, to: fix-timing }
+  - { from: common-autofix, to: fix-timing }
   - { from: fix-timing, to: read-engineering-result }
   - { from: read-engineering-result, to: check-engineering-delivery }
   - { from: check-engineering-delivery, to: check-engineering-collateral, outcome: PASS }

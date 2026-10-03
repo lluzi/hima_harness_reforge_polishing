@@ -1,6 +1,0 @@
-id: engineering-beats-autofix
-version: "1"
-title: Resident engineering has a strictly better native timing effect than matched ordinary AutoFix
-requires: [{ type: tc_engineering_effect_vs_autofix }]
-subject: { type: tc_engineering_effect_vs_autofix }
-predicate: { op: gt, threshold: 0, unit: count }

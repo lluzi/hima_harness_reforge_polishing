@@ -1,5 +1,5 @@
 id: agentic-timing-closure-system
-version: "0.3.2"
+version: "0.3.3"
 title: Agentic timing closure system
 status: development
 minimumHarnessVersion: 0.2.2
@@ -7,7 +7,6 @@ minimumHarnessVersion: 0.2.2
 ontology:
   aliases:
     engineeringResult: [resident engineering delivery, XTop timing repair result]
-    autoFixReference: [ordinary iterative AutoFix, matched AutoFix reference]
 
 budget:
   timeBoxMs: 7200000
@@ -50,12 +49,6 @@ outputs:
     description: >-
       Actual native XTop analysis before and after the shared initial AutoFix, common R1 saved
       workspace, raw reports, ECO identity, native checks and residual worklist.
-  - name: autoFixReference
-    path: state/autofix-reference.json
-    description: >-
-      Matched ordinary AutoFix after opening the exact saved common R1 seed under the same design,
-      constraints, libraries and scenarios; includes loaded-R1 cell/seed identity, best actual raw
-      native measurements and exported engineering files.
   - name: engineeringResult
     path: state/engineering-result.json
     reader: atcs-engineering-result
@@ -97,13 +90,6 @@ tools:
     licences: { xtop: 1 }
     argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', resident-common-autofix, '${WORKSPACE}', '${SITE_CAPABILITIES}', '${NATIVE_REPORT_PATHS}']
 
-  - id: auto-fix-reference
-    file: flow/atcs_cli.py
-    description: Open and verify the exact saved common R1 seed, then run ordinary matched AutoFix against the same Run Goal; allow positive satisfied margin to fund residual repair, forbid losing a satisfied mode or worsening unsatisfied residuals, stop on goal/non-improvement/regression/oscillation, and export the best actual state rather than the last.
-    inputs: [WORKSPACE, SITE_CAPABILITIES, TARGET_SETUP_NS, TARGET_HOLD_NS]
-    licences: { xtop: 1 }
-    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', auto-fix-reference, '${WORKSPACE}', '${SITE_CAPABILITIES}', '${TARGET_SETUP_NS}', '${TARGET_HOLD_NS}']
-
   - id: fix-timing
     file: flow/atcs_cli.py
     description: >-
@@ -126,7 +112,7 @@ tools:
     argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', engineering-result, '${WORKSPACE}', '${TARGET_SETUP_NS}', '${TARGET_HOLD_NS}']
     outsourcing:
       role: resident-engineering-agent
-      reads: [inputReadiness, baselineState, nativeContext, commonStage, autoFixReference]
+      reads: [inputReadiness, baselineState, nativeContext, commonStage]
       knowledge: [resident-timing-playbook.md, xtop-capabilities.md, state-and-evidence.md]
       artifactPrefix: engineering
       produces: engineeringResult
@@ -139,7 +125,6 @@ rules:
   - engineering-no-remaining
   - engineering-timing-clear
   - engineering-no-regression
-  - engineering-beats-autofix
 
 goal:
   target_setup_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }

@@ -61,13 +61,13 @@ R3/Q14 确认：Guide 入口统一，各工程工作区保留独立的 Guide 历
 
 ## 驻场工程 Agent（2026-10-02，当前产品验证）
 
-用户在 Issue #82 的设计访谈中确认引入由 OpenCode 支撑的通用驻场工程 Agent，承接完整工程任务，自主研究、Coding、操作获准工具并组织内部协作者。Hima 的工程对接 Agent 提供用户目标、工程材料和工作边界，与其持续沟通、传达用户介入并接收验收成果；不再重复组织同一任务的内部修复团队。首个业务是 Fix Timing：在 XTop 内运用各种合理手段充分修复目标违例，输出脚本和完整工程材料，修复效果超过一般 AutoFix 迭代。本次判断仅看修复效果，不将速度、成本或调用次数作为胜负指标，也不把后续实现/提取/PrimeTime作为本升级前置条件；XTop结果仍不代表最终物理签核。
+用户在 Issue #82 的设计访谈中确认引入由 OpenCode 支撑的通用驻场工程 Agent，承接完整工程任务，自主研究、Coding、操作获准工具并组织内部协作者。Hima 的工程对接 Agent 提供用户目标、工程材料和工作边界，与其持续沟通、传达用户介入并接收验收成果；不再重复组织同一任务的内部修复团队。首个业务是 Fix Timing：在 XTop 内运用各种合理手段充分修复目标违例，输出脚本和完整工程材料。与一般 AutoFix 迭代的效果比较由外部评估完成，不是产品任务。本次判断仅看修复效果，不将速度、成本或调用次数作为胜负指标，也不把后续实现/提取/PrimeTime作为本升级前置条件；XTop结果仍不代表最终物理签核。
 
-Issue #82 已保留真实 XTop 修复效果及成果接回技术资格；原 frozen Run FAIL、Setup 残余和未知签核范围仍保留，不能代替正常 GUI 全过程验收。“驻场”是按任务外包的能力称呼：需要时启用，同一任务内持续协作，用完释放，保留工程产物与证据；不增加常驻服务或长期项目记忆架构。尽力修复仍未全部达成目标时，允许交付最佳实际结果、脚本及残余原因并结束任务；结果必须如实区分已解决、未解决和阻塞。技术接入采用足够完成任务委派、同任务沟通介入、停止和收取交付的最小实现，不扩成新的团队调度或长期驻场架构。原生 DSH / OpenCode AB 和小程序连通检查不作为工程价值准入；用户要求的 AutoFix 效果比较独立保留。责任取舍见 [ADR-0017](adr/0017-resident-engineering-agent-owns-engineering-execution.md)，任务与访谈见 [Issue #82](https://github.com/lluzi/hima_harness_reforge_polishing/issues/82)。
+Issue #82 已保留真实 XTop 修复效果及成果接回技术资格；原 frozen Run FAIL、Setup 残余和未知签核范围仍保留，不能代替正常 GUI 全过程验收。“驻场”是按任务外包的能力称呼：需要时启用，同一任务内持续协作，用完释放，保留工程产物与证据；不增加常驻服务或长期项目记忆架构。尽力修复仍未全部达成目标时，允许交付最佳实际结果、脚本及残余原因并结束任务；结果必须如实区分已解决、未解决和阻塞。技术接入采用足够完成任务委派、同任务沟通介入、停止和收取交付的最小实现，不扩成新的团队调度或长期驻场架构。原生 DSH / OpenCode AB 和小程序连通检查不作为工程价值准入；用户要求的 AutoFix 效果比较由 DRI/DL/测试评估者独立完成，产品不负责生成对照或比较胜负。责任取舍见 [ADR-0017](adr/0017-resident-engineering-agent-owns-engineering-execution.md)，任务与访谈见 [Issue #82](https://github.com/lluzi/hima_harness_reforge_polishing/issues/82)。
 
 Pack 编写须明确可外包的工程节点及其任务目标、输入和相关上下文/playbook、工作范围、工程交付与结果返回位置。工程对接 Agent 从这些方法声明形成完整工程委派，Hima 跟踪外包任务并将真实结果接回对应节点，按节点原有完成要求继续或诚实结束。未声明可外包的节点不因平台具备该能力而自动转交；外包返回不等于业务目标达成。Pack 使用通用工程角色声明，不绑定 OpenCode 内部子团队结构或具体 CLI 实现。
 
-2026-10-02 Issue #83 最新用户澄清：“我不关心时间，就看修复效果就行。”因此本轮只以
+2026-10-02 Issue #83 用户澄清：“我不关心时间，就看修复效果就行。”因此外部评估只以
 相同设计、common R1、SDC、库、场景下相对强连续 AutoFix 的修复效果判断工程胜出，
 不要求耗时、费用、调用数或效率优势。有限运行预算继续作为停止与资源边界。
 同时完成此前已授权的正常 HimaHarness GUI 全过程验证：独立操作员从冻结 App 的正常入口
@@ -79,7 +79,7 @@ Pack 编写须明确可外包的工程节点及其任务目标、输入和相关
 后续用户澄清：本轮验收是有原始证据的 Timing 修复改进及可读、可用的正常产品交付。
 Timing 的已知结论与 global collateral、no-regression、工程采用/物理签核分别表达。
 未知不转成零或 PASS，已知回归必须保留并限制任何更广泛质量/采用声明。新 Pack 的声明 Goal
-只覆盖已说明的 Timing 目标与对照；尽力改进可仍留 Goal false。旧 Run、旧判据和结束状态
+只覆盖已说明的 Timing 目标；尽力改进可仍留 Goal false。旧 Run、旧判据和结束状态
 不重写；通过原有 Explore 决定记录新任务的明确结束，不另建签核 Campaign。
 
 
@@ -250,3 +250,7 @@ Polishing 在 `hima_harness_reforge_claude` 当前架构上进行，源项目保
 非万不得已不新增组件。组件扩张的重要判据是迫使多个模块适配、增加边界测试与长期治理成本；优先改进现有职责中的函数、逻辑与行为。旧版架构仅供参考，能力对标不授权迁回旧架构。
 
 相关决定：[架构约束](/Users/lluzi/code/hima_harness_reforge_polishing/docs/adr/0001-polish-within-prototype-architecture.md)、[快照与独立验证](/Users/lluzi/code/hima_harness_reforge_polishing/docs/adr/0002-step-aligned-snapshots-and-independent-validation.md)、[参考图与附加研究](/Users/lluzi/code/hima_harness_reforge_polishing/docs/adr/0003-preserve-reference-graph-and-grow-research.md)、[Pack 内归档](/Users/lluzi/code/hima_harness_reforge_polishing/docs/adr/0004-archive-run-knowledge-inside-pack.md)。
+
+### 产品任务与外部评估的职责纠正（Issue #83）
+
+用户明确：“Hima Harness只知道ATCS，用ATCS去fix timing；忠实完成这件事。对比由我们做，不是Hima Harness；任务不是对比，而是用ATCS fix timing。”新生产 Pack 因此不执行独立 Serial AutoFix 对照，不要求对照材料，也不以超过对照作为 Goal。产品负责真实修复、保留最佳状态、报告实测 Timing/残余/限制并交付可用产物。AutoFix 可以继续作为修复手段。外部评估者在运行后比较分别保留的实际证据；比较不进入 Harness、Campaign Agent 或 FL 的用户任务。历史已冻结方法和记录保留原语义，不热改活动 Run。

@@ -1113,7 +1113,6 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
         '### hold summary ###\nScenario Count Worst TNS\n----------------\ntotal 0 0 0\n') },
   });
   const before = await metric('common', -0.10, -0.20, 1);
-  const referenceAfter = await metric('autofix', -0.02, -0.02, 1);
   const residentAfter = await metric('resident', -0.05, -0.08, 1, deliveryFileRef);
   const baseline = stampAtcs('design-state', { top: 'fixture' });
   const nativeContext = stampAtcs('xtop-context', { requiredScenarios: ['fixture'] });
@@ -1129,16 +1128,12 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
     baselineStateId: baseline.id, nativeContextId: nativeContext.id,
     commonStateId: 'common-r1-state', worklistId: 'common-r1-worklist',
   };
-  const reference = stampAtcs('autofix-reference', {
-    inputIdentity, goal: { setupWnsNs: 0, holdWnsNs: 0 }, measurements: { before, after: referenceAfter },
-  });
   await mkdir(path.join(workspace, 'state'), { recursive: true });
   await Promise.all([
     writeFile(path.join(workspace, 'state/readiness.json'), JSON.stringify(readiness)),
     writeFile(path.join(workspace, 'state/baseline.json'), JSON.stringify(baseline)),
     writeFile(path.join(workspace, 'state/xtop-context.json'), JSON.stringify(nativeContext)),
     writeFile(path.join(workspace, 'state/common-stage.json'), JSON.stringify(common)),
-    writeFile(path.join(workspace, 'state/autofix-reference.json'), JSON.stringify(reference)),
   ]);
   const checkpointBytes = Buffer.from('selected native checkpoint\n');
   await deliveryFileRef('engineering/fixture/best-workspace/state', checkpointBytes);
@@ -1263,7 +1258,7 @@ test('ATCS 0.3 public Host delivers one production-adapter engineering result an
 // checkpoint are the Pack Reader's admitted synthetic fixture. The public owner drives real Reader,
 // Judge and Explore operations. No native/model/EDA job, prewritten Ledger or success injection.
 for (const scenario of ['timing-clear-collateral-unknown', 'timing-residual', 'known-collateral-regression'] as const) {
-  test(`ATCS 0.3.2 Timing ending tail: ${scenario}`, async t => {
+  test(`ATCS 0.3.3 Timing ending without benchmark: ${scenario}`, async t => {
     const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local);
     const h = local.h, packsDir = path.join(h.home, 'hima/packs'), variant = path.join(packsDir, packId);
     await cp(path.join(repoRoot, 'packs', packId), variant, { recursive: true, filter: p => !p.includes('__pycache__') });
@@ -1292,11 +1287,13 @@ for (const scenario of ['timing-clear-collateral-unknown', 'timing-residual', 'k
         'obj=t._result(after=after);empty={k:0 for k in ("transition","capacitance","fanout","legality")}',
         'obj["collateral"]={"before":t._collateral_phase("before",empty),"after":t._collateral_phase("after",dict(empty,transition=2) if sys.argv[3]=="known-collateral-regression" else empty)}',
         'obj=f.core.stamp("engineering-result",{k:v for k,v in obj.items() if k not in ("schema","id")});t._deliver(obj)',
+        '(t.w/"state/autofix-reference.json").unlink()',
         'dst=Path(sys.argv[2])',
         '[(shutil.copytree(child,dst/child.name,dirs_exist_ok=True) if child.is_dir() else shutil.copy2(child,dst/child.name)) for child in t.w.iterdir() if child.name!="flow"]',
         't.doCleanups()',
       ].join('\n'), path.join(repoRoot, 'packs', packId, 'flow/tests'), started.workspace!, scenario], { encoding: 'utf8' });
       assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+      await assert.rejects(readFile(path.join(started.workspace!, 'state/autofix-reference.json')), { code: 'ENOENT' });
       let serial = 0;
       const act = async (action: ExecutionActionRequest['action'], extra: Partial<ExecutionActionRequest> = {}) => {
         const control = host.ctx.hima.ledger.run(runId!)!.control!;
@@ -1331,7 +1328,7 @@ for (const scenario of ['timing-clear-collateral-unknown', 'timing-residual', 'k
         assert.match(report.json.research.summary, /Other recorded checks/);
       }
       assert.ok(view.decision?.requiredVerdictIds?.every(id => !view.verdicts.some(v => v.recordId === id && ['engineering-no-remaining', 'engineering-no-regression'].includes(v.ruleId))));
-      assert.doesNotMatch(report.markdown, /simulated synthesis|Reported clock periods/);
+      assert.doesNotMatch(report.markdown, /simulated synthesis|Reported clock periods|engineering-beats-autofix|effect_vs_autofix|engineering_reference/);
     } finally {
       if (runId) await host.ctx.hima.cancelRun(runId).catch(() => undefined);
       await host.dispose(); await h.dispose();

@@ -5,6 +5,7 @@ import importlib.util
 import hashlib
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -16,6 +17,7 @@ PACK_DIR = FLOW_DIR.parent
 sys.path.insert(0, str(FLOW_DIR))
 
 from atcs import core  # noqa: E402
+from external_timing_evaluation import evaluate
 
 spec = importlib.util.spec_from_file_location("read_atcs_engineering", PACK_DIR / "tools" / "read-atcs.py")
 reader = importlib.util.module_from_spec(spec)
@@ -143,7 +145,15 @@ class EngineeringResultReaderTest(unittest.TestCase):
         manifest.write_text(json.dumps(body), encoding="utf-8")
         return report
 
-    def test_complete_result_emits_native_goal_and_beats_matched_autofix(self):
+    def _external_comparison(self, report):
+        external = self.w.parent / "independent-reference"
+        external.mkdir(exist_ok=True)
+        shutil.copytree(self.w / "raw", external / "raw", dirs_exist_ok=True)
+        reference = external / "reference.json"
+        shutil.copy2(self.w / "state/autofix-reference.json", reference)
+        return evaluate(reader, report, self.w, reference, external, {"setupWnsNs": 0, "holdWnsNs": 0})
+
+    def test_complete_result_emits_native_goal_and_external_evaluator_compares_independently(self):
         report = self._deliver(self._result())
         values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
         self.assertEqual(values["tc_engineering_result_error_count"]["value"], 0)
@@ -151,7 +161,21 @@ class EngineeringResultReaderTest(unittest.TestCase):
         self.assertEqual(values["tc_engineering_remaining_violation_count"]["value"], 4)
         self.assertEqual(values["tc_engineering_collateral_unknown_count"]["value"], 4,
                          "timing-fix fail reasons are bounded blocker evidence, not global checks")
-        self.assertEqual(values["tc_engineering_effect_vs_autofix"]["value"], 1)
+        self.assertEqual(self._external_comparison(report)["effect"]["value"], 1)
+
+    def test_product_delivery_needs_no_external_benchmark(self):
+        (self.w / "state/autofix-reference.json").unlink()
+        report = self._deliver(self._result())
+        values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
+        self.assertEqual(values["tc_engineering_timing_remaining_violation_count"]["value"], 0)
+        self.assertNotIn("tc_engineering_effect_vs_autofix", values)
+        self.assertFalse(any("reference" in name for name in values))
+
+    def test_unrelated_external_reference_cannot_change_product_reading(self):
+        (self.w / "state/autofix-reference.json").write_text("not product input")
+        report = self._deliver(self._result())
+        values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
+        self.assertEqual(values["tc_engineering_setup_violation_count"]["value"], 0)
 
     def test_complete_best_effort_mixed_effect_is_unknown_and_goal_can_remain_false(self):
         after = self._metrics("mixed", 0.0, 0.0, 0, -0.01, -0.01, 1)
@@ -159,8 +183,9 @@ class EngineeringResultReaderTest(unittest.TestCase):
         values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
         self.assertEqual(values["tc_engineering_result_error_count"]["value"], 0)
         self.assertEqual(values["tc_engineering_remaining_violation_count"]["value"], 5)
-        self.assertIsNone(values["tc_engineering_effect_vs_autofix"]["value"])
-        self.assertIn("mixed", values["tc_engineering_effect_vs_autofix"]["unknownReason"])
+        effect = self._external_comparison(report)["effect"]
+        self.assertIsNone(effect["value"])
+        self.assertIn("mixed", effect["unknownReason"])
 
     def test_effect_comparison_allows_positive_setup_margin_to_fund_hold_progress(self):
         control = self._metrics("margin-control", 0.10, 0.0, 0, -0.10, -0.30, 2)
@@ -171,13 +196,13 @@ class EngineeringResultReaderTest(unittest.TestCase):
         after = self._metrics("margin-resident", 0.03, 0.0, 0, -0.05, -0.10, 1)
         report = self._deliver(self._result(after=after))
         values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
-        self.assertEqual(values["tc_engineering_effect_vs_autofix"]["value"], 1)
+        self.assertEqual(self._external_comparison(report)["effect"]["value"], 1)
 
     def test_legitimate_no_op_requires_real_exports_and_equal_measurements(self):
         report = self._deliver(self._result(after=self.before, no_op=True))
         values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
         self.assertEqual(values["tc_engineering_result_error_count"]["value"], 0)
-        self.assertEqual(values["tc_engineering_effect_vs_autofix"]["value"], -1)
+        self.assertEqual(self._external_comparison(report)["effect"]["value"], -1)
 
     def test_unknown_required_collateral_keeps_all_violations_goal_unknown(self):
         result = self._result()
@@ -246,7 +271,7 @@ class EngineeringResultReaderTest(unittest.TestCase):
         self.assertEqual(values["tc_engineering_timing_remaining_violation_count"]["value"], 0)
         self.assertEqual(values["tc_engineering_setup_violation_count"]["value"], 0)
         self.assertEqual(values["tc_engineering_hold_violation_count"]["value"], 0)
-        self.assertEqual(values["tc_engineering_reference_setup_violation_count"]["value"], 1)
+        self.assertNotIn("tc_engineering_reference_setup_violation_count", values)
         self.assertEqual(values["tc_engineering_collateral_unknown_count"]["value"], 4)
 
     def test_tampered_raw_report_is_refused_instead_of_becoming_unknown_or_zero(self):
@@ -263,6 +288,45 @@ class EngineeringResultReaderTest(unittest.TestCase):
         report = self._deliver(result)
         with self.assertRaisesRegex(ValueError, "scripts must be a non-empty list"):
             reader.read("engineering-result", report, self.w)
+
+    def test_external_comparison_refuses_mismatched_identity_and_forged_raw_reference(self):
+        report = self._deliver(self._result())
+        self._external_comparison(report)
+        external = self.w.parent / "independent-reference"
+        reference = external / "reference.json"
+        original = json.loads(reference.read_text())
+        wrong = dict(original, inputIdentity=dict(self.identity, commonStateId="another-R1"))
+        core.write_artifact(reference, core.stamp("autofix-reference", {k:v for k,v in wrong.items() if k not in ("schema", "id")}))
+        with self.assertRaisesRegex(ValueError, "exact input/R1"):
+            evaluate(reader, report, self.w, reference, external, {"setupWnsNs": 0, "holdWnsNs": 0})
+        core.write_artifact(reference, original)
+        (external / original["measurements"]["after"]["setup"]["report"]["path"]).write_text("forged")
+        with self.assertRaisesRegex(ValueError, "sha256 mismatch"):
+            evaluate(reader, report, self.w, reference, external, {"setupWnsNs": 0, "holdWnsNs": 0})
+        # The independent benchmark's corruption does not replace or invalidate a product result.
+        self.assertEqual(reader.read("engineering-result", report, self.w)[0]["value"], 0)
+
+    def test_missing_or_fabricated_timing_cannot_be_hidden_without_a_reference(self):
+        (self.w / "state/autofix-reference.json").unlink()
+        obj = self._result()
+        obj["measurements"]["after"]["setup"]["wnsNs"] = 1.0
+        obj = core.stamp("engineering-result", {k:v for k,v in obj.items() if k not in ("schema", "id")})
+        report = self._deliver(obj)
+        with self.assertRaisesRegex(ValueError, "raw|differ|match|disagree"):
+            reader.read("engineering-result", report, self.w)
+        (self.w / obj["measurements"]["after"]["setup"]["report"]["path"]).unlink()
+        with self.assertRaisesRegex(ValueError, "file not found"):
+            reader.read("engineering-result", report, self.w)
+
+    def test_external_comparison_cannot_change_the_product_target(self):
+        report = self._deliver(self._result())
+        control = json.loads((self.w / "state/autofix-reference.json").read_text())
+        changed_goal = {"setupWnsNs": 0.1, "holdWnsNs": 0}
+        control["goal"] = changed_goal
+        control = core.stamp("autofix-reference", {k:v for k,v in control.items() if k not in ("schema", "id")})
+        self._write_state("autofix-reference.json", control)
+        with self.assertRaisesRegex(ValueError, "product.*target"):
+            evaluate(reader, report, self.w, self.w / "state/autofix-reference.json", self.w, changed_goal)
 
 
 if __name__ == "__main__":

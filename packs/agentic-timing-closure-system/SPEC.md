@@ -1,9 +1,9 @@
-# ATCS 0.3.2 run contract
+# ATCS 0.3.3 run contract
 
 ## Goal template
 
-The declared Goal is raw-verified target setup/hold clearance and a strictly better native Timing
-repair effect than strong ordinary iterative AutoFix, under the unchanged input problem. Targets
+The declared Goal is raw-verified target setup/hold clearance under the unchanged input problem.
+The product executes ATCS Fix Timing; it does not conduct or judge an external benchmark. Targets
 are 0 ns setup WNS and 0 ns hold WNS. A complete best-effort improvement may still leave this Goal
 false. Global transition/capacitance/fanout/legality and broader no-regression/adoption remain separate
 checks: UNKNOWN is never zero, and known regression must stay visible and block an unqualified
@@ -21,14 +21,10 @@ model-step count, design object list or method deadline; Runtime/Site budget rem
 designStateManifest is staged and hashed as baselineState. nativeTimingContext identifies retained
 same-design timing data, source reports, SDC hashes, ordered scenarios and producer provenance.
 prepare-native-context copies and re-hashes those bytes and current Site libraries without launching
-PrimeTime. The route then produces actual common R1 and runs matched ordinary AutoFix from that same
-R1 against the same Run Goal. Before any control measurement or fix, XTop opens a private copy of
-commonStage.seed; Pack code re-hashes that seed and compares a native loaded-state cell dump with
-commonStage.cellStateDigest. Baseline R0 or a replayed approximation is refused. A mode already
-meeting Goal may spend positive margin while another
-residual improves; the control may not lose a satisfied mode or worsen an unsatisfied residual.
-It stops on goal, non-improvement, regression or oscillation and exports the best actual checkpoint,
-ECO and reports rather than the last attempted state. The Campaign owner uses engineering
+PrimeTime. The route produces actual common R1 through initial AutoFix as a useful repair step,
+then delegates whole-engineering repair. The resident opens the verified saved R1 and works from
+its actual measured state; it may use AutoFix alongside other supported techniques. No separately
+run serial control, benchmark document or superiority verdict is required. The Campaign owner uses engineering
 start/message/status/delivery/release. After delivery, the graph reads the result and judges delivery
 then broader checks and the narrow Timing Goal. The owner records a cited goal-met or honest stop
 at finish-engineering; a dead-end Judge is not an explicit Goal decision.
@@ -39,11 +35,12 @@ repair techniques or iterations.
 
 ## Semantics
 
-atcs-engineering-result emits raw-verified common-R1/reference/selected setup/hold counts, WNS and
-TNS, timing-only remaining count, result-error count, broader remaining/regression facts, required
-collateral unknown count and effect versus AutoFix.
-Effect is 1 for resident dominance, 0 for exact tie, -1 for AutoFix dominance, and unknown for mixed
-or incomparable timing effects. Cost, duration, calls and seats are absent.
+atcs-engineering-result emits raw-verified common-R1/selected setup/hold counts, WNS and TNS,
+timing-only remaining count, result-error count, broader remaining/regression facts and required
+collateral unknown count. Its regression thresholds use the method's fixed 0 ns setup/hold targets,
+not a goal read from an external experiment. It emits no external-reference/effect measurements.
+Independent benchmark evaluation lives only in test/evaluation materials and cannot change these
+product facts or the Campaign ending.
 
 The Reader binds the primary result to exactly one signed Host delivery manifest and current
 task/run/execution/node identity. It re-hashes raw reports, parses their WNS/TNS/count, and re-hashes
@@ -62,7 +59,7 @@ and parser; no synthetic or model-normalized document can create that PASS.
 
 engineering-delivery-ready requires a fully verified result. engineering-setup-goal and
 engineering-hold-goal compare actual native WNS to the Run targets. engineering-timing-clear requires
-zero setup/hold violations from verified raw reports; engineering-beats-autofix requires effect 1.
+zero setup/hold violations from verified raw reports. There is no beats-AutoFix completion criterion.
 The separate check-engineering-collateral records engineering-no-remaining (timing plus global
 collateral) and engineering-no-regression without changing their unknown/positive semantics. Every
 outcome remains visible before proceeding to the narrow Goal; broader FAIL/UNKNOWN is not adoption
@@ -73,7 +70,7 @@ approval and is not erased by a Timing PASS.
 atcs-engineering-ending supports the existing owner-driven Explore completion. The owner may record
 only a cited goal-met backed by every required last-Judge rule, or a cited stop preserving best effort
 and limitations. It is an ending, not another experiment or native strategy loop. The resident still
-chooses engineering tactics; Hima does not reproduce its internal team. Historical 0.3.1 endings and
+chooses engineering tactics; Hima does not reproduce its internal team. Historical method snapshots, endings and
 verdicts are never recomputed or rewritten by this method upgrade.
 
 ## Endings
