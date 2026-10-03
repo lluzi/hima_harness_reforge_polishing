@@ -98,7 +98,7 @@ test('local schema references and JSON2020-12 prefixItems work, remote or missin
 });
 
 test('synchronous handoff rejects async schemas rather than accepting an unresolved Promise', () => {
-  for (const marker of ['yes', 1]) {
+  for (const marker of [true, 'yes', 1, null]) {
     const asynchronous = { ...contract.input, schema: { ...contract.input.schema, $async: marker } };
     rejected(() => validateTaskInput(asynchronous, { design: 'design' }), 'schema-definition', /synchronous|async/);
   }
@@ -142,6 +142,7 @@ test('binding and identity formats are serializable shared contracts', () => {
   const bindings = [
     { source: 'literal', value: { count: 1 } }, { source: 'runInput', path: ['design'] },
     { source: 'goal', path: [] }, { source: 'strategy', path: ['effort'] },
+    { source: 'carry', path: ['candidate'] },
     { source: 'committedOutput', taskId: 'prepare', path: ['design', 'name'] },
     { source: 'artifactRef', taskId: 'prepare', name: 'checkpoint' },
   ];

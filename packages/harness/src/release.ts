@@ -524,7 +524,9 @@ export function exportPackMethod(req: { readonly from: string; readonly to: stri
   return { dir, files: Object.keys(manifest.files), digest: manifest.digest };
 }
 
-/** Preserve the actual bytes an identified Run used. Old rows with no digest receive no invented identity. */
+/** Preserve the actual bytes an identified Run used, including graph.yml and every local schema.
+ * Compilation remains derived data: method snapshots never replace declarations with generated IR.
+ * Old rows with no digest receive no invented identity. */
 export function preservePackMethod(folder: PackFolderSnapshot): string {
   return preserveMethodAt(folder, folder.dir);
 }

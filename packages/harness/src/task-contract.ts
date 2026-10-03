@@ -1,6 +1,7 @@
 // Pack-declared business data crosses every adapter through this leaf contract. Accepting data
 // here does not prove a durable commit, resource release, or the Campaign's business Goal.
 import { Ajv2020 } from 'ajv/dist/2020.js';
+import type { ValidateFunction } from 'ajv';
 import { z } from 'zod';
 
 export const taskResultProtocol = 'hima-task-result/1' as const;
@@ -43,6 +44,7 @@ export const taskInputBinding = z.discriminatedUnion('source', [
   z.strictObject({ source: z.literal('runInput'), path: fieldPath }),
   z.strictObject({ source: z.literal('goal'), path: fieldPath }),
   z.strictObject({ source: z.literal('strategy'), path: fieldPath }),
+  z.strictObject({ source: z.literal('carry'), path: fieldPath }),
   z.strictObject({ source: z.literal('committedOutput'), ...taskOutputBinding.shape }),
   z.strictObject({ source: z.literal('artifactRef'), taskId: name, name }),
 ]);
@@ -132,7 +134,9 @@ function checkSchemaReferences(schema: unknown): void {
   schemaLists.forEach((key) => { if (Array.isArray(object[key])) object[key].forEach(checkSchemaReferences); });
 }
 
-function validateValue(declaration: unknown, value: JsonValue, locals: TaskLocalSchemas, code: 'input-schema' | 'output-schema'): void {
+/** One synchronous schema-admission path for Pack compilation and task handoff. Each declaration
+ * owns its Ajv registry, so identical inline $id documents can be reused across task contracts. */
+export function compileTaskSchema(declaration: unknown, locals: TaskLocalSchemas = {}): ValidateFunction {
   const declared = parse(taskSchema, declaration, 'schema-definition', 'Correct the task schema declaration');
   if (declared.schema.$schema !== taskSchemaDraft) {
     throw new TaskContractError('schema-definition', 'Declare JSON Schema 2020-12', [{ path: '$schema', message: `set $schema to ${taskSchemaDraft}` }]);
@@ -153,8 +157,13 @@ function validateValue(declaration: unknown, value: JsonValue, locals: TaskLocal
     if (error instanceof TaskContractError) throw error;
     throw new TaskContractError('schema-definition', 'Correct the Pack schema or provide its local referenced schema', [{ path: '/schema', message: error instanceof Error ? error.message : String(error) }]);
   }
+  return validate;
+}
+
+function validateValue(declaration: TaskSchema, value: JsonValue, locals: TaskLocalSchemas, code: 'input-schema' | 'output-schema'): void {
+  const validate = compileTaskSchema(declaration, locals);
   if (!validate(value)) {
-    throw new TaskContractError(code, `Correct the task ${code === 'input-schema' ? 'input' : 'output'} to match ${declared.version}`, (validate.errors ?? []).map((issue) => ({
+    throw new TaskContractError(code, `Correct the task ${code === 'input-schema' ? 'input' : 'output'} to match ${declaration.version}`, (validate.errors ?? []).map((issue) => ({
       path: issue.instancePath, message: `${issue.message ?? issue.keyword} (${JSON.stringify(issue.params)})`,
     })));
   }
@@ -171,7 +180,7 @@ function immutable<T>(value: T): T {
 /** Validate without coercing, adding defaults, dropping fields, or mutating caller-owned data. */
 export function validateTaskInput(schema: unknown, value: unknown, locals: TaskLocalSchemas = {}): JsonValue {
   const input = parse(taskJsonValue, value, 'input-schema', 'Supply JSON-compatible task input');
-  validateValue(schema, input, locals, 'input-schema');
+  validateValue(parse(taskSchema, schema, 'schema-definition', 'Correct the task schema declaration'), input, locals, 'input-schema');
   return immutable(structuredClone(input));
 }
 

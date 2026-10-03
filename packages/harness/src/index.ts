@@ -1923,3 +1923,10 @@ export { taskResultProtocol, taskSchemaDraft, taskJsonValue, taskIdentity, taskI
 export type { JsonValue, TaskIdentity, TaskInputBinding, TaskOutputBinding, TaskSchema, TaskContract,
   TaskLocalSchemas, TaskArtifact, TaskDiagnostic, TaskProjectionState, TaskProjection,
   TaskToolOutput, TaskResult, TaskContractErrorCode, TaskContractIssue } from './task-contract.js';
+
+export { flowSourceVersion, flowIRVersion, flowElement, flowExtensionSlot, flowSource } from './flow-definition.js';
+export type { FlowTask, FlowSequence, FlowChoice, FlowParallel, FlowRepeat, Flow, FlowSource,
+  FlowExtensionSlot, FlowBlock, CompiledTask, CompiledFlow, FrozenFlowFragment, FrozenLegacyFlowFragment } from './flow-definition.js';
+export { FlowCompileError, compileFlow, compilePackFlow, compileLegacyFlow, compileLegacyGrowth,
+  freezeFlowFragment } from './flow-compiler.js';
+export type { CompileFlowOptions } from './flow-compiler.js';

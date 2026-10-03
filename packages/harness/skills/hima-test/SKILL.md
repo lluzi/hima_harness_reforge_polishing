@@ -42,38 +42,28 @@ Call `hima_run` with:
   defaults. A knob they said nothing about is left at the default the pack declares, which is a value
   the pack states and not one you picked.
 
-The tool prepares the Run and returns promptly with its execution context. This same conversation is
-the Run's owner; no hidden Agent or automatic graph driver continues it. Keep the returned Run id.
+The tool prepares the Run and returns its execution context. Keep the returned Run id and open
+its owning Campaign Agent. The owner holds the engineering goal and makes the method's business
+decisions. New Runs use the frozen Pack IR and DBOS for mechanical execution and recovery.
 
-Read `hima_context`, then use `hima_execute` with its current owner epoch and control revision to:
+Read `hima_context` to inspect the frozen method identity, declared task contracts, task state,
+actual Job identity, output, artifacts and diagnostic sources. Let admitted tools and engineering
+tasks complete through their declared adapters. A committed and validated result becomes input to
+its consumers after the required resource closure; one fewer owner lifecycle call must not leave a
+consumer waiting. At an AI boundary, provide the declared business decision, strategy, rationale
+and citations. Use only the method's declared extension positions for diagnostic fragments.
 
-1. Read `run.control.epoch`, `run.control.revision`, `available`, `executions` and the method's
-   contract/reference graph. Each action carries `run`, `expectedEpoch`, `expectedRevision` and
-   `requestId`. `begin` names one available `nodeId`; retain its admitted `executionId` for node actions.
-2. For a Workshop, call `recommend` with its `executionId` to obtain the purpose, private entry path,
-   actual argv/values, declared reads, knowledge and output. Use `read` with the declared `output`,
-   `knowledge` with the declared `file`, and `write` with a relative private code `path` and exact
-   `content`. Derive the algorithm from actual inputs. Then call `work` for its real Job. For a tool
-   declaring `outsourcing`, form the complete engineering goal from its method and actual inputs,
-   then call `engineering` with `engineering: {operation: 'start', goal, context}`. Track the returned
-   task/Job; use `message` for the same task's follow-up, `status` for facts, `delivery` to validate
-   artifacts, and `release` to close resources while retaining them. Request `cancel` when an actual
-   stop is needed. Use normal `work` for other mechanical nodes. A Job starts asynchronously and its identity
-   returns before completion. Do not wait in a long foreground tool or start a second Run.
-3. Inspect new context and actual Job/output facts. A notification only says new facts were saved;
-   it does not mean the node succeeded or give permission to ignore a pause.
-4. Request `complete` only when that execution is `ready` with actual required evidence. A Workshop
-   still needs its declared reader and Judge nodes after its script exits. At an exploration node, state the decision,
-   strategy where needed, rationale and citations yourself; Judge remains the verdict authority.
-5. Choose the next available node only after completion is accepted. Repeat within the fixed budget.
+Respect the author's mid-run instructions through the returned control interface. Keep request
+identities stable when retrying the same request; after a stale response read current owner,
+epoch/revision and control facts before deciding. Observe pause, continue, cancel and handoff
+receipts separately from actual Job/resource status. A notification is evidence of newly recorded
+facts, and Job completion or reconnection does not authorize advancing a paused Run. Keep active
+code bytes unchanged while a Job uses them.
 
-Use a unique request id for each new action; an identical retry keeps its id and arguments. After a
-stale/refused response read context again before deciding. Respect the author's mid-run instructions:
-`pause` blocks new work while Jobs may still run, `cancel` requests actual stop, and `continue` requires
-authorization. Re-read owner/epoch/revision after every mutation. Job completion, notifications and
-reconnection do not authorize continuing a paused Run. Keep active code bytes unchanged while a Job
-uses them. Never claim a Job stopped or a node completed from the request alone. `revise`/`grow`
-may be unsupported; report that response rather than substituting a hidden automatic driver.
+For a historical Run, inspect its original method and recorded engine's reader. Keep the recorded
+method bytes and evidence; starting a new Run from a supported old declaration uses the same IR as
+the versioned grammar. Report an unsupported or missing execution interface as a test limitation,
+with its actual response. Compilation or a schema check alone cannot qualify the Site Run.
 
 Then call `hima_status` with the run id it answered, and write the record from that. Every fact about
 the Run — its status, its generations, the code it wrote, what it refused, its blockers — comes out of

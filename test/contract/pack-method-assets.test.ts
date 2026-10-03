@@ -27,6 +27,9 @@ async function methodFixture(t: import('node:test').TestContext): Promise<{ root
   await mkdir(path.dirname(source), { recursive: true });
   exportPackMethod({ from: path.join(checkout, 'packs', packId), to: source });
   installPackMethod({ from: source, to: installed });
+  const original = loadPack(path.dirname(source), packId), copy = loadPack(path.dirname(installed), packId);
+  assert.equal(copy.flow!.irSha256, original.flow!.irSha256, 'installation keeps compilation tied to the same method bytes');
+  assert.equal(copy.flow!.packSha256, packDigestOf(installed));
   return { root, source, installed };
 }
 

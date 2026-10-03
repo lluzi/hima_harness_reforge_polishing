@@ -8,6 +8,23 @@ the only place you write. You edit no file outside it, and you never edit `INTEN
 those are the record you are compiling from, and a stage that edited its own input would be
 compiling something nobody wrote.
 
+For a new method, write the versioned `hima-flow/1` graph described in
+`knowledge/pack-anatomy.md`. A task declares its tool, business input bindings and input/output
+schemas; sequence, choice, parallel and repeat declare how those tasks compose. Existing four-kind
+graphs remain readable and compile to the same immutable execution IR. Keep a historical method's
+bytes intact; change a method by publishing a new version through these stages.
+
+A section marked `none` creates no component. A business that only hands off JSON needs only its
+tasks and schemas; extra Reader/Rule/Chooser files require a business purpose in the approved spec.
+Runtime validates task schemas at the handoff. Payload validation belongs in those schemas; an
+extra validation task or human wait needs its own business purpose in the approved spec.
+A dynamic diagnostic slot and a static branch are separate mechanisms: compile the one the spec
+chooses, without duplicating the diagnostic work.
+
+Runtime supplies invocation identity and versions. Schema acceptance proves the declared data shape;
+the Pack's Reader and Judge still establish business meaning. Runtime commits results and resumes
+mechanical work; the Campaign Agent owns research and decisions at declared business boundaries.
+
 ## Before you write anything
 
 1. **Read `SPEC.md` in this folder.** If it is not there, say so and tell the author to run
@@ -19,7 +36,9 @@ compiling something nobody wrote.
 3. **Read `INTENT.md`'s `Golden Flow` section** for the pointers it gives, and **read the flow
    there**, where it lies. You need its command lines: a tool of this pack is a command the flow
    already answers, and one you cannot see in the flow is one you may not invent.
-4. **Read the six knowledge files**, relative to this skill's base directory:
+4. **Read the domain-method references that `SPEC.md` names as shaping its business.** For an
+   engineering measurement or optimization method, these are the six references, relative to this
+   skill's base directory:
    - `knowledge/over-constrain-and-read-the-violation.md`
    - `knowledge/end-honestly-in-more-than-one-way.md`
    - `knowledge/assert-the-checker-options.md`
@@ -79,7 +98,8 @@ contradict itself. Each of them is a pack that would compile into files that dis
 finding out at the first judge node has paid for a workspace and a licence to learn it.
 
 - A value a `Judge rules` entry or a `Choosers` entry reads that `Semantics` does not declare.
-- An `Endings` entry no judge rule's outcome and no chooser's decision can reach.
+- An `Endings` entry no declared path can reach: a versioned flow names its terminal task and
+  business result; a legacy graph names its judge outcome or chooser decision.
 - A tool the `Run contract` names with no wrapper that section declares.
 - A `Workshops` entry whose output is not one of the values `Semantics` declares.
 - A `Knowledge` file the spec declares and no section of it names as being for anything.
@@ -114,8 +134,11 @@ In this folder and nowhere else, and only what the spec states:
   the spec says one), `environment.wrappers`, `workspace.copy`, `tools`, `rules`, `knowledge`,
   optional `goal` with each numeric parameter's type, unit, bounds and author-approved default, `strategy` with each knob's type, bounds and default, and `words` for every goal parameter the
   graph binds and every knob the strategy declares.
-- `graph.yml` — the act, judge, explore and wait nodes the spec's method needs, the edges between
-  them labelled with the outcomes they are taken on, and the revisit edge that closes the loop.
+- `graph.yml` — for a new method, `schema: hima-flow/1` with tasks and the sequence, choice,
+  parallel and repeat compositions the spec needs. Bind business inputs explicitly and declare
+  schema versions and any diagnostic extension slots. A task-only method can finish without an
+  Explore or Wait node. For maintenance of a legacy declaration, preserve its four-kind grammar,
+  outcome edges and revisit semantics under a new method version.
 - `semantics.yml` — one entry per value type **this pack's own readers** emit, with its unit and,
   where it needs them, its mode and scope. A pack whose outputs are all read by readers this harness
   ships declares none of its own and writes no such file: a value type nothing of this pack's
@@ -142,8 +165,8 @@ For every tool the approved spec permits outsourcing, add `outsourcing` to its e
 entry: `role: resident-engineering-agent`, `reads` naming existing outputs, `knowledge` naming
 contract knowledge files, and `produces` naming one output with a Reader. Use the tool's description
 and file for the full task goal, scope, playbook and delivery instructions; preserve its declared
-inputs, argv and licences. Bind the tool from an ordinary act node and schedule its input producers
-before it. The Site's `engineeringCapabilities` binding chooses the concrete executor.
+inputs, argv and licences. Bind the tool from a task in a versioned flow, or an act node when
+maintaining a legacy graph, and schedule its input producers before it. The Site's `engineeringCapabilities` binding chooses the concrete executor.
 
 Give the executor enough material to independently research, write scripts, operate approved tools
 and return engineering artifacts. Its internal collaborators are its own choice. Add downstream
@@ -151,9 +174,15 @@ Reader and Goal checks: a verified best-effort delivery can complete the task wh
 targets remain false. A tool with no outsourcing declaration retains normal execution. A declared
 tool cannot also use the Tcl interactive adapter.
 
-### Compile every Workshop
+### Workshops in legacy declarations
 
-For each actual Workshop in `SPEC.md`, write a `contract.workshops` entry using the Workshop
+The Workshop binding below belongs to the legacy four-kind graph. The versioned task grammar
+currently has no author-facing native Workshop binding. If a new-method spec requires that binding,
+record the unsupported binding as a gap and leave the method uncompiled; do not mix an act node
+into a versioned flow or silently replace the requested behavior. A complete engineering task
+using a declared tool and outsourcing role follows the task binding above.
+
+When maintaining a legacy method, for each actual Workshop in `SPEC.md`, write a `contract.workshops` entry using the Workshop
 block in `knowledge/pack-anatomy.md`. Preserve its `purpose`, `inputs`, `reads`, `knowledge`,
 `produces`, `directory`, `entry`, `language`, `argv` and any `licences`. The wrapper is `argv[0]`
 and must appear in `environment.wrappers`; `argv[1]` is exactly `${ENTRY}`. Bind each declared
@@ -181,15 +210,23 @@ shape and the graph binds them without fixing a Campaign's choice.
 
 ## Audit the written method before recording FABRIC
 
-Read the actual contract, graph and scripts back from the folder. Trace each declared ending in
-`SPEC.md` through the actual edges and decisions, recording the source node, matching outcome,
-destination and resulting ending alongside the file review shown to the author. A comment saying
+Read the actual contract, graph and scripts back from the folder. For a versioned flow, trace each
+declared ending through its task outputs and compositions: each choice covers its producer enum,
+each parallel result has its declared requiredness, and each repeat has explicit carry, stop and
+budget. Record the terminal task or selected branch and its business result. Task completion alone
+does not assert Goal achievement. Check each diagnostic slot's producer, fragment path and return
+task; a fragment uses the same grammar and cannot enlarge permissions or the original budget.
+
+For a legacy graph, trace each declared ending in `SPEC.md` through the actual edges and decisions,
+recording the source node, matching outcome, destination and resulting ending alongside the file
+review shown to the author. A comment saying
 "terminal" is not an edge audit. The first Judge rule determines its outgoing outcome; an Explore decision
 weighs the current constraint and Goal rules in their declared order. Goal completion needs its
 explicit goal-met decision, not a terminal Judge PASS alone. A revisit describes the next-strategy
 path; a generation limit may stop that path before another generation starts.
 
-A wait node is valid when the spec calls for human clearance at that boundary. When the spec calls
+In a legacy graph, a wait node is valid when the spec calls for human clearance at that boundary.
+In a versioned flow, declare that boundary as a `builtin/human-wait` task. When the spec calls
 for a successful terminal ending, follow the actual success path and verify that it reaches that
 ending. Resolve any file/spec discrepancy in the compiled files before `FABRIC.md`; an honest
 later `TEST.md` disagreement does not make a contradictory method ready to compile or release.
