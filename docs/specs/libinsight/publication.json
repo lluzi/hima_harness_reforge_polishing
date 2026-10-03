@@ -1,0 +1,31 @@
+{
+  "issue_url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/77",
+  "issue_number": 77,
+  "state": "open",
+  "labels": [
+    "ready-for-agent"
+  ],
+  "updated_at": "2026-09-30T15:48:27Z",
+  "spec_file": "spec.zh-CN.md",
+  "spec_and_issue_body_sha256": "7dd50314027f5975626815656b1077a03f24edde7aac1db227568955e3581d82",
+  "body_exact_match": true,
+  "user_stories": 72,
+  "acceptance_pairs": 26,
+  "checks": [
+    "required seven template sections in order",
+    "implementation section contains no source file paths or code blocks",
+    "pinned evidence links resolve in local Git snapshot",
+    "existing implementation anchors inspected",
+    "Issue body re-read matches spec byte-for-byte",
+    "ready-for-agent label re-read verified"
+  ],
+  "independent_review": {
+    "model": "gpt-5.6-sol",
+    "effort": "high",
+    "initial_high_priority_findings": 3,
+    "resolved": 3,
+    "remaining_blockers": 0,
+    "scope": "native per-source admission; v2 scope/version contract; authorized AI context egress"
+  },
+  "execution_boundary": "Specification and publication only; no product implementation, application tests, EDA jobs or new native API qualification executed in this request."
+}

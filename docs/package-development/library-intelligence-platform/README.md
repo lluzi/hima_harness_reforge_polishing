@@ -1,7 +1,25 @@
-# Library Intelligence Platform development track
+# LibInsight development track
 
-Status: research and executable first-slice specification complete. The earlier Liberty API runtime blocker was
-removed by a bounded QuaLib 2026 qualification on 2026-09-24; product E1 integration and E2–E4 remain open.
+LibInsight is the unified HimaHarness capability for Liberty (`.lib`) and LEF (`.lef`) evaluation, including
+geometry-based pin access probabilities and traceable cross-view cell/pin analysis. The canonical scope is in
+[the product definition](../../product-definition.md#libinsight-产品面).
+
+The user confirmed the demo definition and six acceptance scenarios at Q17. Use the
+[completed product interview](product-interview.zh-CN.md) as the scope baseline for implementation; product
+confirmation is separate from implementation and acceptance evidence.
+
+Implementation specification: [LibInsight feature spec](../../specs/libinsight/spec.zh-CN.md), published as
+[GitHub #77](https://github.com/lluzi/hima_harness_reforge_polishing/issues/77) with `ready-for-agent`. It covers the
+confirmed demo, native Liberty API integration, prototype reuse, LEF probability contracts, and falsifying tests.
+
+Status: the existing bounded Liberty E1–E4 implementation and dated validation scope are recorded in
+[S11](../../specs/next-stage-implementation/S11-library.md). LEF/pin-access probability work has research and
+model definitions; implementation and combined evaluation are pending. Historical directory, Pack and protocol
+identifiers remain stable; this product-scope update does not migrate released assets.
+
+User-designated feature prototype: `/Users/lluzi/code/lib_insight`, read-only. Its existing Library analysis is the
+functional reuse baseline, separately from Hima's bounded E1–E4 slice. See the
+[source-grounded capability audit and 274-test receipt](research/prototype-capabilities.zh-CN.md).
 
 Start here:
 
@@ -14,6 +32,8 @@ Start here:
 7. [Environment qualification](environment-qualification.md)
 8. [Research verification](research-verification.md)
 9. [Current QuaLib 2026 bounded qualification](qualification/2026-09-24-qualib-2026.md)
+10. [Standard cell pin accessibility analysis and modeling research](research/pin-accessibility-report.zh-CN.md) — physical-view requirements, academic/industrial methods and validation boundaries; research only.
+11. [LEF geometry based pin access probability model](research/pin-access-probability-model.zh-CN.md) — first-principles events, blocked-pose sets, joint resources, probability metrics and future calibration; proposed model with exact synthetic checks.
 
 Research control artifacts:
 

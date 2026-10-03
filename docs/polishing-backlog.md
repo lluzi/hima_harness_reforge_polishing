@@ -156,16 +156,24 @@
 
 详细设计：[双模式与 Subagent / #51](specs/workbench-modes-and-subagents/spec.zh-CN.md)。Data Insight 的 Library renderer 由 E3 提供，任务导航由 D1 提供；subagent 生命周期由 C1/C3 提供，C2 只投影并调用获准操作，不维护另一份 Agent 状态。
 
-## 7. Library 数据分析
+## 7. LibInsight 库评估
+
+2026-09-29 范围更新：LibInsight 统一 `.lib` 逻辑/电气评估与 `.lef` 几何/pin-access 概率评估，
+共享库版本、cell/pin 身份和三类业务分析。新增 LEF 读取、概率计算及跨视图关联仍待实施切片，
+不得用原有 E1–E4 通过记录计为完成；现有有界 Liberty 切片状态见 [S11](specs/next-stage-implementation/S11-library.md)。
+单视图输入支持部分评估；未知映射/缺少另一视图明确保留。产品范围见
+[LibInsight 定义](product-definition.md#libinsight-产品面)，方法见
+[概率模型](package-development/library-intelligence-platform/research/pin-access-probability-model.zh-CN.md)。
 
 | 任务 / 优先级 | 具体交付与默认归属 | 完成证据 |
 | --- | --- | --- |
-| NXT-E1 / 前置阻塞 | 原生 API 读取/查询与隔离失败处理资格化 | #49 留存 lib.name exit139；等待可用厂商包/说明或另行授权诊断；本清单不启动 debug |
+| NXT-E1 / 前置资格 | 原生 API 读取/查询与隔离失败处理资格化 | 原 exit139 是历史问题；现有有界 Liberty 资格与范围见 S11，新增 LEF 读取/规则计算另行验证 |
 | NXT-E2 / P1 | Library 版本、Cell/arc/condition/PVT/单位/工作域、unknown/provenance 的 facts 和 delta | 真数据在 E1 后接；丢字段/崩溃不形成半份事实；库事实与设计证据分别定位 |
 | NXT-E3 / P1 | 三类分析的 typed report 与表图：库健康、库性能、设计影响 | 同族版本比较首切片，load/filter 联动并回到原证据；使用 D1 的 Data Insight 宿主，不重造 UI 外壳 |
 | NXT-E4 / P2 | 客户规则/Python 算法、保存分析方法及后续验证 proposal | typed I/O、fixture、版本/权限/预算，关联 G/H；不默认修改 golden Library |
 
-E1 阻塞真实数据接入与对应验收，不阻塞无副作用的导航、合同/视觉研究；遵守 [#49 的真实接入门](package-development/library-intelligence-platform/first-slice-spec.md)。
+真实 Liberty 分析继续遵守 [#49 的真实接入门](package-development/library-intelligence-platform/first-slice-spec.md)
+与 S11 的现行 admission 要求；LEF 输入和模型计算不继承 Liberty qualification 的通过结论。
 
 ## 8. 验证、交付与客户价值
 

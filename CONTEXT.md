@@ -60,6 +60,26 @@ _Avoid_: 所有数据浏览的强制入口、Campaign 业务实体本身的替�
 以数据分析、可交互比较、发现和证据理解为中心，与 Campaign 同级的产品工作模式；需要实际计算或行动时关联既有受控执行能力。
 _Avoid_: Live Run 子页、独立 BI 应用、第二份数据或执行权威
 
+**LibInsight**:
+HimaHarness 中以 Library 为共同分析基础的库洞察能力，涵盖 Liberty 的逻辑与电气评估、LEF 的物理几何与 pin access 概率评估；加入 Design 信息后，将库特性与具体设计关联，形成设计指导。
+_Avoid_: Library Insight、Library Intelligence（作为现行产品名称）；独立 Pin Access 产品、仅 Liberty 文件查看器
+
+**Library 输入**:
+LibInsight 用于理解与评估库本身的 Library 及相关 PDK 库信息，不依赖某一个具体 Design 才有分析价值。
+_Avoid_: 单个 Liberty 文件（作为整个输入范围的同义词）
+
+**Design 输入**:
+LibInsight 中描述具体设计及其所用库条件的信息，用于把 Library 洞察关联到实际设计对象和需求；归属由使用语境决定，不由文件扩展名独自决定。
+_Avoid_: 只用于重排问题的使用次数、某一类工程师的专属入口
+
+**Design-specific 分析**:
+LibInsight 内独立呈现的具体设计分析，使用导入的 Design 信息理解 critical-path cell、cell 使用情况及后续物理 pattern，并复用共同的 Library 分析基础。
+_Avoid_: 所有 Library 页面的强制 Design 叠加层、独立产品或另一套执行系统
+
+**建议工作范围**:
+在声明的 pin/arc、corner、数据覆盖、质量规则和已有使用限制下，LibInsight 推导的可用工作区域；用户目标可以进一步收窄该区域，cell 级范围是选定相关条件的共同范围。
+_Avoid_: 无条件安全区、已通过物理验证的保证、两个可独立取最大值的轴范围
+
 **HimaFabric**:
 承载参考路线、运行事实和执行约束的业务基础设施，为 Campaign Agent 提供可追踪、可恢复的运行环境。
 _Avoid_: 独立业务决策者、第二执行主脑

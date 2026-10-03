@@ -182,29 +182,108 @@ R3/Q17 确认：EDA Operator 可以在已授权工具、设计工作副本和预
 本轮用户选择先完成方案、接口和验收标准，尚未实施。具体范围、建议接口和分级验证见
 [交互式终端与 EDA Operator 方案](specs/interactive-eda-v1/spec.zh-CN.md)。
 
-## Library Intelligence 产品面
+## LibInsight 产品面
 
-用户于 2026-09-22 明确：Library Intelligence 是 HimaHarness 基于 Liberty API 提供的原生业务能力。
+状态：用户已通过产品访谈 Q17 确认下述 demo 范围与验收重点，作为后续实施依据；这不是产品实现或
+验收通过声明。完整决定与六项验收场景见 [已确认访谈](package-development/library-intelligence-platform/product-interview.zh-CN.md)。
+
+用户于 2026-09-29 明确：将此前 Library Insight / Library Intelligence 与 pin access 分析合并为
+**LibInsight**，形成同时评估 Liberty（`.lib`）与 LEF（`.lef`）的统一标准单元库能力。它沿用
+2026-09-22 确定的三类分析任务和现有 Data Insight 工作模式，由同一业务方法组织电气与物理评估。
 用户继续使用同一对话，右侧 Workbench 展示可交互的数据洞察和可视化；洞察可以形成有依据的后续
 行动建议，并支持客户自己的检查和分析方法。
+
+用户指定 `/Users/lluzi/code/lib_insight` 为上述 Library 分析特性的 Prototype。集成以其已实现的分析
+算法、检查体系和交互为功能参考，保留原型只读；源码与合成测试核查见
+[原型能力清单](package-development/library-intelligence-platform/research/prototype-capabilities.zh-CN.md)。
+其实现与证据范围需在 HimaHarness 中独立验证，不能用已有有界报告切片代替全部原型能力。
+
+2026-09-29 访谈进一步明确：LibInsight 的两类入口是 **Library 输入**与 **Design 输入**。
+Library 输入包括 Library 及相关 PDK 中的库信息；Design 输入包括 DEF、设计使用的 Liberty、Netlist、
+Timing Report 等具体设计信息。`.lib`/`.lef` 是评估视图，不是这两类入口的划分依据；同一种格式
+可以在不同使用语境中承担库证据或设计关联条件。
+
+用户划分为“只关心 Library”与“同时关心 Library 和 Design”两类，使用共同的 Library 分析基础。
+库分析本身必须独立成立：从质量、能力与机会出发，说明这套库值得做什么、需要做什么、哪些改进
+可能转化为设计收益；具体 Design 未提供时，潜在收益仍是带条件的研究判断。Design 加入后，把库
+信息与具体设计结合，给出设计指导；不能预先将其作用限制为原型 Usage Lens 的问题重排。
+芯片设计者与 DTCO 方法学工程师不作为互斥产品路线。
+
+第二轮访谈明确本次 demo 的边界：以**同一套完整库内部的洞察**为主体，覆盖其分支、PVT 与 corner；
+输入不全时开展局部分析并说明覆盖。跨版本、跨 PDK、跨供应商比较暂不纳入本次 demo。
+Design 侧先保持简单：由 timing paths 聚焦 critical path 上的 cell，由 Verilog netlist 统计 cell
+使用数量；未来结合 DEF 分析相对物理位置、频繁出现及相邻的 pattern。当前范围不因“设计指导”
+自动扩展为 cell 替换优化、约束优化或执行完整 P&R 的功能。
+
+Library 侧的电气/物理评估与跨视图关联要求如下：
+
+- **Liberty 评估**：逻辑功能、pin/arc/model 完整性，PVT、时序、功耗、约束、变化和版本比较。
+- **LEF 评估**：cell/pin/PORT/OBS 的几何、层与位置，以及结合声明的技术规则、via、routing grid
+  和环境分布计算的 pin access 概率、联合冲突、逃逸瓶颈和敏感性。可先计算参考环境下的模型概率，
+  未来用实际 placement/routing 分别校准规则覆盖、环境分布与算法成功率。
+- **统一关联**：在同一库版本、cell/pin 分析中呈现逻辑、电气和物理结果。跨视图映射须有版本、
+  来源与映射依据，不能只凭同名自动确认；多 PVT 电气视图可以关联同一物理 master，但须证明对应关系。
+  不把 Liberty area 与 LEF 宽高乘积未经单位/语义核对就判为一致或不一致。
+
+仅有 `.lib` 或仅有 `.lef` 时可完成相应评估，另一侧和跨视图结论显示缺失/未知；缺失不替换为零或
+默认通过。两侧具备且身份明确时提供联合比较，例如“电气表现更好，但 pin access 风险更高”的 cell
+候选及其条件。测量、文件声明、模型概率与未验证推断分别标注，不合成无条件的库质量总分。
 
 面向用户只呈现三类分析，不把 Catalog、图表、Finding、Rule Studio、报告和 Action Center 分别包装成
 多个产品功能：
 
 1. **库健康与发布风险分析——这套库可靠吗？** 检查版本与 corner/view 身份、结构和单位完整性、
    Cell/pin/arc/constraint/model coverage、跨 PVT 一致性、数值趋势异常和 revision regression，帮助
-   用户判断能否交付、哪些问题需要阻塞或复查。
+   用户判断能否交付、哪些问题需要阻塞或复查；包括 LEF 几何/映射缺项和有证据的接入风险。
 2. **库性能与竞争力分析——这套库强在哪里、弱在哪里？** 分析 Cell family、drive/VT/PVT、delay、
    transition、constraint、area、leakage、internal power、variation 和工作域，帮助用户比较版本/方案、
-   识别优势、短板和 Library 开发优先级。
+   识别优势、短板和 Library 开发优先级，并比较相同物理评价条件下的 pin access 概率与敏感性。
 3. **设计影响与行动分析——它对我的芯片意味着什么？** 将 Library finding 与当前设计实际使用的
    Cell/instance、path/endpoint、slew/load、mode 和商业工具结果连接，帮助用户决定先处理什么、下一项
    最便宜验证是什么，以及是否需要 candidate、STA/SPICE 或 matched implementation。
 
 自定义规则、数据探索、可视化、证据追溯、报告和后续动作是三类分析的共同能力，不作为一级产品导航。
 用户可以在分析过程中用自然语言增加组织规则或保存分析方法；产品把它们编译为受控、可测试、可版本化
-资产，不让自由模型代码直接成为结果权威。Liberty API 能提供 Library 内事实和候选副本能力；设计采用、
-真实 PPA、相关性和芯片结果仍须由 HimaHarness 的设计证据与实际 EDA 验证补充，不能由 Liberty 单独推导。
+资产，不让自由模型代码直接成为结果权威。Liberty API 承担其已验证的电气视图读取能力；LEF 评估需
+独立验证物理解析与规则计算，但结果归入同一 LibInsight。设计采用、真实 PPA、相关性和芯片结果
+仍须由 HimaHarness 的设计证据与实际 EDA 验证补充，不能由 Liberty 或 LEF 模型概率单独推导。
+
+2026-09-29 原型体验确认：保留 Overall 风险矩阵、直觉式点击展开、input transition × output load
+Heatmap 及可靠性标示、每个 cell 的 Sensitivity 呈现，以及 Overall rule configuration。
+用户要求降低交互深度：每类分析尽量收敛在一个标签页内，细节在当前标签内展开，避免多级下钻后
+逐层回退；数据与由其得出的结论并排展示，并直接表达问题实际影响，缩短信息、洞察到后续行动的距离。
+第二轮确认以风险等级排序，同时保留问题、幅度、影响对象和后果的解释。导航采用**左侧大类标签
+与顶部具体工程问题 tab**；以最多两次导航点击定位目标分析，具体内容和细节尽量在当前页呈现。
+第三轮进一步确认：Overall 风险地图沿用分析标签，随标签切换/filter 展示对应的库风险矩阵；
+点击某个库的风险，直接进入该库对应的分析标签页。它是全局问题总览与直达入口，不增加另一套操作逻辑。
+
+**Design-specific 分析独立呈现**，容纳 critical-path cell、使用统计等带 Design 信息、可能较定制化
+的分析；复用 Library 基础，但不采用上一轮建议的全局 Design 叠加作为默认交互。
+规则配置先提供少量参考模板/预设，允许调整范围、阈值和检查项；具体数量、值和新增规则能力按后续
+需求细化，不因配置入口而扩展为本次 demo 的任意算法开发平台。
+
+Heatmap 保留数据覆盖、数值可信程度和使用适宜性三层信息，并在 input transition × output load
+平面圈定可靠与不可靠区域。每个区域必须注明含义及判定依据，帮助识别 cell 的建议工作范围，并用于
+针对性的 max transition / max load 约束。第四轮确认具体要求：
+
+- 默认以数据覆盖、数值质量和已有使用限制圈定建议工作范围；用户性能目标可进一步收窄。数据不可靠
+  与数据可靠但不符合当前目标分别解释。
+- 图上先展示当前 pin/arc、corner 等条件，cell 级建议再汇总选定相关条件的共同范围，标明限制范围的
+  corner、pin 或 arc。共同范围只适用于实际纳入的条件，不隐含全 corner 覆盖。
+- 保留真实二维轮廓，另给一组成对成立的保守 max transition / max load 上限；必要下界或中间可疑
+  区域同时标示，不能分别取两轴最大值后声称其任意组合均可用。
+- 本次 demo 提供图内说明及可导出的建议清单，包含建议值、对象、corner、依据和适用条件。具体工具
+  约束文件生成、写回原始库/设计及实际应用留作后续能力。
+
+模型或规则给出的区域不能直接宣称为经过物理验证的保证。
+
+第五轮确认使用流程：选定库后按默认模板自动开展基础分析，结果逐步呈现；配置变化只更新受影响的
+结果，并尽量保留当前 cell、corner、图表位置等浏览上下文。尚未完成的分析显示进度与覆盖；长时间
+计算单独显示状态，用户可继续浏览已有结果。旧结果与更新中的条件必须可区分。
+
+AI 同时承担三项职责：主动解释重点发现；结合当前 cell/图表区域、数据、规则与条件回答追问；根据
+自然语言调用已有分析能力并呈现结果。优先做好后两项，回答能指回图表和证据；新增检查算法的自主
+研究留待后续。自动分析、规则计算及 AI 回答都沿用现有受控执行和事实归属，不建立另一套分析权威。
 
 一线 AE 的竞品观察进一步明确共同能力：trend 分析允许切换 output load；用户可过滤不关注的 Cell；
 同一视图可用类别、数值与 corner 等三个维度联合表达；客户可以增加自己的 Python 分析算法。HimaHarness
@@ -212,7 +291,11 @@ R3/Q17 确认：EDA Operator 可以在已授权工具、设计工作副本和预
 不能成为无审计的自由代码。Milkyway、NDM 等第三方数据库不属于 Liberty API 的直接读取范围；只有在
 Site 具备合法工具、许可和只读访问时，才通过独立格式 adapter 投影到相同语义身份，并保留原数据库为
 权威。本要求不扩展为“任意格式天然支持”的产品承诺。
-见 [Library Intelligence 三类用户分析决定](adr/0012-library-intelligence-has-three-user-analysis-surfaces.md)。
+见 [LibInsight 三类用户分析与统一视图决定](adr/0012-library-intelligence-has-three-user-analysis-surfaces.md)
+和 [pin access 概率模型](package-development/library-intelligence-platform/research/pin-access-probability-model.zh-CN.md)。
+以上是现行产品要求；已有 Liberty 有界切片的通过证据不代表 LEF 或联合评估已经实现。
+已收口的产品决定、参考信息组织与验收场景见 [LibInsight 产品访谈](package-development/library-intelligence-platform/product-interview.zh-CN.md)。
+实施要求、用户故事、数据/接口合同与正反验收见 [LibInsight 功能规格](specs/libinsight/spec.zh-CN.md)。
 
 ## 首个里程碑与验证责任
 
