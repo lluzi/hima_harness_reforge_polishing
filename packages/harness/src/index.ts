@@ -20,6 +20,7 @@ import { createUserMessage, type MessageId } from '@deepseek-ai/dsh-llm';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { installedExecutableManifest, startDurableRuntime, type DurableRuntime } from './durable-runtime.js';
 import { Service, type Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 // Type-only: these take the `ctx.commands` and `ctx.tools` declaration merges the registrations below
@@ -493,6 +494,8 @@ export default class Hima extends Service {
    * It never rejects — a Run this machine cannot rebuild is reported, not thrown.
    */
   reconciled!: Promise<ReconcileOutcome[]>;
+  /** DBOS owns new durable workflows; its store is the application fact authority. */
+  durable!: DurableRuntime;
   private notificationsActive = false;
   private exitRequest: HostExitRequest | undefined;
   private interactiveRuntime:InteractiveRuntimeDeps|undefined;
@@ -520,9 +523,12 @@ export default class Hima extends Service {
   async [Service.init](): Promise<void> {
     let databaseStarting: Promise<LocalDatabase>;
     let domainStarting: Promise<{ close(): void | Promise<void> }> | undefined;
+    let durableStarting: Promise<DurableRuntime> | undefined;
     let closing = false;
     let closeHostResources = async () => {
       const database = await databaseStarting;
+      const durable = await durableStarting?.catch(() => undefined);
+      if (durable) await durable.stop();
       try { if (domainStarting) await (await domainStarting).close(); }
       finally { await database.stop(); }
     };
@@ -549,11 +555,17 @@ export default class Hima extends Service {
     domainStarting = openingDomain;
     const domain = await openingDomain;
     if (closing) return;
+    this.ledger = new Ledger(domain);
+    const manifest = await installedExecutableManifest();
+    if (closing) return;
+    durableStarting = startDurableRuntime({ database, manifest });
+    this.durable = await durableStarting;
+    if (closing) return;
     closeHostResources = async () => {
+      await this.durable.stop();
       try { await domain.close(); }
       finally { await database.stop(); }
     };
-    this.ledger = new Ledger(domain);
     // Product identity is a prompt contribution rather than a document the Agent has to discover.
     // The dynamic inventory is recomputed at assembly time, so installs and Campaign changes are
     // visible on the next step without restarting the Host or scanning the checkout.
@@ -615,8 +627,8 @@ export default class Hima extends Service {
       await this.autopilot?.drain();
       await drainExecutionObservers(this.ledger);
       await this.reconciled?.catch(() => undefined);
+      await this.durable.stop();
       await domain.close();
-      // U3 closes DBOS and its application pools here, before PostgreSQL is stopped.
       await database.stop();
     };
     // The HimaGuide face: the Hima namespace, mounted only where a browser surface is composed.

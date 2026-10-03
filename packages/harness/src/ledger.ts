@@ -1973,6 +1973,32 @@ export class Ledger {
     );
   }
 
+  /** PostgreSQL outbox projection only. The fact's sequence and time come from the application
+   * authority; this method neither advances a workflow nor makes admission decisions. Existing
+   * interactive records carry the immutable fact without growing the legacy storage format. */
+  async projectDurableFact(fact: { readonly factId: string; readonly runId: string; readonly seq: number;
+    readonly at: string; readonly kind: string; readonly payload: unknown }, opening: RunOpening): Promise<InteractiveRecord> {
+    const id = recordKey(fact.runId, fact.seq);
+    const projected = interactiveRecord.parse({ id, runId: fact.runId, siteId: opening.siteId, seq: fact.seq,
+      at: fact.at, writer: 'executor', type: 'interactive', executionId: fact.runId,
+      toolSessionId: 'dbos-history', requestId: fact.factId, event: `durable:${fact.kind}`, payload: fact.payload });
+    const existing = this.records({ runId: fact.runId, type: 'interactive' }).find(record => record.type === 'interactive' && record.requestId === fact.factId) ?? this.record(id);
+    if (existing) {
+      if (!isDeepStrictEqual(existing, projected)) throw new Error(`durable fact ${fact.factId} conflicts with retained history`);
+      return existing as InteractiveRecord;
+    }
+    const retained = this.run(fact.runId);
+    if (retained?.status !== undefined || retained?.control !== undefined || retained?.currentNode !== undefined) throw new Error('Durable history cannot carry legacy scheduler state');
+    if (retained && this.records({ runId: fact.runId }).some(record => record.type !== 'interactive' || record.toolSessionId !== 'dbos-history')) {
+      throw new Error('A DBOS history projection cannot overwrite a legacy Run');
+    }
+    const { status: _status, control: _control, currentNode: _currentNode, ...historyOpening } = opening;
+    if (!retained) await this.#domain.table('runs').put(fact.runId, { ...historyOpening, id: fact.runId, createdAt: fact.at, nextSeq: fact.seq + 1 });
+    else if (retained.nextSeq <= fact.seq) await this.#domain.table('runs').update(fact.runId, row => ({ ...row, nextSeq: fact.seq + 1 }));
+    await this.#domain.table('records').put(id, projected);
+    return projected;
+  }
+
   /**
    * Hand out this ledger's one verdict-writer capability. HimaJudge takes it at construction; the
    * second caller gets an error rather than a second writer.
